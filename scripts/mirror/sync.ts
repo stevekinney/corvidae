@@ -1,6 +1,7 @@
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 
+import { pushVerifiedCommit } from './authenticated-push.ts';
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
 import { layoutFor } from './layout-map.ts';
 import { assertNothingDeferred, runInstall } from './manifests.ts';
@@ -158,26 +159,6 @@ export async function tryGit(
 /** Run one git command, throwing `SyncError` with both streams when it fails. */
 export async function git(directory: string, ...arguments_: string[]): Promise<string> {
   const result = await tryGit(directory, ...arguments_);
-  if (result.exitCode !== 0) {
-    throw new SyncError(
-      `git ${arguments_.join(' ')} failed in ${directory} (exit ${result.exitCode}):\n${result.stderr}${result.stdout}`,
-    );
-  }
-  return result.stdout;
-}
-
-/**
- * Run one git command under a caller-supplied environment rather than the ambient one `git`
- * builds through `gitEnvironment()` — the one case this module needs it is a credentialed push,
- * where the environment has to carry a bearer token `gitEnvironment()` knows nothing about. Errors
- * the same way `git` does, so a caller can treat the two interchangeably.
- */
-export async function gitWithEnvironment(
-  directory: string,
-  environment: Record<string, string | undefined>,
-  ...arguments_: string[]
-): Promise<string> {
-  const result = await runCommand(['git', ...arguments_], { cwd: directory, env: environment });
   if (result.exitCode !== 0) {
     throw new SyncError(
       `git ${arguments_.join(' ')} failed in ${directory} (exit ${result.exitCode}):\n${result.stderr}${result.stdout}`,
@@ -941,14 +922,16 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   const commit = head.trim();
 
   if (options.pullRequest) {
-    const credential = await options.pullRequest.pushEnvironment();
-    await gitWithEnvironment(
-      clone,
-      credentialedGitEnvironment(credential),
-      'push',
-      'origin',
-      `HEAD:refs/heads/${options.pullRequest.branch}`,
-    );
+    const pullRequestOptions = options.pullRequest;
+    await pushVerifiedCommit({
+      directory: clone,
+      remote: options.remote,
+      commit,
+      branch: options.pullRequest.branch,
+      environment: gitEnvironment(),
+      credentialEnvironment: async () =>
+        credentialedGitEnvironment(await pullRequestOptions.pushEnvironment()),
+    });
     const pullRequest = await options.pullRequest.openPullRequest({
       branch: options.pullRequest.branch,
       // `base` was read before the sync branch was created and is always set alongside
@@ -972,8 +955,15 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     };
   }
 
-  await git(clone, 'push', 'origin', 'HEAD');
   const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
+  await pushVerifiedCommit({
+    directory: clone,
+    remote: options.remote,
+    commit,
+    branch: currentBranch.trim(),
+    environment: gitEnvironment(),
+    credentialEnvironment: async () => ({}),
+  });
 
   return {
     decision: 'pushed',

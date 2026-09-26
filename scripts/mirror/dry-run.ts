@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 
 import { join } from 'node:path';
+import { pushVerifiedCommit } from './authenticated-push.ts';
 import {
   createGitHubApi,
   installationTokenFromApp,
@@ -308,15 +309,17 @@ export async function seedScratchRepository(options: {
   // held `workflows: write` since 2026-09-21, because the transform emits
   // `.github/workflows/mirror-verify.yaml` (COR-1286); the seed keeps the account path anyway so
   // the App's first write to the scratch repository is the one the run measures.
-  const pushEnvironment = credentialedGitEnvironment(await options.api.accountPushEnvironment());
-  await runGit(
+  const head = await runGit(run, workDirectory, environment, 'rev-parse', 'HEAD');
+  await pushVerifiedCommit({
+    directory: workDirectory,
+    remote: scratchRemoteUrl(options.scratchRepository),
+    commit: head.stdout.trim(),
+    branch: baseBranch,
+    environment,
+    credentialEnvironment: async () =>
+      credentialedGitEnvironment(await options.api.accountPushEnvironment()),
     run,
-    workDirectory,
-    pushEnvironment,
-    'push',
-    'origin',
-    `HEAD:refs/heads/${baseBranch}`,
-  );
+  });
 }
 
 export interface TransformOutcome {
@@ -387,8 +390,17 @@ export async function transformAndOpenPullRequest(options: {
     '--message',
     `Mirror dry run for ${options.target}\n\n${provenanceTrailer}: ${options.corvidaeCommit}`,
   );
-  const pushEnvironment = credentialedGitEnvironment(await options.api.pushEnvironment());
-  await runGit(run, workDirectory, pushEnvironment, 'push', 'origin', `HEAD:refs/heads/${branch}`);
+  const head = await runGit(run, workDirectory, environment, 'rev-parse', 'HEAD');
+  await pushVerifiedCommit({
+    directory: workDirectory,
+    remote: scratchRemoteUrl(options.scratchRepository),
+    commit: head.stdout.trim(),
+    branch,
+    environment,
+    credentialEnvironment: async () =>
+      credentialedGitEnvironment(await options.api.pushEnvironment()),
+    run,
+  });
   const pullRequest = await options.api.createPullRequest({
     fullName: options.scratchRepository,
     base: baseBranch,

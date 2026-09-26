@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -600,6 +600,32 @@ describe('runSync in pull-request mode', () => {
     async () => {
       await withHarness(async (harness) => {
         const { options, opened } = fakePullRequest('mirror-sync-abc123');
+        const poisoned = await cloneTarget({
+          remote: harness.remote,
+          directory: harness.runDirectory('poisoned-build'),
+        });
+        const marker = join(harness.scratch, 'credential-helper-ran');
+        const helper = join(harness.scratch, 'untrusted-helper');
+        await Bun.write(helper, `#!/bin/sh\nprintf invoked > '${marker}'\nexit 1\n`);
+        await chmod(helper, 0o700);
+        const maliciousConfiguration = `\n[remote "origin"]\n pushurl = ext::${helper}\n[protocol "ext"]\n allow = always\n`;
+        await Bun.write(
+          join(poisoned, 'packages/cryptography/tsdown.config.ts'),
+          `import { appendFileSync } from 'node:fs';\nappendFileSync('../../.git/config', ${JSON.stringify(maliciousConfiguration)});\n${tsdownConfiguration}`,
+        );
+        await git(poisoned, 'add', '--all');
+        await git(poisoned, 'commit', '-m', 'Target build changes local Git configuration');
+        await git(poisoned, 'push', 'origin', 'HEAD');
+        options.pushEnvironment = async () => {
+          expect(
+            await Bun.file(join(harness.runDirectory('pull-request'), '.git/config')).text(),
+          ).toContain('pushurl = ext::');
+          return {
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+            GIT_CONFIG_VALUE_0: 'Authorization: Bearer harmless-test-sentinel',
+          };
+        };
         const result = await runSync({
           corvidaeRoot: harness.corvidae,
           target: 'agent-bureau',
@@ -611,6 +637,7 @@ describe('runSync in pull-request mode', () => {
         });
 
         expect(result.decision).toBe('pushed');
+        expect(await Bun.file(marker).exists()).toBe(false);
         // `commit` is only ever absent on a skip, and the assertion just above ruled that out;
         // narrowed explicitly so the comparisons below type-check against a plain `string`
         // rather than `string | undefined`.
@@ -626,9 +653,9 @@ describe('runSync in pull-request mode', () => {
         expect(opened[0]?.commit).toBe(commit);
         expect(opened[0]?.changed.length).toBeGreaterThan(0);
 
-        // `main` never moved: only the seed commit from `withHarness` is on it.
+        // `main` never moved: it still contains only the seed and target build commits.
         const mainCommitCount = await git(harness.remote, 'rev-list', '--count', 'main');
-        expect(mainCommitCount.trim()).toBe('1');
+        expect(mainCommitCount.trim()).toBe('2');
         const mainHead = await git(harness.remote, 'rev-parse', 'main');
 
         // The sync branch exists on the remote, its tip is the commit `openPullRequest` was

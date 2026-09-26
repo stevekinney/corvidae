@@ -347,6 +347,7 @@ function fakeRunner(): RunnerHarness {
     environments.push(options.env);
     const joined = command.join(' ');
     const base = { command: joined, stdout: '', stderr: '' };
+    if (joined.includes('rev-parse')) return { ...base, exitCode: 0, stdout: 'a'.repeat(40) };
     if (joined.includes('status --porcelain')) {
       return { ...base, exitCode: 0, stdout: ' M packages/cryptography/src/index.ts\n' };
     }
@@ -512,9 +513,13 @@ describe('runDryRun', () => {
     expect(joined).toContain(
       'git remote set-url origin https://github.com/stevekinney/mirror-dryrun-20260919.git',
     );
-    expect(joined).toContain('git push origin HEAD:refs/heads/main');
+    expect(joined).toContain(
+      `git push https://github.com/${validName}.git ${'a'.repeat(40)}:refs/heads/main`,
+    );
     expect(joined).toContain('git checkout -b mirror-dry-run-20260919');
-    expect(joined).toContain('git push origin HEAD:refs/heads/mirror-dry-run-20260919');
+    expect(joined).toContain(
+      `git push https://github.com/${validName}.git ${'a'.repeat(40)}:refs/heads/mirror-dry-run-20260919`,
+    );
 
     // The probe is handed the staged clone and a tarball destination outside it. A destination
     // inside the clone would put a `.tgz` in `git status` on the next run, and a probe pointed
@@ -560,7 +565,9 @@ describe('runDryRun', () => {
       .filter(({ command }) => command.includes('push'));
     expect(pushes).toHaveLength(2);
     for (const { command, environment } of pushes) {
-      expect(environment?.['GIT_CONFIG_VALUE_0']).toContain('Authorization: Basic');
+      expect(
+        Object.values(environment ?? {}).find((value) => value?.startsWith('Authorization:')),
+      ).toContain('Authorization: Basic');
       expect(command.join(' ')).not.toContain('Authorization');
     }
 
@@ -569,10 +576,11 @@ describe('runDryRun', () => {
     // from an App without the `workflows` permission this App deliberately does not hold; the
     // transform branch is the push COR-1191 exists to prove the App can make. Asserting only
     // "both are authenticated" would pass with the routing reversed.
-    expect(pushes.map(({ environment }) => environment?.['GIT_CONFIG_VALUE_0'])).toEqual([
-      'Authorization: Basic account-token',
-      'Authorization: Basic app-token',
-    ]);
+    expect(
+      pushes.map(({ environment }) =>
+        Object.values(environment ?? {}).find((value) => value?.startsWith('Authorization:')),
+      ),
+    ).toEqual(['Authorization: Basic account-token', 'Authorization: Basic app-token']);
     const clone = harness.commands.find((command) => command.includes('clone'));
     expect(clone?.join(' ')).not.toContain('Authorization');
   });
@@ -1301,9 +1309,8 @@ describe('seedScratchRepository', () => {
    * `shallow update not allowed` — so the orphan commit is load-bearing and only real git can say
    * whether it works.
    *
-   * The push cannot reach GitHub. `pushEnvironment` rewrites the scratch URL onto a local bare
-   * repository, and it also restricts git to the `file` transport, so an https push is refused
-   * outright rather than attempted.
+   * The injected transport maps the scratch URL onto a local bare repository and restricts Git
+   * to the file protocol, so this test cannot contact GitHub.
    */
   test('pushes the seeded tree to the base branch without a shallow update', async () => {
     await withWorkDirectory(async (root) => {
@@ -1331,29 +1338,19 @@ describe('seedScratchRepository', () => {
       }
 
       const { api } = fakeGitHub();
-      // The seed pushes as the *account*, so this is the environment the seed actually uses.
-      // `pushEnvironment` is overridden identically so a future change routing the seed back
-      // through the App cannot silently reach the real github.com from this test.
-      const localRemote = {
-        GIT_CONFIG_COUNT: '1',
-        GIT_CONFIG_KEY_0: `url.${remote}.insteadOf`,
-        GIT_CONFIG_VALUE_0: `https://github.com/${validName}.git`,
-        GIT_ALLOW_PROTOCOL: 'file',
-        GIT_TERMINAL_PROMPT: '0',
-      };
-      const localOnly: GitHubApi = {
-        ...api,
-        async pushEnvironment() {
-          return localRemote;
-        },
-        async accountPushEnvironment() {
-          return localRemote;
-        },
-      };
+      // The injected transport maps the explicit trusted URL to this fixture's local remote.
+      // Configuration rewrites are deliberately unavailable to authenticated pushes.
+      const localTransport: CommandRunner = async (command, settings) =>
+        runCommand(
+          command.map((argument) =>
+            argument === `https://github.com/${validName}.git` ? remote : argument,
+          ),
+          { ...settings, env: { ...settings.env, GIT_ALLOW_PROTOCOL: 'file' } },
+        );
 
       await seedScratchRepository({
-        run: runCommand,
-        api: localOnly,
+        run: localTransport,
+        api,
         target: 'weft',
         seedRemote: `file://${source}`,
         scratchRepository: validName,
@@ -1543,10 +1540,14 @@ describe('runDryRun local verification', () => {
     expect(failure instanceof Error ? failure.message : '').toContain('prepare script');
     const joined = harness.commands.map((command) => command.join(' '));
     // The seed's own commit and push happened; the transform's did not.
-    expect(joined).toContain('git push origin HEAD:refs/heads/main');
+    expect(joined).toContain(
+      `git push https://github.com/${validName}.git ${'a'.repeat(40)}:refs/heads/main`,
+    );
     expect(joined).toContain('git add --all');
     expect(joined.filter((command) => command.startsWith('git commit'))).toHaveLength(1);
-    expect(joined).not.toContain('git push origin HEAD:refs/heads/mirror-dry-run-20260919');
+    expect(joined).not.toContain(
+      `git push https://github.com/${validName}.git ${'a'.repeat(40)}:refs/heads/mirror-dry-run-20260919`,
+    );
     expect(calls.pullRequests).toEqual([]);
     expect(probes.calls).toEqual([]);
     // Kept, not deleted: the seeded scratch repository and the staged tree are the evidence.
