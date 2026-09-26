@@ -43,15 +43,21 @@ function isEscaped(text: string, index: number): boolean {
 }
 
 /**
- * Resolve CommonMark backslash escapes in a token body, left to right, after
- * boundaries are found and before horizontal-whitespace trimming: a
- * backslash immediately followed by an escapable ASCII punctuation character
- * contributes that character and consumes both, so `\\_` (a backslash
- * escaping a backslash) contributes a literal `\` followed by a separately
- * read `_`. Any other backslash, including one with nothing after it,
- * contributes itself and consumes only itself.
+ * Resolve CommonMark backslash escapes in placeholder token body text.
+ *
+ * The body is read left to right, after token boundaries are found and before
+ * horizontal-whitespace trimming: a backslash immediately followed by an
+ * escapable ASCII punctuation character contributes that character and
+ * consumes both, so `\\_` (a backslash escaping a backslash) contributes a
+ * literal `\` followed by a separately read `_`. Any other backslash,
+ * including one with nothing after it, contributes itself and consumes only
+ * itself. Token scanning applies this to every body; editors apply it to the
+ * part of a body typed so far.
+ *
+ * @param body - Raw body text, or a prefix of it, as written in Markdown source.
+ * @returns The text with escapes resolved.
  */
-function unescapeBody(body: string): string {
+export function unescapePlaceholderBody(body: string): string {
   if (!body.includes('\\')) return body;
   let result = '';
   for (let index = 0; index < body.length; index++) {
@@ -123,12 +129,12 @@ function readToken(text: string, start: number): PlaceholderToken {
       text,
       start,
       lineEnd,
-      trimHorizontal(unescapeBody(text.slice(bodyStart, lineEnd))),
+      trimHorizontal(unescapePlaceholderBody(text.slice(bodyStart, lineEnd))),
     );
   }
   return {
     raw: text.slice(start, close + 2),
-    path: trimHorizontal(unescapeBody(text.slice(bodyStart, close))),
+    path: trimHorizontal(unescapePlaceholderBody(text.slice(bodyStart, close))),
     startOffset: start,
     endOffset: close + 2,
     kind: 'placeholder',

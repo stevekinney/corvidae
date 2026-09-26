@@ -7,7 +7,11 @@
 import { describe, expect, it } from 'bun:test';
 
 import { templateFrontMatterPrefixLength } from './placeholder-front-matter.js';
-import { parseMarkdownPlaceholderTokens, parsePlaceholderTokens } from './template-placeholders.js';
+import {
+  parseMarkdownPlaceholderTokens,
+  parsePlaceholderTokens,
+  unescapePlaceholderBody,
+} from './template-placeholders.js';
 import type { PlaceholderToken } from './types.js';
 
 /** A token summary: kind, raw text and original offsets. */
@@ -486,5 +490,16 @@ describe('template front-matter prefix', () => {
     expect(spans(parseMarkdownPlaceholderTokens(afterFrontMatter))).toEqual([
       placeholderAt(afterFrontMatter, '{{e}}'),
     ]);
+  });
+});
+
+describe('unescapePlaceholderBody', () => {
+  it('resolves escaped ASCII punctuation left to right and keeps every other backslash', () => {
+    expect(unescapePlaceholderBody('user\\_name')).toBe('user_name');
+    expect(unescapePlaceholderBody('a\\.b\\_')).toBe('a.b_');
+    expect(unescapePlaceholderBody('a\\\\_b')).toBe('a\\_b');
+    expect(unescapePlaceholderBody('a\\b')).toBe('a\\b');
+    expect(unescapePlaceholderBody('trailing\\')).toBe('trailing\\');
+    expect(unescapePlaceholderBody('plain')).toBe('plain');
   });
 });

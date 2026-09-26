@@ -175,13 +175,54 @@ function buildDetectedState(
   return { active: true, dismissed: false, suggestions, asyncCandidates, activeIndex, ...detected };
 }
 
+/** What changed in one editing step, independent of the editing surface. */
+export interface CompletionStep {
+  /** Completion metadata the step carries, if any. */
+  readonly meta?: CompletionMeta | undefined;
+  /** Whether the step changed the text. */
+  readonly documentChanged: boolean;
+  /** Whether the step installed a new placeholder configuration. */
+  readonly configurationChanged?: boolean;
+  /** Set while the key that dismissed completion is still making its own changes. */
+  readonly keepDismissal?: boolean;
+  /** The in-progress token after the step, read only when needed. */
+  readonly detect: () => DetectedTokenQuery | null;
+}
+
 /**
- * Compute the next completion state.
+ * Compute the next completion state for any editing surface.
  *
- * A dismissal persists through selection-only and configuration-only
- * transactions and ends with the next document change, except while
- * `keepDismissal` is set for changes made by the dismissing key. With no
- * completion configured the state is always inactive.
+ * A dismissal persists through selection-only and configuration-only steps
+ * and ends with the next text change, except while `keepDismissal` is set
+ * for changes made by the dismissing key. With no completion configured the
+ * state is always inactive.
+ */
+export function advanceCompletionState(
+  previousState: CompletionState,
+  configuration: PlaceholderCompletionSource | undefined,
+  step: CompletionStep,
+): CompletionState {
+  if (!configuration) return INACTIVE_STATE;
+
+  if (step.meta) {
+    const metaState = applyMeta(step.meta, previousState, configuration);
+    if (metaState) return metaState;
+  }
+  // A dismissal lasts until the next editing action. Document changes made by
+  // the dismissing key itself (Tab indenting a list item) do not end it.
+  if (previousState.dismissed && (!step.documentChanged || step.keepDismissal === true)) {
+    return previousState;
+  }
+
+  const detected = step.detect();
+  return detected
+    ? buildDetectedState(previousState, configuration, detected, step.configurationChanged === true)
+    : INACTIVE_STATE;
+}
+
+/**
+ * Compute the next completion state for a ProseMirror transaction; see
+ * {@link advanceCompletionState}.
  */
 export function computeCompletionState(
   previousState: CompletionState,
@@ -191,22 +232,12 @@ export function computeCompletionState(
   configurationChanged = false,
   keepDismissal = false,
 ): CompletionState {
-  if (!configuration) return INACTIVE_STATE;
-
   const rawMeta: unknown = transaction.getMeta(templateCompletionPluginKey);
-  const meta = isCompletionMeta(rawMeta) ? rawMeta : undefined;
-  if (meta) {
-    const metaState = applyMeta(meta, previousState, configuration);
-    if (metaState) return metaState;
-  }
-  // A dismissal lasts until the next editing action. Document changes made by
-  // the dismissing key itself (Tab indenting a list item) do not end it.
-  if (previousState.dismissed && (!transaction.docChanged || keepDismissal)) {
-    return previousState;
-  }
-
-  const detected = detectTokenQuery(editorState);
-  return detected
-    ? buildDetectedState(previousState, configuration, detected, configurationChanged)
-    : INACTIVE_STATE;
+  return advanceCompletionState(previousState, configuration, {
+    meta: isCompletionMeta(rawMeta) ? rawMeta : undefined,
+    documentChanged: transaction.docChanged,
+    configurationChanged,
+    keepDismissal,
+    detect: () => detectTokenQuery(editorState),
+  });
 }

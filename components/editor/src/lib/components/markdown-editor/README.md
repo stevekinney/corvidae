@@ -69,9 +69,11 @@ Declare `"@lostgradient/editor": "workspace:*"` in the consuming workspace and r
 
 ### Completion
 
-Typing `{{` in eligible WYSIWYG text opens completion at zero query characters (the low-level path keeps its own `minimumQueryLength`). Filtering is a case-insensitive path prefix; insertion is always the canonical, case-sensitive path. Every match is listed in code-unit path order, eight rows are visible at a time, and the rest scroll. Each row shows the path, the declared types joined with `|` (or `unknown`) and the description, never a value.
+Typing `{{` in eligible text opens completion at zero query characters, in the rich editor and in raw Markdown (source) mode alike (the low-level path keeps its own `minimumQueryLength`). Filtering is a case-insensitive path prefix; insertion is always the canonical, case-sensitive path. Every match is listed in code-unit path order, eight rows are visible at a time, and the rest scroll. Each row shows the path, the declared types joined with `|` (or `unknown`) and the description, never a value.
 
 A token must sit in one contiguous run of text with the same formatting. Code blocks, inline code and non-collapsed selections never open completion, a token never spans a formatting boundary, and link labels are eligible while link targets are not. Readonly editors show no completion.
+
+In source mode the textarea's Markdown is scanned with `parseMarkdownPlaceholderTokens`, so front matter, code, math, raw HTML, link and image destinations, and escaped braces never open completion. A backslash-escaped path such as `{{user\_name}}` (the form the rich editor serializes) filters and replaces like `{{user_name}}`. The listbox renders in the top layer with Cinder's floating-surface styling, anchored at the caret: it follows wrapping, textarea scrolling and viewport changes, hides while the caret is scrolled out of the textarea's visible area, stays inside the viewport with an 8 px margin, and opening it never scrolls the textarea. Switching modes closes it.
 
 - ArrowDown and ArrowUp move the active option and stop at the ends.
 - Enter inserts the active option, never during IME composition.
@@ -79,15 +81,20 @@ A token must sit in one contiguous run of text with the same formatting. Code bl
 - Escape dismisses and is consumed only while the list is open; a second Escape reaches enclosing handlers. A dismissal lasts until the next edit.
 - Clicking or tapping an option inserts it without moving focus out of the editor. A pointer or touch gesture that scrolls the list or is cancelled inserts nothing, and a click from assistive technology with no pointer gesture inserts the option. A pointerdown outside dismisses.
 
-Accepting replaces the whole in-progress token with one `{{path}}` and places the caret after it. The token includes path characters after the caret and, when only path characters (plus spaces or tabs) sit between the caret and it, the closing `}}`; otherwise prose up to a later `}}` is left alone. The acceptance is its own undo step: one undo restores the previous token, even if you kept typing right after it.
+Accepting replaces the whole in-progress token with one `{{path}}` and places the caret after it. The token includes path characters after the caret and, when only path characters (plus spaces or tabs) sit between the caret and it, the closing `}}`; otherwise prose up to a later `}}` is left alone. The acceptance is its own undo step: one undo restores the previous token, even if you kept typing right after it. In source mode an acceptance updates `value` and calls `onValueChange` exactly once.
+
+### Source-mode history
+
+Source mode keeps its own undo history instead of the browser's native textarea stack, from the moment the textarea mounts and whether or not placeholders are configured. Mod-Z undoes; Mod-Shift-Z, and Ctrl-Y on Windows, redo; the browser's own Undo and Redo commands replay the same history. Each input event is one step, one complete IME composition is one step, and one placeholder acceptance is one step. A new edit clears redo. An external `value` change or `setMarkdown()` starts a new history; placeholder configuration changes do not. Each source mount starts fresh, readonly editors leave the shortcuts alone, and the history is never persisted or logged.
 
 ### Accessibility
 
-The ProseMirror element keeps `role="textbox"` with `aria-multiline="true"`. While completion is configured it also has `aria-autocomplete="list"` and `aria-haspopup="listbox"`; `aria-controls` names the listbox only while it is visible, and `aria-activedescendant` names the active option. It never gets `aria-expanded`.
+The ProseMirror element keeps `role="textbox"` with `aria-multiline="true"`; the source textarea keeps its implicit textbox role, also with `aria-multiline="true"`. While completion is configured and the editor is not readonly, the editing element in either mode also has `aria-autocomplete="list"` and `aria-haspopup="listbox"`; `aria-controls` names the listbox only while it is visible, and `aria-activedescendant` names the active option. It never gets `aria-expanded`.
 
 | Element | ID |
 | --- | --- |
-| Listbox (named "Placeholders") | `${id}-placeholder-listbox-wysiwyg` |
+| Listbox (named "Placeholders"), rich editor | `${id}-placeholder-listbox-wysiwyg` |
+| Listbox (named "Placeholders"), source mode | `${id}-placeholder-listbox-source` |
 | Option | the listbox ID, a hyphen and the canonical path |
 | Status region (`role="status"`, polite, atomic) | `${id}-placeholder-status` |
 | Diagnostics summary | `${id}-placeholder-diagnostics` |
@@ -97,7 +104,7 @@ The status region is always rendered and announces "N placeholders available", "
 
 ### Diagnostics
 
-`onPlaceholderDiagnosticsChange` receives the ordered definition, configuration and token diagnostics, and fires only when that list changes (compared by code, path, location and message). It fires with `[]` only to clear diagnostics it reported before. Token ranges are UTF-16 offsets into the Markdown `value`, recomputed when `value` updates. Diagnostics never contain placeholder values. The same list renders as a visible summary below the editor.
+`onPlaceholderDiagnosticsChange` receives the ordered definition, configuration and token diagnostics, and fires only when that list changes (compared by code, path, location and message). It fires with `[]` only to clear diagnostics it reported before. Token ranges are UTF-16 offsets into the Markdown `value`, recomputed when `value` updates. Diagnostics never contain placeholder values. The same list renders as a visible summary below the editor in both modes; source mode adds no overlay or highlighting to the textarea, and the summary is the associated text diagnostic.
 
 Configuration errors use a `configuration` location:
 
