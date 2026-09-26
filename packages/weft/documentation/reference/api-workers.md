@@ -207,6 +207,28 @@ class HeartbeatManager {
 | `stop()`         | Stop the periodic interval.                                  |
 | `beat(details?)` | Send a one-off heartbeat with optional details payload.      |
 
+### `RemoteActivityContext`
+
+The optional second parameter every worker-executed activity function receives, on both `RemoteWorker` and `LongPollWorker`. Shared by both worker classes so an activity function does not need to know which transport dispatched it.
+
+```ts partial
+type RemoteActivityContext = {
+  signal: AbortSignal;
+  workflowExecutionToken?: string;
+  activityAttemptToken?: string;
+  heartbeat: (details?: unknown) => void;
+  lastHeartbeatDetails?: unknown;
+};
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `signal` | `AbortSignal` | Fires when the server requests cancellation of this attempt. `signal.reason` (COR-223) carries the durably recorded, operator-supplied cancellation reason as a string when the signal was aborted by a server `cancel`; a signal aborted by shutdown, `dispose()`, or a drain timeout carries no string reason. |
+| `workflowExecutionToken` | `string \| undefined` | Durable per-run token for the workflow that dispatched this activity, when known. |
+| `activityAttemptToken` | `string \| undefined` | The per-dispatch attempt token echoed from the `task` frame. |
+| `heartbeat` | `(details?: unknown) => void` | Record heartbeat progress for this attempt (COR-226) — the SAME public shape as the inline engine's `ActivityContext.heartbeat()`, not a second heartbeat API. Sends `details` on the wire immediately, in addition to the worker's automatic per-attempt keepalive. `details` must be JSON-serializable and within `payloadSize.maxBytes`. |
+| `lastHeartbeatDetails` | `unknown` | The heartbeat details a PRIOR attempt of this operation recorded before being redispatched, or `undefined` when none exists — mirrors `ActivityContext.lastHeartbeatDetails`'s resumable-batch pattern for worker-executed activities. |
+
 ### `LongPollWorker`
 
 HTTP long-poll fallback for environments without WebSocket support. Polls `/api/v1/tasks/:queue` for tasks and reports results through `/api/v1/tasks/:queue/result`. Implements `Disposable`.
