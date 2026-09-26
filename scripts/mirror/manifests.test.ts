@@ -1155,3 +1155,22 @@ describe('lockfile generation', () => {
     });
   }, 60_000);
 });
+
+test('plans publication inputs only for dependencies that cross into the selected target', async () => {
+  await withTree(
+    corvidaeFixture({
+      'components/cinder/package.json': {
+        ...workspaces['components/cinder'],
+        dependencies: { unrelated: 'catalog:' },
+      },
+    }),
+    async (root) => {
+      const plan = await planManifests({
+        corvidaeRoot: root,
+        target: 'weft',
+        packageMap: realPackageMap,
+      });
+      expect(parse(plan, 'packages/weft/package.json')['name']).toBe('@lostgradient/weft');
+    },
+  );
+});

@@ -820,17 +820,28 @@ export async function planManifests({
   }
   assertPublicNamesUnique(publicNames);
 
-  // Every publish-as workspace's current source digest, computed once before any dependency
-  // block is rewritten. `publishedRangeFor` (via `assertEdgeNotStale`) needs one for any workspace
-  // that turns out to be a cross-target dependency, but which ones those are is not known until
-  // the rewrite loop below reads each consumer's own manifest — so every publish-as workspace is
-  // digested up front rather than the smaller set actually crossing a target boundary. The count
-  // is small (a dozen or so today) and the digest itself is a handful of file reads per workspace.
+  // Publication identity is needed only where this target consumes another target's package.
+  // Inspect the same manifest blocks rewriteWorkspaceManifest consumes, including development
+  // dependencies. Unrelated packages must not add discovery work or block a standalone plan.
+  const crossTargetDependencies = new Set<string>();
+  for (const consumer of workspaces) {
+    if (dispositions.get(consumer.name)?.disposition === 'exclude') continue;
+    if (targetFor(consumer.name) !== target) continue;
+    if (layouts.get(consumer.name)?.disposition === 'deferred') continue;
+    for (const field of dependencyFields) {
+      const block = consumer.manifest[field];
+      if (!isJsonObject(block)) continue;
+      for (const dependency of Object.keys(block)) {
+        if (dispositions.get(dependency)?.disposition !== 'publish-as') continue;
+        if (targetFor(dependency) !== target) crossTargetDependencies.add(dependency);
+      }
+    }
+  }
   const currentDigests = new Map<string, string>();
   const currentSourcePaths = new Map<string, readonly string[]>();
   const currentPublicationInputs = new Map<string, string>();
   for (const workspace of workspaces) {
-    if (dispositions.get(workspace.name)?.disposition !== 'publish-as') continue;
+    if (!crossTargetDependencies.has(workspace.name)) continue;
     const sourceFiles = await collectDigestedFiles({
       corvidaeRoot,
       corvidaeDirectory: workspace.directory,
