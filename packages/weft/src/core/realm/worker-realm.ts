@@ -221,6 +221,11 @@ export class WorkerRealm {
     this.#worker.terminate();
   }
 
+  /** The activation identifiers fixed for this realm's current `Active` lifetime, or `null` before `activate()` (or after a crash/restart cleared it). */
+  get activation(): WorkerRealmActivation | null {
+    return this.#activation;
+  }
+
   get pendingTurnCount(): number {
     return this.#pendingTurns.size;
   }
