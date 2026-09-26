@@ -444,8 +444,8 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/core/realm/__fixtures__/workflow-implementation.fixture.ts',
       {
         reason:
-          'Test-only stand-in for a workflow implementation module (COR-249), imported by revision-realm-worker-entry.ts. Its constant and its one function execute inside a spawned Worker thread when a real turn is dispatched and released (worker-realm.test.ts), and Bun does not merge Worker-thread execution hits into the parent process LCOV report — the same class of gap this file already documents for genuine child-process execution elsewhere (confirmed directly: a full-suite run reports FNF:1/FNH:0 for this file). Module-graph proof of this file (the module-boundary test) is static (Bun.build()), which does not execute it either.',
-        lines: new Set([19, 21]),
+          'Test-only stand-in for a workflow implementation module (COR-249), imported by revision-realm-worker-entry.ts. Its constant and its one function execute inside a spawned Worker thread when a real turn is dispatched and released (worker-realm.test.ts), and Bun does not merge Worker-thread execution hits into the parent process LCOV report — the same class of gap this file already documents for genuine child-process execution elsewhere (confirmed directly: a full-suite run reports FNF:1/FNH:0 and DA:0 for lines 19-21 for this file — line 20 is the blank line between the const and function declarations, which Bun still emits a DA: record for).',
+        lines: new Set([19, 20, 21]),
         functions: 1,
         requireUncoveredLines: true,
       },
