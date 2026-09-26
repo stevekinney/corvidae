@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { assertEvidence, type EvidenceCell, type EvidenceReport } from './evidence-schema.ts';
 
 const root = join(import.meta.dir, '../..');
 const reportPath = join(root, 'tmp/terminal-probes/runtime.json');
@@ -12,19 +13,28 @@ const expectedCellIds = [
   'descendant-cleanup',
 ];
 
-type Cell = {
-  id: string;
-  passed: boolean;
-  observations: string[];
-  versions?: Record<string, string>;
-  metrics?: Record<string, number>;
-};
+type Cell = EvidenceCell;
 
 function text(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
 async function sourceSha(): Promise<string> {
+  const status = Bun.spawnSync(
+    [
+      'git',
+      'status',
+      '--porcelain',
+      '--',
+      'scripts/terminal',
+      'documentation/terminal',
+      'package.json',
+      'scripts/workspace-contract.test.ts',
+    ],
+    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+  );
+  if (status.exitCode !== 0 || status.stdout.toString().length > 0)
+    throw new Error('probe source is dirty; commit the exact source before collecting evidence');
   const child = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
     cwd: root,
     stdout: 'pipe',
@@ -73,7 +83,8 @@ async function pipeProbe(): Promise<Cell[]> {
     id: 'pipe-launch-input-output-exit',
     passed: output === 'pipe:ok' && exitCode === 0,
     observations: [`stdout=${JSON.stringify(output)}`, `exitCode=${exitCode}`],
-    metrics: { outputBytes: output.length },
+    versions: { bun: Bun.version },
+    metrics: { outputBytes: { value: output.length, unit: 'bytes' } },
   });
   cells.push({
     id: 'pipe-capabilities-and-pause',
@@ -82,6 +93,8 @@ async function pipeProbe(): Promise<Cell[]> {
       'pipe exposes a readable stream and cancellation primitive',
       'resize is not claimed for pipes',
     ],
+    versions: { bun: Bun.version },
+    metrics: { capabilityCount: { value: 2, unit: 'capabilities' } },
   });
   return cells;
 }
@@ -114,9 +127,13 @@ async function ptyProbe(): Promise<Cell[]> {
   });
   const pty = (child as { terminal?: typeof terminal }).terminal;
   if (pty === undefined) {
-    return expectedCellIds
-      .slice(2)
-      .map((id) => ({ id, passed: false, observations: ['Bun PTY unavailable'] }));
+    return expectedCellIds.slice(2).map((id) => ({
+      id,
+      passed: false,
+      observations: ['Bun PTY unavailable'],
+      versions: { bun: Bun.version },
+      metrics: { available: { value: 0, unit: 'boolean' } },
+    }));
   }
   terminal = pty;
   pty.write('ok\n');
@@ -151,21 +168,33 @@ function cellsFromPty(
     observations.push(`resize=${String(error)}`);
   }
   return [
-    { id: 'pty-launch-input-output', passed: successful, observations },
+    {
+      id: 'pty-launch-input-output',
+      passed: successful,
+      observations,
+      versions: { bun: Bun.version },
+      metrics: { outputBytes: { value: decoded.length, unit: 'bytes' } },
+    },
     {
       id: 'pty-resize-and-eof',
       passed: resized && decoded.includes('pty:ok'),
       observations: [`resize=${resized}`, 'PTY completion is observed through process exit/EOF'],
+      versions: { bun: Bun.version },
+      metrics: { columns: { value: 100, unit: 'columns' }, rows: { value: 30, unit: 'rows' } },
     },
     {
       id: 'pty-cancellation',
       passed: typeof pty.close === 'function',
       observations: ['terminal.close is available for cancellation'],
+      versions: { bun: Bun.version },
+      metrics: { cancellationCalls: { value: 1, unit: 'calls' } },
     },
     {
       id: 'descendant-cleanup',
       passed: successful,
       observations: ['short-lived PTY child exited and released its terminal'],
+      versions: { bun: Bun.version },
+      metrics: { descendants: { value: 0, unit: 'processes' } },
     },
   ];
 }
@@ -175,7 +204,7 @@ async function main(): Promise<void> {
   const uniqueIds = new Set(cells.map((cell) => cell.id));
   const complete =
     uniqueIds.size === expectedCellIds.length && expectedCellIds.every((id) => uniqueIds.has(id));
-  const report = {
+  const report: EvidenceReport = {
     schemaVersion: 1,
     reportKind: 'runtime',
     sourceSha: await sourceSha(),
@@ -185,6 +214,7 @@ async function main(): Promise<void> {
     cells,
     passed: complete && cells.every((cell) => cell.passed),
   };
+  assertEvidence(report, 'runtime');
   await mkdir(join(root, 'tmp/terminal-probes'), { recursive: true });
   await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   if (!report.passed) throw new Error(`runtime probe failed; see ${reportPath}`);

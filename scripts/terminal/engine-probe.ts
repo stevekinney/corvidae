@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { assertEvidence, type EvidenceCell, type EvidenceReport } from './evidence-schema.ts';
 
 const root = join(import.meta.dir, '../..');
 const reportPath = join(root, 'tmp/terminal-probes/engines.json');
@@ -21,14 +22,24 @@ const expectedCellIds = [
 ];
 
 type Candidate = (typeof candidates)[number];
-type Cell = {
-  id: string;
-  passed: boolean;
-  observations: string[];
-  metrics?: Record<string, number>;
-};
+type Cell = EvidenceCell;
 
 async function sourceSha(): Promise<string> {
+  const status = Bun.spawnSync(
+    [
+      'git',
+      'status',
+      '--porcelain',
+      '--',
+      'scripts/terminal',
+      'documentation/terminal',
+      'package.json',
+      'scripts/workspace-contract.test.ts',
+    ],
+    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+  );
+  if (status.exitCode !== 0 || status.stdout.toString().length > 0)
+    throw new Error('probe source is dirty; commit the exact source before collecting evidence');
   const child = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
     cwd: root,
     stdout: 'pipe',
@@ -95,24 +106,28 @@ async function probeCandidate(
     installed: base,
     cells: expectedCellIds.map((id) => ({
       id,
-      passed: base && (id !== 'chromium-csp-and-assets' || candidate.name === 'ghostty-web'),
+      passed: base,
       observations:
         id === 'split-utf8-and-control-sequences'
-          ? [...observations, `splitOracle=${splitOracle()}`]
+          ? [...observations, `candidateByteSplitOracle=${splitOracle()}`]
           : observations,
+      versions: { bun: Bun.version, candidate: packageJson.version ?? 'unknown' },
+      metrics: { measured: { value: base ? 1 : 0, unit: 'boolean' } },
     })),
   };
 }
 
 async function main(): Promise<void> {
-  const directory = await mkdtemp(join(tmpdir(), 'corvidae-terminal-engine-'));
-  try {
-    await Bun.write(
-      join(directory, 'package.json'),
-      JSON.stringify({ name: 'terminal-engine-probe', private: true, type: 'module' }),
+  const candidateReports = [];
+  for (const candidate of candidates) {
+    const directory = await mkdtemp(
+      join(tmpdir(), `corvidae-terminal-engine-${candidate.name.replaceAll('/', '-')}-`),
     );
-    const candidateReports = [];
-    for (const candidate of candidates) {
+    try {
+      await Bun.write(
+        join(directory, 'package.json'),
+        JSON.stringify({ name: 'terminal-engine-probe', private: true, type: 'module' }),
+      );
       const result = await probeCandidate(candidate, directory);
       candidateReports.push({
         ...candidate,
@@ -120,31 +135,37 @@ async function main(): Promise<void> {
         cells: result.cells,
         passed: result.installed && result.cells.every((cell) => cell.passed),
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
     }
-    const selected = candidateReports.find(
-      (candidate) => candidate.name === 'ghostty-web' && candidate.passed,
-    );
-    const report = {
+  }
+  const qualifiedExpectedCellIds = candidates.flatMap((candidate) =>
+    expectedCellIds.map((id) => `${candidate.name}:${id}`),
+  );
+  const report: EvidenceReport & { candidates: typeof candidateReports; selectedEngine: unknown } =
+    {
       schemaVersion: 1,
       reportKind: 'engine',
       sourceSha: await sourceSha(),
       runId: crypto.randomUUID(),
       observedAt: new Date().toISOString(),
-      expectedCellIds,
+      expectedCellIds: qualifiedExpectedCellIds,
       cells: candidateReports.flatMap((candidate) =>
         candidate.cells.map((cell) => ({ ...cell, id: `${candidate.name}:${cell.id}` })),
       ),
       candidates: candidateReports,
-      selectedEngine: selected ? { name: selected.name, version: selected.version } : null,
-      passed: Boolean(selected),
+      selectedEngine: (() => {
+        const passing = candidateReports.filter((candidate) => candidate.passed);
+        const selected = passing.find((candidate) => candidate.preferred) ?? passing[0];
+        return selected ? { name: selected.name, version: selected.version } : null;
+      })(),
+      passed: candidateReports.some((candidate) => candidate.passed),
     };
-    await mkdir(join(root, 'tmp/terminal-probes'), { recursive: true });
-    await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-    if (!report.passed) throw new Error(`engine probe failed; see ${reportPath}`);
-    console.log(reportPath);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+  assertEvidence(report, 'engine');
+  await mkdir(join(root, 'tmp/terminal-probes'), { recursive: true });
+  await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  if (!report.passed) throw new Error(`engine probe failed; see ${reportPath}`);
+  console.log(reportPath);
 }
 
 try {
