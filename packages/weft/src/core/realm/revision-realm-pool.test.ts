@@ -261,5 +261,45 @@ describe('RevisionRealmPool', () => {
       pool.releaseAfterExecution(realm);
       await realm.whenReclaimed();
     });
+
+    it("reserves capacity across the child-process transport's async warm path, so two concurrent acquires at concurrency: 1 cannot both pass the capacity gate", async () => {
+      const pool = new RevisionRealmPool({
+        workflowRevision: 'revision-a',
+        workerUrl: childProcessScriptPath,
+        expectedWorkflowTypes: ['order-workflow'],
+        expectedArtifactDigest: 'digest-a',
+        workerName: 'digest-a',
+        concurrency: 1,
+        transport: 'child-process',
+      });
+
+      // Both calls are issued synchronously, in the same microtask, before
+      // either yields to the event loop: `acquireForExecution` runs
+      // synchronously up to its own `await realm.waitUntilReady()`, and
+      // `#warmNewChildProcessRealmIfUnderCapacity`'s capacity check plus its
+      // `#warmingReservations` reservation both happen before ITS first
+      // `await` too (see that member's own doc). This is an event-ordering
+      // proof of the reservation guard, not a timing margin: without the
+      // reservation, both calls would observe `#realms.size === 0` (neither
+      // realm has been constructed yet) and pass the capacity check, both
+      // warming a realm and exceeding `concurrency: 1`.
+      const [first, second] = await Promise.all([
+        pool.acquireForExecution('execution-1'),
+        pool.acquireForExecution('execution-2'),
+      ]);
+
+      const outcomes = [first, second];
+      const succeeded = outcomes.filter((outcome) => outcome.ok);
+      const failed = outcomes.filter((outcome) => !outcome.ok);
+
+      expect(succeeded).toHaveLength(1);
+      expect(failed).toEqual([{ ok: false, reason: 'pool-at-capacity' }]);
+
+      const winner = succeeded[0];
+      if (!winner || !winner.ok) throw new Error('unreachable');
+      const realm = winner.realm as ChildProcessRealm;
+      pool.releaseAfterExecution(realm);
+      await realm.whenReclaimed();
+    });
   });
 });
