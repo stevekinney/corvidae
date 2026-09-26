@@ -41,17 +41,20 @@ function isEvidenceCell(value: unknown): value is EvidenceCell {
   const metrics = value['metrics'];
   return (
     typeof value['id'] === 'string' &&
+    value['id'].length > 0 &&
     typeof value['passed'] === 'boolean' &&
     Array.isArray(value['observations']) &&
     value['observations'].every((item) => typeof item === 'string') &&
     isRecord(versions) &&
-    Object.values(versions).every((version) => typeof version === 'string') &&
+    Object.values(versions).every((version) => typeof version === 'string' && version.length > 0) &&
     isRecord(metrics) &&
     Object.values(metrics).every(
       (metric) =>
         isRecord(metric) &&
         typeof metric['value'] === 'number' &&
-        typeof metric['unit'] === 'string',
+        typeof metric['unit'] === 'string' &&
+        metric['unit'].length > 0 &&
+        Object.keys(metric).every((key) => key === 'value' || key === 'unit'),
     )
   );
 }
@@ -65,6 +68,7 @@ function isCandidateEvidence(value: unknown): value is CandidateEvidence {
     value['version'].length > 0 &&
     typeof value['passed'] === 'boolean' &&
     Array.isArray(value['cells']) &&
+    value['cells'].length > 0 &&
     value['cells'].every(isEvidenceCell)
   );
 }
@@ -83,6 +87,7 @@ function isSelectedEngine(value: unknown): value is SelectedEngine {
 function validateCandidates(
   value: Record<string, unknown>,
   expectedCellIds: string[],
+  topLevelCells: unknown[],
   errors: string[],
 ): void {
   if (value['reportKind'] !== 'engine' || value['selectedEngine'] === undefined) return;
@@ -111,6 +116,14 @@ function validateCandidates(
       errors.push('candidate cell completeness');
     if (candidate.passed !== candidate.cells.every((cell) => cell.passed))
       errors.push('candidate passed consistency');
+    const topLevel = new Map(
+      topLevelCells.filter(isEvidenceCell).map((cell) => [cell['id'], cell] as const),
+    );
+    for (const cell of candidate.cells) {
+      const corresponding = topLevel.get(`${candidate.name}:${cell['id']}`);
+      if (!corresponding || corresponding['passed'] !== cell['passed'])
+        errors.push('candidate cell disagreement');
+    }
     if (
       candidate.status !== undefined &&
       candidate.status !== 'ready' &&
@@ -145,21 +158,49 @@ export function validateEvidence(
   if (schema['$schema'] !== 'https://json-schema.org/draft/2020-12/schema')
     errors.push('schema metadata');
   if (!isRecord(report)) return ['report object'];
+  if (
+    !Object.keys(report).every((key) =>
+      [
+        'schemaVersion',
+        'reportKind',
+        'sourceSha',
+        'runId',
+        'observedAt',
+        'expectedCellIds',
+        'cells',
+        'candidates',
+        'selectedEngine',
+        'passed',
+      ].includes(key),
+    )
+  )
+    errors.push('schema constraints');
   const value = report;
   if (value['schemaVersion'] !== 1) errors.push('schemaVersion');
   if (value['reportKind'] !== expectedKind) errors.push('reportKind');
-  for (const field of ['sourceSha', 'runId', 'observedAt'] as const)
+  for (const field of ['sourceSha', 'runId'] as const)
     if (typeof value[field] !== 'string' || value[field].length === 0) errors.push(field);
+  if (typeof value['sourceSha'] !== 'string' || value['sourceSha'].length < 7)
+    errors.push('schema constraints');
+  if (
+    typeof value['observedAt'] !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      value['observedAt'],
+    ) ||
+    Number.isNaN(Date.parse(value['observedAt']))
+  )
+    errors.push('schema constraints');
   const expectedCellIds = value['expectedCellIds'];
   if (
     !Array.isArray(expectedCellIds) ||
     expectedCellIds.length === 0 ||
-    expectedCellIds.some((id) => typeof id !== 'string') ||
+    expectedCellIds.some((id) => typeof id !== 'string' || id.length === 0) ||
     new Set(expectedCellIds).size !== expectedCellIds.length
   )
     errors.push('expectedCellIds');
   const cells = value['cells'];
   if (!Array.isArray(cells)) return [...errors, 'cells'];
+  if (cells.length === 0) errors.push('schema constraints');
   const expectedIds = Array.isArray(expectedCellIds) ? expectedCellIds : [];
   const expected = new Set(expectedIds.filter((id): id is string => typeof id === 'string'));
   const actual = cells.map((cell) => (isRecord(cell) ? cell['id'] : undefined));
@@ -170,6 +211,13 @@ export function validateEvidence(
     errors.push('missing cell');
   for (const cell of cells) {
     const cellRecord = isRecord(cell) ? cell : undefined;
+    if (
+      cellRecord &&
+      !Object.keys(cellRecord).every((key) =>
+        ['id', 'passed', 'observations', 'versions', 'metrics'].includes(key),
+      )
+    )
+      errors.push('schema constraints');
     if (
       !cellRecord ||
       typeof cellRecord['id'] !== 'string' ||
@@ -243,6 +291,7 @@ export function validateEvidence(
   validateCandidates(
     value,
     expectedIds.filter((id): id is string => typeof id === 'string'),
+    cells,
     errors,
   );
   return errors;
