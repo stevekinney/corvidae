@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun run check:prop-conventions",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun run check:prop-conventions && bun run check:wait-for-assertions",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src scripts",
     "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 --coverage --coverage-reporter=lcov src scripts && bun scripts/check-coverage-ratchet.ts",
@@ -16,6 +16,7 @@
     "components:check": "bun scripts/generate-component-artifacts.ts --check",
     "components:generate": "bun scripts/generate-component-artifacts.ts",
     "check:prop-conventions": "bun scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components",
+    "check:wait-for-assertions": "bun scripts/check-wait-for-element-assertions.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "knowledge": "bun scripts/knowledge/index.ts"
   },

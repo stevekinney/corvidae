@@ -17,5 +17,12 @@ test-results/
 .claude/worktrees/
 # Generated declaration fixtures are checked against exact generator output and typechecked.
 **/*.generated.d.ts
+# DR-5 (COR-513) diff-review export golden fixtures are byte-exact generated agent-handoff
+# output, checked verbatim against `exportDiffReviewMarkdown`/`exportDiffReviewJson` in
+# diff-review-export-golden.test.ts. Their Markdown deliberately stacks single-newline-separated
+# field lines (State/Snapshot/Location/...) as the contract's own illustrative example does —
+# Prettier's proseWrap: never treats that as one paragraph and collapses it onto one line, which
+# would silently corrupt the checked-in bytes the test compares against.
+components/editor/src/lib/export/__fixtures__/diff-review/
 .env
 .env.*

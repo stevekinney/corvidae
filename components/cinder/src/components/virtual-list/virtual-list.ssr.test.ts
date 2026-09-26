@@ -169,6 +169,26 @@ describe('VirtualList SSR contract', () => {
     expect(html).toContain('block-size:20000px');
   });
 
+  test('renders the windowScroll path without touching window or measuring height', async () => {
+    // windowScroll's own measurement — document offset, window.innerHeight — lives
+    // entirely inside `$effect`s and the window `resize`/`scroll` listeners, none of
+    // which run during SSR (see the module doc comment above). Reaching the
+    // assertions at all, with both `document` and `window` nulled for the render,
+    // proves this prop introduces no server-side `window` access either.
+    const html = await renderComponentToServerHtml({
+      items: rows,
+      itemHeight: 40,
+      windowScroll: true,
+      'aria-label': 'Rows',
+    });
+
+    expect(html).toContain('cinder-virtual-list');
+    expect(html).toContain('data-cinder-window-scroll="true"');
+    // `height` is ignored under this mode, down to the custom property that
+    // would otherwise carry it never being written.
+    expect(html).not.toContain('--cinder-virtual-list-height');
+  });
+
   test('emits no measured row heights in dynamic-size mode', async () => {
     // Fixed mode pins each row's height inline; dynamic mode must NOT, because a
     // pinned height would make every row measure back as exactly the estimate and
