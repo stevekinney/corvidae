@@ -33,9 +33,35 @@
  * @module core/realm/revision-realm-pool
  */
 
-import { ChildProcessRealm, type ChildProcessRealmOptions } from './child-process-realm.ts';
+import type { ChildProcessRealm, ChildProcessRealmOptions } from './child-process-realm.ts';
 import type { RevisionRealm } from './revision-realm.ts';
 import { WorkerRealm, type WorkerRealmOptions } from './worker-realm.ts';
+
+/**
+ * `child-process-realm.ts` uses `Bun.spawn` and `node:url`, neither of which
+ * exists in a browser -- and `RevisionRealmPool` is reachable from this
+ * package's root `Engine` export, which the root's own browser-bundle
+ * portability gate (`src/root-testing-surface.test.ts`, COR-1192) builds and
+ * scans. A STATIC `import` of `child-process-realm.ts` here would bundle
+ * that code into the browser build regardless of whether `transport:
+ * 'child-process'` is ever actually selected at runtime. Loading it through
+ * `import()` with a specifier held in a variable (not a string literal
+ * `import()` call, which Bun's bundler still resolves and inlines the same
+ * way a static `import` does -- confirmed directly against Bun 1.4.2)
+ * is what keeps the bundler from tracing into it at all: the browser build
+ * emits an unresolved runtime `import(...)` call instead of inlining the
+ * module, so `Bun.spawn` never appears in that bundle's output. Type-only
+ * imports above are erased entirely and carry no such risk.
+ */
+const CHILD_PROCESS_REALM_MODULE_SPECIFIER = './child-process-realm.ts';
+let cachedChildProcessRealmConstructor: Promise<typeof ChildProcessRealm> | undefined;
+
+function loadChildProcessRealmConstructor(): Promise<typeof ChildProcessRealm> {
+  cachedChildProcessRealmConstructor ??= import(CHILD_PROCESS_REALM_MODULE_SPECIFIER).then(
+    (module_: { ChildProcessRealm: typeof ChildProcessRealm }) => module_.ChildProcessRealm,
+  );
+  return cachedChildProcessRealmConstructor;
+}
 
 /** Which real transport a `RevisionRealmPool` spawns realms over. Omitted (or `'worker'`) is the unchanged default — see the module doc. */
 export type RevisionRealmTransport = 'worker' | 'child-process';
@@ -93,6 +119,18 @@ export class RevisionRealmPool {
    * an acquisition genuinely still has a claim on it.
    */
   #inFlightAcquisitions = 0;
+  /**
+   * Count of `#warmNewRealmIfUnderCapacity` calls currently suspended
+   * resolving the child-process transport's dynamic `import()` (COR-246),
+   * reserved BEFORE that await so a concurrent call's own capacity check
+   * sees it — otherwise two concurrent `acquireForExecution` calls could
+   * both pass the capacity gate while the first's realm is still being
+   * constructed and never added to `#realms` yet. Also included in {@link
+   * isDrained} for the identical reason `#inFlightAcquisitions` is: a realm
+   * under construction is not yet in `#realms` and must not let this pool
+   * be reclaimed out from under it.
+   */
+  #warmingReservations = 0;
 
   constructor(options: RevisionRealmPoolOptions) {
     this.#options = options;
@@ -112,7 +150,20 @@ export class RevisionRealmPool {
       return { ok: false, reason: 'revision-not-active' };
     }
 
-    const realm = this.#takeIdleReadyRealm() ?? this.#warmNewRealmIfUnderCapacity();
+    // Branching on transport BEFORE the `??` (rather than inside one shared
+    // async warm method) matters for more than style: the `'worker'` branch
+    // below is a plain synchronous call, so when it is taken, this
+    // expression never touches `await` at all and `acquireForExecution`
+    // does not suspend here -- preserving the exact synchronous
+    // realm-construction-then-`#realms.add()` ordering
+    // `revision-realm-pool.test.ts`'s "event-ordering proof (ordinary JS
+    // run-to-completion semantics)" tests depend on. Only the
+    // `'child-process'` branch's real dynamic import needs to suspend.
+    const realm =
+      this.#takeIdleReadyRealm() ??
+      ((this.#options.transport ?? 'worker') === 'worker'
+        ? this.#warmNewWorkerRealmIfUnderCapacity()
+        : await this.#warmNewChildProcessRealmIfUnderCapacity());
     if (!realm) {
       return { ok: false, reason: 'pool-at-capacity' };
     }
@@ -228,7 +279,12 @@ export class RevisionRealmPool {
    * realm a caller still has a live claim on.
    */
   get isDrained(): boolean {
-    return !this.#revisionActive && this.activeRealmCount === 0 && this.#inFlightAcquisitions === 0;
+    return (
+      !this.#revisionActive &&
+      this.activeRealmCount === 0 &&
+      this.#inFlightAcquisitions === 0 &&
+      this.#warmingReservations === 0
+    );
   }
 
   /** Whether this pool still considers its revision referenced — the {@link import('./realm-lifecycle.ts').RealmLifecycleDependencies.isReferenced} every realm this pool constructs is given. Deliberately excludes `activeExecutionRealms` from its own reasoning: counting the realm asking the question would make an active revision's own realms permanently "referenced" even after the revision goes inactive, and a realm can never legitimately restart mid-drain regardless (see `markInactive`, which only ever discards *idle* realms). */
@@ -250,14 +306,30 @@ export class RevisionRealmPool {
     return undefined;
   }
 
-  #warmNewRealmIfUnderCapacity(): RevisionRealm | undefined {
-    if (this.#realms.size >= this.#options.concurrency) return undefined;
-    const realm =
-      (this.#options.transport ?? 'worker') === 'child-process'
-        ? new ChildProcessRealm(this.#buildChildProcessRealmOptions())
-        : new WorkerRealm(this.#buildWorkerRealmOptions());
+  /** The `'worker'`-transport warm path: unchanged from before COR-246, still fully synchronous. */
+  #warmNewWorkerRealmIfUnderCapacity(): RevisionRealm | undefined {
+    if (this.#realms.size + this.#warmingReservations >= this.#options.concurrency) {
+      return undefined;
+    }
+    const realm = new WorkerRealm(this.#buildWorkerRealmOptions());
     this.#realms.add(realm);
     return realm;
+  }
+
+  /** The `'child-process'`-transport warm path (COR-246): the only one that needs the dynamic `import()` and its `#warmingReservations` capacity guard — see both members' own docs. */
+  async #warmNewChildProcessRealmIfUnderCapacity(): Promise<RevisionRealm | undefined> {
+    if (this.#realms.size + this.#warmingReservations >= this.#options.concurrency) {
+      return undefined;
+    }
+    this.#warmingReservations += 1;
+    try {
+      const ChildProcessRealmConstructor = await loadChildProcessRealmConstructor();
+      const realm = new ChildProcessRealmConstructor(this.#buildChildProcessRealmOptions());
+      this.#realms.add(realm);
+      return realm;
+    } finally {
+      this.#warmingReservations -= 1;
+    }
   }
 
   #sharedRealmOptions(): {
