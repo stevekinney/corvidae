@@ -1,4 +1,12 @@
 import { describe, expect, it } from 'bun:test';
+import {
+  createPreviewWorkerDeploymentRoutingOperation,
+  createPromoteWorkerDeploymentOperation,
+  createRollbackWorkerDeploymentOperation,
+  createSetWorkerDeploymentRoutingOperation,
+  createWorkerDeploymentDiagnosticsOperation,
+  workerDeploymentRoutingRestBinding,
+} from '../server/operations/worker-deployment-routing.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
   selectWorkerDeployment,
@@ -55,11 +63,12 @@ describe('revision-aware worker deployment routing', () => {
       routing: routing(),
       candidates: [
         candidate('z', 'build-a'),
+        candidate('y', 'build-a'),
         candidate('a', 'build-a', 0),
         { ...candidate('draining', 'build-a'), draining: true },
       ],
     });
-    expect(result.candidate?.workerId).toBe('z');
+    expect(result.candidate?.workerId).toBe('y');
     const pinned = selectWorkerDeployment({
       deploymentName: 'billing',
       workflowId: 'run-1',
@@ -114,6 +123,14 @@ describe('revision-aware worker deployment routing', () => {
       candidates: [candidate('a', 'build-a')],
     });
     expect(incompatible).toMatchObject({ candidate: undefined, reason: 'revision-incompatible' });
+    const contractMatch = selectWorkerDeployment({
+      deploymentName: 'billing',
+      workflowId: 'same',
+      requirement: { activityContractHash: 'sha256:activity' },
+      routing: routing(),
+      candidates: [candidate('contract', 'build-a')],
+    });
+    expect(contractMatch.candidate?.workerId).toBe('contract');
   });
   it('protects references while draining and removing a version', async () => {
     const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
@@ -134,6 +151,106 @@ describe('revision-aware worker deployment routing', () => {
     const draining = await catalog.markDraining('billing', 'build-a');
     expect(draining?.state).toBe('draining');
     expect(await catalog.removeVersion('billing', 'build-a')).toBe(true);
+  });
+  it('covers catalog boundaries and operation mutations', async () => {
+    const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
+    const buildA = {
+      deploymentName: 'billing',
+      buildId: 'build-a',
+      artifactDigest: 'sha256:build-a',
+      manifestDigest: 'sha256:m-a',
+      manifest: manifest('build-a'),
+      state: 'ready' as const,
+      firstSeenAt: 1,
+    };
+    await catalog.registerVersion(buildA);
+    await catalog.registerVersion({
+      ...buildA,
+      buildId: 'build-b',
+      artifactDigest: 'sha256:build-b',
+      manifestDigest: 'sha256:m-b',
+      manifest: manifest('build-b'),
+      firstSeenAt: 2,
+    });
+    const versions = await catalog.listVersions();
+    expect(versions.map((version) => version.buildId)).toEqual(['build-a', 'build-b']);
+    expect(await catalog.reference('billing', 'missing', 1)).toBeNull();
+    expect(await catalog.markDraining('billing', 'missing')).toBeNull();
+    expect(await catalog.removeVersion('billing', 'missing')).toBe(false);
+    await expect(
+      catalog.setRouting({
+        deploymentName: 'billing',
+        currentBuildId: 'build-a',
+        rampBasisPoints: 10_001,
+        updatedAt: 3,
+      }),
+    ).rejects.toThrow('rampBasisPoints');
+
+    const invoke = (operation: { invoke: (context: never) => Promise<unknown> }, input: unknown) =>
+      operation.invoke({ input } as never);
+    const routingInput = {
+      deploymentName: 'billing',
+      currentBuildId: 'build-a',
+      rampingBuildId: 'build-b',
+      rampBasisPoints: 500,
+      expectedGeneration: 0,
+    };
+    await expect(
+      invoke(createPreviewWorkerDeploymentRoutingOperation({ catalog }), routingInput),
+    ).resolves.toMatchObject({ valid: true });
+    const set = await invoke(createSetWorkerDeploymentRoutingOperation({ catalog }), routingInput);
+    expect(set).toMatchObject({ generation: 1, rampingBuildId: 'build-b' });
+    expect(
+      await invoke(createPromoteWorkerDeploymentOperation({ catalog }), {
+        deploymentName: 'billing',
+        buildId: 'build-b',
+      }),
+    ).toMatchObject({ currentBuildId: 'build-b' });
+    expect(
+      await invoke(createRollbackWorkerDeploymentOperation({ catalog }), {
+        deploymentName: 'billing',
+        buildId: 'build-a',
+      }),
+    ).toMatchObject({ currentBuildId: 'build-a' });
+    expect(await invoke(createWorkerDeploymentDiagnosticsOperation({ catalog }), {})).toMatchObject(
+      { routing: null },
+    );
+    await expect(invoke(createSetWorkerDeploymentRoutingOperation(), routingInput)).rejects.toThrow(
+      'live worker deployment catalog',
+    );
+    await expect(
+      invoke(createPromoteWorkerDeploymentOperation({ catalog }), {
+        deploymentName: 'billing',
+        buildId: 'missing',
+      }),
+    ).rejects.toThrow('does not exist');
+    await expect(
+      invoke(createRollbackWorkerDeploymentOperation({ catalog }), {
+        deploymentName: 'billing',
+        buildId: 'missing',
+      }),
+    ).rejects.toThrow('does not exist');
+    await expect(
+      invoke(createPreviewWorkerDeploymentRoutingOperation({ catalog }), {
+        ...routingInput,
+        rampingBuildId: 'missing',
+      }),
+    ).rejects.toThrow('does not exist');
+    await expect(
+      invoke(createPreviewWorkerDeploymentRoutingOperation({ catalog }), {
+        ...routingInput,
+        currentBuildId: 'missing',
+      }),
+    ).rejects.toThrow('does not exist');
+    const extracted = await workerDeploymentRoutingRestBinding.extractInput(
+      new Request('http://localhost/v1/worker-deployments/routing', {
+        method: 'POST',
+        body: JSON.stringify(routingInput),
+      }),
+      {},
+      {},
+    );
+    expect(extracted).toEqual(routingInput);
   });
   it('recovers immutable versions and routing pointers from durable storage', async () => {
     const storage = new MemoryStorage();
