@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { RevisionRealmRegistry } from './revision-realm-registry.ts';
 import type { WorkerRealm, WorkerRealmActivation } from './worker-realm.ts';
@@ -275,6 +275,14 @@ describe('RevisionRealmRegistry', () => {
   });
 
   describe('dispose', () => {
+    afterEach(() => {
+      // See revision-realm-pool.test.ts's identical comment: `spyOn` wraps
+      // the shared, process-global `Worker.prototype` and must not leak into
+      // other test files in this same `bun test` process.
+      Worker.prototype.terminate &&
+        (Worker.prototype.terminate as unknown as { mockRestore?: () => void }).mockRestore?.();
+    });
+
     it('discards every pool and realm regardless of state', async () => {
       const registry = new RevisionRealmRegistry();
       registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
@@ -289,6 +297,67 @@ describe('RevisionRealmRegistry', () => {
 
       expect(acquired.realm.lifecycle.state).toBe('terminated');
       expect(registry.getPool('order-workflow', 'revision-a')).toBeUndefined();
+    });
+
+    // COR-113: repeated disposal or close signals must share one memoized
+    // termination -- a second `dispose()` call must not re-discard an
+    // already-discarded realm or send a second `Worker.terminate()`.
+    it('is idempotent: a repeated dispose() call does not re-discard or re-terminate any realm', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const registry = new RevisionRealmRegistry();
+      registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
+      const acquired = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-1',
+      );
+      if (!acquired.ok) throw new Error('unreachable');
+
+      registry.dispose();
+      expect(() => registry.dispose()).not.toThrow();
+
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    // COR-113: "realm crash settles all pending turns and isolates sibling
+    // revisions" extends to disposal -- a pending turn in EVERY distinct
+    // revision pool this registry owns must settle, and every realm's
+    // underlying Worker must be terminated exactly once, never leaked.
+    it('settles a pending turn in every distinct revision pool and terminates each realm exactly once', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const registry = new RevisionRealmRegistry();
+      registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
+      registry.ensurePool('order-workflow', 'revision-b', configFor('revision-b'));
+
+      const acquiredA = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-a',
+      );
+      const acquiredB = await registry.acquireForExecution(
+        'order-workflow',
+        'revision-b',
+        'execution-b',
+      );
+      if (!acquiredA.ok || !acquiredB.ok) throw new Error('unreachable');
+
+      const activationA = acquiredA.realm.activation;
+      const activationB = acquiredB.realm.activation;
+      if (!activationA || !activationB) throw new Error('unreachable');
+
+      const pendingA = acquiredA.realm.dispatchTurn({ ...activationA, turnId: 1 }, {});
+      const pendingB = acquiredB.realm.dispatchTurn({ ...activationB, turnId: 1 }, {});
+      const trackedA = trackSettlement(pendingA);
+      const trackedB = trackSettlement(pendingB);
+
+      registry.dispose();
+      await flushMicrotasks();
+
+      expect(trackedA.settled()).toBe(true);
+      expect(trackedB.settled()).toBe(true);
+      expect(acquiredA.realm.lifecycle.state).toBe('terminated');
+      expect(acquiredB.realm.lifecycle.state).toBe('terminated');
+      expect(terminateSpy).toHaveBeenCalledTimes(2);
     });
   });
 });
