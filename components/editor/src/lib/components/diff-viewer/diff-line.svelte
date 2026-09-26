@@ -1,7 +1,33 @@
 <script lang="ts" module>
   import type { LineDiff } from '@lostgradient/markdown';
+  import type { Snippet } from 'svelte';
 
-  import type { DiffViewerMode } from './diff-viewer.types.ts';
+  import type {
+    DiffViewerAnnotationSide,
+    DiffViewerLineAnnotationContext,
+    DiffViewerMode,
+  } from './diff-viewer.types.ts';
+
+  /**
+   * One commentable target on this row (COR-514 / DR-4): a `same` row may
+   * offer both `old` and `new`, a `modified` row offers both independently
+   * (distinct line/text per side), and `added`/`removed` rows offer only the
+   * side they exist on.
+   */
+  export type DiffLineAnnotationTarget = {
+    side: DiffViewerAnnotationSide;
+    /** Absolute, front-matter-offset-inclusive line number on `side`. */
+    line: number;
+    /** Unique DOM id for this control -- used for `focusAnchor` and instance isolation. */
+    id: string;
+    label: string;
+    /** True while the diff is stale: creation is disabled, but the row itself still renders. */
+    disabled?: boolean | undefined;
+    /** Visible explanation shown next to a disabled control. */
+    disabledReason?: string | undefined;
+    onactivate: (event: MouseEvent) => void;
+    onkeydown: (event: KeyboardEvent) => void;
+  };
 
   export type DiffLineProps = {
     /** The line diff data */
@@ -12,6 +38,10 @@
     selected?: boolean;
     /** Called when user clicks this line (for navigation) */
     onselect?: (() => void) | undefined;
+    /** Annotation controls to render for this row's commentable side(s). */
+    annotationTargets?: DiffLineAnnotationTarget[] | undefined;
+    /** Rendered next to each target's control. */
+    lineAnnotation?: Snippet<[DiffViewerLineAnnotationContext]> | undefined;
     /** Additional CSS classes */
     class?: string;
   };
@@ -20,7 +50,19 @@
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
 
-  let { diff, viewMode, selected = false, onselect, class: className }: DiffLineProps = $props();
+  let {
+    diff,
+    viewMode,
+    selected = false,
+    onselect,
+    annotationTargets,
+    lineAnnotation,
+    class: className,
+  }: DiffLineProps = $props();
+
+  function targetForSide(side: DiffViewerAnnotationSide): DiffLineAnnotationTarget | undefined {
+    return annotationTargets?.find((target) => target.side === side);
+  }
 
   /**
    * Whether this line should be visible based on view mode.
@@ -70,26 +112,57 @@
   );
 </script>
 
+{#snippet annotationControl(target: DiffLineAnnotationTarget)}
+  <button
+    type="button"
+    id={target.id}
+    class="diff-annotation-control"
+    data-cinder-annotation-control
+    data-cinder-side={target.side}
+    data-cinder-line={target.line}
+    disabled={target.disabled}
+    aria-label={target.label}
+    onclick={target.onactivate}
+    onkeydown={target.onkeydown}
+  >
+    +
+  </button>
+  {#if target.disabled && target.disabledReason}
+    <span class="diff-annotation-disabled-hint">{target.disabledReason}</span>
+  {/if}
+  {#if lineAnnotation}
+    {@render lineAnnotation({ side: target.side, line: target.line, diff })}
+  {/if}
+{/snippet}
+
 {#if isVisible}
   {#if diff.type === 'same'}
-    <!-- Same line: static div, not interactive -->
+    {@const oldTarget = targetForSide('old')}
+    {@const newTarget = targetForSide('new')}
+    <!-- Same line: static div, not interactive for navigation, but commentable. -->
     <div class={classNames('diff-line', className)}>
       <span class="diff-gutter"></span>
       <span class="diff-text">{diff.text || '\u00A0'}</span>
+      {#if oldTarget}{@render annotationControl(oldTarget)}{/if}
+      {#if newTarget}{@render annotationControl(newTarget)}{/if}
     </div>
   {:else if diff.type === 'added'}
     <!-- Added line -->
+    {@const newTarget = targetForSide('new')}
     {#if isInteractive}
-      <button
-        class={classNames('diff-line diff-line-added', className)}
-        data-selected={selected}
-        aria-label={accessibleLineLabel}
-        onclick={onselect}
-        type="button"
-      >
-        <span class="diff-gutter">+</span>
-        <span class="diff-text">{diff.text || '\u00A0'}</span>
-      </button>
+      <span class="diff-row">
+        <button
+          class={classNames('diff-line diff-line-added', className)}
+          data-selected={selected}
+          aria-label={accessibleLineLabel}
+          onclick={onselect}
+          type="button"
+        >
+          <span class="diff-gutter">+</span>
+          <span class="diff-text">{diff.text || '\u00A0'}</span>
+        </button>
+        {#if newTarget}{@render annotationControl(newTarget)}{/if}
+      </span>
     {:else}
       <div
         class={classNames('diff-line diff-line-added', className)}
@@ -99,32 +172,37 @@
       >
         <span class="diff-gutter">+</span>
         <span class="diff-text">{diff.text || '\u00A0'}</span>
+        {#if newTarget}{@render annotationControl(newTarget)}{/if}
       </div>
     {/if}
   {:else if diff.type === 'removed'}
     <!-- Removed line: strikethrough only in unified view, plain text in original view -->
     {@const showStrikethrough = viewMode === 'unified'}
+    {@const oldTarget = targetForSide('old')}
     {#if isInteractive}
-      <button
-        class={classNames(
-          'diff-line',
-          showStrikethrough ? 'diff-line-removed' : 'diff-line-removed-original',
-          className,
-        )}
-        data-selected={selected}
-        aria-label={accessibleLineLabel}
-        onclick={onselect}
-        type="button"
-      >
-        <span class="diff-gutter">{removedGutter}</span>
-        <span class="diff-text">
-          {#if showStrikethrough}
-            <del>{diff.text || '\u00A0'}</del>
-          {:else}
-            {diff.text || '\u00A0'}
-          {/if}
-        </span>
-      </button>
+      <span class="diff-row">
+        <button
+          class={classNames(
+            'diff-line',
+            showStrikethrough ? 'diff-line-removed' : 'diff-line-removed-original',
+            className,
+          )}
+          data-selected={selected}
+          aria-label={accessibleLineLabel}
+          onclick={onselect}
+          type="button"
+        >
+          <span class="diff-gutter">{removedGutter}</span>
+          <span class="diff-text">
+            {#if showStrikethrough}
+              <del>{diff.text || '\u00A0'}</del>
+            {:else}
+              {diff.text || '\u00A0'}
+            {/if}
+          </span>
+        </button>
+        {#if oldTarget}{@render annotationControl(oldTarget)}{/if}
+      </span>
     {:else}
       <div
         class={classNames(
@@ -144,6 +222,7 @@
             {diff.text || '\u00A0'}
           {/if}
         </span>
+        {#if oldTarget}{@render annotationControl(oldTarget)}{/if}
       </div>
     {/if}
   {:else if diff.type === 'modified'}
@@ -157,28 +236,36 @@
     {@const displayText =
       viewMode === 'unified' ? null : viewMode === 'final' ? diff.newText : diff.oldText}
 
+    {@const modifiedOldTarget = targetForSide('old')}
+    {@const modifiedNewTarget = targetForSide('new')}
     {#if viewMode === 'unified'}
       {#if isInteractive}
-        <button
-          class={classNames('diff-line diff-line-removed', lineClass, className)}
-          data-selected={selected}
-          aria-label={modifiedOldLineLabel}
-          onclick={onselect}
-          type="button"
-        >
-          <span class="diff-gutter">-</span>
-          <span class="diff-text"><del>{diff.oldText || '\u00A0'}</del></span>
-        </button>
-        <button
-          class={classNames('diff-line diff-line-added', lineClass, className)}
-          data-selected={selected}
-          aria-label={modifiedNewLineLabel}
-          onclick={onselect}
-          type="button"
-        >
-          <span class="diff-gutter">+</span>
-          <span class="diff-text">{diff.newText || '\u00A0'}</span>
-        </button>
+        <span class="diff-row">
+          <button
+            class={classNames('diff-line diff-line-removed', lineClass, className)}
+            data-selected={selected}
+            aria-label={modifiedOldLineLabel}
+            onclick={onselect}
+            type="button"
+          >
+            <span class="diff-gutter">-</span>
+            <span class="diff-text"><del>{diff.oldText || '\u00A0'}</del></span>
+          </button>
+          {#if modifiedOldTarget}{@render annotationControl(modifiedOldTarget)}{/if}
+        </span>
+        <span class="diff-row">
+          <button
+            class={classNames('diff-line diff-line-added', lineClass, className)}
+            data-selected={selected}
+            aria-label={modifiedNewLineLabel}
+            onclick={onselect}
+            type="button"
+          >
+            <span class="diff-gutter">+</span>
+            <span class="diff-text">{diff.newText || '\u00A0'}</span>
+          </button>
+          {#if modifiedNewTarget}{@render annotationControl(modifiedNewTarget)}{/if}
+        </span>
       {:else}
         <div
           class={classNames('diff-line diff-line-removed', lineClass, className)}
@@ -188,6 +275,7 @@
         >
           <span class="diff-gutter">-</span>
           <span class="diff-text"><del>{diff.oldText || '\u00A0'}</del></span>
+          {#if modifiedOldTarget}{@render annotationControl(modifiedOldTarget)}{/if}
         </div>
         <div
           class={classNames('diff-line diff-line-added', lineClass, className)}
@@ -197,20 +285,26 @@
         >
           <span class="diff-gutter">+</span>
           <span class="diff-text">{diff.newText || '\u00A0'}</span>
+          {#if modifiedNewTarget}{@render annotationControl(modifiedNewTarget)}{/if}
         </div>
       {/if}
     {:else}
+      {@const activeSide = viewMode === 'final' ? 'new' : 'old'}
+      {@const activeTarget = activeSide === 'new' ? modifiedNewTarget : modifiedOldTarget}
       {#if isInteractive}
-        <button
-          class={classNames('diff-line', lineClass, className)}
-          data-selected={selected}
-          aria-label={accessibleLineLabel}
-          onclick={onselect}
-          type="button"
-        >
-          <span class="diff-gutter">{modifiedSideGutter}</span>
-          <span class="diff-text">{displayText || '\u00A0'}</span>
-        </button>
+        <span class="diff-row">
+          <button
+            class={classNames('diff-line', lineClass, className)}
+            data-selected={selected}
+            aria-label={accessibleLineLabel}
+            onclick={onselect}
+            type="button"
+          >
+            <span class="diff-gutter">{modifiedSideGutter}</span>
+            <span class="diff-text">{displayText || '\u00A0'}</span>
+          </button>
+          {#if activeTarget}{@render annotationControl(activeTarget)}{/if}
+        </span>
       {:else}
         <div
           class={classNames('diff-line', lineClass, className)}
@@ -220,6 +314,7 @@
         >
           <span class="diff-gutter">{modifiedSideGutter}</span>
           <span class="diff-text">{displayText || '\u00A0'}</span>
+          {#if activeTarget}{@render annotationControl(activeTarget)}{/if}
         </div>
       {/if}
     {/if}
@@ -231,6 +326,43 @@
     display: flex;
     width: 100%;
     min-height: 1.5em;
+  }
+
+  /*
+   * A row's `.diff-line` is a real <button> when the existing change-navigation
+   * `onselect` is wired, so an annotation control (also a <button>) cannot
+   * nest inside it -- nested interactive elements are invalid HTML. `.diff-row`
+   * wraps the two as siblings without affecting the row's own layout: it uses
+   * `display: contents` so its children lay out exactly as if `.diff-row`
+   * were not there, and only exists to give the annotation control a
+   * predictable place next to its row.
+   */
+  .diff-row {
+    display: contents;
+  }
+
+  .diff-annotation-control {
+    flex-shrink: 0;
+    width: 1.5rem;
+    color: var(--cinder-text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-family: var(--cinder-font-mono);
+  }
+
+  .diff-annotation-control:hover:not(:disabled) {
+    color: var(--cinder-accent-solid);
+  }
+
+  .diff-annotation-control:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .diff-annotation-disabled-hint {
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
   }
 
   button.diff-line {
