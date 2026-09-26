@@ -19,7 +19,11 @@
 
 import { z } from 'zod';
 
-import { Engine, getRevisionRealmDiagnostics } from '../../core/engine.ts';
+import {
+  Engine,
+  getRevisionRealmDiagnostics,
+  type RevisionRealmPoolDiagnostics,
+} from '../../core/engine.ts';
 import { shapeOperationFaultAsJson } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
@@ -60,6 +64,26 @@ const getRealmDiagnosticsOutput = z
 export type GetRealmDiagnosticsOutput = z.infer<typeof getRealmDiagnosticsOutput>;
 
 /**
+ * Project the core layer's `readonly`-array diagnostics shape into the
+ * mutable-array shape `getRealmDiagnosticsOutput` (and `defineOperation`'s
+ * own output-validation step) expects. Extracted as its own pure function,
+ * independent of a live `Engine`, so the non-empty-pools case is directly
+ * unit-testable — `getRevisionRealmDiagnostics(engine)` returning `[]` (the
+ * default, unopted-in case) never exercises the per-pool transform below,
+ * since `Array.prototype.map` never invokes its callback on an empty array.
+ */
+export function toGetRealmDiagnosticsOutput(
+  pools: readonly RevisionRealmPoolDiagnostics[],
+): GetRealmDiagnosticsOutput {
+  return {
+    pools: pools.map((pool) => ({
+      ...pool,
+      realms: [...pool.realms],
+    })),
+  };
+}
+
+/**
  * `weft.realms.diagnostics`: bounded, host-wide diagnostics for every
  * workflow-revision realm pool. Requires `system:read`. Never returns a
  * manifest, contract, or raw protocol payload — only lifecycle identity and
@@ -98,12 +122,7 @@ export const getRealmDiagnosticsOperation = defineOperation({
     if (!(engine instanceof Engine)) {
       throw new TypeError('Realm diagnostics requires a concrete Engine instance.');
     }
-    return {
-      pools: getRevisionRealmDiagnostics(engine).map((pool) => ({
-        ...pool,
-        realms: [...pool.realms],
-      })),
-    };
+    return toGetRealmDiagnosticsOutput(getRevisionRealmDiagnostics(engine));
   },
 });
 

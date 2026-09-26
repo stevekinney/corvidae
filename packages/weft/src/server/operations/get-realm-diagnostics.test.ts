@@ -10,6 +10,7 @@ import { createOperationRegistry } from '../operation-catalog.ts';
 import {
   getRealmDiagnosticsOperation,
   getRealmDiagnosticsRestBinding,
+  toGetRealmDiagnosticsOutput,
 } from './get-realm-diagnostics.ts';
 import {
   assertOperationRejectsInsufficientScope,
@@ -71,5 +72,43 @@ describe('weft.realms.diagnostics — REST GET /v1/realms/diagnostics', () => {
       engine,
       liveRegistry: registry,
     });
+  });
+
+  it('throws when invoked directly with a context whose engine is not a concrete Engine instance', async () => {
+    await expect(
+      getRealmDiagnosticsOperation.invoke({
+        engine: {},
+        principal: { method: 'unauthenticated' },
+        transport: 'jsonRpcStdio',
+        input: {},
+      }),
+    ).rejects.toThrow('Realm diagnostics requires a concrete Engine instance.');
+  });
+});
+
+describe('toGetRealmDiagnosticsOutput', () => {
+  it('projects readonly pool/realm arrays into the mutable output shape, unchanged in content', () => {
+    const pools = [
+      {
+        name: 'checkout',
+        revision: 'revision-a',
+        revisionActive: true,
+        realms: [
+          {
+            state: 'active' as const,
+            realmGeneration: 'gen-1',
+            restartCount: 0,
+            pendingTurnCount: 2,
+          },
+        ],
+      },
+      { name: 'checkout', revision: 'revision-b', revisionActive: false, realms: [] },
+    ];
+
+    expect(toGetRealmDiagnosticsOutput(pools)).toEqual({ pools });
+  });
+
+  it('returns an empty pools array for no pools', () => {
+    expect(toGetRealmDiagnosticsOutput([])).toEqual({ pools: [] });
   });
 });
