@@ -1,5 +1,9 @@
 /// <reference lib="dom" />
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
@@ -10,6 +14,7 @@ installDrawerDialogStubs();
 const restoreDrawerStyles = installDrawerStyleProbe();
 const { cleanup } = await import('@testing-library/svelte');
 const DRAWER_SOURCE = join(import.meta.dir, 'drawer.svelte');
+await prepareSvelteServerSource(DRAWER_SOURCE);
 
 afterAll(() => {
   restoreDrawerStyles();

@@ -29,19 +29,24 @@ import {
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string): string => join(fixturesDir, `${name}.svelte`);
 
+const browserFlagFixture = fixture('hydration-probe-browser-flag');
+const effectGateFixture = fixture('hydration-probe-effect-gate');
+const childBrowserFlagFixture = fixture('hydration-probe-child-browser-flag');
+const childEffectGateFixture = fixture('hydration-probe-child-effect-gate');
+const unpreparedFixture = fixture('hydration-probe-child');
+
 // Compilation happens here, outside any test timeout; each test only renders.
-await Promise.all(
-  [
-    'hydration-probe-browser-flag',
-    'hydration-probe-effect-gate',
-    'hydration-probe-child-browser-flag',
-    'hydration-probe-child-effect-gate',
-  ].map((name) => prepareBuildFlagHydrationCheck(fixture(name))),
-);
+await Promise.all([
+  prepareBuildFlagHydrationCheck(browserFlagFixture),
+  prepareBuildFlagHydrationCheck(effectGateFixture),
+  prepareBuildFlagHydrationCheck(childBrowserFlagFixture),
+  prepareBuildFlagHydrationCheck(childEffectGateFixture),
+]);
 
 describe('checkBuildFlagHydrationSafety', () => {
   test('rejects a component that was not prepared at module scope', async () => {
-    const error = await checkBuildFlagHydrationSafety(fixture('hydration-probe-child')).then(
+    // server-render-preparation: intentionally unprepared
+    const error = await checkBuildFlagHydrationSafety(unpreparedFixture).then(
       () => undefined,
       (reason: unknown) => reason,
     );
@@ -50,7 +55,7 @@ describe('checkBuildFlagHydrationSafety', () => {
   });
 
   test('flags a {#if BROWSER}-gated component as UNSAFE', async () => {
-    const result = await checkBuildFlagHydrationSafety(fixture('hydration-probe-browser-flag'));
+    const result = await checkBuildFlagHydrationSafety(browserFlagFixture);
     expect(result.buildFlagInvariant).toBe(false);
     // The divergence is precisely the client-only affordance: absent server-side,
     // present client-side.
@@ -59,7 +64,7 @@ describe('checkBuildFlagHydrationSafety', () => {
   });
 
   test('reports a `hydrated` $effect-gated component as SAFE', async () => {
-    const result = await checkBuildFlagHydrationSafety(fixture('hydration-probe-effect-gate'));
+    const result = await checkBuildFlagHydrationSafety(effectGateFixture);
     expect(result.buildFlagInvariant).toBe(true);
     // The affordance is absent under BOTH conditions — `hydrated` is false in SSR
     // regardless of BROWSER, so there is nothing to mismatch.
@@ -68,9 +73,7 @@ describe('checkBuildFlagHydrationSafety', () => {
   });
 
   test('flags a BROWSER-gated component as UNSAFE even with an unconditional child-effect', async () => {
-    const result = await checkBuildFlagHydrationSafety(
-      fixture('hydration-probe-child-browser-flag'),
-    );
+    const result = await checkBuildFlagHydrationSafety(childBrowserFlagFixture);
     expect(result.buildFlagInvariant).toBe(false);
     // The unconditionally-rendered child is present under BOTH conditions — it
     // does not mask the BROWSER-gated divergence.
@@ -81,9 +84,7 @@ describe('checkBuildFlagHydrationSafety', () => {
   });
 
   test('reports an $effect-gated component as SAFE even with an unconditional child-effect', async () => {
-    const result = await checkBuildFlagHydrationSafety(
-      fixture('hydration-probe-child-effect-gate'),
-    );
+    const result = await checkBuildFlagHydrationSafety(childEffectGateFixture);
     expect(result.buildFlagInvariant).toBe(true);
     expect(result.serverHtml).toContain('data-testid="child"');
     expect(result.clientHtml).toContain('data-testid="child"');

@@ -2,7 +2,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -18,6 +22,7 @@ const { default: Wrapper } = await import('../../test/fixtures/tabs-fixture.svel
 
 const TABS_FIXTURE_SOURCE = new URL('../../test/fixtures/tabs-fixture.svelte', import.meta.url)
   .pathname;
+await prepareSvelteServerSource(TABS_FIXTURE_SOURCE);
 
 const items = [
   { value: 'a', title: 'A tab', body: 'A body' },

@@ -3,12 +3,18 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, jest, test } from 'bun:test';
 
-import { renderSvelteOnServer, requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  requiredInstance,
+  setupHappyDom,
+} from '@lostgradient/testing';
 import { requiredChildren } from './carousel-test-helpers.ts';
 
 setupHappyDom();
 
 const CAROUSEL_SOURCE = join(import.meta.dir, 'carousel.svelte');
+await prepareSvelteServerSource(CAROUSEL_SOURCE);
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');

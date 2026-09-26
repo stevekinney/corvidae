@@ -17,7 +17,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
-import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
+import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -25,6 +25,7 @@ const { render } = await import('@testing-library/svelte');
 const { default: Modal } = await import('./modal.svelte');
 const { default: ModalHydrationFixture } = await import('./_modal-hydration-test.svelte');
 const sourcePath = new URL('./_modal-hydration-test.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(sourcePath);
 
 const bodyContent = createRawSnippet(() => ({
   render: () => `<p id="modal-body-copy">Are you sure?</p>`,

@@ -4,11 +4,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
 const IMAGE_SOURCE = join(import.meta.dir, 'image.svelte');
+await prepareSvelteServerSource(IMAGE_SOURCE);
 
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Image } = await import('./image.svelte');

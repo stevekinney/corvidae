@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
@@ -9,6 +9,30 @@ import {
 } from './svelte-server.ts';
 
 const sourcePath = resolve(import.meta.dir, '../fixtures/svelte-plugin-component.svelte');
+const unsafeSourcePath = resolve(import.meta.dir, '../fixtures/svelte-server-unsafe.svelte');
+const stateSource = resolve(import.meta.dir, '../fixtures/svelte-server-state.svelte');
+
+// Compile at module scope, where no test timeout applies; each test only renders.
+// The state fixture is prepared twice concurrently to cover shared compilation.
+await Promise.all([
+  prepareSvelteServerSource(sourcePath),
+  prepareSvelteServerSource(unsafeSourcePath),
+  prepareSvelteServerSource(stateSource),
+  prepareSvelteServerSource(stateSource),
+]);
+
+// Prepare one scratch source under the browser conditions, edit it, then prepare
+// the default conditions: each render must replay the compilation for its own key.
+const conditionsDirectory = await mkdtemp(
+  resolve(import.meta.dir, '../../node_modules/.svelte-prepare-'),
+);
+afterAll(() => rm(conditionsDirectory, { recursive: true }));
+const conditionsSource = join(conditionsDirectory, 'prepared.svelte');
+await Bun.write(conditionsSource, '<p>prepared</p>');
+await prepareSvelteServerSource(conditionsSource, { conditions: ['browser', 'svelte'] });
+await Bun.write(conditionsSource, '<p>edited</p>');
+await prepareSvelteServerSource(conditionsSource);
+
 const scratchFiles = async () => {
   const names = await readdir(resolve(import.meta.dir, '../../node_modules'));
   return names.filter((name) => name.startsWith('.svelte-ssr-')).toSorted();
@@ -28,9 +52,7 @@ describe('isolated Svelte server execution', () => {
 
   test('rejects module evaluation that reads browser globals', async () => {
     const before = await scratchFiles();
-    const error = await importSvelteOnServer(
-      resolve(import.meta.dir, '../fixtures/svelte-server-unsafe.svelte'),
-    ).then(
+    const error = await importSvelteOnServer(unsafeSourcePath).then(
       () => undefined,
       (reason: unknown) => reason,
     );
@@ -48,11 +70,6 @@ describe('isolated Svelte server execution', () => {
   });
 
   test('preparing a fixture preserves fresh module state for every render', async () => {
-    const stateSource = resolve(import.meta.dir, '../fixtures/svelte-server-state.svelte');
-    await Promise.all([
-      prepareSvelteServerSource(stateSource),
-      prepareSvelteServerSource(stateSource),
-    ]);
     const first = await renderSvelteOnServer(stateSource);
     const second = await renderSvelteOnServer(stateSource);
     expect(first).toContain('<p>Render 1</p>');
@@ -60,21 +77,9 @@ describe('isolated Svelte server execution', () => {
   });
 
   test('preparing under explicit conditions compiles the entry those conditions render', async () => {
-    const directory = await mkdtemp(
-      resolve(import.meta.dir, '../../node_modules/.svelte-prepare-'),
-    );
-    const source = join(directory, 'prepared.svelte');
-    try {
-      await Bun.write(source, '<p>prepared</p>');
-      await prepareSvelteServerSource(source, { conditions: ['browser', 'svelte'] });
-      await Bun.write(source, '<p>edited</p>');
-
-      expect(
-        await renderSvelteOnServer(source, {}, { conditions: ['browser', 'svelte'] }),
-      ).toContain('<p>prepared</p>');
-      expect(await renderSvelteOnServer(source)).toContain('<p>edited</p>');
-    } finally {
-      await rm(directory, { recursive: true });
-    }
+    expect(
+      await renderSvelteOnServer(conditionsSource, {}, { conditions: ['browser', 'svelte'] }),
+    ).toContain('<p>prepared</p>');
+    expect(await renderSvelteOnServer(conditionsSource)).toContain('<p>edited</p>');
   });
 });

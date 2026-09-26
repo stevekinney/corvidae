@@ -5,6 +5,7 @@ import { createRawSnippet, tick } from 'svelte';
 
 import {
   expectNoLeakedTimers,
+  prepareSvelteServerSource,
   renderSvelteOnServer,
   requiredInstance,
   setupHappyDom,
@@ -14,6 +15,7 @@ import {
 setupHappyDom();
 
 const TOOLTIP_SOURCE = join(import.meta.dir, 'tooltip.svelte');
+await prepareSvelteServerSource(TOOLTIP_SOURCE);
 
 type Resolver = (value: unknown) => void;
 

@@ -2,7 +2,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -11,6 +15,7 @@ const TREE_RENAME_FIXTURE_SOURCE = new URL(
   '../../test/fixtures/tree-rename-fixture.svelte',
   import.meta.url,
 ).pathname;
+await prepareSvelteServerSource(TREE_RENAME_FIXTURE_SOURCE);
 const { default: TreeRenameFixture } =
   await import('../../test/fixtures/tree-rename-fixture.svelte');
 
