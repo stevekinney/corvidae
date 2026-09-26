@@ -96,7 +96,12 @@ const host = document.querySelector('#terminal'); const terminal = new Terminal(
 function fallbackCells(message: string): Record<string, BrowserCell> {
   return Object.fromEntries(
     cellIds.slice(1).map((id) => [id, { passed: false, observation: message }]),
-  ) as Record<string, BrowserCell>;
+  );
+}
+
+function formatUnknown(value: unknown): string {
+  const json = JSON.stringify(value);
+  return json === undefined ? typeof value : json;
 }
 
 async function runBrowserProbe(candidate: Candidate, directory: string): Promise<BrowserResult> {
@@ -200,19 +205,19 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
       'screen-cursor-attributes': {
         passed:
           raw.red !== null && typeof raw.cursorX === 'number' && typeof raw.cursorY === 'number',
-        observation: `cursor=${raw.cursorX},${raw.cursorY};fg=${raw.red}`,
+        observation: `cursor=${formatUnknown(raw.cursorX)},${formatUnknown(raw.cursorY)};fg=${formatUnknown(raw.red)}`,
       },
       'soft-wrap-selection-search': {
         passed: raw.wrapped === true && typeof raw.selection === 'string',
-        observation: `wrapped=${raw.wrapped};selection=${JSON.stringify(raw.selection)}`,
+        observation: `wrapped=${formatUnknown(raw.wrapped)};selection=${formatUnknown(raw.selection)}`,
       },
       'read-only-reply-suppression': {
         passed: raw.suppression === true,
-        observation: `queryReplies=${raw.replies};adapterSuppressed=${raw.suppression}`,
+        observation: `queryReplies=${formatUnknown(raw.replies)};adapterSuppressed=${formatUnknown(raw.suppression)}`,
       },
       'initialization-cancellation-disposal': {
         passed: raw.disposed === true && raw.resized === true,
-        observation: `resized=${raw.resized};disposed=${raw.disposed}`,
+        observation: `resized=${formatUnknown(raw.resized)};disposed=${formatUnknown(raw.disposed)}`,
       },
     };
     if (candidate.name === '@wterm/dom') {
@@ -222,17 +227,17 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
       };
       common['soft-wrap-selection-search'] = {
         passed: raw.search === true && typeof raw.readText === 'string',
-        observation: `readText=${JSON.stringify(raw.readText)};search=${raw.search};retained-dom=virtualized`,
+        observation: `readText=${formatUnknown(raw.readText)};search=${formatUnknown(raw.search)};retained-dom=virtualized`,
       };
       common['read-only-reply-suppression'] = {
         passed: raw.suppression === true,
-        observation: `queryReplies=${JSON.stringify(raw.events)};adapterSuppressed=${raw.suppression}`,
+        observation: `queryReplies=${formatUnknown(raw.events)};adapterSuppressed=${formatUnknown(raw.suppression)}`,
       };
     }
     if (candidate.name === 'ghostty-web')
       common['soft-wrap-selection-search'] = {
         passed: false,
-        observation: `hard-gate:soft-wrap-metadata-untrustworthy;observed=${raw.softWrapMetadata}`,
+        observation: `hard-gate:soft-wrap-metadata-untrustworthy;observed=${formatUnknown(raw.softWrapMetadata)}`,
       };
     common['chromium-csp-and-assets'] = {
       passed:
@@ -248,7 +253,9 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     const message = String(error);
     const kind = message.includes('TimeoutError') ? 'timeout' : 'harness-failure';
     const phase = await page
-      .evaluate(() => String((globalThis as { probePhase?: unknown }).probePhase ?? 'not-started'))
+      .evaluate(() =>
+        formatUnknown((globalThis as { probePhase?: unknown }).probePhase ?? 'not-started'),
+      )
       .catch(() => 'page-unavailable');
     diagnostics.push(`phase:${phase}`);
     return {
@@ -259,7 +266,7 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     };
   } finally {
     await browser.close();
-    server.stop(true);
+    await server.stop(true);
   }
 }
 

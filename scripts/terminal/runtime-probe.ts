@@ -78,14 +78,14 @@ async function pipeProbe(): Promise<EvidenceCell[]> {
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  const outputPromise = streamBytes(child.stdout as ReadableStream<Uint8Array>);
-  const errorPromise = streamBytes(child.stderr as ReadableStream<Uint8Array>);
+  const outputPromise = streamBytes(child.stdout);
+  const errorPromise = streamBytes(child.stderr);
   await child.stdin.write('ok\n');
-  child.stdin.end();
+  await child.stdin.end();
   const [output, error, exitCode] = await Promise.all([outputPromise, errorPromise, child.exited]);
   const stdout = new TextDecoder().decode(output);
   const stderr = new TextDecoder().decode(error);
-  const stream = child.stdout as ReadableStream<Uint8Array>;
+  const stream = child.stdout;
   const pauseMethods = ['pause', 'resume'].filter(
     (name) => typeof (stream as unknown as Record<string, unknown>)[name] === 'function',
   );
