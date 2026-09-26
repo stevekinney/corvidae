@@ -31,8 +31,6 @@ export interface MarkdownEditorPlaceholderProps {
   id: () => string;
   value: () => string;
   readonly: () => boolean;
-  /** Completion exists only in WYSIWYG mode until source-mode completion lands. */
-  wysiwyg: () => boolean;
   definitions: () => PlaceholderDefinitions | undefined;
   values: () => unknown;
   completion: () => PlaceholderCompletionConfiguration | undefined;
@@ -58,9 +56,9 @@ export function createMarkdownEditorPlaceholders(props: MarkdownEditorPlaceholde
     valuesStatus,
   });
   const resolved = $derived(resolvePlaceholderConfiguration(configuration));
-  const instructionsVisible = $derived(
-    resolved.completion !== undefined && !props.readonly() && props.wysiwyg(),
-  );
+  // Both editing modes offer completion, so the instructions follow the
+  // configuration and readonly state, never the mode.
+  const instructionsVisible = $derived(resolved.completion !== undefined && !props.readonly());
   let statusMessage = $state('');
   let diagnostics = $state.raw<readonly PlaceholderDiagnostic[]>(NO_DIAGNOSTICS);
 
@@ -80,6 +78,10 @@ export function createMarkdownEditorPlaceholders(props: MarkdownEditorPlaceholde
     get configuration() {
       return configuration;
     },
+    /** The resolved configuration, shared by both editing modes. */
+    get resolved() {
+      return resolved;
+    },
     get statusMessage() {
       return statusMessage;
     },
@@ -91,6 +93,9 @@ export function createMarkdownEditorPlaceholders(props: MarkdownEditorPlaceholde
     },
     get listboxId() {
       return `${props.id()}-placeholder-listbox-wysiwyg`;
+    },
+    get sourceListboxId() {
+      return `${props.id()}-placeholder-listbox-source`;
     },
     setStatusMessage(message: string) {
       statusMessage = message;

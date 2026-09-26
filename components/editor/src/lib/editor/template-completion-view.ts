@@ -7,12 +7,13 @@ import type { PluginView } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 
 import { acceptSuggestion } from './template-completion-acceptance.js';
+import { CompletionAnnouncer } from './template-completion-announcer.js';
 import { isCompletionPopupOpen } from './template-completion-keyboard.js';
+import { CompletionLookup } from './template-completion-lookup.js';
 import {
   bindOutsideDismissal,
   bindPopupPointerSelection,
   createPopupElement,
-  describeCandidateTypes,
   limitVisibleRows,
   placeholderOptionId,
   positionPopup,
@@ -26,10 +27,7 @@ import {
   type CompletionState,
 } from './template-completion-state.js';
 import { readPlaceholderConfiguration } from './template-placeholder-configuration-plugin.js';
-import type {
-  PlaceholderCompletionSource,
-  ResolvedPlaceholderConfiguration,
-} from './template-placeholder-configuration.js';
+import type { ResolvedPlaceholderConfiguration } from './template-placeholder-configuration.js';
 
 export interface TemplateCompletionViewOptions {
   /** ID for the listbox; option IDs append `-${path}`. Generated when omitted. */
@@ -52,19 +50,6 @@ function nextListboxId(): string {
   return `template-placeholder-listbox-${generatedListboxCount}`;
 }
 
-/** The count announcement for a list of matches. */
-export function describeMatchCount(count: number): string {
-  if (count === 0) return 'No matching placeholders';
-  return count === 1 ? '1 placeholder available' : `${count} placeholders available`;
-}
-
-function describeActiveOption(state: CompletionState): string {
-  const candidate = state.suggestions[state.activeIndex];
-  if (!candidate) return '';
-  const position = `${state.activeIndex + 1} of ${state.suggestions.length}`;
-  return `${candidate.path}, ${describeCandidateTypes(candidate)}, ${position}`;
-}
-
 function setAttribute(element: HTMLElement, name: string, value: string | null): void {
   if (value === null) element.removeAttribute(name);
   else if (element.getAttribute(name) !== value) element.setAttribute(name, value);
@@ -74,22 +59,21 @@ class CompletionView implements PluginView {
   readonly #popup: HTMLElement;
   readonly #pointerSelection: PopupPointerSelection;
   readonly #listboxId: string;
-  readonly #onStatusChange: ((message: string) => void) | undefined;
+  readonly #announcer: CompletionAnnouncer;
+  readonly #lookup: CompletionLookup;
   readonly #cleanups: (() => void)[] = [];
   #view: EditorView;
   #configuration: ResolvedPlaceholderConfiguration;
-  #lookup: { controller: AbortController; timeout: ReturnType<typeof setTimeout> } | null = null;
-  #lookupQuery: string | null = null;
   #refreshTimer: ReturnType<typeof setTimeout> | null = null;
-  #status = '';
-  #announcedList: string | null = null;
-  #announcedIndex = -1;
   #destroyed = false;
 
   constructor(view: EditorView, options: TemplateCompletionViewOptions) {
     this.#view = view;
     this.#listboxId = options.listboxId ?? nextListboxId();
-    this.#onStatusChange = options.onStatusChange;
+    this.#announcer = new CompletionAnnouncer(options.onStatusChange);
+    this.#lookup = new CompletionLookup((result) => {
+      if (!this.#destroyed) this.#dispatch({ type: 'asyncResults', ...result });
+    });
     this.#configuration = readPlaceholderConfiguration(view.state);
     this.#popup = createPopupElement(this.#listboxId);
     (view.dom.parentElement ?? view.dom.ownerDocument.body).appendChild(this.#popup);
@@ -116,13 +100,13 @@ class CompletionView implements PluginView {
 
   destroy(): void {
     this.#destroyed = true;
-    this.#cancelLookup();
+    this.#lookup.cancel();
     if (this.#refreshTimer !== null) clearTimeout(this.#refreshTimer);
     this.#refreshTimer = null;
     for (const cleanup of this.#cleanups.splice(0)) cleanup();
     this.#popup.remove();
     for (const name of TEXTBOX_ATTRIBUTES) this.#view.dom.removeAttribute(name);
-    this.#announce('');
+    this.#announcer.clear();
   }
 
   #dispatch(meta: CompletionMeta): void {
@@ -155,21 +139,21 @@ class CompletionView implements PluginView {
     this.#configuration = configuration;
     // A lookup belongs to the configuration it was started under; cancel it
     // before anything else, including the composition pause below.
-    if (configurationChanged) this.#cancelLookup();
+    if (configurationChanged) this.#lookup.cancel();
     const completion = view.editable ? configuration.completion : undefined;
     const state = templateCompletionPluginKey.getState(view.state) ?? INACTIVE_STATE;
 
     if (!completion || !state.active) {
-      this.#cancelLookup();
+      this.#lookup.cancel();
       this.#hide();
       this.#syncTextbox(completion !== undefined, null);
-      this.#announce('');
+      this.#announcer.clear();
       return;
     }
     // Composition suspends candidate updates until compositionend.
     if (view.composing) return;
 
-    if (state.query !== this.#lookupQuery) this.#scheduleLookup(state.query, completion);
+    if (state.query !== this.#lookup.query) this.#lookup.schedule(state.query, completion);
     this.#render(state);
   }
 
@@ -189,7 +173,7 @@ class CompletionView implements PluginView {
       true,
       open && active ? placeholderOptionId(this.#listboxId, active.path) : null,
     );
-    this.#announceState(state);
+    this.#announcer.announceState(state);
   }
 
   #hide(): void {
@@ -203,56 +187,6 @@ class CompletionView implements PluginView {
     setAttribute(dom, 'aria-haspopup', configured ? 'listbox' : null);
     setAttribute(dom, 'aria-controls', activeOptionId ? this.#listboxId : null);
     setAttribute(dom, 'aria-activedescendant', activeOptionId);
-  }
-
-  #announceState(state: CompletionState): void {
-    const listKey = state.suggestions.map((candidate) => candidate.path).join('\n');
-    if (listKey !== this.#announcedList) {
-      this.#announcedList = listKey;
-      this.#announcedIndex = state.activeIndex;
-      this.#announce(describeMatchCount(state.suggestions.length));
-      return;
-    }
-    if (state.activeIndex !== this.#announcedIndex) {
-      this.#announcedIndex = state.activeIndex;
-      this.#announce(describeActiveOption(state));
-    }
-  }
-
-  #announce(message: string): void {
-    if (message === '') {
-      this.#announcedList = null;
-      this.#announcedIndex = -1;
-    }
-    if (message === this.#status) return;
-    this.#status = message;
-    this.#onStatusChange?.(message);
-  }
-
-  #cancelLookup(): void {
-    this.#lookupQuery = null;
-    if (!this.#lookup) return;
-    this.#lookup.controller.abort();
-    clearTimeout(this.#lookup.timeout);
-    this.#lookup = null;
-  }
-
-  #scheduleLookup(query: string, completion: PlaceholderCompletionSource): void {
-    this.#cancelLookup();
-    this.#lookupQuery = query;
-    const lookupCandidates = completion.lookupCandidates;
-    if (!lookupCandidates) return;
-    const controller = new AbortController();
-    const timeout = setTimeout(async () => {
-      try {
-        const candidates = await lookupCandidates(query, controller.signal);
-        if (controller.signal.aborted || this.#destroyed) return;
-        this.#dispatch({ type: 'asyncResults', query, candidates, source: completion });
-      } catch {
-        // Lookup failures leave static suggestions visible and do not escape the view lifecycle.
-      }
-    }, completion.lookupDebounceMs);
-    this.#lookup = { controller, timeout };
   }
 }
 

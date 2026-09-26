@@ -44,7 +44,7 @@ export { sortPlaceholderDiagnostics } from './placeholder-definition-data.js';
 export { buildPlaceholderCandidatesFromJsonSchema } from './placeholder-schema-catalog.js';
 export { parseMarkdownPlaceholderTokens } from './placeholder-source-scanner.js';
 export { PlaceholderTemplateError } from './placeholder-template-error.js';
-export { parsePlaceholderTokens } from './placeholder-token-scanner.js';
+export { parsePlaceholderTokens, unescapePlaceholderBody } from './placeholder-token-scanner.js';
 
 /** The codes a single token can produce, in precedence order. */
 type TokenDiagnosticCode =
