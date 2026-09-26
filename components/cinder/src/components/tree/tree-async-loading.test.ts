@@ -2,7 +2,7 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 /// <reference lib="dom" />
 
 import { describe, expect, test } from 'bun:test';
-import { createRawSnippet, mount, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, unmount } from 'svelte';
 import { treeItem } from './tree-test-helpers.ts';
 
 setupHappyDom();
@@ -44,7 +44,7 @@ describe('Tree — async loading', () => {
 
     resolveLoad();
     await waitFor(() => {
-      expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+      expect(container.querySelector('[aria-busy="true"]')?.outerHTML ?? null).toBeNull();
     });
   });
 
@@ -85,9 +85,8 @@ describe('Tree — async loading', () => {
       expect(errors[0]?.id).toBe('error-branch');
     });
 
-    await waitFor(() => {
-      expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
-    });
+    flushSync();
+    expect(container.querySelector('[aria-expanded="true"]')?.outerHTML ?? null).toBeNull();
   });
 
   test('when onLoadError is absent, console.error is called with [cinder-tree] prefix', async () => {
@@ -173,9 +172,8 @@ describe('Tree — async loading', () => {
     });
     // Collapse to abort
     await fireEvent.keyDown(item, { key: 'ArrowLeft' });
-    await waitFor(() => {
-      expect(container.querySelector('[aria-busy="true"]')).toBeNull();
-    });
+    flushSync();
+    expect(container.querySelector('[aria-busy="true"]')?.outerHTML ?? null).toBeNull();
     expect(aborted).toBe(true);
     expect(errors).toHaveLength(0);
   });
