@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { createRawSnippet, tick } from 'svelte';
+import { createRawSnippet, flushSync, tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -1308,7 +1308,8 @@ describe('Popover — floating-ui wiring', () => {
     triggerButton.remove();
     openValue = false;
     await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
-    await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+    flushSync();
+    expect(queryPopoverPanel()?.outerHTML ?? null).toBeNull();
 
     // Reopen without ever supplying a fresh trigger.
     openValue = true;
@@ -1357,7 +1358,8 @@ describe('Popover — floating-ui wiring', () => {
     // Close and let the exit fully complete (onClosed fires).
     openValue = false;
     await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
-    await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+    flushSync();
+    expect(queryPopoverPanel()?.outerHTML ?? null).toBeNull();
 
     // Second session: computePosition never resolves before the close.
     deferComputePosition = true;
@@ -1542,7 +1544,8 @@ describe('Popover — floating-ui wiring', () => {
     // Close normally (trigger still connected) and let the exit complete.
     openValue = false;
     await rerender({ open: false, triggerRef: triggerButton, children: textSnippet('content') });
-    await waitFor(() => expect(queryPopoverPanel()).toBeNull());
+    flushSync();
+    expect(queryPopoverPanel()?.outerHTML ?? null).toBeNull();
 
     // NOW remove the trigger, while the Popover is already fully closed —
     // no open/closing session is active.

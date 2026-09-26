@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 import { resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, installModalDialogStubs } from './modal-test-helpers.ts';
 
@@ -100,10 +101,9 @@ describe('Modal', () => {
         panel?.dispatchEvent(event);
       }
 
-      await waitFor(() => {
-        expect(dialog.hasAttribute('open')).toBe(false);
-        expect(container.querySelector('.cinder-modal__panel')).toBeNull();
-      });
+      flushSync();
+      expect(dialog.hasAttribute('open')).toBe(false);
+      expect(container.querySelector('.cinder-modal__panel')?.outerHTML ?? null).toBeNull();
     } finally {
       window.getComputedStyle = originalGetComputedStyle;
     }
@@ -164,7 +164,7 @@ describe('Modal', () => {
       }
 
       await waitFor(() => {
-        expect(container.querySelector('.cinder-modal__panel')).toBeNull();
+        expect(container.querySelector('.cinder-modal__panel')?.outerHTML ?? null).toBeNull();
       });
       expect(exitCompleteCount).toBe(1);
     } finally {
