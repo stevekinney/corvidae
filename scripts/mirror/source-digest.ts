@@ -74,38 +74,14 @@ export interface DigestedFile {
   bytes: Uint8Array;
 }
 
-/**
- * Name fragments a source file must not contain anywhere in its path to count toward the digest.
- *
- * The same shape `package-surface.json`'s `files` arrays already negate before publishing:
- * `!dist/**\/*.test.*`, `!dist/**\/*.fixture.*`, `!dist/**\/test/**`, and the two plural spellings a
- * handful of packages use. Applied here against `src/` paths rather than `dist/` ones — the digest
- * has no build output to filter — on the premise that a test file's own name is a reliable signal
- * independent of which directory it sits under, and that a package with no `files` array of its own
- * (a private workspace) still deserves the same test/fixture exclusion, since one is not otherwise
- * defined for it. Erring toward inclusion where a path is ambiguous: a test file wrongly counted
- * only makes the digest change on a commit that would not have moved the tarball, which is a false
- * refusal an edge can retry past; a shipped file wrongly excluded is a real edge this guard would
- * wave through, which is the failure this whole mechanism exists to prevent.
- */
-const excludedFragments = [
-  '.test.',
-  '.fixture.',
-  '-fixture.',
-  '-fixtures.',
-  '__fixtures__/',
-  '/test/',
-  '/tests/',
-] as const;
-
-/** Whether a `src/`-relative path is a test or fixture file the tarball never ships. */
+/** Test modules are excluded; fixture names and test directories can be public runtime inputs. */
 export function isDigestExcluded(path: string): boolean {
-  return excludedFragments.some((fragment) => path.includes(fragment));
+  return path.includes('.test.');
 }
 
 const skippedDirectories: readonly string[] = ['node_modules'];
 
-/** Every `src/`-relative source file under one workspace, sorted, minus tests and fixtures. */
+/** Every `src/`-relative source file under one workspace, sorted, minus test modules. */
 async function collectSourceFiles(
   root: string,
   accepts: (name: string) => boolean,
@@ -154,7 +130,7 @@ async function isPublishedByPackageSurface(workspace: string, path: string): Pro
 }
 
 /**
- * Every file that goes into one workspace's digest: its `src/` tree (minus tests and fixtures),
+ * Every file that goes into one workspace's digest: its `src/` tree (minus test modules),
  * plus whichever of its declared `additionalSourceRoots` entries actually ship, minus the two
  * exclusions below — the same shape `source.ts`'s `readSourceTree` and `readAdditionalSourceRoots`
  * emit as a package's actual shipped source, narrowed to what changes what a consumer gets.

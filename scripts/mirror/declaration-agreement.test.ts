@@ -259,3 +259,15 @@ export declare namespace TypesOnly { type Inner = number }
     await expect(check).rejects.toThrow('missing-base.json');
   });
 });
+
+test('types fallback arrays retain declaration/runtime agreement checks', async () => {
+  const result = await checkFixture(
+    {
+      'src/a.ts': 'export declare const required: string;\n',
+      'src/b.ts': 'export declare const alternate: string;\n',
+      'src/index.ts': 'export const unrelated = true;\n',
+    },
+    { '.': { types: ['./dist/a.d.ts', './dist/b.d.ts'], default: './dist/index.js' } },
+  );
+  expect(result.findings.map((finding) => finding.missing)).toEqual([['required'], ['alternate']]);
+});

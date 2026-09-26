@@ -34,14 +34,14 @@ async function withTree(
 }
 
 describe('isDigestExcluded', () => {
-  test('excludes tests, fixtures and both plural spellings', () => {
+  test('excludes test modules while retaining potentially public fixture files', () => {
     expect(isDigestExcluded('index.test.ts')).toBe(true);
-    expect(isDigestExcluded('token.fixture.ts')).toBe(true);
-    expect(isDigestExcluded('token-fixture.ts')).toBe(true);
-    expect(isDigestExcluded('tokens-fixtures.ts')).toBe(true);
-    expect(isDigestExcluded('__fixtures__/baseline.png')).toBe(true);
-    expect(isDigestExcluded('lib/test/helper.ts')).toBe(true);
-    expect(isDigestExcluded('lib/tests/helper.ts')).toBe(true);
+    expect(isDigestExcluded('token.fixture.ts')).toBe(false);
+    expect(isDigestExcluded('token-fixture.ts')).toBe(false);
+    expect(isDigestExcluded('tokens-fixtures.ts')).toBe(false);
+    expect(isDigestExcluded('__fixtures__/baseline.png')).toBe(false);
+    expect(isDigestExcluded('lib/test/helper.ts')).toBe(false);
+    expect(isDigestExcluded('lib/tests/helper.ts')).toBe(false);
   });
 
   test('does not exclude ordinary source', () => {
@@ -52,7 +52,7 @@ describe('isDigestExcluded', () => {
 });
 
 describe('collectDigestedFiles', () => {
-  test('reads src/, minus tests and fixtures — no README, no LICENSE', async () => {
+  test('reads source and fixture inputs, excluding test modules and documentation', async () => {
     await withTree(
       {
         LICENSE: 'MIT License\n',
@@ -67,7 +67,10 @@ describe('collectDigestedFiles', () => {
           corvidaeDirectory: 'packages/example',
           workspace: '@lostgradient/example',
         });
-        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
+        expect(files.map((file) => file.path)).toEqual([
+          'src/__fixtures__/data.json',
+          'src/index.ts',
+        ]);
       },
     );
   });
@@ -471,6 +474,35 @@ describe('the guard against the real workspaces', () => {
         await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
         await expect(refusal).rejects.toThrow(dependency);
       }
+    },
+  );
+});
+
+test('exported provider test directories participate in the source digest', async () => {
+  await withTree(
+    {
+      'packages/operative/src/providers/test/index.ts': 'export const provider = 1;\n',
+      'packages/operative/src/test/prompt-injection-fixtures.ts': 'export const fixtures = 1;\n',
+      'packages/operative/src/providers/test/mock-clients.ts': 'export const client = 1;\n',
+    },
+    async (root) => {
+      const scope = {
+        corvidaeRoot: root,
+        corvidaeDirectory: 'packages/operative',
+        workspace: '@lostgradient/operative',
+      };
+      const files = await collectDigestedFiles(scope);
+      expect(files.map((file) => file.path)).toEqual([
+        'src/providers/test/index.ts',
+        'src/providers/test/mock-clients.ts',
+        'src/test/prompt-injection-fixtures.ts',
+      ]);
+      const before = hashDigestedFiles(files);
+      await Bun.write(
+        join(root, 'packages/operative/src/providers/test/mock-clients.ts'),
+        'export const client = 2;\n',
+      );
+      expect(hashDigestedFiles(await collectDigestedFiles(scope))).not.toBe(before);
     },
   );
 });

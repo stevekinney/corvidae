@@ -96,7 +96,8 @@ function governingDeclaration(condition: string, declarations: ReadonlyMap<strin
 }
 
 function isDeclarationCondition(condition: string): boolean {
-  return condition === 'types' || condition.endsWith('.types');
+  const normalized = condition.replace(/\[\d+\]/g, '');
+  return normalized === 'types' || normalized.endsWith('.types');
 }
 
 /** Every distinct declaration/runtime source pair in one entry whose two modules differ. */
