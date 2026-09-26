@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://corvidae.lostgradient.internal/terminal/evidence.schema.json",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "reportKind",
+    "sourceSha",
+    "runId",
+    "observedAt",
+    "expectedCellIds",
+    "cells",
+    "passed"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reportKind": { "enum": ["runtime", "engine"] },
+    "sourceSha": { "type": "string", "minLength": 7 },
+    "runId": { "type": "string", "minLength": 1 },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "expectedCellIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "cells": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "passed", "observations"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "passed": { "type": "boolean" },
+          "observations": { "type": "array", "items": { "type": "string" } },
+          "versions": { "type": "object", "additionalProperties": { "type": "string" } },
+          "metrics": { "type": "object", "additionalProperties": { "type": "number" } }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "candidates": { "type": "array" },
+    "selectedEngine": { "type": ["object", "null"] },
+    "passed": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

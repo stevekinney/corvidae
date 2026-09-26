@@ -131,7 +131,7 @@
     "lint:fix": "turbo run lint:fix",
     "preflight": "bun install --frozen-lockfile",
     "test": "bun run test:self && turbo run test test:browser-fixtures --concurrency=1",
-    "test:self": "bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts",
+    "test:self": "bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts",
     "typecheck": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && tsc --noEmit && svelte-check --workspace scripts/browser-fixtures --tsconfig ./tsconfig.json --fail-on-warnings && turbo run typecheck",
     "validate": "bun run lint && bun run typecheck && bun run test && bun run coverage && bun run build && bun run format:check && bun run audit",
     "lint:styles": "stylelint \"components/**/src/**/*.{css,svelte}\" \"packages/**/src/**/*.{css,svelte}\" \"applications/**/src/**/*.{css,svelte}\" \"scripts/browser-fixtures/src/**/*.{css,svelte}\"",
