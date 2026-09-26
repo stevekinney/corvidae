@@ -18,6 +18,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { TaskAttemptTransitionEvent } from '../core/events/activity-events.ts';
 import {
   decodeTaskAttemptRecord,
   taskAttemptKey,
@@ -376,6 +377,78 @@ describe('COR-205 durable attempt provenance', () => {
     const serialized = JSON.stringify(result.value);
     expect(serialized).not.toContain(firstAttemptToken);
     expect(serialized).not.toContain(secondAttemptToken);
+  });
+
+  it('workflow event: attempt-by-attempt worker transitions report a cross-build retry indicator (COR-198)', async () => {
+    const storage = new MemoryStorage();
+    const engine = createEngine(storage);
+    // A real `Engine` in place of `minimalServeOptions`'s no-op
+    // `dispatchEvent` stub — everything else `dispatchTaskImpl` reads off
+    // `options.engine` (just `.storage`) behaves identically.
+    const options = { engine, port: 0 } as unknown as ServeOptions;
+    const context = minimalServerContext();
+
+    const transitions: TaskAttemptTransitionEvent[] = [];
+    engine.addEventListener(TaskAttemptTransitionEvent.type, (event) => {
+      transitions.push(event as TaskAttemptTransitionEvent);
+    });
+
+    registerWorker(context, 'w-1', 'test.charge', {
+      deployment: { name: 'checkout', buildId: 'b1', artifactDigest: 'sha256:b1' },
+    });
+    attachSocket(context, 'w-1');
+
+    await dispatchTaskImpl(context, options, {
+      operationId: 'op-cross-build-event',
+      workflowType: 'test',
+      workflowId: 'wf-cross-build-event',
+      activityName: 'test.charge',
+      queue: 'default',
+      input: null,
+    });
+
+    const leased = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-cross-build-event')));
+    if (leased?.state !== 'leased') throw new Error('Expected a leased record');
+    await reassignOrExpireTask(
+      context,
+      options,
+      'op-cross-build-event',
+      leased,
+      'worker-disconnect',
+    );
+    const requeued = decodeRemoteTaskRecord(
+      await storage.get(taskLedgerKey('op-cross-build-event')),
+    );
+    if (requeued?.state !== 'queued') throw new Error('Expected a requeued record');
+
+    context.registry.unregister('w-1');
+    context.workerSockets.delete('w-1');
+    registerWorker(context, 'w-2', 'test.charge', {
+      deployment: { name: 'checkout', buildId: 'b2', artifactDigest: 'sha256:b2' },
+    });
+    const sentToW2 = attachSocket(context, 'w-2');
+    context.registry.releaseReservation('op-cross-build-event');
+    await dispatchTaskImpl(context, options, taskDispatchFromLedgerRecord(requeued), {
+      redispatch: true,
+    });
+
+    expect(transitions).toHaveLength(2);
+    const [first, second] = transitions;
+    expect(first?.attempt).toBe(1);
+    expect(first?.workerSessionId).toBe('w-1');
+    expect(first?.crossBuildRetry).toBe(false);
+    expect(first?.previousExecutionIdentity).toBeUndefined();
+    expect(first?.executionIdentity?.buildId).toBe('b1');
+
+    expect(second?.attempt).toBe(2);
+    expect(second?.workerSessionId).toBe('w-2');
+    expect(second?.crossBuildRetry).toBe(true);
+    expect(second?.previousExecutionIdentity?.buildId).toBe('b1');
+    expect(second?.executionIdentity?.buildId).toBe('b2');
+
+    // Never the raw attempt token (criteria 8 and 10) — only its digest.
+    expect(second?.attemptTokenDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(second?.attemptTokenDigest).toBe(sha256HexSync(extractAttemptToken(sentToW2)));
   });
 
   it('disconnect: worker-disconnect requeue marks the forfeited attempt requeued and releases capacity', async () => {
