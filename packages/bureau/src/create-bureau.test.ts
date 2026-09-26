@@ -14599,6 +14599,15 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         generate: createMockGenerate('Done.'),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
+        // COR-1332: without an explicit stop condition, a mock `generate`
+        // that never returns a tool call still runs to the default 25-step
+        // budget (`DEFAULT_MAXIMUM_STEPS`), so this single run performed 25
+        // real, disk-backed checkpoint/transcript/cursor writes for what is
+        // a one-turn "Done." response. Stopping as soon as there are no
+        // tool calls (the same condition the sibling recovery tests in this
+        // describe block already use) cuts that to the one step this test
+        // actually needs, without changing what it proves.
+        stopWhen: stopWhen.noToolCalls(),
       });
 
       const run = await bureauA.createRun({
@@ -14765,6 +14774,11 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       generate: createMockGenerate('Done.'),
       toolbox: createEmptyToolbox(),
       persistence: textValueStore(new MemoryStorage()),
+      // COR-1332: same cause as the sibling fixes in this describe block —
+      // without this, a mock `generate` with no tool calls still runs to
+      // the default 25-step budget instead of stopping after its one real
+      // turn.
+      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -14825,6 +14839,19 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         generate: createMockGenerate('Done.'),
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
+        // COR-1332: measured attribution (see the issue) found this test's
+        // dominant cost was not the real SQLite session-persistence write
+        // itself, but that each of the two runs ran to the default 25-step
+        // budget (`DEFAULT_MAXIMUM_STEPS`) instead of stopping after its one
+        // real turn, because a mock `generate` that never returns a tool
+        // call does not stop early without an explicit `stopWhen` — the
+        // same cause fixed on the two sibling tests above in this describe
+        // block. That meant up to 50 real disk-backed
+        // checkpoint/transcript/cursor writes across the two runs instead
+        // of 2. `stopWhen.noToolCalls()` (already used by the recovery
+        // tests in this same block) cuts each run to its one real step
+        // without changing what this test proves.
+        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
