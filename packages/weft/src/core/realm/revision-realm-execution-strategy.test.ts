@@ -179,6 +179,56 @@ describe('RevisionRealmExecutionStrategy', () => {
         result: { ok: true, input: 'ordinary-input' },
       });
     });
+
+    it('a resumeWorkflow() call that reaches this id right after cancelling it while PARKED is swallowed, not reported as a failure (correction round 3 regression: cancel-while-parked racing a concurrent signal)', async () => {
+      // Reproduces the race a prior round's fix (gating `#cancelled.add()`
+      // on `#inFlight.has()`) accidentally reopened: `engine.cancel()` calls
+      // `strategy.cancelWorkflow()` synchronously as its very first step and
+      // then awaits several storage round-trips of its own, while a
+      // CONCURRENTLY delivered signal's `engine.signal()` chain needs its own
+      // several storage round-trips before it ever reaches
+      // `strategy.resumeWorkflow()`. `cancelWorkflow()`'s near-synchronous
+      // realm release (`#executions.delete` happens immediately) almost
+      // always lands first, so a real concurrent cancel+signal pair for a
+      // PARKED workflow routinely produces exactly the ordering this test
+      // drives directly: `cancelWorkflow()` completes, THEN a
+      // `resumeWorkflow()` call arrives for the same, already-torn-down id.
+      // Before this round's fix, that call fell through to "no revision
+      // realm assigned" — an outbound `failed` message that (via
+      // `failWorkflow`'s own storage race with `terminateWorkflow`'s) could
+      // durably overwrite a workflow's status from `cancelled` to `failed`.
+      const { strategy, messages } = newStrategy();
+      const workflowId = 'wf-cancel-parked-races-resume';
+
+      strategy.startWorkflow({
+        workflowId,
+        revision: REVISION,
+        workflowType: ORDER_WORKFLOW_NAME,
+        input: 'input',
+        checkpoint: new ArrayBuffer(0),
+      });
+      await waitForCondition(() => messages.length === 1, {
+        label: 'parked on signal-wait',
+      });
+      expect(messages[0]?.type).toBe('checkpoint');
+
+      // Cancel while PARKED — no turn in flight for this id (see the
+      // `#inFlight` field's own doc) — then immediately drive the
+      // `resumeWorkflow()` call a racing, concurrently-delivered signal
+      // would otherwise have produced moments later.
+      strategy.cancelWorkflow(workflowId);
+      const messagesBeforeRace = [...messages];
+      strategy.resumeWorkflow({
+        workflowId,
+        checkpoint: new ArrayBuffer(0),
+        operationResult: { status: 'completed', value: 'go' },
+      });
+
+      // No new message at all — least of all a `failed` one — for a
+      // workflow the engine already recorded (or is in the middle of
+      // recording) as cancelled.
+      expect(messages).toEqual(messagesBeforeRace);
+    });
   });
 
   describe('dispatch reclaims a crashed realm (COR-249 mid-turn Worker crash recovery)', () => {

@@ -47,14 +47,31 @@
  * realm immediately (drain + terminate), which rejects any turn still
  * in-flight; this strategy recognizes that specific rejection (the workflow
  * id was just cancelled) and emits nothing further for it, matching hardened
- * Worker mode's own `discardOnCancel: true` posture. The ordinary cancel
- * target is a PARKED execution (no turn in flight — a workflow waiting on a
- * signal), which has no pending rejection to swallow at all; `cancelWorkflow`
- * only records the cancel-swallow (`#cancelled`) when `#inFlight` confirms a
- * turn is genuinely pending for that id, so a cancel-while-parked cannot
- * leave a permanent entry that a later, unrelated execution reusing the same
- * workflow id could mistake for its own cancellation (see `#inFlight`'s and
- * `#cancelled`'s own docs).
+ * Worker mode's own `discardOnCancel: true` posture. `cancelWorkflow` marks
+ * the id cancel-swallowed (`#cancelled`) unconditionally — whether a turn was
+ * genuinely in flight (the pending `dispatchTurn` rejection this swallows) or
+ * the execution was merely PARKED (no turn in flight — a workflow waiting on
+ * a signal, the ordinary cancel target) — exactly mirroring
+ * `WorkerExecutionOwnership.markCancelled`'s own both-branches convention.
+ * A PARKED cancel's `#cancelled` entry has no in-flight rejection to consume
+ * it, so it instead swallows the next thing that DOES race it: a
+ * concurrently-delivered signal whose `resumeWorkflow()` call reaches this
+ * strategy after `cancelWorkflow()` already deleted `#executions` for that
+ * id (real concurrent-request pattern — `engine.cancel()` calls
+ * `strategy.cancelWorkflow()` synchronously as its first step, while
+ * `engine.signal()`'s multi-await path reaches `resumeWorkflow()` only after
+ * several storage round-trips, so cancel's near-synchronous release almost
+ * always lands first). Without the unconditional mark, that race's
+ * `resumeWorkflow()` call would fall through to "no revision realm assigned"
+ * and could durably record the workflow `failed` instead of `cancelled` (see
+ * `resumeWorkflow`'s own doc). A stale `#cancelled` (or `#inFlight`) entry
+ * from an OLD execution of a reused workflow id is instead cleared by
+ * `startWorkflow()` itself resetting both sets for that id before dispatching
+ * a fresh execution — exactly `WorkerExecutionOwnership.resetWorkflow()`'s
+ * own precedent, which `WorkerExecutionStrategy.startWorkflow()` already
+ * calls unconditionally before every dispatch — so a permanent entry can
+ * never poison a later, unrelated execution that reuses the same id (see
+ * `#inFlight`'s and `#cancelled`'s own docs).
  *
  * @module core/realm/revision-realm-execution-strategy
  */
@@ -123,39 +140,39 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
   /**
    * Workflow ids with a `#dispatch` call currently awaiting
    * `realm.dispatchTurn(...)` — i.e. a turn genuinely in flight for that id
-   * right now. `cancelWorkflow()` consults this before adding to
-   * `#cancelled` below: cancelling a PARKED execution (no turn in flight —
-   * the ordinary case, a workflow waiting on a signal) has no pending
-   * rejection to swallow, so it must not add an entry here either, or a
-   * stale entry would sit forever (nothing else ever removes it) and could
-   * later poison an unrelated execution that reuses the same workflow id
-   * (see `#cancelled`'s own doc).
+   * right now. Purely descriptive bookkeeping now (nothing branches on it):
+   * `#dispatch`'s `finally` always removes an id's entry the moment its own
+   * dispatch settles, and `startWorkflow()` defensively clears any entry for
+   * a workflow id it is about to reuse (see `#cancelled`'s doc for why that
+   * reset exists).
    */
   readonly #inFlight = new Set<string>();
   /**
-   * Workflow ids `cancelWorkflow()` just released the realm for WHILE a turn
-   * was in flight for them — that turn's resulting rejection is expected and
-   * swallowed by `#dispatch`'s catch block rather than reported as a
-   * failure. Entries are single-use: `#dispatch`'s catch block (the
-   * swallowed rejection itself) or `resumeWorkflow`'s "no execution" branch
-   * (a later call for the same, already-torn-down id) removes the one entry
-   * cancelling that execution added. Only ever added when `#inFlight`
-   * confirms a turn is actually pending — see that set's doc for why a
-   * cancel-while-parked must never add here, and `#dispatch`'s `finally`
-   * for why `#inFlight` itself cannot go stale the same way.
+   * Workflow ids `cancelWorkflow()` has released the realm for — added
+   * UNCONDITIONALLY, whether a turn was genuinely in flight for that id (the
+   * pending `dispatchTurn` rejection this then swallows) or the execution
+   * was merely PARKED (no turn in flight), mirroring
+   * `WorkerExecutionOwnership.markCancelled`'s own both-branches convention.
+   * Consumed (single-use) by whichever of these two call sites reaches this
+   * id first: `#dispatch`'s catch block, for the in-flight case's expected
+   * rejection; or `resumeWorkflow`'s "no execution" branch, for a
+   * concurrently-delivered signal whose `resumeWorkflow()` call races
+   * `cancelWorkflow()`'s near-synchronous `#executions` deletion and loses
+   * (a real concurrent-request pattern, not a contrived input — see this
+   * module's own doc). Either consumer swallowing its call silently is
+   * exactly the point: the engine already recorded (or is in the middle of
+   * recording) the cancellation, so nothing here should ever emit a `failed`
+   * message for it.
    *
-   * This is still keyed by the bare workflow id, not a per-dispatch token —
-   * safe only because `cancelWorkflow`'s synchronous
-   * `releaseAfterExecution()` call settles (rejects) the in-flight
-   * `dispatchTurn` promise before returning, so the OLD execution's
-   * `#dispatch` catch block and its `finally` (which clears `#inFlight`)
-   * always run to completion on a microtask ahead of any NEW
-   * `startWorkflow()` the caller issues afterward for the same, now-freed
-   * id — that new call's own `#startOnRealm` has an `await
-   * acquireForExecution(...)` before it ever reaches `#inFlight.add`, so it
-   * cannot race the old cleanup. A per-dispatch/execution-token key would
-   * remove this ordering dependency entirely; not adopted here because
-   * nothing in this file requires it independent of the reported defect.
+   * An entry an execution's own cancel added is never removed by anything
+   * OTHER than one of those two consumers, so a workflow id cancelled while
+   * PARKED (no consumer ever arrives for it) would otherwise sit here
+   * forever. `startWorkflow()` is what actually prevents that from poisoning
+   * a LATER, unrelated execution that reuses the same id: it resets both
+   * this set and `#inFlight` for that id before dispatching, exactly
+   * `WorkerExecutionOwnership.resetWorkflow()`'s own precedent (which
+   * `WorkerExecutionStrategy.startWorkflow()` already calls unconditionally
+   * before every dispatch).
    */
   readonly #cancelled = new Set<string>();
   readonly #disposal: WorkerExecutionDisposal;
@@ -201,6 +218,13 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
     deadline?: number;
     headers?: [string, string][];
   }): void {
+    // Unconditional, mirroring `WorkerExecutionOwnership.resetWorkflow()`'s
+    // own precedent for the same reason: a workflow id being (re)started
+    // here may be reusing an id an earlier, unrelated execution left a
+    // `#cancelled` entry for (cancelled while PARKED — see that set's doc).
+    // Clearing both sets before this fresh execution's own bookkeeping
+    // begins is what keeps such an entry from poisoning it.
+    this.#resetWorkflow(parameters.workflowId);
     const revision = parameters.revision ?? this.#getWorkflowRevisionPin(parameters.workflowId);
     if (revision === undefined) {
       this.#emit(
@@ -247,16 +271,25 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
     const execution = this.#executions.get(workflowId);
     if (!execution) return;
     this.#executions.delete(workflowId);
-    // Only mark the id cancel-swallowed when a turn is genuinely in flight
-    // for it right now (see `#inFlight`'s doc). Cancelling a PARKED
-    // execution — no `#dispatch` call pending — has no rejection to
-    // swallow, so it must not add a permanent `#cancelled` entry that a
-    // future execution reusing this same workflow id could later delete
-    // and mistake for its own cancellation.
-    if (this.#inFlight.has(workflowId)) {
-      this.#cancelled.add(workflowId);
-    }
+    // Unconditional for both the in-flight and PARKED cases (see this
+    // module's and `#cancelled`'s own docs for why): whichever of
+    // `#dispatch`'s catch block or `resumeWorkflow`'s "no execution" branch
+    // reaches this id next consumes this single-use entry and swallows its
+    // call instead of reporting a failure the engine has already recorded a
+    // cancellation for.
+    this.#cancelled.add(workflowId);
     this.#registry.releaseAfterExecution(execution.name, execution.revision, execution.realm);
+  }
+
+  /**
+   * Clears any stale `#cancelled`/`#inFlight` entry a PRIOR, unrelated
+   * execution of this same workflow id left behind, before a fresh
+   * execution for it begins. See `#cancelled`'s doc for why such an entry
+   * can otherwise persist indefinitely.
+   */
+  #resetWorkflow(workflowId: string): void {
+    this.#cancelled.delete(workflowId);
+    this.#inFlight.delete(workflowId);
   }
 
   [Symbol.dispose](): void {

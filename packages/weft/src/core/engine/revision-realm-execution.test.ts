@@ -357,4 +357,78 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
       await engine2[Symbol.asyncDispose]();
     }
   });
+
+  it('a resumeWorkflow() call that reaches this id right after cancelling it while PARKED leaves the workflow cancelled, not failed (correction round 3 regression, P-COR-29 criterion 7)', async () => {
+    // `engine.cancel()` calls `strategy.cancelWorkflow()` synchronously as its
+    // very first step (`termination/complete.ts`), then awaits two storage
+    // reads of its own BEFORE it durably commits the `cancelled` status. A
+    // CONCURRENTLY delivered `engine.signal()` for the same, PARKED workflow
+    // needs its own several storage round-trips before its chain ever
+    // reaches `strategy.resumeWorkflow()` — so a real concurrent cancel+
+    // signal pair routinely delivers that `resumeWorkflow()` call for the
+    // same, already-torn-down id WHILE cancel's own commit is still
+    // in-flight, not after it lands. Before this round's fix (a prior
+    // round's `#cancelled.add()` gated on `#inFlight.has()`, which never
+    // records a cancel-while-PARKED at all), that racing call fell through
+    // the strategy's "no revision realm assigned" branch and emitted an
+    // outbound `failed` message whose own `failWorkflow` write — needing
+    // only ONE storage read versus `terminateWorkflow`'s TWO — could reach
+    // the per-workflow serialized write queue first and durably record the
+    // workflow `failed` before cancel's own write lands, dropping its cancel
+    // handlers and leaving `handle.result()` reject with a bogus "no
+    // revision realm assigned" error instead of surfacing cancellation.
+    //
+    // Reproduced here WITHOUT any timing margin: `strategy.cancelWorkflow()`
+    // and `strategy.resumeWorkflow()` are invoked back to back, synchronously,
+    // through the REAL strategy the engine itself constructed and wired —
+    // exactly `engine.cancel()`'s own first step, immediately followed by
+    // the racing signal's `resumeWorkflow()` call, both BEFORE `engine.cancel()`
+    // itself ever runs. This gives a would-be spurious failure the earliest
+    // possible start against cancel's own (not yet started) storage reads —
+    // deterministic under `MemoryStorage`'s synchronous, non-macrotask
+    // resolution, not a probabilistic race.
+    const revision = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'cancel-race'));
+    const configByRevision = new Map<string, RevisionRealmConfig>([
+      [revision, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+    ]);
+    const { engine } = newRealmEngine(configByRevision);
+    try {
+      await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revision, 'cancel-race');
+      const workflowId = 'r2e-cancel-race-a';
+      const handle = await engine.start(ORDER_WORKFLOW_NAME, 'input', { id: workflowId });
+      await waitForSignalWaiters(engine, 1);
+
+      const strategy = getInternals(engine).strategy;
+      // Simulates `engine.cancel()`'s own synchronous first step, run
+      // directly so the racing `resumeWorkflow()` call immediately below can
+      // be injected before `engine.cancel()`'s own async work ever starts.
+      strategy.cancelWorkflow(workflowId);
+      // The racing, concurrently-delivered signal's `resumeWorkflow()` call
+      // for the same, now-torn-down id — landing at the earliest possible
+      // moment, immediately after `cancelWorkflow()`'s own `#executions`
+      // deletion.
+      strategy.resumeWorkflow({
+        workflowId,
+        checkpoint: new ArrayBuffer(0),
+        operationResult: { status: 'completed', value: 'go' },
+      });
+
+      // NOW run the real cancellation to completion — its own
+      // `strategy.cancelWorkflow()` call is a no-op this time (already torn
+      // down above), so this exercises exactly `engine.cancel()`'s own
+      // storage reads and terminal commit, racing whatever the injected
+      // `resumeWorkflow()` call may have kicked off.
+      await engine.cancel(workflowId);
+
+      // The workflow's durable status must read `cancelled` — never
+      // overwritten to `failed` by the racing call's spurious failure — and
+      // its handle must reject with the real cancellation, not a bogus "no
+      // revision realm assigned" error.
+      const finalState = await engine.get(workflowId);
+      expect(finalState?.status).toBe('cancelled');
+      await expect(handle.result()).rejects.toThrow(/cancelled/i);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
 });
