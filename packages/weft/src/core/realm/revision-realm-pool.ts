@@ -1,28 +1,71 @@
 /**
- * A pool of {@link WorkerRealm} instances scoped to one immutable artifact
- * revision (COR-249).
+ * A pool of {@link RevisionRealm} instances scoped to one immutable artifact
+ * revision (COR-249, transport selection extended by COR-246).
  *
  * "One realm pool per immutable artifact revision" (COR-249's own issue
  * text) means every realm this pool ever warms is fixed, at construction,
  * to one `workerUrl`, one `expectedWorkflowTypes` list, and one
- * `expectedArtifactDigest` — never place unrelated revisions in one Worker.
- * A `RevisionRealmRegistry` (COR-249) is what owns one `RevisionRealmPool`
- * per `(name, revision)` and routes a start to the correct one.
+ * `expectedArtifactDigest` — never place unrelated revisions in one Worker
+ * (or child process). A `RevisionRealmRegistry` (COR-249) is what owns one
+ * `RevisionRealmPool` per `(name, revision)` and routes a start to the
+ * correct one.
  *
- * Each `WorkerRealm` in this pool serves exactly one execution end to end
- * (see `worker-realm.ts`'s module doc): `acquireForExecution` warms (or
- * reuses an idle, already-`Ready`) realm and activates it for a new
- * execution's `executionToken`; `releaseAfterExecution` drains and
- * terminates it once that execution finishes, "terminate drained Workers."
- * A pool does not reuse a realm across two different executions — each
- * `acquireForExecution` either takes an idle `Ready` realm this pool warmed
- * ahead of demand, or warms a fresh one on the spot, bounded by
+ * Every realm this pool warms is also fixed to one `transport`: `'worker'`
+ * (a real Bun `Worker`, the default — unchanged from before COR-246) or
+ * `'child-process'` (a real `Bun.spawn` IPC child process). `workerUrl`
+ * doubles as the child-process transport's bootstrap script path — both
+ * transports speak the identical realm protocol over a different wire, so
+ * one field naming "the bootstrap this pool spawns" is enough; see
+ * `ChildProcessRealmOptions.scriptPath`'s own doc for why a `string | URL`
+ * transport-selection URL is the correct shape regardless of which real
+ * process type ultimately runs it.
+ *
+ * Each realm in this pool serves exactly one execution end to end (see
+ * `worker-realm.ts`'s and `child-process-realm.ts`'s module docs):
+ * `acquireForExecution` warms (or reuses an idle, already-`Ready`) realm and
+ * activates it for a new execution's `executionToken`; `releaseAfterExecution`
+ * drains and terminates it once that execution finishes, "terminate drained
+ * Workers." A pool does not reuse a realm across two different executions —
+ * each `acquireForExecution` either takes an idle `Ready` realm this pool
+ * warmed ahead of demand, or warms a fresh one on the spot, bounded by
  * `concurrency`.
  *
  * @module core/realm/revision-realm-pool
  */
 
+import type { ChildProcessRealm, ChildProcessRealmOptions } from './child-process-realm.ts';
+import type { RevisionRealmDiagnosticsEntry } from './revision-realm-diagnostics.ts';
+import type { RevisionRealm } from './revision-realm.ts';
 import { WorkerRealm, type WorkerRealmOptions } from './worker-realm.ts';
+
+/**
+ * `child-process-realm.ts` uses `Bun.spawn` and `node:url`, neither of which
+ * exists in a browser -- and `RevisionRealmPool` is reachable from this
+ * package's root `Engine` export, which the root's own browser-bundle
+ * portability gate (`src/root-testing-surface.test.ts`, COR-1192) builds and
+ * scans. A STATIC `import` of `child-process-realm.ts` here would bundle
+ * that code into the browser build regardless of whether `transport:
+ * 'child-process'` is ever actually selected at runtime. Loading it through
+ * `import()` with a specifier held in a variable (not a string literal
+ * `import()` call, which Bun's bundler still resolves and inlines the same
+ * way a static `import` does -- confirmed directly against Bun 1.4.2)
+ * is what keeps the bundler from tracing into it at all: the browser build
+ * emits an unresolved runtime `import(...)` call instead of inlining the
+ * module, so `Bun.spawn` never appears in that bundle's output. Type-only
+ * imports above are erased entirely and carry no such risk.
+ */
+const CHILD_PROCESS_REALM_MODULE_SPECIFIER = './child-process-realm.ts';
+let cachedChildProcessRealmConstructor: Promise<typeof ChildProcessRealm> | undefined;
+
+function loadChildProcessRealmConstructor(): Promise<typeof ChildProcessRealm> {
+  cachedChildProcessRealmConstructor ??= import(CHILD_PROCESS_REALM_MODULE_SPECIFIER).then(
+    (module_: { ChildProcessRealm: typeof ChildProcessRealm }) => module_.ChildProcessRealm,
+  );
+  return cachedChildProcessRealmConstructor;
+}
+
+/** Which real transport a `RevisionRealmPool` spawns realms over. Omitted (or `'worker'`) is the unchanged default — see the module doc. */
+export type RevisionRealmTransport = 'worker' | 'child-process';
 
 export interface RevisionRealmPoolOptions {
   readonly workflowRevision: string;
@@ -35,11 +78,16 @@ export interface RevisionRealmPoolOptions {
   readonly realmReadyTimeoutMs?: number;
   readonly maxProtocolMessageBytes?: number;
   readonly workerName?: string;
+  /** `'worker'`-transport-only. Ignored under `'child-process'`. */
   readonly smol?: boolean;
+  /** Selects the real transport every realm this pool warms is spawned over. Defaults to `'worker'` — see the module doc. */
+  readonly transport?: RevisionRealmTransport;
+  /** `'child-process'`-transport-only. Ignored under `'worker'`. See `ChildProcessRealmOptions.env`'s own doc. */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export type RevisionRealmAcquireOutcome =
-  | { ok: true; realm: WorkerRealm }
+  | { ok: true; realm: RevisionRealm }
   | {
       ok: false;
       reason: 'revision-not-active' | 'realm-ready-handshake-failed' | 'pool-at-capacity';
@@ -47,15 +95,17 @@ export type RevisionRealmAcquireOutcome =
     };
 
 /**
- * One revision's pool of {@link WorkerRealm} instances. `isReferenced` (a
- * {@link import('./realm-lifecycle.ts').RealmLifecycleDependencies}
- * dependency every realm this pool constructs shares) is this pool's own
- * "am I still active or does a realm still have work" check — see
- * {@link RevisionRealmPool.isReferenced}, not a per-realm concept.
+ * One revision's pool of {@link RevisionRealm} instances — either transport
+ * (`WorkerRealm` or `ChildProcessRealm`), fixed at construction; see the
+ * module doc. `isReferenced` (a {@link
+ * import('./realm-lifecycle.ts').RealmLifecycleDependencies} dependency
+ * every realm this pool constructs shares) is this pool's own "am I still
+ * active or does a realm still have work" check — see {@link
+ * RevisionRealmPool.isReferenced}, not a per-realm concept.
  */
 export class RevisionRealmPool {
   readonly #options: RevisionRealmPoolOptions;
-  readonly #realms = new Set<WorkerRealm>();
+  readonly #realms = new Set<RevisionRealm>();
   #revisionActive = true;
   #disposed = false;
   /**
@@ -70,6 +120,18 @@ export class RevisionRealmPool {
    * an acquisition genuinely still has a claim on it.
    */
   #inFlightAcquisitions = 0;
+  /**
+   * Count of `#warmNewRealmIfUnderCapacity` calls currently suspended
+   * resolving the child-process transport's dynamic `import()` (COR-246),
+   * reserved BEFORE that await so a concurrent call's own capacity check
+   * sees it — otherwise two concurrent `acquireForExecution` calls could
+   * both pass the capacity gate while the first's realm is still being
+   * constructed and never added to `#realms` yet. Also included in {@link
+   * isDrained} for the identical reason `#inFlightAcquisitions` is: a realm
+   * under construction is not yet in `#realms` and must not let this pool
+   * be reclaimed out from under it.
+   */
+  #warmingReservations = 0;
 
   constructor(options: RevisionRealmPoolOptions) {
     this.#options = options;
@@ -89,7 +151,20 @@ export class RevisionRealmPool {
       return { ok: false, reason: 'revision-not-active' };
     }
 
-    const realm = this.#takeIdleReadyRealm() ?? this.#warmNewRealmIfUnderCapacity();
+    // Branching on transport BEFORE the `??` (rather than inside one shared
+    // async warm method) matters for more than style: the `'worker'` branch
+    // below is a plain synchronous call, so when it is taken, this
+    // expression never touches `await` at all and `acquireForExecution`
+    // does not suspend here -- preserving the exact synchronous
+    // realm-construction-then-`#realms.add()` ordering
+    // `revision-realm-pool.test.ts`'s "event-ordering proof (ordinary JS
+    // run-to-completion semantics)" tests depend on. Only the
+    // `'child-process'` branch's real dynamic import needs to suspend.
+    const realm =
+      this.#takeIdleReadyRealm() ??
+      ((this.#options.transport ?? 'worker') === 'worker'
+        ? this.#warmNewWorkerRealmIfUnderCapacity()
+        : await this.#warmNewChildProcessRealmIfUnderCapacity());
     if (!realm) {
       return { ok: false, reason: 'pool-at-capacity' };
     }
@@ -141,7 +216,7 @@ export class RevisionRealmPool {
    * this slice (see the module doc). A no-op for a realm this pool does not
    * own (already released, or crashed and self-removed).
    */
-  releaseAfterExecution(realm: WorkerRealm): void {
+  releaseAfterExecution(realm: RevisionRealm): void {
     if (!this.#realms.has(realm)) return;
     if (realm.lifecycle.state === 'active') realm.beginDrain();
     if (realm.lifecycle.state === 'draining') realm.terminate();
@@ -149,7 +224,7 @@ export class RevisionRealmPool {
   }
 
   /** Drop a realm that crashed mid-execution from this pool's bookkeeping, without attempting to drain/terminate it again (its own crash handling already did that). */
-  forgetCrashedRealm(realm: WorkerRealm): void {
+  forgetCrashedRealm(realm: RevisionRealm): void {
     this.#realms.delete(realm);
   }
 
@@ -193,6 +268,23 @@ export class RevisionRealmPool {
   }
 
   /**
+   * Bounded, per-realm diagnostics snapshot for every realm this pool
+   * currently tracks (idle + active + draining) — state, activation
+   * generation, restart count, and in-flight turn count (COR-243). See
+   * {@link import('./revision-realm-diagnostics.ts').RevisionRealmDiagnosticsEntry}'s
+   * own doc for field semantics. `RevisionRealmRegistry.listDiagnostics`
+   * composes this per `(name, revision)` for `weft.realms.diagnostics`.
+   */
+  diagnostics(): readonly RevisionRealmDiagnosticsEntry[] {
+    return [...this.#realms].map((realm) => ({
+      state: realm.lifecycle.state,
+      realmGeneration: realm.activation?.realmGeneration ?? null,
+      restartCount: realm.lifecycle.restartCount,
+      pendingTurnCount: realm.pendingTurnCount,
+    }));
+  }
+
+  /**
    * True once nothing references this revision any more: it is not the
    * active pointer, no realm is mid-execution, and no acquisition is still
    * mid-handshake for it. This is the point at which a {@link
@@ -205,7 +297,12 @@ export class RevisionRealmPool {
    * realm a caller still has a live claim on.
    */
   get isDrained(): boolean {
-    return !this.#revisionActive && this.activeRealmCount === 0 && this.#inFlightAcquisitions === 0;
+    return (
+      !this.#revisionActive &&
+      this.activeRealmCount === 0 &&
+      this.#inFlightAcquisitions === 0 &&
+      this.#warmingReservations === 0
+    );
   }
 
   /** Whether this pool still considers its revision referenced — the {@link import('./realm-lifecycle.ts').RealmLifecycleDependencies.isReferenced} every realm this pool constructs is given. Deliberately excludes `activeExecutionRealms` from its own reasoning: counting the realm asking the question would make an active revision's own realms permanently "referenced" even after the revision goes inactive, and a realm can never legitimately restart mid-drain regardless (see `markInactive`, which only ever discards *idle* realms). */
@@ -220,17 +317,49 @@ export class RevisionRealmPool {
     this.#realms.clear();
   }
 
-  #takeIdleReadyRealm(): WorkerRealm | undefined {
+  #takeIdleReadyRealm(): RevisionRealm | undefined {
     for (const realm of this.#realms) {
       if (realm.lifecycle.state === 'ready') return realm;
     }
     return undefined;
   }
 
-  #warmNewRealmIfUnderCapacity(): WorkerRealm | undefined {
-    if (this.#realms.size >= this.#options.concurrency) return undefined;
-    const realmOptions: WorkerRealmOptions = {
-      workerUrl: this.#options.workerUrl,
+  /** The `'worker'`-transport warm path: unchanged from before COR-246, still fully synchronous. */
+  #warmNewWorkerRealmIfUnderCapacity(): RevisionRealm | undefined {
+    if (this.#realms.size + this.#warmingReservations >= this.#options.concurrency) {
+      return undefined;
+    }
+    const realm = new WorkerRealm(this.#buildWorkerRealmOptions());
+    this.#realms.add(realm);
+    return realm;
+  }
+
+  /** The `'child-process'`-transport warm path (COR-246): the only one that needs the dynamic `import()` and its `#warmingReservations` capacity guard — see both members' own docs. */
+  async #warmNewChildProcessRealmIfUnderCapacity(): Promise<RevisionRealm | undefined> {
+    if (this.#realms.size + this.#warmingReservations >= this.#options.concurrency) {
+      return undefined;
+    }
+    this.#warmingReservations += 1;
+    try {
+      const ChildProcessRealmConstructor = await loadChildProcessRealmConstructor();
+      const realm = new ChildProcessRealmConstructor(this.#buildChildProcessRealmOptions());
+      this.#realms.add(realm);
+      return realm;
+    } finally {
+      this.#warmingReservations -= 1;
+    }
+  }
+
+  #sharedRealmOptions(): {
+    expectedWorkflowTypes: readonly string[];
+    isReferenced: () => boolean;
+    maxRestarts: number;
+    expectedArtifactDigest?: string;
+    realmReadyTimeoutMs?: number;
+    maxProtocolMessageBytes?: number;
+    workerName?: string;
+  } {
+    return {
       expectedWorkflowTypes: this.#options.expectedWorkflowTypes,
       isReferenced: () => this.isReferenced(),
       maxRestarts: this.#options.maxRestarts ?? 0,
@@ -244,10 +373,22 @@ export class RevisionRealmPool {
         ? {}
         : { maxProtocolMessageBytes: this.#options.maxProtocolMessageBytes }),
       ...(this.#options.workerName === undefined ? {} : { workerName: this.#options.workerName }),
+    };
+  }
+
+  #buildWorkerRealmOptions(): WorkerRealmOptions {
+    return {
+      workerUrl: this.#options.workerUrl,
+      ...this.#sharedRealmOptions(),
       ...(this.#options.smol === undefined ? {} : { smol: this.#options.smol }),
     };
-    const realm = new WorkerRealm(realmOptions);
-    this.#realms.add(realm);
-    return realm;
+  }
+
+  #buildChildProcessRealmOptions(): ChildProcessRealmOptions {
+    return {
+      scriptPath: this.#options.workerUrl,
+      ...this.#sharedRealmOptions(),
+      ...(this.#options.env === undefined ? {} : { env: this.#options.env }),
+    };
   }
 }

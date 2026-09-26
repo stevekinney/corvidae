@@ -109,6 +109,14 @@ export class WorkerRealm {
   #readyOutcome: RealmReadyOutcome | null = null;
   #readyWaiters: ((outcome: RealmReadyOutcome) => void)[] = [];
   #readyTimeout: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Resolves once the CURRENT `#worker`'s real `close` event fires (COR-246:
+   * "prove ... Worker termination releases its handle" via an observed
+   * OS/thread-level event, not by inferring reclamation from
+   * `worker.terminate()`'s own void return). Reassigned by `#spawnWorker()`
+   * for each fresh Worker instance, mirroring `#worker` itself.
+   */
+  #closePromise!: Promise<void>;
 
   constructor(options: WorkerRealmOptions) {
     this.#options = options;
@@ -270,6 +278,15 @@ export class WorkerRealm {
   }
 
   /**
+   * Resolves once this realm's CURRENT underlying Worker thread has actually
+   * shut down. See `#closePromise`'s own doc, and `child-process-realm.ts`'s
+   * `whenReclaimed` for the analogous child-process-side proof.
+   */
+  async whenReclaimed(): Promise<void> {
+    return this.#closePromise;
+  }
+
+  /**
    * Internal test seam: post a raw message directly to the underlying real
    * Worker, bypassing `dispatchTurn`'s envelope machinery entirely. Used by
    * fixture-worker tests to send the `test-release`/`test-fail` control
@@ -280,6 +297,20 @@ export class WorkerRealm {
    */
   postRawMessageForTesting(message: unknown): void {
     this.#worker.postMessage(message);
+  }
+
+  /**
+   * Internal test seam: feed a message directly into this realm's OWN
+   * inbound message handling, as if it had just arrived over `postMessage`
+   * from the real Worker — the opposite direction of {@link
+   * postRawMessageForTesting}. Lets `realm-conformance.test.ts` exercise the
+   * host-side envelope fencing on an INCOMING `realm-result`/`realm-failure`
+   * message directly (a deliberately mismatched envelope, an arbitrary
+   * result value) without depending on a specific fixture script's own
+   * echo behavior to produce it. Never called from production code.
+   */
+  async receiveRealmMessageForTesting(message: unknown): Promise<void> {
+    return this.#handleMessage(message);
   }
 
   #forceDown(): void {
@@ -315,6 +346,9 @@ export class WorkerRealm {
     const workerOptions: WorkerOptions & { smol?: boolean } = {};
     if (this.#options.smol) workerOptions.smol = true;
     const worker = new Worker(this.#options.workerUrl, workerOptions);
+    this.#closePromise = new Promise((resolve) => {
+      worker.addEventListener('close', () => resolve(), { once: true });
+    });
     worker.addEventListener('message', (event: MessageEvent) => {
       void this.#handleMessage(event.data).catch(() => {});
     });

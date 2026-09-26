@@ -22,8 +22,14 @@
  * @module core/realm/revision-realm-registry
  */
 
-import { RevisionRealmPool, type RevisionRealmAcquireOutcome } from './revision-realm-pool.ts';
-import type { WorkerRealm } from './worker-realm.ts';
+import type { RevisionRealmPoolDiagnostics } from './revision-realm-diagnostics.ts';
+import {
+  RevisionRealmPool,
+  type RevisionRealmAcquireOutcome,
+  type RevisionRealmPoolOptions,
+  type RevisionRealmTransport,
+} from './revision-realm-pool.ts';
+import type { RevisionRealm } from './revision-realm.ts';
 
 export interface RevisionRealmConfig {
   readonly workerUrl: string | URL;
@@ -35,7 +41,12 @@ export interface RevisionRealmConfig {
   readonly realmReadyTimeoutMs?: number;
   readonly maxProtocolMessageBytes?: number;
   readonly workerName?: string;
+  /** `'worker'`-transport-only. Ignored under `'child-process'`. */
   readonly smol?: boolean;
+  /** Selects the real transport this `(name, revision)`'s realms are spawned over. Defaults to `'worker'` (COR-246; unchanged from before this option existed). */
+  readonly transport?: RevisionRealmTransport;
+  /** `'child-process'`-transport-only. Ignored under `'worker'`. See `ChildProcessRealmOptions.env`'s own doc. */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export const DEFAULT_REVISION_REALM_CONCURRENCY = 4;
@@ -60,7 +71,14 @@ export class RevisionRealmRegistry {
     const existing = byRevision.get(revision);
     if (existing) return existing;
 
-    const pool = new RevisionRealmPool({
+    const pool = new RevisionRealmPool(this.#buildPoolOptions(revision, config));
+    byRevision.set(revision, pool);
+    return pool;
+  }
+
+  /** Assemble one `(name, revision)`'s `RevisionRealmPoolOptions` from its `RevisionRealmConfig`, split out of {@link ensurePool} to keep that method's own cyclomatic complexity under this package's lint ceiling. */
+  #buildPoolOptions(revision: string, config: RevisionRealmConfig): RevisionRealmPoolOptions {
+    return {
       workflowRevision: revision,
       workerUrl: config.workerUrl,
       expectedWorkflowTypes: config.expectedWorkflowTypes,
@@ -77,9 +95,9 @@ export class RevisionRealmRegistry {
         : { maxProtocolMessageBytes: config.maxProtocolMessageBytes }),
       ...(config.workerName === undefined ? {} : { workerName: config.workerName }),
       ...(config.smol === undefined ? {} : { smol: config.smol }),
-    });
-    byRevision.set(revision, pool);
-    return pool;
+      ...(config.transport === undefined ? {} : { transport: config.transport }),
+      ...(config.env === undefined ? {} : { env: config.env }),
+    };
   }
 
   getPool(name: string, revision: string): RevisionRealmPool | undefined {
@@ -102,7 +120,7 @@ export class RevisionRealmRegistry {
    * `(name, revision)`, and reclaim that pool entirely once it is fully
    * drained — "a drained realm with no pinned work terminates."
    */
-  releaseAfterExecution(name: string, revision: string, realm: WorkerRealm): void {
+  releaseAfterExecution(name: string, revision: string, realm: RevisionRealm): void {
     const pool = this.getPool(name, revision);
     if (!pool) return;
     pool.releaseAfterExecution(realm);
@@ -110,7 +128,7 @@ export class RevisionRealmRegistry {
   }
 
   /** Drop a realm that crashed mid-execution and reclaim the pool if that made it fully drained. */
-  forgetCrashedRealm(name: string, revision: string, realm: WorkerRealm): void {
+  forgetCrashedRealm(name: string, revision: string, realm: RevisionRealm): void {
     const pool = this.getPool(name, revision);
     if (!pool) return;
     pool.forgetCrashedRealm(realm);
@@ -145,6 +163,27 @@ export class RevisionRealmRegistry {
    */
   activeRealmCount(name: string, revision: string): number {
     return this.getPool(name, revision)?.activeRealmCount ?? 0;
+  }
+
+  /**
+   * Bounded diagnostics for every `(name, revision)` pool this registry
+   * currently owns — per-pool active-pointer state plus each pool's own
+   * {@link RevisionRealmPool.diagnostics} snapshot (COR-243). Feeds
+   * `weft.realms.diagnostics`; never returns manifest or contract content.
+   */
+  listDiagnostics(): readonly RevisionRealmPoolDiagnostics[] {
+    const result: RevisionRealmPoolDiagnostics[] = [];
+    for (const [name, byRevision] of this.#pools) {
+      for (const [revision, pool] of byRevision) {
+        result.push({
+          name,
+          revision,
+          revisionActive: pool.isReferenced(),
+          realms: pool.diagnostics(),
+        });
+      }
+    }
+    return result;
   }
 
   /** Dispose every pool this registry owns, discarding every realm regardless of state. */

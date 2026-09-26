@@ -11,6 +11,43 @@
 /**
  * Current RemoteWorker wire protocol version.
  *
+ * **Version 8** (Automatic Keepalive, Heartbeat Details, and Cancellation
+ * Reason — COR-226, COR-223) adds four OPTIONAL fields across three existing
+ * messages:
+ *
+ *   - `activityHeartbeat.details` — mirrors {@link
+ *     import('../core/types.ts').ActivityContext.heartbeat}'s `details`
+ *     argument for a worker-executed activity. The server persists it as the
+ *     attempt's `lastHeartbeatDetails` and never validates it beyond "valid
+ *     JSON within the configured payload size limit" — the same bound
+ *     `taskResult` values already carry.
+ *   - `task.visibilityTimeout` — the lease duration this dispatch was claimed
+ *     with, so {@link import('./index.ts').RemoteWorker} can derive its
+ *     automatic per-attempt keepalive interval from it exactly as {@link
+ *     import('./long-poll.ts').PolledTask.visibilityTimeout} already lets
+ *     `LongPollWorker` do. Before v8, `RemoteWorker` sent no per-attempt
+ *     `activityHeartbeat` at all — only `LongPollWorker` did — so a
+ *     long-running WebSocket-dispatched activity whose real duration exceeded
+ *     `visibilityTimeout` had its lease silently expire, get reassigned by
+ *     `scanExpiredTasks`, and execute a SECOND time concurrently. This is a
+ *     correctness fix, not merely new instrumentation.
+ *   - `task.lastHeartbeatDetails` — echoes a redispatched attempt's
+ *     predecessor's `lastHeartbeatDetails` back to the worker so a
+ *     worker-executed activity's context can resume from it, mirroring the
+ *     inline engine's `ActivityContext.lastHeartbeatDetails`.
+ *   - `cancel.reason` — the durably recorded `cancellationReason` a `cancel`
+ *     control is delivering, so the worker's `AbortSignal.reason` and
+ *     reported cancellation error carry the real, operator-supplied reason
+ *     instead of the generic literal `"Task cancelled"` every version before
+ *     v8 always reported.
+ *
+ * This is a version bump, not a negotiated one, for the same reason v5's and
+ * v6's were: a v7 worker silently keeps reporting the generic cancellation
+ * literal and silently never resumes from heartbeat details against a v8
+ * server (every new field is additive and a v7 field-by-field parser ignores
+ * unknown properties), which is exactly the kind of silent regression a clean
+ * protocol break exists to convert into a loud `registerError` instead.
+ *
  * **Version 7** (Correlated Task-Result Rejections) adds two OPTIONAL fields,
  * `operationId` and `attemptToken`, to `protocolError`. They are present
  * exactly when the rejection concerns a specific `taskResult` submission the
@@ -104,7 +141,7 @@
  * const registration = { type: 'register', protocolVersion: REMOTE_WORKER_PROTOCOL_VERSION };
  * ```
  */
-export const REMOTE_WORKER_PROTOCOL_VERSION = 7;
+export const REMOTE_WORKER_PROTOCOL_VERSION = 8;
 
 /**
  * Lowest RemoteWorker protocol version accepted by this package.
@@ -116,7 +153,7 @@ export const REMOTE_WORKER_PROTOCOL_VERSION = 7;
  * const supportsCurrentVersion = REMOTE_WORKER_MIN_PROTOCOL_VERSION === 7;
  * ```
  */
-export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 7;
+export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 8;
 
 /**
  * Highest RemoteWorker protocol version accepted by this package.
@@ -128,7 +165,7 @@ export const REMOTE_WORKER_MIN_PROTOCOL_VERSION = 7;
  * const canUseRequestedVersion = 7 <= REMOTE_WORKER_MAX_PROTOCOL_VERSION;
  * ```
  */
-export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 7;
+export const REMOTE_WORKER_MAX_PROTOCOL_VERSION = 8;
 
 /**
  * Explicit supported RemoteWorker protocol versions.
@@ -149,7 +186,7 @@ export const REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS = [REMOTE_WORKER_PROTOCOL
  * ```ts
  * import type { RemoteWorkerProtocolVersion } from '@lostgradient/weft';
  *
- * const version: RemoteWorkerProtocolVersion = 7;
+ * const version: RemoteWorkerProtocolVersion = 8;
  * ```
  */
 export type RemoteWorkerProtocolVersion =

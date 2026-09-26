@@ -1,6 +1,8 @@
+import type { JSONValue } from '../../core/json.ts';
 import {
   buildClaimAttemptRecordWrite,
   buildCurrentAttemptDispositionWrites,
+  buildTaskAttemptTransitionEvent,
   digestAttemptToken,
 } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
@@ -26,7 +28,10 @@ import {
   currentAttemptFromLedgerRecord,
   type TaskResultAuthorizationFailure,
 } from './task-result-authorization.ts';
-import { taskResultPayloadSizeError } from './task-result-resolution.ts';
+import {
+  activityHeartbeatDetailsPayloadSizeError,
+  taskResultPayloadSizeError,
+} from './task-result-resolution.ts';
 
 const TASK_POLL_RE = /^\/v1\/tasks\/([\w-]+)$/;
 const TASK_RESULT_RE = /^\/v1\/tasks\/([\w-]+)\/result$/;
@@ -323,6 +328,8 @@ function payloadSizeExceededResponse(error: {
 export interface LongPollClaim {
   workerId: string;
   attemptToken: string;
+  /** A PRIOR attempt's recorded heartbeat details (COR-226), echoed back so this (possibly redispatched) attempt can resume from them. */
+  lastHeartbeatDetails?: unknown;
 }
 
 /**
@@ -401,8 +408,27 @@ export async function markTaskClaimedByLongPollWorker(
     lastDispatchedAt: Date.now(),
   });
   recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
+  // COR-198: attempt-by-attempt worker transition.
+  options.engine.dispatchEvent(
+    await buildTaskAttemptTransitionEvent(options.engine.storage, {
+      operationId: task.operationId,
+      workflowId: task.workflowId,
+      activityName: task.activityName,
+      attempt: result.record.attempt,
+      attemptTokenDigest,
+      workerSessionId,
+      executionIdentity: undefined,
+      executionRequirement: result.record.executionRequirement,
+    }),
+  );
 
-  return { workerId: workerSessionId, attemptToken };
+  return {
+    workerId: workerSessionId,
+    attemptToken,
+    ...(result.record.lastHeartbeatDetails !== undefined && {
+      lastHeartbeatDetails: result.record.lastHeartbeatDetails,
+    }),
+  };
 }
 
 export async function handleTaskPollRequest(
@@ -459,6 +485,9 @@ export async function handleTaskPollRequest(
       ...task,
       workerId: claim.workerId,
       attemptToken: claim.attemptToken,
+      ...(claim.lastHeartbeatDetails !== undefined && {
+        lastHeartbeatDetails: claim.lastHeartbeatDetails,
+      }),
       ...(task.workflowExecutionToken !== undefined && {
         workflowExecutionToken: task.workflowExecutionToken,
       }),
@@ -590,6 +619,8 @@ type ValidatedTaskHeartbeat = {
   operationId: string;
   workerId: string | undefined;
   attemptToken: string;
+  /** Heartbeat details this beat carries (COR-226), or `undefined` when the body omitted the field. */
+  details: unknown;
 };
 
 /**
@@ -597,7 +628,9 @@ type ValidatedTaskHeartbeat = {
  * Mirrors {@link validateTaskResultBody}'s shape and strictness — `attemptToken`
  * is required exactly the same way, since this is the same identity fence
  * `authorizeTaskResultForCurrentAttempt` checks for both a completion and a
- * heartbeat.
+ * heartbeat. `details` (COR-226) is unvalidated shape here — the size bound
+ * is enforced by the caller once authorization succeeds, matching
+ * `taskResult`'s own validate-then-size-check ordering.
  */
 function validateTaskHeartbeatBody(
   body: Record<string, unknown>,
@@ -614,6 +647,7 @@ function validateTaskHeartbeatBody(
     operationId,
     workerId: typeof body['workerId'] === 'string' ? body['workerId'] : undefined,
     attemptToken,
+    details: body['details'],
   };
 }
 
@@ -692,8 +726,19 @@ export async function handleTaskHeartbeatRequest(
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  // COR-226: validate `details` at the protocol boundary, same bound and
+  // error shape a `taskResult` value already gets.
+  const detailsError = activityHeartbeatDetailsPayloadSizeError(
+    validated.details,
+    context.payloadSizeMaxBytes,
+  );
+  if (detailsError !== null) {
+    return Response.json({ error: detailsError.message }, { status: 413 });
+  }
+  const details = validated.details as JSONValue | undefined;
+
   if (record !== null && record.state === 'cancelling') {
-    return Response.json({ ok: true, cancelled: true });
+    return Response.json({ ok: true, cancelled: true, reason: record.cancellationReason });
   }
   if (record === null || record.state !== 'leased') {
     // Authorization succeeded (terminal/deadLettered, matched by
@@ -713,6 +758,7 @@ export async function handleTaskHeartbeatRequest(
           attemptToken: validated.attemptToken,
           workerSessionId: record.workerSessionId,
           leaseDurationMilliseconds: record.visibilityTimeoutMilliseconds,
+          ...(details !== undefined ? { details } : {}),
         },
         now,
       ),
@@ -738,6 +784,9 @@ export async function handleTaskHeartbeatRequest(
     return Response.json({
       ok: true,
       cancelled: current !== null && current.state === 'cancelling',
+      ...(current !== null && current.state === 'cancelling'
+        ? { reason: current.cancellationReason }
+        : {}),
     });
   }
 
