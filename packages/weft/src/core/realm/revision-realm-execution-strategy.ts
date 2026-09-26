@@ -143,6 +143,19 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
    * confirms a turn is actually pending — see that set's doc for why a
    * cancel-while-parked must never add here, and `#dispatch`'s `finally`
    * for why `#inFlight` itself cannot go stale the same way.
+   *
+   * This is still keyed by the bare workflow id, not a per-dispatch token —
+   * safe only because `cancelWorkflow`'s synchronous
+   * `releaseAfterExecution()` call settles (rejects) the in-flight
+   * `dispatchTurn` promise before returning, so the OLD execution's
+   * `#dispatch` catch block and its `finally` (which clears `#inFlight`)
+   * always run to completion on a microtask ahead of any NEW
+   * `startWorkflow()` the caller issues afterward for the same, now-freed
+   * id — that new call's own `#startOnRealm` has an `await
+   * acquireForExecution(...)` before it ever reaches `#inFlight.add`, so it
+   * cannot race the old cleanup. A per-dispatch/execution-token key would
+   * remove this ordering dependency entirely; not adopted here because
+   * nothing in this file requires it independent of the reported defect.
    */
   readonly #cancelled = new Set<string>();
   readonly #disposal: WorkerExecutionDisposal;
