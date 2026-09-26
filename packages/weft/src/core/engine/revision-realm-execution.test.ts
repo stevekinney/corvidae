@@ -26,7 +26,11 @@ import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manife
 import { workflowSource } from '../source/index.ts';
 import { workflow, type WorkflowDefinition } from '../types.ts';
 import { copyWorkflowDefinition } from './construction.ts';
-import { ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING, Engine } from './index.ts';
+import {
+  ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING,
+  Engine,
+  getRevisionRealmDiagnostics,
+} from './index.ts';
 import { getInternals } from './internals.ts';
 import { buildRegistrationEntry } from './registration.ts';
 
@@ -234,6 +238,59 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
       // active revision B's realm — never the reverse.
       expect(resultA).toMatchObject({ revision: 'revision-a', input: 'input-a' });
       expect(resultB).toMatchObject({ revision: 'revision-b', input: 'input-b' });
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('weft.realms.diagnostics reports realms mid-execution (COR-243)', async () => {
+    const revision = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'diagnostics'));
+    const configByRevision = new Map<string, RevisionRealmConfig>([
+      [
+        revision,
+        {
+          workerUrl: revisionAWorkerUrl,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+          expectedArtifactDigest: 'r2e-diagnostics-digest',
+          workerName: 'r2e-diagnostics-digest',
+        },
+      ],
+    ]);
+    const { engine } = newRealmEngine(configByRevision);
+    try {
+      expect(getRevisionRealmDiagnostics(engine)).toEqual([]);
+
+      await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revision, 'diagnostics');
+      const handle = await engine.start(ORDER_WORKFLOW_NAME, 'input', {
+        id: 'r2e-diagnostics-order',
+      });
+      await waitForSignalWaiters(engine, 1);
+
+      const pools = getRevisionRealmDiagnostics(engine);
+      expect(pools).toHaveLength(1);
+      expect(pools[0]?.name).toBe(ORDER_WORKFLOW_NAME);
+      expect(pools[0]?.revision).toBe(revision);
+      expect(pools[0]?.revisionActive).toBe(true);
+      expect(pools[0]?.realms).toHaveLength(1);
+      expect(pools[0]?.realms[0]).toMatchObject({
+        state: 'active',
+        restartCount: 0,
+        pendingTurnCount: 0,
+      });
+      expect(pools[0]?.realms[0]?.realmGeneration).not.toBeNull();
+
+      await engine.signal('r2e-diagnostics-order', ORDER_RELEASE_SIGNAL, 'go');
+      await handle.result();
+
+      // The realm drained and terminated (never reused across two
+      // executions — see `RevisionRealmPool`'s own module doc), but the
+      // pool itself is NOT reclaimed: `revision` is still the catalog's
+      // active pointer, so `RevisionRealmPool.isDrained` stays false (see
+      // its own doc — only `markInactive` plus zero active realms reclaims
+      // a pool). The diagnostics entry persists with an empty `realms` list.
+      expect(getRevisionRealmDiagnostics(engine)).toEqual([
+        { name: ORDER_WORKFLOW_NAME, revision, revisionActive: true, realms: [] },
+      ]);
     } finally {
       await engine[Symbol.asyncDispose]();
     }
