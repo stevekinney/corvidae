@@ -66,6 +66,8 @@ export const queryKeys = {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,
   },
   registry: () => ['registry'] as const,
+  /** `weft.realms.diagnostics` (COR-243) — host-wide, no query params. */
+  realms: () => ['realms'] as const,
   retention: () => ['retention'] as const,
   metrics: () => ['metrics'] as const,
   principal: () => ['principal'] as const,

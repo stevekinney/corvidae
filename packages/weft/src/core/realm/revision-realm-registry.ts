@@ -22,6 +22,7 @@
  * @module core/realm/revision-realm-registry
  */
 
+import type { RevisionRealmPoolDiagnostics } from './revision-realm-diagnostics.ts';
 import {
   RevisionRealmPool,
   type RevisionRealmAcquireOutcome,
@@ -162,6 +163,27 @@ export class RevisionRealmRegistry {
    */
   activeRealmCount(name: string, revision: string): number {
     return this.getPool(name, revision)?.activeRealmCount ?? 0;
+  }
+
+  /**
+   * Bounded diagnostics for every `(name, revision)` pool this registry
+   * currently owns — per-pool active-pointer state plus each pool's own
+   * {@link RevisionRealmPool.diagnostics} snapshot (COR-243). Feeds
+   * `weft.realms.diagnostics`; never returns manifest or contract content.
+   */
+  listDiagnostics(): readonly RevisionRealmPoolDiagnostics[] {
+    const result: RevisionRealmPoolDiagnostics[] = [];
+    for (const [name, byRevision] of this.#pools) {
+      for (const [revision, pool] of byRevision) {
+        result.push({
+          name,
+          revision,
+          revisionActive: pool.isReferenced(),
+          realms: pool.diagnostics(),
+        });
+      }
+    }
+    return result;
   }
 
   /** Dispose every pool this registry owns, discarding every realm regardless of state. */

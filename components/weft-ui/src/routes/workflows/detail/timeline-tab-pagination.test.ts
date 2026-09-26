@@ -90,12 +90,19 @@ describe('TimelineTab pagination', () => {
   });
 
   test('a narrowing quick filter resets an out-of-range page', async () => {
+    // Reach page 4 of 4 via jump-to-step rather than three sequential
+    // `Next` clicks: Previous/Next navigation is already exercised by
+    // 'supports Previous, Next, and jump-to-step beyond the threshold'
+    // above, and each intermediate click forces a full re-render of a
+    // 200-row `RunStepTimeline` page that this test's own assertion (the
+    // quick filter's page-reset behavior) does not need. This was the
+    // dominant cost behind this test's runtime — see COR-1321.
     const { getByText, getByRole } = renderTimeline('wf-filtered-pagination', entries(601, 501));
 
     await waitFor(() => expect(getByText('Page 1 of 4')).not.toBeNull());
-    await fireEvent.click(getByRole('button', { name: 'Next' }));
-    await fireEvent.click(getByRole('button', { name: 'Next' }));
-    await fireEvent.click(getByRole('button', { name: 'Next' }));
+    const jumpInput = getByRole('textbox', { name: 'Jump to step' });
+    await fireEvent.input(jumpInput, { target: { value: '601' } });
+    await fireEvent.keyDown(jumpInput, { key: 'Enter' });
     await waitFor(() => expect(getByText('Page 4 of 4')).not.toBeNull());
 
     await fireEvent.click(getByRole('radio', { name: 'Failed' }));
