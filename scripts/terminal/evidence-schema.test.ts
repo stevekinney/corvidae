@@ -1,4 +1,6 @@
 import { chromium } from '@playwright/test';
+import addFormats from 'ajv-formats';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -56,6 +58,51 @@ describe('terminal evidence schema', () => {
         'engine',
       ),
     ).toEqual([]);
+  });
+
+  test('committed schema rejects hostile candidate structures before semantic checks', async () => {
+    const committedSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+    const validator = new Ajv2020({ allErrors: true, strict: false });
+    addFormats(validator);
+    const validate = validator.compile(committedSchema);
+    const engineReport = {
+      ...validReport,
+      reportKind: 'engine',
+      expectedCellIds: ['@xterm/xterm:launch'],
+      cells: [{ ...validReport.cells[0], id: '@xterm/xterm:launch' }],
+      candidates: [
+        {
+          name: '@xterm/xterm',
+          version: '6.0.0',
+          passed: true,
+          status: 'ready',
+          cells: [validReport.cells[0]],
+        },
+      ],
+      selectedEngine: { name: '@xterm/xterm', version: '6.0.0' },
+    };
+
+    expect(validate(engineReport)).toBe(true);
+    expect(
+      validate({
+        ...engineReport,
+        candidates: [{ ...engineReport.candidates[0], cells: [null] }],
+      }),
+    ).toBe(false);
+    expect(
+      validate({
+        ...engineReport,
+        candidates: [{ ...engineReport.candidates[0], status: 'broken' }],
+      }),
+    ).toBe(false);
+    expect(
+      validate({
+        ...engineReport,
+        candidates: [
+          { ...engineReport.candidates[0], cells: [{ ...validReport.cells[0], extra: true }] },
+        ],
+      }),
+    ).toBe(false);
   });
 
   test('rejects missing, unexpected, and duplicate cells', () => {

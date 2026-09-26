@@ -17,6 +17,8 @@
         "@shikijs/themes": "catalog:",
         "@types/bun": "catalog:",
         "@types/pngjs": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
         "conversationalist": "workspace:*",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
