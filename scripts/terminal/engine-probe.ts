@@ -159,8 +159,9 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     },
   });
   const browser = await chromium.launch({ headless: true });
+  let page: Awaited<ReturnType<typeof browser.newPage>> | undefined;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     page.on('request', (request) => requests.push(`request:${request.method()}:${request.url()}`));
     page.on('response', (response) =>
       diagnostics.push(
