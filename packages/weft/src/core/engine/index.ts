@@ -343,6 +343,10 @@ import {
 } from './workflow-feed.ts';
 
 export type { WorkflowRevisionReferenceCounts } from '../catalog/index.ts';
+export type {
+  RevisionRealmDiagnosticsEntry,
+  RevisionRealmPoolDiagnostics,
+} from '../realm/revision-realm-diagnostics.ts';
 export {
   ActivityReconciliationCapabilityError,
   ActivityReconciliationConflictError,
@@ -407,6 +411,7 @@ export {
 export type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 export type { RecoverAllOptions, RecoveredWorkflowInfo } from './lifecycle.ts';
 export { WorkflowRevisionUnavailableError } from './revision-errors.ts';
+export { getRevisionRealmDiagnostics } from './revision-realm-diagnostics.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
 export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';
 export type { WorkflowClaimHolderStatus } from './workflow-claim-registry.ts';

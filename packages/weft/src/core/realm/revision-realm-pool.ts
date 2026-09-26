@@ -34,6 +34,7 @@
  */
 
 import type { ChildProcessRealm, ChildProcessRealmOptions } from './child-process-realm.ts';
+import type { RevisionRealmDiagnosticsEntry } from './revision-realm-diagnostics.ts';
 import type { RevisionRealm } from './revision-realm.ts';
 import { WorkerRealm, type WorkerRealmOptions } from './worker-realm.ts';
 
@@ -264,6 +265,23 @@ export class RevisionRealmPool {
   /** Total realms this pool currently tracks (idle + active + draining), for diagnostics/tests. */
   get realmCount(): number {
     return this.#realms.size;
+  }
+
+  /**
+   * Bounded, per-realm diagnostics snapshot for every realm this pool
+   * currently tracks (idle + active + draining) — state, activation
+   * generation, restart count, and in-flight turn count (COR-243). See
+   * {@link import('./revision-realm-diagnostics.ts').RevisionRealmDiagnosticsEntry}'s
+   * own doc for field semantics. `RevisionRealmRegistry.listDiagnostics`
+   * composes this per `(name, revision)` for `weft.realms.diagnostics`.
+   */
+  diagnostics(): readonly RevisionRealmDiagnosticsEntry[] {
+    return [...this.#realms].map((realm) => ({
+      state: realm.lifecycle.state,
+      realmGeneration: realm.activation?.realmGeneration ?? null,
+      restartCount: realm.lifecycle.restartCount,
+      pendingTurnCount: realm.pendingTurnCount,
+    }));
   }
 
   /**
