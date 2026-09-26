@@ -51,6 +51,17 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
   readonly #dispatcher: WorkerExecutionDispatcher;
   #messageHandler: ((message: WorkerOutboundMessage) => void | Promise<void>) | null;
   #disposed: boolean;
+  /**
+   * Memoized `[Symbol.asyncDispose]` result (COR-113). `#teardown` itself
+   * already runs at most once — guarded by `#disposed`, checked by both
+   * dispose entry points before touching it — but an async caller also needs
+   * every repeated or concurrent `asyncDispose()` call to observe the SAME
+   * in-flight disposal rather than each awaiting its own call into
+   * `#pool[Symbol.asyncDispose]()`. Assigned synchronously (this field's
+   * setter never itself awaits), so two synchronous, unawaited calls in the
+   * same tick still share one promise.
+   */
+  #asyncDisposePromise: Promise<void> | null;
   #nextTurnId: number;
   /**
    * Per-workflow captured revision (WFT-20), set once at `startWorkflow()`
@@ -149,6 +160,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     this.#broadcastChannel = null;
     this.#broadcastListener = null;
     this.#disposed = false;
+    this.#asyncDisposePromise = null;
     this.#nextTurnId = 1;
 
     if (broadcastEvents) {
@@ -304,17 +316,43 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     void this.#dispatcher.cancelParkedWorkflow(workflowId, parkedWorker);
   }
 
+  /**
+   * Synchronous disposal (COR-113: idempotent termination). A no-op once
+   * this strategy is already disposed — by an earlier synchronous dispose,
+   * or by an `asyncDispose()` whose `#teardown()` phase has already run
+   * synchronously (see that method's doc) — so the pool is never disposed
+   * twice regardless of which entry point ran first.
+   */
   [Symbol.dispose](): void {
+    if (this.#disposed) return;
     this.#teardown();
     this.#pool[Symbol.dispose]();
   }
 
-  async [Symbol.asyncDispose](): Promise<void> {
+  /**
+   * Asynchronous disposal (COR-113: idempotent termination). Repeated or
+   * concurrent calls share one memoized promise rather than each re-running
+   * `#teardown()` or re-disposing the pool: `#asyncDisposePromise` is
+   * assigned the FIRST time this is called and returned unchanged on every
+   * subsequent call, including one made before the first has settled.
+   */
+  [Symbol.asyncDispose](): Promise<void> {
+    this.#asyncDisposePromise ??= this.#performAsyncDispose();
+    return this.#asyncDisposePromise;
+  }
+
+  async #performAsyncDispose(): Promise<void> {
+    // Guards against a synchronous `[Symbol.dispose]()` that already ran
+    // `#teardown()` and disposed the pool before this async path was ever
+    // invoked (only reachable if `#asyncDisposePromise` was never set,
+    // i.e. this is genuinely the first `asyncDispose()` call).
+    if (this.#disposed) return;
     this.#teardown();
     await this.#pool[Symbol.asyncDispose]();
   }
 
   #teardown(): void {
+    if (this.#disposed) return;
     this.#disposed = true;
 
     if (this.#broadcastChannel) {

@@ -1851,6 +1851,70 @@ describe('WorkerExecutionStrategy', () => {
       expect(poolDispose).toHaveBeenCalledTimes(1);
       expect(mockPool.acquire).toHaveBeenCalledTimes(acquireCallsBeforeDispose);
     });
+
+    // COR-113: repeated disposal or close signals must share one memoized
+    // promise rather than re-running teardown and re-disposing the pool.
+    it('memoizes concurrent asyncDispose calls into one shared promise, disposing the pool exactly once', async () => {
+      setup();
+      const poolAsyncDispose = mock(async () => {});
+      mockPool[Symbol.asyncDispose] = poolAsyncDispose;
+
+      const first = strategy[Symbol.asyncDispose]();
+      const second = strategy[Symbol.asyncDispose]();
+
+      // Both callers must observe the SAME in-flight disposal, proved by
+      // reference identity of the returned promise rather than by timing.
+      expect(first).toBe(second);
+
+      await Promise.all([first, second]);
+
+      expect(poolAsyncDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not re-run teardown or re-dispose the pool on a repeated synchronous dispose', () => {
+      setup();
+      const poolDispose = mock(() => {});
+      mockPool[Symbol.dispose] = poolDispose;
+
+      strategy[Symbol.dispose]();
+      strategy[Symbol.dispose]();
+
+      expect(poolDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it('an asyncDispose after an already-completed synchronous dispose resolves without re-disposing the pool', async () => {
+      setup();
+      const poolDispose = mock(() => {});
+      const poolAsyncDispose = mock(async () => {});
+      mockPool[Symbol.dispose] = poolDispose;
+      mockPool[Symbol.asyncDispose] = poolAsyncDispose;
+
+      strategy[Symbol.dispose]();
+      await strategy[Symbol.asyncDispose]();
+
+      expect(poolDispose).toHaveBeenCalledTimes(1);
+      expect(poolAsyncDispose).not.toHaveBeenCalled();
+    });
+
+    it('a synchronous dispose after asyncDispose has started does not re-dispose the pool', async () => {
+      setup();
+      const poolDispose = mock(() => {});
+      const poolAsyncDispose = mock(async () => {});
+      mockPool[Symbol.dispose] = poolDispose;
+      mockPool[Symbol.asyncDispose] = poolAsyncDispose;
+
+      const asyncDisposal = strategy[Symbol.asyncDispose]();
+      // Fires synchronously, before the pool's own asyncDispose settles —
+      // `#teardown` already ran synchronously by this point (see
+      // implementation doc), so this must be a no-op rather than a second
+      // teardown/pool-dispose.
+      strategy[Symbol.dispose]();
+
+      await asyncDisposal;
+
+      expect(poolDispose).not.toHaveBeenCalled();
+      expect(poolAsyncDispose).toHaveBeenCalledTimes(1);
+    });
   });
 
   // -------------------------------------------------------------------------
