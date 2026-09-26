@@ -86,6 +86,99 @@ describe('RevisionRealmExecutionStrategy', () => {
       // the one settlement cancelWorkflow() itself triggered.)
       expect(messages).toEqual([]);
     });
+
+    it('cancelling a PARKED execution does not poison a later, unrelated execution that reuses the same workflow id (P-COR-29 criterion 7 regression)', async () => {
+      // Regression for a permanent `#cancelled` entry: cancelling while
+      // PARKED (no turn in flight — a workflow waiting on a signal, the
+      // ordinary cancel target) must not leave anything for a future
+      // execution reusing this workflow id to mistake for its own
+      // cancellation. Before the fix, `cancelWorkflow` added to `#cancelled`
+      // unconditionally, and nothing ever removed a park-time entry, so the
+      // second execution's genuine mid-turn crash below was silently
+      // swallowed by `#dispatch`'s catch block instead of being reported,
+      // and its realm's pool slot was never reclaimed.
+      const registry = new RevisionRealmRegistry();
+      const messages: WorkerOutboundMessage[] = [];
+      const strategy = new RevisionRealmExecutionStrategy({
+        registry,
+        resolveRevisionRealmConfig: (workflowType) =>
+          workflowType === ORDER_WORKFLOW_NAME
+            ? { workerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }
+            : {
+                workerUrl: crashWorkerUrl,
+                expectedWorkflowTypes: [CRASH_WORKFLOW_NAME],
+                // Concurrency 1: proves the crashed realm's pool slot is
+                // actually reclaimed, not merely that some realm exists.
+                concurrency: 1,
+              },
+        getWorkflowRevisionPin: () => undefined,
+      });
+      strategy.onMessage((message) => {
+        messages.push(message);
+      });
+      const workflowId = 'wf-reused-after-park-cancel';
+
+      // First execution: parks on a signal-wait. Waiting for its `checkpoint`
+      // outbound message (not merely `activeRealmCount === 1`, which the
+      // in-flight cancel test above uses) proves the turn has already
+      // SETTLED — no dispatch is pending — before cancel runs.
+      strategy.startWorkflow({
+        workflowId,
+        revision: REVISION,
+        workflowType: ORDER_WORKFLOW_NAME,
+        input: 'input',
+        checkpoint: new ArrayBuffer(0),
+      });
+      await waitForCondition(() => messages.length === 1, {
+        label: 'first execution parked on signal-wait',
+      });
+      expect(messages[0]?.type).toBe('checkpoint');
+
+      strategy.cancelWorkflow(workflowId);
+      await waitForCondition(
+        () => (registry.getPool(ORDER_WORKFLOW_NAME, REVISION)?.realmCount ?? 0) === 0,
+        { label: 'first executions realm released after cancel' },
+      );
+
+      // Second, unrelated execution reuses the SAME workflow id, routed to a
+      // still-active, concurrency-1 revision whose realm genuinely crashes
+      // mid-turn.
+      strategy.startWorkflow({
+        workflowId,
+        revision: CRASH_REVISION,
+        workflowType: CRASH_WORKFLOW_NAME,
+        input: CRASH_WORKFLOW_TRIGGER_INPUT,
+        checkpoint: new ArrayBuffer(0),
+      });
+
+      await waitForCondition(() => messages.length === 2, {
+        label: 'reused workflow id crash reported instead of silently dropped',
+      });
+      const crashMessage = messages[1];
+      if (!crashMessage || crashMessage.type !== 'failed') throw new Error('unreachable');
+      expect(crashMessage.error).toContain('realm-not-active');
+
+      // The crashed realm's pool slot must be reclaimed too — otherwise this
+      // reproduces P-COR-29 criterion 7's pool-at-capacity defect via a
+      // different trigger.
+      expect(registry.getPool(CRASH_WORKFLOW_NAME, CRASH_REVISION)?.realmCount ?? 0).toBe(0);
+
+      strategy.startWorkflow({
+        workflowId: 'wf-reused-after-park-cancel-followup',
+        revision: CRASH_REVISION,
+        workflowType: CRASH_WORKFLOW_NAME,
+        input: 'ordinary-input',
+        checkpoint: new ArrayBuffer(0),
+      });
+      await waitForCondition(() => messages.length === 3, {
+        label: 'concurrency-1 revision accepts a fresh start after reclaim',
+      });
+      expect(messages[2]).toEqual({
+        type: 'completed',
+        workflowId: 'wf-reused-after-park-cancel-followup',
+        result: { ok: true, input: 'ordinary-input' },
+      });
+    });
   });
 
   describe('dispatch reclaims a crashed realm (COR-249 mid-turn Worker crash recovery)', () => {

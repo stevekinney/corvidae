@@ -1108,10 +1108,8 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       'src/core/realm/revision-realm-execution-strategy.ts',
       {
         reason:
-          "outboundFailure()'s wrapped multi-line parameter list (COR-249's engine integration, R2E) — its body (line 100) and every call site are exercised by revision-realm-execution.test.ts and revision-realm-execution-strategy.test.ts, but Bun attributes a multi-line function signature's own lines as missed even when the function itself runs, the same class of attribution artifact already documented for src/core/engine/index.ts's re-export and factory closures above. A full-suite run's FNF/FNH (19/17) is two short, not one: the second is the same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact documented for revision-realm-registry.ts's and worker-realm.ts's entries above — not reproduced when only this file's own tests run (functions there resolve to 100 percent once lines 96-99 are excluded), only by the full suite's exact process composition.",
-        lines: new Set([96, 97, 98, 99]),
-        functions: 2,
-        requireUncoveredLines: true,
+          "Realigned after COR-249's cancel-while-parked #inFlight fix (R2E correction round 2), which shifted this file's line numbers: outboundFailure()'s wrapped multi-line parameter list moved from lines 96-99 to lines 107-110 and a fresh full-suite lcov shows every one of those lines hit, so the prior multi-line-signature line exclusion no longer names real uncovered code and is dropped rather than re-pointed at the new lines. Only the OTHER previously-documented artifact still reproduces: a full-suite run's FNF/FNH (19/18) is one short, the same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact documented for revision-realm-registry.ts's and worker-realm.ts's entries above — not reproduced when only this file's own tests run.",
+        functions: 1,
       },
     ],
   ],

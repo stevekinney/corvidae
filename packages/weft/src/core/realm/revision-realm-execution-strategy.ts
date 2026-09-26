@@ -47,7 +47,14 @@
  * realm immediately (drain + terminate), which rejects any turn still
  * in-flight; this strategy recognizes that specific rejection (the workflow
  * id was just cancelled) and emits nothing further for it, matching hardened
- * Worker mode's own `discardOnCancel: true` posture.
+ * Worker mode's own `discardOnCancel: true` posture. The ordinary cancel
+ * target is a PARKED execution (no turn in flight — a workflow waiting on a
+ * signal), which has no pending rejection to swallow at all; `cancelWorkflow`
+ * only records the cancel-swallow (`#cancelled`) when `#inFlight` confirms a
+ * turn is genuinely pending for that id, so a cancel-while-parked cannot
+ * leave a permanent entry that a later, unrelated execution reusing the same
+ * workflow id could mistake for its own cancellation (see `#inFlight`'s and
+ * `#cancelled`'s own docs).
  *
  * @module core/realm/revision-realm-execution-strategy
  */
@@ -113,7 +120,30 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
   readonly #getWorkflowRevisionPin: (workflowId: string) => string | undefined;
   readonly #maxProtocolMessageBytes: number | undefined;
   readonly #executions = new Map<string, ActiveRealmExecution>();
-  /** Workflow ids `cancelWorkflow()` just released the realm for — a pending turn's resulting rejection is expected and swallowed rather than reported as a failure. */
+  /**
+   * Workflow ids with a `#dispatch` call currently awaiting
+   * `realm.dispatchTurn(...)` — i.e. a turn genuinely in flight for that id
+   * right now. `cancelWorkflow()` consults this before adding to
+   * `#cancelled` below: cancelling a PARKED execution (no turn in flight —
+   * the ordinary case, a workflow waiting on a signal) has no pending
+   * rejection to swallow, so it must not add an entry here either, or a
+   * stale entry would sit forever (nothing else ever removes it) and could
+   * later poison an unrelated execution that reuses the same workflow id
+   * (see `#cancelled`'s own doc).
+   */
+  readonly #inFlight = new Set<string>();
+  /**
+   * Workflow ids `cancelWorkflow()` just released the realm for WHILE a turn
+   * was in flight for them — that turn's resulting rejection is expected and
+   * swallowed by `#dispatch`'s catch block rather than reported as a
+   * failure. Entries are single-use: `#dispatch`'s catch block (the
+   * swallowed rejection itself) or `resumeWorkflow`'s "no execution" branch
+   * (a later call for the same, already-torn-down id) removes the one entry
+   * cancelling that execution added. Only ever added when `#inFlight`
+   * confirms a turn is actually pending — see that set's doc for why a
+   * cancel-while-parked must never add here, and `#dispatch`'s `finally`
+   * for why `#inFlight` itself cannot go stale the same way.
+   */
   readonly #cancelled = new Set<string>();
   readonly #disposal: WorkerExecutionDisposal;
   #messageHandler: ((message: WorkerOutboundMessage) => void | Promise<void>) | null = null;
@@ -126,6 +156,7 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
     this.#disposal = new WorkerExecutionDisposal({
       teardown: () => {
         this.#executions.clear();
+        this.#inFlight.clear();
         this.#cancelled.clear();
         this.#messageHandler = null;
       },
@@ -203,7 +234,15 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
     const execution = this.#executions.get(workflowId);
     if (!execution) return;
     this.#executions.delete(workflowId);
-    this.#cancelled.add(workflowId);
+    // Only mark the id cancel-swallowed when a turn is genuinely in flight
+    // for it right now (see `#inFlight`'s doc). Cancelling a PARKED
+    // execution — no `#dispatch` call pending — has no rejection to
+    // swallow, so it must not add a permanent `#cancelled` entry that a
+    // future execution reusing this same workflow id could later delete
+    // and mistake for its own cancellation.
+    if (this.#inFlight.has(workflowId)) {
+      this.#cancelled.add(workflowId);
+    }
     this.#registry.releaseAfterExecution(execution.name, execution.revision, execution.realm);
   }
 
@@ -317,6 +356,7 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
       turnId: execution.nextTurnId,
     };
     execution.nextTurnId += 1;
+    this.#inFlight.add(workflowId);
     try {
       const result = await execution.realm.dispatchTurn(envelope, input);
       const outbound = result as WorkerOutboundMessage;
@@ -356,6 +396,14 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
           outboundFailure(workflowId, error instanceof Error ? error.message : String(error)),
         );
       }
+    } finally {
+      // Runs on every exit from this `try` (including the early `return`
+      // above for a swallowed cancel rejection) — the turn this call
+      // dispatched is no longer in flight either way, so `cancelWorkflow()`
+      // must stop treating this id as having one pending before this id can
+      // legitimately be reused by a later, unrelated execution (see
+      // `#inFlight`'s doc).
+      this.#inFlight.delete(workflowId);
     }
   }
 
