@@ -1311,4 +1311,127 @@ describe('LongPollWorker', () => {
     expect(bResult.status).toBe('completed');
     expect(bResult.value).toBe('b-completed-despite-a-cancellation');
   });
+
+  it('a completed attempt cleanup does not delete a later, still-live attempt for the same operationId (COR-223, tuple-keyed abort controllers)', async () => {
+    const bothStarted = createDeferred();
+    const attempt2Aborted = createDeferred();
+    const attempt1ResultReceived = createDeferred();
+    let attempt1Started = false;
+    let attempt2Started = false;
+    let attempt1ResultPosted = false;
+    const completedTasks: any[] = [];
+    let pollCount = 0;
+
+    function checkBothStarted(): void {
+      if (attempt1Started && attempt2Started) bothStarted.resolve();
+    }
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            // Same operationId, DIFFERENT attemptTokens — simulates a
+            // same-worker redispatch that lands back on this exact worker
+            // instance while an earlier attempt of the same operation is
+            // still executing.
+            return Response.json({
+              operationId: 'op-overlap-lp',
+              workerId: 'longpoll-worker-overlap',
+              activityName: 'overlapActivity',
+              input: 'attempt-1',
+              attemptToken: 'attempt-1',
+              visibilityTimeout: 30_000,
+            });
+          }
+          if (pollCount === 2) {
+            return Response.json({
+              operationId: 'op-overlap-lp',
+              workerId: 'longpoll-worker-overlap',
+              activityName: 'overlapActivity',
+              input: 'attempt-2',
+              attemptToken: 'attempt-2',
+              visibilityTimeout: 30_000,
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          const body = (await request.json()) as { attemptToken: string };
+          // attempt-1 is never told to cancel. attempt-2 is only told to
+          // cancel AFTER attempt-1's result has actually landed — the exact
+          // moment attempt-1's `finally` cleanup runs. If that cleanup wrongly
+          // deleted attempt-2's live table entry (the pre-COR-223 bug), this
+          // worker's own `#sendHeartbeat` lookup for attempt-2 finds nothing
+          // and silently never aborts it, so `attempt2Aborted` never resolves
+          // and the test times out below instead of falsely passing.
+          const cancelled = body.attemptToken === 'attempt-2' && attempt1ResultPosted;
+          return Response.json({ ok: true, cancelled });
+        }
+
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          const body = await request.json();
+          completedTasks.push(body);
+          if (body.attemptToken === 'attempt-1') {
+            attempt1ResultPosted = true;
+            attempt1ResultReceived.resolve();
+          }
+          return Response.json({ ok: true, disposition: 'applied' });
+        }
+
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const worker = new LongPollWorker({
+      serverUrl: `http://localhost:${server.port}`,
+      concurrency: 2,
+      heartbeatIntervalMs: 20,
+      activities: {
+        overlapActivity: async (input, context) => {
+          if (input === 'attempt-1') {
+            attempt1Started = true;
+            checkBothStarted();
+            // Completes NORMALLY on its own — never cancelled — which is
+            // what triggers its `finally` cleanup.
+            return 'attempt-1-completed';
+          }
+          attempt2Started = true;
+          checkBothStarted();
+          context?.signal.addEventListener('abort', () => attempt2Aborted.resolve(), {
+            once: true,
+          });
+          // Never resolves on its own — only a heartbeat response naming
+          // THIS attempt's `cancelled: true` should ever settle it.
+          await attempt2Aborted.promise;
+          throw new Error('attempt-2 aborted');
+        },
+      },
+    });
+
+    worker.start();
+    await withTimeout(bothStarted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'both attempts started');
+    await withTimeout(
+      attempt1ResultReceived.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'attempt-1 result received',
+    );
+    // Only now does the server start telling attempt-2's heartbeat to
+    // cancel — proving attempt-2's controller survived attempt-1's cleanup.
+    await withTimeout(
+      attempt2Aborted.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'attempt-2 observed its own abort after attempt-1 completed and cleaned up',
+    );
+    await worker.stop();
+
+    const attempt2Result = completedTasks.find((t) => t.attemptToken === 'attempt-2');
+    expect(attempt2Result).toBeDefined();
+    expect(attempt2Result.status).toBe('cancelled');
+    expect(attempt2Result.cancelled).toBe(true);
+  });
 });

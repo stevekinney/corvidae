@@ -1954,6 +1954,165 @@ describe('RemoteWorker', () => {
     await worker.disconnect();
   });
 
+  it('a completed attempt cleanup does not delete a later, still-live attempt for the same operationId (COR-223, tuple-keyed abort controllers)', async () => {
+    const messages: any[] = [];
+    let attempt1Started = false;
+    let attempt2Started = false;
+    let attempt1AbortObserved = false;
+    let attempt2AbortObserved = false;
+    let releaseAttempt1!: () => void;
+    const attempt1Gate = new Promise<void>((resolve) => {
+      releaseAttempt1 = resolve;
+    });
+    let registeredSocket: any;
+
+    server = createTestServer({
+      onMessage(ws, message) {
+        const parsed = JSON.parse(message);
+        messages.push(parsed);
+
+        if (parsed.type === 'register') {
+          registeredSocket = ws;
+          // Deterministic ordering proof (same technique as the stale-cancel
+          // test above): both dispatches for the SAME operationId under
+          // DIFFERENT attemptTokens, plus a throwaway barrier task, are sent
+          // back to back in one synchronous burst. Each `task` frame's
+          // synchronous prefix — up to `#taskAbortControllers.set(...)` —
+          // runs to completion before the next queued WebSocket message is
+          // even dispatched, so observing the barrier's `taskResult` PROVES
+          // both attempt-1's and attempt-2's controllers are already
+          // registered in the tuple-keyed table. This simulates a same-worker
+          // redispatch that lands back on this exact worker instance while an
+          // earlier attempt of the same operationId is still executing.
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-overlap',
+              attemptToken: 'attempt-1',
+              activityName: 'orders.attempt1Activity',
+              input: null,
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-overlap',
+              attemptToken: 'attempt-2',
+              activityName: 'orders.attempt2Activity',
+              input: null,
+            }),
+          );
+          ws.send(
+            JSON.stringify({
+              type: 'task',
+              operationId: 'op-barrier',
+              attemptToken: 'barrier-attempt-token',
+              activityName: 'orders.processOrder',
+              input: 'barrier',
+            }),
+          );
+        }
+      },
+    });
+
+    const worker = new RemoteWorker({
+      serverUrl: `ws://localhost:${server.port}`,
+      deploymentName: 'test-deployment',
+      buildId: 'test-build',
+      workerId: 'overlap-test-worker',
+      workflows: workflowsOf({
+        attempt1Activity: async (_input: unknown, context) => {
+          attempt1Started = true;
+          context?.signal.addEventListener('abort', () => {
+            attempt1AbortObserved = true;
+          });
+          // Released explicitly once the barrier proves attempt-2 is also
+          // registered — this attempt completes NORMALLY (never cancelled),
+          // which is what triggers its `finally` cleanup.
+          await attempt1Gate;
+          return 'attempt-1-completed';
+        },
+        attempt2Activity: (_input: unknown, context) => {
+          attempt2Started = true;
+          // Never resolves on its own — only a `cancel` naming THIS attempt
+          // should ever settle it. If attempt-1's cleanup wrongly deletes
+          // this attempt's controller (the pre-COR-223 operationId-only-keyed
+          // bug), the `cancel` sent below matches nothing and this promise
+          // hangs forever, failing the test by timeout rather than a false
+          // green.
+          return new Promise((_resolve, reject) => {
+            context?.signal.addEventListener('abort', () => {
+              attempt2AbortObserved = true;
+              reject(new Error('attempt-2 aborted'));
+            });
+          });
+        },
+        processOrder: async (input: unknown) => input,
+      }),
+    });
+
+    await worker.connect();
+
+    await waitForCondition(() => attempt1Started && attempt2Started, {
+      timeoutMs: 1_000,
+      label: 'both overlapping attempts started',
+    });
+
+    // The barrier task's result is the explicit ordering proof: both
+    // attempts' controllers are registered in the table by the time it exists.
+    await waitForCondition(
+      () =>
+        messages.some(
+          (message) => message.type === 'taskResult' && message.operationId === 'op-barrier',
+        ),
+      { timeoutMs: 1_000, label: 'barrier task result observed' },
+    );
+
+    // Let attempt-1 complete NORMALLY, running its `finally` cleanup — the
+    // exact moment the pre-COR-223 bug would delete attempt-2's live entry.
+    releaseAttempt1();
+    await waitForCondition(
+      () =>
+        messages.some(
+          (message) =>
+            message.type === 'taskResult' &&
+            message.operationId === 'op-overlap' &&
+            message.attemptToken === 'attempt-1',
+        ),
+      { timeoutMs: 1_000, label: 'attempt-1 task result observed' },
+    );
+    expect(attempt1AbortObserved).toBe(false);
+
+    // Now cancel attempt-2 specifically. This only succeeds if attempt-2's
+    // controller SURVIVED attempt-1's `finally` cleanup above — under the
+    // pre-COR-223 operationId-only-keyed map, attempt-1's cleanup would have
+    // already deleted the shared `op-overlap` entry, so this cancel would
+    // match nothing and attempt-2 would never observe an abort (the test
+    // would then time out on the wait below instead of passing).
+    registeredSocket.send(
+      JSON.stringify({ type: 'cancel', operationId: 'op-overlap', attemptToken: 'attempt-2' }),
+    );
+
+    await waitForCondition(() => attempt2AbortObserved, {
+      timeoutMs: 1_000,
+      label: 'attempt-2 observed its own abort after attempt-1 completed and cleaned up',
+    });
+
+    await waitForCondition(
+      () =>
+        messages.some(
+          (message) =>
+            message.type === 'taskResult' &&
+            message.operationId === 'op-overlap' &&
+            message.attemptToken === 'attempt-2' &&
+            message.status === 'cancelled',
+        ),
+      { timeoutMs: 1_000, label: 'attempt-2 task result observed as cancelled' },
+    );
+
+    await worker.disconnect();
+  });
+
   it('activity function receives AbortSignal via context', async () => {
     let receivedSignal: AbortSignal | undefined;
     let receivedWorkflowExecutionToken: string | undefined;
