@@ -35,12 +35,13 @@ Declare `"@lostgradient/editor": "workspace:*"` in the consuming workspace and r
 | `class` | `string` | no | — | Additional CSS classes |
 | `id` | `string` | yes | — | Unique identifier for accessibility (required) |
 | `label` | `string` | no | — | Accessible label for the editor (required for screen readers) |
-| `mode` | `"wysiwyg"` \| `"source"` | no | — | Editor display mode (two-way bindable) |
+| `mode` | `"wysiwyg"` \| `"source"` \| `"preview"` | no | — | Editor display mode (two-way bindable). An invalid value keeps the last valid mode (`'wysiwyg'` on mount) and reports `invalid_option` at `mode`. |
 | `modeLabel` | `string` | no | — | Accessible label for the mode toggle (visually hidden) |
 | `placeholder` | `string` | no | — | Placeholder text when empty |
 | `readonly` | `boolean` | no | — | Read-only mode |
-| `modeToggleVisible` | `boolean` | no | — | Show an inline toggle for switching between WYSIWYG and raw Markdown |
+| `modeToggleVisible` | `boolean` | no | — | Show the built-in mode control for switching between the rich editor, raw Markdown and preview. It renders whenever this is true, including with a custom `toolbar`, `toolbarEnabled={false}` or `readonly`. |
 | `toolbarEnabled` | `boolean` | no | — | Show formatting toolbar (DEP-37) |
+| `placeholderValueMode` | `"text"` \| `"markdown"` | no | — | How preview inserts string placeholder values: `'text'` (the default) renders them as literal text, `'markdown'` lets them contribute Markdown formatting. Other values render as literal JSON either way. An invalid string reports `invalid_option` at `placeholderValueMode` and disables fill. |
 | `snapshotMode` | `boolean` | no | — | Snapshot mode for visual regression testing. When `true`: - Applies `caret-color: transparent` and `user-select: none` to the editor root via a `data-snapshot-mode` attribute, producing a stable visual state (no blinking cursor, no selection highlights). - Blurs any focused element inside the component on mount so the initial screenshot does not capture a focused ring or active caret. This is a purely visual / CSS concern. It does NOT affect editability, ProseMirror state, or any prop controlled by `readonly` / `mode`. |
 | `value` | `string` | no | — | Current markdown content (two-way bindable) |
 | `onValueChange` | `(opaque)` | no | — | Called when content changes Not expressible in JSON Schema; see the component types for the signature. |
@@ -60,6 +61,29 @@ Declare `"@lostgradient/editor": "workspace:*"` in the consuming workspace and r
 | `toolbarLeading` | `(opaque)` | no | — | Leading toolbar content (prepended before default toolbar items). Useful for adding undo/redo or other leading actions. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
+
+## Modes
+
+`mode` (bindable) is `'wysiwyg'` (the rich editor), `'source'` (raw Markdown in a code textarea) or `'preview'` (rendered, read-only output). An invalid `mode` keeps the last valid mode, `'wysiwyg'` on mount, reports `invalid_option` at `mode` through `onPlaceholderDiagnosticsChange`, and is never written back. `onModeChange` fires once for each real change, after any content the switch publishes.
+
+`modeToggleVisible` renders the one built-in mode control, a segmented control with Rich editor, Raw Markdown and Preview options. It sits in the default toolbar row when that renders, and in its own row otherwise, so a custom `toolbar` snippet, `toolbarEnabled={false}` and `readonly` never hide it. Without it, set `mode` yourself or call `ToolbarContext.onModeChange`.
+
+`ToolbarContext` carries `mode`, `canEdit` (the rich editor is showing and ready, and the editor is not readonly) and `onModeChange(nextMode)`, which ignores invalid modes. In source and preview mode the formatting fields are inactive: `editorContext` is `null`, `canUndo` and `canRedo` are `false`, no marks are active, the block is a paragraph, the link popover is closed and the formatting handlers do nothing. `readonly` always reports your flag. A custom `toolbar` still mounts only while `toolbarEnabled` is true and the editor is not readonly; `onToolbarContextChange` receives every context either way.
+
+### Preview
+
+Preview renders a copy of the template through the same sanitized Markdown pipeline and `.cinder-markdown-content` styles. It never changes the template: `value`, `bind:value`, `onValueChange`, `getMarkdown()` and `setMarkdown()` keep the `{{path}}` tokens, and rendering never fires `onValueChange`. The labeled region has the ID `${id}-preview` and is always read-only.
+
+- With no `placeholderDefinitions`, preview is ordinary Markdown, labeled "Preview".
+- With definitions and no `placeholderValues` (omitted or `undefined`), it is the unfilled template, labeled "Unfilled template preview", with the authoring diagnostics.
+- With definitions and a plain values object, including `{}`, it fills through the shared resolver with `unresolved: 'preserve'`, labeled "Preview". Unresolved tokens stay visible, and `missing_value`, `invalid_value` and `type_mismatch` join the diagnostics while preview shows. Diagnostics never contain values.
+- Values that are `null`, an array or not a plain object report `invalid_values` and preview the unfilled template. Values without definitions report `invalid_definitions` and are not interpolated. An invalid `placeholderValueMode` reports `invalid_option` and disables fill.
+
+`placeholderValueMode="text"` (the default) renders string values as literal text; `'markdown'` lets them add Markdown structure, which the sanitizer still filters. Preview updates when the values, definitions, template or value mode change. Values are never copied, persisted or logged.
+
+Entering preview publishes a pending rich-editor edit once, then renders it. If the parent replaces `value` (or calls `setMarkdown()`) in the same update that selects preview, that replacement wins and the pending edit is dropped without an `onValueChange`. The editing surface you left (rich editor or textarea) stays mounted, hidden and inert, behind preview, so returning to it restores its selection and undo history. A `value` or `setMarkdown()` replacement during preview instead becomes that surface's new baseline: its history is cleared and the caret moves to the end. Definition and value changes do not clear it. Switching between the rich editor and source keeps its existing behavior.
+
+The renderer loads after the component mounts on the client: server rendering and the first hydration pass show the same inert "Loading preview" region. A mount that starts in preview never initializes the rich editor; selecting it later does. Choosing a mode with the built-in control or `ToolbarContext.onModeChange` moves focus to the preview region or back to the editing surface; changing the `mode` prop never moves focus.
 
 ## Template placeholders
 
@@ -111,6 +135,7 @@ Configuration errors use a `configuration` location:
 - `conflicting_configuration` at `placeholderDefinitions` when definitions are mixed with the low-level props.
 - `invalid_definitions` at `placeholderDefinitions` when `placeholderValues` is supplied without definitions.
 - `invalid_values` at `placeholderValues` when values are not a plain JSON object.
+- `invalid_option` at `placeholderValueMode` or `mode` when either prop has an unknown value.
 
 Invalid tokens in the WYSIWYG document get the `template-placeholder-invalid` class (or the low-level `invalidClassName`), a wavy underline as the non-color cue, and a `data-placeholder-validation-reason` attribute set to one of `malformed_token`, `invalid_path_format`, `blocked_path` or `unknown_placeholder`.
 

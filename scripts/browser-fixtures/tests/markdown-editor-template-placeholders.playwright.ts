@@ -7,6 +7,11 @@
  * wrapping, textarea scrolling and viewport resizes. The unit suite covers
  * the same contract in happy-dom; this spec proves it against real layout,
  * real keyboard input and Chromium's native textarea behavior.
+ *
+ * Preview (COR-525): filling in both value modes, the unchanged saved
+ * template, capturing a pending rich edit on entering preview, history kept
+ * across a preview round trip in both editing modes, and the mode control
+ * under readonly.
  */
 import type { ComponentEntry, Viewport } from '@lostgradient/testing';
 import type { Locator, Page } from '@playwright/test';
@@ -378,5 +383,170 @@ test.describe('MarkdownEditor source-mode listbox positioning', () => {
     await page.setViewportSize(small);
     const resized = await settledPlacement(page, opened.generation);
     expectInsideViewport(resized.box, small);
+  });
+});
+
+function modeSegment(page: Page, label: 'Rich editor' | 'Raw Markdown' | 'Preview'): Locator {
+  return page.locator(`#template-editor-mode-toggle button[aria-label="${label}"]`);
+}
+
+function previewRegion(page: Page): Locator {
+  return page.locator('#template-editor-preview');
+}
+
+function previewContent(page: Page): Locator {
+  return previewRegion(page).locator('.markdown-editor-preview-content');
+}
+
+function richEditor(page: Page): Locator {
+  return page.locator('#template-editor-mount .ProseMirror');
+}
+
+function boundValue(page: Page): Promise<string> {
+  return page.getByTestId('bound-value').innerText();
+}
+
+test.describe('MarkdownEditor preview', () => {
+  test('fills sample values literally by default and as Markdown on request', async ({
+    componentPage,
+  }) => {
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'Hello {{name}}, {{rich}} and {{count}}');
+    await modeSegment(page, 'Preview').click();
+
+    await expect(previewRegion(page)).toBeFocused();
+    await expect(previewRegion(page).locator('#template-editor-preview-label')).toHaveText(
+      'Preview',
+    );
+    await expect(previewContent(page)).toHaveText('Hello Ada, **bold** and 3');
+    await expect(previewContent(page).locator('strong')).toHaveCount(0);
+
+    await page.getByLabel('Markdown', { exact: true }).check();
+    await expect(previewContent(page).locator('strong')).toHaveText('bold');
+    await expect(previewContent(page)).toHaveText('Hello Ada, bold and 3');
+  });
+
+  test('previews the unfilled template without values and keeps tokens visible with {}', async ({
+    componentPage,
+  }) => {
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'Hello {{name}}');
+    await modeSegment(page, 'Preview').click();
+
+    await page.getByLabel('None', { exact: true }).check();
+    await expect(previewRegion(page).locator('#template-editor-preview-label')).toHaveText(
+      'Unfilled template preview',
+    );
+    await expect(previewContent(page)).toHaveText('Hello {{name}}');
+
+    await page.getByLabel('Empty object', { exact: true }).check();
+    await expect(previewRegion(page).locator('#template-editor-preview-label')).toHaveText(
+      'Preview',
+    );
+    await expect(previewContent(page)).toHaveText('Hello {{name}}');
+    await expect(page.locator('#template-editor-placeholder-diagnostics')).toContainText('name');
+  });
+
+  test('leaves the saved template unchanged', async ({ componentPage }) => {
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'Dear {{user.name}}');
+    const changes = await valueChangeCount(page);
+
+    await modeSegment(page, 'Preview').click();
+    await expect(previewContent(page)).toHaveText('Dear Grace');
+    await page.getByLabel('Markdown', { exact: true }).check();
+    await page.getByLabel('Empty object', { exact: true }).check();
+    await expect(previewContent(page)).toHaveText('Dear {{user.name}}');
+
+    expect(await boundValue(page)).toBe('Dear {{user.name}}');
+    expect(await valueChangeCount(page)).toBe(changes);
+    await modeSegment(page, 'Raw Markdown').click();
+    await expect(textarea(page)).toBeFocused();
+    expect(await readValue(page)).toBe('Dear {{user.name}}');
+  });
+
+  test('captures a pending rich edit once when entering preview', async ({ componentPage }) => {
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'Hello {{name}}');
+    await modeSegment(page, 'Rich editor').click();
+    await expect(richEditor(page)).toBeVisible();
+    await expect(page.getByTestId('editor-mode')).toHaveText('wysiwyg');
+
+    // Hold every timer so the edit is still pending when preview opens, then
+    // release them to prove no delayed notification follows.
+    await page.clock.install();
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+    const changes = await valueChangeCount(page);
+    await richEditor(page).click();
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.type(' again');
+    expect(await valueChangeCount(page)).toBe(changes);
+
+    await modeSegment(page, 'Preview').click();
+    await expect(previewContent(page)).toHaveText('Hello Ada again');
+    expect(await valueChangeCount(page)).toBe(changes + 1);
+    const capturedValue = await boundValue(page);
+    expect(capturedValue.trim()).toBe('Hello {{name}} again');
+
+    await page.clock.runFor(5000);
+    expect(await valueChangeCount(page)).toBe(changes + 1);
+  });
+
+  test('keeps rich history across a preview round trip', async ({ componentPage }) => {
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'Start');
+    await modeSegment(page, 'Rich editor').click();
+    await expect(richEditor(page)).toBeVisible();
+    await richEditor(page).click();
+    await page.keyboard.press('ControlOrMeta+End');
+    await page.keyboard.type(' added');
+    await expect(richEditor(page)).toHaveText('Start added');
+
+    await modeSegment(page, 'Preview').click();
+    await expect(previewContent(page)).toHaveText('Start added');
+    await modeSegment(page, 'Rich editor').click();
+    await expect(richEditor(page)).toBeFocused();
+
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(richEditor(page)).toHaveText('Start');
+  });
+
+  test('keeps source history and selection across a preview round trip', async ({
+    componentPage,
+  }) => {
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'abc');
+    await page.keyboard.type('de');
+    await expect.poll(() => readValue(page)).toBe('abcde');
+
+    await modeSegment(page, 'Preview').click();
+    await expect(previewContent(page)).toHaveText('abcde');
+    await modeSegment(page, 'Raw Markdown').click();
+    await expect(textarea(page)).toBeFocused();
+    const selection = await textarea(page).evaluate((element: HTMLTextAreaElement) => [
+      element.selectionStart,
+      element.selectionEnd,
+    ]);
+    expect(selection).toEqual([5, 5]);
+
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => readValue(page)).toBe('abcd');
+  });
+
+  test('the mode control stays available to readonly editors', async ({ componentPage }) => {
+    const page = await openFixture(componentPage);
+    await setDocument(page, 'Read {{name}}');
+    await page.getByLabel('Readonly').check();
+
+    await expect(page.locator('#template-editor-mode-toggle')).toHaveCount(1);
+    await expect(page.locator('#template-editor-mount .editor-toolbar-wrapper')).toHaveCount(0);
+    await modeSegment(page, 'Preview').focus();
+    await page.keyboard.press('Enter');
+    await expect(previewContent(page)).toHaveText('Read Ada');
+    await expect(page.getByTestId('editor-mode')).toHaveText('preview');
+
+    await modeSegment(page, 'Raw Markdown').click();
+    await expect(textarea(page)).toHaveAttribute('readonly', '');
+    expect(await readValue(page)).toBe('Read {{name}}');
   });
 });

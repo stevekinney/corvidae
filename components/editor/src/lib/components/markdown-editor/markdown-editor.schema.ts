@@ -21,12 +21,14 @@ const schema = {
       description: 'Current markdown content (two-way bindable)',
     },
     mode: {
-      enum: ['wysiwyg', 'source'],
-      description: 'Editor display mode (two-way bindable)',
+      enum: ['wysiwyg', 'source', 'preview'],
+      description:
+        "Editor display mode (two-way bindable). An invalid value keeps the last\nvalid mode (`'wysiwyg'` on mount) and reports `invalid_option` at `mode`.",
     },
     modeToggleVisible: {
       type: 'boolean',
-      description: 'Show an inline toggle for switching between WYSIWYG and raw Markdown',
+      description:
+        'Show the built-in mode control for switching between the rich editor, raw\nMarkdown and preview. It renders whenever this is true, including with a\ncustom `toolbar`, `toolbarEnabled={false}` or `readonly`.',
     },
     modeLabel: {
       type: 'string',
@@ -39,6 +41,11 @@ const schema = {
     toolbarEnabled: {
       type: 'boolean',
       description: 'Show formatting toolbar (DEP-37)',
+    },
+    placeholderValueMode: {
+      enum: ['text', 'markdown'],
+      description:
+        "How preview inserts string placeholder values: `'text'` (the default)\nrenders them as literal text, `'markdown'` lets them contribute Markdown\nformatting. Other values render as literal JSON either way. An invalid\nstring reports `invalid_option` at `placeholderValueMode` and disables fill.",
     },
     class: {
       type: 'string',
