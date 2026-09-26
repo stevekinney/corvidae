@@ -39,6 +39,10 @@ type BrowserResult = {
 };
 type RawBrowserResult = Record<string, unknown>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -207,15 +211,16 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
       undefined,
       { timeout: 10_000 },
     );
-    const raw = await page.evaluate(
-      () => (globalThis as { probeResult: RawBrowserResult }).probeResult,
+    const rawValue = await page.evaluate(
+      () => (globalThis as typeof globalThis & { probeResult?: unknown }).probeResult,
     );
-    const text = typeof raw.text === 'string' ? raw.text : '';
-    const writes = Array.isArray(raw.writes) && raw.writes.every((value) => value === true);
+    const raw: RawBrowserResult = isRecord(rawValue) ? rawValue : Object.fromEntries([]);
+    const text = typeof raw['text'] === 'string' ? raw['text'] : '';
+    const writes = Array.isArray(raw['writes']) && raw['writes'].every((value) => value === true);
     const common: Record<string, BrowserCell> = {
       'input-return-semantics': {
         passed: writes,
-        observation: `writeCallbacks=${JSON.stringify(raw.writes)}`,
+        observation: `writeCallbacks=${JSON.stringify(raw['writes'])}`,
       },
       'split-utf8-and-control-sequences': {
         passed: text.includes('A') && text.includes('α') && text.includes('R'),
@@ -223,20 +228,22 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
       },
       'screen-cursor-attributes': {
         passed:
-          raw.red !== null && typeof raw.cursorX === 'number' && typeof raw.cursorY === 'number',
-        observation: `cursor=${formatUnknown(raw.cursorX)},${formatUnknown(raw.cursorY)};fg=${formatUnknown(raw.red)}`,
+          raw['red'] !== null &&
+          typeof raw['cursorX'] === 'number' &&
+          typeof raw['cursorY'] === 'number',
+        observation: `cursor=${formatUnknown(raw['cursorX'])},${formatUnknown(raw['cursorY'])};fg=${formatUnknown(raw['red'])}`,
       },
       'soft-wrap-selection-search': {
-        passed: raw.wrapped === true && typeof raw.selection === 'string',
-        observation: `wrapped=${formatUnknown(raw.wrapped)};selection=${formatUnknown(raw.selection)}`,
+        passed: raw['wrapped'] === true && typeof raw['selection'] === 'string',
+        observation: `wrapped=${formatUnknown(raw['wrapped'])};selection=${formatUnknown(raw['selection'])}`,
       },
       'read-only-reply-suppression': {
-        passed: raw.suppression === true,
-        observation: `queryReplies=${formatUnknown(raw.replies)};adapterSuppressed=${formatUnknown(raw.suppression)}`,
+        passed: raw['suppression'] === true,
+        observation: `queryReplies=${formatUnknown(raw['replies'])};adapterSuppressed=${formatUnknown(raw['suppression'])}`,
       },
       'initialization-cancellation-disposal': {
-        passed: raw.disposed === true && raw.resized === true,
-        observation: `resized=${formatUnknown(raw.resized)};disposed=${formatUnknown(raw.disposed)}`,
+        passed: raw['disposed'] === true && raw['resized'] === true,
+        observation: `resized=${formatUnknown(raw['resized'])};disposed=${formatUnknown(raw['disposed'])}`,
       },
     };
     if (candidate.name === '@wterm/dom') {
@@ -245,18 +252,18 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
         observation: `domText=${JSON.stringify(text)};cursor-api=unsupported`,
       };
       common['soft-wrap-selection-search'] = {
-        passed: raw.search === true && typeof raw.readText === 'string',
-        observation: `readText=${formatUnknown(raw.readText)};search=${formatUnknown(raw.search)};retained-dom=virtualized`,
+        passed: raw['search'] === true && typeof raw['readText'] === 'string',
+        observation: `readText=${formatUnknown(raw['readText'])};search=${formatUnknown(raw['search'])};retained-dom=virtualized`,
       };
       common['read-only-reply-suppression'] = {
-        passed: raw.suppression === true,
-        observation: `queryReplies=${formatUnknown(raw.events)};adapterSuppressed=${formatUnknown(raw.suppression)}`,
+        passed: raw['suppression'] === true,
+        observation: `queryReplies=${formatUnknown(raw['events'])};adapterSuppressed=${formatUnknown(raw['suppression'])}`,
       };
     }
     if (candidate.name === 'ghostty-web')
       common['soft-wrap-selection-search'] = {
         passed: false,
-        observation: `hard-gate:soft-wrap-metadata-untrustworthy;observed=${formatUnknown(raw.softWrapMetadata)}`,
+        observation: `hard-gate:soft-wrap-metadata-untrustworthy;observed=${formatUnknown(raw['softWrapMetadata'])}`,
       };
     common['chromium-csp-and-assets'] = {
       passed:
@@ -301,8 +308,8 @@ async function probeCandidate(
   const packageDirectory = join(directory, 'node_modules', ...candidate.name.split('/'));
   const packagePath = join(packageDirectory, 'package.json');
   const packageExists = await Bun.file(packagePath).exists();
-  const packageJson = packageExists
-    ? (JSON.parse(await readFile(packagePath, 'utf8')) as Record<string, unknown>)
+  const packageJson: Record<string, unknown> = packageExists
+    ? JSON.parse(await readFile(packagePath, 'utf8'))
     : {};
   const files = packageExists
     ? await Array.fromAsync(new Bun.Glob('**/*').scan({ cwd: packageDirectory, onlyFiles: true }))
@@ -312,18 +319,18 @@ async function probeCandidate(
       async (file) => `${file}:${sha256(await Bun.file(join(packageDirectory, file)).bytes())}`,
     ),
   );
-  const resolvedVersion = typeof packageJson.version === 'string' ? packageJson.version : '';
+  const resolvedVersion = typeof packageJson['version'] === 'string' ? packageJson['version'] : '';
   const provenance = {
     requested: spec,
     resolvedVersion,
     lockfileSha256: sha256(await Bun.file(join(directory, 'bun.lock')).bytes()),
     packageSha256: packageExists ? sha256(await Bun.file(packagePath).bytes()) : '',
     artifacts,
-    exports: packageJson.exports ?? null,
+    exports: packageJson['exports'] ?? null,
     entrypoints: {
-      main: packageJson.main ?? null,
-      module: packageJson.module ?? null,
-      style: packageJson.style ?? null,
+      main: packageJson['main'] ?? null,
+      module: packageJson['module'] ?? null,
+      style: packageJson['style'] ?? null,
     },
     notices: files.filter((file) => /(?:license|notice|copying)/i.test(basename(file))),
     installExit: installed.exitCode,
