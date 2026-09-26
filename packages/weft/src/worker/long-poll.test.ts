@@ -1056,7 +1056,11 @@ describe('LongPollWorker', () => {
 
   it('sends periodic activityHeartbeat POSTs, naming operationId and attemptToken, for an in-flight activity (criteria 2, 5)', async () => {
     const heartbeatBodies: any[] = [];
-    const firstHeartbeatReceived = createDeferred();
+    // A barrier on the THIRD heartbeat, not the first — proves true
+    // interval-driven periodicity (the timer firing repeatedly) rather than
+    // merely an initial send that a broken interval could still produce
+    // once and never again.
+    const thirdHeartbeatReceived = createDeferred();
     const releaseActivity = createDeferred();
     let pollCount = 0;
 
@@ -1083,7 +1087,7 @@ describe('LongPollWorker', () => {
         if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
           const body = await request.json();
           heartbeatBodies.push(body);
-          firstHeartbeatReceived.resolve();
+          if (heartbeatBodies.length >= 3) thirdHeartbeatReceived.resolve();
           return Response.json({ ok: true, cancelled: false });
         }
 
@@ -1107,16 +1111,27 @@ describe('LongPollWorker', () => {
     });
 
     worker.start();
-    await withTimeout(firstHeartbeatReceived.promise, LONG_POLL_TEST_TIMEOUT_MS, 'first heartbeat');
+    await withTimeout(
+      thirdHeartbeatReceived.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'third interval-driven heartbeat',
+    );
     releaseActivity.resolve();
     await worker.stop();
 
-    expect(heartbeatBodies.length).toBeGreaterThanOrEqual(1);
+    expect(heartbeatBodies.length).toBeGreaterThanOrEqual(3);
     expect(heartbeatBodies[0]).toEqual({
       operationId: 'op-heartbeat-1',
       workerId: 'longpoll-worker-hb',
       attemptToken: 'attempt-token-hb',
     });
+    // Every observed heartbeat, not just the first, names the same
+    // (operationId, attemptToken) — proving the interval is renewing the
+    // SAME attempt repeatedly, not producing one-off or drifting sends.
+    for (const body of heartbeatBodies) {
+      expect(body.operationId).toBe('op-heartbeat-1');
+      expect(body.attemptToken).toBe('attempt-token-hb');
+    }
   });
 
   it('aborts the activity and reports status "cancelled" when a heartbeat response says cancelled: true (criteria 5, 13)', async () => {
@@ -1195,6 +1210,164 @@ describe('LongPollWorker', () => {
     expect(taskResult).toBeDefined();
     expect(taskResult.status).toBe('cancelled');
     expect(taskResult.cancelled).toBe(true);
+  });
+
+  it('reports the durably recorded cancellation reason on a cancelled result instead of a generic literal (COR-223)', async () => {
+    const activityStarted = createDeferred();
+    const activityAborted = createDeferred();
+    const taskResultReceived = createDeferred();
+    const completedTasks: any[] = [];
+    let receivedSignalReason: unknown;
+    let pollCount = 0;
+    let heartbeatCount = 0;
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            return Response.json({
+              operationId: 'op-cancel-reason-lp',
+              workerId: 'longpoll-worker-cancel-reason',
+              activityName: 'cancellableActivity',
+              input: null,
+              attemptToken: 'attempt-token-cancel-reason',
+              visibilityTimeout: 30_000,
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          heartbeatCount++;
+          return Response.json({
+            ok: true,
+            cancelled: heartbeatCount >= 2,
+            ...(heartbeatCount >= 2 ? { reason: 'operator requested: customer refund' } : {}),
+          });
+        }
+
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          const body = await request.json();
+          completedTasks.push(body);
+          taskResultReceived.resolve();
+          return Response.json({ ok: true, disposition: 'applied' });
+        }
+
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const worker = new LongPollWorker({
+      serverUrl: `http://localhost:${server.port}`,
+      heartbeatIntervalMs: 20,
+      activities: {
+        cancellableActivity: async (_input, context) => {
+          activityStarted.resolve();
+          context?.signal.addEventListener(
+            'abort',
+            () => {
+              receivedSignalReason = context.signal.reason;
+              activityAborted.resolve();
+            },
+            { once: true },
+          );
+          await activityAborted.promise;
+          throw new Error('Aborted');
+        },
+      },
+    });
+
+    worker.start();
+    await withTimeout(activityStarted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'activity started');
+    await withTimeout(activityAborted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'activity aborted');
+    await withTimeout(
+      taskResultReceived.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'task result received',
+    );
+    await worker.stop();
+
+    const taskResult = completedTasks.find((t) => t.operationId === 'op-cancel-reason-lp');
+    expect(taskResult).toBeDefined();
+    expect(taskResult.status).toBe('cancelled');
+    expect(taskResult.error).toBe('operator requested: customer refund');
+    expect(receivedSignalReason).toBe('operator requested: customer refund');
+  });
+
+  it("sends heartbeat details on demand and surfaces a prior attempt's lastHeartbeatDetails from the poll response (COR-226)", async () => {
+    const heartbeatBodies: any[] = [];
+    const detailsHeartbeatReceived = createDeferred();
+    let receivedLastHeartbeatDetails: unknown;
+    let pollCount = 0;
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            // Simulates a redispatch: the server would normally derive this
+            // from the previous attempt's durably persisted
+            // lastHeartbeatDetails (see task-heartbeat.test.ts for the
+            // server-side ledger round trip); here the CLIENT's own wiring
+            // is what is under test.
+            return Response.json({
+              operationId: 'op-heartbeat-details-lp',
+              workerId: 'longpoll-worker-details',
+              activityName: 'detailsActivity',
+              input: null,
+              attemptToken: 'attempt-token-details',
+              visibilityTimeout: 30_000,
+              lastHeartbeatDetails: { progress: 0.5 },
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          const body = await request.json();
+          heartbeatBodies.push(body);
+          if (body.details !== undefined) detailsHeartbeatReceived.resolve();
+          return Response.json({ ok: true, cancelled: false });
+        }
+
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          return Response.json({ ok: true, disposition: 'applied' });
+        }
+
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const worker = new LongPollWorker({
+      serverUrl: `http://localhost:${server.port}`,
+      heartbeatIntervalMs: 20,
+      activities: {
+        detailsActivity: async (_input, context) => {
+          receivedLastHeartbeatDetails = context?.lastHeartbeatDetails;
+          context?.heartbeat({ progress: 0.75 });
+          return 'done';
+        },
+      },
+    });
+
+    worker.start();
+    await withTimeout(
+      detailsHeartbeatReceived.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'on-demand heartbeat with details',
+    );
+    await worker.stop();
+
+    const detailsHeartbeat = heartbeatBodies.find((body) => body.details !== undefined);
+    expect(detailsHeartbeat.details).toEqual({ progress: 0.75 });
+    expect(receivedLastHeartbeatDetails).toEqual({ progress: 0.5 });
   });
 
   it('a cancellation signal for one operation does not abort a different concurrently in-flight operation (criterion 11)', async () => {
@@ -1310,5 +1483,128 @@ describe('LongPollWorker', () => {
     expect(bResult).toBeDefined();
     expect(bResult.status).toBe('completed');
     expect(bResult.value).toBe('b-completed-despite-a-cancellation');
+  });
+
+  it('a completed attempt cleanup does not delete a later, still-live attempt for the same operationId (COR-223, tuple-keyed abort controllers)', async () => {
+    const bothStarted = createDeferred();
+    const attempt2Aborted = createDeferred();
+    const attempt1ResultReceived = createDeferred();
+    let attempt1Started = false;
+    let attempt2Started = false;
+    let attempt1ResultPosted = false;
+    const completedTasks: any[] = [];
+    let pollCount = 0;
+
+    function checkBothStarted(): void {
+      if (attempt1Started && attempt2Started) bothStarted.resolve();
+    }
+
+    server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+
+        if (POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          pollCount++;
+          if (pollCount === 1) {
+            // Same operationId, DIFFERENT attemptTokens — simulates a
+            // same-worker redispatch that lands back on this exact worker
+            // instance while an earlier attempt of the same operation is
+            // still executing.
+            return Response.json({
+              operationId: 'op-overlap-lp',
+              workerId: 'longpoll-worker-overlap',
+              activityName: 'overlapActivity',
+              input: 'attempt-1',
+              attemptToken: 'attempt-1',
+              visibilityTimeout: 30_000,
+            });
+          }
+          if (pollCount === 2) {
+            return Response.json({
+              operationId: 'op-overlap-lp',
+              workerId: 'longpoll-worker-overlap',
+              activityName: 'overlapActivity',
+              input: 'attempt-2',
+              attemptToken: 'attempt-2',
+              visibilityTimeout: 30_000,
+            });
+          }
+          return new Response(null, { status: 204 });
+        }
+
+        if (HEARTBEAT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          const body = (await request.json()) as { attemptToken: string };
+          // attempt-1 is never told to cancel. attempt-2 is only told to
+          // cancel AFTER attempt-1's result has actually landed — the exact
+          // moment attempt-1's `finally` cleanup runs. If that cleanup wrongly
+          // deleted attempt-2's live table entry (the pre-COR-223 bug), this
+          // worker's own `#sendHeartbeat` lookup for attempt-2 finds nothing
+          // and silently never aborts it, so `attempt2Aborted` never resolves
+          // and the test times out below instead of falsely passing.
+          const cancelled = body.attemptToken === 'attempt-2' && attempt1ResultPosted;
+          return Response.json({ ok: true, cancelled });
+        }
+
+        if (RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          const body = await request.json();
+          completedTasks.push(body);
+          if (body.attemptToken === 'attempt-1') {
+            attempt1ResultPosted = true;
+            attempt1ResultReceived.resolve();
+          }
+          return Response.json({ ok: true, disposition: 'applied' });
+        }
+
+        return new Response('not found', { status: 404 });
+      },
+    });
+
+    const worker = new LongPollWorker({
+      serverUrl: `http://localhost:${server.port}`,
+      concurrency: 2,
+      heartbeatIntervalMs: 20,
+      activities: {
+        overlapActivity: async (input, context) => {
+          if (input === 'attempt-1') {
+            attempt1Started = true;
+            checkBothStarted();
+            // Completes NORMALLY on its own — never cancelled — which is
+            // what triggers its `finally` cleanup.
+            return 'attempt-1-completed';
+          }
+          attempt2Started = true;
+          checkBothStarted();
+          context?.signal.addEventListener('abort', () => attempt2Aborted.resolve(), {
+            once: true,
+          });
+          // Never resolves on its own — only a heartbeat response naming
+          // THIS attempt's `cancelled: true` should ever settle it.
+          await attempt2Aborted.promise;
+          throw new Error('attempt-2 aborted');
+        },
+      },
+    });
+
+    worker.start();
+    await withTimeout(bothStarted.promise, LONG_POLL_TEST_TIMEOUT_MS, 'both attempts started');
+    await withTimeout(
+      attempt1ResultReceived.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'attempt-1 result received',
+    );
+    // Only now does the server start telling attempt-2's heartbeat to
+    // cancel — proving attempt-2's controller survived attempt-1's cleanup.
+    await withTimeout(
+      attempt2Aborted.promise,
+      LONG_POLL_TEST_TIMEOUT_MS,
+      'attempt-2 observed its own abort after attempt-1 completed and cleaned up',
+    );
+    await worker.stop();
+
+    const attempt2Result = completedTasks.find((t) => t.attemptToken === 'attempt-2');
+    expect(attempt2Result).toBeDefined();
+    expect(attempt2Result.status).toBe('cancelled');
+    expect(attempt2Result.cancelled).toBe(true);
   });
 });

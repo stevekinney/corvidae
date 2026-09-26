@@ -1733,6 +1733,67 @@ describe('handleWorkerWebSocketMessage', () => {
       const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-heartbeat-stale')));
       expect(record?.state).toBe('leased');
     });
+
+    it('reports outcome "skipped" without attempting a durable write when details exceed the payload size limit (COR-226)', async () => {
+      const context = minimalServerContext();
+      const storage = new MemoryStorage();
+      const options = minimalServeOptions(storage);
+      const ws = createFakeWs();
+      setPayloadSizeLimit(context, 10);
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        registerMessageJson('w-heartbeat-oversized', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-heartbeat-oversized') !== undefined,
+      );
+
+      context.registry.assignTask(
+        'w-heartbeat-oversized',
+        'op-heartbeat-oversized',
+        30_000,
+        undefined,
+        'attempt-token',
+      );
+      await writeLeasedLedgerRecord(storage, {
+        operationId: 'op-heartbeat-oversized',
+        workerSessionId: 'w-heartbeat-oversized',
+        attemptToken: 'attempt-token',
+      });
+
+      const applied = useObservableActivityHeartbeatsForTesting(options).next(
+        (event) => event.operationId === 'op-heartbeat-oversized',
+      );
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        JSON.stringify({
+          type: 'activityHeartbeat',
+          workerId: 'w-heartbeat-oversized',
+          operationId: 'op-heartbeat-oversized',
+          attemptToken: 'attempt-token',
+          details: { farExceedsTenBytesOfEncodedPayload: true },
+        }),
+        NOOP_CLEANUP,
+      );
+
+      const event = await applied;
+      expect(event.outcome).toBe('skipped');
+      expect(event.reason).toContain('heartbeat details');
+
+      // Skipped means no durable write was even attempted — the seeded
+      // record's lease deadline is untouched.
+      const record = decodeRemoteTaskRecord(
+        await storage.get(taskLedgerKey('op-heartbeat-oversized')),
+      );
+      expect(record?.state).toBe('leased');
+    });
   });
 
   describe('heartbeat message', () => {

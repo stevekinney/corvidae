@@ -42,6 +42,7 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskRecord,
 } from '../core/task-ledger/task-ledger.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
   restoreRealTimers,
@@ -125,6 +126,22 @@ function freshQueued(now: number, operationId: string): RemoteTaskQueued {
   );
   if (!created.ok) throw new Error(`Expected createQueued to succeed: ${created.reason}`);
   return created.nextRecord;
+}
+
+/**
+ * A storage whose `conditionalBatch` unconditionally throws — models a
+ * genuine durable write failure (not merely a lost CAS race, which is already
+ * covered elsewhere), for the failure-injection test proving `cancelTask`
+ * never sends a `cancel` control unless the `Leased -> Cancelling` write it
+ * gates on actually committed.
+ */
+class FailingCommitStorage extends MemoryStorage {
+  override async conditionalBatch(
+    _conditions: ConditionalBatchCondition[],
+    _operations: BatchOperation[],
+  ): Promise<boolean> {
+    throw new Error('simulated durable storage failure');
+  }
 }
 
 function leaseIt(
@@ -318,6 +335,27 @@ describe('Leased-origin cancellation records durable intent before sending contr
     expect(cancelMessage).toBeDefined();
     expect(cancelMessage?.operationId).toBe('op-leased');
     expect(cancelMessage?.attemptToken).toBe(leased.attemptToken);
+  });
+
+  it('sends zero cancel frames when the durable Leased -> Cancelling commit fails (COR-223 failure injection)', async () => {
+    const storage = new FailingCommitStorage();
+    const { options, context, ws } = await setUpLeasedWithWorker(storage);
+
+    // The durable write criterion 10 gates delivery on never actually
+    // commits — `cancelTask` must not have sent a `cancel` control anyway.
+    await expect(cancelTask(context, options, 'op-leased', 'operator requested')).rejects.toThrow(
+      'simulated durable storage failure',
+    );
+
+    const cancelMessages = ws.sentMessages
+      .map((raw) => JSON.parse(raw) as { type: string })
+      .filter((message) => message.type === 'cancel');
+    expect(cancelMessages).toHaveLength(0);
+
+    // The ledger record never left `leased` — the failed write left no
+    // partial, inconsistent trace of a cancellation that was never durable.
+    const record = await readRecord(storage, 'op-leased');
+    expect(record?.state).toBe('leased');
   });
 
   it('returns true even with no live worker socket — durable intent is the source of truth, delivery is best-effort', async () => {

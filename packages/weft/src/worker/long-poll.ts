@@ -4,6 +4,12 @@
 
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import { sleep } from '../runtime/portable.ts';
+import { normalizeWorkerJsonValue } from './activity-table.ts';
+import {
+  AttemptControllerTable,
+  cancellationErrorMessage,
+  DEFAULT_CANCELLED_TASK_ERROR,
+} from './attempt-controllers.ts';
 import {
   buildComposedInterceptor,
   executeWithInterceptors,
@@ -79,6 +85,8 @@ type PolledTask = {
   attemptToken: string;
   /** Present when the dispatcher supplied one — governs the heartbeat-renewable visibility deadline (COR-230). */
   visibilityTimeout?: number;
+  /** A PRIOR attempt's recorded heartbeat details (COR-226), when one exists — surfaced to the activity as `context.lastHeartbeatDetails`. */
+  lastHeartbeatDetails?: unknown;
 };
 
 // ---------------------------------------------------------------------------
@@ -153,13 +161,15 @@ export class LongPollWorker implements Disposable {
   #abortController: AbortController;
   #composedInterceptor: ComposedInterceptor | null;
   /**
-   * Keyed by `operationId`, fenced by `attemptToken` (COR-230, acceptance
-   * criterion 11) — mirrors `RemoteWorker`'s `#taskAbortControllers` exactly,
-   * so a cancellation signal that names an attempt this worker has already
-   * completed or superseded matches nothing rather than aborting whatever
-   * now runs under that `operationId`.
+   * Tuple-keyed by `(operationId, attemptToken)` (COR-223) — mirrors
+   * `RemoteWorker`'s `#taskAbortControllers` exactly, so a cancellation
+   * signal that names an attempt this worker has already completed or
+   * superseded matches nothing rather than aborting whatever now runs under
+   * that `operationId`, and an earlier attempt's `finally` block can only
+   * ever delete its OWN entry — never a later, still-live attempt's
+   * controller for the same operation.
    */
-  #taskAbortControllers: Map<string, { controller: AbortController; attemptToken: string }>;
+  #taskAbortControllers: AttemptControllerTable;
   /**
    * Durable result delivery (COR-235) — the long-poll counterpart to
    * `RemoteWorker`'s `TaskResultOutbox` + reconnect-flush. Constructed once
@@ -182,7 +192,7 @@ export class LongPollWorker implements Disposable {
     this.#inFlight = 0;
     this.#abortController = new AbortController();
     this.#composedInterceptor = buildComposedInterceptor(options.interceptors);
-    this.#taskAbortControllers = new Map();
+    this.#taskAbortControllers = new AttemptControllerTable();
     this.#delivery = new LongPollResultDelivery({
       resultUrl: this.#buildResultUrl(),
       ...(this.#options.headers === undefined ? {} : { headers: this.#options.headers }),
@@ -278,12 +288,9 @@ export class LongPollWorker implements Disposable {
   // Internal
   // ---------------------------------------------------------------------------
 
-  /** Abort every in-flight activity's controller and clear the map. */
+  /** Abort every in-flight activity's controller and clear the table. */
   #abortAllTasks(): void {
-    for (const { controller } of this.#taskAbortControllers.values()) {
-      controller.abort();
-    }
-    this.#taskAbortControllers.clear();
+    this.#taskAbortControllers.abortAll();
   }
 
   /** Build the poll URL with activity and timeout query parameters. */
@@ -367,15 +374,23 @@ export class LongPollWorker implements Disposable {
   }
 
   /**
-   * Send one activity heartbeat for `task` (COR-230, acceptance criterion 5)
-   * and abort `controller` if the response reports the attempt cancelled.
-   * Network or non-OK responses are logged and otherwise ignored — a missed
-   * heartbeat is retried on the next interval tick, exactly as a dropped
-   * WebSocket `activityHeartbeat` frame would be by the next timer fire; it
-   * never fails the activity itself.
+   * Send one activity heartbeat for `task` (COR-230, acceptance criterion 5),
+   * optionally carrying `details` (COR-226) — used both by the automatic
+   * per-attempt keepalive timer (no details) and by an activity's own
+   * on-demand `context.heartbeat(details)` call. Aborts the CURRENTLY
+   * tracked controller for `(task.operationId, task.attemptToken)` — looked
+   * up fresh through `#taskAbortControllers` on every call (COR-223), not a
+   * closure-captured reference — if the response reports the attempt
+   * cancelled, carrying the server's durably recorded cancellation reason
+   * when present. Network or non-OK responses are logged and otherwise
+   * ignored — a missed heartbeat is retried on the next interval tick,
+   * exactly as a dropped WebSocket `activityHeartbeat` frame would be by the
+   * next timer fire; it never fails the activity itself.
    */
-  async #sendHeartbeat(task: PolledTask, controller: AbortController): Promise<void> {
-    if (controller.signal.aborted) return;
+  async #sendHeartbeat(task: PolledTask, details?: unknown): Promise<void> {
+    const controller = this.#taskAbortControllers.get(task.operationId, task.attemptToken);
+    if (controller === undefined || controller.signal.aborted) return;
+    const normalizedDetails = details === undefined ? undefined : normalizeWorkerJsonValue(details);
     try {
       const response = await fetch(this.#buildHeartbeatUrl(), {
         method: 'POST',
@@ -384,13 +399,18 @@ export class LongPollWorker implements Disposable {
           operationId: task.operationId,
           workerId: task.workerId,
           attemptToken: task.attemptToken,
+          ...(normalizedDetails !== undefined ? { details: normalizedDetails } : {}),
         }),
         signal: this.#abortController.signal,
       });
       if (!response.ok) return;
-      const body = (await response.json()) as { ok?: boolean; cancelled?: boolean };
+      const body = (await response.json()) as {
+        ok?: boolean;
+        cancelled?: boolean;
+        reason?: string;
+      };
       if (body.cancelled === true) {
-        controller.abort();
+        controller.abort(body.reason ?? DEFAULT_CANCELLED_TASK_ERROR);
       }
     } catch {
       // Best-effort: a missed heartbeat is retried on the next interval tick.
@@ -401,12 +421,9 @@ export class LongPollWorker implements Disposable {
     this.#inFlight += 1;
 
     const taskAbortController = new AbortController();
-    this.#taskAbortControllers.set(task.operationId, {
-      controller: taskAbortController,
-      attemptToken: task.attemptToken,
-    });
+    this.#taskAbortControllers.set(task.operationId, task.attemptToken, taskAbortController);
     const heartbeatTimer = setInterval(
-      () => void this.#sendHeartbeat(task, taskAbortController),
+      () => void this.#sendHeartbeat(task),
       this.#options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
     );
 
@@ -436,6 +453,7 @@ export class LongPollWorker implements Disposable {
         task,
         this.#composedInterceptor,
         taskAbortController.signal,
+        (details) => void this.#sendHeartbeat(task, details),
       );
 
       await this.#delivery.deliver({
@@ -452,7 +470,11 @@ export class LongPollWorker implements Disposable {
         ...(task.workerId === undefined ? {} : { workerId: task.workerId }),
         attemptToken: task.attemptToken,
         ...(cancelled
-          ? { status: 'cancelled', cancelled: true, error: 'Task cancelled' }
+          ? {
+              status: 'cancelled',
+              cancelled: true,
+              error: cancellationErrorMessage(taskAbortController.signal),
+            }
           : {
               status: 'failed',
               error: error instanceof Error ? error.message : String(error),
@@ -460,7 +482,7 @@ export class LongPollWorker implements Disposable {
       });
     } finally {
       clearInterval(heartbeatTimer);
-      this.#taskAbortControllers.delete(task.operationId);
+      this.#taskAbortControllers.delete(task.operationId, task.attemptToken);
       this.#inFlight -= 1;
     }
   }

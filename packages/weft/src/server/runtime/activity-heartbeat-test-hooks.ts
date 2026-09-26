@@ -45,9 +45,11 @@ type EngineKey = ServeOptions['engine'];
  *   but either the durable transition's own precondition rejected it (a
  *   concurrent completion/requeue/cancellation already moved the record) or
  *   the storage write itself failed after retries.
- * - `skipped`: the worker was not authorized at all (stale/superseded
- *   attempt, or the operation was no longer tracked in the registry by the
- *   time this heartbeat was handled) — no durable write was even attempted.
+ * - `skipped`: no durable write was even attempted — either the worker was
+ *   not authorized at all (stale/superseded attempt, or the operation was no
+ *   longer tracked in the registry by the time this heartbeat was handled),
+ *   or the message failed protocol-boundary validation before authorization
+ *   could matter (COR-226: an oversized/invalid `details` payload).
  */
 export type ActivityHeartbeatAppliedEvent = Readonly<{
   operationId: string;

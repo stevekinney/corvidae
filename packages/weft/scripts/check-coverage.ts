@@ -1589,11 +1589,20 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
     ],
     [
       'src/server/runtime/task-result-resolution.ts',
+      // Realigned for COR-226 (activityHeartbeatDetailsPayloadSizeError):
+      // the new function mirrors taskResultPayloadSizeError's identical
+      // try/catch/rethrow structure, and Bun LCOV attributes the same
+      // never-taken `throw error` re-throw branch plus its preceding
+      // closing brace as missed — a direct unit test exercises the
+      // PayloadSizeExceededError branch (the `return error` line), but
+      // forcing the `error instanceof PayloadSizeExceededError === false`
+      // rethrow would require assertPayloadWithinLimit itself to throw
+      // something else, which no current test does.
       {
         reason:
-          'A direct unit test calls taskResultPayloadSizeError with an oversized completion and asserts the returned PayloadSizeExceededError, but Bun LCOV still reports the catch-block closing brace and one aggregate function as missed.',
+          'Both size-check functions (taskResultPayloadSizeError, activityHeartbeatDetailsPayloadSizeError) have a catch-block rethrow for a non-PayloadSizeExceededError that no current test forces; Bun LCOV attributes the closing brace and the throw line as missed for the newer function.',
         functions: 1,
-        lines: new Set([42]),
+        lines: new Set([47, 48]),
         requireUncoveredLines: true,
       },
     ],
@@ -1607,49 +1616,36 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
     ],
     [
       'src/server/runtime/websocket-worker.ts',
-      // Realigned for corvidae from a fresh coverage/lcov.info (COR-235/
-      // COR-237/COR-1271 result-acknowledgement work). The prior entry's
-      // coordinates (141-144, 159-162, 218-224, 585, 586, 589, 590) no
-      // longer point at the branches they were written against — COR-1271's
-      // correlated-rejection test now exercises the durable-ledger
-      // commit-failure branch (was 159-162) and the fallback path's
-      // authorization-rejection branch (was 218-224) for real, so both are
-      // fully covered and dropped from this entry rather than carried
-      // forward as dead allowance. The remaining gaps, at their current
-      // coordinates — re-derived from a fresh coverage/lcov.info generated
-      // AFTER this file's own edits (deleting
-      // activityHeartbeatRejectionMessage's dead 'unknown-operation'
-      // branch), not by offset arithmetic against the pre-edit layout,
-      // which is what put an earlier pass at this same realignment about
-      // ten lines short of every coordinate below the edited region:
+      // Realigned for COR-226 (attempt-fenced heartbeat details validation)
+      // from a fresh coverage/lcov.info generated AFTER this file's own
+      // edits (the new `activityHeartbeatDetailsPayloadSizeError` check in
+      // `onActivityHeartbeatMessage`, now itself covered by a dedicated
+      // oversized-details test) — not by offset arithmetic against the
+      // pre-edit layout. The underlying branches this entry allows are
+      // unchanged from the prior (COR-235/COR-237/COR-1271) realignment;
+      // only their line numbers shifted:
       //
       // 1. The oversized-task-result-rejection persistence-failure log
-      // (160-163, was 141-144) and the `applyTaskResultFallback` rejection
-      // logger (287, was 247, the arrow-function callback passed to
+      // (163-166, was 160-163) and the `applyTaskResultFallback` rejection
+      // logger (290, was 287, the arrow-function callback passed to
       // `.catch()` — the one missed function this entry allows) — each
       // fires only when a storage write or the fallback path itself fails,
       // which no current test forces.
       //
       // 2. The revision-mismatch protocol-error branch for a stale
-      // `taskResult` (256-264) — a genuine resend of the same original
-      // message always echoes back whatever revision it echoed the first
-      // time, so no current test can construct the mismatch without lying
-      // about being a resend.
+      // `taskResult` (259-267, was 256-264) — a genuine resend of the same
+      // original message always echoes back whatever revision it echoed the
+      // first time, so no current test can construct the mismatch without
+      // lying about being a resend.
       //
       // 3. The closed `WorkerToServerMessage` union's `default:` branch
-      // (632 `default: {`, 635 `const exhaustiveCheck`, 636 `return
+      // (653 `default: {`, 656 `const exhaustiveCheck`, 657 `return
       // exhaustiveCheck`) is the same compile-time-only exhaustiveness guard
       // realigned above for `get-task-detail.ts` and
       // `task-ledger-recovery.ts`, plus the preceding `activityHeartbeat`
-      // case's closing brace (631), which reads 0 in this run — the same
+      // case's closing brace (652), which reads 0 in this run — the same
       // case-label/brace coverage-attribution artifact those sibling
       // entries already document.
-      //
-      // (COR-237 also added an `'unknown-operation'` branch to
-      // `activityHeartbeatRejectionMessage` immediately above this file's
-      // line 102; that branch was unreachable by construction from its only
-      // caller and was deleted rather than allowed here — see that
-      // function's doc comment.)
       //
       // `requireUncoveredLines: true` here, as before: the majority of what
       // this entry allows is real, meaningfully-defensive branches where a
@@ -1665,24 +1661,40 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // (+1), 287 -> 288 (+1), 631/632/635/636 -> 669/670/673/674 (+38).
       //
       // 4. `onActivityHeartbeatMessage`'s `withRetry` closure re-checks
-      // `isAssignedToAttempt` before committing the durable heartbeat write (462-468) — genuinely
-      // reachable, but only on `withRetry`'s SECOND attempt, after `commitTaskLedgerTransition`
-      // has thrown once and `withRetry` has awaited its 100ms backoff sleep; only during that
-      // real sleep can another message actually reassign or resolve the attempt. No current test
-      // forces both a thrown storage error AND a race during its retry backoff, and doing so
-      // would need a genuine ~100ms wall-clock wait — exactly the timing-dependent test this
-      // project's own audit history (COR-1264) already argues against manufacturing. The
-      // otherwise-identical sibling guard at line 444 (`extendVisibility` returning `undefined`
-      // right after `getTask` found the same entry, with no `await` between them) is NOT
-      // reachable by any construction and is intentionally left without a test hook or an
-      // allowance entry — see its own comment.
+      // `isAssignedToAttempt` before committing the durable heartbeat write (originally 462-468,
+      // now 492-498 below) — genuinely reachable, but only on `withRetry`'s SECOND attempt, after
+      // `commitTaskLedgerTransition` has thrown once and `withRetry` has awaited its 100ms backoff
+      // sleep; only during that real sleep can another message actually reassign or resolve the
+      // attempt. No current test forces both a thrown storage error AND a race during its retry
+      // backoff, and doing so would need a genuine ~100ms wall-clock wait — exactly the
+      // timing-dependent test this project's own audit history (COR-1264) already argues against
+      // manufacturing. The otherwise-identical sibling guard at line 444 (`extendVisibility`
+      // returning `undefined` right after `getTask` found the same entry, with no `await` between
+      // them) is NOT reachable by any construction and is intentionally left without a test hook
+      // or an allowance entry — see its own comment.
+      //
+      // Realigned a further time merging COR-235 (W1c) and COR-226/COR-223 (W2): both branches
+      // independently realigned this same entry from their own pre-merge coverage runs (W1c to
+      // 161-164/257-265/288/462-468/669-670+673-674; W2 to 163-166/259-267/290/652-653+656-657),
+      // and the merge's textual conflict was resolved by re-deriving from a fresh
+      // coverage/lcov.info on the MERGED tree, not by picking a side or doing offset arithmetic on
+      // either. The merge also surfaced a genuine coverage gap the textual merge itself
+      // introduced: `onActivityHeartbeatMessage`'s new COR-226 `detailsError` early return had no
+      // `reportActivityHeartbeatAppliedForTesting` call at all (W2 predates that test-only seam),
+      // so it silently dropped the outcome report every other early-return path in this function
+      // makes. Fixed by adding a `skipped` report there (see `ActivityHeartbeatAppliedEvent`'s
+      // updated doc comment) and covering it with a dedicated test
+      // (`websocket-worker.characterization.test.ts`'s `activityHeartbeat message` describe
+      // block) — not a line this allowance should ever have covered for. Final coordinates below
+      // reflect that fix: 161-164 -> 164-167, 257-265 -> 260-268, 288 -> 291, 462-468 -> 492-498,
+      // 669/670/673/674 -> 700/701/704/705.
       {
         reason:
-          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (161-164, 288), a revision-mismatch rejection unreachable without fabricating a non-resend (257-265), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (462-468), and the closed WorkerToServerMessage union default branch (669, 670, 673, 674).",
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (164-167, 291), a revision-mismatch rejection unreachable without fabricating a non-resend (260-268), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (492-498), and the closed WorkerToServerMessage union default branch (700, 701, 704, 705).",
         functions: 1,
         lines: new Set([
-          161, 162, 163, 164, 257, 258, 259, 260, 261, 262, 263, 264, 265, 288, 462, 463, 464, 465,
-          466, 467, 468, 669, 670, 673, 674,
+          164, 165, 166, 167, 260, 261, 262, 263, 264, 265, 266, 267, 268, 291, 492, 493, 494, 495,
+          496, 497, 498, 700, 701, 704, 705,
         ]),
         requireUncoveredLines: true,
       },
@@ -1695,6 +1707,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         functions: 3,
         lines: new Set([81, 82, 83, 237, 238]),
         requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/worker/attempt-controllers.ts',
+      // COR-223: 100% line coverage (every statement in this file executes
+      // under the tuple-key regression tests in worker/index.test.ts and
+      // worker/long-poll.test.ts) but one of its 7 declared functions is not
+      // attributed as hit — the same class-with-no-explicit-constructor
+      // attribution gap Bun LCOV shows elsewhere in this repository (no
+      // `FN:` name data is emitted for this file, so the specific function
+      // cannot be pinned to a line the way other entries do).
+      {
+        reason:
+          'Every line of AttemptControllerTable executes under real tests (100% line coverage), but Bun LCOV attributes one of its 7 declared functions as unhit with no FN name data to identify or pin it to a line.',
+        functions: 1,
       },
     ],
     [
