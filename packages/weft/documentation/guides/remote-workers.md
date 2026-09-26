@@ -233,7 +233,7 @@ Renewal is capped by the attempt's absolute deadline — a fixed ceiling on tota
 
 An activity can attach progress details to its heartbeat, exactly the way an inline (in-process) activity uses `ActivityContext.heartbeat()` — this is the same public surface, not a second heartbeat API:
 
-```typescript
+```typescript partial
 const worker = new RemoteWorker({
   /* ... */
   workflows: {
@@ -262,7 +262,7 @@ The server can request cancellation of an in-flight remote activity — for exam
 
 An activity observes cancellation the same way on both transports:
 
-```typescript
+```typescript partial
 const worker = new RemoteWorker({
   /* ... */
   workflows: {
