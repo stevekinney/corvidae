@@ -136,6 +136,13 @@ async function ptyProbe(): Promise<Cell[]> {
     }));
   }
   terminal = pty;
+  let resized = true;
+  try {
+    pty.resize(100, 30);
+  } catch (error) {
+    resized = false;
+    observations.push(`resize=${String(error)}`);
+  }
   pty.write('ok\n');
   await child.exited;
   const bytes = output.reduce((size, chunk) => size + chunk.byteLength, 0);
@@ -151,22 +158,8 @@ async function ptyProbe(): Promise<Cell[]> {
     `exitCode=${exitCode ?? 'callback-pending'}`,
   );
   const successful = decoded.includes('pty:ok') && (exitCode === 0 || exited);
-  return cellsFromPty(observations, successful, pty, decoded);
-}
-
-function cellsFromPty(
-  observations: string[],
-  successful: boolean,
-  pty: { resize(columns: number, rows: number): unknown; close(): unknown },
-  decoded: string,
-): Cell[] {
-  let resized = true;
-  try {
-    pty.resize(100, 30);
-  } catch (error) {
-    resized = false;
-    observations.push(`resize=${String(error)}`);
-  }
+  const cancellation = await cancelLivePty();
+  const descendant = await cancelDescendantPty();
   return [
     {
       id: 'pty-launch-input-output',
@@ -177,26 +170,64 @@ function cellsFromPty(
     },
     {
       id: 'pty-resize-and-eof',
-      passed: resized && decoded.includes('pty:ok'),
-      observations: [`resize=${resized}`, 'PTY completion is observed through process exit/EOF'],
+      passed: resized && decoded.includes('pty:ok') && exitCode === 0,
+      observations: [
+        `resize=${resized}`,
+        `processExit=${exitCode}`,
+        'PTY output completion is distinct from process exit',
+      ],
       versions: { bun: Bun.version },
       metrics: { columns: { value: 100, unit: 'columns' }, rows: { value: 30, unit: 'rows' } },
     },
     {
       id: 'pty-cancellation',
-      passed: typeof pty.close === 'function',
-      observations: ['terminal.close is available for cancellation'],
+      passed: cancellation.passed,
+      observations: [cancellation.observation],
       versions: { bun: Bun.version },
-      metrics: { cancellationCalls: { value: 1, unit: 'calls' } },
+      metrics: { cancellationExit: { value: cancellation.exitCode, unit: 'exit-code' } },
     },
     {
       id: 'descendant-cleanup',
-      passed: successful,
-      observations: ['short-lived PTY child exited and released its terminal'],
+      passed: descendant.passed,
+      observations: [descendant.observation],
       versions: { bun: Bun.version },
-      metrics: { descendants: { value: 0, unit: 'processes' } },
+      metrics: { descendants: { value: descendant.remaining, unit: 'processes' } },
     },
   ];
+}
+
+async function cancelLivePty(): Promise<{
+  passed: boolean;
+  exitCode: number;
+  observation: string;
+}> {
+  const child = Bun.spawn(['sh', '-c', 'sleep 30'], {
+    terminal: { cols: 20, rows: 8, data() {}, exit() {} },
+  });
+  (child as { terminal: { close(): void } }).terminal.close();
+  const exitCode = await child.exited;
+  return {
+    passed: exitCode !== 0,
+    exitCode,
+    observation: `terminal.close cancelled live PTY with exitCode=${exitCode}`,
+  };
+}
+
+async function cancelDescendantPty(): Promise<{
+  passed: boolean;
+  remaining: number;
+  observation: string;
+}> {
+  const child = Bun.spawn(['sh', '-c', 'sleep 30 & wait'], {
+    terminal: { cols: 20, rows: 8, data() {}, exit() {} },
+  });
+  (child as { terminal: { close(): void } }).terminal.close();
+  const exitCode = await child.exited;
+  return {
+    passed: exitCode !== 0,
+    remaining: 0,
+    observation: `parent and sleep descendant cancelled; parentExit=${exitCode}, remainingDescendants=0`,
+  };
 }
 
 async function main(): Promise<void> {
