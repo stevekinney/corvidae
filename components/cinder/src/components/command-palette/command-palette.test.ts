@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { createRawSnippet, tick } from 'svelte';
+import { createRawSnippet, flushSync, tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { resetEscapeStack, resetScrollLock } from '../../_internal/overlay.ts';
@@ -50,7 +50,7 @@ if (typeof HTMLDialogElement !== 'undefined') {
   });
 }
 
-const { render, fireEvent, cleanup, waitFor } = await import('@testing-library/svelte');
+const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {
@@ -706,10 +706,11 @@ describe('CommandPalette — exit transition lifecycle', () => {
         panel?.dispatchEvent(event);
       }
 
-      await waitFor(() => {
-        expect(dialog.hasAttribute('open')).toBe(false);
-        expect(container.querySelector('.cinder-command-palette__panel')).toBeNull();
-      });
+      flushSync();
+      expect(dialog.hasAttribute('open')).toBe(false);
+      expect(
+        container.querySelector('.cinder-command-palette__panel')?.outerHTML ?? null,
+      ).toBeNull();
     } finally {
       window.getComputedStyle = originalGetComputedStyle;
     }
@@ -760,9 +761,10 @@ describe('CommandPalette — exit transition lifecycle', () => {
       // reducedMotion: true to waitForTransitionCompletion, which ignores
       // the (non-zero) computed duration entirely and resolves via
       // queueMicrotask regardless.
-      await waitFor(() => {
-        expect(container.querySelector('.cinder-command-palette__panel')).toBeNull();
-      });
+      flushSync();
+      expect(
+        container.querySelector('.cinder-command-palette__panel')?.outerHTML ?? null,
+      ).toBeNull();
     } finally {
       window.matchMedia = originalMatchMedia;
       window.getComputedStyle = originalGetComputedStyle;
@@ -799,9 +801,10 @@ describe('CommandPalette — exit transition lifecycle', () => {
 
       await rerender({ open: false, items: emptySnippet });
 
-      await waitFor(() => {
-        expect(container.querySelector('.cinder-command-palette__panel')).toBeNull();
-      });
+      flushSync();
+      expect(
+        container.querySelector('.cinder-command-palette__panel')?.outerHTML ?? null,
+      ).toBeNull();
     } finally {
       window.getComputedStyle = originalGetComputedStyle;
     }

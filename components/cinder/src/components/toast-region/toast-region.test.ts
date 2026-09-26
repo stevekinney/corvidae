@@ -10,7 +10,7 @@ import type { ToastApi } from '../../_internal/toast-context.ts';
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
-const { createRawSnippet, tick } = await import('svelte');
+const { createRawSnippet, tick, flushSync } = await import('svelte');
 const { default: Wrapper } = await import('../../test/fixtures/toast-fixture.svelte');
 
 const TOAST_REGION_SOURCE = join(import.meta.dir, 'toast-region.svelte');
@@ -283,12 +283,11 @@ describe('useToast api', () => {
       return element!;
     });
     api!.show('Second', { id: 'dup', duration: 0 });
-    await waitFor(() => {
-      const matches = container.querySelectorAll('[data-cinder-toast-id="dup"]');
-      expect(matches.length).toBe(1);
-      expect(matches[0]?.textContent).toContain('Second');
-      expect(matches[0]).not.toBe(firstToast);
-    });
+    flushSync();
+    const matches = container.querySelectorAll('[data-cinder-toast-id="dup"]');
+    expect(matches.length).toBe(1);
+    expect(matches[0]?.textContent).toContain('Second');
+    expect(matches[0]).not.toBe(firstToast);
   });
 
   test('same-id replacement moves a toast across live-region channels', async () => {
@@ -437,7 +436,9 @@ describe('useToast api', () => {
     await waitFor(() => {
       expect(container.querySelector('[role="status"]')?.textContent).toContain('Saving');
       expect(container.querySelector('[data-cinder-pending="true"]')).not.toBeNull();
-      expect(container.querySelector('[data-cinder-pending="true"] [role="status"]')).toBeNull();
+      expect(
+        container.querySelector('[data-cinder-pending="true"] [role="status"]')?.outerHTML ?? null,
+      ).toBeNull();
       expect(container.querySelector('.cinder-toast__spinner')?.getAttribute('aria-hidden')).toBe(
         'true',
       );
@@ -447,8 +448,8 @@ describe('useToast api', () => {
     tracked.resolve('draft');
     await waitFor(() => {
       expect(container.querySelector('[role="status"]')?.textContent).toContain('Saved draft');
-      expect(container.querySelector('[data-cinder-pending="true"]')).toBeNull();
-      expect(container.querySelector('[data-cinder-toast-id="save"]')).not.toBe(loadingToast);
+      expect(container.querySelector('[data-cinder-pending="true"]')?.outerHTML ?? null).toBeNull();
+      expect(container.querySelector('[data-cinder-toast-id="save"]') === loadingToast).toBe(false);
     });
   });
 
@@ -477,7 +478,7 @@ describe('useToast api', () => {
     await waitFor(() => {
       expect(container.querySelector('[role="status"]')?.textContent ?? '').not.toContain('Saving');
       expect(container.querySelector('[role="alert"]')?.textContent).toContain('Nope');
-      expect(container.querySelector('[data-cinder-pending="true"]')).toBeNull();
+      expect(container.querySelector('[data-cinder-pending="true"]')?.outerHTML ?? null).toBeNull();
     });
   });
 
@@ -585,7 +586,7 @@ describe('useToast api', () => {
     action.click();
     expect(actionCount).toBe(1);
     await waitFor(() => {
-      expect(container.querySelector('.cinder-toast')).toBeNull();
+      expect(container.querySelector('.cinder-toast')?.outerHTML ?? null).toBeNull();
     });
   });
 
@@ -1091,9 +1092,8 @@ describe('toast variant icons', () => {
     await waitFor(() => expect(api).not.toBeNull());
 
     api!.show('No icon', { variant: 'info', duration: 0, showIcon: false });
-    await waitFor(() => {
-      expect(container.querySelector('.cinder-toast__icon')).toBeNull();
-    });
+    flushSync();
+    expect(container.querySelector('.cinder-toast__icon')?.outerHTML ?? null).toBeNull();
   });
 
   test('success toast renders its distinct checkmark icon when showIcon=true', async () => {
@@ -1289,9 +1289,10 @@ describe('data-cinder-closing (OVERLAY-POLICY transition-lifecycle contract)', (
 
       // Once the toast finishes unmounting, the element (and its attribute) is
       // gone from the DOM entirely.
-      await waitFor(() => {
-        expect(container.querySelector(`[data-cinder-toast-id="${id}"]`)).toBeNull();
-      });
+      flushSync();
+      expect(
+        container.querySelector(`[data-cinder-toast-id="${id}"]`)?.outerHTML ?? null,
+      ).toBeNull();
     } finally {
       window.getComputedStyle = originalGetComputedStyle;
     }
@@ -1332,7 +1333,9 @@ describe('data-cinder-closing (OVERLAY-POLICY transition-lifecycle contract)', (
       // waitForTransitionCompletion resolves via queueMicrotask when the
       // computed transition duration is 0 — no transitionend needed.
       await waitFor(() => {
-        expect(container.querySelector(`[data-cinder-toast-id="${id}"]`)).toBeNull();
+        expect(
+          container.querySelector(`[data-cinder-toast-id="${id}"]`)?.outerHTML ?? null,
+        ).toBeNull();
       });
     } finally {
       window.matchMedia = originalMatchMedia;

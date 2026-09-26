@@ -213,7 +213,7 @@
       </SegmentedControl>
 
       {#if paginated}
-        <div class="weft-timeline-tab__pagination">
+        <nav class="weft-timeline-tab__pagination" aria-label="Timeline pagination">
           <Button
             variant="ghost"
             size="sm"
@@ -241,7 +241,7 @@
             }}
           />
           <Button variant="ghost" size="sm" label="Go" onclick={jumpToStep} />
-        </div>
+        </nav>
       {/if}
     </div>
 
