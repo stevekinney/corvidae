@@ -448,6 +448,9 @@ export const ENGINE_SLEEP_RESOLVER_COUNT_FOR_TESTING = Symbol('engineSleepResolv
 export const ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING = Symbol(
   'engineWaitForSleepResolverForTesting',
 );
+export const ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING = Symbol(
+  'engineWaitForSignalWaiterForTesting',
+);
 export const ENGINE_SET_WORKER_TURN_TIMEOUT_RESOLVER_FOR_TESTING = Symbol(
   'engineSetWorkerTurnTimeoutResolverForTesting',
 );
@@ -769,6 +772,7 @@ export class Engine<
     getInternals(this).sleepResolvers = new Map();
     getInternals(this).sleepResolversByWorkflow = new Map();
     getInternals(this).sleepResolverReadyWaitersForTesting = new Map();
+    getInternals(this).signalWaiterReadyWaitersForTesting = new Map();
     getInternals(this).sleepTimerAcknowledgementWaiters = new Map();
     getInternals(this).durableInlineOperations = new Map();
     getInternals(this).sleepTimersFiredWithoutResolver = new Map();
@@ -2343,6 +2347,33 @@ export class Engine<
   }
   [ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING](): number {
     return getInternals(this).signalWaiters.size;
+  }
+  /**
+   * Resolve once `workflowId` has a registered signal waiter — immediately if
+   * it already has one. Settled by `registerSignalWaiter` (signals.ts) or by
+   * engine disposal (disposal.ts).
+   *
+   * Unlike {@link ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING}, this installs
+   * no timer. Reaching a signal wait in worker mode means booting a real
+   * Worker and running a turn, work whose duration tracks host load, so any
+   * fixed budget here would be a latency assertion (COR-1330). A workflow
+   * that never parks is a genuine hang, reported by the test runner's own
+   * per-test timeout; the sleep seam keeps its bound only because its Service
+   * Worker caller needs a diagnostic that beats that caller's own message
+   * timeout.
+   */
+  async [ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId: string): Promise<void> {
+    const internals = getInternals(this);
+    if (internals.signalWaitersByWorkflow.has(workflowId)) return;
+
+    const { promise, resolve } = Promise.withResolvers<void>();
+    let waiters = internals.signalWaiterReadyWaitersForTesting?.get(workflowId);
+    if (waiters === undefined) {
+      waiters = new Set();
+      internals.signalWaiterReadyWaitersForTesting?.set(workflowId, waiters);
+    }
+    waiters.add(resolve);
+    return await promise;
   }
   [ENGINE_SLEEP_RESOLVER_COUNT_FOR_TESTING](): number {
     return getInternals(this).sleepResolvers.size;

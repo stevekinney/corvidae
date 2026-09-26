@@ -13,40 +13,14 @@ const { default: VirtualList } = await import('./virtual-list.svelte');
 afterEach(() => cleanup());
 
 describe('VirtualList — edge callbacks under adaptive overscan', () => {
-  test('reads the visible range from scroll geometry, not from the window', async () => {
-    // Structural, for the same reason as the adaptive row-size test above: reproducing
-    // this needs the effective overscan to exceed the configured one, which only
-    // velocity produces — and events fired from a test share a timestamp, so the
-    // velocity tracker reports zero and adaptation never engages. CIN-614 adds the
-    // playground example that makes it reachable in a browser.
-    //
-    // What it pins is the invariant, because BOTH ways of undoing the window's
-    // overscan are wrong and in opposite directions. Subtracting the configured
-    // overscan leaves the adaptive growth in, and the callbacks fire tens of rows
-    // early. Subtracting the effective overscan over-corrects at the list's own edges,
-    // where the window is clamped and the overscan realized on that side is smaller
-    // than the one requested — in a 100-row list `endIndex` is 100 however wide
-    // adaptation grew, so the last visible row reads as 49 and `onEndReached` is
-    // suppressed until the idle timer shrinks the window back.
-    //
-    // The visible range therefore must not be reconstructed from the window at all.
-    const source = await Bun.file(
-      new URL('./virtual-list.svelte', import.meta.url).pathname,
-    ).text();
-    const edgeEffect = source.slice(
-      source.indexOf('const lastRenderedIndex = Math.max(0, itemCount - 1);'),
-      source.indexOf('const maskedProximity'),
-    );
-    expect(edgeEffect).toContain('resolveAnchorIndexAtOffset(scrollOffset)');
-    expect(edgeEffect).not.toContain('currentWindow.startIndex');
-    expect(edgeEffect).not.toContain('currentWindow.endIndex');
-
-    // And the trigger distance stays the CONFIGURED overscan. Widening it with the
-    // effective value would fetch pages earlier the faster the reader scrolled, which
-    // is not what the prop promises.
-    expect(edgeEffect).toContain('overscan: resolvedOverscan');
-    expect(edgeEffect).not.toContain('overscan: effectiveOverscan');
-  });
+  // The invariant this used to pin structurally — that the visible range comes from
+  // scroll geometry rather than from undoing the window's overscan, and that the
+  // edge-proximity trigger distance stays the CONFIGURED overscan rather than the
+  // effective one — is now exercised behaviourally in a real browser, where events
+  // carry real timestamps and adaptive overscan actually engages. See
+  // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`'s adaptive-overscan
+  // suite (COR-376), which scrolls fast enough to raise the effective overscan and
+  // asserts `onEndReached` still fires within the CONFIGURED overscan of the end.
 
   test('still fires both callbacks with an overscan wider than the list', async () => {
     // The clamping case, exercised by configuration rather than by velocity: with an

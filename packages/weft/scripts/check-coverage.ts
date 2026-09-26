@@ -839,6 +839,16 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
   'CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH',
   [
     [
+      'examples/remote-worker/src/index.ts',
+      {
+        reason:
+          'Three distinct unreachable classes, none a test gap: (1) lines 30-32, the body of formatGreetingRemotely.execute, are unreachable by design — activityExecution.mode is "remote" has no local-fallback branch at all, so the engine never calls this local implementation, the same invariant COR-154’s zero-invocation spy tests assert elsewhere in this package; (2) lines 80 and 95 are defensive validation the example’s own happy-path fixture (remote-worker.test.ts) never violates — isGreetingInput always accepts the fixture’s well-formed input, and the remote worker always returns a string, so triggering either throw would mean injecting a malformed wire payload past RemoteWorker’s own contract, not exercising this example; (3) lines 106-107, the `if (import.meta.main)` CLI entry point, only run when this file is spawned directly (remote-worker.test.ts’s second test does this via `Bun.spawn`), and that child process’s hits are not attributed to the parent Bun LCOV report — the same class of gap already documented for examples/order-processing/src/client.ts and src/server.ts above and examples/hello-world/src/index.ts in TARGET_ONLY_COVERAGE_ALLOWANCES.',
+        functions: 1,
+        lines: new Set([30, 31, 32, 80, 95, 106, 107]),
+        requireUncoveredLines: true,
+      },
+    ],
+    [
       'examples/order-processing/src/server.ts',
       {
         reason:
@@ -1770,6 +1780,16 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     },
   ],
   [
+    'scripts/check-documentation-code-blocks.ts',
+    {
+      reason:
+        'The `if (import.meta.main)` entry point only resolves the package paths, calls runDocumentationCodeBlockCheck(), prints its result and sets the exit code. It runs when `bun run typecheck` spawns the script, a separate process whose hits are never attributed to the parent LCOV report; runDocumentationCodeBlockCheck() itself is covered by check-documentation-code-blocks.test.ts against a fixture package.',
+      functions: 1,
+      lines: new Set([262, 263, 264, 265, 266, 267, 268, 269, 270, 271]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
     'src/core/engine/operations-activity.ts',
     {
       reason:
@@ -1782,8 +1802,17 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'src/server/operations/task-diagnostics-collector.ts',
     {
       reason:
-        "addRecordDiagnostics()'s switch over RemoteTaskRecord['state'] ends with a closed-union exhaustiveness guard (`const exhaustive: never = decoded`). Every record this module-private function receives was already validated by decodeRemoteTaskRecord() -> isRemoteTaskRecord(), which returns null (silently skipped by the one caller, collectTaskDiagnostics) for any record whose state is not one of the six known values. A record with an out-of-union state can therefore never reach this switch at all — the sibling decode validator forecloses it before addRecordDiagnostics is ever called, the same class of guard already documented for get-task-detail.ts/task-ledger-recovery.ts's case-label/brace lines elsewhere in this file.",
-      lines: new Set([104, 107, 108, 109]),
+        "addRecordDiagnostics()'s switch over RemoteTaskRecord['state'] ends with a closed-union exhaustiveness guard (`const exhaustive: never = decoded`). Every record this module-private function receives was already validated by decodeRemoteTaskRecord() -> isRemoteTaskRecord(), which returns null (silently skipped by the one caller, collectTaskDiagnostics) for any record whose state is not one of the six known values. A record with an out-of-union state can therefore never reach this switch at all — the sibling decode validator forecloses it before addRecordDiagnostics is ever called, the same class of guard already documented for get-task-detail.ts/task-ledger-recovery.ts's case-label/brace lines elsewhere in this file. Realigned by +2 lines (COR-198): collectTaskDiagnostics gained one new import and one new execution-identity-filter line ahead of this function, shifting the exhaustiveness guard's block-opening line (was 104), its two statement lines (were 107, 108), and its closing brace (was 109) down to 106, 109, 110, and 111 — the guard itself is unchanged.",
+      lines: new Set([106, 109, 110, 111]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
+    'src/server/operations/task-attempt-identity-filter.ts',
+    {
+      reason:
+        "currentAttemptTokenOf()'s switch over RemoteTaskRecord['state'] ends with the same closed-union exhaustiveness guard as task-diagnostics-collector.ts's addRecordDiagnostics(), immediately above this entry: `record` is already a validated RemoteTaskRecord by the time it reaches this module-private function (decodeRemoteTaskRecord()'s caller never passes anything else), so a record with an out-of-union state can never reach the `default` branch. The 'queued' (line 34-35) and 'terminal' (line 41-44) branches this same switch also covers are exercised directly by get-task-diagnostics-filters.test.ts's 'excludes a queued record from every identity filter' and 'matches a resolved terminal record's identity filter via its retained attempt record' tests — only the unreachable default block (lines 45-47) is allowed.",
+      lines: new Set([45, 46, 47]),
       requireUncoveredLines: true,
     },
   ],
@@ -2330,6 +2359,17 @@ function writeFailureOutput(label: string, output: CapturedOutputTail): void {
   process.stderr.write(output.bytes);
 }
 
+/**
+ * Write one diagnostic line on the same `process.stderr` stream {@link writeFailureOutput}
+ * uses. Under Bun 1.4.2, a `console.error` issued while an earlier large
+ * `process.stderr.write` is still queued on a pipe is dropped outright, so the stage reason
+ * that follows a child's output tail vanished from turbo's log (COR-1329). Keeping every
+ * line after the tail on one ordered stream delivers it behind the tail instead.
+ */
+function writeDiagnosticLine(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
+
 export async function runCoverageShard(
   shard: CoverageShard,
   dependencies: RunCoverageShardDependencies = {},
@@ -2408,11 +2448,11 @@ export async function runCoverageShard(
   if (exitCode !== 0) {
     writeFailureOutput(`${shard.name} stdout`, stdout);
     writeFailureOutput(`${shard.name} stderr`, stderr);
-    console.error(`${shard.name} coverage shard exited with code ${exitCode}.`);
+    writeDiagnosticLine(`${shard.name} coverage shard exited with code ${exitCode}.`);
 
     const signal = coverageProcess.signalCode ?? null;
     if (signal !== null && signal !== undefined) {
-      console.error(
+      writeDiagnosticLine(
         formatCoverageFailureReason(
           'child signal',
           `${shard.name} coverage shard was terminated by signal ${signal}.`,
@@ -2420,7 +2460,7 @@ export async function runCoverageShard(
         ),
       );
     } else {
-      console.error(
+      writeDiagnosticLine(
         formatCoverageFailureReason(
           'child exit',
           `${shard.name} coverage shard exited with code ${exitCode}.`,
@@ -2454,8 +2494,9 @@ export async function checkCoverage(
 
   if (shard.exitCode !== 0) {
     // The spawn/child-exit/child-signal stage reason was already printed inside
-    // runCoverageShard, closest to the failure; this line stays for continuity.
-    console.error('Coverage execution failed.');
+    // runCoverageShard, closest to the failure; this line stays for continuity, on the
+    // same ordered stream as that reason (see writeDiagnosticLine).
+    writeDiagnosticLine('Coverage execution failed.');
     return false;
   }
 
@@ -2517,8 +2558,19 @@ export async function checkCoverage(
   return coverage.covered;
 }
 
-// CLI entrypoint
+/**
+ * The CLI entry point. Sets `process.exitCode` instead of calling `process.exit()`: an
+ * explicit exit discards whatever `process.stderr` has not yet flushed to a pipe (under
+ * Bun 1.4.2 only part of a 2 MiB write arrived, and how much varied by run and host),
+ * which cut a failing run's output tail mid-line and every diagnostic after it out of
+ * turbo's log (COR-1329).
+ */
+export async function runCheckCoverageCli(
+  dependencies: CheckCoverageDependencies = {},
+): Promise<void> {
+  process.exitCode = (await checkCoverage(dependencies)) ? 0 : 1;
+}
+
 if (import.meta.main) {
-  const covered = await checkCoverage();
-  process.exit(covered ? 0 : 1);
+  await runCheckCoverageCli();
 }

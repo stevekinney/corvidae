@@ -9,9 +9,10 @@
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred, flushMicrotasks } from '../../testing/fake-timers.test-support.ts';
 import type { WorkerOutboundMessage } from '../types.ts';
 import { RevisionRealmExecutionStrategy } from './revision-realm-execution-strategy.ts';
+import type { RevisionRealmAcquireOutcome } from './revision-realm-pool.ts';
 import { RevisionRealmRegistry } from './revision-realm-registry.ts';
 
 const ORDER_WORKFLOW_NAME = 'r2e-order-workflow';
@@ -31,22 +32,55 @@ const CRASH_REVISION = 'revision-crash';
 const CRASH_WORKFLOW_NAME = 'r2e-crash-workflow';
 const CRASH_WORKFLOW_TRIGGER_INPUT = 'crash-mid-turn';
 
+type CollectedMessages = {
+  messages: WorkerOutboundMessage[];
+  untilMessageCount(count: number): Promise<void>;
+};
+
+/**
+ * Collects the strategy's outbound messages and lets a test await the Nth
+ * one as an event, with no wall-clock budget of its own. Every message these
+ * tests wait for needs a real Bun Worker to boot, import its fixture and
+ * answer — work whose duration tracks host load, not correctness — so a
+ * fixed polling budget made each wait a latency assertion that failed under
+ * load. A message that never arrives is a real hang, reported by the test
+ * runner's own per-test timeout (the COR-235 precedent).
+ */
+function collectMessages(strategy: RevisionRealmExecutionStrategy): CollectedMessages {
+  const messages: WorkerOutboundMessage[] = [];
+  const waiters: { count: number; resolve: () => void }[] = [];
+  strategy.onMessage((message) => {
+    messages.push(message);
+    for (let index = waiters.length - 1; index >= 0; index -= 1) {
+      const waiter = waiters[index];
+      if (waiter && waiter.count <= messages.length) {
+        waiters.splice(index, 1);
+        waiter.resolve();
+      }
+    }
+  });
+  return {
+    messages,
+    untilMessageCount(count) {
+      if (messages.length >= count) return Promise.resolve();
+      const arrival = createDeferred();
+      waiters.push({ count, resolve: arrival.resolve });
+      return arrival.promise;
+    },
+  };
+}
+
 function newStrategy(): {
   strategy: RevisionRealmExecutionStrategy;
   registry: RevisionRealmRegistry;
-  messages: WorkerOutboundMessage[];
-} {
+} & CollectedMessages {
   const registry = new RevisionRealmRegistry();
-  const messages: WorkerOutboundMessage[] = [];
   const strategy = new RevisionRealmExecutionStrategy({
     registry,
     resolveRevisionRealmConfig: () => ({ workerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }),
     getWorkflowRevisionPin: () => undefined,
   });
-  strategy.onMessage((message) => {
-    messages.push(message);
-  });
-  return { strategy, registry, messages };
+  return { strategy, registry, ...collectMessages(strategy) };
 }
 
 describe('RevisionRealmExecutionStrategy', () => {
@@ -60,6 +94,13 @@ describe('RevisionRealmExecutionStrategy', () => {
 
     it('releases the realm for an in-flight execution and emits nothing further for it (non-cooperative cancel)', async () => {
       const { strategy, registry, messages } = newStrategy();
+      const acquireForExecution = registry.acquireForExecution.bind(registry);
+      const acquisitions: Promise<RevisionRealmAcquireOutcome>[] = [];
+      spyOn(registry, 'acquireForExecution').mockImplementation((...parameters) => {
+        const acquisition = acquireForExecution(...parameters);
+        acquisitions.push(acquisition);
+        return acquisition;
+      });
       strategy.startWorkflow({
         workflowId: 'wf-realm-cancel',
         revision: REVISION,
@@ -67,16 +108,24 @@ describe('RevisionRealmExecutionStrategy', () => {
         input: 'input',
         checkpoint: new ArrayBuffer(0),
       });
-      await waitForCondition(() => registry.activeRealmCount(ORDER_WORKFLOW_NAME, REVISION) === 1, {
-        label: 'realm active for wf-realm-cancel',
-      });
+      // `startWorkflow` requests its realm synchronously and awaits that
+      // same promise before this test does, so once it settles the
+      // strategy's own continuation has already recorded the execution and
+      // dispatched its first turn — the turn is in flight, and nothing here
+      // races a wall-clock budget against the Worker's boot.
+      expect(acquisitions).toHaveLength(1);
+      const acquisition = await acquisitions[0];
+      expect(acquisition?.ok).toBe(true);
+      expect(registry.activeRealmCount(ORDER_WORKFLOW_NAME, REVISION)).toBe(1);
 
       strategy.cancelWorkflow('wf-realm-cancel');
 
-      await waitForCondition(
-        () => (registry.getPool(ORDER_WORKFLOW_NAME, REVISION)?.realmCount ?? 0) === 0,
-        { label: 'realm released after cancel' },
-      );
+      // `releaseAfterExecution` drops the realm synchronously, and its
+      // `terminate()` rejects the pending turn synchronously too, so
+      // draining microtasks lets the strategy's catch branch run before the
+      // no-message assertion below.
+      expect(registry.getPool(ORDER_WORKFLOW_NAME, REVISION)?.realmCount ?? 0).toBe(0);
+      await flushMicrotasks();
       // The cancel-triggered rejection of the pending turn must never
       // surface as a workflow message — the engine already recorded the
       // cancellation itself. (A LATER resumeWorkflow() call for the same,
@@ -98,7 +147,6 @@ describe('RevisionRealmExecutionStrategy', () => {
       // swallowed by `#dispatch`'s catch block instead of being reported,
       // and its realm's pool slot was never reclaimed.
       const registry = new RevisionRealmRegistry();
-      const messages: WorkerOutboundMessage[] = [];
       const strategy = new RevisionRealmExecutionStrategy({
         registry,
         resolveRevisionRealmConfig: (workflowType) =>
@@ -113,9 +161,7 @@ describe('RevisionRealmExecutionStrategy', () => {
               },
         getWorkflowRevisionPin: () => undefined,
       });
-      strategy.onMessage((message) => {
-        messages.push(message);
-      });
+      const { messages, untilMessageCount } = collectMessages(strategy);
       const workflowId = 'wf-reused-after-park-cancel';
 
       // First execution: parks on a signal-wait. Waiting for its `checkpoint`
@@ -129,16 +175,12 @@ describe('RevisionRealmExecutionStrategy', () => {
         input: 'input',
         checkpoint: new ArrayBuffer(0),
       });
-      await waitForCondition(() => messages.length === 1, {
-        label: 'first execution parked on signal-wait',
-      });
+      await untilMessageCount(1);
       expect(messages[0]?.type).toBe('checkpoint');
 
       strategy.cancelWorkflow(workflowId);
-      await waitForCondition(
-        () => (registry.getPool(ORDER_WORKFLOW_NAME, REVISION)?.realmCount ?? 0) === 0,
-        { label: 'first executions realm released after cancel' },
-      );
+      // `releaseAfterExecution` drops the realm synchronously.
+      expect(registry.getPool(ORDER_WORKFLOW_NAME, REVISION)?.realmCount ?? 0).toBe(0);
 
       // Second, unrelated execution reuses the SAME workflow id, routed to a
       // still-active, concurrency-1 revision whose realm genuinely crashes
@@ -151,9 +193,7 @@ describe('RevisionRealmExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await waitForCondition(() => messages.length === 2, {
-        label: 'reused workflow id crash reported instead of silently dropped',
-      });
+      await untilMessageCount(2);
       const crashMessage = messages[1];
       if (!crashMessage || crashMessage.type !== 'failed') throw new Error('unreachable');
       expect(crashMessage.error).toContain('realm-not-active');
@@ -170,9 +210,7 @@ describe('RevisionRealmExecutionStrategy', () => {
         input: 'ordinary-input',
         checkpoint: new ArrayBuffer(0),
       });
-      await waitForCondition(() => messages.length === 3, {
-        label: 'concurrency-1 revision accepts a fresh start after reclaim',
-      });
+      await untilMessageCount(3);
       expect(messages[2]).toEqual({
         type: 'completed',
         workflowId: 'wf-reused-after-park-cancel-followup',
@@ -197,7 +235,7 @@ describe('RevisionRealmExecutionStrategy', () => {
       // realm assigned" — an outbound `failed` message that (via
       // `failWorkflow`'s own storage race with `terminateWorkflow`'s) could
       // durably overwrite a workflow's status from `cancelled` to `failed`.
-      const { strategy, messages } = newStrategy();
+      const { strategy, messages, untilMessageCount } = newStrategy();
       const workflowId = 'wf-cancel-parked-races-resume';
 
       strategy.startWorkflow({
@@ -207,9 +245,7 @@ describe('RevisionRealmExecutionStrategy', () => {
         input: 'input',
         checkpoint: new ArrayBuffer(0),
       });
-      await waitForCondition(() => messages.length === 1, {
-        label: 'parked on signal-wait',
-      });
+      await untilMessageCount(1);
       expect(messages[0]?.type).toBe('checkpoint');
 
       // Cancel while PARKED — no turn in flight for this id (see the
@@ -235,10 +271,8 @@ describe('RevisionRealmExecutionStrategy', () => {
     function newCrashStrategy(): {
       strategy: RevisionRealmExecutionStrategy;
       registry: RevisionRealmRegistry;
-      messages: WorkerOutboundMessage[];
-    } {
+    } & CollectedMessages {
       const registry = new RevisionRealmRegistry();
-      const messages: WorkerOutboundMessage[] = [];
       const strategy = new RevisionRealmExecutionStrategy({
         registry,
         resolveRevisionRealmConfig: () => ({
@@ -253,14 +287,11 @@ describe('RevisionRealmExecutionStrategy', () => {
         }),
         getWorkflowRevisionPin: () => undefined,
       });
-      strategy.onMessage((message) => {
-        messages.push(message);
-      });
-      return { strategy, registry, messages };
+      return { strategy, registry, ...collectMessages(strategy) };
     }
 
     it('releases a realm that crashed mid-turn so a still-active, concurrency-1 revision is not permanently at capacity', async () => {
-      const { strategy, registry, messages } = newCrashStrategy();
+      const { strategy, registry, messages, untilMessageCount } = newCrashStrategy();
 
       strategy.startWorkflow({
         workflowId: 'wf-realm-crash',
@@ -270,9 +301,7 @@ describe('RevisionRealmExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await waitForCondition(() => messages.length === 1, {
-        label: 'crash-settled failure emitted for wf-realm-crash',
-      });
+      await untilMessageCount(1);
 
       const crashMessage = messages[0];
       if (!crashMessage || crashMessage.type !== 'failed') throw new Error('unreachable');
@@ -301,9 +330,7 @@ describe('RevisionRealmExecutionStrategy', () => {
         checkpoint: new ArrayBuffer(0),
       });
 
-      await waitForCondition(() => messages.length === 2, {
-        label: 'post-crash start completes on a freshly warmed realm',
-      });
+      await untilMessageCount(2);
       expect(messages[1]).toEqual({
         type: 'completed',
         workflowId: 'wf-realm-after-crash',

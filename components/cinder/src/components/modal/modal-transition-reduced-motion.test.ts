@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 import { resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, installModalDialogStubs } from './modal-test-helpers.ts';
 
@@ -43,9 +44,8 @@ describe('Modal', () => {
     );
     await fireEvent.click(closeButton);
 
-    await waitFor(() => {
-      expect(container.querySelector('.cinder-modal__panel')).toBeNull();
-    });
+    flushSync();
+    expect(container.querySelector('.cinder-modal__panel')?.outerHTML ?? null).toBeNull();
     expect(exitCompleteCount).toBe(1);
   });
   test('a throwing onExitComplete does not block the native dialog from closing or the scroll lock from releasing', async () => {
