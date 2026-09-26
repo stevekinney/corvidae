@@ -58,6 +58,18 @@ export class RevisionRealmPool {
   readonly #realms = new Set<WorkerRealm>();
   #revisionActive = true;
   #disposed = false;
+  /**
+   * Count of `acquireForExecution` calls currently suspended on `await
+   * realm.waitUntilReady()` (or the recheck immediately after it), for a
+   * realm that is not yet `Active`. `isDrained` must stay `false` while
+   * this is nonzero: a realm mid-handshake is neither counted by
+   * `activeRealmCount` (it is not yet `Active`) nor discarded by {@link
+   * markInactive} (which only reclaims idle `Ready` realms), so without
+   * this counter a registry's `#reclaimIfDrained` could dispose the whole
+   * pool -- terminating the in-flight realm's underlying Worker -- while
+   * an acquisition genuinely still has a claim on it.
+   */
+  #inFlightAcquisitions = 0;
 
   constructor(options: RevisionRealmPoolOptions) {
     this.#options = options;
@@ -82,27 +94,44 @@ export class RevisionRealmPool {
       return { ok: false, reason: 'pool-at-capacity' };
     }
 
-    const outcome = await realm.waitUntilReady();
-    if (!outcome.ok) {
-      // A rejected/timed-out ready handshake already leaves the realm's own
-      // lifecycle in `Crashed` (see `WorkerRealm#settleReady`), but it never
-      // terminates the underlying real Worker thread on its own -- that is
-      // this pool's job, matching the existing `WorkerFaultHandler
-      // .discardWorkerAndFailWorkflows` precedent for the identical failure
-      // in the generic Worker-execution-mode path
-      // (`worker-execution-strategy.ts`'s `#ensureRealmReady`). Without this,
-      // the Worker thread outlives its dropped realm indefinitely.
-      realm.discard();
-      this.#realms.delete(realm);
-      return { ok: false, reason: 'realm-ready-handshake-failed', error: outcome.error };
-    }
+    this.#inFlightAcquisitions += 1;
+    try {
+      const outcome = await realm.waitUntilReady();
+      if (!outcome.ok) {
+        // A rejected/timed-out ready handshake already leaves the realm's own
+        // lifecycle in `Crashed` (see `WorkerRealm#settleReady`), but it never
+        // terminates the underlying real Worker thread on its own -- that is
+        // this pool's job, matching the existing `WorkerFaultHandler
+        // .discardWorkerAndFailWorkflows` precedent for the identical failure
+        // in the generic Worker-execution-mode path
+        // (`worker-execution-strategy.ts`'s `#ensureRealmReady`). Without this,
+        // the Worker thread outlives its dropped realm indefinitely.
+        realm.discard();
+        this.#realms.delete(realm);
+        return { ok: false, reason: 'realm-ready-handshake-failed', error: outcome.error };
+      }
 
-    realm.activate({
-      workflowRevision: this.#options.workflowRevision,
-      realmGeneration: outcome.realmGeneration,
-      executionToken,
-    });
-    return { ok: true, realm };
+      if (this.#disposed || !this.#revisionActive) {
+        // The revision went inactive (or the whole pool was disposed) while
+        // this realm's ready handshake was still in flight. "Activation
+        // routes new starts only to the newly active revision" must hold
+        // even though the realm itself finished warming successfully in the
+        // interim -- discard the freshly-warmed realm instead of activating
+        // it for a start nothing should route to any more.
+        realm.discard();
+        this.#realms.delete(realm);
+        return { ok: false, reason: 'revision-not-active' };
+      }
+
+      realm.activate({
+        workflowRevision: this.#options.workflowRevision,
+        realmGeneration: outcome.realmGeneration,
+        executionToken,
+      });
+      return { ok: true, realm };
+    } finally {
+      this.#inFlightAcquisitions -= 1;
+    }
   }
 
   /**
@@ -165,13 +194,18 @@ export class RevisionRealmPool {
 
   /**
    * True once nothing references this revision any more: it is not the
-   * active pointer, and no realm is mid-execution. This is the point at
-   * which a {@link import('./revision-realm-registry.ts').RevisionRealmRegistry}
-   * can reclaim the pool itself — "a drained realm with no pinned work
-   * terminates."
+   * active pointer, no realm is mid-execution, and no acquisition is still
+   * mid-handshake for it. This is the point at which a {@link
+   * import('./revision-realm-registry.ts').RevisionRealmRegistry} can
+   * reclaim the pool itself — "a drained realm with no pinned work
+   * terminates." The in-flight-acquisition check matters exactly when a
+   * realm has finished warming but the pool has not yet decided whether to
+   * activate or discard it (see `acquireForExecution`'s post-handshake
+   * recheck) — reclaiming the pool during that window would terminate a
+   * realm a caller still has a live claim on.
    */
   get isDrained(): boolean {
-    return !this.#revisionActive && this.activeRealmCount === 0;
+    return !this.#revisionActive && this.activeRealmCount === 0 && this.#inFlightAcquisitions === 0;
   }
 
   /** Whether this pool still considers its revision referenced — the {@link import('./realm-lifecycle.ts').RealmLifecycleDependencies.isReferenced} every realm this pool constructs is given. Deliberately excludes `activeExecutionRealms` from its own reasoning: counting the realm asking the question would make an active revision's own realms permanently "referenced" even after the revision goes inactive, and a realm can never legitimately restart mid-drain regardless (see `markInactive`, which only ever discards *idle* realms). */

@@ -227,6 +227,27 @@ describe('RevisionRealmRegistry', () => {
       expect(registry.getPool('order-workflow', 'revision-a')).toBeUndefined();
     });
 
+    it('does not reclaim the pool out from under a still-warming acquisition, refusing cleanly instead of tearing the realm down mid-handshake', async () => {
+      const registry = new RevisionRealmRegistry();
+      registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
+
+      const acquisition = registry.acquireForExecution(
+        'order-workflow',
+        'revision-a',
+        'execution-a',
+      );
+      // Called synchronously, before the real Worker's `ready` message can
+      // possibly have arrived (see the equivalent pool-level test's comment
+      // for why this ordering is guaranteed, not timed). Before the fix,
+      // this tore the pool -- and the still-warming realm's Worker -- down
+      // immediately, and the acquisition failed with the unrelated
+      // `realm-ready-handshake-failed` instead of a clean refusal.
+      registry.markInactive('order-workflow', 'revision-a');
+
+      const outcome = await acquisition;
+      expect(outcome).toEqual({ ok: false, reason: 'revision-not-active' });
+    });
+
     it('markActive reactivates a still-tracked pool (one with in-flight work), letting a concurrent new start through', async () => {
       const registry = new RevisionRealmRegistry();
       registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));

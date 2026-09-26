@@ -86,6 +86,41 @@ describe('RevisionRealmPool', () => {
     expect(pool.isDrained).toBe(true);
   });
 
+  describe('markInactive racing a still-warming acquisition', () => {
+    it('refuses, rather than activates, a realm whose handshake settles after markInactive was called mid-warm', async () => {
+      const pool = makePool({ concurrency: 1 });
+
+      const acquisition = pool.acquireForExecution('execution-1');
+      // `acquireForExecution` has only run synchronously up to its `await
+      // realm.waitUntilReady()` -- the real Worker it just spawned cannot
+      // have crossed the thread boundary with its `ready` message yet,
+      // because nothing above this line has yielded to the event loop.
+      // Calling `markInactive` here is an event-ordering proof (ordinary JS
+      // run-to-completion semantics), not a timing margin.
+      pool.markInactive();
+
+      const outcome = await acquisition;
+      expect(outcome).toEqual({ ok: false, reason: 'revision-not-active' });
+      expect(pool.realmCount).toBe(0);
+      pool.dispose();
+    });
+
+    it('does not report drained while an acquisition is still warming, only once it resolves', async () => {
+      const pool = makePool({ concurrency: 1 });
+
+      const acquisition = pool.acquireForExecution('execution-1');
+      pool.markInactive();
+
+      // Reclaiming the pool right now would terminate the Worker this
+      // still-pending acquisition has a live claim on.
+      expect(pool.isDrained).toBe(false);
+
+      await acquisition;
+      expect(pool.isDrained).toBe(true);
+      pool.dispose();
+    });
+  });
+
   it('discards a crashed realm and reflects zero active realms', async () => {
     const pool = makePool();
     const outcome = await pool.acquireForExecution('execution-1');
