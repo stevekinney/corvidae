@@ -306,6 +306,7 @@ export class WorkerDeploymentCatalog {
     routing: Omit<WorkerDeploymentRouting, 'generation'> & { expectedGeneration?: number },
   ): Promise<WorkerDeploymentRouting | null> {
     validateRouting(routing.rampBasisPoints);
+    await validateRoutingVersions(this, routing);
     const key = routingKey(routing.deploymentName);
     const currentBytes = await this.#storage.get(key);
     const current = currentBytes === null ? null : decodeRouting(currentBytes);
@@ -379,6 +380,28 @@ export class WorkerDeploymentCatalog {
 
   async diagnostics(deploymentName?: string): Promise<ReadonlyArray<WorkerDeploymentVersion>> {
     return this.listVersions(deploymentName);
+  }
+}
+
+async function validateRoutingVersions(
+  catalog: WorkerDeploymentCatalog,
+  routing: Omit<WorkerDeploymentRouting, 'generation'> & { expectedGeneration?: number },
+): Promise<void> {
+  const currentVersion = await catalog.getVersion(routing.deploymentName, routing.currentBuildId);
+  if (currentVersion === null || currentVersion.state !== 'ready') {
+    throw new Error(
+      `Current deployment build ${routing.deploymentName}/${routing.currentBuildId} is not eligible for routing.`,
+    );
+  }
+  if (routing.rampingBuildId === routing.currentBuildId) {
+    throw new Error('Ramping deployment build must differ from the current build.');
+  }
+  if (routing.rampingBuildId === undefined) return;
+  const rampingVersion = await catalog.getVersion(routing.deploymentName, routing.rampingBuildId);
+  if (rampingVersion === null || rampingVersion.state !== 'ready') {
+    throw new Error(
+      `Ramping deployment build ${routing.deploymentName}/${routing.rampingBuildId} is not eligible for routing.`,
+    );
   }
 }
 

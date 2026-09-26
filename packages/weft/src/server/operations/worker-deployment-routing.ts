@@ -243,11 +243,19 @@ export const workerDeploymentRoutingRestBinding = binding(
   '/v1/worker-deployments/routing',
   'weft.worker.deployments.setrouting',
 );
-export const workerDeploymentDiagnosticsRestBinding = binding(
-  'GET',
-  '/v1/worker-deployments/diagnostics',
-  'weft.worker.deployments.diagnostics',
-);
+export const workerDeploymentDiagnosticsRestBinding: UnknownRestBinding = {
+  method: 'GET',
+  path: '/v1/worker-deployments/diagnostics',
+  pathParamNames: [],
+  operationName: 'weft.worker.deployments.diagnostics',
+  inputSources: { deploymentName: { kind: 'query', queryParam: 'deploymentName' } },
+  extractInput: async (request) => {
+    const deploymentName = new URL(request.url).searchParams.get('deploymentName');
+    return deploymentName === null ? {} : { deploymentName };
+  },
+  success: { kind: 'json', status: 200 },
+  shapeFault: shapeOperationFaultAsJson,
+};
 export const workerDeploymentPromoteRestBinding = binding(
   'POST',
   '/v1/worker-deployments/promote',

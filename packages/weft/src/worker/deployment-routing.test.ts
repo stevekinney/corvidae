@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'bun:test';
+import { Engine } from '../core/engine.ts';
+import { serve } from '../server/index.ts';
 import {
   createPreviewWorkerDeploymentRoutingOperation,
   createPromoteWorkerDeploymentOperation,
   createRollbackWorkerDeploymentOperation,
   createSetWorkerDeploymentRoutingOperation,
   createWorkerDeploymentDiagnosticsOperation,
+  workerDeploymentDiagnosticsRestBinding,
   workerDeploymentRoutingRestBinding,
 } from '../server/operations/worker-deployment-routing.ts';
 import { MemoryStorage } from '../storage/memory.ts';
@@ -185,6 +188,23 @@ describe('revision-aware worker deployment routing', () => {
         updatedAt: 3,
       }),
     ).rejects.toThrow('rampBasisPoints');
+    await expect(
+      catalog.setRouting({
+        deploymentName: 'billing',
+        currentBuildId: 'missing',
+        rampBasisPoints: 0,
+        updatedAt: 4,
+      }),
+    ).rejects.toThrow('not eligible');
+    await expect(
+      catalog.setRouting({
+        deploymentName: 'billing',
+        currentBuildId: 'build-a',
+        rampingBuildId: 'build-a',
+        rampBasisPoints: 1,
+        updatedAt: 5,
+      }),
+    ).rejects.toThrow('differ');
 
     const invoke = (operation: { invoke: (context: never) => Promise<unknown> }, input: unknown) =>
       operation.invoke({ input } as never);
@@ -251,6 +271,20 @@ describe('revision-aware worker deployment routing', () => {
       {},
     );
     expect(extracted).toEqual(routingInput);
+    await expect(
+      workerDeploymentDiagnosticsRestBinding.extractInput(
+        new Request('http://localhost/v1/worker-deployments/diagnostics'),
+        {},
+        {},
+      ),
+    ).resolves.toEqual({});
+    await expect(
+      workerDeploymentDiagnosticsRestBinding.extractInput(
+        new Request('http://localhost/v1/worker-deployments/diagnostics?deploymentName=billing'),
+        {},
+        {},
+      ),
+    ).resolves.toEqual({ deploymentName: 'billing' });
   });
   it('recovers immutable versions and routing pointers from durable storage', async () => {
     const storage = new MemoryStorage();
@@ -285,5 +319,47 @@ describe('revision-aware worker deployment routing', () => {
         expectedGeneration: 0,
       }),
     ).toBeNull();
+  });
+  it('wires the durable catalog through the public live server path', async () => {
+    const storage = new MemoryStorage();
+    const engine = new Engine({ storage });
+    const server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: ['routing-test-key'], defaultApiKeyScopes: ['system:admin', 'system:read'] },
+    });
+    try {
+      const catalog = new WorkerDeploymentCatalog(storage);
+      await catalog.registerVersion({
+        deploymentName: 'billing',
+        buildId: 'build-a',
+        artifactDigest: 'sha256:build-a',
+        manifestDigest: 'sha256:m',
+        manifest: manifest('build-a'),
+        state: 'ready',
+        firstSeenAt: 1,
+      });
+      const response = await fetch(`${server.url}/api/v1/worker-deployments/routing`, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer routing-test-key', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deploymentName: 'billing',
+          currentBuildId: 'build-a',
+          rampBasisPoints: 0,
+        }),
+      });
+      expect(response.status).toBe(200);
+      const diagnostics = await fetch(
+        `${server.url}/api/v1/worker-deployments/diagnostics?deploymentName=billing`,
+        {
+          headers: { Authorization: 'Bearer routing-test-key' },
+        },
+      );
+      expect(diagnostics.status).toBe(200);
+      expect(await diagnostics.json()).toMatchObject({ routing: { currentBuildId: 'build-a' } });
+    } finally {
+      await server.stop();
+      await engine[Symbol.asyncDispose]();
+    }
   });
 });
