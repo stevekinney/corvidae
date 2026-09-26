@@ -9,8 +9,13 @@
  * The result is a build-flag invariance check, not a complete hydration proof:
  * it does not validate bindings, actions, event attachment, lifecycle order,
  * or DOM mutation during hydration.
+ *
+ * Each check needs the discriminator probes and one server compilation per
+ * condition set, which together take seconds under host load. Callers prepare
+ * the component at module scope, where no test timeout applies, so the timed
+ * test only renders.
  */
-import { renderSvelteOnServer } from '@lostgradient/testing';
+import { prepareSvelteServerSource, renderSvelteOnServer } from '@lostgradient/testing';
 
 /** Result of a build-flag hydration-safety check. */
 export type HydrationSafetyResult = {
@@ -60,6 +65,23 @@ async function buildDiscriminatorProbe(conditions: readonly string[]): Promise<s
   return artifact.text();
 }
 
+const serverConditions = ['svelte'] as const;
+const clientConditions = ['browser', 'svelte'] as const;
+const preparedComponents = new Set<string>();
+
+/**
+ * Verify the discriminator and compile `componentPath` under both condition
+ * sets. Await it at module scope: bun's `beforeAll` shares the per-test timeout.
+ */
+export async function prepareBuildFlagHydrationCheck(componentPath: string): Promise<void> {
+  await Promise.all([
+    assertDiscriminatorWorks(),
+    prepareSvelteServerSource(componentPath, { conditions: serverConditions }),
+    prepareSvelteServerSource(componentPath, { conditions: clientConditions }),
+  ]);
+  preparedComponents.add(componentPath);
+}
+
 /** Render a fixture through the shared isolated server renderer. */
 function renderWithConditions(
   componentPath: string,
@@ -73,15 +95,22 @@ function renderWithConditions(
  * Render `componentPath` once with `BROWSER=false` and once with `BROWSER=true`.
  * If the outputs differ, the component's initial markup depends on the
  * `esm-env` build flag and is unsafe for hydration until that branch is gated
- * on post-hydration state.
+ * on post-hydration state. Requires `prepareBuildFlagHydrationCheck` first.
  */
 export async function checkBuildFlagHydrationSafety(
   componentPath: string,
   props: Record<string, unknown> = {},
 ): Promise<HydrationSafetyResult> {
+  if (!preparedComponents.has(componentPath)) {
+    throw new Error(
+      `hydration-safety: ${componentPath} was not prepared. Await ` +
+        '`prepareBuildFlagHydrationCheck` at module scope so compilation stays ' +
+        'outside the per-test timeout.',
+    );
+  }
   await assertDiscriminatorWorks();
-  const serverHtml = await renderWithConditions(componentPath, ['svelte'], props);
-  const clientHtml = await renderWithConditions(componentPath, ['browser', 'svelte'], props);
+  const serverHtml = await renderWithConditions(componentPath, serverConditions, props);
+  const clientHtml = await renderWithConditions(componentPath, clientConditions, props);
   return { buildFlagInvariant: serverHtml === clientHtml, serverHtml, clientHtml };
 }
 

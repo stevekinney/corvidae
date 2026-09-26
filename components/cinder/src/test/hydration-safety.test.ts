@@ -19,18 +19,36 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
-import { checkBuildFlagHydrationSafety } from './hydration-safety.ts';
+import {
+  checkBuildFlagHydrationSafety,
+  prepareBuildFlagHydrationCheck,
+} from './hydration-safety.ts';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string): string => join(fixturesDir, `${name}.svelte`);
 
-// Each check runs two Bun.build + render passes — slower than the 5s default
-// under CPU contention. Match the schema-fallback suite's headroom.
-setDefaultTimeout(60_000);
+// Compilation happens here, outside any test timeout; each test only renders.
+await Promise.all(
+  [
+    'hydration-probe-browser-flag',
+    'hydration-probe-effect-gate',
+    'hydration-probe-child-browser-flag',
+    'hydration-probe-child-effect-gate',
+  ].map((name) => prepareBuildFlagHydrationCheck(fixture(name))),
+);
 
 describe('checkBuildFlagHydrationSafety', () => {
+  test('rejects a component that was not prepared at module scope', async () => {
+    const error = await checkBuildFlagHydrationSafety(fixture('hydration-probe-child')).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error instanceof Error ? error.message : '').toContain('prepareBuildFlagHydrationCheck');
+  });
+
   test('flags a {#if BROWSER}-gated component as UNSAFE', async () => {
     const result = await checkBuildFlagHydrationSafety(fixture('hydration-probe-browser-flag'));
     expect(result.buildFlagInvariant).toBe(false);

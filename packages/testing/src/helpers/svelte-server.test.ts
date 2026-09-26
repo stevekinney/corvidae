@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { readdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 
 import {
   importSvelteOnServer,
@@ -57,5 +57,24 @@ describe('isolated Svelte server execution', () => {
     const second = await renderSvelteOnServer(stateSource);
     expect(first).toContain('<p>Render 1</p>');
     expect(second).toBe(first);
+  });
+
+  test('preparing under explicit conditions compiles the entry those conditions render', async () => {
+    const directory = await mkdtemp(
+      resolve(import.meta.dir, '../../node_modules/.svelte-prepare-'),
+    );
+    const source = join(directory, 'prepared.svelte');
+    try {
+      await Bun.write(source, '<p>prepared</p>');
+      await prepareSvelteServerSource(source, { conditions: ['browser', 'svelte'] });
+      await Bun.write(source, '<p>edited</p>');
+
+      expect(
+        await renderSvelteOnServer(source, {}, { conditions: ['browser', 'svelte'] }),
+      ).toContain('<p>prepared</p>');
+      expect(await renderSvelteOnServer(source)).toContain('<p>edited</p>');
+    } finally {
+      await rm(directory, { recursive: true });
+    }
   });
 });
