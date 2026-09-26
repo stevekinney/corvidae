@@ -37,7 +37,7 @@ Declare `"@lostgradient/editor": "workspace:*"` in the consuming workspace and r
 | `label` | `string` | no | — | Accessible label for the editor (required for screen readers) |
 | `mode` | `"wysiwyg"` \| `"source"` \| `"preview"` | no | — | Editor display mode (two-way bindable). An invalid value keeps the last valid mode (`'wysiwyg'` on mount) and reports `invalid_option` at `mode`. |
 | `modeLabel` | `string` | no | — | Accessible label for the mode toggle (visually hidden) |
-| `placeholder` | `string` | no | — | Placeholder text when empty |
+| `placeholder` | `string` | no | — | Hint text shown while the editor is empty. Unrelated to `{{path}}` template placeholders, which `placeholderDefinitions` configures. |
 | `readonly` | `boolean` | no | — | Read-only mode |
 | `modeToggleVisible` | `boolean` | no | — | Show the built-in mode control for switching between the rich editor, raw Markdown and preview. It renders whenever this is true, including with a custom `toolbar`, `toolbarEnabled={false}` or `readonly`. |
 | `toolbarEnabled` | `boolean` | no | — | Show formatting toolbar (DEP-37) |
@@ -77,19 +77,64 @@ Preview renders a copy of the template through the same sanitized Markdown pipel
 - With no `placeholderDefinitions`, preview is ordinary Markdown, labeled "Preview".
 - With definitions and no `placeholderValues` (omitted or `undefined`), it is the unfilled template, labeled "Unfilled template preview", with the authoring diagnostics.
 - With definitions and a plain values object, including `{}`, it fills through the shared resolver with `unresolved: 'preserve'`, labeled "Preview". Unresolved tokens stay visible, and `missing_value`, `invalid_value` and `type_mismatch` join the diagnostics while preview shows. Diagnostics never contain values.
-- Values that are `null`, an array or not a plain object report `invalid_values` and preview the unfilled template. Values without definitions report `invalid_definitions` and are not interpolated. An invalid `placeholderValueMode` reports `invalid_option` and disables fill.
+- Values that are `null`, an array or not a plain object report `invalid_values` and preview the unfilled template. Values without definitions report `invalid_definitions` at `placeholderDefinitions` and are not interpolated; preview shows the template labeled "Unfilled template preview" until the values are removed too. An invalid `placeholderValueMode` reports `invalid_option` and disables fill.
 
 `placeholderValueMode="text"` (the default) renders string values as literal text; `'markdown'` lets them add Markdown structure, which the sanitizer still filters. Preview updates when the values, definitions, template or value mode change. Values are never copied, persisted or logged.
 
 Entering preview publishes a pending rich-editor edit once, then renders it. If the parent replaces `value` (or calls `setMarkdown()`) in the same update that selects preview, that replacement wins and the pending edit is dropped without an `onValueChange`. The editing surface you left (rich editor or textarea) stays mounted, hidden and inert, behind preview, so returning to it restores its selection and undo history. A `value` or `setMarkdown()` replacement during preview instead becomes that surface's new baseline: its history is cleared and the caret moves to the end. Definition and value changes do not clear it. Switching between the rich editor and source keeps its existing behavior.
 
-The renderer loads after the component mounts on the client: server rendering and the first hydration pass show the same inert "Loading preview" region. A mount that starts in preview never initializes the rich editor; selecting it later does. Choosing a mode with the built-in control or `ToolbarContext.onModeChange` moves focus to the preview region or back to the editing surface; changing the `mode` prop never moves focus.
+The renderer loads after the component mounts on the client: server rendering and the first hydration pass show the same inert "Loading preview" region. A mount that starts in preview never initializes the rich editor (Milkdown's editor is not created); selecting it later does. The component still imports its editor modules, including Milkdown, statically, so a preview-only mount does not avoid loading that code; making that import lazy is tracked separately in COR-1322. Choosing a mode with the built-in control or `ToolbarContext.onModeChange` moves focus to the preview region or back to the editing surface; changing the `mode` prop never moves focus.
 
 ## Template placeholders
 
 `placeholderDefinitions` is the recommended way to enable `{{path}}` placeholders. Pass either `{ schema }` (a JSON Schema object) or `{ candidates }`. The editor normalizes each definitions object once and uses that one catalog for completion, invalid-token decoration and diagnostics. Replace the object to change the allowed paths: the live editor updates through a metadata-only transaction, so the document, undo history, selection and `onValueChange` are untouched and the editor is never recreated.
 
 `placeholderCompletion` and `placeholderDecoration` remain available as the low-level alternative, including async lookup, `minimumQueryLength` and `lookupDebounceMs`, and are now reactive too. They cannot be combined with `placeholderDefinitions`: the prop types reject the mix, and at runtime the editor reports `conflicting_configuration` at `placeholderDefinitions`, turns placeholder completion and decoration off, keeps editing, and resumes as soon as the conflict is removed. With no placeholder props at all, nothing is scanned, decorated or reported.
+
+### Template placeholders and the `placeholder` prop
+
+The `placeholder` prop is unrelated: it is the hint text an empty editor shows, and it is never scanned, completed or filled. Template placeholders are the `{{path}}` tokens inside `value`, governed only by `placeholderDefinitions` (or the low-level `placeholderCompletion` and `placeholderDecoration`), with `placeholderValues` and `placeholderValueMode` read only by preview.
+
+### Example
+
+`placeholderDefinitions`, `placeholderValues` and `placeholderValueMode` are ordinary props; replacing any of them updates the mounted editor. `@lostgradient/editor` exports `MarkdownEditor`, `EditorMode` and `MarkdownEditorProps`; the placeholder data types (`PlaceholderDefinitions`, `PlaceholderDiagnostic`, `JsonObject` and the rest) come from the root of `@lostgradient/markdown`, so declare `"@lostgradient/markdown": "workspace:*"` as well to import them by name, or type through `MarkdownEditorProps` as below. The headless utilities, diagnostic codes and security boundary are documented in `packages/markdown/README.md`. The `markdown-editor.examples.json` entry `template-placeholders` is this example in full, and the `markdown-editor-template-placeholders` browser-fixture route (`bun run dev:browser-fixtures`) is its interactive version.
+
+```svelte
+<script lang="ts">
+  import type { PlaceholderDiagnostic } from '@lostgradient/markdown';
+  import { MarkdownEditor, type MarkdownEditorProps } from '@lostgradient/editor';
+
+  const definitions: MarkdownEditorProps['placeholderDefinitions'] = {
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Display name' },
+        count: { type: 'integer' },
+        user: { type: 'object', properties: { name: { type: 'string' } } },
+      },
+    },
+  };
+  const values: MarkdownEditorProps['placeholderValues'] = {
+    name: 'Alice',
+    count: 42,
+    user: { name: 'Ada' },
+  };
+
+  let value = $state('Hello {{name}}, you have {{count}} messages from {{user.name}}.');
+  let diagnostics = $state<readonly PlaceholderDiagnostic[]>([]);
+</script>
+
+<MarkdownEditor
+  id="welcome-template"
+  label="Welcome template"
+  bind:value
+  modeToggleVisible
+  placeholderDefinitions={definitions}
+  placeholderValues={values}
+  onPlaceholderDiagnosticsChange={(next) => (diagnostics = next)}
+/>
+<p>{diagnostics.length} placeholder problems</p>
+```
 
 ### Completion
 
@@ -101,7 +146,7 @@ In source mode the textarea's Markdown is scanned with `parseMarkdownPlaceholder
 
 - ArrowDown and ArrowUp move the active option and stop at the ends.
 - Enter inserts the active option, never during IME composition.
-- Tab dismisses without inserting, then does what Tab normally does in the editor: indents a list item, moves to the next table cell, or moves focus. The change Tab makes does not reopen the list; the dismissal lasts until your next edit.
+- Tab dismisses without inserting and is not consumed, so the editor's own Tab handling runs next: in source mode that moves focus, and in the rich editor the editor's Tab binding is meant to indent a list item or move to the next table cell, and otherwise focus moves. Whatever Tab changes does not reopen the list; the dismissal lasts until your next edit. Known defect: in Chromium, plain Tab in a rich-editor list item currently moves focus instead of indenting it (Mod-] indents), with or without placeholders; tracked in COR-1324.
 - Escape dismisses and is consumed only while the list is open; a second Escape reaches enclosing handlers. A dismissal lasts until the next edit.
 - Clicking or tapping an option inserts it without moving focus out of the editor. A pointer or touch gesture that scrolls the list or is cancelled inserts nothing, and a click from assistive technology with no pointer gesture inserts the option. A pointerdown outside dismisses.
 
