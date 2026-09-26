@@ -483,6 +483,18 @@ The command starts a localhost Weft server and launches the worker command with 
 
 The conformance runner verifies registration acknowledgement, echo task completion, heartbeat-preserved work, cancellation, in-flight reassignment after disconnect, graceful shutdown, and failure of a deliberately broken worker fixture. `--json` returns a stable machine-readable report. Without `--json`, each check prints as `PASS` or `FAIL`.
 
+### Required activities
+
+The worker command under test must implement exactly the activities named in `WEFT_WORKER_ACTIVITIES` (`conformance.echo`, `conformance.sleep`, `conformance.cancel`):
+
+- **`conformance.echo`** completes immediately: `status: "completed"`, `value` equal to the dispatched `input`.
+- **`conformance.cancel`** completes `status: "failed"` after `input.milliseconds` unless a `cancel` control message for that same attempt arrives first, in which case it completes `status: "cancelled"` instead — proving the cooperative cancel path produced the result, not a coincidental timeout.
+- **`conformance.sleep`** completes after `input.milliseconds` (default 25) with `status: "completed"`, `value` equal to `input` — **except** when `input.holdForReassignment` is `true` (COR-235), which only the reconnect check below sends. Then the worker must instead key its behavior on the `task` message's own `attempt` field: while `attempt` is `1` or absent, do not send a result at all, no matter how long the task sits — the harness kills this worker before it would ever get the chance, and a result sent anyway races the kill and can defeat the check it is trying to prove. Once a `conformance.sleep` task for the same operation arrives with `attempt` greater than `1`, complete it immediately.
+
+### Reassignment after disconnect
+
+The reconnect check dispatches one `conformance.sleep` task with `holdForReassignment: true`, confirms the worker accepted it, starts a second worker process, kills the first, and expects the server to hand the second worker the _same_ operation as a new attempt (`attempt` incremented) and to see it resolved. A worker that has no notion of `holdForReassignment` and completes the first attempt anyway — the pre-COR-235 behavior — now fails this check with a message naming the operation and "claimed past attempt 1": that is intentional, not a regression in the harness. It is exactly the production failure mode the check exists to catch — a worker with nowhere to buffer or hold an in-flight result loses it silently on reconnect the same way it would here.
+
 ## HTTP long-poll transport
 
 `LongPollWorker` uses the same task queue and activity execution model over plain HTTP. It does not use the WebSocket `register` frame. Each poll request advertises the activities it can execute, the server claims one matching task if available, and the worker posts the result to a queue-scoped result endpoint.
