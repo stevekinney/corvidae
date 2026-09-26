@@ -199,4 +199,24 @@ describe('RevisionRealmPool', () => {
       pool.dispose();
     });
   });
+
+  describe('dispose (COR-113: idempotent termination)', () => {
+    afterEach(() => {
+      Worker.prototype.terminate &&
+        (Worker.prototype.terminate as unknown as { mockRestore?: () => void }).mockRestore?.();
+    });
+
+    it('a repeated dispose() call does not re-discard or re-terminate any realm', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const pool = makePool();
+      const outcome = await pool.acquireForExecution('execution-1');
+      if (!outcome.ok) throw new Error('unreachable');
+
+      pool.dispose();
+      expect(() => pool.dispose()).not.toThrow();
+
+      expect(pool.realmCount).toBe(0);
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+    });
+  });
 });
