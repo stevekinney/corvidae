@@ -15,7 +15,7 @@ import {
   stopWorker,
   waitForCancelledDisposition,
   waitForCondition,
-  waitForReassignmentToWorker,
+  waitForReassignmentPastFirstAttempt,
   waitForRegisteredWorker,
   waitForReplacementWorker,
   waitForResolvedStatus,
@@ -179,12 +179,13 @@ async function runConformanceChecks(
     // The disconnect-driven requeue and redispatch to the replacement worker
     // happen asynchronously after the original worker is unregistered above
     // — there is no synchronous guarantee the reassignment has landed yet.
-    // Observe the reassignment itself through the ledger's own record of
-    // which worker session now holds the attempt (see
-    // `waitForReassignmentToWorker`'s doc comment for why that, rather than
-    // registry `inFlight`, is the reliable signal here) before checking for
-    // idle, or a not-yet-assigned replacement would read as trivially idle.
-    await waitForReassignmentToWorker(
+    // Observe the reassignment itself through the ledger's own monotonic
+    // attempt counter (see `waitForReassignmentPastFirstAttempt`'s doc
+    // comment for why that, rather than registry `inFlight` or "has resolved
+    // at all", is the reliable AND discriminating signal here) before
+    // checking for idle, or a not-yet-assigned replacement would read as
+    // trivially idle.
+    await waitForReassignmentPastFirstAttempt(
       server,
       storage,
       reconnectOperationId,

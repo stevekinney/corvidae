@@ -224,44 +224,62 @@ export async function waitForCancelledDisposition(
 }
 
 /**
- * Read which worker session currently holds an operation's attempt, straight
- * from the durable task ledger record (`leased`/`completing`/`cancelling`
- * all carry `workerSessionId`; `queued` and `terminal` do not). The server
- * commits this transition atomically, before it ever sends the reassigned
- * `task` frame over the wire (`task-dispatch.ts`), so it is the earliest
- * observable signal that a reassignment has actually happened — unlike a
- * worker's registry `inFlight` count, which a worker that resolves a
- * reassigned attempt immediately can already have dropped back to zero
- * before the very next poll.
+ * Read an operation's current attempt number and ledger state together.
+ * `attempt` alone is not enough: `requeueExpiredAttempt` bumps it the moment
+ * a stale or disconnected attempt is REQUEUED, landing the record back in
+ * `queued` — attempt 2, but not yet claimed by, let alone delivered to, any
+ * worker. A wait keyed on "attempt > 1" alone can fire during that `queued`
+ * window, before the replacement has actually been assigned anything, which
+ * is indistinguishable from a genuine reassignment only by checking `state`
+ * too: `leased`/`completing`/`cancelling`/`terminal` all mean a worker
+ * session actually held (or holds) the attempt; `queued` means nobody does
+ * yet. `attempt` is still the right monotonic counter to gate on — see
+ * {@link waitForReassignmentPastFirstAttempt}'s doc comment for why
+ * `workerSessionId` alone is not — it just needs `state` alongside it to
+ * exclude the pending-requeue window.
  */
-export async function readCurrentAttemptWorkerSessionId(
+export async function readCurrentAttemptState(
   storage: MemoryStorage,
   operationId: string,
-): Promise<string | undefined> {
+): Promise<{ attempt: number | undefined; state: string | undefined }> {
   const stored = await storage.get(taskLedgerKey(operationId));
-  if (stored === null) return undefined;
+  const empty = { attempt: undefined, state: undefined };
+  if (stored === null) return empty;
   const decoded = decode(stored);
-  if (decoded === null || typeof decoded !== 'object') return undefined;
-  const workerSessionId = (decoded as Record<string, unknown>)['workerSessionId'];
-  return typeof workerSessionId === 'string' ? workerSessionId : undefined;
+  if (decoded === null || typeof decoded !== 'object') return empty;
+  const record = decoded as Record<string, unknown>;
+  const attempt = record['attempt'];
+  const state = record['state'];
+  return {
+    attempt: typeof attempt === 'number' ? attempt : undefined,
+    state: typeof state === 'string' ? state : undefined,
+  };
 }
 
 /**
- * Wait for an operation to be reassigned to `workerId`. Reading only "is
- * `workerId` the CURRENT attempt's worker session" is not enough on its own:
- * that is a genuinely transient state — a fixture that resolves a reassigned
- * attempt immediately (the `holdForReassignment` contract in
- * `conformance.ts`) can complete it and advance the ledger to `terminal`
- * (which carries no `workerSessionId` at all) within a single poll interval,
- * so a poll that lands even one tick late would see neither "leased under
- * `workerId`" nor any earlier state — a false timeout, not a real one. A
- * resolved status (of either disposition — the caller checks which one
- * separately) is proof reassignment already happened and completed, so it
- * counts too; a `workerId` that has itself disconnected also ends the wait,
- * matching a fixture that simulates the replacement vanishing instead of
- * completing.
+ * Wait for an operation to be reassigned — its attempt to advance past 1
+ * AND actually be claimed by a worker, not merely `queued` waiting for one
+ * (see {@link readCurrentAttemptState}'s doc comment) — or for `workerId`
+ * (the replacement the reassignment is expected to land on) to disconnect
+ * first, matching a fixture that simulates the replacement vanishing
+ * instead of completing a reassigned attempt.
+ *
+ * `attempt > 1` alone, without the state check, is not merely imprecise but
+ * WRONG in the other direction too: `workerSessionId` (an earlier version
+ * of this wait's signal) disappears the instant the record goes `terminal`,
+ * so a fixture that resolves a reassigned attempt immediately could reach
+ * `terminal` between two polls with no `workerSessionId`-bearing state ever
+ * observed — a false timeout on a passing worker. That version had to be
+ * padded out with "resolved status is not undefined" to compensate, and
+ * that padding was itself a hole: a NON-conforming worker that ignores
+ * `holdForReassignment` and resolves attempt 1 in place — the exact failure
+ * this check exists to catch — also leaves a resolved status behind, so it
+ * satisfied the same disjunct and made the check pass with no reassignment
+ * ever happening. Gating on `attempt > 1` (which a same-attempt resolution
+ * never produces) closes that hole; excluding `queued` closes the
+ * pending-requeue hole without reopening it.
  */
-export async function waitForReassignmentToWorker(
+export async function waitForReassignmentPastFirstAttempt(
   server: WeftServer,
   storage: MemoryStorage,
   operationId: string,
@@ -269,11 +287,14 @@ export async function waitForReassignmentToWorker(
   timeoutMs: number,
 ): Promise<void> {
   await waitForCondition(
-    async () =>
-      (await readCurrentAttemptWorkerSessionId(storage, operationId)) === workerId ||
-      (await readResolvedStatus(storage, operationId)) !== undefined ||
-      server.registry.getWorker(workerId) === undefined,
+    async () => {
+      const { attempt, state } = await readCurrentAttemptState(storage, operationId);
+      return (
+        ((attempt ?? 0) > 1 && state !== 'queued') ||
+        server.registry.getWorker(workerId) === undefined
+      );
+    },
     timeoutMs,
-    `${operationId} reassigned to worker ${workerId}`,
+    `${operationId} to be claimed past attempt 1`,
   );
 }

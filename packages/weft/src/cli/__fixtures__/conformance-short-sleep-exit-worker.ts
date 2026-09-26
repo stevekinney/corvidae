@@ -64,7 +64,12 @@ function handleTaskMessage(parsed: Record<string, unknown>): void {
   }
 
   const isRecordInput = input !== null && typeof input === 'object' && !Array.isArray(input);
-  const holdForReassignment = isRecordInput && Reflect.get(input, 'holdForReassignment') === true;
+  // mode 'ignore-hold' simulates a worker written against the pre-COR-235
+  // contract that has no idea `holdForReassignment` exists: it falls straight
+  // through to the plain-sleep branch below and resolves attempt 1 in place,
+  // exactly the non-conforming behavior the reconnect check must now catch.
+  const holdForReassignment =
+    mode !== 'ignore-hold' && isRecordInput && Reflect.get(input, 'holdForReassignment') === true;
 
   if (holdForReassignment) {
     const attempt = typeof parsed['attempt'] === 'number' ? parsed['attempt'] : 1;
