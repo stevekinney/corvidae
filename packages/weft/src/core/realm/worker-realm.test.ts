@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'bun:test';
+
+import { WorkerRealm, type WorkerRealmActivation } from './worker-realm.ts';
+
+const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);
+
+function makeRealm(
+  overrides: Partial<{
+    expectedArtifactDigest: string;
+    workerName: string;
+    isReferenced: () => boolean;
+    maxRestarts: number;
+    realmReadyTimeoutMs: number;
+  }> = {},
+): WorkerRealm {
+  return new WorkerRealm({
+    workerUrl,
+    expectedWorkflowTypes: ['order-workflow'],
+    isReferenced: overrides.isReferenced ?? (() => true),
+    maxRestarts: overrides.maxRestarts ?? 3,
+    ...(overrides.expectedArtifactDigest === undefined
+      ? {}
+      : { expectedArtifactDigest: overrides.expectedArtifactDigest }),
+    ...(overrides.workerName === undefined ? {} : { workerName: overrides.workerName }),
+    ...(overrides.realmReadyTimeoutMs === undefined
+      ? {}
+      : { realmReadyTimeoutMs: overrides.realmReadyTimeoutMs }),
+  });
+}
+
+function activationFor(
+  realm: WorkerRealm,
+  outcome: { realmGeneration: string },
+): WorkerRealmActivation {
+  return {
+    workflowRevision: 'revision-a',
+    realmGeneration: outcome.realmGeneration,
+    executionToken: 'token-1',
+  };
+}
+
+async function readyAndActive(realm: WorkerRealm): Promise<WorkerRealmActivation> {
+  const outcome = await realm.waitUntilReady();
+  expect(outcome.ok).toBe(true);
+  if (!outcome.ok) throw new Error('unreachable');
+  const activation = activationFor(realm, outcome);
+  realm.activate(activation);
+  return activation;
+}
+
+describe('WorkerRealm', () => {
+  it('spawns a real Worker, completes the ready handshake, and reaches Active on activate()', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    await readyAndActive(realm);
+    expect(realm.lifecycle.state).toBe('active');
+    realm.discard();
+  });
+
+  it('crashes instead of becoming ready when the expected artifact digest disagrees', async () => {
+    const realm = makeRealm({ workerName: 'digest-a', expectedArtifactDigest: 'digest-b' });
+    const outcome = await realm.waitUntilReady();
+    expect(outcome.ok).toBe(false);
+    expect(realm.lifecycle.state).toBe('crashed');
+    realm.discard();
+  });
+
+  it('dispatches a turn over postMessage and resolves it once the worker reports a result', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    const activation = await readyAndActive(realm);
+
+    const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, { hello: 'world' });
+    // The fixture worker does not auto-complete; it waits for an explicit release.
+    realm.postRawMessageForTesting({ type: 'test-release', turnId: 1 });
+
+    const result = (await pending) as { echoed: unknown; sentinel: string };
+    expect(result.echoed).toEqual({ hello: 'world' });
+    expect(result.sentinel).toContain('weft-cor249-revision-realm-workflow-implementation-fixture');
+    realm.discard();
+  });
+
+  it('rejects a turn dispatched with the wrong workflowRevision before ever reaching the worker', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    const activation = await readyAndActive(realm);
+
+    await expect(
+      realm.dispatchTurn({ ...activation, workflowRevision: 'revision-b', turnId: 1 }, {}),
+    ).rejects.toThrow('Realm turn envelope mismatch');
+    expect(realm.pendingTurnCount).toBe(0);
+    realm.discard();
+  });
+
+  it('rejects a pending turn when the worker reports realm-failure', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    const activation = await readyAndActive(realm);
+
+    const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, {});
+    realm.postRawMessageForTesting({ type: 'test-fail', turnId: 1, error: 'boom' });
+
+    await expect(pending).rejects.toThrow('boom');
+    realm.discard();
+  });
+
+  it('settles every pending turn on crash, ending in Crashed', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    const activation = await readyAndActive(realm);
+
+    const first = realm.dispatchTurn({ ...activation, turnId: 1 }, {});
+    const second = realm.dispatchTurn({ ...activation, turnId: 2 }, {});
+    expect(realm.pendingTurnCount).toBe(2);
+
+    realm.crash();
+
+    expect(realm.lifecycle.state).toBe('crashed');
+    expect(realm.pendingTurnCount).toBe(0);
+    await expect(first).rejects.toThrow('realm-not-active');
+    await expect(second).rejects.toThrow('realm-not-active');
+  });
+
+  it('rejects a turn still pending at termination, ending in Terminated', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    const activation = await readyAndActive(realm);
+
+    const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, {});
+    realm.beginDrain();
+    realm.terminate();
+
+    expect(realm.lifecycle.state).toBe('terminated');
+    await expect(pending).rejects.toThrow('realm-not-active');
+  });
+
+  it('discard() ends an idle, never-activated Ready realm in Crashed (no Terminated exit exists from Ready)', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    await realm.waitUntilReady();
+    expect(realm.lifecycle.state).toBe('ready');
+
+    realm.discard();
+    expect(realm.lifecycle.state).toBe('crashed');
+  });
+
+  it('restart() after a crash spawns a fresh Worker that can complete a new ready handshake', async () => {
+    const realm = makeRealm({ workerName: 'digest-a' });
+    await readyAndActive(realm);
+    realm.crash();
+    expect(realm.lifecycle.state).toBe('crashed');
+
+    expect(realm.restart()).toEqual({ ok: true });
+    expect(realm.lifecycle.state).toBe('warming');
+
+    const outcome = await realm.waitUntilReady();
+    expect(outcome.ok).toBe(true);
+    realm.discard();
+  });
+});

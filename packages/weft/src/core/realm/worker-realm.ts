@@ -1,0 +1,360 @@
+/**
+ * Real Worker-backed revision realm (COR-249).
+ *
+ * Implements the same port {@link
+ * import('./fake-realm.test-support.ts').FakeRealm} exposes — `activate`,
+ * `dispatchTurn`, `beginDrain`, `terminate`, `crash`, `restart` — over an
+ * actual Bun `Worker`, driven by the same transport-independent {@link
+ * RealmLifecycle} and {@link
+ * import('./realm-protocol.ts').RealmTurnEnvelope} modules R1 (COR-117)
+ * built and proved against the fake realm. Where `FakeRealm` settles
+ * synchronously in response to a direct method call, `WorkerRealm` settles
+ * in response to real `postMessage` events crossing an actual Worker
+ * boundary — the realm-ready handshake ({@link
+ * import('../worker-realm-readiness.ts').WorkerRealmReadyMessage}) and this
+ * module's own `realm-run` / `realm-result` / `realm-failure` wire messages
+ * ({@link import('./worker-realm-messages.ts')}).
+ *
+ * One `WorkerRealm` instance serves exactly one execution's entire turn
+ * sequence, from `activate()` through completion — the same
+ * one-generation, fixed-`executionToken` model `FakeRealm` defines (see its
+ * own module doc: "`activation` fixes the three per-generation identifiers
+ * every subsequent turn is checked against"). A `RevisionRealmPool`
+ * (COR-249) is what warms several `WorkerRealm` instances for one immutable
+ * revision and hands one out per execution.
+ *
+ * `RealmLifecycle`'s transition table has no direct path to `Terminated`
+ * except through `Draining`, and no exit at all from `Warming` other than
+ * `markReady`. `#forceDown` routes a real Worker failure, or a pool
+ * discarding a realm it never activated, through the nearest legal exit —
+ * see its own doc — rather than reopening that transition table.
+ *
+ * @module core/realm/worker-realm
+ */
+
+import {
+  isWorkerRealmReadyMessage,
+  validateRealmReadyMessage,
+  type RealmReadyOutcome,
+} from '../worker-realm-readiness.ts';
+import {
+  RealmLifecycle,
+  type RealmLifecycleDependencies,
+  type RealmRestartOutcome,
+} from './realm-lifecycle.ts';
+import { validateRealmTurnEnvelope, type RealmTurnEnvelope } from './realm-protocol.ts';
+import {
+  isRealmFailureMessage,
+  isRealmResultMessage,
+  type RealmRunMessage,
+} from './worker-realm-messages.ts';
+
+/** Activation identifiers fixed for a {@link WorkerRealm}'s entire `Active` lifetime. See {@link WorkerRealm.activate}. */
+export interface WorkerRealmActivation {
+  readonly workflowRevision: string;
+  readonly realmGeneration: string;
+  readonly executionToken: string;
+}
+
+type PendingOutcome = { kind: 'success'; result: unknown } | { kind: 'failure'; error: string };
+
+interface PendingWorkerTurn {
+  readonly envelope: RealmTurnEnvelope;
+  settle: ((outcome: PendingOutcome) => void) | null;
+}
+
+export interface WorkerRealmOptions extends RealmLifecycleDependencies {
+  readonly workerUrl: string | URL;
+  readonly expectedWorkflowTypes: readonly string[];
+  /** Opt-in revision digest check (COR-117's `getExpectedArtifactDigest`) — a revision realm always supplies this, so two revisions of the same workflow TYPE name cannot be confused for one another. */
+  readonly expectedArtifactDigest?: string;
+  readonly realmReadyTimeoutMs?: number;
+  readonly maxProtocolMessageBytes?: number;
+  /**
+   * Passed through as `WorkerOptions.name`, which becomes `self.name` inside
+   * the spawned Worker. A production bootstrap script is free to ignore it
+   * and derive its identity entirely from its own bundled build (one
+   * `workerUrl` per revision); test bootstraps use it to advertise a
+   * revision-specific identity from one shared fixture script.
+   */
+  readonly workerName?: string;
+  readonly smol?: boolean;
+}
+
+const DEFAULT_REALM_READY_TIMEOUT_MS = 5_000;
+
+/**
+ * One real Worker-backed revision realm. See the module doc for the
+ * one-realm-one-execution model and how this relates to `FakeRealm`.
+ */
+export class WorkerRealm {
+  readonly lifecycle: RealmLifecycle;
+  readonly #options: WorkerRealmOptions;
+  readonly #pendingTurns = new Map<number, PendingWorkerTurn>();
+  #worker: Worker;
+  #activation: WorkerRealmActivation | null = null;
+  #nextExpectedTurnId = 1;
+  #readyOutcome: RealmReadyOutcome | null = null;
+  #readyWaiters: ((outcome: RealmReadyOutcome) => void)[] = [];
+  #readyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(options: WorkerRealmOptions) {
+    this.#options = options;
+    this.lifecycle = new RealmLifecycle(options);
+    this.#worker = this.#spawnWorker();
+  }
+
+  /**
+   * Resolves once the realm's one-time `ready` handshake settles — `Ready`
+   * on success, `Crashed` on a rejected manifest/digest, or a timeout.
+   * Mirrors {@link
+   * import('../worker-realm-readiness.ts').WorkerRealmReadiness.waitForReady}
+   * for a single realm instance rather than a pool of interchangeable
+   * workers.
+   */
+  async waitUntilReady(): Promise<RealmReadyOutcome> {
+    if (this.#readyOutcome) return this.#readyOutcome;
+    return new Promise((resolve) => {
+      this.#readyWaiters.push(resolve);
+      this.#readyTimeout ??= setTimeout(() => {
+        this.#settleReady({
+          ok: false,
+          error: `Worker realm did not send a ready message within ${this.#options.realmReadyTimeoutMs ?? DEFAULT_REALM_READY_TIMEOUT_MS}ms`,
+          failureCategory: 'timeout',
+        });
+      }, this.#options.realmReadyTimeoutMs ?? DEFAULT_REALM_READY_TIMEOUT_MS);
+    });
+  }
+
+  /** `Ready` -> `Active`. See {@link import('./fake-realm.test-support.ts').FakeRealm.activate}. */
+  activate(activation: WorkerRealmActivation): void {
+    this.lifecycle.activate();
+    this.#activation = activation;
+    this.#nextExpectedTurnId = 1;
+  }
+
+  /**
+   * Dispatch one turn over the real Worker's `postMessage`. Same
+   * envelope-fencing rules as {@link
+   * import('./fake-realm.test-support.ts').FakeRealm.dispatchTurn}: rejects
+   * immediately, with no pending turn created, when not `Active` or the
+   * envelope disagrees with the fixed activation identifiers or the next
+   * expected `turnId`.
+   */
+  dispatchTurn(envelope: RealmTurnEnvelope, input: unknown): Promise<unknown> {
+    if (this.lifecycle.state !== 'active' || this.#activation === null) {
+      return Promise.reject(
+        new Error(`Worker realm cannot accept a turn while ${this.lifecycle.state}`),
+      );
+    }
+
+    const expected: RealmTurnEnvelope = { ...this.#activation, turnId: this.#nextExpectedTurnId };
+    const validation = validateRealmTurnEnvelope(expected, envelope);
+    if (!validation.ok) {
+      return Promise.reject(
+        new Error(
+          `Realm turn envelope mismatch on ${validation.mismatch}: expected ${String(validation.expected)}, received ${String(validation.received)}`,
+        ),
+      );
+    }
+
+    this.#nextExpectedTurnId += 1;
+    return new Promise((resolve, reject) => {
+      this.#pendingTurns.set(envelope.turnId, {
+        envelope,
+        settle: (outcome) => {
+          if (outcome.kind === 'success') resolve(outcome.result);
+          else reject(new Error(outcome.error));
+        },
+      });
+      const message: RealmRunMessage = { type: 'realm-run', envelope, input };
+      this.#worker.postMessage(message);
+    });
+  }
+
+  /** `Active` -> `Draining`. No new turn may be dispatched afterward. */
+  beginDrain(): void {
+    this.lifecycle.beginDrain();
+  }
+
+  /** `Draining` -> `Terminated`, rejecting every turn still pending, and terminating the underlying Worker thread. */
+  terminate(): void {
+    this.lifecycle.terminate();
+    this.#settlePendingTurns();
+    this.#worker.terminate();
+  }
+
+  /** Crash the realm: settles every pending turn with a rejection and terminates the underlying Worker thread. */
+  crash(): void {
+    this.lifecycle.crash();
+    this.#settlePendingTurns();
+    this.#worker.terminate();
+  }
+
+  /**
+   * Bounded `Crashed` -> `Warming` restart. A fresh `Worker` replaces the
+   * crashed one — the old thread cannot be trusted to still be alive or
+   * uncorrupted — while this `WorkerRealm` instance and its `RealmLifecycle`
+   * (including `restartCount`) are reused, matching {@link
+   * import('./fake-realm.test-support.ts').FakeRealm.restart}'s
+   * same-instance model.
+   */
+  restart(): RealmRestartOutcome {
+    const outcome = this.lifecycle.restart();
+    if (outcome.ok) {
+      this.#readyOutcome = null;
+      this.#worker = this.#spawnWorker();
+    }
+    return outcome;
+  }
+
+  /**
+   * Force this realm down regardless of its current state, for a pool
+   * discarding a realm it warmed but never activated, or as part of overall
+   * pool shutdown. Ends in `Crashed` (from `Warming`/`Ready`, which have no
+   * `Terminated` exit) or `Terminated` (from `Active`/`Draining`, via a
+   * graceful drain first) — see the module doc.
+   */
+  discard(): void {
+    this.#forceDown();
+    this.#worker.terminate();
+  }
+
+  get pendingTurnCount(): number {
+    return this.#pendingTurns.size;
+  }
+
+  /**
+   * Internal test seam: post a raw message directly to the underlying real
+   * Worker, bypassing `dispatchTurn`'s envelope machinery entirely. Used by
+   * fixture-worker tests to send the `test-release`/`test-fail` control
+   * messages {@link
+   * import('./__fixtures__/revision-realm-worker-entry.ts')} understands —
+   * messages no production bootstrap or host ever sends. Never called from
+   * production code.
+   */
+  postRawMessageForTesting(message: unknown): void {
+    this.#worker.postMessage(message);
+  }
+
+  #forceDown(): void {
+    switch (this.lifecycle.state) {
+      case 'warming':
+        this.lifecycle.markReady({ ok: false });
+        this.#settleReady({
+          ok: false,
+          error: 'Worker realm went down before completing its ready handshake',
+          failureCategory: 'system',
+        });
+        return;
+      case 'ready':
+        // `Ready` has no direct `Terminated` exit — `Terminated` is reachable
+        // only through `Draining` — so an idle, never-activated realm is
+        // always reclaimed through `crash()`.
+        this.lifecycle.crash();
+        break;
+      case 'active':
+        this.lifecycle.beginDrain();
+        this.lifecycle.terminate();
+        break;
+      case 'draining':
+        this.lifecycle.terminate();
+        break;
+      default:
+        break;
+    }
+    this.#settlePendingTurns();
+  }
+
+  #spawnWorker(): Worker {
+    const workerOptions: WorkerOptions & { smol?: boolean; name?: string } = {};
+    if (this.#options.smol) workerOptions.smol = true;
+    if (this.#options.workerName !== undefined) workerOptions.name = this.#options.workerName;
+    const worker = new Worker(this.#options.workerUrl, workerOptions);
+    worker.addEventListener('message', (event: MessageEvent) => {
+      void this.#handleMessage(event.data).catch(() => {});
+    });
+    worker.addEventListener('error', () => {
+      this.#handleWorkerFailure();
+    });
+    worker.addEventListener('messageerror', () => {
+      this.#handleWorkerFailure();
+    });
+    return worker;
+  }
+
+  #handleWorkerFailure(): void {
+    this.#forceDown();
+    this.#worker.terminate();
+  }
+
+  async #handleMessage(message: unknown): Promise<void> {
+    if (isWorkerRealmReadyMessage(message)) {
+      const outcome = await validateRealmReadyMessage(message, {
+        getExpectedWorkflowTypes: () => this.#options.expectedWorkflowTypes,
+        maxProtocolMessageBytes: this.#options.maxProtocolMessageBytes,
+        getExpectedArtifactDigest: () => this.#options.expectedArtifactDigest,
+      });
+      this.lifecycle.markReady({ ok: outcome.ok });
+      this.#settleReady(outcome);
+      return;
+    }
+
+    if (isRealmResultMessage(message)) {
+      this.#acceptRealmMessage(message.envelope, { kind: 'success', result: message.result });
+      return;
+    }
+
+    if (isRealmFailureMessage(message)) {
+      this.#acceptRealmMessage(message.envelope, { kind: 'failure', error: message.error });
+    }
+  }
+
+  /**
+   * Apply a realm-to-host message for `envelope.turnId`. Silently dropped
+   * (not applied, not thrown) when the realm is not `Active` — nothing
+   * pending can be legitimately settled by a drained/terminated/crashed
+   * realm, "a drained realm ... cannot emit an accepted late result" — when
+   * no pending turn matches `envelope.turnId`, or when `envelope` disagrees
+   * with the specific pending turn's own stored envelope (not merely its
+   * `turnId`): a stale or misrouted message must never resolve someone
+   * else's still-outstanding turn. There is no synchronous caller here to
+   * throw back to (unlike {@link
+   * import('./fake-realm.test-support.ts').FakeRealm.acceptResult}), so a
+   * fenced mismatch is a no-op rather than a thrown
+   * `RealmEnvelopeMismatchError` — the real, still-outstanding pending turn
+   * is left untouched either way.
+   */
+  #acceptRealmMessage(envelope: RealmTurnEnvelope, outcome: PendingOutcome): void {
+    if (this.lifecycle.state !== 'active') return;
+    const pending = this.#pendingTurns.get(envelope.turnId);
+    if (!pending || !pending.settle) return;
+    const validation = validateRealmTurnEnvelope(pending.envelope, envelope);
+    if (!validation.ok) return;
+
+    const settle = pending.settle;
+    pending.settle = null;
+    this.#pendingTurns.delete(envelope.turnId);
+    settle(outcome);
+  }
+
+  #settleReady(outcome: RealmReadyOutcome): void {
+    if (this.#readyOutcome) return;
+    this.#readyOutcome = outcome;
+    if (this.#readyTimeout) {
+      clearTimeout(this.#readyTimeout);
+      this.#readyTimeout = null;
+    }
+    const waiters = this.#readyWaiters.splice(0);
+    for (const waiter of waiters) waiter(outcome);
+  }
+
+  #settlePendingTurns(): void {
+    for (const [turnId, pending] of this.#pendingTurns) {
+      const settle = pending.settle;
+      pending.settle = null;
+      settle?.({ kind: 'failure', error: `Turn ${turnId} was not accepted: realm-not-active` });
+      this.#pendingTurns.delete(turnId);
+    }
+  }
+}
