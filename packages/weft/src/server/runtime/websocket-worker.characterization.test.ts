@@ -29,6 +29,7 @@ import { sleepForTesting, waitForCondition } from '../../testing/fake-timers.tes
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../../worker/protocol.ts';
 import { manifestForActivities } from '../../worker/registry-fixtures.test-support.ts';
 import { principalFromApiKey } from '../principal.ts';
+import { useObservableActivityHeartbeatsForTesting } from './activity-heartbeat-test-hooks.ts';
 import {
   FailingTerminalCommitStorage,
   minimalServeOptions,
@@ -1547,6 +1548,190 @@ describe('handleWorkerWebSocketMessage', () => {
       expect(
         ws.sentMessages.filter((raw) => JSON.parse(raw).type === 'taskResultAck'),
       ).toHaveLength(1);
+    });
+  });
+
+  describe('activityHeartbeat message', () => {
+    // COR-235: `onActivityHeartbeatMessage`'s durable ledger write is
+    // fire-and-forget — the worker is never blocked on it, and no protocol
+    // frame acknowledges it — so a caller needing to know the write actually
+    // landed (or didn't) has no signal to await except this test-only hook.
+    // These pin the hook's own contract; `remote-worker-reconnection.test.ts`
+    // is the consumer that replaces a fixed-budget ledger poll with it.
+    it('reports outcome "committed" once the durable lease-renewal write lands', async () => {
+      const context = minimalServerContext();
+      const storage = new MemoryStorage();
+      const options = minimalServeOptions(storage);
+      const ws = createFakeWs();
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        registerMessageJson('w-heartbeat', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-heartbeat') !== undefined,
+      );
+
+      context.registry.assignTask(
+        'w-heartbeat',
+        'op-heartbeat',
+        30_000,
+        undefined,
+        'attempt-token',
+      );
+      const seeded = await writeLeasedLedgerRecord(storage, {
+        operationId: 'op-heartbeat',
+        workerSessionId: 'w-heartbeat',
+      });
+
+      const applied = useObservableActivityHeartbeatsForTesting(options).next(
+        (event) => event.operationId === 'op-heartbeat',
+      );
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        JSON.stringify({
+          type: 'activityHeartbeat',
+          workerId: 'w-heartbeat',
+          operationId: 'op-heartbeat',
+          attemptToken: 'attempt-token',
+        }),
+        NOOP_CLEANUP,
+      );
+
+      const event = await applied;
+      expect(event).toEqual({
+        operationId: 'op-heartbeat',
+        attemptToken: 'attempt-token',
+        outcome: 'committed',
+      });
+
+      const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-heartbeat')));
+      expect(record?.state).toBe('leased');
+      // `renewAttemptLease` computes `Math.max(current.leaseDeadline, now +
+      // duration)`, so a heartbeat committed within the same millisecond as
+      // the seeded fixture can legitimately produce an EQUAL deadline, not a
+      // strictly greater one — assert the inequality the transition actually
+      // guarantees, not a stricter one a fast unit test can flake on.
+      expect((record as RemoteTaskLeased).leaseDeadline).toBeGreaterThanOrEqual(
+        seeded.leaseDeadline,
+      );
+    });
+
+    it('reports outcome "rejected" with the transition\'s own reason when the durable precondition fails', async () => {
+      const context = minimalServerContext();
+      const storage = new MemoryStorage();
+      const options = minimalServeOptions(storage);
+      const ws = createFakeWs();
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        registerMessageJson('w-heartbeat-rejected', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-heartbeat-rejected') !== undefined,
+      );
+
+      // Registry still thinks the attempt is live, but no ledger record was
+      // ever written for it — `renewAttemptLease`'s precondition (`current
+      // === null`) rejects, modeling a durable state the in-memory registry
+      // has not yet caught up to.
+      context.registry.assignTask(
+        'w-heartbeat-rejected',
+        'op-heartbeat-rejected',
+        30_000,
+        undefined,
+        'attempt-token',
+      );
+
+      const applied = useObservableActivityHeartbeatsForTesting(options).next(
+        (event) => event.operationId === 'op-heartbeat-rejected',
+      );
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        JSON.stringify({
+          type: 'activityHeartbeat',
+          workerId: 'w-heartbeat-rejected',
+          operationId: 'op-heartbeat-rejected',
+          attemptToken: 'attempt-token',
+        }),
+        NOOP_CLEANUP,
+      );
+
+      const event = await applied;
+      expect(event.outcome).toBe('rejected');
+      expect(event.reason).toBe('expected task state "leased"');
+    });
+
+    it('reports outcome "skipped" without attempting a durable write for a stale attempt token', async () => {
+      const context = minimalServerContext();
+      const storage = new MemoryStorage();
+      const options = minimalServeOptions(storage);
+      const ws = createFakeWs();
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        registerMessageJson('w-heartbeat-stale', ['doWork'], { concurrency: 5 }),
+        NOOP_CLEANUP,
+      );
+      await waitForRegistrationSideEffect(
+        () => context.registry.getWorker('w-heartbeat-stale') !== undefined,
+      );
+
+      context.registry.assignTask(
+        'w-heartbeat-stale',
+        'op-heartbeat-stale',
+        30_000,
+        undefined,
+        'current-attempt-token',
+      );
+      await writeLeasedLedgerRecord(storage, {
+        operationId: 'op-heartbeat-stale',
+        workerSessionId: 'w-heartbeat-stale',
+        attemptToken: 'current-attempt-token',
+      });
+
+      const applied = useObservableActivityHeartbeatsForTesting(options).next(
+        (event) => event.operationId === 'op-heartbeat-stale',
+      );
+
+      handleWorkerWebSocketMessage(
+        context,
+        options,
+        ws as never,
+        JSON.stringify({
+          type: 'activityHeartbeat',
+          workerId: 'w-heartbeat-stale',
+          operationId: 'op-heartbeat-stale',
+          attemptToken: 'stale-attempt-token',
+        }),
+        NOOP_CLEANUP,
+      );
+
+      const event = await applied;
+      expect(event).toEqual({
+        operationId: 'op-heartbeat-stale',
+        attemptToken: 'stale-attempt-token',
+        outcome: 'skipped',
+        reason: 'attempt-token-mismatch',
+      });
+      // Skipped means no durable write was even attempted — the seeded
+      // record's lease deadline is untouched.
+      const record = decodeRemoteTaskRecord(await storage.get(taskLedgerKey('op-heartbeat-stale')));
+      expect(record?.state).toBe('leased');
     });
   });
 

@@ -785,18 +785,28 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       // corvidae's copy carries more never-invoked fault-injection helpers than upstream's
       // (the missed-function count is unchanged at 15, so this is a pure line-set expansion,
       // not new dead functions), so the allowed range grew from upstream's 91 lines to 122.
+      //
+      // Realigned again (COR-235): `nextServerMessage`'s `NextServerMessageOptions` type and
+      // `waitForServerMessage`'s "omitted `timeoutMs` installs no timer" branch added 10 lines
+      // before line 48 and a further 6 lines inside the (still-never-fired) timeout callback
+      // starting at old line 289 — net +10 through old line 288, +16 from old line 289 on. Every
+      // one of the 122 coordinates below is the corresponding OLD coordinate plus that offset,
+      // confirmed against a fresh coverage/lcov.info generated after this edit (each new
+      // coordinate carries a genuine zero hit count; none regressed to newly covered or to a
+      // non-`DA:` line). The missed-function count is unchanged at 15 — this file gained no new
+      // functions, only the one already-present `waitForServerMessage` grew by 6 lines.
       {
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
         functions: 15,
         lines: new Set([
-          90, 105, 106, 107, 108, 116, 117, 118, 149, 150, 151, 152, 153, 154, 155, 156, 161, 162,
-          163, 164, 207, 208, 209, 210, 234, 240, 246, 247, 248, 249, 250, 255, 256, 257, 276, 289,
-          290, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313,
-          314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331,
-          332, 333, 334, 335, 336, 355, 356, 363, 367, 381, 382, 388, 393, 394, 401, 402, 403, 404,
-          405, 406, 407, 408, 409, 410, 411, 412, 413, 415, 424, 425, 431, 432, 437, 438, 451, 452,
-          453, 454, 455, 456, 460, 461, 462, 463, 464, 468, 469, 470, 471, 472,
+          100, 115, 116, 117, 118, 126, 127, 128, 159, 160, 161, 162, 163, 164, 165, 166, 171, 172,
+          173, 174, 217, 218, 219, 220, 244, 250, 256, 257, 258, 259, 260, 265, 266, 267, 286, 305,
+          306, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
+          330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347,
+          348, 349, 350, 351, 352, 371, 372, 379, 383, 397, 398, 404, 409, 410, 417, 418, 419, 420,
+          421, 422, 423, 424, 425, 426, 427, 428, 429, 431, 440, 441, 447, 448, 453, 454, 467, 468,
+          469, 470, 471, 472, 476, 477, 478, 479, 480, 484, 485, 486, 487, 488,
         ]),
         requireUncoveredLines: true,
       },
@@ -1645,12 +1655,34 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // this entry allows is real, meaningfully-defensive branches where a
       // future covering test should trip this check, not the minority
       // case-label/brace lines that can attribute inconsistently.
+      //
+      // Realigned again (COR-235), and one new branch added. Adding the
+      // `activity-heartbeat-test-hooks.ts` import shifted every coordinate below it by +1;
+      // `onActivityHeartbeatMessage`'s durability-report calls added a further +37 for
+      // coordinates below that function (net +38, after also removing 2 dead-code-adjacent
+      // lines — see below). Re-derived from a fresh coverage/lcov.info, not offset arithmetic,
+      // per this entry's own standing warning above: 160-163 -> 161-164 (+1), 256-264 -> 257-265
+      // (+1), 287 -> 288 (+1), 631/632/635/636 -> 669/670/673/674 (+38).
+      //
+      // 4. `onActivityHeartbeatMessage`'s `withRetry` closure re-checks
+      // `isAssignedToAttempt` before committing the durable heartbeat write (462-468) — genuinely
+      // reachable, but only on `withRetry`'s SECOND attempt, after `commitTaskLedgerTransition`
+      // has thrown once and `withRetry` has awaited its 100ms backoff sleep; only during that
+      // real sleep can another message actually reassign or resolve the attempt. No current test
+      // forces both a thrown storage error AND a race during its retry backoff, and doing so
+      // would need a genuine ~100ms wall-clock wait — exactly the timing-dependent test this
+      // project's own audit history (COR-1264) already argues against manufacturing. The
+      // otherwise-identical sibling guard at line 444 (`extendVisibility` returning `undefined`
+      // right after `getTask` found the same entry, with no `await` between them) is NOT
+      // reachable by any construction and is intentionally left without a test hook or an
+      // allowance entry — see its own comment.
       {
         reason:
-          'Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (160-163, 287), a revision-mismatch rejection unreachable without fabricating a non-resend (256-264), and the closed WorkerToServerMessage union default branch (631, 632, 635, 636).',
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (161-164, 288), a revision-mismatch rejection unreachable without fabricating a non-resend (257-265), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (462-468), and the closed WorkerToServerMessage union default branch (669, 670, 673, 674).",
         functions: 1,
         lines: new Set([
-          160, 161, 162, 163, 256, 257, 258, 259, 260, 261, 262, 263, 264, 287, 631, 632, 635, 636,
+          161, 162, 163, 164, 257, 258, 259, 260, 261, 262, 263, 264, 265, 288, 462, 463, 464, 465,
+          466, 467, 468, 669, 670, 673, 674,
         ]),
         requireUncoveredLines: true,
       },
