@@ -185,8 +185,6 @@ function projectLegacyEvent(
       };
     case 'tool_result':
       return { type: 'tool_result', ...projectChatToolResult(event), ...envelope };
-    default:
-      return throwUnsupportedType(event);
   }
 }
 function projectStreamEvent(
@@ -196,13 +194,14 @@ function projectStreamEvent(
   if (isBlockStreamEvent(event)) return projectBlockStreamEvent(event, envelope);
   if (isTextStreamEvent(event)) return projectTextStreamEvent(event, envelope);
   if (isStateStreamEvent(event)) return projectStateStreamEvent(event, envelope);
-  if (event.type === 'stream:error')
-    return {
-      type: event.type,
-      error: assertFiniteJSONValue(event.error, 'stream:error.error'),
-      ...envelope,
-    };
-  return throwUnsupportedType(event);
+  // The guards above leave only `stream:error`; this binding stops compiling if a new stream
+  // type reaches here unhandled.
+  const errorEvent: Extract<StreamEvent, { type: 'stream:error' }> = event;
+  return {
+    type: errorEvent.type,
+    error: assertFiniteJSONValue(errorEvent.error, 'stream:error.error'),
+    ...envelope,
+  };
 }
 function projectBlockStreamEvent(
   event: Extract<
@@ -290,15 +289,17 @@ function projectToolEvent(
       error: assertFiniteJSONValue(event.error, 'tool.error.error'),
       ...envelope,
     };
-  if (event.type === 'tool.policy-denied')
-    return {
-      type: event.type,
-      toolCallId: requireString(event.toolCallId, 'toolCallId'),
-      toolName: requireString(event.toolName, 'toolName'),
-      ...(event.reason === undefined ? {} : { reason: requireString(event.reason, 'reason') }),
-      ...envelope,
-    };
-  return throwUnsupportedType(event);
+  // Only `tool.policy-denied` remains; this binding stops compiling if a new tool type does not.
+  const policyDenied: Extract<ToolEvent, { type: 'tool.policy-denied' }> = event;
+  return {
+    type: policyDenied.type,
+    toolCallId: requireString(policyDenied.toolCallId, 'toolCallId'),
+    toolName: requireString(policyDenied.toolName, 'toolName'),
+    ...(policyDenied.reason === undefined
+      ? {}
+      : { reason: requireString(policyDenied.reason, 'reason') }),
+    ...envelope,
+  };
 }
 function projectToolProgress(
   event: Extract<ToolEvent, { type: 'tool.progress' }>,
@@ -339,13 +340,13 @@ function projectRunEvent(
   if (event.type === 'run.completed') return projectCompletedRun(event, envelope);
   if (event.type === 'run.error' || event.type === 'run.tripwire')
     return { type: event.type, error: projectChatSerializedRunError(event.error), ...envelope };
-  if (event.type === 'run.aborted')
-    return {
-      type: event.type,
-      ...(event.reason === undefined ? {} : { reason: requireString(event.reason, 'reason') }),
-      ...envelope,
-    };
-  return throwUnsupportedType(event);
+  // Only `run.aborted` remains; this binding stops compiling if a new run type does not.
+  const aborted: Extract<RunEvent, { type: 'run.aborted' }> = event;
+  return {
+    type: aborted.type,
+    ...(aborted.reason === undefined ? {} : { reason: requireString(aborted.reason, 'reason') }),
+    ...envelope,
+  };
 }
 
 function throwUnsupportedType(value: unknown): never {

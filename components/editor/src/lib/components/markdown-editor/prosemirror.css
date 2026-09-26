@@ -96,7 +96,14 @@
     padding: var(--cinder-space-1, 4px);
   }
 
-  .markdown-editor .template-completion-item {
+  /* Source mode's listbox (COR-521) renders in the top layer with Cinder's
+     floating surface; it shares the rich listbox's width and row styles. */
+  .markdown-editor-source-completion {
+    min-width: 200px;
+    max-width: 360px;
+  }
+
+  :is(.markdown-editor, .markdown-editor-source-completion) .template-completion-item {
     display: flex;
     flex-direction: column;
     gap: 0;
@@ -107,30 +114,30 @@
     line-height: 1.4;
   }
 
-  .markdown-editor .template-completion-item--active {
+  :is(.markdown-editor, .markdown-editor-source-completion) .template-completion-item--active {
     background: var(--cinder-surface-hover);
   }
 
   @media (hover: hover) {
-    .markdown-editor .template-completion-item:hover {
+    :is(.markdown-editor, .markdown-editor-source-completion) .template-completion-item:hover {
       background: var(--cinder-surface-hover);
     }
   }
 
   @media (forced-colors: active) {
-    .markdown-editor .template-completion-item--active {
+    :is(.markdown-editor, .markdown-editor-source-completion) .template-completion-item--active {
       outline: 2px solid Highlight;
     }
   }
 
-  .markdown-editor .template-completion-item-path {
+  :is(.markdown-editor, .markdown-editor-source-completion) .template-completion-item-path {
     font-family: var(--cinder-font-mono);
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-default, #1a1a1a);
   }
 
-  .markdown-editor .template-completion-item-types,
-  .markdown-editor .template-completion-item-description {
+  :is(.markdown-editor, .markdown-editor-source-completion) .template-completion-item-types,
+  :is(.markdown-editor, .markdown-editor-source-completion) .template-completion-item-description {
     font-size: var(--cinder-text-xs, 0.75rem);
     color: var(--cinder-text-muted, #6b7280);
   }

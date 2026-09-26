@@ -69,6 +69,7 @@ export const appFixtureDeclarations = {
   steps: ['assertion'],
   'selection-popover': ['assertion'],
   'markdown-editor': ['assertion'],
+  'markdown-editor-template-placeholders': ['assertion'],
   'conversation-markdown': ['assertion'],
   'token-computation': ['assertion'],
   'theme-surfaces': ['assertion'],

@@ -171,6 +171,33 @@ describe('resolveTextDirection', () => {
     element.remove();
   });
 
+  test('fails closed on an @scope prelude with no rule body to terminate it', () => {
+    // `findScopePreludeEnd` scans forward from `@scope` looking for the `{`
+    // that starts the rule body, tracking paren/bracket depth as it goes.
+    // When the scanned text runs out before a top-level `{` appears (no
+    // rule body at all — cssText not shaped like a real parsed CSSRule),
+    // the loop exhausts without an early return and falls through to the
+    // trailing `return -1`. `parseScopePrelude` then reports no prelude,
+    // and the scope must never activate rather than throw or match.
+    const theme = document.createElement('section');
+    theme.className = 'theme';
+    const target = document.createElement('div');
+    target.className = 'shell';
+    theme.append(target);
+    document.body.append(theme);
+    const scopeRule = createCssRule({
+      type: 0,
+      cssText: '@scope (.theme)',
+      cssRules: [createStyleRule({ selectorText: '.shell', direction: 'ltr' })],
+    });
+    expect(
+      withDocumentStyleSheets([{ cssRules: [scopeRule] }], () =>
+        resolveTextDirection(target, 'rtl'),
+      ),
+    ).toBe('rtl');
+    theme.remove();
+  });
+
   test('follows an @import rule to match a direction rule inside the imported stylesheet', () => {
     const element = document.createElement('div');
     element.className = 'imported-target';

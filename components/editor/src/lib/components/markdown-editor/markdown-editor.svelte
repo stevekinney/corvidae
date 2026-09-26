@@ -50,6 +50,7 @@
   import EditorSkeleton from './editor-skeleton.svelte';
   import MarkdownEditorPlaceholderRegions from './markdown-editor-placeholder-regions.svelte';
   import { createMarkdownEditorPlaceholders } from './markdown-editor-placeholders.svelte.ts';
+  import { createSourceEditingAttachment } from './source-placeholder-completion.ts';
   import { EditorToolbar, LinkPopover } from './editor-toolbar/index.ts';
   import type { LinkPopoverMode } from './editor-toolbar/link-popover.svelte';
   import type { EditorMode, MarkdownEditorProps, ToolbarContext } from './markdown-editor.types.ts';
@@ -149,7 +150,6 @@
     id: () => id,
     value: () => value,
     readonly: () => readonly,
-    wysiwyg: () => mode === 'wysiwyg',
     definitions: () => placeholderDefinitions,
     values: () => placeholderValues,
     completion: () => placeholderCompletion,
@@ -544,6 +544,20 @@
     onCommentShortcut: () => onCommentShortcut?.(),
   });
 
+  // Source mode's explicit history and placeholder completion (COR-521).
+  const sourceEditingAttachment = createSourceEditingAttachment({
+    value: () => value,
+    readonly: () => readonly,
+    configuration: () => placeholders.resolved,
+    listboxId: () => placeholders.sourceListboxId,
+    popupContainer: () => wrapperElement,
+    onStatusChange: (message) => placeholders.setStatusMessage(message),
+    commitValue: (next) => {
+      value = next;
+      onValueChange?.(next);
+    },
+  });
+
   // Track mode transitions to normalize content on switch (DEP-45).
   let previousMode: EditorMode = mode;
 
@@ -853,8 +867,9 @@
           {placeholder}
           readonly={readonly || undefined}
           aria-label={accessibleEditorLabel}
-          aria-describedby={ariaDescribedby}
+          aria-describedby={placeholders.describedBy(ariaDescribedby)}
           aria-multiline="true"
+          {@attach sourceEditingAttachment}
         />
       {/if}
     {:else}

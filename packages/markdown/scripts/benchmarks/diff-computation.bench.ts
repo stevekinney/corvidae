@@ -20,16 +20,22 @@
  * - Pure diff (pre-normalized): <10ms for 20KB
  *
  * - Identical docs: <5ms (string equality fast path)
+ *
+ * This file lives under `scripts/` (not `src/`), so it is outside the
+ * package's default test discovery and lint scope; run it on demand with
+ * `bun run test:benchmarks`. The correctness assertions (`isIdentical`,
+ * `result1 === result2`) that used to sit alongside these timings now also
+ * live in `../../src/pipeline/performance/diff-computation-correctness.test.ts`,
+ * which runs in the default suite.
  */
 
 import { afterAll, beforeEach, describe, expect, it } from 'bun:test';
-import { computeLineDiff } from '../../diff/line-diff.js';
-import { clearNormalizeCache, normalize, normalizeWithCache } from '../../pipeline/index.js';
-import { FIXTURES, generateModifiedDocument } from './generate-fixtures';
-
-// These wall-clock benchmarks run as part of the normal suite so regressions
-// in diff computation remain visible.
-const describeBenchmark = describe;
+import { computeLineDiff } from '../../src/diff/line-diff.js';
+import { clearNormalizeCache, normalize, normalizeWithCache } from '../../src/pipeline/index.js';
+import {
+  FIXTURES,
+  generateModifiedDocument,
+} from '../../src/pipeline/performance/generate-fixtures';
 
 // Result storage for CI artifacts
 const results: Array<{
@@ -40,7 +46,7 @@ const results: Array<{
   passed: boolean;
 }> = [];
 
-describeBenchmark('Diff Computation Performance', () => {
+describe('Diff Computation Performance', () => {
   // Clear cache before each test to ensure clean measurements
   beforeEach(() => {
     clearNormalizeCache();

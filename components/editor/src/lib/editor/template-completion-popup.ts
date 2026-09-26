@@ -78,7 +78,7 @@ function optionElements(popup: HTMLElement): HTMLElement[] {
 /** Render every suggestion and mark the active one. Rows are rebuilt only when the list changes. */
 export function renderSuggestions(
   popup: HTMLElement,
-  completionState: CompletionState,
+  completionState: Pick<CompletionState, 'suggestions' | 'activeIndex'>,
   listboxId: string,
 ): void {
   const { suggestions, activeIndex } = completionState;

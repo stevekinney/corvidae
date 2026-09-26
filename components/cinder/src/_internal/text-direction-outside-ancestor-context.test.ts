@@ -55,6 +55,39 @@ describe('resolveTextDirection', () => {
     ).toBe('ltr');
   });
 
+  test('fails closed when the outside-ancestor selector segment is syntactically invalid', () => {
+    // `matchesScopedRoot` wraps both the outside-ancestor check and the
+    // remainder match in one try/catch: `matchesOutsideScopeContext`'s
+    // descendant-combinator branch calls `root.parentElement?.closest(before)`
+    // directly (not through `matchesSelectorSafely`), so an unparseable
+    // `before` segment throws a SyntaxError there. `[attr=]` keeps its
+    // brackets balanced (so the scope-pseudo scanner still recognises the
+    // `:scope` that follows as a real, top-level token — an *unbalanced*
+    // bracket instead hides `:scope` from the scanner entirely and takes an
+    // earlier, exception-free fallback path) while still being invalid CSS
+    // that `closest()` rejects. The scope must fail closed rather than let
+    // that exception escape.
+    const parent = document.createElement('div');
+    const theme = document.createElement('section');
+    theme.className = 'theme';
+    const target = document.createElement('div');
+    target.className = 'shell';
+    theme.append(target);
+    parent.append(theme);
+    document.body.append(parent);
+    const scopeRule = createCssRule({
+      type: 0,
+      cssText: '@scope (.theme) {}',
+      cssRules: [createStyleRule({ selectorText: '[attr=] :scope .shell', direction: 'ltr' })],
+    });
+    expect(
+      withDocumentStyleSheets([{ cssRules: [scopeRule] }], () =>
+        resolveTextDirection(target, 'rtl'),
+      ),
+    ).toBe('rtl');
+    parent.remove();
+  });
+
   test('does not let a :scope nested inside :is() misread the selector as outside-ancestor context', () => {
     // `:is(main :scope .shell, .fallback)` — the `:scope` inside `:is()`
     // must not be treated as a TOP-LEVEL token: doing so slices `:is(main`

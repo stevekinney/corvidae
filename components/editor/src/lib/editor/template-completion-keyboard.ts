@@ -1,6 +1,7 @@
 import type { EditorView } from 'prosemirror-view';
 
 import { acceptSuggestion } from './template-completion-acceptance.js';
+import { completionKeyAction } from './template-completion-keys.js';
 import {
   templateCompletionPluginKey,
   type CompletionMeta,
@@ -15,10 +16,6 @@ function dispatchMeta(view: EditorView, meta: CompletionMeta): void {
 export function isCompletionPopupOpen(view: EditorView): boolean {
   const state = templateCompletionPluginKey.getState(view.state);
   return Boolean(view.editable && state?.active && state.suggestions.length > 0);
-}
-
-function hasModifier(event: KeyboardEvent): boolean {
-  return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
 }
 
 /**
@@ -51,24 +48,21 @@ function handleOpenPopupKey(
   state: CompletionState,
   holdDismissalForCurrentKey: () => void,
 ): boolean {
-  const { suggestions, activeIndex } = state;
-  if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !hasModifier(event)) {
-    const delta = event.key === 'ArrowDown' ? 1 : -1;
-    const nextIndex = Math.min(Math.max(activeIndex + delta, 0), suggestions.length - 1);
-    if (nextIndex !== activeIndex) dispatchMeta(view, { type: 'navigate', index: nextIndex });
+  const action = completionKeyAction(event, state);
+  if (!action) return false;
+  if (action.type === 'navigate') {
+    if (action.index !== state.activeIndex) {
+      dispatchMeta(view, { type: 'navigate', index: action.index });
+    }
     event.preventDefault();
     return true;
   }
-
-  if (event.key === 'Enter' && !hasModifier(event)) {
-    const selected = suggestions[activeIndex];
-    if (!selected) return false;
-    acceptSuggestion(view, selected, state);
+  if (action.type === 'accept') {
+    acceptSuggestion(view, action.candidate, state);
     event.preventDefault();
     return true;
   }
-
-  if (event.key === 'Tab') {
+  if (!action.consume) {
     // Dismiss, then let Tab do what it normally does here: indent a list item,
     // move between table cells, or move focus. The dismissal survives the
     // document change that same keypress makes.
@@ -76,8 +70,6 @@ function handleOpenPopupKey(
     dispatchMeta(view, { type: 'dismiss' });
     return false;
   }
-
-  if (event.key !== 'Escape') return false;
   dispatchMeta(view, { type: 'dismiss' });
   event.preventDefault();
   event.stopPropagation();
