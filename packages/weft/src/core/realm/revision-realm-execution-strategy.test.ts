@@ -4,8 +4,8 @@
  * own convention of driving the strategy directly rather than only through
  * a full `Engine`. `revision-realm-execution.test.ts` (engine-level) already
  * proves `startWorkflow`/activation/recovery end to end; this file covers
- * `cancelWorkflow` and disposal, which that suite's scenarios never
- * exercise.
+ * `cancelWorkflow`, disposal, and crash-triggered realm reclamation, which
+ * that suite's scenarios never exercise.
  */
 import { describe, expect, it, spyOn } from 'bun:test';
 
@@ -17,6 +17,19 @@ import { RevisionRealmRegistry } from './revision-realm-registry.ts';
 const ORDER_WORKFLOW_NAME = 'r2e-order-workflow';
 const REVISION = 'revision-a';
 const workerUrl = new URL('./__fixtures__/revision-a-order-worker.fixture.ts', import.meta.url);
+const crashWorkerUrl = new URL('./__fixtures__/revision-crash-worker.fixture.ts', import.meta.url);
+const CRASH_REVISION = 'revision-crash';
+// Matching `ORDER_WORKFLOW_NAME`/`REVISION` above: a literal duplicate of
+// `crash-workflow-handler.fixture.ts`'s own exported constants, not an
+// import of them. That fixture's crash branch only ever runs inside the
+// spawned Worker `crashWorkerUrl` points at; importing its constants here
+// would pull the whole module into THIS test file's own static import
+// graph, which is what the main (non-Worker) test process instruments for
+// coverage — turning an already-covered-by-design "runs only inside a
+// Worker" file into a spurious line-coverage gap (order-workflow-handler
+// and sentinel-workflow's own fixtures avoid this the same way).
+const CRASH_WORKFLOW_NAME = 'r2e-crash-workflow';
+const CRASH_WORKFLOW_TRIGGER_INPUT = 'crash-mid-turn';
 
 function newStrategy(): {
   strategy: RevisionRealmExecutionStrategy;
@@ -72,6 +85,87 @@ describe('RevisionRealmExecutionStrategy', () => {
       // consumeCancelled-is-single-use precedent — the swallow only covers
       // the one settlement cancelWorkflow() itself triggered.)
       expect(messages).toEqual([]);
+    });
+  });
+
+  describe('dispatch reclaims a crashed realm (COR-249 mid-turn Worker crash recovery)', () => {
+    function newCrashStrategy(): {
+      strategy: RevisionRealmExecutionStrategy;
+      registry: RevisionRealmRegistry;
+      messages: WorkerOutboundMessage[];
+    } {
+      const registry = new RevisionRealmRegistry();
+      const messages: WorkerOutboundMessage[] = [];
+      const strategy = new RevisionRealmExecutionStrategy({
+        registry,
+        resolveRevisionRealmConfig: () => ({
+          workerUrl: crashWorkerUrl,
+          expectedWorkflowTypes: [CRASH_WORKFLOW_NAME],
+          // Concurrency 1: if the crashed realm's pool slot is never
+          // reclaimed, the SECOND startWorkflow() below (same still-active
+          // revision) has no capacity left and reports `pool-at-capacity`
+          // forever — reproducing P-COR-29 criterion 7's empirical failure
+          // exactly.
+          concurrency: 1,
+        }),
+        getWorkflowRevisionPin: () => undefined,
+      });
+      strategy.onMessage((message) => {
+        messages.push(message);
+      });
+      return { strategy, registry, messages };
+    }
+
+    it('releases a realm that crashed mid-turn so a still-active, concurrency-1 revision is not permanently at capacity', async () => {
+      const { strategy, registry, messages } = newCrashStrategy();
+
+      strategy.startWorkflow({
+        workflowId: 'wf-realm-crash',
+        revision: CRASH_REVISION,
+        workflowType: CRASH_WORKFLOW_NAME,
+        input: CRASH_WORKFLOW_TRIGGER_INPUT,
+        checkpoint: new ArrayBuffer(0),
+      });
+
+      await waitForCondition(() => messages.length === 1, {
+        label: 'crash-settled failure emitted for wf-realm-crash',
+      });
+
+      const crashMessage = messages[0];
+      if (!crashMessage || crashMessage.type !== 'failed') throw new Error('unreachable');
+      // `WorkerRealm#settlePendingTurns`'s own rejection text for a realm
+      // forced down while a turn was still pending — distinguishes a
+      // genuine crash-settled turn from a graceful workflow-level failure
+      // (which would instead carry the handler's own error message and
+      // never reach this catch branch at all).
+      expect(crashMessage.error).toContain('realm-not-active');
+
+      // The strategy's catch branch releases the realm back to the
+      // registry BEFORE emitting the failure above, so observing that
+      // failure already proves the release happened — no polling needed.
+      expect(registry.getPool(CRASH_WORKFLOW_NAME, CRASH_REVISION)?.realmCount ?? 0).toBe(0);
+
+      // The killer assertion: a second start for the SAME still-active
+      // revision, at the same concurrency-1 ceiling, must be able to warm
+      // a fresh realm and complete normally — refuting "a concurrency-1
+      // revision whose sole realm crashes mid-turn permanently returns
+      // pool-at-capacity for every subsequent start."
+      strategy.startWorkflow({
+        workflowId: 'wf-realm-after-crash',
+        revision: CRASH_REVISION,
+        workflowType: CRASH_WORKFLOW_NAME,
+        input: 'ordinary-input',
+        checkpoint: new ArrayBuffer(0),
+      });
+
+      await waitForCondition(() => messages.length === 2, {
+        label: 'post-crash start completes on a freshly warmed realm',
+      });
+      expect(messages[1]).toEqual({
+        type: 'completed',
+        workflowId: 'wf-realm-after-crash',
+        result: { ok: true, input: 'ordinary-input' },
+      });
     });
   });
 

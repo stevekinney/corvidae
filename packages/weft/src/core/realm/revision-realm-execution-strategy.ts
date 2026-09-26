@@ -19,7 +19,11 @@
  * this strategy tracks `workflowId -> { realm, revision, executionToken }`
  * for the execution's lifetime and releases the realm back to its pool
  * (which drains and terminates it) the moment the workflow reaches a
- * terminal outbound message, is cancelled, or this strategy is disposed.
+ * terminal outbound message, is cancelled, this strategy is disposed, or
+ * the realm itself rejects a turn (a genuine mid-turn Worker crash, or a
+ * protocol-level failure from a realm that never crashed) — see
+ * `#dispatch`'s catch block for why that release always goes through
+ * `releaseAfterExecution` rather than `forgetCrashedRealm`.
  *
  * **Revision resolution.** A fresh start's revision comes from
  * `parameters.revision`, already resolved by the engine's own dynamic-source
@@ -289,6 +293,18 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
     const activation = execution.realm.activation;
     if (!activation) {
       this.#executions.delete(workflowId);
+      // `WorkerRealm#activation` is only ever set (never cleared) by
+      // `activate()`, which every `acquireForExecution` outcome this
+      // strategy uses already called before returning `ok: true` — this
+      // branch's realm is therefore always still `Ready` in practice (type
+      // narrowing for a state `acquireForExecution` guarantees cannot
+      // reach here yet). `releaseAfterExecution` is still the correct call
+      // rather than `forgetCrashedRealm`: an un-activated `Ready` realm has
+      // not had its own crash handling terminate its Worker the way
+      // `forgetCrashedRealm`'s contract assumes, so releasing it drains (if
+      // applicable) and reclaims the pool slot instead of leaking a live
+      // Worker.
+      this.#registry.releaseAfterExecution(execution.name, execution.revision, execution.realm);
       this.#emit(
         outboundFailure(workflowId, `Revision realm for workflow "${workflowId}" is not active.`),
       );
@@ -316,6 +332,25 @@ export class RevisionRealmExecutionStrategy implements ExecutionStrategy {
       // already recorded a cancellation for.
       if (this.#cancelled.delete(workflowId)) return;
       this.#executions.delete(workflowId);
+      // The realm rejected the turn on its own instead of settling to a
+      // `completed`/`failed` outbound message the success branch above
+      // already releases for — reclaim its pool slot the same way
+      // `WorkerFaultHandler.discardWorkerAndFailWorkflows` retires a
+      // crashed Worker's slot in the generic Worker path, so a crashed
+      // realm never sits in `RevisionRealmPool`'s `#realms` set forever
+      // holding capacity a still-active revision can no longer use.
+      // `releaseAfterExecution` (not `forgetCrashedRealm`) on purpose: a
+      // genuine mid-turn Worker crash already moved the realm's own
+      // lifecycle to a terminal state and already terminated its
+      // underlying Worker (`#forceDown`), so `releaseAfterExecution`'s
+      // `active`/`draining` checks are both false and it degrades to
+      // exactly `forgetCrashedRealm`'s own effect — but a rejection from a
+      // still-`active` realm (a protocol-level `realm-failure` message or
+      // an envelope mismatch, the realm itself never crashed) instead
+      // drains and terminates that still-live Worker rather than
+      // abandoning it, which `forgetCrashedRealm`'s own contract ("its own
+      // crash handling already did that") assumes already happened.
+      this.#registry.releaseAfterExecution(execution.name, execution.revision, execution.realm);
       if (!this.#disposal.isDisposed) {
         this.#emit(
           outboundFailure(workflowId, error instanceof Error ? error.message : String(error)),
