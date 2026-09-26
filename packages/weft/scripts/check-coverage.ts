@@ -2127,6 +2127,11 @@ type CoverageProcess = {
   exited: Promise<number>;
   stderr: ReadableStream<Uint8Array> | null;
   stdout: ReadableStream<Uint8Array> | null;
+  // Present on a real `Bun.spawn` subprocess; optional so a minimal stubbed child
+  // (one that never needs to be killed or identified by pid) stays valid in tests.
+  pid?: number;
+  signalCode?: NodeJS.Signals | null;
+  kill?: (signal?: number | NodeJS.Signals) => void;
 };
 
 type SpawnCoverageProcess = (
@@ -2141,6 +2146,10 @@ type SpawnCoverageProcess = (
 
 type RunCoverageShardDependencies = {
   spawnCoverageProcess?: SpawnCoverageProcess;
+  // Test seam for the SIGTERM/SIGINT handler's terminal action, so a unit test can
+  // observe "the script would have exited non-zero here" without actually ending
+  // the test process. Defaults to the real `process.exit`.
+  exitProcess?: (code: number) => void;
 };
 
 type CheckCoverageDependencies = {
@@ -2152,6 +2161,39 @@ type CapturedOutputTail = {
   bytes: Uint8Array;
   truncatedBytes: number;
 };
+
+/**
+ * Every stage `checkCoverage`/`runCoverageShard` can fail at. Named explicitly so a
+ * non-zero exit always prints a one-line reason naming which of these it hit — see
+ * COR-1326 (and COR-225, the analogous fix for the retired agent-bureau script): a
+ * gate that fails without saying why forces reruns instead of a diagnosis.
+ */
+export type CoverageFailureStage =
+  | 'spawn'
+  | 'child exit'
+  | 'child signal'
+  | 'missing report'
+  | 'empty report'
+  | 'parse failure'
+  | 'coverage gap';
+
+/**
+ * Format the one-line, stage-naming reason printed for every non-zero exit. `child`
+ * is supplied only when a spawned process was involved, and always reports both its
+ * exit code and signal name (`"none"` for whichever did not apply) so a signal-killed
+ * child is never misreported as a bare numeric exit code.
+ */
+export function formatCoverageFailureReason(
+  stage: CoverageFailureStage,
+  detail: string,
+  child?: { exitCode: number | null; signal: string | null },
+): string {
+  const childSuffix =
+    child === undefined
+      ? ''
+      : ` (child exit code ${child.exitCode ?? 'none'}, signal ${child.signal ?? 'none'})`;
+  return `check-coverage: exiting non-zero at stage "${stage}": ${detail}${childSuffix}`;
+}
 
 async function captureOutputTail(
   stream: ReadableStream<Uint8Array> | null,
@@ -2244,27 +2286,84 @@ export async function runCoverageShard(
 
   args.push(...shard.testFiles);
 
+  const lcovPath = `${shard.coverageDirectory}/lcov.info`;
   const spawnCoverageProcess =
     dependencies.spawnCoverageProcess ?? ((spawnArgs, options) => Bun.spawn(spawnArgs, options));
-  const coverageProcess = spawnCoverageProcess(args, {
-    cwd: globalThis.process.cwd(),
-    env: { ...process.env, ...Bun.env, WEFT_COVERAGE_MODE: '1' },
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    captureOutputTail(coverageProcess.stdout),
-    captureOutputTail(coverageProcess.stderr),
-    coverageProcess.exited,
-  ]);
+  const exitProcess = dependencies.exitProcess ?? ((code: number) => process.exit(code));
+
+  let coverageProcess: CoverageProcess;
+  try {
+    coverageProcess = spawnCoverageProcess(args, {
+      cwd: globalThis.process.cwd(),
+      env: { ...process.env, ...Bun.env, WEFT_COVERAGE_MODE: '1' },
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      formatCoverageFailureReason(
+        'spawn',
+        `${shard.name} coverage shard failed to start: ${message}`,
+      ),
+    );
+    return { exitCode: 1, lcovPath };
+  }
+
+  // If this script itself is killed while the child is running, the child would
+  // otherwise be silently orphaned and the exit would carry no diagnosis. Report
+  // which shard was running and the child's pid, forward the signal, then exit.
+  const onTerminationSignal = (signal: NodeJS.Signals) => {
+    console.error(
+      `check-coverage: received ${signal} while running the "${shard.name}" coverage shard ` +
+        `(child pid ${coverageProcess.pid ?? 'unknown'}); terminating child and exiting.`,
+    );
+    coverageProcess.kill?.(signal);
+    exitProcess(1);
+  };
+  process.on('SIGTERM', onTerminationSignal);
+  process.on('SIGINT', onTerminationSignal);
+
+  let stdout: CapturedOutputTail;
+  let stderr: CapturedOutputTail;
+  let exitCode: number;
+  try {
+    [stdout, stderr, exitCode] = await Promise.all([
+      captureOutputTail(coverageProcess.stdout),
+      captureOutputTail(coverageProcess.stderr),
+      coverageProcess.exited,
+    ]);
+  } finally {
+    process.off('SIGTERM', onTerminationSignal);
+    process.off('SIGINT', onTerminationSignal);
+  }
 
   if (exitCode !== 0) {
     writeFailureOutput(`${shard.name} stdout`, stdout);
     writeFailureOutput(`${shard.name} stderr`, stderr);
     console.error(`${shard.name} coverage shard exited with code ${exitCode}.`);
+
+    const signal = coverageProcess.signalCode ?? null;
+    if (signal !== null && signal !== undefined) {
+      console.error(
+        formatCoverageFailureReason(
+          'child signal',
+          `${shard.name} coverage shard was terminated by signal ${signal}.`,
+          { exitCode, signal },
+        ),
+      );
+    } else {
+      console.error(
+        formatCoverageFailureReason(
+          'child exit',
+          `${shard.name} coverage shard exited with code ${exitCode}.`,
+          { exitCode, signal: null },
+        ),
+      );
+    }
   }
 
-  return { exitCode, lcovPath: `${shard.coverageDirectory}/lcov.info` };
+  return { exitCode, lcovPath };
 }
 
 /**
@@ -2287,19 +2386,42 @@ export async function checkCoverage(
   });
 
   if (shard.exitCode !== 0) {
+    // The spawn/child-exit/child-signal stage reason was already printed inside
+    // runCoverageShard, closest to the failure; this line stays for continuity.
     console.error('Coverage execution failed.');
     return false;
   }
 
   if (!(await Bun.file(shard.lcovPath).exists())) {
     console.error(`No coverage report generated for ${shard.lcovPath}.`);
+    console.error(
+      formatCoverageFailureReason(
+        'missing report',
+        `expected an lcov report at ${shard.lcovPath} after a successful coverage run.`,
+      ),
+    );
     return false;
   }
 
-  const coverage = parseLcov(await Bun.file(shard.lcovPath).text());
+  let coverage: CoverageResult;
+  try {
+    coverage = parseLcov(await Bun.file(shard.lcovPath).text());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      formatCoverageFailureReason('parse failure', `could not parse ${shard.lcovPath}: ${message}`),
+    );
+    return false;
+  }
 
   if (coverage.lines.total === 0) {
     console.error('Coverage report is empty — no source files were instrumented.');
+    console.error(
+      formatCoverageFailureReason(
+        'empty report',
+        `${shard.lcovPath} contained zero instrumented lines.`,
+      ),
+    );
     return false;
   }
 
@@ -2317,6 +2439,12 @@ export async function checkCoverage(
     for (const file of coverage.uncoveredFiles) {
       console.log(`  ${file}`);
     }
+    console.error(
+      formatCoverageFailureReason(
+        'coverage gap',
+        `${coverage.uncoveredFiles.length} file(s) below the required threshold.`,
+      ),
+    );
   }
 
   return coverage.covered;
