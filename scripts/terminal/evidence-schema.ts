@@ -21,6 +21,91 @@ export type EvidenceReport = {
   selectedEngine?: unknown;
 };
 
+type CandidateEvidence = {
+  name: string;
+  version: string;
+  passed: boolean;
+  cells: EvidenceCell[];
+};
+
+type SelectedEngine = { name: string; version: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isCandidateEvidence(value: unknown): value is CandidateEvidence {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    value.name.length > 0 &&
+    typeof value.version === 'string' &&
+    value.version.length > 0 &&
+    typeof value.passed === 'boolean' &&
+    Array.isArray(value.cells)
+  );
+}
+
+function isSelectedEngine(value: unknown): value is SelectedEngine {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    value.name.length > 0 &&
+    typeof value.version === 'string' &&
+    value.version.length > 0 &&
+    Object.keys(value).every((key) => key === 'name' || key === 'version')
+  );
+}
+
+function validateCandidates(
+  value: Record<string, unknown>,
+  expectedCellIds: string[],
+  errors: string[],
+): void {
+  if (value.reportKind !== 'engine' || value.selectedEngine === undefined) return;
+  if (!Array.isArray(value.candidates) || value.candidates.length === 0) {
+    errors.push('selected engine candidates');
+    return;
+  }
+  const names = new Set<string>();
+  for (const candidate of value.candidates) {
+    if (!isCandidateEvidence(candidate)) {
+      errors.push('candidate shape');
+      continue;
+    }
+    if (names.has(candidate.name)) errors.push('duplicate candidate');
+    names.add(candidate.name);
+    const ids = candidate.cells.map((cell) => cell?.id);
+    if (ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length)
+      errors.push('candidate cells');
+    const qualifiedIds = new Set(expectedCellIds.filter((id) => id.startsWith(`${candidate.name}:`)));
+    if (
+      qualifiedIds.size === 0 ||
+      ids.some((id) => typeof id !== 'string' || !qualifiedIds.has(`${candidate.name}:${id}`)) ||
+      ids.length !== qualifiedIds.size
+    )
+      errors.push('candidate cell completeness');
+    if (candidate.passed !== candidate.cells.every((cell) => cell.passed))
+      errors.push('candidate passed consistency');
+  }
+  if (value.selectedEngine === null) {
+    if (value.passed) errors.push('selected engine required');
+    return;
+  }
+  if (!isSelectedEngine(value.selectedEngine)) {
+    errors.push('selected engine shape');
+    return;
+  }
+  const selected = value.candidates.find(
+    (candidate): candidate is CandidateEvidence =>
+      isCandidateEvidence(candidate) &&
+      candidate.name === value.selectedEngine.name &&
+      candidate.version === value.selectedEngine.version,
+  );
+  if (!selected) errors.push('selected engine candidate');
+  else if (!selected.passed) errors.push('selected engine failed');
+}
+
 export function validateEvidence(
   report: unknown,
   expectedKind: EvidenceReport['reportKind'],
@@ -80,6 +165,29 @@ export function validateEvidence(
       )
     )
       errors.push('cell metrics');
+    if (Array.isArray(cell?.observations) && cell.observations.some((item) => typeof item !== 'string'))
+      errors.push('cell observations');
+    if (
+      cell?.metrics &&
+      typeof cell.metrics === 'object' &&
+      Object.values(cell.metrics).some(
+        (metric) =>
+          !metric ||
+          typeof metric.value !== 'number' ||
+          !Number.isFinite(metric.value) ||
+          typeof metric.unit !== 'string' ||
+          metric.unit.trim().length === 0,
+      )
+    )
+      errors.push('metric value or unit');
+    if (
+      cell?.versions &&
+      typeof cell.versions === 'object' &&
+      Object.values(cell.versions).some(
+        (version) => typeof version !== 'string' || version === 'unknown' || version.trim().length === 0,
+      )
+    )
+      errors.push('version value');
   }
   if (typeof value.passed !== 'boolean') errors.push('passed type');
   const observedPass =
@@ -87,6 +195,7 @@ export function validateEvidence(
       ? value.selectedEngine !== null && value.selectedEngine !== undefined
       : value.cells.every((cell) => cell.passed);
   if (value.passed !== observedPass) errors.push('passed consistency');
+  validateCandidates(value as Record<string, unknown>, value.expectedCellIds ?? [], errors);
   return errors;
 }
 

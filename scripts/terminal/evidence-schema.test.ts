@@ -39,8 +39,16 @@ describe('terminal evidence schema', () => {
         {
           ...validReport,
           reportKind: 'engine',
-          expectedCellIds: ['candidate:launch'],
-          cells: [{ ...validReport.cells[0], id: 'candidate:launch' }],
+          expectedCellIds: ['@xterm/xterm:launch'],
+          cells: [{ ...validReport.cells[0], id: '@xterm/xterm:launch' }],
+          candidates: [
+            {
+              name: '@xterm/xterm',
+              version: '6.0.0',
+              passed: true,
+              cells: [validReport.cells[0]],
+            },
+          ],
           selectedEngine: { name: '@xterm/xterm', version: '6.0.0' },
         },
         'engine',
