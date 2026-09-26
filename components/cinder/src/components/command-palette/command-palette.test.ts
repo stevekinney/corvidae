@@ -50,7 +50,7 @@ if (typeof HTMLDialogElement !== 'undefined') {
   });
 }
 
-const { render, fireEvent, cleanup, waitFor } = await import('@testing-library/svelte');
+const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {

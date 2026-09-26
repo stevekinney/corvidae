@@ -136,13 +136,14 @@ function isNullish(argument: ts.Expression | undefined): boolean {
 function matcherFor(
   expectCall: ts.CallExpression,
 ): { name: string; negated: boolean; call: ts.CallExpression } | null {
-  let access = expectCall.parent;
+  const receiver = expectCall.parent;
+  if (!ts.isPropertyAccessExpression(receiver) || receiver.expression !== expectCall) return null;
+  let access: ts.PropertyAccessExpression = receiver;
   let negated = false;
-  if (!ts.isPropertyAccessExpression(access) || access.expression !== expectCall) return null;
-  if (access.name.text === 'not') {
+  if (receiver.name.text === 'not') {
     negated = true;
-    const next = access.parent;
-    if (!ts.isPropertyAccessExpression(next) || next.expression !== access) return null;
+    const next = receiver.parent;
+    if (!ts.isPropertyAccessExpression(next) || next.expression !== receiver) return null;
     access = next;
   }
   const call = access.parent;
