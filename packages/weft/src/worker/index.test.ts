@@ -33,7 +33,7 @@ function createTestServer(options?: {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 7,
+                  protocolVersion: 8,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -208,7 +208,7 @@ describe('RemoteWorker', () => {
       registerMessage = messages.find((m) => m.type === 'register');
     }
     expect(registerMessage).toBeDefined();
-    expect(registerMessage.protocolVersion).toBe(7);
+    expect(registerMessage.protocolVersion).toBe(8);
     expect(registerMessage.workerId).toBe('test-worker-1');
     expect(registerMessage.concurrency).toBe(5);
     expect(Object.keys(registerMessage.manifest.workflows['orders'].activities)).toEqual([
@@ -323,7 +323,7 @@ describe('RemoteWorker', () => {
 
     const realManifest = {
       manifestVersion: 1,
-      protocolVersion: 7,
+      protocolVersion: 8,
       sdkVersion: '9.9.9',
       runtime: { name: 'bun', version: '1.3.14' },
       deployment: { name: 'payments', buildId: 'build-real', artifactDigest: 'sha256:real-bytes' },
@@ -371,7 +371,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 7,
+            protocolVersion: 8,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -392,7 +392,7 @@ describe('RemoteWorker', () => {
           buildId: 'build-1',
           manifest: {
             manifestVersion: 1,
-            protocolVersion: 7,
+            protocolVersion: 8,
             sdkVersion: '1.0.0',
             runtime: { name: 'bun', version: '1.3.14' },
             deployment: { name: 'payments', buildId: 'build-1', artifactDigest: 'sha256:x' },
@@ -563,7 +563,7 @@ describe('RemoteWorker', () => {
       serverSocket.send(
         JSON.stringify({
           type: 'registerAck',
-          protocolVersion: 7,
+          protocolVersion: 8,
           workerId: 'ack-gated-heartbeat-worker',
           queue: 'default',
           concurrency: 10,
@@ -2044,7 +2044,7 @@ describe('RemoteWorker — connect URL resolution', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 7,
+                  protocolVersion: 8,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: parsed.concurrency ?? 10,
@@ -2212,7 +2212,7 @@ function createTrackingServer(options?: {
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 7,
+              protocolVersion: 8,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: parsed.concurrency ?? 10,
@@ -2291,7 +2291,7 @@ function createReconnectServer(
           ws.send(
             JSON.stringify({
               type: 'registerAck',
-              protocolVersion: 7,
+              protocolVersion: 8,
               workerId: parsed.workerId,
               queue: 'default',
               concurrency: 10,
@@ -2396,7 +2396,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     ackSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 7,
+        protocolVersion: 8,
         workerId: 'reentrancy-worker',
         queue: 'default',
         concurrency: 10,
@@ -2424,7 +2424,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
             ws.send(
               JSON.stringify({
                 type: 'registerAck',
-                protocolVersion: 7,
+                protocolVersion: 8,
                 workerId: parsed.workerId,
                 queue: 'default',
                 concurrency: 10,
@@ -2541,7 +2541,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     firstSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 7,
+        protocolVersion: 8,
         workerId: 'late',
         queue: 'default',
         concurrency: 10,
@@ -2557,7 +2557,7 @@ describe('RemoteWorker — connect() re-entrancy', () => {
     secondSocket.send(
       JSON.stringify({
         type: 'registerAck',
-        protocolVersion: 7,
+        protocolVersion: 8,
         workerId: 'current',
         queue: 'default',
         concurrency: 10,
@@ -3416,7 +3416,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
               ws.send(
                 JSON.stringify({
                   type: 'registerAck',
-                  protocolVersion: 7,
+                  protocolVersion: 8,
                   workerId: parsed.workerId,
                   queue: 'default',
                   concurrency: 10,
@@ -3439,7 +3439,7 @@ describe('RemoteWorker — send-failure recovery and backpressure', () => {
                 ws.send(
                   JSON.stringify({
                     type: 'registerAck',
-                    protocolVersion: 7,
+                    protocolVersion: 8,
                     workerId: parsed.workerId,
                     queue: 'default',
                     concurrency: 10,

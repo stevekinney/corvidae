@@ -4,7 +4,7 @@ This document describes the versioned worker transports Weft uses to dispatch ac
 
 ## At a glance
 
-- **Protocol version**: v7. `register.protocolVersion` is required and must be exactly `7`.
+- **Protocol version**: v8. `register.protocolVersion` is required and must be exactly `8`.
 - **Transport**: WebSocket text frames containing JSON objects.
 - **Endpoint**: `/api/v1/tasks/:queue/stream` on the Weft server. Connect to one queue per WebSocket.
 - **Direction**: bidirectional. Workers send `register`, `heartbeat`, `activityHeartbeat`, `taskResult`. Server sends `task`, `cancel`, `shutdown`, `registerAck`, `registerError`, `protocolError`, `taskResultAck`.
@@ -127,11 +127,11 @@ Sent immediately after the WebSocket opens.
 ```json
 {
   "type": "register",
-  "protocolVersion": 7,
+  "protocolVersion": 8,
   "workerId": "<string>",
   "manifest": {
     "manifestVersion": 1,
-    "protocolVersion": 7,
+    "protocolVersion": 8,
     "sdkVersion": "0.18.0",
     "runtime": { "name": "bun", "version": "1.3.14" },
     "deployment": {
@@ -163,7 +163,7 @@ Sent immediately after the WebSocket opens.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"register"` | Yes | Message discriminator. |
-| `protocolVersion` | `7` | Yes | Required v7 protocol version. Missing or unsupported versions receive `registerError`. |
+| `protocolVersion` | `8` | Yes | Required v8 protocol version. Missing or unsupported versions receive `registerError`. |
 | `workerId` | string | Yes | Stable identifier for this worker. Must be non-empty. |
 | `manifest` | `WorkerManifest` | Yes | Canonical worker manifest—deployment, runtime, workflows, activities, and capabilities. Deeply validated by `parseWorkerManifest()` server-side, not by this wire-shape layer; see [Canonical worker manifest](api-workers.md#canonical-worker-manifest). Routing `activities` are derived from `manifest.workflows`, not sent as a separate field. |
 | `concurrency` | number | No | Maximum concurrent tasks. Server clamps finite numbers to `[1, 1000]`. Defaults to `10`. |
@@ -361,7 +361,7 @@ Server acknowledgement that registration succeeded.
 ```json
 {
   "type": "registerAck",
-  "protocolVersion": 7,
+  "protocolVersion": 8,
   "workerId": "<string>",
   "queue": "default",
   "concurrency": 10,
@@ -374,7 +374,7 @@ Server acknowledgement that registration succeeded.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"registerAck"` | Yes | Message discriminator. |
-| `protocolVersion` | `7` | Yes | Effective protocol version. |
+| `protocolVersion` | `8` | Yes | Effective protocol version. |
 | `workerId` | string | Yes | Accepted worker identifier. |
 | `queue` | string | Yes | Effective queue from the WebSocket URL. |
 | `concurrency` | number | Yes | Effective concurrency after server clamping to the supported capacity. |
@@ -393,7 +393,7 @@ Server rejection of registration. The server sends this message, then closes the
   "type": "registerError",
   "code": "unsupported_protocol_version",
   "message": "Unsupported RemoteWorker protocol version: 1",
-  "supportedProtocolVersions": [7],
+  "supportedProtocolVersions": [8],
   "requestedProtocolVersion": 1
 }
 ```
@@ -479,7 +479,7 @@ The command starts a localhost Weft server and launches the worker command with 
 | `WEFT_WORKER_URL`              | WebSocket URL for the temporary worker endpoint. |
 | `WEFT_WORKER_QUEUE`            | Queue name the worker should register for.       |
 | `WEFT_WORKER_ACTIVITIES`       | Comma-separated activity names to implement.     |
-| `WEFT_WORKER_PROTOCOL_VERSION` | Current protocol version, `7`.                   |
+| `WEFT_WORKER_PROTOCOL_VERSION` | Current protocol version, `8`.                   |
 
 The conformance runner verifies registration acknowledgement, echo task completion, heartbeat-preserved work, cancellation, in-flight reassignment after disconnect, graceful shutdown, and failure of a deliberately broken worker fixture. `--json` returns a stable machine-readable report. Without `--json`, each check prints as `PASS` or `FAIL`.
 

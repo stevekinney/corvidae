@@ -70,7 +70,7 @@ export type RemoteWorkerCapabilities = Readonly<Record<string, RemoteWorkerJsonV
  *
  * const message: RegisterMessage = {
  *   type: 'register',
- *   protocolVersion: 6,
+ *   protocolVersion: 8,
  *   workerId: 'worker-1',
  *   manifest: { manifestVersion: 1 },
  * };
@@ -102,7 +102,8 @@ export type HeartbeatMessage = {
 };
 
 /**
- * Per-attempt worker heartbeat (COR-230, protocol v5).
+ * Per-attempt worker heartbeat (COR-230, protocol v5; `details` added in
+ * protocol v8, COR-226).
  *
  * Distinct from {@link HeartbeatMessage}: a bare `heartbeat` renews only the
  * worker-SESSION lease (`WorkerRegistry.heartbeat()`); `activityHeartbeat`
@@ -114,6 +115,16 @@ export type HeartbeatMessage = {
  * the attempt's absolute deadline (`RemoteTaskLeased.attemptDeadline`),
  * which no heartbeat of either kind can extend.
  *
+ * `details` (protocol v8) mirrors {@link
+ * import('../core/types.ts').ActivityContext.heartbeat}'s `details` argument
+ * for a worker-executed activity: the server persists it on the durable
+ * attempt record as `lastHeartbeatDetails` and surfaces it to the NEXT
+ * attempt (via {@link TaskMessage.lastHeartbeatDetails}) if this one is
+ * redispatched. Omitted entirely when the activity's `heartbeat()` call
+ * carried no details — never defaulted to `null`, which would durably
+ * overwrite a still-meaningful previous value with an explicit "no details"
+ * marker.
+ *
  * @example
  * ```ts
  * import type { ActivityHeartbeatMessage } from '@lostgradient/weft';
@@ -123,6 +134,7 @@ export type HeartbeatMessage = {
  *   workerId: 'worker-1',
  *   operationId: 'op-1',
  *   attemptToken: 'attempt-token',
+ *   details: { progress: 0.5 },
  * };
  * ```
  */
@@ -131,6 +143,7 @@ export type ActivityHeartbeatMessage = {
   readonly workerId: string;
   readonly operationId: string;
   readonly attemptToken: string;
+  readonly details?: RemoteWorkerJsonValue;
 };
 
 /**
@@ -244,7 +257,7 @@ export type CancelledTaskResultMessage = {
  *
  * const message: RegisterAckMessage = {
  *   type: 'registerAck',
- *   protocolVersion: 6,
+ *   protocolVersion: 8,
  *   workerId: 'worker-1',
  *   queue: 'default',
  *   concurrency: 10,
@@ -378,6 +391,25 @@ export type TaskMessage = {
   readonly workflowRevision?: string;
   /** Unique, unguessable token identifying this dispatch attempt. */
   readonly attemptToken: string;
+  /**
+   * The visibility timeout (ms) this dispatch was leased with (COR-226,
+   * protocol v8) — the basis for the worker's automatic per-attempt keepalive
+   * interval, mirroring {@link
+   * import('./long-poll.ts').PolledTask.visibilityTimeout}, which long-poll
+   * has always carried. Absent only for a hand-built message a test
+   * constructs directly; every server-dispatched `task` frame includes it.
+   */
+  readonly visibilityTimeout?: number;
+  /**
+   * The heartbeat details the PREVIOUS attempt of this operation recorded
+   * before it was redispatched (COR-226, protocol v8) — echoes durably
+   * persisted `lastHeartbeatDetails` back to the new attempt so a
+   * worker-executed activity can resume from where its predecessor left off,
+   * mirroring {@link import('../core/types.ts').ActivityContext.lastHeartbeatDetails}'s
+   * inline-engine semantics. Absent when no prior attempt ever heartbeated
+   * with details.
+   */
+  readonly lastHeartbeatDetails?: RemoteWorkerJsonValue;
 };
 
 /**
@@ -389,6 +421,13 @@ export type TaskMessage = {
  * worker has already completed or superseded matches nothing rather than
  * aborting whatever now runs under that `operationId`.
  *
+ * `reason` (COR-223, protocol v8) is the durably recorded
+ * `cancellationReason` the server committed before sending this control —
+ * echoed to the worker so the aborted activity's `AbortSignal.reason` and its
+ * reported `taskResult` error carry the real, operator-supplied reason
+ * instead of a generic literal. Always present on a server-sent `cancel`;
+ * optional only so a hand-built message in a test may omit it.
+ *
  * @example
  * ```ts
  * import type { CancelMessage } from '@lostgradient/weft';
@@ -397,6 +436,7 @@ export type TaskMessage = {
  *   type: 'cancel',
  *   operationId: 'op-1',
  *   attemptToken: 'attempt-token',
+ *   reason: 'Task cancelled by operator',
  * };
  * ```
  */
@@ -404,6 +444,7 @@ export type CancelMessage = {
   readonly type: 'cancel';
   readonly operationId: string;
   readonly attemptToken: string;
+  readonly reason?: string;
 };
 
 /**
