@@ -14922,6 +14922,17 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        // COR-1332: same cause as the AB-359 tests fixed for this issue —
+        // a mock `generate` with no tool calls otherwise runs to the
+        // default 25-step budget (`DEFAULT_MAXIMUM_STEPS`) instead of
+        // stopping after its one real turn, and this test creates TWO
+        // real runs (runA, runB) sequentially awaited, so up to 50 real
+        // disk-backed checkpoint/transcript/cursor writes occurred
+        // instead of 2. `stopWhen.noToolCalls()` (already used by a
+        // sibling test in this same describe block, "never prunes a
+        // still-running run's ownership entry…") cuts each run to its
+        // one real step without changing what this test proves.
+        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
@@ -15123,6 +15134,11 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      // COR-1332: same cause as the sibling fixes in this describe block —
+      // without this, a mock `generate` with no tool calls still runs to
+      // the default 25-step budget instead of stopping after its one real
+      // turn.
+      stopWhen: stopWhen.noToolCalls(),
     });
 
     try {
@@ -15153,6 +15169,11 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         runtime,
+        // COR-1332: same cause as the sibling fixes in this describe block —
+        // without this, a mock `generate` with no tool calls still runs to
+        // the default 25-step budget instead of stopping after its one
+        // real turn, doing real disk-backed writes it does not need.
+        stopWhen: stopWhen.noToolCalls(),
       });
 
       try {
