@@ -123,7 +123,7 @@ export function validateEvidence(
   if (schema['$schema'] !== 'https://json-schema.org/draft/2020-12/schema')
     errors.push('schema metadata');
   if (!report || typeof report !== 'object' || Array.isArray(report)) return ['report object'];
-  const value = report as Partial<EvidenceReport>;
+  const value: Partial<EvidenceReport> = report;
   if (value.schemaVersion !== 1) errors.push('schemaVersion');
   if (value.reportKind !== expectedKind) errors.push('reportKind');
   for (const field of ['sourceSha', 'runId', 'observedAt'] as const)
@@ -213,7 +213,7 @@ export function validateEvidence(
         value.selectedEngine !== undefined
       : value.cells.every((cell) => cell.passed);
   if (value.passed !== observedPass) errors.push('passed consistency');
-  validateCandidates(value as Record<string, unknown>, value.expectedCellIds ?? [], errors);
+  validateCandidates(value, value.expectedCellIds ?? [], errors);
   return errors;
 }
 
