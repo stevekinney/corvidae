@@ -291,4 +291,34 @@ describe('WorkerRealm', () => {
       expect(terminateSpy).toHaveBeenCalledTimes(1);
     });
   });
+
+  // COR-246's own coordinator decision: prove reclamation via an observed
+  // event -- Bun's real `close` `CloseEvent` on the underlying Worker --
+  // rather than inferring it from `worker.terminate()`'s own void return
+  // (what the `terminateSpy` assertions above only ever proved).
+  describe('reclamation (COR-246)', () => {
+    it('a terminated realm releases its Worker handle: the underlying thread reports its own close event', async () => {
+      const realm = makeRealm({ workerName: 'digest-a' });
+      await readyAndActive(realm);
+
+      realm.beginDrain();
+      realm.terminate();
+
+      await realm.whenReclaimed();
+      // Reaching this line at all is the proof: `whenReclaimed()` resolves
+      // only on Bun's own `close` event firing for the underlying Worker,
+      // never merely because `terminate()` was called.
+      expect(realm.lifecycle.state).toBe('terminated');
+    });
+
+    it('a crashed realm releases its Worker handle the same way', async () => {
+      const realm = makeRealm({ workerName: 'digest-a' });
+      await readyAndActive(realm);
+
+      realm.crash();
+
+      await realm.whenReclaimed();
+      expect(realm.lifecycle.state).toBe('crashed');
+    });
+  });
 });
