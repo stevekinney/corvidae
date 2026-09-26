@@ -1,0 +1,360 @@
+/**
+ * Engine-level proof for `workflowExecutionMode: 'realm'` (COR-249's engine
+ * integration, R2E) — every test here drives a REAL `Engine`, REAL
+ * `registerSource()`/`workflows.activate()` catalog machinery, and REAL Bun
+ * `Worker`-backed revision realms end to end. Registry-level and
+ * primitive-level proofs already exist in `src/core/realm/*.test.ts`
+ * (R1/R2/R3); this file proves the same guarantees are reachable through
+ * ordinary `engine.start()`/`engine.signal()`/recovery calls once an Engine
+ * opts in.
+ *
+ * The host-side placeholder definitions registered below via
+ * `registerSource()` are never invoked — `RevisionRealmExecutionStrategy`
+ * never calls `RegistrationEntry.handler`; only `sentinel-workflow.fixture.ts`
+ * and `order-workflow-handler.fixture.ts` (imported solely by the realm's
+ * own worker bootstrap fixtures) hold real generator logic. This is what
+ * "the realm, not the host, must load the workflow implementation module"
+ * means in code, and the module-boundary test below proves it dynamically.
+ */
+import { describe, expect, it, mock, spyOn } from 'bun:test';
+
+import { MemoryStorage } from '../../storage/memory.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { ActivityRegistry } from '../activity-registry.ts';
+import type { RevisionRealmConfig } from '../realm/revision-realm-registry.ts';
+import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
+import { workflowSource } from '../source/index.ts';
+import { workflow, type WorkflowDefinition } from '../types.ts';
+import { copyWorkflowDefinition } from './construction.ts';
+import { ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING, Engine } from './index.ts';
+import { getInternals } from './internals.ts';
+import { buildRegistrationEntry } from './registration.ts';
+
+/**
+ * Wait until exactly `count` signal waiters are registered engine-wide — the
+ * same engine-level bookkeeping `worker-execution-suspension.test.ts` uses
+ * to prove a worker-mode workflow genuinely parked on a `signal-wait`
+ * operation request, not merely "probably fast enough." Populated when the
+ * engine processes a `checkpoint` outbound message naming a `signal-wait`
+ * operation, regardless of which `ExecutionStrategy` produced it.
+ */
+async function waitForSignalWaiters(engine: Engine, count: number): Promise<void> {
+  await waitForCondition(() => engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]() === count, {
+    label: `${count} signal waiter(s)`,
+  });
+}
+
+const ORDER_WORKFLOW_NAME = 'r2e-order-workflow';
+const ORDER_RELEASE_SIGNAL = 'release';
+const SENTINEL_WORKFLOW_NAME = 'r2e-sentinel-workflow';
+const SENTINEL_FLAG = '__weftR2ESentinelWorkflowImported__';
+
+const revisionAWorkerUrl = new URL(
+  '../realm/__fixtures__/revision-a-order-worker.fixture.ts',
+  import.meta.url,
+);
+const revisionBWorkerUrl = new URL(
+  '../realm/__fixtures__/revision-b-order-worker.fixture.ts',
+  import.meta.url,
+);
+const sentinelWorkerUrl = new URL(
+  '../realm/__fixtures__/sentinel-worker.fixture.ts',
+  import.meta.url,
+);
+
+/** A host-side placeholder never invoked by realm execution — its `handler` throws if that ever changes. Only its name/version/contract identity matters to the lifecycle machinery `registerSource()` feeds. */
+function placeholderDefinition(name: string, description: string): WorkflowDefinition {
+  return workflow({ name, description }).execute(async function* () {
+    throw new Error(
+      `${name}: this placeholder handler must never run — RevisionRealmExecutionStrategy routes execution to the realm, not the host.`,
+    );
+  });
+}
+
+/**
+ * Derive the exact `revision` string `registerSource()` expects for a
+ * definition — mirrors `dynamic-source-execution.test.ts`'s own helper.
+ * Every placeholder definition here is a bare `workflow({name}).execute(fn)`
+ * with no `.activities({...})` map, so the per-workflow activity registry is
+ * always empty regardless of `isBuilderWorkflowDefinition`.
+ */
+async function revisionFor(definition: WorkflowDefinition): Promise<string> {
+  const entry = buildRegistrationEntry(definition.name, definition);
+  const registered = copyWorkflowDefinition(definition.name, entry);
+  const manifest = await buildWorkflowManifestFromDefinition(
+    registered,
+    new ActivityRegistry().listDefinitions(),
+  );
+  return manifest.revision;
+}
+
+function newRealmEngine(configByRevision: Map<string, RevisionRealmConfig>): {
+  engine: Engine;
+  storage: MemoryStorage;
+} {
+  const storage = new MemoryStorage();
+  const engine = new Engine({
+    storage,
+    backgroundTasks: 'manual',
+    workflowExecutionMode: 'realm',
+    revisionRealmExecution: {
+      resolveRevisionRealmConfig: (_workflowType, revision) => configByRevision.get(revision),
+    },
+  });
+  return { engine, storage };
+}
+
+/**
+ * Register `revision` as a `registerSource()` candidate on `engine` and
+ * resolve+install it, without activating it. A process resuming recovery
+ * after a restart must re-register every revision its still-pinned runs
+ * might need — not only the currently active one — exactly like `'worker'`
+ * mode's own dynamic-source recovery already requires
+ * (`dynamic-source-recovery.test.ts`).
+ */
+async function registerOnly(
+  engine: Engine,
+  name: string,
+  revision: string,
+  description: string,
+): Promise<void> {
+  const definition = placeholderDefinition(name, description);
+  const loader = mock(async () => ({ [name]: definition }));
+  engine.registerSource(
+    workflowSource({ name, location: `./${name}.ts`, exportName: name, revision }, loader),
+  );
+  // Loads (the PLACEHOLDER definition only — never the realm's sentinel or
+  // order-workflow implementation modules) and durably installs the
+  // candidate, a precondition `workflows.activate()` enforces.
+  await engine.resolveWorkflowSource(name, revision);
+}
+
+/** {@link registerOnly}, then activate `revision` (tolerating a prior active pointer, mirroring `dynamic-source-execution.test.ts`'s helper). */
+async function registerAndActivate(
+  engine: Engine,
+  name: string,
+  revision: string,
+  description: string,
+): Promise<void> {
+  await registerOnly(engine, name, revision, description);
+  const active = await engine.workflows.getActive(name);
+  const result = await engine.workflows.activate(name, revision, {
+    ...(active !== null && { expectedGeneration: active.generation }),
+    policy: { requireExactRevision: false },
+  });
+  if (!result.applied) {
+    throw new Error(`activate(${name}, ${revision}) was not applied: ${JSON.stringify(result)}`);
+  }
+}
+
+describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
+  it('never imports the workflow implementation module on the host; the realm does (P-COR-29 criterion 1)', async () => {
+    expect((globalThis as Record<string, unknown>)[SENTINEL_FLAG]).toBeUndefined();
+
+    const revision = await revisionFor(placeholderDefinition(SENTINEL_WORKFLOW_NAME, 'sentinel'));
+    const configByRevision = new Map<string, RevisionRealmConfig>([
+      [
+        revision,
+        {
+          workerUrl: sentinelWorkerUrl,
+          expectedWorkflowTypes: [SENTINEL_WORKFLOW_NAME],
+        },
+      ],
+    ]);
+    const { engine } = newRealmEngine(configByRevision);
+    try {
+      await registerAndActivate(engine, SENTINEL_WORKFLOW_NAME, revision, 'sentinel');
+      const handle = await engine.start(SENTINEL_WORKFLOW_NAME, 'hello');
+      const result = await handle.result();
+      expect(result).toEqual({ sawInput: 'hello', ranInsideRealm: true });
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+
+    // The realm's own Worker thread has an isolated global object — its
+    // import of the sentinel module can never touch the HOST's globalThis.
+    // Staying undefined here, after a real result only that module's code
+    // could have produced, proves the host's own thread never imported it.
+    expect((globalThis as Record<string, unknown>)[SENTINEL_FLAG]).toBeUndefined();
+  });
+
+  it('runs two revisions of one workflow concurrently in distinct realms, and activation routes new starts to the new revision (P-COR-29 criteria 3-4)', async () => {
+    const revisionA = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'revision-a'));
+    const revisionB = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'revision-b'));
+    expect(revisionA).not.toBe(revisionB);
+
+    const configByRevision = new Map<string, RevisionRealmConfig>([
+      [
+        revisionA,
+        {
+          workerUrl: revisionAWorkerUrl,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+          expectedArtifactDigest: 'r2e-digest-a',
+          workerName: 'r2e-digest-a',
+        },
+      ],
+      [
+        revisionB,
+        {
+          workerUrl: revisionBWorkerUrl,
+          expectedWorkflowTypes: [ORDER_WORKFLOW_NAME],
+          expectedArtifactDigest: 'r2e-digest-b',
+          workerName: 'r2e-digest-b',
+        },
+      ],
+    ]);
+    const { engine } = newRealmEngine(configByRevision);
+    try {
+      await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionA, 'revision-a');
+
+      const handleA = await engine.start(ORDER_WORKFLOW_NAME, 'input-a', { id: 'r2e-order-a' });
+      await waitForSignalWaiters(engine, 1);
+
+      // Activation while A is still mid-execution: A drains (no new starts),
+      // but A's own in-flight realm is untouched — "the old realm remains
+      // available for runs pinned to it."
+      await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionB, 'revision-b');
+
+      const handleB = await engine.start(ORDER_WORKFLOW_NAME, 'input-b', { id: 'r2e-order-b' });
+      await waitForSignalWaiters(engine, 2);
+
+      // Both genuinely mid-execution at once, in distinct realms, before
+      // either is released — proves concurrency, not just eventual success.
+      const registry = getInternals(engine).revisionRealmRegistry;
+      expect(registry?.activeRealmCount(ORDER_WORKFLOW_NAME, revisionA)).toBe(1);
+      expect(registry?.activeRealmCount(ORDER_WORKFLOW_NAME, revisionB)).toBe(1);
+
+      await engine.signal('r2e-order-a', ORDER_RELEASE_SIGNAL, 'go-a');
+      await engine.signal('r2e-order-b', ORDER_RELEASE_SIGNAL, 'go-b');
+
+      const resultA = await handleA.result();
+      const resultB = await handleB.result();
+      // Workflow A (started before activation) completed in revision A's
+      // realm; workflow B (started after activation) was routed to the new
+      // active revision B's realm — never the reverse.
+      expect(resultA).toMatchObject({ revision: 'revision-a', input: 'input-a' });
+      expect(resultB).toMatchObject({ revision: 'revision-b', input: 'input-b' });
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('terminates a drained realm exactly once after its pinned work finishes, and the reclaimed revision refuses a further start (P-COR-29 criteria 5-6)', async () => {
+    const revisionA = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'drain-a'));
+    const revisionB = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'drain-b'));
+    const configByRevision = new Map<string, RevisionRealmConfig>([
+      [revisionA, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+      [revisionB, { workerUrl: revisionBWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+    ]);
+    const { engine } = newRealmEngine(configByRevision);
+    const terminateSpy = spyOn(Worker.prototype, 'terminate');
+    try {
+      await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionA, 'drain-a');
+      const handle = await engine.start(ORDER_WORKFLOW_NAME, 'input', { id: 'r2e-drain-a' });
+      await waitForSignalWaiters(engine, 1);
+
+      // Deactivate revision A — no realm work is pinned to it any more once
+      // this run finishes, so its pool must be fully reclaimed.
+      await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionB, 'drain-b');
+
+      const callsBeforeRelease = terminateSpy.mock.calls.length;
+      await engine.signal('r2e-drain-a', ORDER_RELEASE_SIGNAL, 'go');
+      await handle.result();
+
+      // Exactly one real Worker.terminate() call for the drained realm — not
+      // zero (leaked) and not more than one (double-terminated).
+      expect(terminateSpy.mock.calls.length).toBe(callsBeforeRelease + 1);
+
+      const registry = getInternals(engine).revisionRealmRegistry;
+      expect(registry?.getPool(ORDER_WORKFLOW_NAME, revisionA)).toBeUndefined();
+
+      // A late/new execution for the drained, inactive revision cannot
+      // acquire a realm at all — "cannot deliver an accepted late result"
+      // holds structurally: there is no realm left to deliver one from.
+      const lateOutcome = await registry?.acquireForExecution(
+        ORDER_WORKFLOW_NAME,
+        revisionA,
+        'late-execution-token',
+      );
+      expect(lateOutcome).toEqual({ ok: false, reason: 'revision-not-active' });
+    } finally {
+      terminateSpy.mockRestore();
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('disposes the engine and terminates every realm exactly once (P-COR-29 criterion 8, COR-113 disposal path)', async () => {
+    const revisionA = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'dispose-a'));
+    const configByRevision = new Map<string, RevisionRealmConfig>([
+      [revisionA, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+    ]);
+    const { engine } = newRealmEngine(configByRevision);
+    const terminateSpy = spyOn(Worker.prototype, 'terminate');
+    try {
+      await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionA, 'dispose-a');
+      await engine.start(ORDER_WORKFLOW_NAME, 'input', { id: 'r2e-dispose-a' });
+      await waitForSignalWaiters(engine, 1);
+
+      const callsBeforeDispose = terminateSpy.mock.calls.length;
+      // Concurrent async disposal must share one memoized teardown
+      // (COR-113/WorkerExecutionDisposal) rather than terminating twice.
+      await Promise.all([engine[Symbol.asyncDispose](), engine[Symbol.asyncDispose]()]);
+      expect(terminateSpy.mock.calls.length).toBe(callsBeforeDispose + 1);
+    } finally {
+      terminateSpy.mockRestore();
+    }
+  });
+
+  it('resumes a pinned run in its own revision realm after an engine restart, even though a newer revision is now active (durable revision pin, ADR 0005)', async () => {
+    const revisionA = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'recover-a'));
+    const revisionB = await revisionFor(placeholderDefinition(ORDER_WORKFLOW_NAME, 'recover-b'));
+    const configByRevision = new Map<string, RevisionRealmConfig>([
+      [revisionA, { workerUrl: revisionAWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+      [revisionB, { workerUrl: revisionBWorkerUrl, expectedWorkflowTypes: [ORDER_WORKFLOW_NAME] }],
+    ]);
+    const { engine: engine1, storage } = newRealmEngine(configByRevision);
+    await registerAndActivate(engine1, ORDER_WORKFLOW_NAME, revisionA, 'recover-a');
+    await engine1.start(ORDER_WORKFLOW_NAME, 'input', { id: 'r2e-recover-a' });
+    await waitForSignalWaiters(engine1, 1);
+    // Simulate a crash/restart: dispose without letting the run complete.
+    // Its durable `WorkflowState.revision` pin (revisionA) survives in
+    // `storage`; the catalog's active pointer is about to move past it.
+    await engine1[Symbol.asyncDispose]();
+
+    const engine2 = new Engine({
+      storage,
+      backgroundTasks: 'manual',
+      workflowExecutionMode: 'realm',
+      revisionRealmExecution: {
+        resolveRevisionRealmConfig: (_type, revision) => configByRevision.get(revision),
+      },
+    });
+    try {
+      // Re-register revision A (still pinned by the recovering run) without
+      // activating it, then activate revision B on the SECOND engine, same
+      // durable catalog — new starts should go to B, but the recovered run
+      // must stay pinned to A.
+      await registerOnly(engine2, ORDER_WORKFLOW_NAME, revisionA, 'recover-a');
+      await registerAndActivate(engine2, ORDER_WORKFLOW_NAME, revisionB, 'recover-b');
+      await engine2.recoverAll();
+      await waitForSignalWaiters(engine2, 1);
+
+      const state = await engine2.get('r2e-recover-a');
+      await engine2.signal('r2e-recover-a', ORDER_RELEASE_SIGNAL, 'go');
+      await waitForCondition(
+        async () => {
+          const recoveredState = await engine2.get('r2e-recover-a');
+          return recoveredState?.status === 'completed';
+        },
+        {
+          label: 'recovered workflow completed',
+        },
+      );
+      const finalState = await engine2.get('r2e-recover-a');
+      expect(finalState?.result).toMatchObject({ revision: 'revision-a' });
+      expect(state?.revision).toBe(revisionA);
+    } finally {
+      await engine2[Symbol.asyncDispose]();
+    }
+  });
+});
