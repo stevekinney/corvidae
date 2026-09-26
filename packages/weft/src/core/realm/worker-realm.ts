@@ -93,6 +93,17 @@ export class WorkerRealm {
   readonly #options: WorkerRealmOptions;
   readonly #pendingTurns = new Map<number, PendingWorkerTurn>();
   #worker: Worker;
+  /**
+   * True once `.terminate()` has been sent to the CURRENT `#worker` instance
+   * (COR-113). Deliberately independent of `lifecycle.state`: a rejected
+   * ready handshake moves `lifecycle.state` straight to `crashed` via
+   * `markReady` in `#handleMessage`, before anything has told the underlying
+   * Worker thread to stop — `discard()` is what a caller uses to reclaim
+   * that leaked thread afterward, and it must still send `.terminate()` even
+   * though the lifecycle is already terminal. Reset by `#spawnWorker()`
+   * (constructor and `restart()`) for each fresh Worker instance.
+   */
+  #workerTerminated = false;
   #activation: WorkerRealmActivation | null = null;
   #nextExpectedTurnId = 1;
   #readyOutcome: RealmReadyOutcome | null = null;
@@ -185,18 +196,34 @@ export class WorkerRealm {
     this.lifecycle.beginDrain();
   }
 
-  /** `Draining` -> `Terminated`, rejecting every turn still pending, and terminating the underlying Worker thread. */
+  /**
+   * `Draining` -> `Terminated`, rejecting every turn still pending, and
+   * terminating the underlying Worker thread. Idempotent (COR-113): a no-op
+   * once this realm has already reached `Terminated` or `Crashed` by any
+   * path (an earlier `terminate()`/`crash()`/`discard()` call, or a real
+   * Worker failure) — a repeated or racing close signal must never throw
+   * `RealmLifecycleTransitionError`, re-settle already-empty pending turns,
+   * or terminate the underlying Worker a second time.
+   */
   terminate(): void {
-    this.lifecycle.terminate();
-    this.#settlePendingTurns();
-    this.#worker.terminate();
+    if (!this.#isTerminalState()) {
+      this.lifecycle.terminate();
+      this.#settlePendingTurns();
+    }
+    this.#terminateWorkerOnce();
   }
 
-  /** Crash the realm: settles every pending turn with a rejection and terminates the underlying Worker thread. */
+  /**
+   * Crash the realm: settles every pending turn with a rejection and
+   * terminates the underlying Worker thread. Idempotent (COR-113) on the
+   * same terms as {@link terminate}.
+   */
   crash(): void {
-    this.lifecycle.crash();
-    this.#settlePendingTurns();
-    this.#worker.terminate();
+    if (!this.#isTerminalState()) {
+      this.lifecycle.crash();
+      this.#settlePendingTurns();
+    }
+    this.#terminateWorkerOnce();
   }
 
   /**
@@ -211,6 +238,7 @@ export class WorkerRealm {
     const outcome = this.lifecycle.restart();
     if (outcome.ok) {
       this.#readyOutcome = null;
+      this.#workerTerminated = false;
       this.#worker = this.#spawnWorker();
     }
     return outcome;
@@ -221,11 +249,15 @@ export class WorkerRealm {
    * discarding a realm it warmed but never activated, or as part of overall
    * pool shutdown. Ends in `Crashed` (from `Warming`/`Ready`, which have no
    * `Terminated` exit) or `Terminated` (from `Active`/`Draining`, via a
-   * graceful drain first) — see the module doc.
+   * graceful drain first) — see the module doc. Idempotent (COR-113) on the
+   * same terms as {@link terminate}: a no-op once already `Terminated` or
+   * `Crashed`.
    */
   discard(): void {
-    this.#forceDown();
-    this.#worker.terminate();
+    if (!this.#isTerminalState()) {
+      this.#forceDown();
+    }
+    this.#terminateWorkerOnce();
   }
 
   /** The activation identifiers fixed for this realm's current `Active` lifetime, or `null` before `activate()` (or after a crash/restart cleared it). */
@@ -313,7 +345,39 @@ export class WorkerRealm {
   }
 
   #handleWorkerFailure(): void {
-    this.#forceDown();
+    if (!this.#isTerminalState()) {
+      this.#forceDown();
+    }
+    this.#terminateWorkerOnce();
+  }
+
+  /**
+   * True once this realm's LIFECYCLE has reached a terminal disposal state
+   * (`Terminated` or `Crashed`) by any path. Guards the lifecycle-transition
+   * half of every shutdown entry point so a repeated or racing close/crash
+   * signal never throws `RealmLifecycleTransitionError` for a transition
+   * that already happened (COR-113). Deliberately NOT what gates the
+   * underlying `Worker.terminate()` call — see `#terminateWorkerOnce`'s doc
+   * and `#workerTerminated`'s doc for why those are a separate concern. A
+   * `restart()` from `Crashed` moves the state back to `Warming`, so this
+   * correctly becomes `false` again for a fresh cycle on the same instance.
+   */
+  #isTerminalState(): boolean {
+    return this.lifecycle.state === 'terminated' || this.lifecycle.state === 'crashed';
+  }
+
+  /**
+   * Send `.terminate()` to the current `#worker` at most once (COR-113).
+   * Every shutdown path (`terminate`/`crash`/`discard`/a real Worker
+   * failure) funnels through this instead of calling `this.#worker
+   * .terminate()` directly, so two of them racing — or one running after the
+   * lifecycle already went terminal via `#handleMessage`'s ready-handshake
+   * rejection, which never itself terminates the Worker — still terminate
+   * the real underlying thread exactly once rather than zero or two times.
+   */
+  #terminateWorkerOnce(): void {
+    if (this.#workerTerminated) return;
+    this.#workerTerminated = true;
     this.#worker.terminate();
   }
 

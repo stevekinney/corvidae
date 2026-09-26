@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import {
   advanceTimersByTime,
@@ -201,6 +201,94 @@ describe('WorkerRealm', () => {
       expect(outcome.failureCategory).toBe('system');
       expect(realm.lifecycle.state).toBe('crashed');
       realm.discard();
+    });
+  });
+
+  // COR-113: repeated disposal or close signals must share one memoized
+  // termination -- never a second `Worker.terminate()`, never a thrown
+  // `RealmLifecycleTransitionError` for a shutdown signal that arrives after
+  // this realm already finished shutting down.
+  describe('idempotent termination', () => {
+    afterEach(() => {
+      // See revision-realm-pool.test.ts's identical comment: `spyOn` wraps
+      // the shared, process-global `Worker.prototype` and must not leak into
+      // other test files in this same `bun test` process.
+      Worker.prototype.terminate &&
+        (Worker.prototype.terminate as unknown as { mockRestore?: () => void }).mockRestore?.();
+    });
+
+    it('crash() called twice does not throw and terminates the underlying Worker exactly once', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const realm = makeRealm({ workerName: 'digest-a' });
+      const activation = await readyAndActive(realm);
+
+      const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, {});
+
+      realm.crash();
+      // Attach the rejection handler immediately after the call that settles
+      // `pending` -- before any further synchronous statement -- so this
+      // test's own assertion machinery cannot itself widen the window in
+      // which the rejection is momentarily unobserved.
+      await expect(pending).rejects.toThrow('realm-not-active');
+      expect(() => realm.crash()).not.toThrow();
+
+      expect(realm.lifecycle.state).toBe('crashed');
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('terminate() called twice does not throw and terminates the underlying Worker exactly once', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const realm = makeRealm({ workerName: 'digest-a' });
+      const activation = await readyAndActive(realm);
+
+      const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, {});
+      realm.beginDrain();
+
+      realm.terminate();
+      await expect(pending).rejects.toThrow('realm-not-active');
+      expect(() => realm.terminate()).not.toThrow();
+
+      expect(realm.lifecycle.state).toBe('terminated');
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('discard() called twice on an idle Ready realm does not throw and terminates the underlying Worker exactly once', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const realm = makeRealm({ workerName: 'digest-a' });
+      await realm.waitUntilReady();
+
+      realm.discard();
+      expect(() => realm.discard()).not.toThrow();
+
+      expect(realm.lifecycle.state).toBe('crashed');
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('a close signal (discard) arriving after crash() already settled the realm is a no-op, not a thrown re-crash', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const realm = makeRealm({ workerName: 'digest-a' });
+      await readyAndActive(realm);
+
+      realm.crash();
+      expect(() => realm.discard()).not.toThrow();
+
+      expect(realm.lifecycle.state).toBe('crashed');
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('a crash() arriving after terminate() already settled the realm is a no-op, not a thrown re-crash', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const realm = makeRealm({ workerName: 'digest-a' });
+      const activation = await readyAndActive(realm);
+      const pending = realm.dispatchTurn({ ...activation, turnId: 1 }, {});
+      realm.beginDrain();
+      realm.terminate();
+      await expect(pending).rejects.toThrow('realm-not-active');
+
+      expect(() => realm.crash()).not.toThrow();
+
+      expect(realm.lifecycle.state).toBe('terminated');
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
     });
   });
 });
