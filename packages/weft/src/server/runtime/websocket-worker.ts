@@ -16,6 +16,7 @@ import {
 import { workerProtocolIncompatibleMessage } from '../../worker/worker-protocol-incompatible-error.ts';
 import type { ServeOptions } from '../index.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
+import { reportActivityHeartbeatAppliedForTesting } from './activity-heartbeat-test-hooks.ts';
 import type { ServerContext } from './context.ts';
 import { withRetry } from './retry.ts';
 import type { TaskLedgerCompletionInput } from './task-ledger-completion.ts';
@@ -27,7 +28,10 @@ import {
   currentAttemptFromLedgerRecord,
   type TaskResultAuthorizationFailure,
 } from './task-result-authorization.ts';
-import { taskResultPayloadSizeError } from './task-result-resolution.ts';
+import {
+  activityHeartbeatDetailsPayloadSizeError,
+  taskResultPayloadSizeError,
+} from './task-result-resolution.ts';
 import { WORKER_STREAM_RE } from './websocket-upgrade.ts';
 import {
   rejectProtocolMessage,
@@ -423,6 +427,39 @@ function onActivityHeartbeatMessage(
       code: 'invalid_message',
       message: activityHeartbeatRejectionMessage(authorization.reason, operationId, workerId),
     });
+    reportActivityHeartbeatAppliedForTesting(options, {
+      operationId,
+      attemptToken: message.attemptToken,
+      outcome: 'skipped',
+      reason: authorization.reason,
+    });
+    return;
+  }
+
+  // COR-226: validate `details` at the protocol boundary, same bound and
+  // error shape a `taskResult` value already gets — an oversized heartbeat
+  // payload is rejected outright rather than silently truncated or ever
+  // durably persisted.
+  const detailsError = activityHeartbeatDetailsPayloadSizeError(
+    message.details,
+    context.payloadSizeMaxBytes,
+  );
+  if (detailsError !== null) {
+    sendWorkerProtocolMessage(ws, {
+      type: 'protocolError',
+      code: 'invalid_message',
+      message: detailsError.message,
+    });
+    // Test-only observability (COR-235), same as the authorization-failure
+    // branch above: an oversized/invalid `details` payload is rejected
+    // before any durable write is even attempted, so this is a `skipped`
+    // outcome — see `ActivityHeartbeatAppliedEvent`'s doc comment.
+    reportActivityHeartbeatAppliedForTesting(options, {
+      operationId,
+      attemptToken: message.attemptToken,
+      outcome: 'skipped',
+      reason: detailsError.message,
+    });
     return;
   }
   // Authorization succeeding against an InFlightTask-derived CurrentAttempt
@@ -433,6 +470,12 @@ function onActivityHeartbeatMessage(
   const task = inFlightTask as NonNullable<typeof inFlightTask>;
 
   const newDeadline = context.registry.extendVisibility(operationId, task.visibilityTimeout);
+  // Unreachable by construction, not instrumented for testing: `extendVisibility`
+  // re-reads the SAME `#inFlightTasks` entry `getTask` already read above, by the
+  // same `operationId` key, with no `await` anywhere in between — so if
+  // authorization succeeded against a defined `inFlightTask`, this lookup cannot
+  // fail. Kept as a defensive guard against a future refactor breaking that
+  // synchronous invariant, exactly as it read before this change.
   if (newDeadline === undefined) return;
 
   // Update persisted storage record and deadline tracker with the same
@@ -445,7 +488,15 @@ function onActivityHeartbeatMessage(
   void withRetry(async () => {
     // Guard: if the task completed or was reassigned during the async gap,
     // skip the write to avoid resurrecting or corrupting another worker's record.
-    if (!context.registry.isAssignedToAttempt(operationId, workerId ?? '', attemptToken)) return;
+    if (!context.registry.isAssignedToAttempt(operationId, workerId ?? '', attemptToken)) {
+      reportActivityHeartbeatAppliedForTesting(options, {
+        operationId,
+        attemptToken,
+        outcome: 'skipped',
+        reason: 'reassigned or resolved before the durable write started',
+      });
+      return;
+    }
 
     // A single attempt, matching the brief's failure matrix: "Stale
     // heartbeat conditional write loses; terminal state remains sole
@@ -455,7 +506,7 @@ function onActivityHeartbeatMessage(
     // no longer applies. `renewAttemptLease` itself enforces the
     // never-shortens / never-exceeds-attemptDeadline monotonicity
     // guarantees (criteria 4 and 6).
-    await commitTaskLedgerTransition(
+    const result = await commitTaskLedgerTransition(
       options.engine.storage,
       operationId,
       (current, now) =>
@@ -465,6 +516,7 @@ function onActivityHeartbeatMessage(
             attemptToken,
             workerSessionId: workerId ?? '',
             leaseDurationMilliseconds: task.visibilityTimeout,
+            ...(message.details !== undefined ? { details: message.details } : {}),
           },
           now,
         ),
@@ -481,8 +533,25 @@ function onActivityHeartbeatMessage(
           lastHeartbeatAt: now,
         }),
     );
+    // Test-only observability (COR-235): reports whether the durable write
+    // actually committed, so a test can await this exact outcome instead of
+    // polling the ledger against a fixed wall-clock budget. A no-op in
+    // production — see `reportActivityHeartbeatAppliedForTesting`'s doc
+    // comment.
+    reportActivityHeartbeatAppliedForTesting(options, {
+      operationId,
+      attemptToken,
+      outcome: result.ok ? 'committed' : 'rejected',
+      ...(result.ok ? {} : { reason: result.reason }),
+    });
   }, `extend visibility for task "${operationId}"`).catch((error) => {
     console.error(`[weft] Failed to extend visibility for task "${operationId}":`, error);
+    reportActivityHeartbeatAppliedForTesting(options, {
+      operationId,
+      attemptToken,
+      outcome: 'rejected',
+      reason: error instanceof Error ? error.message : String(error),
+    });
   });
 }
 

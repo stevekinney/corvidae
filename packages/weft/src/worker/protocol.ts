@@ -202,9 +202,10 @@ function parseHeartbeatMessage(
 
 // prettier-ignore
 const ACTIVITY_HEARTBEAT_FIELD_SPECS: readonly FieldSpec[] = [
-  ['workerId',     true, isNonEmptyString, 'activityHeartbeat.workerId must be a non-empty string'],
-  ['operationId',  true, isNonEmptyString, 'activityHeartbeat.operationId must be a non-empty string'],
-  ['attemptToken', true, isNonEmptyString, 'activityHeartbeat.attemptToken must be a non-empty string'],
+  ['workerId',     true,  isNonEmptyString,        'activityHeartbeat.workerId must be a non-empty string'],
+  ['operationId',  true,  isNonEmptyString,        'activityHeartbeat.operationId must be a non-empty string'],
+  ['attemptToken', true,  isNonEmptyString,        'activityHeartbeat.attemptToken must be a non-empty string'],
+  ['details',      false, isRemoteWorkerJsonValue, 'activityHeartbeat.details must be valid JSON when present'],
 ];
 
 function parseActivityHeartbeatMessage(
@@ -235,6 +236,13 @@ const TASK_FIELD_SPECS: readonly FieldSpec[] = [
   ],
   ['workflowRevision', false, isNonEmptyString, 'task.workflowRevision must be a non-empty string'],
   ['attemptToken', true, isNonEmptyString, 'task.attemptToken must be a non-empty string'],
+  ['visibilityTimeout', false, isFiniteNumber, 'task.visibilityTimeout must be a finite number'],
+  [
+    'lastHeartbeatDetails',
+    false,
+    isRemoteWorkerJsonValue,
+    'task.lastHeartbeatDetails must be valid JSON when present',
+  ],
 ];
 
 function parseTaskMessage(
@@ -250,8 +258,9 @@ function parseTaskMessage(
 
 // prettier-ignore
 const CANCEL_FIELD_SPECS: readonly FieldSpec[] = [
-  ['operationId',  true, isNonEmptyString, 'cancel.operationId must be a non-empty string'],
-  ['attemptToken', true, isNonEmptyString, 'cancel.attemptToken must be a non-empty string'],
+  ['operationId',  true,  isNonEmptyString, 'cancel.operationId must be a non-empty string'],
+  ['attemptToken', true,  isNonEmptyString, 'cancel.attemptToken must be a non-empty string'],
+  ['reason',       false, isNonEmptyString, 'cancel.reason must be a non-empty string when present'],
 ];
 
 function parseCancelMessage(

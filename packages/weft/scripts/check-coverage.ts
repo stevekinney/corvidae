@@ -462,10 +462,18 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       'src/core/realm/worker-realm.ts',
       {
         reason:
-          "The `messageerror` listener (COR-249) delegates to the exact same `#handleWorkerFailure` a real Worker `error` event already exercises end to end (worker-realm.test.ts's throwing-worker and timeout tests) — only its own one-line callback body is unreached, both as a LINE (324, shifted from 292 by COR-113's idempotent-termination hardening) and as its own FUNCTION. `messageerror` fires when structured-clone deserialization fails on the RECEIVING side; a `postMessage` call with a non-cloneable payload throws synchronously on the SENDING side instead (`DataCloneError`, confirmed directly against Bun 1.4.2), so there is no reliable, non-flaky way to manufacture the receiving-side failure from a test. A full-suite run's FNF/FNH (30/28) is two short, not one: the second is the same 'Bun's LCOV FNH undercounts a fully line-covered function' artifact documented for revision-realm-registry.ts's entry above and elsewhere in this registry, not reproduced when this file's own tests run in isolation (only the messageerror gap shows there).",
-        lines: new Set([324]),
+          "The `messageerror` listener (COR-249) delegates to the exact same `#handleWorkerFailure` a real Worker `error` event already exercises end to end (worker-realm.test.ts's throwing-worker and timeout tests) — its registration statement is unreached as a LINE (358, shifted from 324 by COR-246's `close`-event/`whenReclaimed` reclamation proof, itself shifted from 292 by COR-113's idempotent-termination hardening) and its callback is unreached as a FUNCTION. `messageerror` fires when structured-clone deserialization fails on the RECEIVING side; a `postMessage` call with a non-cloneable payload throws synchronously on the SENDING side instead (`DataCloneError`, confirmed directly against Bun 1.4.2), so there is no reliable, non-flaky way to manufacture the receiving-side failure from a test. A fresh full-suite lcov confirms the specific line the `error` listener's own textually-identical `this.#handleWorkerFailure();` call site sits on (the callback body, one line below the registration) reports nonzero hits despite `messageerror` itself never firing — the same 'Bun's LCOV attributes a hit count to the wrong source line for one of two textually-identical call-expression statements' class of artifact already documented for revision-realm-registry.ts's entry above and elsewhere in this registry — so the registration line, not the callback body line, is this allowance's stable target. A full-suite run's FNF/FNH is two short, not one: the second is the sibling 'Bun's LCOV FNH undercounts a fully line-covered function' artifact, not reproduced when this file's own tests run in isolation (only the messageerror gap shows there).",
+        lines: new Set([358]),
         functions: 2,
         requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/core/realm/child-process-realm.ts',
+      {
+        reason:
+          "A fresh full-suite coverage run reports 100% LINE coverage for this file (every DA: record has a nonzero hit count — child-process-realm.test.ts and realm-conformance.test.ts together exercise the ready handshake, digest mismatch, dispatch/release/failure, crash/terminate/discard, restart, the spawn-epoch stale-restart guard, and reclamation) but FNH is one short of FNF, with no `FNDA:0,` entry anywhere in the file's record. The same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact already documented for revision-realm-registry.ts's and revision-realm-execution-strategy.ts's entries above.",
+        functions: 1,
       },
     ],
     [
@@ -785,18 +793,28 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       // corvidae's copy carries more never-invoked fault-injection helpers than upstream's
       // (the missed-function count is unchanged at 15, so this is a pure line-set expansion,
       // not new dead functions), so the allowed range grew from upstream's 91 lines to 122.
+      //
+      // Realigned again (COR-235): `nextServerMessage`'s `NextServerMessageOptions` type and
+      // `waitForServerMessage`'s "omitted `timeoutMs` installs no timer" branch added 10 lines
+      // before line 48 and a further 6 lines inside the (still-never-fired) timeout callback
+      // starting at old line 289 — net +10 through old line 288, +16 from old line 289 on. Every
+      // one of the 122 coordinates below is the corresponding OLD coordinate plus that offset,
+      // confirmed against a fresh coverage/lcov.info generated after this edit (each new
+      // coordinate carries a genuine zero hit count; none regressed to newly covered or to a
+      // non-`DA:` line). The missed-function count is unchanged at 15 — this file gained no new
+      // functions, only the one already-present `waitForServerMessage` grew by 6 lines.
       {
         reason:
           'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
         functions: 15,
         lines: new Set([
-          90, 105, 106, 107, 108, 116, 117, 118, 149, 150, 151, 152, 153, 154, 155, 156, 161, 162,
-          163, 164, 207, 208, 209, 210, 234, 240, 246, 247, 248, 249, 250, 255, 256, 257, 276, 289,
-          290, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313,
-          314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331,
-          332, 333, 334, 335, 336, 355, 356, 363, 367, 381, 382, 388, 393, 394, 401, 402, 403, 404,
-          405, 406, 407, 408, 409, 410, 411, 412, 413, 415, 424, 425, 431, 432, 437, 438, 451, 452,
-          453, 454, 455, 456, 460, 461, 462, 463, 464, 468, 469, 470, 471, 472,
+          100, 115, 116, 117, 118, 126, 127, 128, 159, 160, 161, 162, 163, 164, 165, 166, 171, 172,
+          173, 174, 217, 218, 219, 220, 244, 250, 256, 257, 258, 259, 260, 265, 266, 267, 286, 305,
+          306, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
+          330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346, 347,
+          348, 349, 350, 351, 352, 371, 372, 379, 383, 397, 398, 404, 409, 410, 417, 418, 419, 420,
+          421, 422, 423, 424, 425, 426, 427, 428, 429, 431, 440, 441, 447, 448, 453, 454, 467, 468,
+          469, 470, 471, 472, 476, 477, 478, 479, 480, 484, 485, 486, 487, 488,
         ]),
         requireUncoveredLines: true,
       },
@@ -1579,11 +1597,20 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
     ],
     [
       'src/server/runtime/task-result-resolution.ts',
+      // Realigned for COR-226 (activityHeartbeatDetailsPayloadSizeError):
+      // the new function mirrors taskResultPayloadSizeError's identical
+      // try/catch/rethrow structure, and Bun LCOV attributes the same
+      // never-taken `throw error` re-throw branch plus its preceding
+      // closing brace as missed — a direct unit test exercises the
+      // PayloadSizeExceededError branch (the `return error` line), but
+      // forcing the `error instanceof PayloadSizeExceededError === false`
+      // rethrow would require assertPayloadWithinLimit itself to throw
+      // something else, which no current test does.
       {
         reason:
-          'A direct unit test calls taskResultPayloadSizeError with an oversized completion and asserts the returned PayloadSizeExceededError, but Bun LCOV still reports the catch-block closing brace and one aggregate function as missed.',
+          'Both size-check functions (taskResultPayloadSizeError, activityHeartbeatDetailsPayloadSizeError) have a catch-block rethrow for a non-PayloadSizeExceededError that no current test forces; Bun LCOV attributes the closing brace and the throw line as missed for the newer function.',
         functions: 1,
-        lines: new Set([42]),
+        lines: new Set([47, 48]),
         requireUncoveredLines: true,
       },
     ],
@@ -1597,60 +1624,85 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
     ],
     [
       'src/server/runtime/websocket-worker.ts',
-      // Realigned for corvidae from a fresh coverage/lcov.info (COR-235/
-      // COR-237/COR-1271 result-acknowledgement work). The prior entry's
-      // coordinates (141-144, 159-162, 218-224, 585, 586, 589, 590) no
-      // longer point at the branches they were written against — COR-1271's
-      // correlated-rejection test now exercises the durable-ledger
-      // commit-failure branch (was 159-162) and the fallback path's
-      // authorization-rejection branch (was 218-224) for real, so both are
-      // fully covered and dropped from this entry rather than carried
-      // forward as dead allowance. The remaining gaps, at their current
-      // coordinates — re-derived from a fresh coverage/lcov.info generated
-      // AFTER this file's own edits (deleting
-      // activityHeartbeatRejectionMessage's dead 'unknown-operation'
-      // branch), not by offset arithmetic against the pre-edit layout,
-      // which is what put an earlier pass at this same realignment about
-      // ten lines short of every coordinate below the edited region:
+      // Realigned for COR-226 (attempt-fenced heartbeat details validation)
+      // from a fresh coverage/lcov.info generated AFTER this file's own
+      // edits (the new `activityHeartbeatDetailsPayloadSizeError` check in
+      // `onActivityHeartbeatMessage`, now itself covered by a dedicated
+      // oversized-details test) — not by offset arithmetic against the
+      // pre-edit layout. The underlying branches this entry allows are
+      // unchanged from the prior (COR-235/COR-237/COR-1271) realignment;
+      // only their line numbers shifted:
       //
       // 1. The oversized-task-result-rejection persistence-failure log
-      // (160-163, was 141-144) and the `applyTaskResultFallback` rejection
-      // logger (287, was 247, the arrow-function callback passed to
+      // (163-166, was 160-163) and the `applyTaskResultFallback` rejection
+      // logger (290, was 287, the arrow-function callback passed to
       // `.catch()` — the one missed function this entry allows) — each
       // fires only when a storage write or the fallback path itself fails,
       // which no current test forces.
       //
       // 2. The revision-mismatch protocol-error branch for a stale
-      // `taskResult` (256-264) — a genuine resend of the same original
-      // message always echoes back whatever revision it echoed the first
-      // time, so no current test can construct the mismatch without lying
-      // about being a resend.
+      // `taskResult` (259-267, was 256-264) — a genuine resend of the same
+      // original message always echoes back whatever revision it echoed the
+      // first time, so no current test can construct the mismatch without
+      // lying about being a resend.
       //
       // 3. The closed `WorkerToServerMessage` union's `default:` branch
-      // (632 `default: {`, 635 `const exhaustiveCheck`, 636 `return
+      // (653 `default: {`, 656 `const exhaustiveCheck`, 657 `return
       // exhaustiveCheck`) is the same compile-time-only exhaustiveness guard
       // realigned above for `get-task-detail.ts` and
       // `task-ledger-recovery.ts`, plus the preceding `activityHeartbeat`
-      // case's closing brace (631), which reads 0 in this run — the same
+      // case's closing brace (652), which reads 0 in this run — the same
       // case-label/brace coverage-attribution artifact those sibling
       // entries already document.
-      //
-      // (COR-237 also added an `'unknown-operation'` branch to
-      // `activityHeartbeatRejectionMessage` immediately above this file's
-      // line 102; that branch was unreachable by construction from its only
-      // caller and was deleted rather than allowed here — see that
-      // function's doc comment.)
       //
       // `requireUncoveredLines: true` here, as before: the majority of what
       // this entry allows is real, meaningfully-defensive branches where a
       // future covering test should trip this check, not the minority
       // case-label/brace lines that can attribute inconsistently.
+      //
+      // Realigned again (COR-235), and one new branch added. Adding the
+      // `activity-heartbeat-test-hooks.ts` import shifted every coordinate below it by +1;
+      // `onActivityHeartbeatMessage`'s durability-report calls added a further +37 for
+      // coordinates below that function (net +38, after also removing 2 dead-code-adjacent
+      // lines — see below). Re-derived from a fresh coverage/lcov.info, not offset arithmetic,
+      // per this entry's own standing warning above: 160-163 -> 161-164 (+1), 256-264 -> 257-265
+      // (+1), 287 -> 288 (+1), 631/632/635/636 -> 669/670/673/674 (+38).
+      //
+      // 4. `onActivityHeartbeatMessage`'s `withRetry` closure re-checks
+      // `isAssignedToAttempt` before committing the durable heartbeat write (originally 462-468,
+      // now 492-498 below) — genuinely reachable, but only on `withRetry`'s SECOND attempt, after
+      // `commitTaskLedgerTransition` has thrown once and `withRetry` has awaited its 100ms backoff
+      // sleep; only during that real sleep can another message actually reassign or resolve the
+      // attempt. No current test forces both a thrown storage error AND a race during its retry
+      // backoff, and doing so would need a genuine ~100ms wall-clock wait — exactly the
+      // timing-dependent test this project's own audit history (COR-1264) already argues against
+      // manufacturing. The otherwise-identical sibling guard at line 444 (`extendVisibility`
+      // returning `undefined` right after `getTask` found the same entry, with no `await` between
+      // them) is NOT reachable by any construction and is intentionally left without a test hook
+      // or an allowance entry — see its own comment.
+      //
+      // Realigned a further time merging COR-235 (W1c) and COR-226/COR-223 (W2): both branches
+      // independently realigned this same entry from their own pre-merge coverage runs (W1c to
+      // 161-164/257-265/288/462-468/669-670+673-674; W2 to 163-166/259-267/290/652-653+656-657),
+      // and the merge's textual conflict was resolved by re-deriving from a fresh
+      // coverage/lcov.info on the MERGED tree, not by picking a side or doing offset arithmetic on
+      // either. The merge also surfaced a genuine coverage gap the textual merge itself
+      // introduced: `onActivityHeartbeatMessage`'s new COR-226 `detailsError` early return had no
+      // `reportActivityHeartbeatAppliedForTesting` call at all (W2 predates that test-only seam),
+      // so it silently dropped the outcome report every other early-return path in this function
+      // makes. Fixed by adding a `skipped` report there (see `ActivityHeartbeatAppliedEvent`'s
+      // updated doc comment) and covering it with a dedicated test
+      // (`websocket-worker.characterization.test.ts`'s `activityHeartbeat message` describe
+      // block) — not a line this allowance should ever have covered for. Final coordinates below
+      // reflect that fix: 161-164 -> 164-167, 257-265 -> 260-268, 288 -> 291, 462-468 -> 492-498,
+      // 669/670/673/674 -> 700/701/704/705.
       {
         reason:
-          'Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (160-163, 287), a revision-mismatch rejection unreachable without fabricating a non-resend (256-264), and the closed WorkerToServerMessage union default branch (631, 632, 635, 636).',
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (164-167, 291), a revision-mismatch rejection unreachable without fabricating a non-resend (260-268), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (492-498), and the closed WorkerToServerMessage union default branch (700, 701, 704, 705).",
         functions: 1,
         lines: new Set([
-          160, 161, 162, 163, 256, 257, 258, 259, 260, 261, 262, 263, 264, 287, 631, 632, 635, 636,
+          164, 165, 166, 167, 260, 261, 262, 263, 264, 265, 266, 267, 268, 291, 492, 493, 494, 495,
+          496, 497, 498, 700, 701, 704, 705,
         ]),
         requireUncoveredLines: true,
       },
@@ -1663,6 +1715,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         functions: 3,
         lines: new Set([81, 82, 83, 237, 238]),
         requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/worker/attempt-controllers.ts',
+      // COR-223: 100% line coverage (every statement in this file executes
+      // under the tuple-key regression tests in worker/index.test.ts and
+      // worker/long-poll.test.ts) but one of its 7 declared functions is not
+      // attributed as hit — the same class-with-no-explicit-constructor
+      // attribution gap Bun LCOV shows elsewhere in this repository (no
+      // `FN:` name data is emitted for this file, so the specific function
+      // cannot be pinned to a line the way other entries do).
+      {
+        reason:
+          'Every line of AttemptControllerTable executes under real tests (100% line coverage), but Bun LCOV attributes one of its 7 declared functions as unhit with no FN name data to identify or pin it to a line.',
+        functions: 1,
       },
     ],
     [
@@ -2127,6 +2194,11 @@ type CoverageProcess = {
   exited: Promise<number>;
   stderr: ReadableStream<Uint8Array> | null;
   stdout: ReadableStream<Uint8Array> | null;
+  // Present on a real `Bun.spawn` subprocess; optional so a minimal stubbed child
+  // (one that never needs to be killed or identified by pid) stays valid in tests.
+  pid?: number;
+  signalCode?: NodeJS.Signals | null;
+  kill?: (signal?: number | NodeJS.Signals) => void;
 };
 
 type SpawnCoverageProcess = (
@@ -2141,6 +2213,10 @@ type SpawnCoverageProcess = (
 
 type RunCoverageShardDependencies = {
   spawnCoverageProcess?: SpawnCoverageProcess;
+  // Test seam for the SIGTERM/SIGINT handler's terminal action, so a unit test can
+  // observe "the script would have exited non-zero here" without actually ending
+  // the test process. Defaults to the real `process.exit`.
+  exitProcess?: (code: number) => void;
 };
 
 type CheckCoverageDependencies = {
@@ -2152,6 +2228,39 @@ type CapturedOutputTail = {
   bytes: Uint8Array;
   truncatedBytes: number;
 };
+
+/**
+ * Every stage `checkCoverage`/`runCoverageShard` can fail at. Named explicitly so a
+ * non-zero exit always prints a one-line reason naming which of these it hit — see
+ * COR-1326 (and COR-225, the analogous fix for the retired agent-bureau script): a
+ * gate that fails without saying why forces reruns instead of a diagnosis.
+ */
+export type CoverageFailureStage =
+  | 'spawn'
+  | 'child exit'
+  | 'child signal'
+  | 'missing report'
+  | 'empty report'
+  | 'parse failure'
+  | 'coverage gap';
+
+/**
+ * Format the one-line, stage-naming reason printed for every non-zero exit. `child`
+ * is supplied only when a spawned process was involved, and always reports both its
+ * exit code and signal name (`"none"` for whichever did not apply) so a signal-killed
+ * child is never misreported as a bare numeric exit code.
+ */
+export function formatCoverageFailureReason(
+  stage: CoverageFailureStage,
+  detail: string,
+  child?: { exitCode: number | null; signal: string | null },
+): string {
+  const childSuffix =
+    child === undefined
+      ? ''
+      : ` (child exit code ${child.exitCode ?? 'none'}, signal ${child.signal ?? 'none'})`;
+  return `check-coverage: exiting non-zero at stage "${stage}": ${detail}${childSuffix}`;
+}
 
 async function captureOutputTail(
   stream: ReadableStream<Uint8Array> | null,
@@ -2244,27 +2353,84 @@ export async function runCoverageShard(
 
   args.push(...shard.testFiles);
 
+  const lcovPath = `${shard.coverageDirectory}/lcov.info`;
   const spawnCoverageProcess =
     dependencies.spawnCoverageProcess ?? ((spawnArgs, options) => Bun.spawn(spawnArgs, options));
-  const coverageProcess = spawnCoverageProcess(args, {
-    cwd: globalThis.process.cwd(),
-    env: { ...process.env, ...Bun.env, WEFT_COVERAGE_MODE: '1' },
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    captureOutputTail(coverageProcess.stdout),
-    captureOutputTail(coverageProcess.stderr),
-    coverageProcess.exited,
-  ]);
+  const exitProcess = dependencies.exitProcess ?? ((code: number) => process.exit(code));
+
+  let coverageProcess: CoverageProcess;
+  try {
+    coverageProcess = spawnCoverageProcess(args, {
+      cwd: globalThis.process.cwd(),
+      env: { ...process.env, ...Bun.env, WEFT_COVERAGE_MODE: '1' },
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      formatCoverageFailureReason(
+        'spawn',
+        `${shard.name} coverage shard failed to start: ${message}`,
+      ),
+    );
+    return { exitCode: 1, lcovPath };
+  }
+
+  // If this script itself is killed while the child is running, the child would
+  // otherwise be silently orphaned and the exit would carry no diagnosis. Report
+  // which shard was running and the child's pid, forward the signal, then exit.
+  const onTerminationSignal = (signal: NodeJS.Signals) => {
+    console.error(
+      `check-coverage: received ${signal} while running the "${shard.name}" coverage shard ` +
+        `(child pid ${coverageProcess.pid ?? 'unknown'}); terminating child and exiting.`,
+    );
+    coverageProcess.kill?.(signal);
+    exitProcess(1);
+  };
+  process.on('SIGTERM', onTerminationSignal);
+  process.on('SIGINT', onTerminationSignal);
+
+  let stdout: CapturedOutputTail;
+  let stderr: CapturedOutputTail;
+  let exitCode: number;
+  try {
+    [stdout, stderr, exitCode] = await Promise.all([
+      captureOutputTail(coverageProcess.stdout),
+      captureOutputTail(coverageProcess.stderr),
+      coverageProcess.exited,
+    ]);
+  } finally {
+    process.off('SIGTERM', onTerminationSignal);
+    process.off('SIGINT', onTerminationSignal);
+  }
 
   if (exitCode !== 0) {
     writeFailureOutput(`${shard.name} stdout`, stdout);
     writeFailureOutput(`${shard.name} stderr`, stderr);
     console.error(`${shard.name} coverage shard exited with code ${exitCode}.`);
+
+    const signal = coverageProcess.signalCode ?? null;
+    if (signal !== null && signal !== undefined) {
+      console.error(
+        formatCoverageFailureReason(
+          'child signal',
+          `${shard.name} coverage shard was terminated by signal ${signal}.`,
+          { exitCode, signal },
+        ),
+      );
+    } else {
+      console.error(
+        formatCoverageFailureReason(
+          'child exit',
+          `${shard.name} coverage shard exited with code ${exitCode}.`,
+          { exitCode, signal: null },
+        ),
+      );
+    }
   }
 
-  return { exitCode, lcovPath: `${shard.coverageDirectory}/lcov.info` };
+  return { exitCode, lcovPath };
 }
 
 /**
@@ -2287,19 +2453,42 @@ export async function checkCoverage(
   });
 
   if (shard.exitCode !== 0) {
+    // The spawn/child-exit/child-signal stage reason was already printed inside
+    // runCoverageShard, closest to the failure; this line stays for continuity.
     console.error('Coverage execution failed.');
     return false;
   }
 
   if (!(await Bun.file(shard.lcovPath).exists())) {
     console.error(`No coverage report generated for ${shard.lcovPath}.`);
+    console.error(
+      formatCoverageFailureReason(
+        'missing report',
+        `expected an lcov report at ${shard.lcovPath} after a successful coverage run.`,
+      ),
+    );
     return false;
   }
 
-  const coverage = parseLcov(await Bun.file(shard.lcovPath).text());
+  let coverage: CoverageResult;
+  try {
+    coverage = parseLcov(await Bun.file(shard.lcovPath).text());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      formatCoverageFailureReason('parse failure', `could not parse ${shard.lcovPath}: ${message}`),
+    );
+    return false;
+  }
 
   if (coverage.lines.total === 0) {
     console.error('Coverage report is empty — no source files were instrumented.');
+    console.error(
+      formatCoverageFailureReason(
+        'empty report',
+        `${shard.lcovPath} contained zero instrumented lines.`,
+      ),
+    );
     return false;
   }
 
@@ -2317,6 +2506,12 @@ export async function checkCoverage(
     for (const file of coverage.uncoveredFiles) {
       console.log(`  ${file}`);
     }
+    console.error(
+      formatCoverageFailureReason(
+        'coverage gap',
+        `${coverage.uncoveredFiles.length} file(s) below the required threshold.`,
+      ),
+    );
   }
 
   return coverage.covered;

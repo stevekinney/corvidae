@@ -79,6 +79,7 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
       workerId: { type: 'string', minLength: 1 },
       operationId: { type: 'string', minLength: 1 },
       attemptToken: { type: 'string', minLength: 1 },
+      details: jsonValueSchema,
     },
   },
   taskResult: {
@@ -139,6 +140,8 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
       workflowExecutionToken: { type: 'string', minLength: 1 },
       workflowRevision: { type: 'string', minLength: 1 },
       attemptToken: { type: 'string', minLength: 1 },
+      visibilityTimeout: { type: 'number', minimum: 0 },
+      lastHeartbeatDetails: jsonValueSchema,
     },
   },
   cancel: {
@@ -149,6 +152,7 @@ export const REMOTE_WORKER_MESSAGE_SCHEMAS = {
       type: { const: 'cancel' },
       operationId: { type: 'string', minLength: 1 },
       attemptToken: { type: 'string', minLength: 1 },
+      reason: { type: 'string' },
     },
   },
   shutdown: {

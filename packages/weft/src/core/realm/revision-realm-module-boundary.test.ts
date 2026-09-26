@@ -46,4 +46,16 @@ describe('revision-realm module graph boundary', () => {
     const text = await bundledText(new URL('./worker-realm.ts', import.meta.url));
     expect(text).not.toContain(WORKFLOW_IMPLEMENTATION_SENTINEL);
   });
+
+  it('a bundle of the realm-side child-process bootstrap DOES contain the workflow implementation (positive control, COR-246)', async () => {
+    const text = await bundledText(
+      new URL('./__fixtures__/revision-realm-child-process-entry.ts', import.meta.url),
+    );
+    expect(text).toContain(WORKFLOW_IMPLEMENTATION_SENTINEL);
+  });
+
+  it('a bundle of the host-side ChildProcessRealm itself does NOT contain the workflow implementation (COR-246)', async () => {
+    const text = await bundledText(new URL('./child-process-realm.ts', import.meta.url));
+    expect(text).not.toContain(WORKFLOW_IMPLEMENTATION_SENTINEL);
+  });
 });

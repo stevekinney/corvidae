@@ -23,6 +23,7 @@ import {
   taskLedgerKey,
 } from '../core/task-ledger/task-ledger.ts';
 import { serve, type ServeOptions, type TaskDispatch, type WeftServer } from '../server/index.ts';
+import { useObservableActivityHeartbeatsForTesting } from '../server/runtime/activity-heartbeat-test-hooks.ts';
 import { useManualTaskReconciliationForTesting } from '../server/runtime/task-reconciliation.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
@@ -95,6 +96,14 @@ type Setup = {
   server: WeftServer;
   workerUrl: string;
   /**
+   * The exact `ServeOptions` object passed to `serve()` — kept around so a
+   * test can register a test-only observability hook against it, for example
+   * `useObservableActivityHeartbeatsForTesting` (COR-235), without
+   * `createSetup` growing a dedicated opt-in flag for every hook a test might
+   * want.
+   */
+  serveOptions: ServeOptions;
+  /**
    * Set only when `createSetup` is called with `manualTaskReconciliation:
    * true` — disables the periodic visibility-timeout scanner in favor of an
    * explicitly-triggered `scanAt`, so a test can force an expiry/redispatch
@@ -159,6 +168,7 @@ function createSetup(
     engine,
     server,
     workerUrl,
+    serveOptions,
     ...(manualReconciliation !== undefined ? { manualReconciliation } : {}),
   };
   activeSetup = setup;
@@ -245,21 +255,6 @@ async function readResolvedRecord(engine: Engine, operationId: string): Promise<
 }
 
 /**
- * Reads the current attempt's durable visibility-lease deadline for a
- * `leased` (or `completing`, which still carries one) record, or `undefined`
- * once the record has left that window entirely. Used to observe an
- * `activityHeartbeat`'s effect directly rather than inferring it from a
- * timing margin — see the same-worker stale-attempt test below.
- */
-async function readLeaseDeadline(engine: Engine, operationId: string): Promise<number | undefined> {
-  const record = decodeRemoteTaskRecord(await engine.storage.get(taskLedgerKey(operationId)));
-  if (record === null) return undefined;
-  return record.state === 'leased' || record.state === 'completing'
-    ? record.leaseDeadline
-    : undefined;
-}
-
-/**
  * Wait until the ledger record for `operationId` has left the actively-held
  * `leased`/`completing` states — either it reached `terminal` (the usual
  * case, always checked via `readResolvedRecord` immediately before this at
@@ -298,13 +293,11 @@ describe('RemoteWorker durability — scanner-driven takeover', () => {
       workflowType: 'test',
       input: { value: 'v' },
       // The visibilityTimeout governs BOTH worker-a's expiry (drives the
-      // takeover) and worker-b's expiry (after takeover B has this long to
-      // respond before another requeue). 250ms is short enough that the
-      // initial takeover happens within the test budget but borderline for
-      // B's response window under load. After we observe B's takeover
-      // dispatch, we set the engine's effective deadline-tracker entry to
-      // a long value below by sending a heartbeat from B before responding,
-      // so the test's resolved-state polling cannot race the scanner.
+      // takeover) and worker-b's expiry (after takeover, before B's own
+      // `activityHeartbeat` below durably extends it). 250ms is short enough
+      // that the initial takeover happens promptly; it no longer needs to
+      // outrace the scanner for B's own window, since B's heartbeat below is
+      // durably awaited (COR-235) before B's completion is ever sent.
       visibilityTimeout: 250,
     });
 
@@ -315,7 +308,11 @@ describe('RemoteWorker durability — scanner-driven takeover', () => {
 
     workerA.partition();
 
-    const dispatchToB = await workerB.nextServerMessage(isTask, { timeoutMs: 5_000 });
+    // The scanner's redispatch to B (COR-235): no wall-clock budget of its
+    // own — a redispatch that never arrives is a real hang the test runner's
+    // per-test timeout reports, not a race against a machine-load-dependent
+    // margin.
+    const dispatchToB = await workerB.nextServerMessage(isTask);
     if (!isTask(dispatchToB)) throw new Error('expected task on B');
     expect(dispatchToB.operationId).toBe(operationId);
     expect(dispatchToB.attempt ?? 1).toBe(2);
@@ -329,9 +326,39 @@ describe('RemoteWorker durability — scanner-driven takeover', () => {
     const allBMessages: ServerToWorkerMessage[] = [];
     workerB.onServerMessage((m) => allBMessages.push(m));
 
-    // Send a heartbeat to extend B's deadline — the test's wall-clock should
-    // not race the scanner.
-    workerB.send({ type: 'heartbeat', workerId: 'worker-b' });
+    // Extend B's own attempt-level visibility lease with a real
+    // `activityHeartbeat` before completing. A bare session `heartbeat` (as
+    // this test previously sent) renews only the worker-session lease and
+    // leaves an attempt's lease deadline completely untouched — only
+    // `activityHeartbeat` reaches `renewAttemptLease` (see
+    // `onActivityHeartbeatMessage`, `websocket-worker.ts`) — so it did
+    // nothing to protect against the scanner reassigning this task away from
+    // B before its completion landed. B's 250ms `visibilityTimeout` outracing
+    // the 20ms scanner poll was the ONLY thing preventing that reassignment:
+    // an unproven timing margin under load, the same defect class the
+    // same-worker stale-attempt test below hit twice (COR-235). Await the
+    // server's own durability report for this heartbeat instead, so the
+    // scanner is PROVABLY unable to reassign the task before B's completion
+    // is sent, with no wall-clock budget of its own on the wait.
+    const heartbeatApplied = useObservableActivityHeartbeatsForTesting(setup.serveOptions).next(
+      (event) =>
+        event.operationId === operationId && event.attemptToken === dispatchToB.attemptToken,
+    );
+    workerB.send({
+      type: 'activityHeartbeat',
+      workerId: 'worker-b',
+      operationId,
+      attemptToken: dispatchToB.attemptToken,
+    });
+    const heartbeatOutcome = await heartbeatApplied;
+    if (heartbeatOutcome.outcome !== 'committed') {
+      const reasonSuffix =
+        heartbeatOutcome.reason === undefined ? '' : ` (${heartbeatOutcome.reason})`;
+      throw new Error(
+        `expected worker-b's activityHeartbeat to durably extend its visibility lease before ` +
+          `completing, got outcome="${heartbeatOutcome.outcome}"${reasonSuffix}`,
+      );
+    }
 
     workerB.send({
       type: 'taskResult',
@@ -382,7 +409,9 @@ describe('RemoteWorker durability — idempotent duplicate completion (different
 
     await workerA.hardClose();
 
-    const dispatchToB = await workerB.nextServerMessage(isTask, { timeoutMs: 5_000 });
+    // The disconnect-triggered redispatch to B (COR-235): no wall-clock
+    // budget of its own — see the scanner-driven takeover test above.
+    const dispatchToB = await workerB.nextServerMessage(isTask);
     if (!isTask(dispatchToB)) throw new Error('expected task on B');
     expect(dispatchToB.operationId).toBe(operationId);
 
@@ -527,18 +556,17 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
 
     // The scheduled redispatch above still runs on its own real timer/async
     // chain (the same one `dispatchAndConfirmWorkerSend` proves for a fresh
-    // dispatch), so wait for the durable claim — attempt 2, leased — before
-    // waiting for its frame: a clear "redispatch never happened" failure,
-    // distinct from "the frame never arrived."
-    await waitForCondition(
-      async () => {
-        const record = await readLedgerRecord(setup.engine, operationId);
-        return record !== null && record.state === 'leased' && record.attempt === 2;
-      },
-      { timeoutMs: 2_000, label: 'attempt 2 claimed after the forced visibility-timeout expiry' },
-    );
-
-    const dispatch2 = await workerA.nextServerMessage(isTask, { timeoutMs: 2_000 });
+    // dispatch). `selectAndReserveWorker` (`server/runtime/task-dispatch.ts`)
+    // always commits the durable claim BEFORE sending the `task` frame, for
+    // a redispatch exactly as for a fresh dispatch — so the frame itself is
+    // already proof the claim landed durably; no separate ledger poll needs
+    // to run ahead of it. Wait for it with no wall-clock budget of its own:
+    // a redispatch that never happens is a real hang the test runner's own
+    // per-test timeout reports, not a race against a machine-load-dependent
+    // margin (COR-235) — a prior version of this test bounded this wait at a
+    // fixed 2000ms, which is a latency assertion in disguise once the
+    // machine is loaded enough to matter.
+    const dispatch2 = await workerA.nextServerMessage(isTask);
     if (!isTask(dispatch2)) throw new Error('expected re-dispatch');
     expect(dispatch2.operationId).toBe(operationId);
     expect(dispatch2.attempt ?? 1).toBe(2);
@@ -551,31 +579,46 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
     // the worker-session lease and leaves an attempt's lease deadline
     // completely untouched; only `activityHeartbeat` reaches
     // `renewAttemptLease` (see `onActivityHeartbeatMessage`,
-    // `websocket-worker.ts`). Wait for that durable write to land — an
-    // observed barrier, not a timing margin — before proceeding, so the
-    // scanner is PROVABLY unable to re-dispatch attempt 2 mid-test rather
-    // than merely unlikely to within some window. A prior version of this
-    // test sent the no-op bare heartbeat and relied on the 500ms
-    // `visibilityTimeout` below outracing the 20ms scanner poll instead —
-    // exactly the timing-margin pattern this project's own audit history
-    // (COR-1264) already rejected elsewhere.
-    const baselineLeaseDeadline = await readLeaseDeadline(setup.engine, operationId);
-    if (baselineLeaseDeadline === undefined) {
-      throw new Error('expected attempt 2 to still be leased before heartbeating it');
-    }
+    // `websocket-worker.ts`). Await the server's own durability report for
+    // THIS heartbeat (`activity-heartbeat-test-hooks.ts`, COR-235) instead of
+    // polling the ledger for a deadline change against a fixed wall-clock
+    // budget: this exact wait, bounded at a fixed 2000ms, is what produced
+    // the two `Timed out after 2000ms waiting for activityHeartbeat durably
+    // extends attempt 2 visibility lease` failures under heavy machine load
+    // (load averages 30-90 on 10 cores). The write's own precondition cannot
+    // explain that timeout — `renewAttemptLease` has no deadline check, and
+    // nothing re-expires attempt 2 in-memory while
+    // `manualTaskReconciliation` keeps the periodic scanner off — so the
+    // remaining explanation is event-loop contention delaying the
+    // fire-and-forget write (and the 1ms-interval poll reading it) past a
+    // budget picked without knowing the machine's load, not a hang. An even
+    // earlier version sent the no-op bare heartbeat above and relied on the
+    // 500ms `visibilityTimeout` outracing the 20ms scanner poll instead —
+    // both are timing margins this project's own audit history (COR-1264)
+    // already rejected elsewhere. The hook reports the ACTUAL outcome of the
+    // durable write (`committed`/`rejected`/`skipped`), so a genuine
+    // regression — the write never lands, or a precondition rejects it —
+    // fails with that reason instead of an opaque timeout, and the wait
+    // itself has no budget of its own: only the test runner's per-test
+    // timeout bounds it.
+    const heartbeatApplied = useObservableActivityHeartbeatsForTesting(setup.serveOptions).next(
+      (event) => event.operationId === operationId && event.attemptToken === dispatch2.attemptToken,
+    );
     workerA.send({
       type: 'activityHeartbeat',
       workerId: 'worker-a',
       operationId,
       attemptToken: dispatch2.attemptToken,
     });
-    await waitForCondition(
-      async () => {
-        const deadline = await readLeaseDeadline(setup.engine, operationId);
-        return deadline !== undefined && deadline > baselineLeaseDeadline;
-      },
-      { timeoutMs: 2_000, label: 'activityHeartbeat durably extends attempt 2 visibility lease' },
-    );
+    const heartbeatOutcome = await heartbeatApplied;
+    if (heartbeatOutcome.outcome !== 'committed') {
+      const reasonSuffix =
+        heartbeatOutcome.reason === undefined ? '' : ` (${heartbeatOutcome.reason})`;
+      throw new Error(
+        `expected the activityHeartbeat for attempt 2 to durably extend its visibility ` +
+          `lease, got outcome="${heartbeatOutcome.outcome}"${reasonSuffix}`,
+      );
+    }
 
     // Stale completion: worker-a echoes attempt 1's token. Same workerId, so the
     // ownership guard passes — the attempt guard must reject it.
@@ -602,10 +645,12 @@ describe('RemoteWorker durability — same-worker stale attempt (attempt token)'
     // the server's own taskResultAck for THIS attempt token directly (a
     // stronger observed event than polling storage) rather than sleeping and
     // re-reading — it both proves acceptance and pins that the ack
-    // correlates to attempt 2 specifically, not some other disposition.
+    // correlates to attempt 2 specifically, not some other disposition. No
+    // wall-clock budget of its own (COR-235): the applied ack is the event
+    // being waited for, and the test runner's per-test timeout is the only
+    // hang guard a real regression needs.
     const ackPromise = workerA.nextServerMessage(
       (m) => m.type === 'taskResultAck' && m.attemptToken === dispatch2.attemptToken,
-      { timeoutMs: 2_000 },
     );
     workerA.send({
       type: 'taskResult',
@@ -732,7 +777,9 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
       value: 'v',
       attemptToken: dispatch.attemptToken,
     });
-    await workerAPrime.nextServerMessage((m) => m.type === 'taskResultAck', { timeoutMs: 2_000 });
+    // No wall-clock budget of its own (COR-235) — see the same-worker
+    // stale-attempt test's `ackPromise` for why.
+    await workerAPrime.nextServerMessage((m) => m.type === 'taskResultAck');
 
     const resolved = await readResolvedRecord(setup.engine, operationId);
     expect(resolved).not.toBeUndefined();
@@ -805,8 +852,9 @@ describe('RemoteWorker durability — transient reconnect continuity (COR-220)',
     expect(rejected.message).toContain(operationId);
 
     // Routing reselects worker-a — it is the only worker — for the
-    // redispatch, with a rotated attempt token.
-    const redispatch = await workerAPrime.nextServerMessage(isTask, { timeoutMs: 5_000 });
+    // redispatch, with a rotated attempt token. No wall-clock budget of its
+    // own (COR-235) — see the scanner-driven takeover test above.
+    const redispatch = await workerAPrime.nextServerMessage(isTask);
     if (!isTask(redispatch)) throw new Error('expected redispatch');
     expect(redispatch.operationId).toBe(operationId);
     expect(redispatch.attemptToken).not.toBe(staleAttemptToken);
@@ -981,7 +1029,9 @@ describe('RemoteWorker durability — backpressure decline is redelivered', () =
         },
       },
     });
-    const taskForB = workerB.nextServerMessage(isTask, { timeoutMs: 5_000 });
+    // The inline backpressure redelivery to B (COR-235): no wall-clock
+    // budget of its own — see the scanner-driven takeover test above.
+    const taskForB = workerB.nextServerMessage(isTask);
 
     // Dispatch with A first in the round-robin order, so the first attempt
     // lands on A, which declines it (buffer full) and fails its socket.
@@ -1010,7 +1060,34 @@ describe('RemoteWorker durability — backpressure decline is redelivered', () =
     if (!isTask(dispatchToB)) throw new Error('expected task on B');
     expect(dispatchToB.operationId).toBe(operationId);
 
-    workerB.send({ type: 'heartbeat', workerId: 'worker-b' });
+    // A bare session `heartbeat` (as this test previously sent here) renews
+    // only the worker-session lease and leaves an attempt's lease deadline
+    // untouched — only `activityHeartbeat` reaches `renewAttemptLease` (see
+    // `onActivityHeartbeatMessage`, `websocket-worker.ts`). The 5000ms
+    // `visibilityTimeout` here gives a wide margin over the 20ms scanner poll
+    // even under load, but this is the same defect class the scanner-driven
+    // takeover and same-worker stale-attempt tests hit (COR-235): send a real
+    // `activityHeartbeat` and await its durable outcome instead of a no-op.
+    const heartbeatApplied = useObservableActivityHeartbeatsForTesting(setup.serveOptions).next(
+      (event) =>
+        event.operationId === operationId && event.attemptToken === dispatchToB.attemptToken,
+    );
+    workerB.send({
+      type: 'activityHeartbeat',
+      workerId: 'worker-b',
+      operationId,
+      attemptToken: dispatchToB.attemptToken,
+    });
+    const heartbeatOutcome = await heartbeatApplied;
+    if (heartbeatOutcome.outcome !== 'committed') {
+      const reasonSuffix =
+        heartbeatOutcome.reason === undefined ? '' : ` (${heartbeatOutcome.reason})`;
+      throw new Error(
+        `expected worker-b's activityHeartbeat to durably extend its visibility lease before ` +
+          `completing, got outcome="${heartbeatOutcome.outcome}"${reasonSuffix}`,
+      );
+    }
+
     workerB.send({
       type: 'taskResult',
       operationId,
