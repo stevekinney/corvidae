@@ -18,14 +18,15 @@ function configFor(revision: 'revision-a' | 'revision-b') {
 /** A settled-or-not tracker that never resolves/rejects the underlying promise itself -- used to observe whether a turn is still in flight without racing a timer. */
 function trackSettlement(promise: Promise<unknown>): { settled: () => boolean } {
   let settled = false;
-  promise.then(
-    () => {
+  void (async () => {
+    try {
+      await promise;
+    } catch {
+      // Settlement (success or failure) is all this tracker observes.
+    } finally {
       settled = true;
-    },
-    () => {
-      settled = true;
-    },
-  );
+    }
+  })();
   return { settled: () => settled };
 }
 

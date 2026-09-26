@@ -28,10 +28,7 @@ function makeRealm(
   });
 }
 
-function activationFor(
-  realm: WorkerRealm,
-  outcome: { realmGeneration: string },
-): WorkerRealmActivation {
+function activationFor(outcome: { realmGeneration: string }): WorkerRealmActivation {
   return {
     workflowRevision: 'revision-a',
     realmGeneration: outcome.realmGeneration,
@@ -43,7 +40,7 @@ async function readyAndActive(realm: WorkerRealm): Promise<WorkerRealmActivation
   const outcome = await realm.waitUntilReady();
   expect(outcome.ok).toBe(true);
   if (!outcome.ok) throw new Error('unreachable');
-  const activation = activationFor(realm, outcome);
+  const activation = activationFor(outcome);
   realm.activate(activation);
   return activation;
 }

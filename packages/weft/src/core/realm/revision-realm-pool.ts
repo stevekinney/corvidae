@@ -125,7 +125,7 @@ export class RevisionRealmPool {
    */
   markInactive(): void {
     this.#revisionActive = false;
-    for (const realm of [...this.#realms]) {
+    for (const realm of this.#realms) {
       if (realm.lifecycle.state === 'ready') {
         realm.discard();
         this.#realms.delete(realm);
