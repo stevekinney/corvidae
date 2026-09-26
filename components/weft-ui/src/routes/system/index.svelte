@@ -15,11 +15,13 @@
   import HealthTab from './health-tab.svelte';
   import MetricsTab from './metrics-tab.svelte';
   import OperationsTab from './operations-tab.svelte';
+  import RealmsTab from './realms-tab.svelte';
   import RegistryTab from './registry-tab.svelte';
   import ScopePanel from './scope-panel.svelte';
 
   const SYSTEM_TABS = [
     { value: 'registry', label: 'Registry' },
+    { value: 'realms', label: 'Realms' },
     { value: 'metrics', label: 'Metrics' },
     { value: 'discovery', label: 'Discovery' },
     { value: 'operations', label: 'Operations' },
@@ -72,6 +74,7 @@
     </Tabs.List>
 
     <Tabs.Panel value="registry"><RegistryTab /></Tabs.Panel>
+    <Tabs.Panel value="realms"><RealmsTab /></Tabs.Panel>
     <Tabs.Panel value="metrics"><MetricsTab /></Tabs.Panel>
     <Tabs.Panel value="discovery"><DiscoveryTab /></Tabs.Panel>
     <Tabs.Panel value="operations"><OperationsTab /></Tabs.Panel>
