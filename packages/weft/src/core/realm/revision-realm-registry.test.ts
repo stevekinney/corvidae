@@ -1,7 +1,19 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { RevisionRealmRegistry } from './revision-realm-registry.ts';
+import type { RevisionRealm } from './revision-realm.ts';
 import type { WorkerRealm, WorkerRealmActivation } from './worker-realm.ts';
+
+/**
+ * Every pool this file constructs uses the default `'worker'` transport, so
+ * an acquired `RevisionRealm` is always genuinely a `WorkerRealm` at
+ * runtime. This narrows for the one test-only seam
+ * (`postRawMessageForTesting`) the shared `RevisionRealm` port deliberately
+ * excludes — see `revision-realm.ts`'s own module doc for why.
+ */
+function asWorkerRealm(realm: RevisionRealm): WorkerRealm {
+  return realm as WorkerRealm;
+}
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);
 
@@ -88,13 +100,13 @@ describe('RevisionRealmRegistry', () => {
       // Releasing A alone must not affect B: this is the barrier proving
       // concurrency, not a timing race -- B only ever settles from its OWN
       // explicit release below.
-      a.realm.postRawMessageForTesting({ type: 'test-release', turnId: 1 });
+      asWorkerRealm(a.realm).postRawMessageForTesting({ type: 'test-release', turnId: 1 });
       const resultA = (await turnA) as { echoed: unknown };
       expect(resultA.echoed).toEqual({ from: 'a' });
       await flushMicrotasks();
       expect(trackedB.settled()).toBe(false);
 
-      b.realm.postRawMessageForTesting({ type: 'test-release', turnId: 1 });
+      asWorkerRealm(b.realm).postRawMessageForTesting({ type: 'test-release', turnId: 1 });
       const resultB = (await turnB) as { echoed: unknown };
       expect(resultB.echoed).toEqual({ from: 'b' });
 
@@ -219,7 +231,7 @@ describe('RevisionRealmRegistry', () => {
 
       // A late result from the (already-terminated) realm's worker cannot
       // resurrect the turn -- it is simply dropped.
-      acquired.realm.postRawMessageForTesting({
+      asWorkerRealm(acquired.realm).postRawMessageForTesting({
         type: 'realm-result',
         envelope: { ...activation, turnId: 1 },
         result: 'too-late',
@@ -362,7 +374,7 @@ describe('RevisionRealmRegistry', () => {
   });
 });
 
-function realmGenerationOf(realm: WorkerRealm): string {
+function realmGenerationOf(realm: RevisionRealm): string {
   if (!realm.activation) throw new Error('realm is not activated');
   return realm.activation.realmGeneration;
 }

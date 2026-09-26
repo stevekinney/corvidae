@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { ChildProcessRealm } from './child-process-realm.ts';
 import { RevisionRealmPool } from './revision-realm-pool.ts';
+import { WorkerRealm } from './worker-realm.ts';
 
 const workerUrl = new URL('./__fixtures__/revision-realm-worker-entry.ts', import.meta.url);
+const childProcessScriptPath = new URL(
+  './__fixtures__/revision-realm-child-process-entry.ts',
+  import.meta.url,
+);
 
 function makePool(overrides: Partial<{ concurrency: number }> = {}): RevisionRealmPool {
   return new RevisionRealmPool({
@@ -217,6 +223,43 @@ describe('RevisionRealmPool', () => {
 
       expect(pool.realmCount).toBe(0);
       expect(terminateSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('transport selection (COR-246)', () => {
+    it('omitting transport (the default) warms a WorkerRealm', async () => {
+      const pool = makePool();
+      const outcome = await pool.acquireForExecution('execution-1');
+      if (!outcome.ok) throw new Error('unreachable');
+
+      expect(outcome.realm).toBeInstanceOf(WorkerRealm);
+      pool.dispose();
+    });
+
+    it("transport: 'child-process' warms a ChildProcessRealm that completes a real handshake and dispatches a turn", async () => {
+      const pool = new RevisionRealmPool({
+        workflowRevision: 'revision-a',
+        workerUrl: childProcessScriptPath,
+        expectedWorkflowTypes: ['order-workflow'],
+        expectedArtifactDigest: 'digest-a',
+        workerName: 'digest-a',
+        concurrency: 1,
+        transport: 'child-process',
+      });
+      const outcome = await pool.acquireForExecution('execution-1');
+      if (!outcome.ok) throw new Error('unreachable');
+
+      expect(outcome.realm).toBeInstanceOf(ChildProcessRealm);
+      const realm = outcome.realm as ChildProcessRealm;
+      if (!realm.activation) throw new Error('unreachable');
+
+      const pending = realm.dispatchTurn({ ...realm.activation, turnId: 1 }, { hello: 'world' });
+      realm.postRawMessageForTesting({ type: 'test-release', turnId: 1 });
+      const result = (await pending) as { echoed: unknown };
+      expect(result.echoed).toEqual({ hello: 'world' });
+
+      pool.releaseAfterExecution(realm);
+      await realm.whenReclaimed();
     });
   });
 });

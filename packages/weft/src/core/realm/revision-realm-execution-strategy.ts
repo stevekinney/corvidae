@@ -1,7 +1,10 @@
 /**
  * `ExecutionStrategy` implementation that routes every workflow turn to a
- * revision-scoped {@link WorkerRealm} instead of a shared Worker pool
- * (COR-249's engine integration, ADR 0004's line 49 deferral).
+ * revision-scoped {@link RevisionRealm} (a `WorkerRealm` or, per
+ * `RevisionRealmConfig.transport`, a `ChildProcessRealm`, COR-246) instead
+ * of a shared Worker pool (COR-249's engine integration, ADR 0004's line 49
+ * deferral). This strategy itself never branches on which transport backs a
+ * given realm — that selection lives entirely in `RevisionRealmPool`.
  *
  * Reuses the exact same `WorkerInboundMessage`/`WorkerOutboundMessage`
  * envelope-building helpers ({@link buildRunMessage}, {@link
@@ -86,7 +89,7 @@ import {
 } from '../worker-inbound-message.ts';
 import type { RealmTurnEnvelope } from './realm-protocol.ts';
 import type { RevisionRealmConfig, RevisionRealmRegistry } from './revision-realm-registry.ts';
-import type { WorkerRealm } from './worker-realm.ts';
+import type { RevisionRealm } from './revision-realm.ts';
 
 /** Normalize `ArrayBuffer | Uint8Array` (the {@link ExecutionStrategy.startWorkflow} contract) to a plain `ArrayBuffer`. */
 function toArrayBuffer(checkpoint: ArrayBuffer | Uint8Array): ArrayBuffer {
@@ -99,7 +102,7 @@ function toArrayBuffer(checkpoint: ArrayBuffer | Uint8Array): ArrayBuffer {
 interface ActiveRealmExecution {
   readonly name: string;
   readonly revision: string;
-  readonly realm: WorkerRealm;
+  readonly realm: RevisionRealm;
   readonly executionToken: string;
   nextTurnId: number;
 }
