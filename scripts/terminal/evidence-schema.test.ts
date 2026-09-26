@@ -34,6 +34,18 @@ describe('terminal evidence schema', () => {
 
   test('accepts a complete generated-shaped report', () => {
     expect(validateEvidence(validReport, 'runtime')).toEqual([]);
+    expect(
+      validateEvidence(
+        {
+          ...validReport,
+          reportKind: 'engine',
+          expectedCellIds: ['candidate:launch'],
+          cells: [{ ...validReport.cells[0], id: 'candidate:launch' }],
+          selectedEngine: { name: '@xterm/xterm', version: '6.0.0' },
+        },
+        'engine',
+      ),
+    ).toEqual([]);
   });
 
   test('rejects missing, unexpected, and duplicate cells', () => {
