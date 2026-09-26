@@ -253,13 +253,12 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     const message = String(error);
     const kind = message.includes('TimeoutError') ? 'timeout' : 'harness-failure';
     const phase = await page
-      .evaluate(() =>
-        formatUnknown((globalThis as { probePhase?: unknown }).probePhase ?? 'not-started'),
-      )
+      .evaluate(() => (globalThis as { probePhase?: unknown }).probePhase ?? 'not-started')
       .catch(() => 'page-unavailable');
-    diagnostics.push(`phase:${phase}`);
+    const phaseText = formatUnknown(phase);
+    diagnostics.push(`phase:${phaseText}`);
     return {
-      cells: fallbackCells(`unavailable:${kind}:${phase}:${message}`),
+      cells: fallbackCells(`unavailable:${kind}:${phaseText}:${message}`),
       requests,
       status: 'unavailable',
       diagnostics,

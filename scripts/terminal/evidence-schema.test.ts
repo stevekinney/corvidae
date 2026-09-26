@@ -143,4 +143,13 @@ describe('terminal evidence schema', () => {
       ),
     ).toContain('selected engine candidates');
   });
+
+  test('keeps browser phase serialization in the Bun context', async () => {
+    const probe = await readFile(join(import.meta.dir, 'engine-probe.ts'), 'utf8');
+    expect(probe).toContain(
+      ".evaluate(() => (globalThis as { probePhase?: unknown }).probePhase ?? 'not-started')",
+    );
+    expect(probe).toContain('const phaseText = formatUnknown(phase);');
+    expect(probe).not.toContain('.evaluate(() => formatUnknown(');
+  });
 });
