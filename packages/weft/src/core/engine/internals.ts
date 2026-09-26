@@ -139,6 +139,8 @@ export interface EngineInternals {
   sleepResolversByWorkflow: Map<string, Set<string>>;
   /** Test-only event waiters notified when a workflow registers a sleep resolver. */
   sleepResolverReadyWaitersForTesting?: Map<string, Set<() => void>>;
+  /** Test-only event waiters notified when a workflow registers a signal waiter. */
+  signalWaiterReadyWaitersForTesting?: Map<string, Set<() => void>>;
   /**
    * Fired sleep timers awaiting proof that the awakened inline workflow reached
    * its next durable checkpoint or terminal state. External schedulers must not

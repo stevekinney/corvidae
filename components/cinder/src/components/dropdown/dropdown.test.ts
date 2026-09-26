@@ -1,8 +1,9 @@
 /// <reference lib="dom" />
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { createRawSnippet } from 'svelte';
+import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
+import { createRawSnippet, flushSync } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { createTransitionEndEvent } from '../../_internal/transition-completion-test-events.ts';
 import { stripCinderComponentsLayer } from '../../test/css.ts';
 
 setupHappyDom();
@@ -876,6 +877,14 @@ describe('Dropdown', () => {
       return originalGetComputedStyle(target);
     };
 
+    // Freeze the clock so the helper's computed-duration fallback timer can
+    // never complete the exit on its own: only the dispatched `transitionend`
+    // events below can. Every assertion is synchronous (`flushSync`, no
+    // `waitFor`), so the test's runtime cannot scale with host load — a
+    // `waitFor` whose first poll fails `expect(<element>).toBeNull()` makes
+    // bun serialize the whole happy-dom element graph (tens of megabytes),
+    // which once pushed this test past the 5s per-test timeout under load.
+    jest.useFakeTimers();
     try {
       const { container, rerender } = render(Dropdown, {
         props: { open: true, trigger: triggerSnippet, children: textSnippet('Menu item') },
@@ -884,6 +893,7 @@ describe('Dropdown', () => {
       const queryMenu = () => container.querySelector('.cinder-dropdown__menu');
       expect(queryMenu()).not.toBeNull();
 
+      const timersBeforeClose = jest.getTimerCount();
       await rerender({ open: false, trigger: triggerSnippet, children: textSnippet('Menu item') });
 
       // Regression guard: this menu previously unmounted in the exact same
@@ -893,15 +903,23 @@ describe('Dropdown', () => {
       const closingMenu = queryMenu();
       expect(closingMenu).not.toBeNull();
       expect(closingMenu?.hasAttribute('data-cinder-closing')).toBe(true);
+      // The fallback timer is armed but frozen, so nothing but the events
+      // below can finish the exit.
+      expect(jest.getTimerCount()).toBeGreaterThan(timersBeforeClose);
 
-      for (const propertyName of ['opacity', 'translate']) {
-        const event = new Event('transitionend');
-        Object.defineProperty(event, 'propertyName', { value: propertyName });
-        closingMenu?.dispatchEvent(event);
-      }
+      closingMenu?.dispatchEvent(createTransitionEndEvent('opacity'));
+      flushSync();
+      expect(queryMenu()?.hasAttribute('data-cinder-closing')).toBe(true);
 
-      await waitFor(() => expect(queryMenu()).toBeNull());
+      closingMenu?.dispatchEvent(createTransitionEndEvent('translate'));
+      flushSync();
+      // Wall-clock independence: the menu is gone the moment the last tracked
+      // transition ends, with the fake clock never advanced. Compare markup,
+      // not the element, so a failure reports quickly instead of serializing
+      // the happy-dom node graph.
+      expect(queryMenu()?.outerHTML ?? null).toBeNull();
     } finally {
+      jest.useRealTimers();
       window.getComputedStyle = originalGetComputedStyle;
     }
   });
@@ -919,6 +937,10 @@ describe('Dropdown', () => {
       return originalGetComputedStyle(target);
     };
 
+    // Frozen clock: the close genuinely cannot complete before the reopen, so
+    // the generation guard is always exercised rather than raced by the
+    // fallback timer on a slow host.
+    jest.useFakeTimers();
     try {
       const { container, rerender } = render(Dropdown, {
         props: { open: true, trigger: triggerSnippet, children: textSnippet('Menu item') },
@@ -927,14 +949,17 @@ describe('Dropdown', () => {
       expect(queryMenu()).not.toBeNull();
 
       await rerender({ open: false, trigger: triggerSnippet, children: textSnippet('Menu item') });
-      expect(queryMenu()?.hasAttribute('data-cinder-closing')).toBe(true);
+      const closingMenu = queryMenu();
+      expect(closingMenu?.hasAttribute('data-cinder-closing')).toBe(true);
 
       // Reopen before the (transitionend-driven) close ever completes.
       await rerender({ open: true, trigger: triggerSnippet, children: textSnippet('Menu item') });
 
-      expect(queryMenu()).not.toBeNull();
+      // Same node, not a remount; a boolean keeps a failure cheap to report.
+      expect(queryMenu() === closingMenu).toBe(true);
       expect(queryMenu()?.hasAttribute('data-cinder-closing')).toBe(false);
     } finally {
+      jest.useRealTimers();
       window.getComputedStyle = originalGetComputedStyle;
     }
   });

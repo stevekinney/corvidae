@@ -19,7 +19,6 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import type { RevisionRealmConfig } from '../realm/revision-realm-registry.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
@@ -28,6 +27,7 @@ import { workflow, type WorkflowDefinition } from '../types.ts';
 import { copyWorkflowDefinition } from './construction.ts';
 import {
   ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING,
+  ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING,
   Engine,
   getRevisionRealmDiagnostics,
 } from './index.ts';
@@ -35,17 +35,28 @@ import { getInternals } from './internals.ts';
 import { buildRegistrationEntry } from './registration.ts';
 
 /**
- * Wait until exactly `count` signal waiters are registered engine-wide — the
- * same engine-level bookkeeping `worker-execution-suspension.test.ts` uses
- * to prove a worker-mode workflow genuinely parked on a `signal-wait`
- * operation request, not merely "probably fast enough." Populated when the
- * engine processes a `checkpoint` outbound message naming a `signal-wait`
- * operation, regardless of which `ExecutionStrategy` produced it.
+ * Wait for `workflowId` to park on its signal, then assert exactly
+ * `expectedTotal` signal waiters are registered engine-wide — the same
+ * engine-level bookkeeping `worker-execution-suspension.test.ts` uses to
+ * prove a workflow genuinely parked on a `signal-wait` operation request, not
+ * merely "probably fast enough." Populated when the engine processes a
+ * `checkpoint` outbound message naming a `signal-wait` operation, regardless
+ * of which `ExecutionStrategy` produced it.
+ *
+ * The park is awaited as an event rather than polled against a budget:
+ * reaching it means booting a real revision-realm Worker, importing its
+ * fixture and running a turn — work whose duration tracks host load, not
+ * correctness (COR-1333). A workflow that never parks is a real hang,
+ * reported by the test runner's own per-test timeout. The seam resolves per
+ * workflow, so the engine-wide total is asserted separately.
  */
-async function waitForSignalWaiters(engine: Engine, count: number): Promise<void> {
-  await waitForCondition(() => engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]() === count, {
-    label: `${count} signal waiter(s)`,
-  });
+async function waitForSignalWaiter(
+  engine: Engine,
+  workflowId: string,
+  expectedTotal: number,
+): Promise<void> {
+  await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId);
+  expect(engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]()).toBe(expectedTotal);
 }
 
 const ORDER_WORKFLOW_NAME = 'r2e-order-workflow';
@@ -212,7 +223,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
       await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionA, 'revision-a');
 
       const handleA = await engine.start(ORDER_WORKFLOW_NAME, 'input-a', { id: 'r2e-order-a' });
-      await waitForSignalWaiters(engine, 1);
+      await waitForSignalWaiter(engine, 'r2e-order-a', 1);
 
       // Activation while A is still mid-execution: A drains (no new starts),
       // but A's own in-flight realm is untouched — "the old realm remains
@@ -220,7 +231,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
       await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionB, 'revision-b');
 
       const handleB = await engine.start(ORDER_WORKFLOW_NAME, 'input-b', { id: 'r2e-order-b' });
-      await waitForSignalWaiters(engine, 2);
+      await waitForSignalWaiter(engine, 'r2e-order-b', 2);
 
       // Both genuinely mid-execution at once, in distinct realms, before
       // either is released — proves concurrency, not just eventual success.
@@ -264,7 +275,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
       const handle = await engine.start(ORDER_WORKFLOW_NAME, 'input', {
         id: 'r2e-diagnostics-order',
       });
-      await waitForSignalWaiters(engine, 1);
+      await waitForSignalWaiter(engine, 'r2e-diagnostics-order', 1);
 
       const pools = getRevisionRealmDiagnostics(engine);
       expect(pools).toHaveLength(1);
@@ -308,7 +319,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
     try {
       await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionA, 'drain-a');
       const handle = await engine.start(ORDER_WORKFLOW_NAME, 'input', { id: 'r2e-drain-a' });
-      await waitForSignalWaiters(engine, 1);
+      await waitForSignalWaiter(engine, 'r2e-drain-a', 1);
 
       // Deactivate revision A — no realm work is pinned to it any more once
       // this run finishes, so its pool must be fully reclaimed.
@@ -350,7 +361,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
     try {
       await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revisionA, 'dispose-a');
       await engine.start(ORDER_WORKFLOW_NAME, 'input', { id: 'r2e-dispose-a' });
-      await waitForSignalWaiters(engine, 1);
+      await waitForSignalWaiter(engine, 'r2e-dispose-a', 1);
 
       const callsBeforeDispose = terminateSpy.mock.calls.length;
       // Concurrent async disposal must share one memoized teardown
@@ -372,7 +383,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
     const { engine: engine1, storage } = newRealmEngine(configByRevision);
     await registerAndActivate(engine1, ORDER_WORKFLOW_NAME, revisionA, 'recover-a');
     await engine1.start(ORDER_WORKFLOW_NAME, 'input', { id: 'r2e-recover-a' });
-    await waitForSignalWaiters(engine1, 1);
+    await waitForSignalWaiter(engine1, 'r2e-recover-a', 1);
     // Simulate a crash/restart: dispose without letting the run complete.
     // Its durable `WorkflowState.revision` pin (revisionA) survives in
     // `storage`; the catalog's active pointer is about to move past it.
@@ -394,21 +405,14 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
       await registerOnly(engine2, ORDER_WORKFLOW_NAME, revisionA, 'recover-a');
       await registerAndActivate(engine2, ORDER_WORKFLOW_NAME, revisionB, 'recover-b');
       await engine2.recoverAll();
-      await waitForSignalWaiters(engine2, 1);
+      await waitForSignalWaiter(engine2, 'r2e-recover-a', 1);
 
       const state = await engine2.get('r2e-recover-a');
+      // Attach to the recovered run's result before releasing it, so its
+      // completion is observed as an event rather than polled from storage.
+      const recoveredResult = engine2.getHandle('r2e-recover-a').result();
       await engine2.signal('r2e-recover-a', ORDER_RELEASE_SIGNAL, 'go');
-      await waitForCondition(
-        async () => {
-          const recoveredState = await engine2.get('r2e-recover-a');
-          return recoveredState?.status === 'completed';
-        },
-        {
-          label: 'recovered workflow completed',
-        },
-      );
-      const finalState = await engine2.get('r2e-recover-a');
-      expect(finalState?.result).toMatchObject({ revision: 'revision-a' });
+      expect(await recoveredResult).toMatchObject({ revision: 'revision-a' });
       expect(state?.revision).toBe(revisionA);
     } finally {
       await engine2[Symbol.asyncDispose]();
@@ -453,7 +457,7 @@ describe('RevisionRealmExecutionStrategy (engine integration, COR-249)', () => {
       await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revision, 'cancel-race');
       const workflowId = 'r2e-cancel-race-a';
       const handle = await engine.start(ORDER_WORKFLOW_NAME, 'input', { id: workflowId });
-      await waitForSignalWaiters(engine, 1);
+      await waitForSignalWaiter(engine, workflowId, 1);
 
       const strategy = getInternals(engine).strategy;
       // Simulates `engine.cancel()`'s own synchronous first step, run
