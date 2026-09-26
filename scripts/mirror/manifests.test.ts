@@ -18,7 +18,11 @@ import {
   type MirrorTarget,
 } from './manifests.ts';
 import { loadPackageMap, PackageMapError, type PackageMap } from './package-map.ts';
-import { computeSourceDigest } from './source-digest.ts';
+import {
+  collectDigestedFiles,
+  hashDigestedFiles,
+  publicationInputContract,
+} from './source-digest.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
@@ -133,6 +137,14 @@ async function withTree(
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'corvidae-manifests-'));
   try {
+    const surface = await Bun.file(new URL('./package-surface.json', import.meta.url)).json();
+    // These tests exercise manifest composition, so their fixture owns a literal, minimal surface.
+    surface.packages['@lostgradient/cinder'].exports = { '.': './dist/index.js' };
+    surface.packages['@lostgradient/cinder'].files = ['dist'];
+    await writeTree(root, {
+      'scripts/mirror/package-map.json': realPackageMap,
+      'scripts/mirror/package-surface.json': surface,
+    });
     await writeTree(root, files);
     await body(root);
   } finally {
@@ -179,12 +191,32 @@ async function packageMapWithCurrentDigests(root: string): Promise<PackageMap> {
       overlaid[name] = entry;
       continue;
     }
-    const sourceDigest = await computeSourceDigest({
+    const sourceFiles = await collectDigestedFiles({
       corvidaeRoot: root,
       corvidaeDirectory: workspace.directory,
       workspace: workspace.name,
     });
-    overlaid[name] = { ...entry, sourceDigest };
+    const input = await publicationInputContract({
+      corvidaeRoot: root,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    overlaid[name] = {
+      ...entry,
+      publishedSnapshot: {
+        schemaVersion: 1,
+        version: entry.lastPublishedVersion ?? '0.0.0',
+        gitHead: '0'.repeat(40),
+        corvidaeCommit: '0'.repeat(40),
+        source: {
+          algorithm: 'sha256-files-v1',
+          paths: sourceFiles.map((file) => file.path),
+          digest: hashDigestedFiles(sourceFiles),
+        },
+        publicationInputContract: input,
+        registryManifestContract: input,
+      },
+    };
   }
   return { ...map, workspaces: overlaid };
 }

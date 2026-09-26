@@ -13,6 +13,7 @@ import {
   hashDigestedFiles,
   isDigestExcluded,
   StaleCrossTargetEdgeError,
+  type PublishedSnapshot,
 } from './source-digest.ts';
 import { planSurface } from './surface.ts';
 
@@ -257,6 +258,33 @@ describe('computeSourceDigest', () => {
       },
     );
   });
+
+  test('is unaffected by a declared source file excluded by the public manifest changing', async () => {
+    await withTree(
+      {
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        'packages/weft/documentation/guides/remote-task-recovery.md': '# Recovery\n',
+      },
+      async (root) => {
+        const before = await computeSourceDigest({
+          corvidaeRoot: root,
+          corvidaeDirectory: 'packages/weft',
+          workspace: '@lostgradient/weft',
+        });
+        await Bun.write(
+          join(root, 'packages/weft/documentation/guides/remote-task-recovery.md'),
+          '# Recovery, rewritten\n',
+        );
+        expect(
+          await computeSourceDigest({
+            corvidaeRoot: root,
+            corvidaeDirectory: 'packages/weft',
+            workspace: '@lostgradient/weft',
+          }),
+        ).toBe(before);
+      },
+    );
+  });
 });
 
 describe('assertEdgeNotStale', () => {
@@ -264,20 +292,61 @@ describe('assertEdgeNotStale', () => {
     workspace: '@lostgradient/example',
     publicName: '@lostgradient/example',
     version: '1.0.0',
+    currentPaths: ['src/index.ts'],
   };
+  const snapshot = (sourceDigest: string, publicationDigest = 'contract'): PublishedSnapshot => ({
+    schemaVersion: 1,
+    version: '1.0.0',
+    gitHead: '0'.repeat(40),
+    corvidaeCommit: '0'.repeat(40),
+    source: { algorithm: 'sha256-files-v1', paths: ['src/index.ts'], digest: sourceDigest },
+    publicationInputContract: { algorithm: 'sha256-json-v1', digest: publicationDigest },
+    registryManifestContract: { algorithm: 'sha256-json-v1', digest: 'registry' },
+  });
+
+  test('rejects a different published version, path list, or publication input contract', () => {
+    const check = {
+      ...base,
+      snapshot: snapshot('abc'),
+      currentDigest: 'abc',
+      currentPublicationInputDigest: 'contract',
+    };
+    expect(() => assertEdgeNotStale({ ...check, version: '2.0.0' })).toThrow('version');
+    expect(() => assertEdgeNotStale({ ...check, currentPaths: ['src/other.ts'] })).toThrow(
+      'source',
+    );
+    expect(() =>
+      assertEdgeNotStale({ ...check, currentPublicationInputDigest: 'different' }),
+    ).toThrow('publication inputs');
+  });
 
   test('passes when the recorded digest matches the current one', () => {
     expect(() =>
-      assertEdgeNotStale({ ...base, recordedDigest: 'abc', currentDigest: 'abc' }),
+      assertEdgeNotStale({
+        ...base,
+        snapshot: snapshot('abc'),
+        currentDigest: 'abc',
+        currentPublicationInputDigest: 'contract',
+      }),
     ).not.toThrow();
   });
 
   test('refuses when the recorded digest no longer matches, naming both digests and the version', () => {
     expect(() =>
-      assertEdgeNotStale({ ...base, recordedDigest: 'abc', currentDigest: 'def' }),
+      assertEdgeNotStale({
+        ...base,
+        snapshot: snapshot('abc'),
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      }),
     ).toThrow(StaleCrossTargetEdgeError);
     try {
-      assertEdgeNotStale({ ...base, recordedDigest: 'abc', currentDigest: 'def' });
+      assertEdgeNotStale({
+        ...base,
+        snapshot: snapshot('abc'),
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      });
       throw new Error('expected a throw');
     } catch (error) {
       const message = (error as Error).message;
@@ -291,14 +360,24 @@ describe('assertEdgeNotStale', () => {
 
   test('refuses when no digest has ever been recorded, with a message distinct from a mismatch', () => {
     expect(() =>
-      assertEdgeNotStale({ ...base, recordedDigest: undefined, currentDigest: 'def' }),
+      assertEdgeNotStale({
+        ...base,
+        snapshot: undefined,
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      }),
     ).toThrow(StaleCrossTargetEdgeError);
     try {
-      assertEdgeNotStale({ ...base, recordedDigest: undefined, currentDigest: 'def' });
+      assertEdgeNotStale({
+        ...base,
+        snapshot: undefined,
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      });
       throw new Error('expected a throw');
     } catch (error) {
       const message = (error as Error).message;
-      expect(message).toContain('no recorded sourceDigest');
+      expect(message).toContain('no publishedSnapshot');
       expect(message).toContain('record-source-digest.ts --workspace @lostgradient/example');
     }
   });
@@ -350,8 +429,28 @@ describe('the guard against the real workspaces', () => {
     const map = packageMapForFixtures;
     const entry = map.workspaces[workspace];
     if (entry?.disposition !== 'publish-as') throw new Error(`${workspace} is not published`);
-    const { sourceDigest: _current, ...rest } = entry;
-    const updated = sourceDigest === undefined ? rest : { ...rest, sourceDigest };
+    const { publishedSnapshot: current, ...rest } = entry;
+    const updated =
+      sourceDigest === undefined
+        ? rest
+        : {
+            ...rest,
+            publishedSnapshot: {
+              ...(current ?? {
+                schemaVersion: 1,
+                version: '1.0.0',
+                gitHead: '0'.repeat(40),
+                corvidaeCommit: '0'.repeat(40),
+                source: { algorithm: 'sha256-files-v1', paths: [], digest: sourceDigest },
+                publicationInputContract: { algorithm: 'sha256-json-v1', digest: '0'.repeat(64) },
+                registryManifestContract: { algorithm: 'sha256-json-v1', digest: '0'.repeat(64) },
+              }),
+              source: {
+                ...(current?.source ?? { algorithm: 'sha256-files-v1', paths: [] }),
+                digest: sourceDigest,
+              },
+            },
+          };
     return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
   };
 

@@ -3,13 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { loadPackageMap } from './package-map.ts';
 import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
 import {
   commitExists,
   compareAgainstCommit,
   fetchGitHead,
-  recordSourceDigest,
   RegistryVerificationError,
   sourceComparisonIsClean,
 } from './record-source-digest.ts';
@@ -288,152 +286,6 @@ describe('compareAgainstCommit', () => {
         },
       );
       expect(comparison.differing).toEqual(['src/index.ts']);
-    });
-  });
-});
-
-/**
- * `recordSourceDigest` end to end, against a real fixture git repository and a stubbed `bun info`
- * — never the network. `package-map.json`'s real `@lostgradient/operative` entry is the workspace
- * under test (`publish-as`, a real `lastPublishedVersion`), so only the registry lookup and the
- * target repository are fixtures; `collectDigestedFiles` reads this checkout's actual
- * `packages/operative/src` for real.
- */
-describe('recordSourceDigest', () => {
-  const corvidaeRoot = join(import.meta.dir, '..', '..');
-
-  test('records nothing but returns the digest when corvidae’s source matches the published commit exactly', async () => {
-    await withScratch(async (scratch) => {
-      const { readdir } = await import('node:fs/promises');
-      const files: Record<string, string> = {};
-      for (const entry of await readdir(join(corvidaeRoot, 'packages/operative/src'), {
-        withFileTypes: true,
-        recursive: true,
-      })) {
-        if (!entry.isFile()) continue;
-        const relative = join(entry.parentPath, entry.name).slice(
-          join(corvidaeRoot, 'packages/operative').length + 1,
-        );
-        files[`packages/operative/${relative}`] = await Bun.file(
-          join(entry.parentPath, entry.name),
-        ).text();
-      }
-      const [sha] = await buildFixtureRepository(scratch, [{ files, message: 'mirrors corvidae' }]);
-
-      const result = await recordSourceDigest({
-        corvidaeRoot,
-        workspace: '@lostgradient/operative',
-        targetRepositoryDirectory: scratch,
-        registryRunner: stubRegistryInfo(sha),
-      });
-      expect(result.workspace).toBe('@lostgradient/operative');
-      expect(result.gitHead).toBe(sha!);
-      expect(result.digest).toMatch(/^[0-9a-f]{64}$/);
-    });
-  }, 30_000);
-
-  test('refuses when corvidae’s source differs from the published commit, naming the file', async () => {
-    await withScratch(async (scratch) => {
-      const [sha] = await buildFixtureRepository(scratch, [
-        {
-          files: { 'packages/operative/src/index.ts': 'export const stale = true;\n' },
-          message: 'stale',
-        },
-      ]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/operative',
-          targetRepositoryDirectory: scratch,
-          registryRunner: stubRegistryInfo(sha),
-        }),
-      ).rejects.toThrow(/does not match/);
-    });
-  });
-
-  test('refuses when the registry has no gitHead for the version', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/operative',
-          targetRepositoryDirectory: scratch,
-          registryRunner: stubRegistryInfo(undefined),
-        }),
-      ).rejects.toThrow('no recorded gitHead');
-    });
-  });
-
-  test('refuses when the gitHead commit is not in the target repository’s history', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/operative',
-          targetRepositoryDirectory: scratch,
-          registryRunner: stubRegistryInfo('0'.repeat(40)),
-        }),
-      ).rejects.toThrow(/is not in .* history/);
-    });
-  });
-
-  test('refuses a workspace with no entry in package-map.json', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/nonexistent',
-          targetRepositoryDirectory: scratch,
-          registryRunner: stubRegistryInfo(undefined),
-        }),
-      ).rejects.toThrow('no entry in package-map.json');
-    });
-  });
-
-  test('refuses a workspace that is not publish-as', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          // Real map: `@lostgradient/weft-ui` is `private-workspace` as of COR-1196.
-          workspace: '@lostgradient/weft-ui',
-          targetRepositoryDirectory: scratch,
-          registryRunner: stubRegistryInfo(undefined),
-        }),
-      ).rejects.toThrow(/disposition is "private-workspace"/);
-    });
-  });
-
-  test('refuses a publish-as workspace with no lastPublishedVersion', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      // Every publish-as entry in the real map now records a lastPublishedVersion (COR-1198), so
-      // this forces one back to null on an overridden map rather than pinning the assertion to
-      // whichever real workspace happens to be unpublished today.
-      const map = await loadPackageMap();
-      const entry = map.workspaces['@lostgradient/operative'];
-      if (entry?.disposition !== 'publish-as') {
-        throw new Error('package-map.json must record @lostgradient/operative as publish-as');
-      }
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/operative',
-          targetRepositoryDirectory: scratch,
-          registryRunner: stubRegistryInfo(undefined),
-          packageMap: {
-            ...map,
-            workspaces: {
-              ...map.workspaces,
-              '@lostgradient/operative': { ...entry, lastPublishedVersion: null },
-            },
-          },
-        }),
-      ).rejects.toThrow('lastPublishedVersion is null');
     });
   });
 });

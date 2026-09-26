@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { publicationContractAlgorithm, publicationSnapshotSchemaVersion } from './source-digest.ts';
 
 /**
  * Every corvidae workspace's disposition when the mirror transform emits a public target.
@@ -27,14 +28,27 @@ const publishAsSchema = z.object({
   /** `null` where the name has never been published, which the surface-parity gate must treat as a first publish. */
   lastPublishedVersion: z.string().min(1).nullable(),
   requiredBy: z.array(z.string().min(1)).min(1).optional(),
-  /**
-   * A hex SHA-256 digest of corvidae's published source for this workspace, as it stood at
-   * `lastPublishedVersion`'s publish — see `source-digest.ts` for what it covers and
-   * `record-source-digest.ts` for how it is recorded. Absent for every entry until something has
-   * recorded one; `manifests.ts`'s `assertEdgeNotStale` treats absence as a refusal for any
-   * cross-target edge to this workspace, not as "assume it still matches."
-   */
-  sourceDigest: z.string().min(1).optional(),
+  publishedSnapshot: z
+    .object({
+      schemaVersion: z.literal(publicationSnapshotSchemaVersion),
+      version: z.string().min(1),
+      gitHead: z.string().regex(/^[0-9a-f]{40}$/),
+      corvidaeCommit: z.string().regex(/^[0-9a-f]{40}$/),
+      source: z.object({
+        algorithm: z.literal('sha256-files-v1'),
+        paths: z.array(z.string().min(1)),
+        digest: z.string().regex(/^[0-9a-f]{64}$/),
+      }),
+      publicationInputContract: z.object({
+        algorithm: z.literal(publicationContractAlgorithm),
+        digest: z.string().regex(/^[0-9a-f]{64}$/),
+      }),
+      registryManifestContract: z.object({
+        algorithm: z.literal(publicationContractAlgorithm),
+        digest: z.string().regex(/^[0-9a-f]{64}$/),
+      }),
+    })
+    .optional(),
 });
 
 const privateWorkspaceSchema = z.object({
@@ -154,9 +168,9 @@ export async function coverageReport(root: string): Promise<CoverageReport> {
  * `map` is an optional override, the same shape `loadTargetOwnedPolicy` and `loadPackageSurface`
  * already accept for the two sibling documents — every production call omits it and reads the
  * committed file. `committed-plans.ts` and `manifests.test.ts`'s `planFor` helper pass one that
- * overlays a freshly computed `sourceDigest` onto every `publish-as` entry, so the many tests that
+ * overlays a freshly computed `publishedSnapshot` onto every `publish-as` entry, so the many tests that
  * build a full plan for an unrelated assertion are not incidentally testing
- * `assertEdgeNotStale`'s refusal against the real, currently-unrecorded map — that refusal is
+ * `assertEdgeNotStale`'s refusal against the committed map — that refusal is
  * tested directly, against the real map, in `source-digest.test.ts`.
  */
 export async function dispositionFor(

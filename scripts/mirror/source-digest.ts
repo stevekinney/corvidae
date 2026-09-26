@@ -1,5 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { canonicalManifest, objectRecord } from './registry-manifest.ts';
 
 import { filesCoverPath, loadPackageSurface } from './package-surface.ts';
 import { additionalSourceRoots, isSourceFile, sourceTree, versionConstants } from './source.ts';
@@ -30,12 +32,40 @@ export class SourceDigestError extends Error {}
 /** Refusal to resolve a cross-target edge whose dependency's source is not provably the published one. */
 export class StaleCrossTargetEdgeError extends SourceDigestError {}
 
+export const publicationSnapshotSchemaVersion = 1 as const;
+export const publicationContractAlgorithm = 'sha256-json-v1' as const;
+
+export interface PublicationInputContract {
+  algorithm: typeof publicationContractAlgorithm;
+  digest: string;
+}
+
+export interface PublishedSnapshot {
+  schemaVersion: typeof publicationSnapshotSchemaVersion;
+  version: string;
+  gitHead: string;
+  corvidaeCommit: string;
+  source: { algorithm: 'sha256-files-v1'; paths: string[]; digest: string };
+  publicationInputContract: PublicationInputContract;
+  registryManifestContract: PublicationInputContract;
+}
+
 export interface DigestScope {
   corvidaeRoot: string;
   /** Corvidae-relative directory of the workspace being digested. */
   corvidaeDirectory: string;
   /** The `@lostgradient/*` (or unscoped) workspace name, used to look up `additionalSourceRoots`. */
   workspace: string;
+  /** Explicit historical declarations when the checkout predates its own collector. */
+  policy?: DigestPolicy;
+}
+
+export interface DigestPolicy {
+  sourceTree: string;
+  isSourceFile: (name: string) => boolean;
+  versionConstant?: string;
+  additionalPaths: readonly string[];
+  files?: readonly string[];
 }
 
 export interface DigestedFile {
@@ -76,7 +106,10 @@ export function isDigestExcluded(path: string): boolean {
 const skippedDirectories: readonly string[] = ['node_modules'];
 
 /** Every `src/`-relative source file under one workspace, sorted, minus tests and fixtures. */
-async function collectSourceFiles(root: string): Promise<string[]> {
+async function collectSourceFiles(
+  root: string,
+  accepts: (name: string) => boolean,
+): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true, recursive: true }).catch(
     (error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') return [];
@@ -86,7 +119,7 @@ async function collectSourceFiles(root: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of entries) {
     if (!entry.isFile()) continue;
-    if (!isSourceFile(entry.name)) continue;
+    if (!accepts(entry.name)) continue;
     const path = relative(root, join(entry.parentPath, entry.name)).split(sep).join('/');
     if (path.split('/').some((segment) => skippedDirectories.includes(segment))) continue;
     if (isDigestExcluded(path)) continue;
@@ -149,28 +182,36 @@ export async function collectDigestedFiles({
   corvidaeRoot,
   corvidaeDirectory,
   workspace,
+  policy,
 }: DigestScope): Promise<DigestedFile[]> {
   const workspaceRoot = join(corvidaeRoot, corvidaeDirectory);
   const files: DigestedFile[] = [];
-  const excludedPath = versionConstants[workspace];
+  const excludedPath = policy ? policy.versionConstant : versionConstants[workspace];
+  const selectedSourceTree = policy?.sourceTree ?? sourceTree;
 
-  const sourceRoot = join(workspaceRoot, sourceTree);
-  for (const path of await collectSourceFiles(sourceRoot)) {
-    const relativePath = `${sourceTree}/${path}`;
+  const sourceRoot = join(workspaceRoot, selectedSourceTree);
+  for (const path of await collectSourceFiles(sourceRoot, policy?.isSourceFile ?? isSourceFile)) {
+    const relativePath = `${selectedSourceTree}/${path}`;
     if (relativePath === excludedPath) continue;
     const bytes = new Uint8Array(await Bun.file(join(sourceRoot, path)).arrayBuffer());
     files.push({ path: relativePath, bytes });
   }
 
-  for (const declared of additionalSourceRoots[workspace] ?? []) {
-    for (const path of declared.paths) {
-      if (path === excludedDeclaredPath || path === excludedPath) continue;
-      if (!(await isPublishedByPackageSurface(workspace, path))) continue;
-      const absolute = join(workspaceRoot, path);
-      const file = Bun.file(absolute);
-      if (!(await file.exists())) continue;
-      files.push({ path, bytes: new Uint8Array(await file.arrayBuffer()) });
-    }
+  const additionalPaths =
+    policy?.additionalPaths ??
+    (additionalSourceRoots[workspace] ?? []).flatMap((entry) => entry.paths);
+  for (const path of additionalPaths) {
+    if (path === excludedDeclaredPath || path === excludedPath) continue;
+    if (
+      policy
+        ? policy.files !== undefined && !filesCoverPath(policy.files, path)
+        : !(await isPublishedByPackageSurface(workspace, path))
+    )
+      continue;
+    const absolute = join(workspaceRoot, path);
+    const file = Bun.file(absolute);
+    if (!(await file.exists())) continue;
+    files.push({ path, bytes: new Uint8Array(await file.arrayBuffer()) });
   }
 
   return files.toSorted((left, right) => left.path.localeCompare(right.path));
@@ -202,6 +243,109 @@ export async function computeSourceDigest(scope: DigestScope): Promise<string> {
   return hashDigestedFiles(await collectDigestedFiles(scope));
 }
 
+const publicationManifestFields = [
+  'type',
+  'imports',
+  'browser',
+  'main',
+  'module',
+  'types',
+  'bin',
+  'sideEffects',
+  'engines',
+  'peerDependencies',
+  'peerDependenciesMeta',
+] as const;
+
+/** Hash source-owned inputs; target-owned versions and unrelated catalog entries are excluded. */
+export async function publicationInputContract({
+  corvidaeRoot,
+  corvidaeDirectory,
+  workspace,
+}: DigestScope): Promise<PublicationInputContract> {
+  const packageRoot = join(corvidaeRoot, corvidaeDirectory);
+  const manifest = objectRecord(await Bun.file(join(packageRoot, 'package.json')).json());
+  const root = objectRecord(await Bun.file(join(corvidaeRoot, 'package.json')).json());
+  const map = objectRecord(
+    objectRecord(await Bun.file(join(corvidaeRoot, 'scripts/mirror/package-map.json')).json())[
+      'workspaces'
+    ],
+  );
+  const runtimeDependencies: Record<string, unknown> = {};
+  for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+    if (manifest[field] === undefined) continue;
+    runtimeDependencies[field] = Object.fromEntries(
+      Object.entries(objectRecord(manifest[field])).map(([name, input]) => {
+        if (typeof input !== 'string')
+          throw new SourceDigestError(`${name}: invalid dependency range`);
+        let range = input;
+        if (range.startsWith('catalog:')) {
+          const catalogName = range.slice('catalog:'.length);
+          const catalog = catalogName
+            ? objectRecord(root['catalogs'])[catalogName]
+            : root['catalog'];
+          const resolved = objectRecord(catalog)[name];
+          if (typeof resolved !== 'string')
+            throw new SourceDigestError(`${name}: root catalog does not declare it`);
+          range = resolved;
+        }
+        const disposition = map[name] === undefined ? undefined : objectRecord(map[name]);
+        const publicName =
+          disposition?.['disposition'] === 'publish-as' ? disposition['name'] : name;
+        if (typeof publicName !== 'string')
+          throw new SourceDigestError(`${name}: missing public package name`);
+        return [publicName, range];
+      }),
+    );
+  }
+  const manifestFields = Object.fromEntries(
+    publicationManifestFields
+      .filter((field) => field in manifest)
+      .map((field) => [field, manifest[field]]),
+  );
+  const surface = await loadPackageSurface(
+    join(corvidaeRoot, 'scripts/mirror/package-surface.json'),
+  );
+  const entry = surface.packages[workspace];
+  if (!entry) throw new SourceDigestError(`${workspace}: no declared publication surface`);
+  let resolved = entry;
+  if (!Array.isArray(entry.files) || 'generator' in entry.exports) {
+    const resolver: typeof import('./package-surface.ts') = await import(
+      pathToFileURL(join(corvidaeRoot, 'scripts/mirror/package-surface.ts')).href
+    );
+    const discovery: typeof import('../../components/cinder/scripts/lib/discover-components.ts') =
+      await import(pathToFileURL(join(packageRoot, 'scripts/lib/discover-components.ts')).href);
+    resolved = {
+      ...entry,
+      ...resolver.resolveSurface({
+        entry,
+        packageRoot,
+        components: await discovery.discoverComponents(),
+      }),
+    };
+  }
+  const payload = {
+    manifestFields,
+    runtimeDependencies,
+    publicSurface: {
+      publicName: resolved.publicName,
+      exports: resolved.exports,
+      files: resolved.files,
+      peerDependencies: resolved.peerDependencies,
+      sideEffects: resolved.sideEffects,
+      bin: resolved.bin,
+      manifestFields: resolved.manifestFields,
+      sourceRoot: resolved.build.sourceRoot,
+    },
+  };
+  return {
+    algorithm: publicationContractAlgorithm,
+    digest: new Bun.CryptoHasher('sha256')
+      .update(JSON.stringify(canonicalManifest(payload)))
+      .digest('hex'),
+  };
+}
+
 export interface EdgeStalenessCheck {
   /** The dependency's corvidae workspace name, for the message. */
   workspace: string;
@@ -209,43 +353,42 @@ export interface EdgeStalenessCheck {
   publicName: string;
   /** `package-map.json`'s `lastPublishedVersion` for the dependency. */
   version: string;
-  /** `package-map.json`'s recorded `sourceDigest` for the dependency, or `undefined` if none. */
-  recordedDigest: string | undefined;
+  snapshot: PublishedSnapshot | undefined;
   /** The dependency's digest computed fresh from corvidae's current tree. */
   currentDigest: string;
+  currentPaths: readonly string[];
+  currentPublicationInputDigest: string;
 }
 
-/**
- * Refuse a cross-target edge whose dependency has no recorded digest, or whose recorded digest no
- * longer matches corvidae's current source for it.
- *
- * Refusal, not a warning, in both cases. Every other guard in this transform —
- * `TargetOwnedViolation`, `RetirementError`, `ManifestTransformError` itself — fails the plan
- * rather than logging past the problem, and a warning here would be the one guard in the whole
- * pipeline a sync can silently ignore. Refusing a *missing* digest specifically (rather than
- * treating "never recorded" as "assume it still matches") is the conservative default the owner's
- * ruling calls for: a cross-target edge is only trustworthy once something has actually verified
- * corvidae's source against what got published, and nothing has verified it until
- * `record-source-digest.ts` runs. Every edge in the live graph is unrecorded as of this change (see
- * `source-digest.test.ts`'s enumeration), so this refuses all of them until each is recorded once —
- * a one-time cost, paid by running the record command per dependency after confirming its last
- * publish matches corvidae's source, not a standing tax on every sync afterward.
- */
+/** Refuse edges unless the published version, historical source, and publication inputs match. */
 export function assertEdgeNotStale({
   workspace,
   publicName,
   version,
-  recordedDigest,
+  snapshot,
   currentDigest,
+  currentPaths,
+  currentPublicationInputDigest,
 }: EdgeStalenessCheck): void {
-  if (recordedDigest === undefined) {
+  if (snapshot === undefined) {
     throw new StaleCrossTargetEdgeError(
-      `${workspace}: package-map.json has no recorded sourceDigest for ${publicName}, so the edge to it cannot be trusted. Publish ${publicName} from its own target (or confirm ${publicName}@${version} already matches corvidae's current source), then record its digest with \`bun scripts/mirror/record-source-digest.ts --workspace ${workspace}\`.`,
+      `${workspace}: package-map.json has no publishedSnapshot for ${publicName}@${version}, so the edge to it cannot be trusted. Record its publication snapshot with \`bun scripts/mirror/record-source-digest.ts --workspace ${workspace} --target-clone /path/to/target --published-source-root /path/to/checkout --mirror-commit <verified-sync-sha>\`.`,
     );
   }
-  if (recordedDigest !== currentDigest) {
+  if (snapshot.schemaVersion !== publicationSnapshotSchemaVersion || snapshot.version !== version) {
+    throw new StaleCrossTargetEdgeError(`${workspace}: publishedSnapshot version is unsupported`);
+  }
+  if (
+    snapshot.source.digest !== currentDigest ||
+    JSON.stringify(snapshot.source.paths) !== JSON.stringify(currentPaths)
+  ) {
     throw new StaleCrossTargetEdgeError(
-      `${workspace}: corvidae's source for ${publicName} has changed since ${publicName}@${version} was published (recorded digest ${recordedDigest}, current ${currentDigest}). Publish ${publicName} from its own target first, then record the new digest with \`bun scripts/mirror/record-source-digest.ts --workspace ${workspace}\`.`,
+      `${workspace}: corvidae's source for ${publicName} has changed since ${publicName}@${version} was published (recorded digest ${snapshot.source.digest}, current ${currentDigest}). Publish ${publicName} from its own target first, then record a new publishedSnapshot before using this edge.`,
+    );
+  }
+  if (snapshot.publicationInputContract.digest !== currentPublicationInputDigest) {
+    throw new StaleCrossTargetEdgeError(
+      `${workspace}: publication inputs for ${publicName}@${version} changed since the snapshot was recorded. Record a new publishedSnapshot before using this edge.`,
     );
   }
 }

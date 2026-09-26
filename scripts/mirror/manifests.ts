@@ -9,7 +9,12 @@ import {
 } from './layout-map.ts';
 import { dispositionFor, type PackageMap, type WorkspaceDisposition } from './package-map.ts';
 import { childProcessEnvironment } from './packaging.ts';
-import { assertEdgeNotStale, computeSourceDigest } from './source-digest.ts';
+import {
+  assertEdgeNotStale,
+  collectDigestedFiles,
+  hashDigestedFiles,
+  publicationInputContract,
+} from './source-digest.ts';
 import type { EmittedWorkspace } from './source.ts';
 import {
   keysFor,
@@ -274,8 +279,10 @@ function publishedRangeFor(
     workspace,
     publicName: disposition.name,
     version: disposition.lastPublishedVersion,
-    recordedDigest: disposition.sourceDigest,
+    snapshot: disposition.publishedSnapshot,
     currentDigest,
+    currentPaths: context.currentSourcePaths.get(workspace) ?? [],
+    currentPublicationInputDigest: context.currentPublicationInputs.get(workspace) ?? '',
   });
   return `^${disposition.lastPublishedVersion}`;
 }
@@ -293,6 +300,8 @@ interface RewriteContext {
    * than digesting on demand because it is called from a synchronous rewrite chain.
    */
   currentDigests: ReadonlyMap<string, string>;
+  currentSourcePaths: ReadonlyMap<string, readonly string[]>;
+  currentPublicationInputs: ReadonlyMap<string, string>;
   /** Catalog entries this target must declare, accumulated as cross-target edges are resolved. */
   requiredCatalog: Map<string, string>;
   /** Edges dropped because the other end does not exist downstream, reported rather than silent. */
@@ -818,16 +827,26 @@ export async function planManifests({
   // digested up front rather than the smaller set actually crossing a target boundary. The count
   // is small (a dozen or so today) and the digest itself is a handful of file reads per workspace.
   const currentDigests = new Map<string, string>();
+  const currentSourcePaths = new Map<string, readonly string[]>();
+  const currentPublicationInputs = new Map<string, string>();
   for (const workspace of workspaces) {
     if (dispositions.get(workspace.name)?.disposition !== 'publish-as') continue;
-    currentDigests.set(
+    const sourceFiles = await collectDigestedFiles({
+      corvidaeRoot,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    currentDigests.set(workspace.name, hashDigestedFiles(sourceFiles));
+    currentSourcePaths.set(
       workspace.name,
-      await computeSourceDigest({
-        corvidaeRoot,
-        corvidaeDirectory: workspace.directory,
-        workspace: workspace.name,
-      }),
+      sourceFiles.map((file) => file.path),
     );
+    const publicationInputs = await publicationInputContract({
+      corvidaeRoot,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    currentPublicationInputs.set(workspace.name, publicationInputs.digest);
   }
 
   const context: RewriteContext = {
@@ -836,6 +855,8 @@ export async function planManifests({
     publicNames,
     dispositions,
     currentDigests,
+    currentSourcePaths,
+    currentPublicationInputs,
     requiredCatalog: new Map(),
     dropped: [],
     intraTargetEdges: new Map(),

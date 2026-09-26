@@ -594,6 +594,12 @@ describe('a remapped workspace on disk', () => {
         'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
+        for (const policyFile of ['package-map.json', 'package-surface.json']) {
+          await Bun.write(
+            join(root, 'scripts/mirror', policyFile),
+            await Bun.file(join(import.meta.dir, policyFile)).text(),
+          );
+        }
         const plan = await planSurface({ corvidaeRoot: root, target: 'cinder' });
         await withTree({}, async (directory) => {
           const policy = await loadTargetOwnedPolicy();
