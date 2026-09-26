@@ -3,6 +3,7 @@ import type { ExecutionStrategy } from './execution-strategy.ts';
 import type { OperationOutcome, WorkerInboundMessage, WorkerOutboundMessage } from './types.ts';
 import { WorkerCheckpointResumeState } from './worker-checkpoint-resume-state.ts';
 import { WorkerExecutionDispatcher } from './worker-execution-dispatcher.ts';
+import { WorkerExecutionDisposal } from './worker-execution-disposal.ts';
 import { WorkerExecutionOwnership } from './worker-execution-ownership.ts';
 import type { WorkerExecutionStrategyOptions } from './worker-execution-strategy-options.ts';
 import { WorkerFaultHandler } from './worker-fault-handling.ts';
@@ -50,25 +51,9 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
   readonly #faultHandler: WorkerFaultHandler;
   readonly #dispatcher: WorkerExecutionDispatcher;
   #messageHandler: ((message: WorkerOutboundMessage) => void | Promise<void>) | null;
-  #disposed: boolean;
-  /**
-   * Memoized `[Symbol.asyncDispose]` result (COR-113). `#teardown` itself
-   * already runs at most once — guarded by `#disposed`, checked by both
-   * dispose entry points before touching it — but an async caller also needs
-   * every repeated or concurrent `asyncDispose()` call to observe the SAME
-   * in-flight disposal rather than each awaiting its own call into
-   * `#pool[Symbol.asyncDispose]()`. Assigned synchronously (this field's
-   * setter never itself awaits), so two synchronous, unawaited calls in the
-   * same tick still share one promise.
-   */
-  #asyncDisposePromise: Promise<void> | null;
+  readonly #disposal: WorkerExecutionDisposal;
   #nextTurnId: number;
-  /**
-   * Per-workflow captured revision (WFT-20), set once at `startWorkflow()`
-   * and read by every subsequent turn's `beginTurn` — including `resume`
-   * turns, whose inbound message never re-carries the revision. Cleared when
-   * the workflow reaches a terminal outbound message or is cancelled.
-   */
+  /** Per-workflow captured revision (WFT-20), set at `startWorkflow()` and read by every subsequent turn's `beginTurn` (including `resume`, whose inbound message never re-carries it). Cleared on a terminal outbound message or cancellation. */
   readonly #workflowRevisions: Map<string, string>;
 
   constructor(pool: WorkerPool, options?: WorkerExecutionStrategyOptions) {
@@ -125,7 +110,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     this.#dispatcher = new WorkerExecutionDispatcher({
       pool: this.#pool,
       ownership: this.#ownership,
-      isDisposed: () => this.#disposed,
+      isDisposed: () => this.#disposal.isDisposed,
       requireProtocolVersion: () => this.#requireProtocolVersion,
       validateHostToWorkerMessage: (workflowId, message, worker) =>
         this.#faultHandler.assertHostToWorkerMessageWithinLimit(workflowId, message, worker),
@@ -159,8 +144,11 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     this.#messageHandler = null;
     this.#broadcastChannel = null;
     this.#broadcastListener = null;
-    this.#disposed = false;
-    this.#asyncDisposePromise = null;
+    this.#disposal = new WorkerExecutionDisposal({
+      teardown: () => this.#teardown(),
+      disposeSync: () => this.#pool[Symbol.dispose](),
+      disposeAsync: () => this.#pool[Symbol.asyncDispose](),
+    });
     this.#nextTurnId = 1;
 
     if (broadcastEvents) {
@@ -234,7 +222,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
       return;
     }
 
-    if (!this.#disposed) {
+    if (!this.#disposal.isDisposed) {
       this.#emit({
         type: 'failed',
         workflowId: parameters.workflowId,
@@ -269,10 +257,9 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
   }
 
   cancelWorkflow(workflowId: string): void {
-    // Cancellation is terminal for this strategy's own bookkeeping even
-    // though a stray outbound message can still arrive after — the turn
-    // watchdog is cleared below (via `#releaseActiveWorker`/discard), so any
-    // late message fails the guard's turn-match check regardless.
+    // Terminal for this strategy's own bookkeeping even though a stray
+    // message can still arrive after — the cleared turn watchdog below
+    // fails the guard's turn-match check regardless.
     this.#workflowRevisions.delete(workflowId);
     const worker = this.#ownership.getActiveWorker(workflowId);
     if (worker) {
@@ -316,45 +303,17 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     void this.#dispatcher.cancelParkedWorkflow(workflowId, parkedWorker);
   }
 
-  /**
-   * Synchronous disposal (COR-113: idempotent termination). A no-op once
-   * this strategy is already disposed — by an earlier synchronous dispose,
-   * or by an `asyncDispose()` whose `#teardown()` phase has already run
-   * synchronously (see that method's doc) — so the pool is never disposed
-   * twice regardless of which entry point ran first.
-   */
+  /** See `WorkerExecutionDisposal` (COR-113: idempotent termination). */
   [Symbol.dispose](): void {
-    if (this.#disposed) return;
-    this.#teardown();
-    this.#pool[Symbol.dispose]();
+    this.#disposal.disposeSync();
   }
 
-  /**
-   * Asynchronous disposal (COR-113: idempotent termination). Repeated or
-   * concurrent calls share one memoized promise rather than each re-running
-   * `#teardown()` or re-disposing the pool: `#asyncDisposePromise` is
-   * assigned the FIRST time this is called and returned unchanged on every
-   * subsequent call, including one made before the first has settled.
-   */
+  /** See `WorkerExecutionDisposal` (COR-113: idempotent termination). */
   [Symbol.asyncDispose](): Promise<void> {
-    this.#asyncDisposePromise ??= this.#performAsyncDispose();
-    return this.#asyncDisposePromise;
-  }
-
-  async #performAsyncDispose(): Promise<void> {
-    // Guards against a synchronous `[Symbol.dispose]()` that already ran
-    // `#teardown()` and disposed the pool before this async path was ever
-    // invoked (only reachable if `#asyncDisposePromise` was never set,
-    // i.e. this is genuinely the first `asyncDispose()` call).
-    if (this.#disposed) return;
-    this.#teardown();
-    await this.#pool[Symbol.asyncDispose]();
+    return this.#disposal.disposeAsync();
   }
 
   #teardown(): void {
-    if (this.#disposed) return;
-    this.#disposed = true;
-
     if (this.#broadcastChannel) {
       if (this.#broadcastListener) {
         this.#broadcastChannel.removeEventListener('message', this.#broadcastListener);
@@ -379,10 +338,9 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
 
   async #handleWorkerMessage(worker: Worker, message: unknown): Promise<void> {
     // Every worker realm sends `ready` at boot regardless of whether this
-    // strategy requires the handshake (WFT-28), so it must be intercepted here
-    // unconditionally — `ready` has no `workflowId` and would otherwise reach
-    // `WorkerFaultHandler.acceptWorkerMessage`'s strict gate, which requires
-    // one, and get the worker discarded before it ever executes a turn.
+    // strategy requires the handshake (WFT-28), so it must be intercepted
+    // unconditionally — `ready` has no `workflowId` and would otherwise fail
+    // `acceptWorkerMessage`'s strict gate before the worker ever runs a turn.
     if (isWorkerRealmReadyMessage(message)) {
       if (this.#realmReadiness) {
         await this.#realmReadiness.noteReadyMessage(worker, message);
@@ -410,24 +368,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     const handlerFailed = emitResult instanceof Promise ? await emitResult : emitResult;
 
     try {
-      // COR-113: a realm's `completed`/`failed` result is only ACCEPTED once
-      // the handler's durable commit has actually succeeded — the host must
-      // never acknowledge a workflow turn solely because a realm sent a
-      // result. Checked BEFORE `#settleTerminalWorkerMessage`, which would
-      // otherwise unconditionally release the worker back to the pool and
-      // clear ownership regardless of `handlerFailed`, silently treating an
-      // uncommitted result as though it had landed durably. Routed through
-      // the same discard-and-refail path every other worker anomaly in this
-      // file uses, so the workflow is settled as failed/retryable per
-      // existing engine semantics rather than orphaned.
-      if (handlerFailed && (message.type === 'completed' || message.type === 'failed')) {
-        this.#faultHandler.discardWorkerAndFailWorkflows(worker, {
-          targetWorkflowId: message.workflowId,
-          targetCategory: 'system',
-          targetError: `Turn result for workflow ${message.workflowId} could not be durably committed`,
-          otherCategory: 'system',
-          otherError: `Worker discarded after a workflow turn result failed to commit durably: ${message.workflowId}`,
-        });
+      if (this.#faultHandler.rejectUncommittedTerminalMessage(worker, message, handlerFailed)) {
         return;
       }
 
