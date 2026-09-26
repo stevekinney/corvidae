@@ -316,7 +316,8 @@ test.describe('MarkdownEditor source-mode listbox positioning', () => {
 
     // The end of the wrapped paragraph sits several visual lines lower.
     await page.keyboard.press('Escape');
-    await placeCaret(page, (await readValue(page)).length);
+    const wrappedValue = await readValue(page);
+    await placeCaret(page, wrappedValue.length);
     await page.keyboard.type('{{');
     await expect(listbox(page)).toBeVisible();
     const second = await settledPlacement(page, first.generation);
