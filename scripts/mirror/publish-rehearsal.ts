@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 
-import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import { checkTarball, packWorkspace, runCommand, type CommandRunner } from './packaging.ts';
 import { cloneTarget, stageSurface, type StageOutcome } from './sync.ts';
+import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 /**
  * What it takes to believe a publish rehearsal.

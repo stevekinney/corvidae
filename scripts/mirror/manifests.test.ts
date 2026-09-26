@@ -8,14 +8,10 @@ import {
   composeManifest,
   discoverWorkspaces,
   ManifestTransformError,
-  membersOf,
-  mirrorTargets,
   planManifests,
   publicNameFor,
   stageTarget,
-  targetFor,
   type ManifestPlan,
-  type MirrorTarget,
 } from './manifests.ts';
 import { loadPackageMap, PackageMapError, type PackageMap } from './package-map.ts';
 import {
@@ -23,6 +19,13 @@ import {
   hashDigestedFiles,
   publicationInputContract,
 } from './source-digest.ts';
+import {
+  membersOf,
+  MirrorTargetError,
+  mirrorTargets,
+  targetFor,
+  type MirrorTarget,
+} from './target-definitions.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
@@ -141,6 +144,10 @@ async function withTree(
     // These tests exercise manifest composition, so their fixture owns a literal, minimal surface.
     surface.packages['@lostgradient/cinder'].exports = { '.': './dist/index.js' };
     surface.packages['@lostgradient/cinder'].files = ['dist'];
+    for (const entry of Object.values(surface.packages) as {
+      build: { toolchain: Record<string, string> };
+    }[])
+      entry.build.toolchain = {};
     await writeTree(root, {
       'scripts/mirror/package-map.json': realPackageMap,
       'scripts/mirror/package-surface.json': surface,
@@ -318,7 +325,7 @@ describe('workspace discovery and target membership', () => {
   });
 
   test('a workspace no target claims is refused rather than defaulted', () => {
-    expect(() => targetFor('@lostgradient/not-a-workspace')).toThrow(ManifestTransformError);
+    expect(() => targetFor('@lostgradient/not-a-workspace')).toThrow(MirrorTargetError);
   });
 
   test('a private workspace gets a derived name rather than a published one', async () => {

@@ -4,8 +4,8 @@ import typescript from 'typescript';
 
 import { serializeJson } from './json-formatting.ts';
 import { targetDirectoryFor } from './layout-map.ts';
-import { targetFor, type MirrorTarget } from './manifests.ts';
 import { sourceTree, type EmittedWorkspace } from './source.ts';
+import { targetFor, type MirrorTarget } from './target-definitions.ts';
 import { keysFor, loadTargetOwnedPolicy, type TargetOwnedPolicy } from './target-owned.ts';
 
 /**

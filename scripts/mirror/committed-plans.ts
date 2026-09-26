@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { discoverWorkspaces, type MirrorTarget } from './manifests.ts';
+import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import {
   collectDigestedFiles,
@@ -8,6 +8,7 @@ import {
   publicationInputContract,
 } from './source-digest.ts';
 import { planSurface, type SurfacePlan } from './surface.ts';
+import { type MirrorTarget } from './target-definitions.ts';
 import { findSourceEscapes, type SourceEscape } from './target-resolvability.ts';
 
 /**

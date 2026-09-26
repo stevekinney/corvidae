@@ -1,5 +1,5 @@
 import { createGitHubApi, installationTokenFromApp, type GitHubApi } from './github-api.ts';
-import { mirrorTargets, type MirrorTarget } from './manifests.ts';
+import { resolveReleaseWorkflowFile } from './install-parity.ts';
 import { scratchOwner } from './scratch-repository.ts';
 import {
   assertNoForeignCommits,
@@ -12,6 +12,7 @@ import {
   SyncError,
   type SyncResult,
 } from './sync.ts';
+import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 /**
  * The two entry points COR-1195's GitHub Actions workflow drives, one `bun` invocation per job:
@@ -48,19 +49,15 @@ export function pullRequestBranchFor(corvidaeCommit: string): string {
   return `mirror-sync-${corvidaeCommit.slice(0, 12)}-${crypto.randomUUID()}`;
 }
 
-/** The target-owned release workflow filename used by the snapshot dispatch. */
-export function releaseWorkflowFor(target: MirrorTarget): 'release.yaml' | 'release.yml' {
-  return target === 'agent-bureau' ? 'release.yml' : 'release.yaml';
-}
-
 export function snapshotDispatchFor(
   target: MirrorTarget,
+  workflowFile: string,
   fullName: string,
   branch: string,
   result: Pick<SyncResult, 'decision' | 'commit' | 'baseBranch' | 'baseCommit' | 'pullRequest'>,
 ): {
   fullName: string;
-  workflowFile: 'release.yaml' | 'release.yml';
+  workflowFile: string;
   ref: string;
   inputs: { snapshot: 'true'; expected_sha: string };
 } {
@@ -76,7 +73,7 @@ export function snapshotDispatchFor(
   }
   return {
     fullName,
-    workflowFile: releaseWorkflowFor(target),
+    workflowFile,
     ref,
     inputs: { snapshot: 'true', expected_sha: expectedSha },
   };
@@ -88,11 +85,13 @@ export async function dispatchSnapshotWorkflow(
   fullName: string,
   branch: string,
   result: Pick<SyncResult, 'decision' | 'commit' | 'baseBranch' | 'baseCommit' | 'pullRequest'>,
+  targetDirectory: string,
 ): Promise<void> {
   if (api.dispatchWorkflow === undefined) {
     throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
   }
-  await api.dispatchWorkflow(snapshotDispatchFor(target, fullName, branch, result));
+  const workflowFile = await resolveReleaseWorkflowFile(targetDirectory);
+  await api.dispatchWorkflow(snapshotDispatchFor(target, workflowFile, fullName, branch, result));
 }
 
 /**
@@ -285,7 +284,14 @@ async function runDispatch(argv: readonly string[]): Promise<number> {
 
   if (result.decision === 'skip') {
     if (snapshot) {
-      await dispatchSnapshotWorkflow(api, target, fullName, branch, result);
+      await dispatchSnapshotWorkflow(
+        api,
+        target,
+        fullName,
+        branch,
+        result,
+        `${workDirectory}/${target}`,
+      );
       process.stdout.write(
         `${target}: snapshot workflow dispatched for ${fullName}@${result.baseBranch} (${result.baseCommit})\n`,
       );
@@ -295,7 +301,14 @@ async function runDispatch(argv: readonly string[]): Promise<number> {
     return 0;
   }
   if (snapshot) {
-    await dispatchSnapshotWorkflow(api, target, fullName, branch, result);
+    await dispatchSnapshotWorkflow(
+      api,
+      target,
+      fullName,
+      branch,
+      result,
+      `${workDirectory}/${target}`,
+    );
     process.stdout.write(
       `${target}: source pull request ${result.pullRequest?.htmlUrl}; snapshot workflow dispatched for ${fullName}@${branch} (${result.commit})\n`,
     );

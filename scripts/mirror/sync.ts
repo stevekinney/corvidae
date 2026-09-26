@@ -3,13 +3,7 @@ import { basename, join } from 'node:path';
 
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
 import { layoutFor } from './layout-map.ts';
-import {
-  assertNothingDeferred,
-  mirrorTargets,
-  runInstall,
-  targetFor,
-  type MirrorTarget,
-} from './manifests.ts';
+import { assertNothingDeferred, runInstall } from './manifests.ts';
 import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
 import {
   assertSucceeded,
@@ -28,6 +22,7 @@ import {
   type PrivateWorkspace,
   type PublishedPackage,
 } from './surface.ts';
+import { mirrorTargets, targetFor, type MirrorTarget } from './target-definitions.ts';
 import {
   assertNoEmissionsIntoRetired,
   collectRetiredPaths,

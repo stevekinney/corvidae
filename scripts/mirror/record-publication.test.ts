@@ -54,9 +54,15 @@ async function withPublication(
     const current = join(scratch, 'current');
     const target = join(scratch, 'target');
     await initialize(historical);
+    const sourceManifest = await Bun.file(join(sourceRoot, 'package.json')).json();
     await Bun.write(
       join(historical, 'package.json'),
-      json({ name: 'corvidae', private: true, workspaces: ['packages/*'], catalog: {} }),
+      json({
+        name: 'corvidae',
+        private: true,
+        workspaces: ['packages/*'],
+        catalog: sourceManifest.catalog,
+      }),
     );
     await Bun.write(
       join(historical, 'packages/operative/package.json'),
@@ -341,4 +347,88 @@ test('explicit mirror boundary rejects copied provenance trailers and runtime ma
       );
     });
   }
+});
+
+test('publication inputs include emitted build scripts and resolved toolchain versions', async () => {
+  await withPublication(async ({ current }) => {
+    const surfacePath = join(current, 'scripts/mirror/package-surface.json');
+    const surface = await Bun.file(surfacePath).json();
+    const read = () =>
+      publicationInputContract({
+        corvidaeRoot: current,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      });
+    const initial = await read();
+    surface.packages[workspace].build.scripts.build = 'bun run alternate-build.ts';
+    await Bun.write(surfacePath, json(surface));
+    expect(await read()).not.toEqual(initial);
+    surface.packages[workspace].build.toolchain = { builder: 'catalog:' };
+    await Bun.write(surfacePath, json(surface));
+    const rootPath = join(current, 'package.json');
+    const root = await Bun.file(rootPath).json();
+    root.catalog.builder = '^1.0.0';
+    await Bun.write(rootPath, json(root));
+    const firstToolchain = await read();
+    root.catalog.builder = '^2.0.0';
+    await Bun.write(rootPath, json(root));
+    expect(await read()).not.toEqual(firstToolchain);
+  });
+});
+
+test('publication inputs bind workspace dependencies to their recorded published versions', async () => {
+  await withPublication(async ({ current }) => {
+    const manifestPath = join(current, 'packages/operative/package.json');
+    const manifest = await Bun.file(manifestPath).json();
+    manifest.dependencies = { '@lostgradient/lifecycle': 'workspace:*' };
+    await Bun.write(manifestPath, json(manifest));
+    const mapPath = join(current, 'scripts/mirror/package-map.json');
+    const map = await Bun.file(mapPath).json();
+    const read = () =>
+      publicationInputContract({
+        corvidaeRoot: current,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      });
+    map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = '1.0.0';
+    await Bun.write(mapPath, json(map));
+    const before = await read();
+    map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = '1.0.1';
+    await Bun.write(mapPath, json(map));
+    const after = await read();
+    expect(after).not.toEqual(before);
+    map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = null;
+    await Bun.write(mapPath, json(map));
+    await expect(read()).rejects.toThrow('no recorded published version');
+    expect(
+      await publicationInputContract({
+        corvidaeRoot: current,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+        publishedWorkspaceVersions: new Map([['@lostgradient/lifecycle', '1.0.1']]),
+      }),
+    ).toEqual(after);
+  });
+});
+
+test('publication inputs match the mirror effective cross-target range', async () => {
+  await withPublication(async ({ current }) => {
+    const manifestPath = join(current, 'packages/operative/package.json');
+    const manifest = await Bun.file(manifestPath).json();
+    const map = await Bun.file(join(current, 'scripts/mirror/package-map.json')).json();
+    const read = () =>
+      publicationInputContract({
+        corvidaeRoot: current,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      });
+    manifest.dependencies = { '@lostgradient/weft': 'workspace:*' };
+    await Bun.write(manifestPath, json(manifest));
+    const workspaceInput = await read();
+    manifest.dependencies = {
+      '@lostgradient/weft': `^${map.workspaces['@lostgradient/weft'].lastPublishedVersion}`,
+    };
+    await Bun.write(manifestPath, json(manifest));
+    expect(await read()).toEqual(workspaceInput);
+  });
 });

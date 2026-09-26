@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { mirrorTargets } from './manifests.ts';
+import { mirrorTargets } from './target-definitions.ts';
 
 /**
  * Pinning tests for `.github/workflows/mirror-sync.yaml`, the one workflow file AGENTS.md's

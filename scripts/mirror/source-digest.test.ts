@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { committedPlans, corvidaeRoot, packageMapForFixtures } from './committed-plans.ts';
-import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import {
   assertEdgeNotStale,
@@ -16,6 +15,7 @@ import {
   type PublishedSnapshot,
 } from './source-digest.ts';
 import { planSurface } from './surface.ts';
+import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 /** Stand up a throwaway tree, hand it to the body, and remove it however the body ends. */
 async function withTree(

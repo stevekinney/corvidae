@@ -4,8 +4,8 @@ import { join, relative, resolve } from 'node:path';
 
 import ts from 'typescript';
 
-import { targetFor } from './manifests.ts';
 import { loadPackageMap } from './package-map.ts';
+import { targetFor } from './target-definitions.ts';
 
 /**
  * Every published package's declarations can name every type they mention (COR-1291).

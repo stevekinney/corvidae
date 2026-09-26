@@ -12,7 +12,6 @@ import {
   planManifests,
   publicNameFor,
   readExistingManifest,
-  targetHasCatalog as targetCanHoldCatalog,
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
@@ -34,6 +33,7 @@ import {
   type EmittedWorkspace,
   type SourcePlan,
 } from './source.ts';
+import { targetHasCatalog as targetCanHoldCatalog } from './target-definitions.ts';
 import { assertNoSourceEscapes } from './target-resolvability.ts';
 import {
   assertTypeScriptEdgeClosed,

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { serializeJson } from './json-formatting.ts';
 import { targetDirectoryFor } from './layout-map.ts';
-import { discoverWorkspaces, targetFor } from './manifests.ts';
+import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import {
@@ -14,6 +14,7 @@ import {
   type DigestedFile,
   type PublishedSnapshot,
 } from './source-digest.ts';
+import { targetFor } from './target-definitions.ts';
 
 import {
   historicalCollector,
@@ -22,6 +23,7 @@ import {
 } from './publication-history.ts';
 import {
   committedPublicationManifest,
+  committedWorkspaceVersions,
   fetchPublishedManifest,
   verifyRegistryManifest,
 } from './registry-manifest.ts';
@@ -313,6 +315,11 @@ export async function recordSourceDigest({
     corvidaeRoot: publishedSourceRoot,
     corvidaeDirectory: historicalDirectory,
     workspace,
+    publishedWorkspaceVersions: await committedWorkspaceVersions(
+      targetRepositoryDirectory,
+      gitHead,
+      gitRunner,
+    ),
   });
   if (inputContract.digest !== historicalInputContract.digest)
     throw new RegistryVerificationError(

@@ -2,6 +2,7 @@ import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { canonicalManifest, objectRecord } from './registry-manifest.ts';
+import { publishedVersionRange, targetFor } from './target-definitions.ts';
 
 import { filesCoverPath, loadPackageSurface } from './package-surface.ts';
 import { additionalSourceRoots, isSourceFile, sourceTree, versionConstants } from './source.ts';
@@ -238,7 +239,11 @@ export async function publicationInputContract({
   corvidaeRoot,
   corvidaeDirectory,
   workspace,
-}: DigestScope): Promise<PublicationInputContract> {
+  publishedWorkspaceVersions,
+}: DigestScope & {
+  /** Historical target versions proven at the registry's publishing commit. */
+  publishedWorkspaceVersions?: ReadonlyMap<string, string>;
+}): Promise<PublicationInputContract> {
   const packageRoot = join(corvidaeRoot, corvidaeDirectory);
   const manifest = objectRecord(await Bun.file(join(packageRoot, 'package.json')).json());
   const root = objectRecord(await Bun.file(join(corvidaeRoot, 'package.json')).json());
@@ -247,11 +252,9 @@ export async function publicationInputContract({
       'workspaces'
     ],
   );
-  const runtimeDependencies: Record<string, unknown> = {};
-  for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
-    if (manifest[field] === undefined) continue;
-    runtimeDependencies[field] = Object.fromEntries(
-      Object.entries(objectRecord(manifest[field])).map(([name, input]) => {
+  const resolveDependencies = (block: unknown): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(objectRecord(block)).map(([name, input]) => {
         if (typeof input !== 'string')
           throw new SourceDigestError(`${name}: invalid dependency range`);
         let range = input;
@@ -260,12 +263,22 @@ export async function publicationInputContract({
           const catalog = catalogName
             ? objectRecord(root['catalogs'])[catalogName]
             : root['catalog'];
-          const resolved = objectRecord(catalog)[name];
-          if (typeof resolved !== 'string')
+          const resolvedRange = objectRecord(catalog)[name];
+          if (typeof resolvedRange !== 'string')
             throw new SourceDigestError(`${name}: root catalog does not declare it`);
-          range = resolved;
+          range = resolvedRange;
         }
         const disposition = map[name] === undefined ? undefined : objectRecord(map[name]);
+        if (range.startsWith('workspace:')) {
+          const publicName = disposition?.['name'];
+          const version =
+            (typeof publicName === 'string'
+              ? publishedWorkspaceVersions?.get(publicName)
+              : undefined) ?? disposition?.['lastPublishedVersion'];
+          if (disposition?.['disposition'] !== 'publish-as' || typeof version !== 'string')
+            throw new SourceDigestError(`${name}: no recorded published version`);
+          range = publishedVersionRange(version, targetFor(workspace) !== targetFor(name));
+        }
         const publicName =
           disposition?.['disposition'] === 'publish-as' ? disposition['name'] : name;
         if (typeof publicName !== 'string')
@@ -273,6 +286,10 @@ export async function publicationInputContract({
         return [publicName, range];
       }),
     );
+  const runtimeDependencies: Record<string, unknown> = {};
+  for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+    if (manifest[field] !== undefined)
+      runtimeDependencies[field] = resolveDependencies(manifest[field]);
   }
   const manifestFields = Object.fromEntries(
     publicationManifestFields
@@ -311,7 +328,7 @@ export async function publicationInputContract({
       sideEffects: resolved.sideEffects,
       bin: resolved.bin,
       manifestFields: resolved.manifestFields,
-      sourceRoot: resolved.build.sourceRoot,
+      build: { ...resolved.build, toolchain: resolveDependencies(resolved.build.toolchain) },
     },
   };
   return {

@@ -103,12 +103,11 @@ export async function readGitJson(
   return objectRecord(JSON.parse(result.stdout));
 }
 
-export async function committedPublicationManifest(
+export async function committedWorkspaceVersions(
   directory: string,
   commit: string,
-  packageDirectory: string,
   runner: CommandRunner = runCommand,
-): Promise<Record<string, unknown>> {
+): Promise<ReadonlyMap<string, string>> {
   const root = await readGitJson(directory, commit, 'package.json', runner);
   const listed = await runner(['git', 'ls-tree', '-r', '--name-only', commit], { cwd: directory });
   if (listed.exitCode !== 0) throw new Error(`Cannot list manifests at ${commit}`);
@@ -131,10 +130,19 @@ export async function committedPublicationManifest(
     if (typeof manifest['name'] === 'string' && typeof manifest['version'] === 'string')
       workspaceVersions.set(manifest['name'], manifest['version']);
   }
+  return workspaceVersions;
+}
+
+export async function committedPublicationManifest(
+  directory: string,
+  commit: string,
+  packageDirectory: string,
+  runner: CommandRunner = runCommand,
+): Promise<Record<string, unknown>> {
   return normalizePublishedManifest(
     await readGitJson(directory, commit, `${packageDirectory}/package.json`, runner),
-    root,
-    workspaceVersions,
+    await readGitJson(directory, commit, 'package.json', runner),
+    await committedWorkspaceVersions(directory, commit, runner),
   );
 }
 

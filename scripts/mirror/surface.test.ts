@@ -3,13 +3,7 @@ import { join } from 'node:path';
 
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import { layoutFor } from './layout-map.ts';
-import {
-  assertNothingDeferred,
-  discoverWorkspaces,
-  mirrorTargets,
-  targetFor,
-  type MirrorTarget,
-} from './manifests.ts';
+import { assertNothingDeferred, discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
 import { isFirstPublish } from './registry-baseline.ts';
@@ -22,6 +16,7 @@ import {
   unresolvedSubpaths,
   type SurfacePlan,
 } from './surface.ts';
+import { mirrorTargets, targetFor, type MirrorTarget } from './target-definitions.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 import { configurationFiles, vendoredDirectory } from './typescript-configuration.ts';
 

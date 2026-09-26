@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { committedPlans } from './committed-plans.ts';
-import { mirrorTargets } from './manifests.ts';
+import { mirrorTargets } from './target-definitions.ts';
 import {
   assertNoEmissionsIntoRetired,
   assertRetirementsCoherent,

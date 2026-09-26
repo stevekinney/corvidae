@@ -13,7 +13,6 @@ import {
   type WorkflowRunRecord,
 } from './github-api.ts';
 import { installationSettingsUrl, mirrorAppId, mirrorInstallationId } from './github-app.ts';
-import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
 import { proveNpmPublishDryRun, type PublishProbe } from './publish-rehearsal.ts';
 import {
@@ -25,6 +24,7 @@ import {
   scratchRepositoryName,
   scratchStamp,
 } from './scratch-repository.ts';
+import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 import {
   assertNoForeignCommits,
