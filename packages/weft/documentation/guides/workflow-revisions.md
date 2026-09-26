@@ -33,7 +33,7 @@ A **workflow source** pairs serializable metadata with a host-owned loader funct
 
 For example, place this definition in your consuming workspace's `greeting.ts`:
 
-```typescript
+```typescript file=greeting.ts
 import { workflow } from '@lostgradient/weft';
 
 export const greeting = workflow({ name: 'greeting', version: '1.0.0' }).execute(async function* (

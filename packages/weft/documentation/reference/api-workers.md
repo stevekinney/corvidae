@@ -627,7 +627,7 @@ Marks a connected worker as draining. Requires `system:admin`. The optional JSON
 
 Response:
 
-```ts
+```ts partial
 type WorkerDrainResponse = {
   target: 'worker';
   workerId: string;
@@ -651,7 +651,7 @@ Marks every current and future worker that reports `deploymentName` as draining.
 
 Response:
 
-```ts
+```ts partial
 type DeploymentDrainResponse = {
   target: 'deployment';
   deploymentName: string;
@@ -675,7 +675,7 @@ Bounded instance and deployment-version diagnostics for one connected worker (WF
 
 The response splits into two structurally distinct parts, mirroring the manifest's own split between "which process" and "which build":
 
-```ts
+```ts partial
 type WorkerDiagnosticsResponse = {
   worker: {
     instance: {

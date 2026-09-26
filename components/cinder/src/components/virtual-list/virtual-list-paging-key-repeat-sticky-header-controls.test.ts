@@ -125,7 +125,12 @@ describe('VirtualList — paging and key repeat past a sticky header', () => {
       source.indexOf("if (event.key === 'PageDown' || event.key === 'PageUp') {"),
       source.indexOf('const target = resolveKeyboardTargetIndex({'),
     );
-    expect(pageBranch).toContain('retireSettleLoop();');
+    expect(pageBranch).toContain('handleReaderTakeover();');
+    const takeover = source.slice(
+      source.indexOf('function handleReaderTakeover('),
+      source.indexOf('function handleWheel('),
+    );
+    expect(takeover).toContain('retireSettleLoop();');
   });
 
   test('pages against the header waiting at the destination, not the one here', async () => {

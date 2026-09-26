@@ -16,7 +16,8 @@
     "test:benchmarks": "bun test ./scripts/benchmarks ./src/storage/bun-sql-benchmark.test.ts ./scripts/benchmarks/speculation.bench.ts",
     "test:coverage": "bun scripts/check-coverage.ts",
     "test:browser": "WEFT_BROWSER_SMOKE=1 bun test ./src/storage/indexeddb-browser.test.ts ./src/storage/web-extension-browser.test.ts ./src/service-worker/service-worker-browser.test.ts ./src/client/http-client-browser.test.ts",
-    "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts",
+    "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts && bun run typecheck:documentation",
+    "typecheck:documentation": "bun scripts/check-documentation-code-blocks.ts",
     "typecheck:fixtures": "tsc --noEmit -p src/cli/__fixtures__/codegen/typecheck/tsconfig.json"
   },
   "dependencies": {
