@@ -743,6 +743,44 @@ Deliberately excludes the free-text rejection message and any manifest content�
 
 The JSON-RPC operation name is `weft.workers.rejections`.
 
+### `GET /api/v1/tasks/diagnostics`
+
+Bounded task-attempt diagnostics (COR-198): stuck queued tasks, stale in-flight attempts, retry storms, queues where every worker is at capacity, dead letters, expected-delayed tasks, and terminal records still awaiting adoption. Requires `system:read`. Item shapes vary by `kind`; see [`get-task-diagnostics.ts`](../../src/server/operations/get-task-diagnostics.ts) for the full per-kind response type.
+
+Every filter is optional and independently bounded; supplying several combines them with AND:
+
+```ts
+type GetTaskDiagnosticsInput = {
+  operationId?: string;
+  workflowId?: string;
+  queue?: string;
+  // Execution-identity filters, sourced from each matching task's current
+  // TaskAttemptRecord.executionIdentity—see "Attempt history and
+  // provenance" in the remote task recovery guide for what that identity
+  // is and how it differs from the ledger's routing requirement.
+  deploymentName?: string;
+  buildId?: string;
+  artifactDigest?: string;
+  workerId?: string;
+  workflowRevision?: string;
+  staleQueuedAfterMs?: number; // default 60000
+  staleHeartbeatAfterMs?: number; // default 60000
+  retryStormMinimumAttempts?: number; // default 3
+  includeExpectedDelayed?: boolean; // default false
+  unadoptedAfterMs?: number; // default 60000
+  limit?: number; // default 50, max 200
+};
+```
+
+The five identity filters answer "which attempts ran on this build/deployment/artifact/worker/workflow revision"—for example, `?buildId=b47` returns only diagnostics for tasks whose current attempt actually executed on build `b47`, regardless of what a task's dispatch-time `WorkerExecutionRequirement` asked for. A `queued` task (no attempt has claimed it yet) never matches any of these; it is excluded, not treated as a wildcard. A long-poll attempt has no `executionIdentity` (no registered manifest to build one from) and is likewise unfilterable by these five fields—filter by `operationId`, `workflowId`, or `queue` instead when long-poll attempts matter.
+
+```bash
+curl -sS 'http://127.0.0.1:7233/api/v1/tasks/diagnostics?buildId=b47&limit=10' \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+The JSON-RPC operation name is `weft.tasks.diagnostics`.
+
 ### `GET /api/v1/task-queues`
 
 Returns per-queue health. The queue set is the union of three sources:

@@ -16,21 +16,35 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import type { RevisionRealmConfig } from '../realm/revision-realm-registry.ts';
 import { buildWorkflowManifestFromDefinition } from '../registry-workflow-manifest.ts';
 import { workflowSource } from '../source/index.ts';
 import { workflow, type WorkflowDefinition } from '../types.ts';
 import { copyWorkflowDefinition } from './construction.ts';
-import { ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING, Engine } from './index.ts';
+import {
+  ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING,
+  ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING,
+  Engine,
+} from './index.ts';
 import { getInternals } from './internals.ts';
 import { buildRegistrationEntry } from './registration.ts';
 
-async function waitForSignalWaiters(engine: Engine, count: number): Promise<void> {
-  await waitForCondition(() => engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]() === count, {
-    label: `${count} signal waiter(s)`,
-  });
+/**
+ * Wait for `workflowId` to park on its signal, then assert exactly
+ * `expectedTotal` signal waiters are registered engine-wide — see
+ * `revision-realm-execution.test.ts`'s identical helper. Reaching the park
+ * means spawning a real child process, importing its fixture and running a
+ * turn, so it is awaited as an event rather than polled against a budget
+ * (COR-1333); the test runner's per-test timeout reports a real hang.
+ */
+async function waitForSignalWaiter(
+  engine: Engine,
+  workflowId: string,
+  expectedTotal: number,
+): Promise<void> {
+  await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId);
+  expect(engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]()).toBe(expectedTotal);
 }
 
 // Matching `order-workflow-handler.fixture.ts`'s and
@@ -159,7 +173,7 @@ describe("RevisionRealmExecutionStrategy (engine integration, COR-246 transport:
     try {
       await registerAndActivate(engine, ORDER_WORKFLOW_NAME, revision, 'child-process');
       const handle = await engine.start(ORDER_WORKFLOW_NAME, 'input-a', { id: 'r4-order-a' });
-      await waitForSignalWaiters(engine, 1);
+      await waitForSignalWaiter(engine, 'r4-order-a', 1);
 
       const registry = getInternals(engine).revisionRealmRegistry;
       expect(registry?.activeRealmCount(ORDER_WORKFLOW_NAME, revision)).toBe(1);
@@ -168,12 +182,10 @@ describe("RevisionRealmExecutionStrategy (engine integration, COR-246 transport:
       const result = await handle.result();
       expect(result).toMatchObject({ revision: 'revision-a', input: 'input-a' });
 
-      await waitForCondition(
-        () => registry?.activeRealmCount(ORDER_WORKFLOW_NAME, revision) === 0,
-        {
-          label: 'child-process realm released after completion',
-        },
-      );
+      // The strategy releases the realm synchronously before it emits the
+      // `completed` message that settles `handle.result()`, so the realm is
+      // already gone by the time that result is observed.
+      expect(registry?.activeRealmCount(ORDER_WORKFLOW_NAME, revision)).toBe(0);
     } finally {
       await engine[Symbol.asyncDispose]();
     }
