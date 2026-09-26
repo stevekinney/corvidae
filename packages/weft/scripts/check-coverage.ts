@@ -1703,6 +1703,16 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     },
   ],
   [
+    'scripts/check-documentation-code-blocks.ts',
+    {
+      reason:
+        'The `if (import.meta.main)` entry point only resolves the package paths, calls runDocumentationCodeBlockCheck(), prints its result and sets the exit code. It runs when `bun run typecheck` spawns the script, a separate process whose hits are never attributed to the parent LCOV report; runDocumentationCodeBlockCheck() itself is covered by check-documentation-code-blocks.test.ts against a fixture package.',
+      functions: 1,
+      lines: new Set([262, 263, 264, 265, 266, 267, 268, 269, 270, 271]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
     'src/core/engine/operations-activity.ts',
     {
       reason:
