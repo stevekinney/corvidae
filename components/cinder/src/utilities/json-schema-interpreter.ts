@@ -273,8 +273,11 @@ function hasOwnRef(node: SchemaNode): boolean {
 
 /** Every SchemaNode field that can hold one or more child SchemaNodes,
  *  declared explicitly (rather than iterated dynamically) so the walk stays
- *  fully typed. Mirrors `SchemaNode`'s own containment fields. */
-function childNodes(node: SchemaNode): SchemaNode[] {
+ *  fully typed. Mirrors `SchemaNode`'s own containment fields, including
+ *  `propertyDependencies`, which only a draft that registers
+ *  json-schema-library's opt-in keyword populates. Exported for that contract's
+ *  test; the module is internal to the package. */
+export function childNodes(node: SchemaNode): SchemaNode[] {
   const children: SchemaNode[] = [];
   const single = [
     node.additionalProperties,

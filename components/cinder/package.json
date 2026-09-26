@@ -9,6 +9,7 @@
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun run check:prop-conventions",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src scripts",
+    "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 --coverage --coverage-reporter=lcov src scripts && bun scripts/check-coverage-ratchet.ts",
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
     "tokens:audit": "bun scripts/check-component-css-token-usage.ts",

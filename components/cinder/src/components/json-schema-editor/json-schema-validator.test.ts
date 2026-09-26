@@ -109,6 +109,44 @@ describe('validateMetaSchema', () => {
     expect(result.valid).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
   });
+
+  // A schema whose shape json-schema-library must walk synchronously (e.g.
+  // reading `properties`) can throw rather than report a structured
+  // `schemaErrors` entry when that access itself fails. validateMetaSchema's
+  // try/catch turns that synchronous throw into the same { valid: false }
+  // shape callers already get from a reported schema error, instead of an
+  // unhandled rejection.
+  test('a schema that throws synchronously while being compiled is reported as invalid, not thrown', async () => {
+    const schema: Record<string, unknown> = { type: 'object' };
+    Object.defineProperty(schema, 'properties', {
+      enumerable: true,
+      get(): never {
+        throw new Error('boom from properties getter');
+      },
+    });
+    const result = await validateMetaSchema(schema);
+    expect(result).toEqual({
+      valid: false,
+      errors: [{ path: '', message: 'boom from properties getter', keyword: '' }],
+    });
+  });
+
+  test('a non-Error throw while compiling still returns a valid: false result with a fallback message', async () => {
+    const schema: Record<string, unknown> = { type: 'object' };
+    Object.defineProperty(schema, 'properties', {
+      enumerable: true,
+      get(): never {
+        // Intentionally not an Error instance — exercises the catch's
+        // non-Error fallback branch, which stringifies whatever was thrown.
+        throw 'not an Error instance';
+      },
+    });
+    const result = await validateMetaSchema(schema);
+    expect(result).toEqual({
+      valid: false,
+      errors: [{ path: '', message: 'Meta-schema validation failed', keyword: '' }],
+    });
+  });
 });
 
 describe('tryCompile', () => {
@@ -208,6 +246,37 @@ describe('tryCompile', () => {
     const meta = await validateMetaSchema(schema);
     expect(meta.valid).toBe(true);
     expect(await tryCompile(schema)).toEqual({ ok: true });
+  });
+
+  // Mirrors the validateMetaSchema regression above: compilation can throw
+  // synchronously rather than report a structured error when reading the
+  // schema itself fails. tryCompile's try/catch must turn that into
+  // { ok: false, error } like any other compile failure, not an unhandled
+  // rejection.
+  test('a schema that throws synchronously while being compiled is reported as a compile failure, not thrown', async () => {
+    const schema: Record<string, unknown> = { type: 'object' };
+    Object.defineProperty(schema, 'properties', {
+      enumerable: true,
+      get(): never {
+        throw new Error('boom from properties getter');
+      },
+    });
+    const result = await tryCompile(schema);
+    expect(result).toEqual({ ok: false, error: 'boom from properties getter' });
+  });
+
+  test('a non-Error throw while compiling still returns an ok: false result with a stringified error', async () => {
+    const schema: Record<string, unknown> = { type: 'object' };
+    Object.defineProperty(schema, 'properties', {
+      enumerable: true,
+      get(): never {
+        // Intentionally not an Error instance — exercises the catch's
+        // non-Error fallback branch, which stringifies whatever was thrown.
+        throw 'not an Error instance';
+      },
+    });
+    const result = await tryCompile(schema);
+    expect(result).toEqual({ ok: false, error: 'not an Error instance' });
   });
 
   // Every format ajv-formats' `fullFormats` set registers must remain a

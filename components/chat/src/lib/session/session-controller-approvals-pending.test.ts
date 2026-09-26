@@ -607,4 +607,115 @@ describe('chat session controller', () => {
     ).rejects.toThrow('not pending');
     expect(hookCalls).toBe(0);
   });
+
+  test('drops an approval success whose request left the conversation while the hook ran', async () => {
+    let conversation = approvalConversation('approval-removed-mid-hook');
+    const hookResult = deferred<ToolResult>();
+    let continuations = 0;
+    const controller = createChatSessionController({
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+      },
+      transport: async () => {
+        continuations += 1;
+        return events([{ type: 'text', text: 'should not continue' }]);
+      },
+      hooks: {
+        resolveToolApproval: async () => hookResult.promise,
+      },
+    });
+
+    const resolution = controller.adapter.resolveToolApproval?.('call', {
+      decision: 'approve',
+      remember: false,
+    });
+    conversation = appendUserMessage(
+      createConversationHistory({ id: 'approval-removed-mid-hook' }),
+      'write',
+    );
+    hookResult.resolve({ callId: 'call', outcome: 'success', content: 'allowed' });
+
+    await expect(resolution).resolves.toBe('pending');
+    expect(currentToolResult(conversation)).toBeUndefined();
+    expect(continuations).toBe(0);
+  });
+
+  test('rejects a pending input request as an approval before invoking the hook', async () => {
+    let conversation = appendToolResult(
+      appendToolCall(
+        appendUserMessage(createConversationHistory({ id: 'approval-input-action' }), 'write'),
+        { id: 'call', name: 'write', arguments: {} },
+      ),
+      {
+        callId: 'call',
+        outcome: 'action_required',
+        content: null,
+        action: { type: 'input', message: 'Which file?' },
+      },
+    );
+    let hookCalls = 0;
+    const controller = createChatSessionController({
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+      },
+      transport: async () => events([]),
+      hooks: {
+        resolveToolApproval: async (toolCallId) => {
+          hookCalls += 1;
+          return { callId: toolCallId, outcome: 'success', content: 'allowed' };
+        },
+      },
+    });
+
+    await expect(
+      controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+    ).rejects.toThrow('without a current approval action');
+    expect(hookCalls).toBe(0);
+    expect(currentToolResult(conversation)?.outcome).toBe('action_required');
+  });
+
+  test('rejects an approval whose action cannot be fingerprinted before invoking the hook', async () => {
+    // The builders bound every preview to a string, so only a history the host
+    // assembled itself can carry an action that JSON cannot serialize.
+    const cyclicPreview: Record<string, unknown> = {};
+    cyclicPreview['self'] = cyclicPreview;
+    const built = approvalConversation('approval-unserializable-action');
+    const resultId = built.ids.find((id) => built.messages[id]?.role === 'tool-result')!;
+    const builtResult = built.messages[resultId]!.toolResult!;
+    const unserializableAction = {
+      ...approvalAction(),
+      operation: { kind: 'command', command: 'echo approval', argsPreview: cyclicPreview },
+    } as unknown as ToolAction;
+    let conversation: ConversationHistory = {
+      ...built,
+      messages: {
+        ...built.messages,
+        [resultId]: {
+          ...built.messages[resultId]!,
+          toolResult: { ...builtResult, action: unserializableAction },
+        },
+      },
+    };
+    let hookCalls = 0;
+    const controller = createChatSessionController({
+      getConversation: () => conversation,
+      setConversation: (next) => {
+        conversation = next;
+      },
+      transport: async () => events([]),
+      hooks: {
+        resolveToolApproval: async (toolCallId) => {
+          hookCalls += 1;
+          return { callId: toolCallId, outcome: 'success', content: 'allowed' };
+        },
+      },
+    });
+
+    await expect(
+      controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+    ).rejects.toThrow('without a current approval action');
+    expect(hookCalls).toBe(0);
+  });
 });

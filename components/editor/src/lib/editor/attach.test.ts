@@ -1,7 +1,11 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { flushSync } from 'svelte';
+import { createReactiveBox } from './attach-reactive-watch-test-fixture.svelte.ts';
 import { createEditorAttachment } from './attach.js';
 import * as editorRuntime from './editor.js';
+import { readPlaceholderConfiguration } from './template-placeholder-configuration-plugin.js';
+import type { PlaceholderEditorConfiguration } from './template-placeholder-configuration.js';
 import type { EditorConfig, EditorState } from './types.js';
 
 const initializeEditor = editorRuntime.createEditor;
@@ -133,5 +137,48 @@ describe('createEditorAttachment', () => {
     } finally {
       globalThis.reportError = originalReportError;
     }
+  });
+
+  test('installs placeholder configuration changes during initialization and after mount', async () => {
+    const configuration = (path: string): PlaceholderEditorConfiguration => ({
+      definitions: { candidates: [{ path }] },
+    });
+    const first = configuration('first');
+    const box = createReactiveBox<PlaceholderEditorConfiguration | undefined>(first);
+    const onchange = mock((_markdown: string) => {});
+    const attachment = createEditorAttachment(
+      createAttachmentOptions({ getPlaceholderConfiguration: () => box.value, onchange }),
+    );
+    const detach = expectDetachFunction(attachment(createEditorElement()));
+    const installedPaths = (state: EditorState) =>
+      readPlaceholderConfiguration(state.view.state).completion?.candidates.map(
+        (candidate) => candidate.path,
+      );
+
+    expect(createEditorMock.mock.calls[0]?.[1]?.placeholders).toBe(first);
+
+    // Replaced while Milkdown is still initializing.
+    box.value = configuration('second');
+    flushSync();
+    const state = createEditorState();
+    resolveCreatedEditor?.(state);
+    await flushMicrotasks();
+    expect(installedPaths(state)).toEqual(['second']);
+
+    // Replaced after mount, then removed.
+    box.value = configuration('third');
+    flushSync();
+    expect(installedPaths(state)).toEqual(['third']);
+    box.value = undefined;
+    flushSync();
+    expect(installedPaths(state)).toBeUndefined();
+    expect(createEditorMock).toHaveBeenCalledTimes(1);
+
+    // Detaching stops propagation.
+    detach();
+    box.value = configuration('fourth');
+    flushSync();
+    expect(installedPaths(state)).toBeUndefined();
+    expect(onchange).not.toHaveBeenCalled();
   });
 });

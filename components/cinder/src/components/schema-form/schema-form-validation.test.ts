@@ -31,6 +31,18 @@ describe('schema-form validation', () => {
     expect(invalid.issues.map((issue) => issue.path)).toEqual([['name'], ['count']]);
   });
 
+  test('humanizes a maximum-constraint violation as "must be at most N"', async () => {
+    const schema = {
+      type: 'object',
+      properties: { count: { type: 'integer', maximum: 10 } },
+      required: ['count'],
+    };
+
+    const result = await validateSchemaValue(schema, { count: 11 });
+    expect(result.valid).toBe(false);
+    expect(result.issues).toEqual([{ path: ['count'], message: 'Count must be at most 10.' }]);
+  });
+
   test('selects draft-07 and 2019-09 validators from $schema', async () => {
     expect(
       validateSchemaValue(
@@ -158,6 +170,42 @@ describe('schema-form validation', () => {
     expect(validateSchemaValue(schema, { name: 'Ada' })).resolves.toEqual({
       valid: true,
       value: { name: 'Ada' },
+      issues: [],
+    });
+  });
+
+  test('does not cache a schema whose compilation throws synchronously, and recovers once fixed', async () => {
+    // A `$ref` that isn't a string isn't reported through `schemaErrors`/
+    // `refErrors` — json-schema-library's own URI parsing throws
+    // synchronously while walking it, which surfaces through
+    // `compileInterpreted`'s returned promise REJECTING rather than
+    // resolving with errors attached. This exercises the outer try/catch in
+    // `validateJsonSchemaValue` and `validatorForSchema`'s `.catch` cache
+    // cleanup, neither of which the "does not cache failed ... compilation
+    // attempts" test above reaches (that one resolves with `schemaErrors`
+    // populated; it never rejects).
+    const schema = {
+      type: 'object',
+      properties: { a: { $ref: 42 } },
+    } as Record<string, unknown>;
+
+    const invalid = await validateSchemaValue(schema, { a: 1 });
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues).toEqual([
+      { path: [], message: expect.stringContaining('Invalid JSON Schema') },
+    ]);
+
+    // Retrying the same still-broken schema object doesn't get stuck behind
+    // a poisoned cached rejection.
+    const stillInvalid = await validateSchemaValue(schema, { a: 1 });
+    expect(stillInvalid.valid).toBe(false);
+
+    // Fixing the SAME object reference and revalidating succeeds — the
+    // failed compile attempt was not cached against it.
+    schema['properties'] = { a: { type: 'number' } };
+    await expect(validateSchemaValue(schema, { a: 1 })).resolves.toEqual({
+      valid: true,
+      value: { a: 1 },
       issues: [],
     });
   });

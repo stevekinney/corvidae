@@ -96,7 +96,12 @@ async function build(target: MirrorTarget, packageMap: PackageMap): Promise<Comm
  * `Record<MirrorTarget, …>` literal is what makes a third target a type error here rather than a
  * silently unplanned target in whichever test iterates `mirrorTargets`.
  */
-const packageMapForFixtures = await packageMapWithCurrentDigests();
+/**
+ * The package map every plan below is built from, exported so a suite that needs the same
+ * current-digest overlay (`source-digest.test.ts`) reads this one instead of hashing every
+ * published workspace again inside a test body.
+ */
+export const packageMapForFixtures = await packageMapWithCurrentDigests();
 
 export const committedPlans: Readonly<Record<MirrorTarget, CommittedPlan>> = {
   cinder: await build('cinder', packageMapForFixtures),

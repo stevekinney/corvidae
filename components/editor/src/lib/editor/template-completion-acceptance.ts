@@ -1,42 +1,38 @@
 import type { PlaceholderCandidate } from '@lostgradient/markdown';
-import { TextSelection, type EditorState } from 'prosemirror-state';
+import { closeHistory } from '@milkdown/kit/prose/history';
+import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 
-import { templateCompletionPluginKey, type CompletionMeta } from './template-completion-state.js';
-import { textOffsetToBlockDocumentPosition } from './template-position-utilities.js';
+import {
+  templateCompletionPluginKey,
+  type CompletionMeta,
+  type CompletionState,
+} from './template-completion-state.js';
 
-export function findTokenEnd(state: EditorState, tokenFrom: number): number | null {
-  const $tokenFrom = state.doc.resolve(tokenFrom);
-  const blockContentStart = $tokenFrom.start();
-  const contentStart = tokenFrom + 2;
-  if (contentStart >= $tokenFrom.end()) return null;
-
-  const textFromContentStart = state.doc.textBetween(contentStart, $tokenFrom.end());
-  const closingIndex = textFromContentStart.indexOf('}}');
-  if (closingIndex === -1) return null;
-
-  const textUpToContentStart = state.doc.textBetween(blockContentStart, contentStart);
-  const closingDocPos = textOffsetToBlockDocumentPosition(
-    $tokenFrom.parent,
-    blockContentStart,
-    textUpToContentStart.length + closingIndex,
-  );
-  return closingDocPos + 2;
-}
-
+/**
+ * Replace the whole in-progress token with one canonical `{{path}}`.
+ *
+ * The replacement covers the opening delimiter, any text after the caret
+ * that belongs to the token and an existing closing delimiter. It keeps the
+ * token run's marks, so the inserted token stays one same-mark run, places
+ * the caret after it and forms its own undo step: history is closed before
+ * the replacement and again after it, so neither earlier typing nor the next
+ * edit joins the acceptance.
+ */
 export function acceptSuggestion(
   view: EditorView,
   suggestion: PlaceholderCandidate,
-  tokenFrom: number,
+  completion: Pick<CompletionState, 'tokenFrom' | 'tokenTo' | 'marks'>,
 ): void {
   const replacementText = `{{${suggestion.path}}}`;
   const { state } = view;
-  const tokenTo = findTokenEnd(state, tokenFrom) ?? state.selection.from;
-  const transaction = state.tr
-    .replaceWith(tokenFrom, tokenTo, state.schema.text(replacementText))
+  const { tokenFrom, tokenTo, marks } = completion;
+  const transaction = closeHistory(state.tr)
+    .replaceWith(tokenFrom, tokenTo, state.schema.text(replacementText, marks))
     .setMeta(templateCompletionPluginKey, { type: 'close' } satisfies CompletionMeta);
   transaction.setSelection(
     TextSelection.create(transaction.doc, tokenFrom + replacementText.length),
   );
-  view.dispatch(transaction);
+  view.dispatch(transaction.scrollIntoView());
+  view.dispatch(closeHistory(view.state.tr));
 }

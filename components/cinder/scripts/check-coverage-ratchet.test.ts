@@ -12,6 +12,7 @@ import {
   parseLcovRecords,
   parseSvelteLcovRecords,
   parseSvelteMeasurementPlatform,
+  runtimeImportsOfTestSupport,
   svelteCoveragePlatformNotice,
   uncoveredLineReport,
   UNREACHABLE_LINE_MARKER,
@@ -413,6 +414,83 @@ end_of_record
       'partial.ts',
       'src/components/button/button.ts',
     ]);
+  });
+
+  test('excludes test support modules named <subject>-test-<role>.ts while keeping ordinary source', () => {
+    const supportFixture = [
+      'src/components/drawer/drawer-test-helpers.ts',
+      'src/utilities/clipboard-test-support.ts',
+      'src/styles/token-contrast-test-readers.ts',
+      'src/components/menu-bar/menu-bar-test-data.ts',
+      'src/components/drawer/drawer.ts',
+      'src/components/test-runner/test-runner.ts',
+      'src/utilities/test-result.ts',
+      'src/components/drawer/drawer-test-state.svelte.ts',
+    ]
+      .map((file) => `TN:\nSF:${file}\nFNF:2\nFNH:0\nDA:1,0\nLF:1\nLH:0\nend_of_record\n`)
+      .join('');
+    const keptRuntimeFiles = [
+      'src/components/drawer/drawer.ts',
+      'src/components/test-runner/test-runner.ts',
+      'src/utilities/test-result.ts',
+    ];
+
+    expect(parseLcovRecords(supportFixture).map((record) => record.file)).toEqual(keptRuntimeFiles);
+    expect(
+      uncoveredLineReport(supportFixture, 'runtime', packageRoot).map((entry) => entry.file),
+    ).toEqual(keptRuntimeFiles);
+    expect(parseSvelteLcovRecords(supportFixture).map((record) => record.file)).toEqual([
+      'src/components/drawer/drawer-test-state.svelte.ts',
+    ]);
+  });
+
+  describe('runtimeImportsOfTestSupport', () => {
+    function writePackage(files: Record<string, string>): string {
+      const root = mkdtempSync(join(tmpdir(), 'coverage-ratchet-support-imports-'));
+      for (const [file, source] of Object.entries(files)) {
+        mkdirSync(join(root, file, '..'), { recursive: true });
+        writeFileSync(join(root, file), source);
+      }
+      return root;
+    }
+
+    test('reports a test support module reachable from the package entry', () => {
+      const root = writePackage({
+        'src/index.ts':
+          "export * from './drawer/drawer.js';\nexport { default as DrawerView } from './drawer/drawer-view.svelte';\n",
+        'src/drawer/drawer.ts': "import { open } from './drawer-test-helpers.ts';\n",
+        'src/drawer/drawer-view.svelte':
+          '<script lang="ts">\n  import { mount } from \'./drawer-test-support\';\n</script>\n',
+        'src/drawer/drawer-test-helpers.ts': 'export const open = 1;\n',
+        'src/drawer/drawer-test-support.ts': 'export const mount = 1;\n',
+      });
+
+      expect(runtimeImportsOfTestSupport(root)).toEqual([
+        { file: 'src/drawer/drawer-view.svelte', specifier: './drawer-test-support' },
+        { file: 'src/drawer/drawer.ts', specifier: './drawer-test-helpers.ts' },
+      ]);
+    });
+
+    test('allows tests and fixtures the entry never reaches to import test support modules', () => {
+      const root = writePackage({
+        'src/index.ts': "export * from './drawer';\n",
+        'src/drawer/index.ts': "export * from './drawer.ts';\n",
+        'src/drawer/drawer.ts': "import { format } from '../utilities/test-result.ts';\n",
+        'src/utilities/test-result.ts': 'export const format = 1;\n',
+        'src/drawer/drawer.test.ts': "import { open } from './drawer-test-helpers.ts';\n",
+        'src/drawer/_drawer-ssr-test.svelte':
+          '<script lang="ts">\n  import { open } from \'./drawer-test-helpers.ts\';\n</script>\n',
+        'src/drawer/drawer-test-helpers.ts': 'export const open = 1;\n',
+      });
+
+      expect(runtimeImportsOfTestSupport(root)).toEqual([]);
+    });
+
+    test('refuses to pass when the package entry is missing', () => {
+      const root = writePackage({ 'src/other.ts': 'export {};\n' });
+
+      expect(() => runtimeImportsOfTestSupport(root)).toThrow('src/index.ts does not exist');
+    });
   });
 
   test('excludes a line marked provably unreachable from both the ratchet denominator and the diagnostic report', () => {
@@ -878,6 +956,8 @@ end_of_record
           svelteMeasuredOn: { platform: 'not-a-real-platform', architecture: 'not-a-real-arch' },
         }),
       );
+      mkdirSync(join(scratchDirectory, 'src'), { recursive: true });
+      writeFileSync(join(scratchDirectory, 'src', 'index.ts'), 'export {};\n');
       mkdirSync(join(scratchDirectory, 'coverage'), { recursive: true });
       writeFileSync(
         join(scratchDirectory, 'coverage', 'lcov.info'),
@@ -913,6 +993,48 @@ end_of_record
       expect(stderr).toContain('NOTE: the Svelte coverage floor');
       expect(stderr).toContain('not-a-real-platform/not-a-real-arch');
       expect(result.stdout.toString()).toContain('Svelte coverage ratchet');
+    });
+
+    test('fails a fully covered run when runtime source imports an excluded test support module', () => {
+      const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-support-import-'));
+      writeFileSync(
+        join(scratchDirectory, 'coverage-ratchet.json'),
+        JSON.stringify({ lines: 1, functions: 1 }),
+      );
+      mkdirSync(join(scratchDirectory, 'src'), { recursive: true });
+      writeFileSync(
+        join(scratchDirectory, 'src', 'index.ts'),
+        "export { open } from './index-test-helpers.js';\n",
+      );
+      writeFileSync(
+        join(scratchDirectory, 'src', 'index-test-helpers.ts'),
+        'export const open = 1;\n',
+      );
+      mkdirSync(join(scratchDirectory, 'coverage'), { recursive: true });
+      writeFileSync(
+        join(scratchDirectory, 'coverage', 'lcov.info'),
+        [
+          'TN:',
+          'SF:src/index.ts',
+          'FNF:1',
+          'FNH:1',
+          'DA:1,1',
+          'LF:1',
+          'LH:1',
+          'end_of_record',
+          '',
+        ].join('\n'),
+      );
+
+      const result = Bun.spawnSync(
+        ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
+        { cwd: import.meta.dir },
+      );
+
+      expect(result.exitCode).toBe(1);
+      const stderr = result.stderr.toString();
+      expect(stderr).toContain('src/index.ts imports ./index-test-helpers.js');
+      expect(stderr).toContain('1 runtime import(s) of test support modules');
     });
   });
 });

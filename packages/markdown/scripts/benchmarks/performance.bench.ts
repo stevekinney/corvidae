@@ -4,17 +4,20 @@
  * DEP-35: Markdown dialect + deterministic serialization pipeline
  *
  * These tests assert absolute wall-clock thresholds and are therefore
- * benchmarks, not correctness tests. They run as part of the normal suite so
- * regressions in the Markdown pipeline remain visible.
+ * benchmarks, not correctness tests. This file lives under `scripts/` (not
+ * `src/`), so it is outside the package's default test discovery and lint
+ * scope; run it on demand with `bun run test:benchmarks`. The
+ * pathological-cases correctness assertion (`result.passes`) that used to
+ * sit alongside the timings below now lives in
+ * `../../src/pathological-cases.test.ts` and still runs in the default
+ * suite.
  *
  * For ongoing benchmarking, prefer a dedicated runner (`vitest bench`,
  * `mitata`, or `bun:bench` when it ships) rather than `expect(time).toBeLessThan(...)`.
  */
 
 import { describe, expect, it } from 'bun:test';
-import { parse, parseOrThrow, roundTrip, serialize } from './pipeline/index.js';
-
-const describeBenchmark = describe;
+import { parse, parseOrThrow, roundTrip, serialize } from '../../src/pipeline/index.js';
 
 /**
  * Generate a Markdown document of approximately the specified size.
@@ -98,7 +101,7 @@ function getGarbageCollector(): (() => void) | undefined {
   return (): void => candidate();
 }
 
-describeBenchmark('performance: parsing', () => {
+describe('performance: parsing', () => {
   it('parses 1KB document in <10ms', () => {
     const doc = generateDocument(1_000);
     const iterations = 10;
@@ -160,7 +163,7 @@ describeBenchmark('performance: parsing', () => {
   });
 });
 
-describeBenchmark('performance: serialization', () => {
+describe('performance: serialization', () => {
   it('serializes 1KB document in <10ms', () => {
     const doc = generateDocument(1_000);
     const ast = parseOrThrow(doc);
@@ -226,7 +229,7 @@ describeBenchmark('performance: serialization', () => {
   });
 });
 
-describeBenchmark('performance: round-trip', () => {
+describe('performance: round-trip', () => {
   it('round-trips 5KB document in <50ms', () => {
     const doc = generateDocument(5_000);
     const iterations = 5;
@@ -258,7 +261,7 @@ describeBenchmark('performance: round-trip', () => {
   });
 });
 
-describeBenchmark('performance: concurrent operations', () => {
+describe('performance: concurrent operations', () => {
   it('handles multiple sequential parses efficiently', () => {
     const docs = Array.from({ length: 10 }, (_, i) => generateDocument(2_000 + i * 500));
 
@@ -288,7 +291,7 @@ describeBenchmark('performance: concurrent operations', () => {
   });
 });
 
-describeBenchmark('performance: memory efficiency', () => {
+describe('performance: memory efficiency', () => {
   it('does not leak significant memory on repeated parsing', () => {
     const doc = generateDocument(10_000);
 
@@ -337,7 +340,7 @@ describeBenchmark('performance: memory efficiency', () => {
   });
 });
 
-describeBenchmark('performance: pathological cases', () => {
+describe('performance: pathological cases', () => {
   it('handles document with 1000 list items efficiently', () => {
     const items = Array.from({ length: 1000 }, (_, i) => `- Item ${i + 1}`).join('\n');
     const doc = `# Large List\n\n${items}`;

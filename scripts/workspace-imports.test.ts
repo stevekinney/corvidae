@@ -4,9 +4,12 @@ import { isBuiltin } from 'node:module';
 import { join } from 'node:path';
 import ts from 'typescript';
 
+import { declaresImportSpecifier } from './workspace-exports';
+
 const root = join(import.meta.dir, '..');
 type Manifest = {
   name: string;
+  exports?: unknown;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 };
@@ -20,20 +23,22 @@ async function readManifest(path: string): Promise<Manifest> {
 // the very same scope as every internal workspace, and armorer and conversationalist are
 // unscoped. Membership in the actual set of workspace names, discovered from disk once at module
 // load, is the only discriminator that still distinguishes an internal edge from an external one.
-const internalWorkspaceNames = new Set<string>(
+const internalWorkspaceExports = new Map<string, unknown>(
   ['applications', 'components', 'packages', 'internal'].flatMap((directory) =>
     readdirSync(join(root, directory), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .flatMap((entry) => {
+      .flatMap((entry): [string, unknown][] => {
         const manifestPath = join(root, directory, entry.name, 'package.json');
         try {
-          return [(JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest).name];
+          const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest;
+          return [[manifest.name, manifest.exports]];
         } catch {
           return [];
         }
       }),
   ),
 );
+const internalWorkspaceNames = new Set<string>(internalWorkspaceExports.keys());
 
 /** The `@scope/name` or bare first segment a specifier names, subpath dropped. */
 function packageRootOf(specifier: string): string {
@@ -128,6 +133,11 @@ function isModuleLoadingCall(expression: ts.LeftHandSideExpression): boolean {
   if (ts.isIdentifier(receiver) && receiver.text === 'Bun') {
     return expression.name.text === 'resolve' || expression.name.text === 'resolveSync';
   }
+  // A `mock.module` specifier the workspace cannot resolve registers a virtual module that only
+  // intercepts imports made before the real package loads, so it silently stops mocking in a
+  // shared-process test run (COR-1296). Mocked packages must be declared like imported ones.
+  if (ts.isIdentifier(receiver) && receiver.text === 'mock')
+    return expression.name.text === 'module';
   if (expression.name.text !== 'resolve') return false;
   return (
     (ts.isIdentifier(receiver) && receiver.text === 'require') ||
@@ -173,6 +183,7 @@ describe('workspace imports', () => {
       const editor = import.meta.resolve('@lostgradient/editor');
       const editorSource = Bun.resolveSync('@lostgradient/editor', import.meta.dir);
       const chatSource = await Bun.resolve('@lostgradient/chat', import.meta.dir);
+      mock.module('@floating-ui/dom', () => ({}));
       const ignored = "require('bureau')";
     `;
     expect(importedPackageNames(source, 'consumer.ts')).toEqual(
@@ -184,6 +195,7 @@ describe('workspace imports', () => {
         '@lostgradient/editor',
         '@lostgradient/editor',
         '@lostgradient/chat',
+        '@floating-ui/dom',
       ]),
     );
   });
@@ -217,7 +229,7 @@ describe('workspace imports', () => {
       cwd: root,
     }),
   ])(
-    '%s source imports use declared dependencies and the sole public entry point',
+    '%s source imports use declared dependencies and declared public entry points',
     async (path) => {
       const directory = path.slice(0, -'/package.json'.length);
       const manifest = await readManifest(directory);
@@ -237,23 +249,25 @@ describe('workspace imports', () => {
           assertExternalDeclaration(name, dependencies, `${directory}/${file}`);
           const importedRoot = packageRootOf(name);
           if (!internalWorkspaceNames.has(importedRoot)) continue;
-          expect(name, `${directory}/${file} imports a subpath of ${importedRoot}`).toBe(
-            importedRoot,
-          );
+          expect(
+            declaresImportSpecifier(name, importedRoot, internalWorkspaceExports.get(importedRoot)),
+            `${directory}/${file} imports ${name}, which ${importedRoot} does not export`,
+          ).toBe(true);
           if (
             file.startsWith('src/') &&
             !/(^|\/)(?:test|tests|fixtures|__fixtures__|__test-helpers__)\/|(?:\.|-)(?:test|spec|fixture)(?:\.|-)/.test(
               file,
             )
           ) {
-            expect(name, `${directory}/${file} imports its own public barrel`).not.toBe(
+            expect(importedRoot, `${directory}/${file} imports its own public barrel`).not.toBe(
               manifest.name,
             );
           }
-          if (name !== manifest.name) {
-            expect(dependencies[name], `${directory}/${file} imports undeclared ${name}`).toBe(
-              'workspace:*',
-            );
+          if (importedRoot !== manifest.name) {
+            expect(
+              dependencies[importedRoot],
+              `${directory}/${file} imports undeclared ${importedRoot}`,
+            ).toBe('workspace:*');
           }
         }
       }
