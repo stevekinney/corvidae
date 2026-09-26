@@ -26,7 +26,7 @@ type CandidateEvidence = {
   version: string;
   passed: boolean;
   cells: EvidenceCell[];
-  status?: string;
+  status: 'ready' | 'unavailable';
 };
 
 type SelectedEngine = { name: string; version: string };
@@ -67,6 +67,7 @@ function isCandidateEvidence(value: unknown): value is CandidateEvidence {
     typeof value['version'] === 'string' &&
     value['version'].length > 0 &&
     typeof value['passed'] === 'boolean' &&
+    (value['status'] === 'ready' || value['status'] === 'unavailable') &&
     Array.isArray(value['cells']) &&
     value['cells'].length > 0 &&
     value['cells'].every(isEvidenceCell)
@@ -124,11 +125,7 @@ function validateCandidates(
       if (!corresponding || corresponding['passed'] !== cell['passed'])
         errors.push('candidate cell disagreement');
     }
-    if (
-      candidate.status !== undefined &&
-      candidate.status !== 'ready' &&
-      candidate.status !== 'unavailable'
-    )
+    if (candidate.status !== 'ready' && candidate.status !== 'unavailable')
       errors.push('candidate status');
   }
   const selectedEngine = value['selectedEngine'];
@@ -277,13 +274,21 @@ export function validateEvidence(
       errors.push('version value');
   }
   if (typeof value['passed'] !== 'boolean') errors.push('passed type');
+  if (
+    expectedKind === 'runtime' &&
+    cells.some(
+      (cell) =>
+        !isRecord(cell) || !isRecord(cell['versions']) || cell['versions']['bun'] !== '1.4.2',
+    )
+  )
+    errors.push('runtime bun version');
   const candidates = value['candidates'];
   const selectedEngine = value['selectedEngine'];
   const observedPass =
     expectedKind === 'engine'
       ? Array.isArray(candidates) &&
         candidates.every(
-          (candidate) => isCandidateEvidence(candidate) && candidate.status !== 'unavailable',
+          (candidate) => isCandidateEvidence(candidate) && candidate.status === 'ready',
         ) &&
         selectedEngine !== null &&
         selectedEngine !== undefined

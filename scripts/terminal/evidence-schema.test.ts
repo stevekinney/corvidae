@@ -1,4 +1,3 @@
-import { chromium } from '@playwright/test';
 import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, test } from 'bun:test';
@@ -50,6 +49,7 @@ describe('terminal evidence schema', () => {
               name: '@xterm/xterm',
               version: '6.0.0',
               passed: true,
+              status: 'ready',
               cells: [validReport.cells[0]],
             },
           ],
@@ -144,6 +144,15 @@ describe('terminal evidence schema', () => {
       validateEvidence(
         {
           ...validReport,
+          cells: [{ ...validReport.cells[0], versions: { bun: '1.4.1' } }],
+        },
+        'runtime',
+      ),
+    ).toContain('runtime bun version');
+    expect(
+      validateEvidence(
+        {
+          ...validReport,
           cells: [{ ...validReport.cells[0], metrics: { duration: { value: 1, unit: '' } } }],
         },
         'runtime',
@@ -221,33 +230,20 @@ describe('terminal evidence schema', () => {
   });
 
   test('serializes browser failure phase in the Bun context', async () => {
-    const browser = await chromium.launch({ headless: true });
-    try {
-      const page = await browser.newPage();
-      await page.setContent('<main>terminal probe fixture</main>');
-      await page.evaluate(() => {
-        (globalThis as typeof globalThis & { probePhase?: unknown }).probePhase = {
-          phase: 'after-init',
-        };
-      });
-      const requests = ['/'];
-      const diagnostics = ['console:info:fixture'];
-      const result = await classifyBrowserFailure(
-        () =>
-          page.evaluate(() => (globalThis as { probePhase?: unknown }).probePhase ?? 'not-started'),
-        new Error('TimeoutError: forced probe failure'),
-        requests,
-        diagnostics,
-      );
+    const requests = ['/'];
+    const diagnostics = ['console:info:fixture'];
+    const result = await classifyBrowserFailure(
+      async () => ({ phase: 'after-init' }),
+      new Error('TimeoutError: forced probe failure'),
+      requests,
+      diagnostics,
+    );
 
-      expect(result.status).toBe('unavailable');
-      expect(result.requests).toBe(requests);
-      expect(result.diagnostics).toContain('phase:{"phase":"after-init"}');
-      expect(result.cells['input-return-semantics']?.observation).toContain(
-        'unavailable:timeout:{"phase":"after-init"}',
-      );
-    } finally {
-      await browser.close();
-    }
+    expect(result.status).toBe('unavailable');
+    expect(result.requests).toBe(requests);
+    expect(result.diagnostics).toContain('phase:{"phase":"after-init"}');
+    expect(result.cells['input-return-semantics']?.observation).toContain(
+      'unavailable:timeout:{"phase":"after-init"}',
+    );
   });
 });

@@ -4,6 +4,7 @@ import { assertEvidence, type EvidenceCell, type EvidenceReport } from './eviden
 
 const root = join(import.meta.dir, '../..');
 const reportPath = join(root, 'tmp/terminal-probes/runtime.json');
+const pinnedBunVersion = '1.4.2';
 const expectedCellIds = [
   'pipe-launch-input-output-exit',
   'pipe-capabilities-and-pause',
@@ -325,6 +326,8 @@ async function descendantCleanup(): Promise<{
 }
 
 async function main(): Promise<void> {
+  if (Bun.version !== pinnedBunVersion)
+    throw new Error(`runtime probe requires Bun ${pinnedBunVersion}; found ${Bun.version}`);
   const cells = [...(await pipeProbe()), ...(await ptyProbe())];
   const report: EvidenceReport = {
     schemaVersion: 1,

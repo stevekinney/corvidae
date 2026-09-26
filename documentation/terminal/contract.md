@@ -21,7 +21,7 @@ The terminal package is browser-only and checked by the browser TypeScript confi
 
 ## Runtime and supported matrix
 
-The pinned runtime is Bun `1.4.2`. The supported host matrix is macOS and Linux on x64 and arm64. The supported browser matrix is desktop Chromium, Firefox, and WebKit through the root Playwright installation. Named shells are `sh`, `bash`, `zsh`, and `fish` when present on the host; a missing shell is a named startup failure, not a fallback. Windows is unsupported in v1 because `Bun.spawn({ terminal })` is POSIX-only and rejects with `unsupported-runtime`; a pipe never silently upgrades to a PTY.
+The pinned runtime is Bun `1.4.2`. The supported host matrix is macOS and Linux on x64 and arm64. The v1 browser matrix is desktop Chromium, which is the browser hard-gated by the committed engine evidence; Firefox and WebKit remain unproven. Named shells are `sh`, `bash`, `zsh`, and `fish` when present on the host; a missing shell is a named startup failure, not a fallback. Windows is unsupported in v1 because `Bun.spawn({ terminal })` is POSIX-only and rejects with `unsupported-runtime`; a pipe never silently upgrades to a PTY.
 
 Pipe mode preserves stdout and stderr as separate channels and reports no resize, terminal query, shell line discipline, or process-terminal capability. PTY mode uses `Bun.spawn({ terminal })`, owns terminal dimensions, accepts input and resize, and reports process exit separately from PTY EOF. Output-only sources may be a finite or live `ReadableStream` or async byte iterable; they advertise no input, resize, or kill capability and report source completion rather than inventing exit code zero.
 
@@ -66,8 +66,10 @@ The WebSocket server callback signatures are frozen as `handleOpen(socket, reque
 | `unsupported-runtime` | server, startup | startup failure; no attachment | 1011 | close PTY/pipe handles |
 | `spawn-failed` | server, startup | startup failure; generation revoked | 1011 | terminate descendants; quarantine if uncertain |
 | `backend-failed` | server, submitted operation | operation failure; generation revoked | 1011 | cancel unsent operations; cleanup |
-| `transport-failed` | either, live session | unknown delivery; generation revoked | 1006 | disable input; cleanup |
+| `transport-failed` | either, live session | unknown delivery; generation revoked | 1011 | disable input; cleanup |
 | `cleanup-incomplete` | server, disposal | explicit incomplete result; slot quarantined | 1000 | retain quarantine record; no replacement |
+
+Code `1006` is reserved for a locally observed abnormal closure and is never sent in an application-initiated WebSocket close frame.
 
 ## Worked lifecycle examples
 
