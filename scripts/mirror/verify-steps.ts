@@ -5,6 +5,7 @@ import {
   importableSpecifierEntries,
   importableSpecifiers,
   nodeImportableSpecifierEntries,
+  readmePublicityScript,
   resolveTool,
   smokeScript,
   tarballStem,
@@ -63,6 +64,7 @@ export type VerifyStepKind =
   | 'typecheck-published'
   | 'pack'
   | 'pack-relocate'
+  | 'readme'
   | 'publint'
   | 'attw'
   | 'typecheck-private'
@@ -339,6 +341,14 @@ export function buildVerifySteps(
       publicName: entry.publicName,
     });
     const tarball = tarballFor(entry);
+    steps.push({
+      kind: 'readme',
+      description: `check ${entry.publicName}'s packed README`,
+      cwd: env.resolveDirectory('.'),
+      command: ['bun', '-e', readmePublicityScript, tarball],
+      publicName: entry.publicName,
+      tarball,
+    });
     steps.push({
       kind: 'publint',
       description: `publint ${entry.publicName}`,

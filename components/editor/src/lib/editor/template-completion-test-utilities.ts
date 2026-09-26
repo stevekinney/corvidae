@@ -41,7 +41,7 @@ const schema = new Schema({
 // ---------------------------------------------------------------------------
 
 export function makeCandidate(path: string, description?: string): PlaceholderCandidate {
-  return { path, types: ['string'], ...(description === undefined ? {} : { description }) };
+  return { path, description, valueKind: 'string' as const };
 }
 
 export function makeCandidates(...paths: string[]): PlaceholderCandidate[] {

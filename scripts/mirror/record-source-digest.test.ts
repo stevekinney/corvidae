@@ -52,8 +52,8 @@ async function buildFixtureRepository(
   return shas;
 }
 
-/** A `CommandRunner` that answers `npm view <name>@<version> gitHead` with a fixed SHA (or nothing). */
-function stubNpmView(gitHead: string | undefined): CommandRunner {
+/** A `CommandRunner` that answers `bun info <name>@<version> gitHead` with a fixed SHA (or nothing). */
+function stubRegistryInfo(gitHead: string | undefined): CommandRunner {
   return async (command): Promise<CommandResult> => ({
     command: command.join(' '),
     exitCode: 0,
@@ -63,7 +63,15 @@ function stubNpmView(gitHead: string | undefined): CommandRunner {
 }
 
 describe('fetchGitHead', () => {
-  test('reads the trimmed gitHead npm view prints', async () => {
+  test('uses the repository Bun toolchain for registry metadata', async () => {
+    const commands: string[][] = [];
+    await fetchGitHead('conversationalist', '1.3.0', async (command) => {
+      commands.push([...command]);
+      return { command: command.join(' '), exitCode: 0, stdout: '', stderr: '' };
+    });
+    expect(commands).toEqual([['bun', 'info', 'conversationalist@1.3.0', 'gitHead']]);
+  });
+  test('reads the trimmed gitHead bun info prints', async () => {
     const runner: CommandRunner = async (command) => ({
       command: command.join(' '),
       exitCode: 0,
@@ -75,16 +83,16 @@ describe('fetchGitHead', () => {
     );
   });
 
-  test('returns undefined when npm prints nothing, rather than an empty string', async () => {
-    expect(await fetchGitHead('x', '1.0.0', stubNpmView(undefined))).toBeUndefined();
+  test('returns undefined when Bun prints nothing, rather than an empty string', async () => {
+    expect(await fetchGitHead('x', '1.0.0', stubRegistryInfo(undefined))).toBeUndefined();
   });
 
-  test('refuses a non-zero npm exit', async () => {
+  test('refuses a non-zero registry command exit', async () => {
     const runner: CommandRunner = async (command) => ({
       command: command.join(' '),
       exitCode: 1,
       stdout: '',
-      stderr: 'npm error 404',
+      stderr: 'registry error 404',
     });
     await expect(fetchGitHead('missing', '1.0.0', runner)).rejects.toThrow(
       RegistryVerificationError,
@@ -285,7 +293,7 @@ describe('compareAgainstCommit', () => {
 });
 
 /**
- * `recordSourceDigest` end to end, against a real fixture git repository and a stubbed `npm view`
+ * `recordSourceDigest` end to end, against a real fixture git repository and a stubbed `bun info`
  * — never the network. `package-map.json`'s real `@lostgradient/operative` entry is the workspace
  * under test (`publish-as`, a real `lastPublishedVersion`), so only the registry lookup and the
  * target repository are fixtures; `collectDigestedFiles` reads this checkout's actual
@@ -316,7 +324,7 @@ describe('recordSourceDigest', () => {
         corvidaeRoot,
         workspace: '@lostgradient/operative',
         targetRepositoryDirectory: scratch,
-        npmRunner: stubNpmView(sha),
+        registryRunner: stubRegistryInfo(sha),
       });
       expect(result.workspace).toBe('@lostgradient/operative');
       expect(result.gitHead).toBe(sha!);
@@ -337,7 +345,7 @@ describe('recordSourceDigest', () => {
           corvidaeRoot,
           workspace: '@lostgradient/operative',
           targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(sha),
+          registryRunner: stubRegistryInfo(sha),
         }),
       ).rejects.toThrow(/does not match/);
     });
@@ -351,7 +359,7 @@ describe('recordSourceDigest', () => {
           corvidaeRoot,
           workspace: '@lostgradient/operative',
           targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
+          registryRunner: stubRegistryInfo(undefined),
         }),
       ).rejects.toThrow('no recorded gitHead');
     });
@@ -365,7 +373,7 @@ describe('recordSourceDigest', () => {
           corvidaeRoot,
           workspace: '@lostgradient/operative',
           targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView('0'.repeat(40)),
+          registryRunner: stubRegistryInfo('0'.repeat(40)),
         }),
       ).rejects.toThrow(/is not in .* history/);
     });
@@ -379,7 +387,7 @@ describe('recordSourceDigest', () => {
           corvidaeRoot,
           workspace: '@lostgradient/nonexistent',
           targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
+          registryRunner: stubRegistryInfo(undefined),
         }),
       ).rejects.toThrow('no entry in package-map.json');
     });
@@ -394,7 +402,7 @@ describe('recordSourceDigest', () => {
           // Real map: `@lostgradient/weft-ui` is `private-workspace` as of COR-1196.
           workspace: '@lostgradient/weft-ui',
           targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
+          registryRunner: stubRegistryInfo(undefined),
         }),
       ).rejects.toThrow(/disposition is "private-workspace"/);
     });
@@ -416,7 +424,7 @@ describe('recordSourceDigest', () => {
           corvidaeRoot,
           workspace: '@lostgradient/operative',
           targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
+          registryRunner: stubRegistryInfo(undefined),
           packageMap: {
             ...map,
             workspaces: {

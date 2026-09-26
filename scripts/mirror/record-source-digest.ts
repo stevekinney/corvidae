@@ -24,7 +24,7 @@ import { versionConstants } from './source.ts';
  * README and LICENSE from the digest's scope); and a docs edit or a copyright-year bump could
  * refuse the verification for a package whose actual source had not moved. This version compares
  * corvidae's current digest scope against the *committed source* at the commit the registry says
- * `lastPublishedVersion` was actually published from — `npm view <name>@<version> gitHead` — read
+ * `lastPublishedVersion` was actually published from — `bun info <name>@<version> gitHead` — read
  * out of a local clone of the workspace's own target repository.
  *
  *   bun scripts/mirror/record-source-digest.ts --workspace @lostgradient/operative --target-clone /path/to/clone
@@ -38,25 +38,18 @@ import { versionConstants } from './source.ts';
 
 export class RegistryVerificationError extends Error {}
 
-/**
- * The commit `<name>@<version>` was published from, read with the real `npm view` CLI rather than
- * a registry HTTP call — the coordinator's own verification (`npm view conversationalist@1.2.0
- * gitHead`) is the source of truth this mirrors, and `npm view` already carries whatever auth and
- * registry configuration the environment has. `undefined` when the field is absent (npm prints
- * nothing and exits 0), which covers a version published before npm recorded provenance in
- * `gitHead`, or one published by hand outside a CI job that sets it.
- */
+/** Read the publishing commit through Bun; an absent field returns undefined. */
 export async function fetchGitHead(
   name: string,
   version: string,
   runner: CommandRunner = runCommand,
 ): Promise<string | undefined> {
-  const result = await runner(['npm', 'view', `${name}@${version}`, 'gitHead'], {
+  const result = await runner(['bun', 'info', `${name}@${version}`, 'gitHead'], {
     cwd: process.cwd(),
   });
   if (result.exitCode !== 0) {
     throw new RegistryVerificationError(
-      `${name}@${version}: \`npm view\` exited ${result.exitCode}\n${result.stdout}${result.stderr}`,
+      `${name}@${version}: \`bun info\` exited ${result.exitCode}\n${result.stdout}${result.stderr}`,
     );
   }
   const gitHead = result.stdout.trim();
@@ -227,7 +220,7 @@ export interface RecordOptions {
   workspace: string;
   /** A local clone of the workspace's own target repository, already fetched to at least `commit`. */
   targetRepositoryDirectory: string;
-  npmRunner?: CommandRunner;
+  registryRunner?: CommandRunner;
   gitRunner?: CommandRunner;
   /**
    * `package-map.json`, overridden. Every production call (`run` below) omits this and reads the
@@ -258,7 +251,7 @@ export async function recordSourceDigest({
   corvidaeRoot,
   workspace,
   targetRepositoryDirectory,
-  npmRunner = runCommand,
+  registryRunner = runCommand,
   gitRunner = runCommand,
   packageMap,
 }: RecordOptions): Promise<RecordResult> {
@@ -278,7 +271,7 @@ export async function recordSourceDigest({
     );
   }
 
-  const gitHead = await fetchGitHead(entry.name, entry.lastPublishedVersion, npmRunner);
+  const gitHead = await fetchGitHead(entry.name, entry.lastPublishedVersion, registryRunner);
   if (gitHead === undefined) {
     throw new RegistryVerificationError(
       `${workspace}: ${entry.name}@${entry.lastPublishedVersion} has no recorded gitHead on the registry, so there is no commit to verify corvidae's source against. Recording a digest without that verification is exactly the unverified claim this command exists to prevent.`,

@@ -74,6 +74,7 @@ describe('buildVerifySteps', () => {
       'typecheck-published',
       'pack',
       'pack-relocate',
+      'readme',
       'publint',
       'attw',
       'typecheck-private',

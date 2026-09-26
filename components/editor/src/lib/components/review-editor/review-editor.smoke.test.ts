@@ -1,14 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-// These APIs are published under `./review-editor`, not the package root: the published root is the
-// narrower `src/lib/index.ts`, so a self-import through `@lostgradient/editor` fails in the mirror.
 import {
   buildFormDataFromValues,
   createReviewEditorState,
   ReviewEditor as ExportedReviewEditor,
   toPersistedThreads,
   toRuntimeThreads,
-} from './index.ts';
+} from '@lostgradient/editor';
 import ReviewEditor from './review-editor.svelte';
 
 const implementationSource = await Bun.file(
@@ -49,7 +47,7 @@ describe('review-editor original bindable regression', () => {
 });
 
 describe('review-editor public entrypoint', () => {
-  test('exports review APIs from this workspace’s own source entry', async () => {
+  test('exports review APIs from the sole package source entry', async () => {
     const packageJson = await Bun.file(`${import.meta.dir}/../../../../package.json`).json();
     expect(packageJson.exports).toEqual({ '.': './src/index.ts' });
     expect(ReviewEditor).toBeDefined();
@@ -60,21 +58,5 @@ describe('review-editor public entrypoint', () => {
     // consumer restoring a saved ReviewState actually imports from.
     expect(toPersistedThreads).toBeTypeOf('function');
     expect(toRuntimeThreads).toBeTypeOf('function');
-  });
-
-  // Moving these APIs onto the published root, or off the subpath, should be a deliberate change.
-  test('the published package root does not carry these APIs; only the review-editor subpath does', async () => {
-    const publishedRoot = await Bun.file(
-      new URL('../../index.ts', import.meta.url).pathname,
-    ).text();
-    for (const name of [
-      'ReviewEditor',
-      'createReviewEditorState',
-      'buildFormDataFromValues',
-      'toPersistedThreads',
-      'toRuntimeThreads',
-    ]) {
-      expect(publishedRoot).not.toContain(name);
-    }
   });
 });

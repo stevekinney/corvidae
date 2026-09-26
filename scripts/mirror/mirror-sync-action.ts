@@ -43,9 +43,9 @@ export function targetRemoteUrl(target: MirrorTarget): string {
   return `https://github.com/${targetRepositoryFullName(target)}.git`;
 }
 
-/** The sync branch a dispatch pushes, named after the corvidae commit it carries. */
+/** A fresh branch per attempt, so a retry never collides with an earlier partial push. */
 export function pullRequestBranchFor(corvidaeCommit: string): string {
-  return `mirror-sync-${corvidaeCommit.slice(0, 12)}`;
+  return `mirror-sync-${corvidaeCommit.slice(0, 12)}-${crypto.randomUUID()}`;
 }
 
 /**

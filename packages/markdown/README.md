@@ -42,92 +42,17 @@ The synchronous renderer omits math processing. Use `renderMarkdownWithMath` on 
 
 ## Diffs and templates
 
-Diffing and templates are separate operations. `computeLineDiff` compares source strings; `renderTemplate` resolves placeholders and then returns sanitized HTML, not substituted Markdown. Both template functions require placeholder definitions; see [Template placeholders](#template-placeholders).
+Diffing and templates are separate operations. `computeLineDiff` compares source strings; `renderTemplate` resolves placeholders and then returns sanitized HTML, not substituted Markdown.
 
 ```typescript
 import { computeLineDiff, renderTemplate } from '@lostgradient/markdown';
 
 const diff = computeLineDiff('before\nafter', 'before\nupdated');
-const html = renderTemplate(
-  'Hello {{name}}',
-  { name: 'World' },
-  { definitions: { candidates: [{ path: 'name', types: ['string'] }] } },
-);
+const html = renderTemplate('Hello {{name}}', { name: 'World' });
 console.log(diff, html);
 ```
 
-Use `resolveTemplatePlaceholders` when you need the substituted source and placeholder diagnostics before rendering. Inside this workspace, import parsing, serialization, syntax-tree utilities, diffing, rendering, highlighting, templates, and URL utilities from the package root. The public package also declares the subpaths listed in `scripts/mirror/package-surface.json`: `./pipeline`, `./diff`, `./diff/line-diff`, `./diff/types`, `./rendering`, `./rendering/async`, `./rendering/types`, `./rendering/highlighter`, `./rendering/mermaid-cache`, `./utilities/safe-url`, `./utilities/sort-keys`, `./templates/sanitize-html`, `./templates/template-placeholders`, `./templates/template-render`, `./templates/placeholder-security`, and `./templates/types`.
-
-## Placeholder catalogs
-
-`normalizePlaceholderDefinitions(definitions)` turns placeholder definitions into the allowlist every placeholder feature shares. Definitions contain exactly one of `schema` (a JSON Schema object, the recommended path) or `candidates` (explicit `{ path, types?, title?, description? }` metadata). It returns sorted `candidates`, ordered `issues`, and `enabled`. Any issue sets `enabled` to `false`, which disables completion and fill until the definitions are fixed; `candidates` still lists the valid partial entries. A valid empty catalog is enabled and permits no paths.
-
-```typescript
-import { normalizePlaceholderDefinitions } from '@lostgradient/markdown';
-
-const catalog = normalizePlaceholderDefinitions({
-  schema: {
-    type: 'object',
-    properties: {
-      user: { type: 'object', properties: { name: { type: 'string', title: 'Name' } } },
-      tags: { type: 'array', items: { type: 'string' } },
-    },
-  },
-});
-// catalog.enabled === true; catalog.candidates paths: tags, user, user.name
-```
-
-Schema extraction is catalog extraction, not instance validation. It reads a root object schema and recursively declared `properties`, emitting whole objects, whole arrays and nested properties; `items` never creates indexed paths. `type` may be one of `string`, `number`, `integer`, `boolean`, `null`, `object` and `array`, or a list of them; an absent type is unknown. `title` and `description` are display metadata. `required`, `enum`, `const`, `default`, `examples`, `format`, numeric and string constraints, unused `$defs` and boolean `additionalProperties` are neither enforced nor used as values. `$ref`, `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`, `patternProperties` and schema-valued `additionalProperties` are reported as `unsupported_schema`, never followed, and never fetched. Property names must be ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`) that are not reserved (`__proto__`, `constructor`, any `__` name, and similar, case-insensitively); other names are reported at their JSON Pointer rather than skipped.
-
-Definitions must be plain data: objects whose prototype is `null` or this realm's `Object.prototype`, read through own data properties. Getters are never invoked, and class instances, foreign-realm objects and accessor properties are reported. Transfer cross-realm data into the receiving realm first. Executable Proxy objects are outside the supported contract: JavaScript cannot reliably detect every proxy, so no guarantee is made that proxy traps do not run.
-
-## Template placeholders
-
-`resolveTemplatePlaceholders(template, values, options)` fills `{{path}}` tokens in a Markdown template and returns `{ text, issues }`: the filled Markdown source and ordered `PlaceholderDiagnostic` entries. `options.definitions` is required and is the only allowlist; `valueMode` (`'text'` or `'markdown'`, default `'text'`) and `unresolved` (`'preserve'` or `'error'`, default `'preserve'`) are optional. `renderTemplate(template, values, options)` takes the same options and renders the filled source through the sanitized pipeline.
-
-```typescript
-import { PlaceholderTemplateError, resolveTemplatePlaceholders } from '@lostgradient/markdown';
-
-const definitions = {
-  schema: {
-    type: 'object',
-    properties: { user: { type: 'object', properties: { name: { type: 'string' } } } },
-  },
-};
-const { text, issues } = resolveTemplatePlaceholders(
-  'Hello **{{user.name}}**, `{{user.name}}` stays literal. {{missing}}',
-  { user: { name: 'Ada <3' } },
-  { definitions },
-);
-// text: 'Hello **Ada&#32;&#60;3**, `{{user.name}}` stays literal. {{missing}}'
-// issues: [{ code: 'unknown_placeholder', path: 'missing', location: { kind: 'token', … } }]
-
-try {
-  resolveTemplatePlaceholders('{{missing}}', {}, { definitions, unresolved: 'error' });
-} catch (error) {
-  if (error instanceof PlaceholderTemplateError) console.log(error.issues);
-}
-```
-
-Tokens are `{{path}}` with optional spaces or tabs inside the delimiters; no token spans a line ending. They are active only in ordinary paragraph text, headings, list items, blockquotes, table cells, footnotes and bracketed link labels. Front matter (an exact `---` … `---` prefix at offset zero), code, raw HTML, math, link and image destinations and titles, reference definitions, image alt text and autolinks stay literal, decided by Markdown structure rather than a global regular expression. Each Markdown text run is scanned separately, so a token never spans a formatting boundary: characters that form emphasis split a would-be token, so a path such as `__name__` or `_meta_` cannot be filled from Markdown and is reported as `malformed_token`. Dollar-delimited math is excluded too, and it can reach across tokens: in `Was ${{old}}, now ${{new}}.`, remark-math reads `${{old}}, now $` as inline math, so `{{old}}` is never scanned and produces no diagnostic, even with `unresolved: 'error'`. An opening `{{` preceded by an odd number of backslashes, or written with character references such as `&#123;`, is literal; triple braces and nested `{{` are one `malformed_token`. Inside a token's body, a backslash immediately before a CommonMark-escapable ASCII punctuation character (``!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~``) is a backslash escape: read left to right, it contributes that punctuation character and consumes both, so `{{user\_name}}` resolves to path `user_name` and `{{\\_}}` (an escaped backslash followed by `_`) resolves to path `\_`. Any other backslash, including one with nothing after it, stays in the path as itself, so `{{user\name}}` resolves to path `user\name` (then `invalid_path_format`). This matters because the Markdown serializer (`normalize`, and Milkdown's `getMarkdown()`) backslash-escapes ASCII punctuation in text, turning `{{user_name}}` into `{{user\_name}}` on a rich-mode round trip; resolving the escape is what keeps such a path filling after one. Escapes affect only path extraction, after a token's boundaries are found: delimiter detection, the opening-delimiter backslash-parity rule, and malformed-span detection stay exactly as described above, blind to escapes inside the body. `parsePlaceholderTokens(text)` applies this grammar to one plain text run (the unit a rich-editor adapter scans), and `parseMarkdownPlaceholderTokens(source)` applies it to a whole Markdown template. Both report zero-based, end-exclusive UTF-16 offsets into the original source. `validatePlaceholderTokens(tokens, candidates)` returns the syntax and catalog diagnostics for parsed tokens.
-
-Only declared paths are filled, from own data properties of plain objects; inherited properties, getters, `toJSON` and undeclared input keys never resolve. Each token gets at most one issue, the first that applies of `malformed_token`, `invalid_path_format`, `blocked_path`, `unknown_placeholder`, `missing_value` (no own property), `invalid_value` (`undefined`, bigint, symbols, functions, non-finite numbers, sparse arrays, accessors, cycles or non-plain objects in the referenced value) and `type_mismatch` (against declared `types`; `integer` accepts finite integers only). Missing and `null` differ: `null` is a value. Non-plain `values` (`invalid_values`), an invalid `valueMode` or `unresolved` string (`invalid_option`) or any definitions issue disables fill, returning the template unchanged with only those issues. Diagnostics never contain supplied values. In `'preserve'` mode unresolved tokens keep their original text; in `'error'` mode any issue throws `PlaceholderTemplateError` with the same ordered `issues` and no partial result.
-
-Strings are inserted unchanged; numbers use JSON serialization (`-0` becomes `0`); `true`, `false` and `null` are written as such; arrays and objects become compact JSON with recursively sorted keys and original array order. In the default `'text'` mode every replacement is then encoded with decimal character references, keeping only ASCII letters and digits and code points at or above U+00A0, so `**important**` becomes `&#42;&#42;important&#42;&#42;` and renders literally; U+0000 and isolated surrogates first become visible `\u0000`-style text. Because letters and digits are kept, a value can still combine with template syntax next to the token: `{{n}}. item` with `n = 42` becomes `42. item`, an ordered list item, and `&{{x}};` with `x = 'lt'` becomes the entity `&lt;`. Keep such syntax out of the template around a token when that matters. In `'markdown'` mode string values are inserted raw and may add Markdown structure; every other JSON value keeps the literal encoding. Replacement text is never scanned for placeholders again. The resolver returns Markdown source, not safe HTML; `renderTemplate` sanitizes.
-
-The parser and resolver subpaths (`./templates/types`, `./templates/template-placeholders` and `./templates/placeholder-security`) import no rendering, Shiki, KaTeX, DOM, Svelte or editor code from this package's source; `src/import-graph.test.ts` enforces that. They do import the headless `remark-math` parser to exclude math. At the installed versions, `remark-math@6.0.0` depends on `micromark-extension-math@3.1.0`, whose entry statically re-exports an HTML extension that imports `katex@0.16.47`. `remark-math` and `micromark-extension-math` declare `sideEffects: false`, so a bundler that honors it can drop that extension; `katex` declares no `sideEffects` field, and unbundled Bun evaluation still evaluates the `katex` module even though the parser never calls it. The package root re-exports rendering, so importing the root is never rendering-free.
-
-## Breaking changes
-
-- `buildPlaceholderCandidatesFromJsonSchema(schema)` returned `PlaceholderCandidate[]`, silently skipping unsupported keywords and unaddressable property names. It now returns `{ candidates, issues }`, where `issues` holds `PlaceholderDiagnostic` entries located by JSON Pointers starting at `/schema`, and unsupported keywords, unaddressable or reserved names, malformed types and cycles are reported.
-- `PlaceholderCandidate` changed from `{ path; description: string | undefined; valueKind: PlaceholderValueKind }` to `{ path; types?: readonly PlaceholderSchemaType[]; title?: string; description?: string }`. `PlaceholderValueKind` and `valueKind` are removed; `integer` is no longer collapsed into `number`, type unions are kept, and an omitted `types` means unknown.
-- `resolveTemplatePlaceholders(template, values, candidatePaths?)` substituted every closed token, returned `{ text, issues: PlaceholderValidationIssue[] }`, and reported `unknown_placeholder` only when `candidatePaths` was given. It is now `resolveTemplatePlaceholders(template, values, options)` with required `options.definitions` and optional `valueMode` and `unresolved`, returns `{ text, issues: readonly PlaceholderDiagnostic[] }`, and fills only declared paths. The optional `candidatePaths` parameter is gone.
-- Array, null and missing values changed. Before: arrays were comma-joined with `', '` (nested `null`/`undefined`/function/symbol items became empty strings and objects became `JSON.stringify` text), so `['a', 'b', 3]` became `a, b, 3`; `null` and `undefined` became `''`; a missing, inherited, reserved or unknown path became `''`; functions and symbols became `''`; bigint became its digits. After: arrays are compact JSON in order (`[1,"x"]`, encoded in text mode as `&#91;1&#44;&#34;x&#34;&#93;`); `null` becomes `null`; a missing own property is a `missing_value` issue and the token stays in the output (or throws in `'error'` mode); unknown, reserved and malformed tokens stay visible with an issue; `undefined`, bigint, functions, symbols, non-finite numbers, sparse arrays, accessors, cycles and non-plain objects are `invalid_value` issues. Objects now use recursively sorted keys.
-- Default output is literal text. Before, replacement strings were inserted raw, so a value such as `**bold**` rendered as Markdown. Now every replacement is encoded with character references unless `valueMode: 'markdown'` is passed, which inserts string values raw.
-- `renderTemplate(template, values)` is now `renderTemplate(template, values, options)` with the same required options, and throws `PlaceholderTemplateError` in `'error'` mode.
-- `PlaceholderToken.closed: boolean` is replaced by `kind: 'placeholder' | 'malformed'`. Triple braces and nested opening delimiters are now one malformed token over the balanced span, unclosed tokens stop at the line end instead of running to the end of the text, backslash-escaped openers are literal, and no token spans a line ending. `parsePlaceholderTokens` still scans plain text; `parseMarkdownPlaceholderTokens` is the new Markdown-aware scanner the resolver uses.
-- `validatePlaceholderTokens(tokens, candidates)` returned `{ validTokens, invalidTokens, issues }` with `{ token, reason }` issues. It now returns `readonly PlaceholderDiagnostic[]` whose `code` replaces `reason` and whose `location` (`{ kind: 'token', startOffset, endOffset }`) replaces `token`; it also reports `blocked_path`. `PlaceholderValidationIssue` and `PlaceholderValidationResult` are removed.
-- `isBlockedSegment` moved from the `./templates/template-placeholders` module to `./templates/placeholder-security`. The package root still exports it.
+Use `resolveTemplatePlaceholders` when you need the substituted source and placeholder diagnostics before rendering. Import parsing, serialization, syntax-tree utilities, diffing, rendering, highlighting, templates, and URL utilities from the package root; there are no public package subpaths.
 
 ## Development
 

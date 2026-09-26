@@ -23,8 +23,12 @@ describe('targetRepositoryFullName and targetRemoteUrl', () => {
 });
 
 describe('pullRequestBranchFor', () => {
-  test('names the branch after a short prefix of the corvidae commit', () => {
-    expect(pullRequestBranchFor('0123456789abcdef')).toBe('mirror-sync-0123456789ab');
+  test('gives retries of the same source commit distinct remote branches', () => {
+    const first = pullRequestBranchFor('0123456789abcdef');
+    const second = pullRequestBranchFor('0123456789abcdef');
+    expect(first).toStartWith('mirror-sync-0123456789ab-');
+    expect(second).toStartWith('mirror-sync-0123456789ab-');
+    expect(second).not.toBe(first);
   });
 });
 

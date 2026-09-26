@@ -103,7 +103,7 @@ describe('computeCompletionState', () => {
     const state = createStateWithText('{{input', 7);
     const transaction = state.tr.setMeta(templateCompletionPluginKey, {
       type: 'asyncResults',
-      candidates: [{ path: 'input.bad', types: ['not-a-type'] }],
+      candidates: [{ path: 'input.bad', valueKind: 'not-a-kind' }],
     });
 
     const result = computeCompletionState(previousState, transaction, state, configuration);

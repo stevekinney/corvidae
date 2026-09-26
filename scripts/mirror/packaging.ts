@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -243,24 +242,14 @@ export function findInternalReadmeMarker(text: string): string | undefined {
   return internalReadmeMarkers.find((marker) => text.includes(marker));
 }
 
-/** Read `README.md` out of a packed tarball, or `undefined` when the tarball carries none. */
-async function readReadmeFromTarball(
-  tarball: string,
-  runner: CommandRunner,
-): Promise<string | undefined> {
-  const scratch = await mkdtemp(join(tmpdir(), 'corvidae-readme-check-'));
-  try {
-    const result = await runner(['tar', '-xzf', tarball, '-C', scratch, 'package/README.md'], {
-      cwd: scratch,
-    });
-    if (result.exitCode !== 0) return undefined;
-    const file = Bun.file(join(scratch, 'package/README.md'));
-    if (!(await file.exists())) return undefined;
-    return await file.text();
-  } finally {
-    await rm(scratch, { recursive: true, force: true });
-  }
-}
+/** The same executable artifact check runs locally and in the emitted mirror workflow. */
+export const readmePublicityScript = [
+  'const archive = Bun.spawn(["tar", "-xOf", process.argv.at(-1), "package/README.md"], {stdout: "pipe", stderr: "pipe"});',
+  'const [text, , status] = await Promise.all([new Response(archive.stdout).text(), new Response(archive.stderr).text(), archive.exited]);',
+  `const marker = ${JSON.stringify(internalReadmeMarkers)}.find(value => text.includes(value));`,
+  'const result = status !== 0 ? {ok: false, problem: {kind: "missing"}} : marker ? {ok: false, problem: {kind: "internal-marker", marker}} : {ok: true};',
+  'console.log(JSON.stringify(result)); process.exit(result.ok ? 0 : 1);',
+].join(' ');
 
 /**
  * Refuse a packed tarball whose `README.md` is missing or still reads as corvidae's internal
@@ -278,11 +267,13 @@ export async function checkReadmePublicity(
   tarball: string,
   runner: CommandRunner = runCommand,
 ): Promise<ReadmePublicityResult> {
-  const text = await readReadmeFromTarball(tarball, runner);
-  if (text === undefined) return { ok: false, problem: { kind: 'missing' } };
-  const marker = findInternalReadmeMarker(text);
-  if (marker !== undefined) return { ok: false, problem: { kind: 'internal-marker', marker } };
-  return { ok: true };
+  const result = await runner(['bun', '-e', readmePublicityScript, tarball], {
+    cwd: process.cwd(),
+  });
+  if (result.exitCode !== 0 && result.exitCode !== 1) {
+    assertSucceeded(result, 'checking the packed README');
+  }
+  return JSON.parse(result.stdout) as ReadmePublicityResult;
 }
 
 /**

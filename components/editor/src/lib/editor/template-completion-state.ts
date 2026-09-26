@@ -1,7 +1,7 @@
 import type {
   PlaceholderCandidate,
   PlaceholderCompletionConfiguration,
-  PlaceholderSchemaType,
+  PlaceholderValueKind,
 } from '@lostgradient/markdown';
 import type { EditorState, Transaction } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
@@ -56,37 +56,22 @@ function isCompletionMeta(value: unknown): value is CompletionMeta {
   return value['type'] === 'asyncResults' && isCandidateArray(value['candidates']);
 }
 
-const SCHEMA_TYPES: ReadonlySet<unknown> = new Set<PlaceholderSchemaType>([
-  'string',
-  'number',
-  'integer',
-  'boolean',
-  'null',
-  'object',
-  'array',
-]);
-
-function isSchemaTypeList(value: unknown): value is readonly PlaceholderSchemaType[] {
+function isValueKind(value: unknown): value is PlaceholderValueKind {
   return (
-    Array.isArray(value) &&
-    value.length > 0 &&
-    new Set(value).size === value.length &&
-    value.every((type) => SCHEMA_TYPES.has(type))
+    value === 'string' ||
+    value === 'number' ||
+    value === 'boolean' ||
+    value === 'array' ||
+    value === 'object' ||
+    value === 'unknown'
   );
-}
-
-function isOptionalString(value: unknown): boolean {
-  return value === undefined || typeof value === 'string';
 }
 
 function isCandidate(value: unknown): value is PlaceholderCandidate {
-  return (
-    isRecord(value) &&
-    typeof value['path'] === 'string' &&
-    (value['types'] === undefined || isSchemaTypeList(value['types'])) &&
-    isOptionalString(value['title']) &&
-    isOptionalString(value['description'])
-  );
+  if (!isRecord(value) || typeof value['path'] !== 'string' || !isValueKind(value['valueKind'])) {
+    return false;
+  }
+  return value['description'] === undefined || typeof value['description'] === 'string';
 }
 
 function isCandidateArray(value: unknown): value is PlaceholderCandidate[] {

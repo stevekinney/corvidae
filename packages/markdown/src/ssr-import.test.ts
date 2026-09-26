@@ -11,8 +11,6 @@ const publicFunctions = [
   'terminateMarkdownWorker',
   'sanitizeHtml',
   'resolveTemplatePlaceholders',
-  'parseMarkdownPlaceholderTokens',
-  'PlaceholderTemplateError',
   'renderTemplate',
 ];
 
