@@ -104,6 +104,25 @@ function formatUnknown(value: unknown): string {
   return json === undefined ? typeof value : json;
 }
 
+export async function classifyBrowserFailure(
+  readPhase: () => Promise<unknown>,
+  error: unknown,
+  requests: string[],
+  diagnostics: string[],
+): Promise<BrowserResult> {
+  const message = String(error);
+  const kind = message.includes('TimeoutError') ? 'timeout' : 'harness-failure';
+  const phase = await readPhase().catch(() => 'page-unavailable');
+  const phaseText = formatUnknown(phase);
+  diagnostics.push(`phase:${phaseText}`);
+  return {
+    cells: fallbackCells(`unavailable:${kind}:${phaseText}:${message}`),
+    requests,
+    status: 'unavailable',
+    diagnostics,
+  };
+}
+
 async function runBrowserProbe(candidate: Candidate, directory: string): Promise<BrowserResult> {
   const entry = join(directory, 'probe.ts');
   const bundleDirectory = join(directory, 'bundle');
@@ -250,19 +269,17 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     };
     return { cells: common, requests, status: 'ready', diagnostics };
   } catch (error) {
-    const message = String(error);
-    const kind = message.includes('TimeoutError') ? 'timeout' : 'harness-failure';
-    const phase = await page
-      .evaluate(() => (globalThis as { probePhase?: unknown }).probePhase ?? 'not-started')
-      .catch(() => 'page-unavailable');
-    const phaseText = formatUnknown(phase);
-    diagnostics.push(`phase:${phaseText}`);
-    return {
-      cells: fallbackCells(`unavailable:${kind}:${phaseText}:${message}`),
+    return classifyBrowserFailure(
+      () =>
+        page
+          ? page.evaluate(
+              () => (globalThis as { probePhase?: unknown }).probePhase ?? 'not-started',
+            )
+          : Promise.resolve('page-unavailable'),
+      error,
       requests,
-      status: 'unavailable',
       diagnostics,
-    };
+    );
   } finally {
     await browser.close();
     await server.stop(true);
@@ -416,9 +433,11 @@ async function main(): Promise<void> {
   if (!report.passed) throw new Error(`engine probe failed; see ${reportPath}`);
 }
 
-try {
-  await main();
-} catch (error) {
-  console.error(error);
-  process.exitCode = 1;
+if (import.meta.main) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
+  }
 }
