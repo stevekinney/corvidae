@@ -159,6 +159,81 @@ Use `getWorkflowRevisionDiagnostics(engine, name, revision)` to inspect referenc
 
 Fork, recovery, and terminal cleanup also preserve or check revision identity. Forking a persisted run is not an implicit upgrade to the active revision. Decide how old code remains available before you retire an artifact.
 
+## Revision realms
+
+Both `'inline'` and `'worker'` execution modes load a workflow's real implementation module into the host process — `'worker'` mode never _invokes_ the handler it holds, but it still imports it to register it. `workflowExecutionMode: 'realm'` (COR-249, ADR 0005) goes further: the host never imports the implementation module at all. Each immutable `(name, revision)` gets its own pool of Worker-backed realms, and only a realm's own bootstrap script imports the real code.
+
+Opting in requires two things: `workflowExecutionMode: 'realm'` and `revisionRealmExecution.resolveRevisionRealmConfig`, a function mapping `(workflowType, revision)` to a `RevisionRealmConfig` — most importantly the realm's own `workerUrl`. Weft cannot honestly turn a `registerSource()` descriptor's `location` into a Worker script URL (see that field's own doc), so you supply the bootstrap URL for each revision explicitly, exactly the way `workerExecution.workerUrl` already works for `'worker'` mode.
+
+You still register each revision through the ordinary `registerSource()`/`workflows.activate()` catalog — the same multi-revision tracking, compatibility checks, and activation events every dynamic source uses. The definition you register is a **metadata-only placeholder**: its `handler` is never invoked (`RevisionRealmExecutionStrategy` routes every turn to the realm instead), so it only needs to match the real implementation's declared contract, name, and version. The real generator body lives in a separate module that only the realm's own bootstrap script imports:
+
+```typescript
+// checkout-v1.workflow.ts — the REAL implementation.
+// Imported only by checkout-v1-worker.ts below, never by the host.
+import { workflow } from '@lostgradient/weft';
+
+export const checkout = workflow({ name: 'checkout', version: '1.0.0' }).execute(async function* (
+  _ctx,
+  cartId: string,
+) {
+  return `shipped:${cartId}`;
+});
+```
+
+`checkout-v1-worker.ts` (the `workerUrl` above points at it) is the one piece this guide cannot hand you as a copy-pasteable public import: **a production revision-bootstrap helper is not yet published API.** ADR 0004 deferred building one, and this project's own engine-level tests use a package-internal, test-only reference implementation (`src/core/realm/__fixtures__/revision-realm-generator-worker-entry.ts`) rather than a supported export. Until a public one ships, your bootstrap script owns the wire protocol directly: listen for `realm-configure`, respond with a `ready` handshake, then on each `realm-run` message step the real generator and reply with `realm-result`/`realm-failure`. Read `src/core/realm/__fixtures__/revision-realm-generator-worker-entry.ts` for a complete, tested implementation of that protocol (it reuses this project's own internal generator-stepping helpers) and `src/core/realm/worker-realm-messages.ts` for the exact message shapes (`RealmRunMessage`/`RealmResultMessage`/`RealmFailureMessage`) before writing one.
+
+```typescript
+// host.ts — never imports checkout-v1.workflow.ts.
+import { Engine, workflow, workflowSource } from '@lostgradient/weft';
+
+const checkoutRevisionV1 = 'sha256:...'; // the same content-derived revision the real implementation resolves to
+
+const engine = new Engine({
+  workflowExecutionMode: 'realm',
+  revisionRealmExecution: {
+    resolveRevisionRealmConfig: (workflowType, revision) => {
+      if (workflowType === 'checkout' && revision === checkoutRevisionV1) {
+        return {
+          workerUrl: new URL('./checkout-v1-worker.ts', import.meta.url),
+          expectedWorkflowTypes: ['checkout'],
+        };
+      }
+      return undefined;
+    },
+  },
+});
+
+// A placeholder — never invoked. Its contract must match the real
+// implementation's; its body never runs.
+const checkoutPlaceholder = workflow({ name: 'checkout', version: '1.0.0' }).execute(
+  async function* () {
+    throw new Error('checkout: placeholder handler invoked on the host — this should never happen');
+  },
+);
+
+engine.registerSource(
+  workflowSource(
+    {
+      name: 'checkout',
+      location: './checkout-v1.workflow.ts',
+      exportName: 'checkout',
+      revision: checkoutRevisionV1,
+    },
+    async () => ({ checkout: checkoutPlaceholder }),
+  ),
+);
+await engine.resolveWorkflowSource('checkout', checkoutRevisionV1);
+await engine.workflows.activate('checkout', checkoutRevisionV1);
+
+await engine.start('checkout', 'cart-42');
+```
+
+Activation and recovery behave exactly like any other dynamic source: `catalog:revision-activated` routes new starts to the newly active revision while a run already executing keeps its own realm until it finishes; a run recovered after a process restart resumes in its own pinned revision's realm even if a newer revision has since become active, using the same durable revision pin `WorkflowState.revision` already carries.
+
+Two things this mode does **not** provide, matching ADR 0005's own scope: a real production pipeline that turns `location` into a Worker script for you (you build and point `workerUrl` at your own per-revision bundle), and cooperative in-flight completion on cancellation — a realm-mode workflow's cancellation is non-cooperative, matching hardened `'worker'` mode's own `discardOnCancel` posture. A child-process adapter, realm diagnostics, a Console view, and `bun --watch`/`bun --hot` guidance remain unbuilt (COR-246, COR-243).
+
+See [ADR 0003](../contributing/architecture-decisions/0003-revision-realm-lifecycle-and-protocol.md), [ADR 0004](../contributing/architecture-decisions/0004-worker-revision-realm-pool.md), and [ADR 0005](../contributing/architecture-decisions/0005-engine-revision-realm-integration.md) for the full lifecycle, protocol, and engine-integration design; [`revision-realm-execution.test.ts`](../../src/core/engine/revision-realm-execution.test.ts) is the source-verified, runnable version of the example above.
+
 ## Client types and runtime validation
 
 Registry snapshot version `2` contains a deterministic array of workflow revision manifests and an `activeRevisions` map. Generated client declarations describe the active payload contracts while retaining revision metadata. Unsupported schema constructs become `unknown`; generated types do not pretend an unsupported schema is narrower than it is.
