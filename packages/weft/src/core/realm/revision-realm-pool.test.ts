@@ -32,6 +32,26 @@ describe('RevisionRealmPool', () => {
     pool.dispose();
   });
 
+  it('diagnostics() reports state, generation, restarts, and pending turns for every tracked realm (COR-243)', async () => {
+    const pool = makePool();
+    expect(pool.diagnostics()).toEqual([]);
+
+    const outcome = await pool.acquireForExecution('execution-1');
+    if (!outcome.ok) throw new Error('unreachable');
+
+    const diagnostics = pool.diagnostics();
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toEqual({
+      state: 'active',
+      realmGeneration: outcome.realm.activation?.realmGeneration ?? null,
+      restartCount: 0,
+      pendingTurnCount: 0,
+    });
+    expect(diagnostics[0]?.realmGeneration).not.toBeNull();
+
+    pool.dispose();
+  });
+
   it('warms up to but not beyond its concurrency limit', async () => {
     const pool = makePool({ concurrency: 1 });
     const first = await pool.acquireForExecution('execution-1');

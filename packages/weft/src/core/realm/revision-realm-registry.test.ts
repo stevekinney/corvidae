@@ -372,6 +372,44 @@ describe('RevisionRealmRegistry', () => {
       expect(terminateSpy).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('listDiagnostics (COR-243)', () => {
+    it('reports every pool this registry owns, keyed by (name, revision)', async () => {
+      const registry = new RevisionRealmRegistry();
+      expect(registry.listDiagnostics()).toEqual([]);
+
+      registry.ensurePool('order-workflow', 'revision-a', configFor('revision-a'));
+      registry.ensurePool('order-workflow', 'revision-b', configFor('revision-b'));
+      const a = await registry.acquireForExecution('order-workflow', 'revision-a', 'execution-a');
+      if (!a.ok) throw new Error('unreachable');
+
+      const diagnostics = registry.listDiagnostics();
+      expect(diagnostics).toHaveLength(2);
+      const forRevisionA = diagnostics.find((entry) => entry.revision === 'revision-a');
+      const forRevisionB = diagnostics.find((entry) => entry.revision === 'revision-b');
+      expect(forRevisionA).toEqual({
+        name: 'order-workflow',
+        revision: 'revision-a',
+        revisionActive: true,
+        realms: [
+          {
+            state: 'active',
+            realmGeneration: realmGenerationOf(a.realm),
+            restartCount: 0,
+            pendingTurnCount: 0,
+          },
+        ],
+      });
+      expect(forRevisionB).toEqual({
+        name: 'order-workflow',
+        revision: 'revision-b',
+        revisionActive: true,
+        realms: [],
+      });
+
+      registry.releaseAfterExecution('order-workflow', 'revision-a', a.realm);
+    });
+  });
 });
 
 function realmGenerationOf(realm: RevisionRealm): string {

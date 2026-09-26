@@ -15,7 +15,7 @@ const { default: Citation } = await import('./citation.svelte');
 // the svelte package to resolve to the client build) applies before this import resolves.
 // A top-level static import of 'svelte' resolves to svelte/index-server.js in Bun's
 // non-browser environment, making `mount()` throw "not available on the server".
-const { createRawSnippet } = await import('svelte');
+const { createRawSnippet, flushSync } = await import('svelte');
 
 afterEach(cleanup);
 
@@ -107,7 +107,8 @@ describe('Citation', () => {
     await waitFor(() => expect(document.querySelector('section strong')).not.toBeNull());
 
     await rerender({ sources: [] });
-    await waitFor(() => expect(document.querySelector('section')).toBeNull());
+    flushSync();
+    expect(document.querySelector('section')?.outerHTML ?? null).toBeNull();
     await rerender({ sources: [{ label: 'Replenished' }] });
     expect(document.querySelector('section')).toBeNull();
   });
@@ -121,7 +122,8 @@ describe('Citation', () => {
     await fireEvent.click(marker);
     await waitFor(() => expect(document.querySelector('section strong')).not.toBeNull());
     await rerender({ sources: [] });
-    await waitFor(() => expect(document.querySelector('section')).toBeNull());
+    flushSync();
+    expect(document.querySelector('section')?.outerHTML ?? null).toBeNull();
 
     expect(document.activeElement).toBe(marker);
   });
