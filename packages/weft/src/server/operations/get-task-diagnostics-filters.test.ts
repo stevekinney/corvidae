@@ -10,6 +10,9 @@ import { TaskQueue } from '../task-queue.ts';
 import {
   createEngine,
   diagnosticsValue,
+  executionIdentityFixture,
+  leasedFixture,
+  putLeasedWithAttempt,
   putLedgerRecord,
   queuedFixture,
   runDiagnostics,
@@ -226,5 +229,177 @@ describe('weft.tasks.diagnostics filters', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected authorization failure');
     expect(result.fault.code).toBe('Forbidden');
+  });
+
+  describe('execution-identity filters (COR-198)', () => {
+    it('filters stale-inflight diagnostics by buildId, sourced from the attempt record rather than the ledger', async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({ operationId: 'op-build-a', attemptToken: 'attempt-a', queue: 'default' }),
+        executionIdentityFixture({ buildId: 'b1' }),
+      );
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({ operationId: 'op-build-b', attemptToken: 'attempt-b', queue: 'default' }),
+        executionIdentityFixture({ buildId: 'b2' }),
+      );
+
+      const result = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleHeartbeatAfterMs: 0, buildId: 'b1' },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected diagnostics result');
+      const diagnostics = diagnosticsValue(result.value);
+      expect(diagnostics.items.map((item) => item.operationId)).toEqual(['op-build-a']);
+      expect(diagnostics.summary.staleInflight).toBe(1);
+    });
+
+    it('combines deploymentName, artifactDigest, and workflowRevision filters with AND', async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({ operationId: 'op-match', attemptToken: 'attempt-match', queue: 'default' }),
+        executionIdentityFixture({
+          deploymentName: 'checkout',
+          artifactDigest: 'sha256:match',
+          workflowRevision: 'rev-2',
+        }),
+      );
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({
+          operationId: 'op-wrong-revision',
+          attemptToken: 'attempt-wrong-revision',
+          queue: 'default',
+        }),
+        executionIdentityFixture({
+          deploymentName: 'checkout',
+          artifactDigest: 'sha256:match',
+          workflowRevision: 'rev-1',
+        }),
+      );
+
+      const result = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: {
+          staleHeartbeatAfterMs: 0,
+          deploymentName: 'checkout',
+          artifactDigest: 'sha256:match',
+          workflowRevision: 'rev-2',
+        },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(result.value).items.map((item) => item.operationId)).toEqual([
+        'op-match',
+      ]);
+    });
+
+    it("filters by workerId against the attempt's executionIdentity.workerId, not the ledger's workerSessionId", async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      // The session that claimed the lease is named `w-session-1`, but the
+      // worker PROCESS identity `executionIdentity.workerId` recorded is a
+      // different string — the filter must match the latter, not the former.
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({
+          operationId: 'op-worker-identity',
+          attemptToken: 'attempt-worker-identity',
+          workerSessionId: 'w-session-1',
+          queue: 'default',
+        }),
+        executionIdentityFixture({ workerId: 'w-process-7' }),
+      );
+
+      const matched = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleHeartbeatAfterMs: 0, workerId: 'w-process-7' },
+      });
+      expect(matched.ok).toBe(true);
+      if (!matched.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(matched.value).items).toHaveLength(1);
+
+      const unmatched = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleHeartbeatAfterMs: 0, workerId: 'w-session-1' },
+      });
+      expect(unmatched.ok).toBe(true);
+      if (!unmatched.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(unmatched.value).items).toHaveLength(0);
+    });
+
+    it('excludes a task with no attempt record from every identity filter, rather than treating it as a wildcard match', async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      // Leased, but no attempt record was ever written for it (e.g. a
+      // hand-seeded fixture, or one predating COR-205) — never a match once
+      // an identity filter is set.
+      await putLedgerRecord(
+        storage,
+        leasedFixture({ operationId: 'op-no-attempt', attemptToken: 'attempt-orphan' }),
+      );
+
+      const result = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleHeartbeatAfterMs: 0, buildId: 'b1' },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(result.value).items).toHaveLength(0);
+    });
+
+    it('leaves every other diagnostic kind unaffected when no identity filter is set', async () => {
+      const storage = new MemoryStorage();
+      const engine = createEngine(storage);
+      const registry = new WorkerRegistry();
+      const taskQueue = new TaskQueue();
+
+      await putLeasedWithAttempt(
+        storage,
+        leasedFixture({ operationId: 'op-unfiltered', attemptToken: 'attempt-unfiltered' }),
+        executionIdentityFixture(),
+      );
+
+      const result = await runDiagnostics({
+        engine,
+        registry,
+        taskQueue,
+        input: { staleHeartbeatAfterMs: 0 },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected diagnostics result');
+      expect(diagnosticsValue(result.value).items).toHaveLength(1);
+    });
   });
 });
