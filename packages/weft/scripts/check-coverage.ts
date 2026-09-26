@@ -441,11 +441,30 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       },
     ],
     [
+      'src/core/realm/__fixtures__/workflow-implementation.fixture.ts',
+      {
+        reason:
+          'Test-only stand-in for a workflow implementation module (COR-249), imported by revision-realm-worker-entry.ts. Its constant and its one function execute inside a spawned Worker thread when a real turn is dispatched and released (worker-realm.test.ts), and Bun does not merge Worker-thread execution hits into the parent process LCOV report — the same class of gap this file already documents for genuine child-process execution elsewhere (confirmed directly: a full-suite run reports FNF:1/FNH:0 for this file). Module-graph proof of this file (the module-boundary test) is static (Bun.build()), which does not execute it either.',
+        lines: new Set([19, 21]),
+        functions: 1,
+        requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/core/realm/revision-realm-registry.ts',
+      {
+        reason:
+          "Every one of this file's 12 functions is exercised by revision-realm-registry.test.ts (including markActive and dispose, added specifically to close this gap), and a full-suite coverage run confirms 100% LINE coverage for this file (no DA:0 lines remain) — the file-level LINE total in the coverage summary already reflects that. Despite this, the same run's FNH (11) is one short of FNF (12): the same 'Bun's LCOV FNH undercounts a function whose every line is otherwise hit' artifact already documented elsewhere in this registry (see get-task-diagnostics.ts's entry below, and the NoConditionalBatchStorage precedent in workflow-visibility-backfill.test-support.ts) — not reproduced by running this file's own test in isolation (100% functions there too), only by the full suite's exact combination of files, matching that precedent's own description of the artifact shifting by process composition.",
+        functions: 1,
+      },
+    ],
+    [
       'src/core/realm/worker-realm.ts',
       {
         reason:
-          "The `messageerror` listener (COR-249) delegates to the exact same `#handleWorkerFailure` a real Worker `error` event already exercises end to end (worker-realm.test.ts's throwing-worker and timeout tests) — only its own one-line callback body is unreached. `messageerror` fires when structured-clone deserialization fails on the RECEIVING side; a `postMessage` call with a non-cloneable payload throws synchronously on the SENDING side instead (`DataCloneError`, confirmed directly against Bun 1.4.2), so there is no reliable, non-flaky way to manufacture the receiving-side failure from a test.",
+          "The `messageerror` listener (COR-249) delegates to the exact same `#handleWorkerFailure` a real Worker `error` event already exercises end to end (worker-realm.test.ts's throwing-worker and timeout tests) — only its own one-line callback body is unreached, both as a LINE (292) and as its own FUNCTION. `messageerror` fires when structured-clone deserialization fails on the RECEIVING side; a `postMessage` call with a non-cloneable payload throws synchronously on the SENDING side instead (`DataCloneError`, confirmed directly against Bun 1.4.2), so there is no reliable, non-flaky way to manufacture the receiving-side failure from a test. A full-suite run's FNF/FNH (30/28) is two short, not one: the second is the same 'Bun's LCOV FNH undercounts a fully line-covered function' artifact documented for revision-realm-registry.ts's entry above and elsewhere in this registry, not reproduced when this file's own tests run in isolation (only the messageerror gap shows there).",
         lines: new Set([292]),
+        functions: 2,
         requireUncoveredLines: true,
       },
     ],
