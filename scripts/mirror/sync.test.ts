@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
 import { runCommand } from './packaging.ts';
 import { planSurface } from './surface.ts';
@@ -12,6 +13,7 @@ import {
   BuildInputError,
   cloneTarget,
   collectMissingBuildInputs,
+  credentialedGitEnvironment,
   findForeignCommits,
   ForeignCommitError,
   git,
@@ -19,6 +21,7 @@ import {
   provenanceTrailer,
   runSync,
   SyncError,
+  type PullRequestOptions,
   type SyncResult,
 } from './sync.ts';
 
@@ -57,6 +60,39 @@ describe('gitEnvironment', () => {
       expect(environment['GIT_CONFIG_COUNT']).toBe('1');
       expect(environment['GIT_CONFIG_KEY_0']).toBe('core.hooksPath');
     }
+  });
+});
+
+describe('credentialedGitEnvironment', () => {
+  /**
+   * `{ ...gitEnvironment(), ...credential }` — what a credentialed push used to compose — lets
+   * the credential's own `GIT_CONFIG_COUNT: '1'`/`GIT_CONFIG_KEY_0` overwrite `gitEnvironment`'s
+   * `core.hooksPath` entry wholesale, silently un-neutralizing hooks on exactly the git command
+   * that pushes into a target. This is the regression test for the fix: both the credential and
+   * the hook neutralization have to survive, at different indices.
+   */
+  test('appends hook neutralization after the credential rather than overwriting it', () => {
+    const credential = {
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+      GIT_CONFIG_VALUE_0: 'Authorization: Bearer token',
+    };
+    const environment = credentialedGitEnvironment(credential, {});
+    expect(environment['GIT_CONFIG_COUNT']).toBe('2');
+    expect(environment['GIT_CONFIG_KEY_0']).toBe('http.https://github.com/.extraHeader');
+    expect(environment['GIT_CONFIG_VALUE_0']).toBe('Authorization: Bearer token');
+    expect(environment['GIT_CONFIG_KEY_1']).toBe('core.hooksPath');
+    expect(environment['GIT_CONFIG_VALUE_1']).toBe('/dev/null');
+    expect(environment['GIT_CONFIG_GLOBAL']).toBe('/dev/null');
+    expect(environment['GIT_CONFIG_SYSTEM']).toBe('/dev/null');
+  });
+
+  test('carries the base environment through, not just the credential', () => {
+    const environment = credentialedGitEnvironment(
+      { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'a', GIT_CONFIG_VALUE_0: 'b' },
+      { PATH: '/usr/bin' },
+    );
+    expect(environment['PATH']).toBe('/usr/bin');
   });
 });
 
@@ -386,17 +422,27 @@ describe('the mirror sync against a fake remote', () => {
 
         expect(first.decision).toBe('pushed');
         expect(first.changed.length).toBeGreaterThan(0);
-        // `firstPublish` is every manifest emitted at 0.0.0, which includes the private
-        // workspace. Nothing publishes that one, so the name reads wider than what it reports;
-        // pinned as observed rather than quietly filtered here. `@lostgradient/typescript` was in
-        // this list until COR-1287 and is not a regression by its absence: it ships from the
-        // cinder target, so the agent-bureau plan vendors its configuration rather than emitting
-        // a manifest for it, exactly as the weft plan always has.
-        expect(first.firstPublish.toSorted()).toEqual([
-          '@lostgradient/cryptography',
-          '@lostgradient/lifecycle',
-          privateWorkspaceName,
-        ]);
+        // `firstPublish` is every manifest emitted at 0.0.0: the private workspace always
+        // qualifies (nothing publishes `@lostgradient/skills`, so its name reads wider than what
+        // it reports), and a `publish-as` fixture workspace qualifies only while the real,
+        // committed `package-map.json` still records no `lastPublishedVersion` for it. Derived
+        // from that map rather than pinned as a literal, so a fixture workspace's own first
+        // publish (COR-1198 published both `@lostgradient/cryptography` and
+        // `@lostgradient/lifecycle`) does not silently go stale here. `@lostgradient/typescript`
+        // was in this list until COR-1287 and is not a regression by its absence: it ships from
+        // the cinder target, so the agent-bureau plan vendors its configuration rather than
+        // emitting a manifest for it, exactly as the weft plan always has.
+        const map = await loadPackageMap();
+        const expectedFirstPublish: string[] = Object.values(fixturePackages)
+          .filter((entry) => {
+            const disposition = map.workspaces[entry.workspace];
+            return (
+              disposition?.disposition === 'publish-as' && disposition.lastPublishedVersion === null
+            );
+          })
+          .map((entry) => entry.publicName);
+        expectedFirstPublish.push(privateWorkspaceName);
+        expect(first.firstPublish.toSorted()).toEqual(expectedFirstPublish.toSorted());
         // The private workspace is type-checked in the target even though nothing packs it: its
         // source ships now, and `typecheck` is the only check that reads it.
         expect(first.verification.privateTypechecks).toEqual([privateWorkspaceName]);
@@ -502,6 +548,131 @@ describe('the mirror sync against a fake remote', () => {
   );
 });
 
+/**
+ * COR-1195: the workflow-dispatch path never pushes straight to a target's default branch. It
+ * commits on a fresh branch and opens a pull request instead, so the target's own emitted
+ * `mirror-verify.yaml` gates the exact diff before anything reaches `main`. `pushEnvironment` and
+ * `openPullRequest` are faked here rather than driven through a real `GitHubApi`: the credential
+ * composition itself is `credentialedGitEnvironment`'s own test above, and opening a pull request
+ * over HTTP is `github-api.test.ts`'s. What this harness can prove that neither of those can is
+ * the ordering `runSync` itself is responsible for — the branch is created, the target's default
+ * branch is never written to, and `openPullRequest` sees the branch that was actually pushed.
+ */
+function fakePullRequest(branch: string): {
+  options: PullRequestOptions;
+  opened: { branch: string; base: string; commit: string; changed: readonly string[] }[];
+} {
+  const opened: { branch: string; base: string; commit: string; changed: readonly string[] }[] = [];
+  return {
+    opened,
+    options: {
+      branch,
+      pushEnvironment: async () => ({}),
+      openPullRequest: async (info) => {
+        opened.push(info);
+        return { number: 7, htmlUrl: `https://github.com/stevekinney/agent-bureau/pull/7` };
+      },
+    },
+  };
+}
+
+describe('runSync in pull-request mode', () => {
+  test(
+    'commits on a new branch, leaves the default branch untouched, and opens a pull request',
+    async () => {
+      await withHarness(async (harness) => {
+        const { options, opened } = fakePullRequest('mirror-sync-abc123');
+        const result = await runSync({
+          corvidaeRoot: harness.corvidae,
+          target: 'agent-bureau',
+          remote: harness.remote,
+          directory: harness.runDirectory('pull-request'),
+          scratchDirectory: join(harness.scratch, 'pull-request'),
+          corvidaeCommit: 'corvidae-pull-request',
+          pullRequest: options,
+        });
+
+        expect(result.decision).toBe('pushed');
+        // `commit` is only ever absent on a skip, and the assertion just above ruled that out;
+        // narrowed explicitly so the comparisons below type-check against a plain `string`
+        // rather than `string | undefined`.
+        if (!result.commit) throw new Error('expected runSync to report a commit');
+        const commit = result.commit;
+        expect(result.pullRequest).toEqual({
+          number: 7,
+          htmlUrl: 'https://github.com/stevekinney/agent-bureau/pull/7',
+        });
+        expect(opened).toHaveLength(1);
+        expect(opened[0]?.branch).toBe('mirror-sync-abc123');
+        expect(opened[0]?.base).toBe('main');
+        expect(opened[0]?.commit).toBe(commit);
+        expect(opened[0]?.changed.length).toBeGreaterThan(0);
+
+        // `main` never moved: only the seed commit from `withHarness` is on it.
+        const mainCommitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+        expect(mainCommitCount.trim()).toBe('1');
+        const mainHead = await git(harness.remote, 'rev-parse', 'main');
+
+        // The sync branch exists on the remote, its tip is the commit `openPullRequest` was
+        // told about, and it carries the provenance trailer and the mirror's own identity —
+        // exactly as the direct-push path's commit does.
+        const branchHead = await git(harness.remote, 'rev-parse', 'refs/heads/mirror-sync-abc123');
+        expect(branchHead.trim()).toBe(commit);
+        expect(branchHead.trim()).not.toBe(mainHead.trim());
+        const message = await git(
+          harness.remote,
+          'log',
+          '-1',
+          '--format=%B',
+          'refs/heads/mirror-sync-abc123',
+        );
+        expect(message).toContain(`${provenanceTrailer}: corvidae-pull-request`);
+        const author = await git(
+          harness.remote,
+          'log',
+          '-1',
+          '--format=%an <%ae>',
+          'refs/heads/mirror-sync-abc123',
+        );
+        expect(author.trim()).toBe(
+          'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
+        );
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'opens nothing when the transform produces no change',
+    async () => {
+      await withHarness(async (harness) => {
+        // Sync once directly so the target already carries corvidae's bytes, leaving the second,
+        // pull-request-mode run with nothing to change.
+        await sync(harness, 'seed-first');
+
+        const { options, opened } = fakePullRequest('mirror-sync-noop');
+        const result = await runSync({
+          corvidaeRoot: harness.corvidae,
+          target: 'agent-bureau',
+          remote: harness.remote,
+          directory: harness.runDirectory('pull-request-noop'),
+          scratchDirectory: join(harness.scratch, 'pull-request-noop'),
+          corvidaeCommit: 'corvidae-pull-request-noop',
+          pullRequest: options,
+        });
+
+        expect(result.decision).toBe('skip');
+        expect(result.pullRequest).toBeUndefined();
+        expect(opened).toEqual([]);
+        // No sync branch was ever pushed.
+        const branches = await git(harness.remote, 'branch', '--list', 'mirror-sync-noop');
+        expect(branches.trim()).toBe('');
+      });
+    },
+    endToEndTimeout,
+  );
+});
+
 describe('the foreign-commit guard', () => {
   /**
    * COR-1192. After the first sync every release bump is a hand commit above a mirror-authored
@@ -565,6 +736,115 @@ describe('the foreign-commit guard', () => {
 
         const result = await sync(harness, 'after-build-input');
         expect(['skip', 'pushed']).toContain(result.decision);
+      });
+    },
+    endToEndTimeout,
+  );
+
+  /**
+   * COR-1198. agent-bureau#639 (`d750218`) changed the target's release tooling, its root
+   * `bunfig.toml` and three package READMEs: paths no `target-owned.json` glob names, and none of
+   * which the transform writes or prunes. Under COR-1223's inversion an unenumerated path the plan
+   * never touches is the target's, so a sync cannot clobber the commit and the guard must not
+   * refuse it.
+   */
+  test(
+    "a hand commit to paths the transform neither writes nor prunes is the target's own",
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const releaser = harness.runDirectory('release-tooling');
+        await mkdir(releaser, { recursive: true });
+        await git(releaser, 'clone', '--quiet', harness.remote, releaser);
+        await Bun.write(join(releaser, 'scripts/release.ts'), 'export const release = true;\n');
+        await Bun.write(join(releaser, 'bunfig.toml'), '[install]\nexact = true\n');
+        await Bun.write(
+          join(releaser, 'packages/cryptography/README.md'),
+          '# @lostgradient/cryptography\n',
+        );
+        await git(releaser, 'add', '--all');
+        await git(releaser, 'commit', '--quiet', '--message', 'Tune the release tooling');
+        await git(releaser, 'push', '--quiet', 'origin', 'HEAD:main');
+
+        const result = await sync(harness, 'after-release-tooling');
+        expect(['skip', 'pushed']).toContain(result.decision);
+        const synced = harness.runDirectory('after-release-tooling');
+        expect(await readFile(join(synced, 'scripts/release.ts'), 'utf8')).toBe(
+          'export const release = true;\n',
+        );
+        expect(await readFile(join(synced, 'bunfig.toml'), 'utf8')).toBe(
+          '[install]\nexact = true\n',
+        );
+        expect(await readFile(join(synced, 'packages/cryptography/README.md'), 'utf8')).toBe(
+          '# @lostgradient/cryptography\n',
+        );
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'a hand commit moving an emitted file out of the sync’s reach is still foreign',
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const mover = harness.runDirectory('rename-out-of-reach');
+        await mkdir(mover, { recursive: true });
+        await git(mover, 'clone', '--quiet', harness.remote, mover);
+        // Git reports this as a rename whose new path the sync never touches; judged by that path
+        // alone it would pass, and the sync would then restore the old path beside it.
+        await git(mover, 'mv', 'packages/lifecycle/src/index.ts', 'packages/lifecycle/moved.ts');
+        await git(mover, 'commit', '--quiet', '--message', 'Move an emitted file out of src');
+        await git(mover, 'push', '--quiet', 'origin', 'HEAD:main');
+        const moverHead = await git(mover, 'rev-parse', 'HEAD');
+        const foreignSha = moverHead.trim();
+
+        let thrown: unknown;
+        try {
+          await sync(harness, 'after-rename-out-of-reach');
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ForeignCommitError);
+        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+          foreignSha,
+        ]);
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'a hand commit adding a file inside a source tree the transform prunes is still foreign',
+    async () => {
+      await withHarness(async (harness) => {
+        await sync(harness, 'first');
+
+        const intruder = harness.runDirectory('prunable-intruder');
+        await mkdir(intruder, { recursive: true });
+        await git(intruder, 'clone', '--quiet', harness.remote, intruder);
+        await Bun.write(
+          join(intruder, 'packages/lifecycle/src/hand-added.ts'),
+          'export const handAdded = true;\n',
+        );
+        await git(intruder, 'add', '--all');
+        await git(intruder, 'commit', '--quiet', '--message', 'Add a file the sync would prune');
+        await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
+        const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
+        const foreignSha = intruderHead.trim();
+
+        let thrown: unknown;
+        try {
+          await sync(harness, 'after-prunable-intrusion');
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(ForeignCommitError);
+        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+          foreignSha,
+        ]);
       });
     },
     endToEndTimeout,

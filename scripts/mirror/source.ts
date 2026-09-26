@@ -225,6 +225,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'The DOM harness twenty-six route suites under `src/routes/` import. It is the single largest escape in the workspace and the reason weft-ui belongs in this table at all.',
     },
     {
+      paths: ['tests/setup.ts'],
+      reason:
+        "`bunfig.toml` preloads this (`preload = [\"./tests/setup.ts\"]`), and it is where the `declare module 'bun:test'` augmentation adding `@testing-library/jest-dom`'s matchers to `expect(...)` lives. Every `src/routes/` suite that calls a jest-dom matcher (`toBeInTheDocument` and its siblings) type-checks against that augmentation — an edge `assertNoSourceEscapes` cannot see, since a module augmentation is not an import specifier the emitted route suites reference by name, only an ambient declaration they rely on being in scope. Undeclared, the target's own `typecheck-private` step for weft-ui failed with one `Property 'toBeInTheDocument' does not exist on type 'Assertion<...>'`-shaped error per real matcher call site. Not declared alongside `dom-test-support.ts` from the start because nobody had run weft-ui's typecheck against a synced target clone until COR-1196 round 11's C1 did.",
+    },
+    {
       paths: [
         'fixtures/async-activity.ts',
         'fixtures/children.ts',
@@ -243,18 +248,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'Workflow fixtures reached from `src/routes/` through `fixtures/workflows.ts`, which re-exports the rest. `fixtures/dynamic-sources.ts`, its test and `fixtures/dynamic-workflows/` are not declared: nothing emitted imports them.',
     },
   ],
-  armorer: [
-    {
-      paths: ['test/helpers/async-assertions.ts'],
-      reason:
-        'Five `src/compose*.test.ts` suites import it without an extension. One file out of the 91 under `test/`, which is why this is declared as a file rather than as that directory.',
-    },
-  ],
   '@lostgradient/weft': [
     {
       paths: ['README.md'],
       reason:
-        "The package's published front page, shipped through its `files` array (COR-1192). `target-owned.json` has always said per-package READMEs are the transform's, but nothing emitted one, so weft's public README lived only on the target and drifted (it carried a release literal). Corvidae's copy is now that front page — no version literal in it; the manifest and `VERSION` carry the version — and it is emitted with the source it describes.",
+        "The package's published front page, shipped through its `files` array (COR-1192). A package-root `README.md` is target-owned by default (`target-owned.json`'s root entry) — every other workspace's is internal documentation (`workspace:*` install instructions, references to the corvidae root and to sibling private workspaces) that would overwrite a target's own public npm front page if it were emitted blindly, which is exactly what an earlier, reverted version of this entry's generalization did (COR-1196 round 10). Weft's is the one exception the owner ruled on: it carries no internal reference, was written for npm from the start, and nothing emitted one until this declaration closed the gap COR-1192 found — weft's public README lived only on the target and drifted (it carried a release literal). Corvidae's copy is now that front page — no version literal in it; the manifest and `VERSION` carry the version — and it is emitted with the source it describes. A workspace that wants the same treatment declares its own `README.md` entry here, by name, the way this one does; `packaging.ts`'s `checkReadmePublicity` is the check that catches a declaration (or a future blanket emission) shipping a README that still reads as internal.",
     },
     {
       paths: ['scripts/lib/workflow-visibility-backfill.ts'],
@@ -394,6 +392,69 @@ export function applyVersionConstants(
 }
 
 export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
+  '@lostgradient/cinder': [
+    {
+      paths: [
+        'scripts/check-component-examples.test.ts',
+        'scripts/check-component-examples.ts',
+        'scripts/check-placeholder-docs.test.ts',
+        'scripts/check-placeholder-docs.ts',
+        'scripts/component-artifact-operations.test.ts',
+        'scripts/component-artifact-operations.ts',
+        'scripts/discover-component-directories.ts',
+        'scripts/generate-component-artifacts.ts',
+        'scripts/generate-component-constraints.ts',
+        'scripts/generate-component-schema.test.ts',
+        'scripts/generate-component-schema.ts',
+        'scripts/generate-component-variables.test.ts',
+        'scripts/generate-component-variables.ts',
+        'scripts/generate-manifest.test.ts',
+        'scripts/generate-manifest.ts',
+        'scripts/generate-root-metadata-exports.test.ts',
+        'scripts/generate-root-metadata-exports.ts',
+        'scripts/lib/component-enhancements.test.ts',
+        'scripts/lib/component-enhancements.ts',
+        'scripts/manifest.test-support.ts',
+        'scripts/render-component-readme.test.ts',
+        'scripts/render-component-readme.ts',
+        'scripts/token-namespaces.ts',
+      ],
+      reason:
+        "`packages/components/scripts/build.ts` shells out to `bun run components:check`, which `package.json` maps to `scripts/generate-component-artifacts.ts --check && bun run check:placeholder-docs`; the target's `tsconfig.check.json` also type-checks all of `scripts/`. Both are invisible to `assertNoSourceEscapes`, which reads import specifiers out of an AST and never sees a `bun run` shell-out to another package script. The target's own copy of the generator predates COR-1189's `check-component-examples.ts`/`generate-root-metadata-exports.ts` split — it still imports `allowedExampleExclusionReasons` from `src/manifest.meta.ts`, which corvidae's current `src/manifest.meta.ts` no longer exports — so a sync that only overwrites `src/` runs the target's stale generator against corvidae's newer source and the build fails. It goes as a set or not at all, same as weft's `generate-operation-client.ts` below: `generate-component-artifacts.ts` imports every other file here (dynamically, so `tsc` still resolves each specifier even though only the reached branch runs at `--check` time), and each `.test.ts` sibling is declared alongside its implementation so the emitted set does not leave a test behind that no longer matches what it tests. `scripts/lib/discover-components.ts`, `scripts/lib/prettier-resolution.ts`, `scripts/lib/read-json-file.ts`, `scripts/generate-component-metadata.ts` and `scripts/validation-utilities.ts` are not repeated here: this closure reaches all five, but `additionalSourceRoots` above already emits them. `check-placeholder-docs.ts` is declared even though its own content is currently byte-identical to the target's — it is still read by path from `src/components/`, not imported, so nothing else here would catch it drifting the next time either copy changes. `scripts/lib/component-enhancements.ts` is declared for `generate-manifest.ts`'s import, and corvidae's copy now also exports `componentEnhancementOutputPaths` (COR-1196), a pure path helper nothing in corvidae calls but the target's own `scripts/build.ts` does, from this same file, alongside the two exports `generate-manifest.ts` needs — narrowing this file to corvidae's own usage broke `bun run build` with a missing-export `SyntaxError` the first time this closure emitted it. `packages/components/scripts/generate-component-examples.ts` is deliberately *not* declared or retired: `packages/chat/scripts/generate-component-artifacts.ts` and `packages/editor/scripts/generate-component-artifacts.ts` — both target-owned, neither with a corvidae source — import types from it across the package boundary, and corvidae's restructure has no consumer-facing equivalent for them. Retiring it trades one target-side typecheck failure (TS2305 on `allowedExampleExclusionReasons`, which corvidae's `manifest.meta.ts` no longer exports) for two broken active `components:check` gates in chat and editor; declaring it is unavailable too, since corvidae has no file at that path under that API any more. Left exactly as the target has it, and left red — an owner ruling on chat and editor's own generators, not this transform's to resolve.",
+    },
+    {
+      paths: [
+        'scripts/tokens/completeness.test.ts',
+        'scripts/tokens/docs-section-color.ts',
+        'scripts/tokens/docs-section-components.ts',
+        'scripts/tokens/docs-section-foundation.ts',
+        'scripts/tokens/docs-sections.ts',
+        'scripts/tokens/docs.ts',
+        'scripts/tokens/generate-artifacts.ts',
+      ],
+      reason:
+        "`package.json` maps `tokens:generate` and `tokens:check` to `bun run scripts/tokens/generate-artifacts.ts[--check]`, and the target's `tsconfig.check.json` type-checks it wholesale along with everything else under `scripts/` — the same invisible-to-`assertNoSourceEscapes` shell-out as `generate-component-artifacts.ts` above, for an unrelated script family. `generate-artifacts.ts` imports `docs.ts` (registry/documentation coordination), which imports `docs-sections.ts`, which re-exports `docs-section-color.ts`, `docs-section-components.ts` and `docs-section-foundation.ts`; none of the five were declared before, so a synced target kept its own stale copies of all of them beside corvidae's already-declared `generate.ts`, `resolve.ts`, `resolved-contexts.ts`, `generator-configuration.ts`, `registry.ts`, `corpus.ts`, `value-entry.ts` and `../lib/prettier-resolution.ts` (`additionalSourceRoots`, above) — themselves already updated by every sync, which is exactly why the stale `generate-artifacts.ts` broke: it imported nine names (`CorpusEntry`, `colorTokenRegistryGeneratedPath`, `JSON_PLUGINS`, `PRETTIER_OPTIONS`, `REGENERATE_COMMAND`, `registryJsonPath`, `registryModulePath`, `RESOLVED_CONTEXT_COMBOS`, `resolvedDirectory`, `serializeEntryValue`, `tokenIndexPath`, `tokensDocPath`) that corvidae's refactored `generate.ts`/`generator-configuration.ts` no longer export, against a target clone that never received the rewritten `generate-artifacts.ts` that calls them correctly. `completeness.test.ts` is declared alongside it — the one `.test.ts` sibling under `scripts/tokens/` that imports `generate.ts` and `css-support.ts` (both already declared) and the already-emitted `src/test/token-introspection.ts` — for the same reason `generate-component-artifacts.ts`'s siblings are declared with it: an emitted implementation without its accompanying test leaves a test behind that no longer matches what it tests. The target's `generate-artifacts.test.ts` and `generate.test.ts` have no corvidae equivalent under either name — the single monolithic suite they tested was split into the per-concern `generate-*.test.ts` files this directory now carries, none of which happens to import `generate-artifacts.ts` or `generate.ts` directly (they test the split modules directly instead) — so neither belongs here or in a `src/`-import closure; `target-owned.json` retires both by name instead.",
+    },
+    {
+      paths: ['scripts/preload.ts'],
+      reason:
+        "`bunfig.toml`'s `[test].preload` names this file by path, which `assertNoSourceEscapes` cannot see any more than a `bun run` shell-out — a config value is neither an import specifier nor a `Bun.file()` read. The target's own copy imports `../src/test/happy-dom.ts` and `../src/test/register-global-cleanup.ts`; corvidae has no files at either path any more; `setupHappyDom` and `registerGlobalCleanup` moved into the shared `@lostgradient/testing` private workspace (already emitted to this target as `packages/testing`, see `committedPlans`), and corvidae's own `scripts/preload.ts` imports them from there. A synced target kept its stale copy, so `tsconfig.check.json`'s whole-of-`scripts/` type-check failed on two now-nonexistent relative imports.",
+    },
+  ],
+  '@lostgradient/chat': [
+    {
+      paths: ['scripts/preload.ts'],
+      reason:
+        "Same edge as `@lostgradient/cinder`'s `scripts/preload.ts` above — named by path in `bunfig.toml`'s `[test].preload`, invisible to `assertNoSourceEscapes`. The target's stale copy imports `../src/lib/test/happy-dom.ts` and `../src/lib/test/register-global-cleanup.ts` (chat's `sourceRoot` is `src/lib`, not `src`); corvidae has no files at either path, having moved `setupHappyDom`/`registerGlobalCleanup` into `@lostgradient/testing`, which chat's own `scripts/preload.ts` now imports from instead. It also drops the target's stale cross-package relative import of `../../components/scripts/svelte-plugin.ts` for the same package's `sveltePlugin`, also now supplied by `@lostgradient/testing`.",
+    },
+  ],
+  '@lostgradient/editor': [
+    {
+      paths: ['scripts/preload.ts'],
+      reason:
+        "Same edge as `@lostgradient/chat`'s `scripts/preload.ts` above, for the same reason: named by path in `bunfig.toml`'s `[test].preload`, and the target's stale copy imports `../src/lib/test/happy-dom.ts` and `../src/lib/test/register-global-cleanup.ts`, which do not exist in corvidae — `setupHappyDom`, `registerGlobalCleanup` and `sveltePlugin` all now come from `@lostgradient/testing`.",
+    },
+  ],
   '@lostgradient/weft': [
     // Under COR-1286's demotion the target runs no lint, coverage or documentation gate of its own
     // — those run in corvidae alone — so the nine `check-*.ts` gates, `check-coverage.ts` with its

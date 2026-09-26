@@ -79,16 +79,16 @@ export function buildInvalidTokenDecorations(
     const tokens = parsePlaceholderTokens(textContent);
     if (tokens.length === 0) return;
 
-    const { issues } = validatePlaceholderTokens(tokens, candidates);
-
-    for (const issue of issues) {
-      const from = textOffsetToDocumentPosition(node, position, issue.token.startOffset);
-      const to = textOffsetToDocumentPosition(node, position, issue.token.endOffset);
+    for (const issue of validatePlaceholderTokens(tokens, candidates)) {
+      const { location } = issue;
+      if (location.kind !== 'token') continue;
+      const from = textOffsetToDocumentPosition(node, position, location.startOffset);
+      const to = textOffsetToDocumentPosition(node, position, location.endOffset);
 
       decorations.push(
         Decoration.inline(from, to, {
           class: invalidClassName,
-          'data-placeholder-validation-reason': issue.reason,
+          'data-placeholder-validation-reason': issue.code,
         }),
       );
     }

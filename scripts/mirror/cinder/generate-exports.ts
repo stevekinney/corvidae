@@ -105,14 +105,21 @@ export function stylesExport(cssPath: string): ExportEntry {
   return orderedExportEntry({ types: `${cssPath}.d.ts`, default: cssPath });
 }
 
-/** The root barrel, the only entry whose `node` target is the shared server root. */
+/**
+ * The root barrel, the only entry whose `node` target is the shared server root.
+ *
+ * `import` names the same compiled file as `default`. Bun and Node resolve `node`, and bundlers
+ * resolve `browser` or `svelte` first, so `import` only reaches generic ESM resolvers. Pointing it
+ * at raw source made `import` and `default` disagree, which publint reads as a dual CJS/ESM publish
+ * and answers with a demand for CommonJS-shaped types this ESM-only package cannot honestly ship.
+ */
 export function computeRootExport(): ExportEntry {
   return orderedExportEntry({
     types: './dist/index.d.ts',
     browser: './src/index.ts',
     svelte: './src/index.ts',
     node: './dist/server/index.js',
-    import: './src/index.ts',
+    import: './dist/index.js',
     default: './dist/index.js',
   });
 }

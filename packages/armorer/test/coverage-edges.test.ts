@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { createToolbox, type AnyToolbox } from '../src';
-import { expectPromiseToReject } from './helpers/async-assertions';
+import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
 import { formatAnthropicToolResults, toAnthropicTools } from '../src/adapters/anthropic';
 import { formatGeminiToolResults } from '../src/adapters/gemini';

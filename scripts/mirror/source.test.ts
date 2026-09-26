@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
-import type { MirrorTarget } from './manifests.ts';
+import { type MirrorTarget } from './manifests.ts';
 import {
   additionalSourceRoots,
   applyVersionConstants,
@@ -62,6 +62,25 @@ function weftDeclarationFixture(omitted?: string): Record<string, string> {
       .map((path) => [`packages/weft/${path}`, `// ${path}\n`]),
   );
 }
+
+/**
+ * `@lostgradient/weft-ui`'s `bunfig.toml` preloads `tests/setup.ts` (`preload =
+ * ["./tests/setup.ts"]`), which is where the `declare module 'bun:test'` augmentation adding
+ * `@testing-library/jest-dom`'s matchers to `expect(...)` lives. Every one of the twenty-six
+ * `src/routes/` suites that calls a jest-dom matcher (`toBeInTheDocument`, and
+ * friends) type-checks against that augmentation, but `tests/setup.ts` was never declared in
+ * `additionalSourceRoots['@lostgradient/weft-ui']` — only its sibling `tests/dom-test-support.ts`
+ * was — so the file never shipped to the cinder target, and the target's own
+ * `typecheck-private` step for weft-ui failed with six `Property 'toBeInTheDocument' does not
+ * exist on type 'Assertion<...>'`-shaped errors, one per matcher call site the augmentation would
+ * otherwise cover.
+ */
+describe('weft-ui’s bun:test preload ships with its source', () => {
+  test('the real cinder plan emits tests/setup.ts', () => {
+    const { plan } = committedPlans.cinder;
+    expect(Object.keys(plan.files)).toContain('packages/weft-ui/tests/setup.ts');
+  });
+});
 
 describe('the documents a workspace declares', () => {
   /**
@@ -151,6 +170,115 @@ describe('the files that check a workspace’s emitted source', () => {
   });
 });
 
+/**
+ * COR-1196: cinder's artifact generator, declared under `validationInputs` because
+ * `packages/components/scripts/build.ts` reaches it through a `bun run components:check`
+ * shell-out — invisible to `assertNoSourceEscapes`'s import-specifier scan — rather than through
+ * an import edge.
+ */
+describe('the files that check cinder’s emitted source', () => {
+  const declared = (validationInputs['@lostgradient/cinder'] ?? []).flatMap(
+    (cluster) => cluster.paths,
+  );
+
+  test('every declared path is emitted, all thirty-one of them', () => {
+    const { plan } = committedPlans.cinder;
+    const missing = declared.filter(
+      (path) => plan.files[`packages/components/${path}`] === undefined,
+    );
+    expect(missing).toEqual([]);
+    // 23 before COR-1196's `generate-artifacts.ts`/`docs.ts` closure (7 files) and
+    // `scripts/preload.ts` (1 file) declarations.
+    expect(declared.length).toBe(31);
+  });
+
+  test('the generator family goes as a set, since its entry point imports the rest', () => {
+    expect(declared).toContain('scripts/generate-component-artifacts.ts');
+    expect(declared).toContain('scripts/component-artifact-operations.ts');
+    expect(declared).toContain('scripts/generate-manifest.ts');
+    // Already emitted by `additionalSourceRoots`, so not repeated here.
+    expect(declared).not.toContain('scripts/lib/discover-components.ts');
+    expect(declared).not.toContain('scripts/validation-utilities.ts');
+  });
+
+  /**
+   * `validationInputs`' own promise is narrower than `additionalSourceRoots`': these files are
+   * "emitted, not walked for imports" by the planner, so a missing member of the closure is not
+   * caught by declaring the entry point alone — the entry point's own missing import would refuse
+   * the plan (the test above), but a transitively-missing one two hops down would not. This walks
+   * the declared set's own relative imports and asserts every resolved specifier is itself either
+   * declared here, emitted from `src/`, or emitted by `additionalSourceRoots` — the same question
+   * `findSourceEscapes` asks of an import edge, asked here of a set the planner does not scan for
+   * one.
+   */
+  test('the declared set is closed under its own relative imports', () => {
+    const { plan } = committedPlans.cinder;
+    const emitted = new Set(Object.keys(plan.files));
+    const importPattern = /(?:from\s+['"](\.[^'"]+)['"])|(?:import\(\s*['"](\.[^'"]+)['"]\s*\))/g;
+    // `generate-root-metadata-exports.ts` writes a generated file's source as a string literal,
+    // and that literal's own `from '../../components.json'` reads as an import edge to a regex
+    // that does not parse an AST — it is a string this script emits, not an import this script
+    // makes, and `findSourceEscapes`'s real parser does not see it as one either. `generate-
+    // artifacts.ts` (COR-1196) has the same shape: it writes the generated token registry
+    // module's own source as a template literal, and that literal's first line is
+    // `import registry from './registry.generated.json' with { type: 'json' };` — text this
+    // script emits into `src/tokens/registry.generated.ts`, not an import `generate-artifacts.ts`
+    // itself makes.
+    const knownNonImports = new Set([
+      'scripts/generate-root-metadata-exports.ts -> ../../components.json',
+      'scripts/tokens/generate-artifacts.ts -> ./registry.generated.json',
+    ]);
+    const unresolved: string[] = [];
+    for (const path of declared) {
+      const target = `packages/components/${path}`;
+      const contents = plan.files[target];
+      if (contents === undefined) continue; // reported by the test above
+      const text = typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
+      for (const match of text.matchAll(importPattern)) {
+        const specifier = match[1] ?? match[2];
+        if (specifier === undefined) continue;
+        if (knownNonImports.has(`${path} -> ${specifier}`)) continue;
+        const resolved = normalize(join(dirname(target), specifier));
+        // A specifier can omit its extension (`moduleResolution: bundler` resolves it), so a miss
+        // on the literal path is retried with `.ts` before it counts as unresolved.
+        if (emitted.has(resolved) || emitted.has(`${resolved}.ts`)) continue;
+        unresolved.push(`${target} -> ${specifier}`);
+      }
+    }
+    expect(unresolved).toEqual([]);
+  });
+
+  test('a declared check corvidae no longer carries is a refusal, not a silent skip', async () => {
+    const omitted = 'scripts/generate-manifest.ts';
+    const cinderDeclarations = [
+      ...(additionalSourceRoots['@lostgradient/cinder'] ?? []).flatMap((cluster) => cluster.paths),
+      ...declared,
+    ];
+    await withTree(
+      {
+        'components/cinder/src/index.ts': 'export const cinder = true;\n',
+        ...Object.fromEntries(
+          cinderDeclarations
+            .filter((path) => path !== omitted)
+            .map((path) => [`components/cinder/${path}`, `// ${path}\n`]),
+        ),
+      },
+      async (root) => {
+        const plan = planSource(root, [
+          {
+            workspace: '@lostgradient/cinder',
+            corvidaeDirectory: 'components/cinder',
+            targetDirectory: 'packages/components',
+          },
+        ]);
+        await expect(plan).rejects.toThrow(SourceEmissionError);
+        await expect(plan).rejects.toThrow(omitted);
+        await expect(plan).rejects.toThrow('validationInputs');
+      },
+    );
+  });
+});
+
 describe('what counts as source', () => {
   test('the repository-operating files are not source, wherever they sit', () => {
     expect(isSourceFile('index.ts')).toBe(true);
@@ -170,11 +298,19 @@ describe('what counts as source', () => {
         'components/editor/src/AGENTS.md': '# Not source\n',
         'components/editor/src/node_modules/installed/index.js': 'module.exports = {};\n',
         'components/editor/coverage-ratchet.json': '{"lines":90}\n',
+        // Not declared anywhere and outside `src/`, so it must stay behind: a package-root
+        // README is target-owned by default and `@lostgradient/editor` declares no opt-in.
         'components/editor/README.md': '# editor\n',
+        // `validationInputs['@lostgradient/editor']` declares `scripts/preload.ts` (COR-1196), so
+        // `planSource` now requires it to exist wherever `editorWorkspace` is planned — including
+        // this fixture, which is otherwise about the `src/` emission rule, not about validation
+        // inputs at all.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSource(root, [editorWorkspace]);
         expect(Object.keys(plan.files).toSorted()).toEqual([
+          'packages/editor/scripts/preload.ts',
           'packages/editor/src/lib/index.ts',
           'packages/editor/src/lib/nested/helper.ts',
         ]);
@@ -189,6 +325,9 @@ describe('what counts as source', () => {
       {
         'components/editor/src/index.ts': 'export const editor = true;\n',
         'components/editor/scripts/build.ts': 'export const build = true;\n',
+        // See the fixture above: `validationInputs['@lostgradient/editor']` (COR-1196) requires
+        // `scripts/preload.ts` wherever this workspace is planned.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSource(root, [
@@ -203,6 +342,7 @@ describe('what counts as source', () => {
         // what `assertBuildInputsPresent` checks for in the clone rather than inventing here.
         expect(Object.keys(plan.files).toSorted()).toEqual([
           'packages/editor/scripts/build.ts',
+          'packages/editor/scripts/preload.ts',
           'packages/editor/src/index.ts',
         ]);
       },
@@ -212,43 +352,45 @@ describe('what counts as source', () => {
   test('a declared file lands at the same workspace-relative path in the target', async () => {
     await withTree(
       {
-        'packages/armorer/src/compose.test.ts':
-          "import { settles } from '../test/helpers/async-assertions';\n",
-        'packages/armorer/test/helpers/async-assertions.ts': 'export const settles = true;\n',
-        'packages/armorer/test/registry.test.ts': 'export const undeclared = true;\n',
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        // Outside `src/` and declared nowhere, so it must stay behind.
+        'packages/weft/documentation/undeclared.md': '# not emitted\n',
+        ...weftDeclarationFixture(),
       },
       async (root) => {
         const plan = await planSource(root, [
           {
-            workspace: 'armorer',
-            corvidaeDirectory: 'packages/armorer',
-            targetDirectory: 'packages/armorer',
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
           },
         ]);
-        // The relative layout is preserved, which is the whole point: `../test/helpers/…` only
-        // resolves in the target if the file sits the same distance from `src/` there. The
-        // ninety other files under `test/` stay where they are, because only this one is declared.
-        expect(Object.keys(plan.files).toSorted()).toEqual([
-          'packages/armorer/src/compose.test.ts',
-          'packages/armorer/test/helpers/async-assertions.ts',
-        ]);
+        // The relative layout is preserved: a declared file outside `src/` sits at the same
+        // workspace-relative path in the target, and a neighbour nobody declared is not emitted.
+        const files = Object.keys(plan.files);
+        expect(files).toContain('packages/weft/README.md');
+        expect(files).toContain('packages/weft/src/index.ts');
+        expect(files).not.toContain('packages/weft/documentation/undeclared.md');
       },
     );
   });
 
   test('a declared file corvidae no longer carries is a refusal, not a silent skip', async () => {
     await withTree(
-      { 'packages/armorer/src/compose.test.ts': 'export const composed = true;\n' },
+      {
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        ...weftDeclarationFixture('README.md'),
+      },
       async (root) => {
         const plan = planSource(root, [
           {
-            workspace: 'armorer',
-            corvidaeDirectory: 'packages/armorer',
-            targetDirectory: 'packages/armorer',
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
           },
         ]);
         await expect(plan).rejects.toThrow(SourceEmissionError);
-        await expect(plan).rejects.toThrow('test/helpers/async-assertions.ts');
+        await expect(plan).rejects.toThrow('README.md');
       },
     );
   });
@@ -292,6 +434,54 @@ describe('what counts as source', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('a package-root README.md is target-owned unless declared', () => {
+  /**
+   * The rule COR-1196 round 10 settled on after a reverted attempt at the opposite: a
+   * package-root `README.md` ships from corvidae only for a workspace that declares it in
+   * `additionalSourceRoots`, the same as any other file outside `src/`. Every corvidae workspace's
+   * own README is internal documentation — `workspace:*` install instructions, references to the
+   * corvidae root — that would overwrite a target's public npm front page if emitted blindly.
+   * `@lostgradient/weft` is the one declared exception (`source.ts`); this pins the general rule
+   * directly against an undeclared workspace, so it keeps failing the same way regardless of
+   * which workspace a future declaration might add.
+   */
+  test('an undeclared workspace’s README.md is never emitted, even when corvidae carries one', async () => {
+    expect(additionalSourceRoots['@lostgradient/cryptography']).toBeUndefined();
+    await withTree(
+      {
+        'packages/cryptography/src/index.ts': 'export const cryptography = true;\n',
+        'packages/cryptography/README.md': '# Cryptography\n',
+      },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/cryptography',
+            corvidaeDirectory: 'packages/cryptography',
+            targetDirectory: 'packages/cryptography',
+          },
+        ]);
+        expect(Object.keys(plan.files)).toEqual(['packages/cryptography/src/index.ts']);
+      },
+    );
+  });
+
+  test('@lostgradient/weft’s declared README.md is still emitted', async () => {
+    await withTree(
+      { ...weftDeclarationFixture(), 'packages/weft/src/index.ts': 'export const weft = true;\n' },
+      async (root) => {
+        const plan = await planSource(root, [
+          {
+            workspace: '@lostgradient/weft',
+            corvidaeDirectory: 'packages/weft',
+            targetDirectory: 'packages/weft',
+          },
+        ]);
+        expect(Object.keys(plan.files)).toContain('packages/weft/README.md');
+      },
+    );
   });
 });
 
@@ -398,6 +588,10 @@ describe('a remapped workspace on disk', () => {
           extends: '@lostgradient/typescript/browser.json',
         })}\n`,
         'components/editor/src/lib/index.ts': source,
+        // `validationInputs['@lostgradient/editor']` (COR-1196) declares `scripts/preload.ts`;
+        // `planSurface` refuses a plan for this workspace without it, same as the two `planSource`
+        // fixtures above.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSurface({ corvidaeRoot: root, target: 'cinder' });
@@ -447,6 +641,16 @@ describe('the committed workspaces', () => {
     'the %s plan emits corvidae’s source byte-for-byte',
     async (target) => {
       const { plan } = committedPlans[target];
+      // A declared version constant is the one sanctioned difference: the transform rewrites its
+      // literal to the composed manifest's version (COR-1192), which differs from corvidae's own
+      // literal whenever the target's release is newer. It must still match byte-for-byte
+      // everywhere else.
+      const versionFiles = new Map(
+        plan.published.flatMap((entry) => {
+          const declared = versionConstants[entry.workspace];
+          return declared === undefined ? [] : [[`${entry.directory}/${declared}`, entry.version]];
+        }),
+      );
       const mismatches: string[] = [];
       for (const [path, contents] of Object.entries(plan.source.files)) {
         const workspace = plan.emitted
@@ -458,8 +662,20 @@ describe('the committed workspaces', () => {
         }
         const corvidaePath = `${workspace.corvidaeDirectory}${path.slice(workspace.targetDirectory.length)}`;
         const onDisk = await Bun.file(join(corvidaeRoot, corvidaePath)).bytes();
+        const composedVersion = versionFiles.get(path);
+        const expected =
+          composedVersion === undefined
+            ? Buffer.from(onDisk)
+            : Buffer.from(
+                new TextDecoder()
+                  .decode(onDisk)
+                  .replace(
+                    /export const VERSION = '[^']*';\n$/,
+                    `export const VERSION = '${composedVersion}';\n`,
+                  ),
+              );
         const emitted = Buffer.from(contents);
-        if (Buffer.compare(Buffer.from(onDisk), emitted) !== 0) {
+        if (Buffer.compare(expected, emitted) !== 0) {
           mismatches.push(`${path}: differs from corvidae’s ${corvidaePath}`);
         }
       }

@@ -86,28 +86,18 @@ describe('package-surface.json', () => {
 
   test('carries the top-level fields a published package needs beyond its exports map', async () => {
     const surface = await loadPackageSurface();
-    /**
-     * `@lostgradient/weft-ui` is the one scoped package whose upstream manifest declares no
-     * `publishConfig`, and it is also the one that was never published despite carrying a version.
-     * Without `access: public` npm rejects a scoped first publish outright, so this is a plausible
-     * contributing cause of what COR-1194 records as an incomplete trusted-publisher registration.
-     * Vendoring is a port, so the gap is pinned here rather than invented away.
-     */
-    const withoutPublishConfig = ['@lostgradient/weft-ui'];
+    // `@lostgradient/weft-ui` used to be the one scoped package whose upstream manifest declared
+    // no `publishConfig`, which was a plausible contributing cause of what COR-1194 records as an
+    // incomplete trusted-publisher registration. COR-1196 moved it to `private-workspace`, so it
+    // has no entry here at all and every remaining scoped published package carries `access:
+    // public` — there is no longer an exception to carve out.
     for (const [workspace, entry] of Object.entries(surface.packages)) {
       const access = (entry.manifestFields['publishConfig'] as { access?: string } | undefined)
         ?.access;
-      if (entry.publicName.startsWith('@') && !withoutPublishConfig.includes(entry.publicName)) {
+      if (entry.publicName.startsWith('@')) {
         expect(access, workspace).toBe('public');
       }
       expect(entry.manifestFields['engines'], `${workspace} engines`).toBeDefined();
-    }
-    for (const publicName of withoutPublishConfig) {
-      const entry = Object.values(surface.packages).find((one) => one.publicName === publicName);
-      expect(
-        entry?.manifestFields['publishConfig'],
-        `${publicName} gained a publishConfig`,
-      ).toBeUndefined();
     }
   });
 

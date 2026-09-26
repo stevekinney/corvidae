@@ -17,10 +17,41 @@ import {
   type ManifestPlan,
   type MirrorTarget,
 } from './manifests.ts';
-import { loadPackageMap, PackageMapError } from './package-map.ts';
+import { loadPackageMap, PackageMapError, type PackageMap } from './package-map.ts';
+import { computeSourceDigest } from './source-digest.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
+
+/**
+ * Weft's recorded release and the range an edge into it renders as. Read from the real map rather
+ * than written as a literal: these tests assert the rule that a cross-target edge follows
+ * `lastPublishedVersion`, and a literal turned every weft release into six test edits.
+ */
+const realPackageMap = await loadPackageMap();
+const weftDisposition = realPackageMap.workspaces['@lostgradient/weft'];
+if (weftDisposition?.disposition !== 'publish-as' || !weftDisposition.lastPublishedVersion) {
+  throw new Error('package-map.json must record @lostgradient/weft as published');
+}
+const weftRecordedVersion = weftDisposition.lastPublishedVersion;
+const weftRange = `^${weftRecordedVersion}`;
+
+/**
+ * A `publish-as` workspace's recorded `lastPublishedVersion`, read from the real map rather than
+ * written as a literal — the same reasoning as `weftRecordedVersion` above, for
+ * COR-1229's seeding tests against operative, armorer, and conversationalist.
+ */
+function recordedVersion(workspace: string): string {
+  const disposition = realPackageMap.workspaces[workspace];
+  if (disposition?.disposition !== 'publish-as' || !disposition.lastPublishedVersion) {
+    throw new Error(`package-map.json must record ${workspace} as published`);
+  }
+  return disposition.lastPublishedVersion;
+}
+
+const operativeRecordedVersion = recordedVersion('@lostgradient/operative');
+const armorerRecordedVersion = recordedVersion('armorer');
+const conversationalistRecordedVersion = recordedVersion('conversationalist');
 
 /**
  * A throwaway corvidae tree. Workspace names are real ones so `dispositionFor` resolves against
@@ -123,6 +154,62 @@ function parse(plan: ManifestPlan, path: string): Record<string, unknown> {
   return JSON.parse(contents) as Record<string, unknown>;
 }
 
+/**
+ * `package-map.json`, with every `publish-as` entry's `sourceDigest` overlaid to its digest as
+ * `root` (a fixture tree, not real corvidae) currently stands.
+ *
+ * Every test here plans a synthetic tree against the *real* map — `dispositionFor` resolving
+ * against the committed map is deliberate, per this file's own fixture comment above — so a fixture
+ * consuming `@lostgradient/weft` cross-target hits `assertEdgeNotStale` unless something records a
+ * digest that matches. Overlaying the fixture's own current digest is that something: this file's
+ * tests are about manifest composition and rewriting, not about the digest guard, which has its
+ * own tests in `source-digest.test.ts` against the real map.
+ */
+async function packageMapWithCurrentDigests(root: string): Promise<PackageMap> {
+  const map = await loadPackageMap();
+  const workspaces = await discoverWorkspaces(root);
+  const overlaid: PackageMap['workspaces'] = {};
+  for (const [name, entry] of Object.entries(map.workspaces)) {
+    if (entry.disposition !== 'publish-as') {
+      overlaid[name] = entry;
+      continue;
+    }
+    const workspace = workspaces.find((candidate) => candidate.name === name);
+    if (workspace === undefined) {
+      overlaid[name] = entry;
+      continue;
+    }
+    const sourceDigest = await computeSourceDigest({
+      corvidaeRoot: root,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    overlaid[name] = { ...entry, sourceDigest };
+  }
+  return { ...map, workspaces: overlaid };
+}
+
+/**
+ * `packageMapWithCurrentDigests`, with `workspace`'s `lastPublishedVersion` forced back to `null`
+ * — the shape `package-map.json` carried for every agent-bureau package before COR-1198 recorded
+ * their first publish. Every `publish-as` entry in the committed map now records a real version,
+ * so the "never published" branches this exercises need a fixture map rather than the live one;
+ * forcing a real, still-`publish-as` workspace's version to `null` on an overridden map tests the
+ * same code path without pinning the assertion to whichever real workspace happens to be
+ * unpublished on a given day.
+ */
+async function packageMapWithNeverPublished(root: string, workspace: string): Promise<PackageMap> {
+  const map = await packageMapWithCurrentDigests(root);
+  const entry = map.workspaces[workspace];
+  if (entry?.disposition !== 'publish-as') {
+    throw new Error(`${workspace} must be publish-as in the real map`);
+  }
+  return {
+    ...map,
+    workspaces: { ...map.workspaces, [workspace]: { ...entry, lastPublishedVersion: null } },
+  };
+}
+
 async function planFor(
   target: MirrorTarget,
   options: { targetDirectory?: string; extra?: Record<string, unknown> } = {},
@@ -133,6 +220,7 @@ async function planFor(
       corvidaeRoot: root,
       target,
       targetDirectory: options.targetDirectory,
+      packageMap: await packageMapWithCurrentDigests(root),
     });
   });
   if (!plan) throw new Error('plan was not produced');
@@ -362,7 +450,7 @@ describe('workspace and catalog resolution', () => {
   test('the monorepo target keeps its catalog and its internal workspace edges', async () => {
     const plan = await planFor('cinder');
     const root = parse(plan, 'package.json');
-    expect(root['catalog']).toEqual({ ...catalog, '@lostgradient/weft': '^0.25.0' });
+    expect(root['catalog']).toEqual({ ...catalog, '@lostgradient/weft': weftRange });
     expect(parse(plan, 'packages/components/package.json')['dependencies']).toEqual({
       '@lostgradient/markdown': 'workspace:*',
       svelte: 'catalog:',
@@ -382,13 +470,13 @@ describe('workspace and catalog resolution', () => {
     expect(dependencies['@lostgradient/weft']).toBe('catalog:');
     expect(
       (parse(plan, 'package.json')['catalog'] as Record<string, string>)['@lostgradient/weft'],
-    ).toBe('^0.25.0');
+    ).toBe(weftRange);
   });
 
   test('the agent-bureau target inlines its edge into weft, having no catalog to hold it', async () => {
     const plan = await planFor('agent-bureau');
     expect(parse(plan, 'packages/operative/package.json')['dependencies']).toEqual({
-      '@lostgradient/weft': '^0.25.0',
+      '@lostgradient/weft': weftRange,
       zod: '^4.6.5',
     });
     expect(parse(plan, 'package.json')['catalog']).toBeUndefined();
@@ -404,7 +492,11 @@ describe('workspace and catalog resolution', () => {
         },
       }),
       async (root) => {
-        const plan = await planManifests({ corvidaeRoot: root, target: 'weft' });
+        const plan = await planManifests({
+          corvidaeRoot: root,
+          target: 'weft',
+          packageMap: await packageMapWithCurrentDigests(root),
+        });
         expect(parse(plan, 'packages/weft/package.json')['dependencies']).toEqual({
           '@lostgradient/cinder': '^0.26.2',
         });
@@ -418,13 +510,51 @@ describe('workspace and catalog resolution', () => {
         'packages/weft/package.json': {
           name: '@lostgradient/weft',
           private: true,
+          // Every `publish-as` entry in the real map now records a `lastPublishedVersion`
+          // (COR-1198), so `packageMapWithNeverPublished` forces cryptography's back to `null` on
+          // an overridden map rather than this fixture needing a real workspace that has genuinely
+          // never published. `@lostgradient/weft-ui` used to be this fixture's example of the same
+          // fact; COR-1196 moved it to `private-workspace`, which refuses a cross-target edge for a
+          // different reason (see the next test), so this one still needs a `publish-as` package.
+          dependencies: { '@lostgradient/cryptography': 'workspace:*' },
+        },
+        'packages/cryptography/package.json': {
+          name: '@lostgradient/cryptography',
+          private: true,
+        },
+      }),
+      async (root) => {
+        const plan = planManifests({
+          corvidaeRoot: root,
+          target: 'weft',
+          packageMap: await packageMapWithNeverPublished(root, '@lostgradient/cryptography'),
+        });
+        await expect(plan).rejects.toThrow(ManifestTransformError);
+        await expect(plan).rejects.toThrow(/never been published/);
+      },
+    );
+  });
+
+  test('a cross-target edge to a private workspace outside development-only tooling is refused', async () => {
+    // COR-1196: `@lostgradient/weft-ui` is `private-workspace` with basis `held-for-api-design`
+    // in the real map, not `development-only`, so an edge to it cannot be silently dropped the
+    // way `@lostgradient/typescript`'s devDependencies edge can (see "the weft target drops its
+    // development-only edge" above). Nothing in the real tree declares this edge — this pins the
+    // refusal the code path takes if one ever did, which was previously untested.
+    await withTree(
+      corvidaeFixture({
+        'packages/weft/package.json': {
+          name: '@lostgradient/weft',
+          private: true,
           dependencies: { '@lostgradient/weft-ui': 'workspace:*' },
         },
       }),
       async (root) => {
         const plan = planManifests({ corvidaeRoot: root, target: 'weft' });
         await expect(plan).rejects.toThrow(ManifestTransformError);
-        await expect(plan).rejects.toThrow(/never been published/);
+        await expect(plan).rejects.toThrow(
+          /only a devDependencies edge to development-only tooling can be dropped/,
+        );
       },
     );
   });
@@ -609,7 +739,7 @@ describe('composition against a manifest the target already carries', () => {
         'internal/*',
       ]);
       const emittedCatalog = root['catalog'] as Record<string, string>;
-      expect(emittedCatalog['@lostgradient/weft']).toBe('^0.25.0');
+      expect(emittedCatalog['@lostgradient/weft']).toBe(weftRange);
       expect(emittedCatalog['svelte']).toBe(catalog.svelte);
     });
   });
@@ -643,12 +773,27 @@ describe('composition against a manifest the target already carries', () => {
   });
 
   test('a never-published workspace with no target clone is seeded at 0.0.0 and reported', async () => {
-    // `@lostgradient/weft-ui` carries `lastPublishedVersion: null` in the real map, so it has nothing
-    // to seed from and falls back to the pre-COR-1229 behaviour.
-    const plan = await planFor('cinder');
-    expect(parse(plan, 'packages/weft-ui/package.json')['version']).toBe('0.0.0');
-    expect(plan.firstPublish).toContain('@lostgradient/weft-ui');
-    expect(plan.seededFromPackageMap).not.toContain('@lostgradient/weft-ui');
+    // Every `publish-as` entry in the real map now records a `lastPublishedVersion` (COR-1198), so
+    // `packageMapWithNeverPublished` forces cryptography's back to `null` on an overridden map to
+    // exercise the pre-COR-1229 fallback. `@lostgradient/weft-ui` used to be this test's example of
+    // a `publish-as` package with no seed; COR-1196 moved it to `private-workspace`, which has no
+    // `lastPublishedVersion` to be null in the first place, so it no longer demonstrates this
+    // mechanism.
+    await withTree(
+      corvidaeFixture({
+        'packages/cryptography/package.json': { name: '@lostgradient/cryptography', private: true },
+      }),
+      async (root) => {
+        const plan = await planManifests({
+          corvidaeRoot: root,
+          target: 'agent-bureau',
+          packageMap: await packageMapWithNeverPublished(root, '@lostgradient/cryptography'),
+        });
+        expect(parse(plan, 'packages/cryptography/package.json')['version']).toBe('0.0.0');
+        expect(plan.firstPublish).toContain('@lostgradient/cryptography');
+        expect(plan.seededFromPackageMap).not.toContain('@lostgradient/cryptography');
+      },
+    );
   });
 
   test(
@@ -657,7 +802,7 @@ describe('composition against a manifest the target already carries', () => {
     async () => {
       await withTree({ 'package.json': { name: 'weft-monorepo' } }, async (targetDirectory) => {
         const plan = await planFor('weft', { targetDirectory });
-        expect(parse(plan, 'packages/weft/package.json')['version']).toBe('0.25.0');
+        expect(parse(plan, 'packages/weft/package.json')['version']).toBe(weftRecordedVersion);
         expect(plan.seededFromPackageMap).toEqual(['@lostgradient/weft']);
         expect(plan.firstPublish).toEqual([]);
       });
@@ -666,7 +811,7 @@ describe('composition against a manifest the target already carries', () => {
 
   test('COR-1229: no target clone at all seeds the same way as an incomplete one', async () => {
     const plan = await planFor('weft');
-    expect(parse(plan, 'packages/weft/package.json')['version']).toBe('0.25.0');
+    expect(parse(plan, 'packages/weft/package.json')['version']).toBe(weftRecordedVersion);
     expect(plan.seededFromPackageMap).toEqual(['@lostgradient/weft']);
     expect(plan.firstPublish).toEqual([]);
   });
@@ -675,8 +820,10 @@ describe('composition against a manifest the target already carries', () => {
     const versioned: Record<string, unknown> = {};
     for (const manifest of Object.values(workspaces)) {
       if (manifest['name'] === '@lostgradient/weft') continue;
-      // `@lostgradient/weft-ui` is the fixture's stand-in for the four the map records as never
-      // published, so it is the one workspace the target clone deliberately does not carry.
+      // `@lostgradient/weft-ui` is `private-workspace` in the real map (COR-1196) with no
+      // `lastPublishedVersion` to seed from, so it is the one workspace the target clone
+      // deliberately does not carry — the property this test pins (only the truly-missing one
+      // counts as a first publish) holds regardless of a workspace's publish disposition.
       if (manifest['name'] === '@lostgradient/weft-ui') continue;
       const layout = await layoutFor(String(manifest['name']));
       // The clone is the target's tree, so its manifests sit at the target's own paths.
@@ -701,6 +848,49 @@ describe('composition against a manifest the target already carries', () => {
       expect((cinder['scripts'] as Record<string, string>)['prepare']).toBe('cd ../.. && husky');
     });
   });
+
+  test(
+    'COR-1196: an existing manifest missing a version is seeded like a new one, ' +
+      'not left without one',
+    async () => {
+      const versioned: Record<string, unknown> = {};
+      for (const manifest of Object.values(workspaces)) {
+        if (manifest['name'] === '@lostgradient/weft') continue;
+        if (manifest['name'] === '@lostgradient/weft-ui') continue;
+        const layout = await layoutFor(String(manifest['name']));
+        if (layout.disposition !== 'emit') continue;
+        versioned[`${layout.targetDirectory}/package.json`] = {
+          name: manifest['name'],
+          version: '1.2.3',
+        };
+      }
+      // `@lostgradient/testing` is COR-1196's real example: a private workspace the target
+      // already has a manifest for — named `@cinder/testing`, the real target's own spelling —
+      // but whose manifest has never carried a `version` key at all.
+      versioned['packages/testing/package.json'] = { name: '@cinder/testing', private: true };
+      await withTree(versioned, async (targetDirectory) => {
+        const plan = await planFor('cinder', {
+          targetDirectory,
+          extra: {
+            'packages/testing/package.json': {
+              name: '@lostgradient/testing',
+              private: true,
+              dependencies: { svelte: 'catalog:' },
+            },
+          },
+        });
+        const testing = parse(plan, 'packages/testing/package.json');
+        expect(testing['version']).toBe('0.0.0');
+        // Not a first publish and not seeded from the package map: the target already has *a*
+        // manifest for this workspace, just not a versioned one — a third case neither list
+        // describes.
+        expect(plan.firstPublish).not.toContain('@lostgradient/testing');
+        expect(plan.seededFromPackageMap).not.toContain('@lostgradient/testing');
+        const cinder = parse(plan, 'packages/components/package.json');
+        expect(cinder['version']).toBe('1.2.3');
+      });
+    },
+  );
 });
 
 /**
@@ -810,15 +1000,20 @@ describe('COR-1229: seeding a released package the target clone does not yet car
           'packages/lifecycle/package.json': { name: '@lostgradient/lifecycle', private: true },
         },
       });
-      expect(parse(plan, 'packages/operative/package.json')['version']).toBe('0.12.0');
-      expect(parse(plan, 'packages/armorer/package.json')['version']).toBe('2.4.0');
-      expect(parse(plan, 'packages/conversationalist/package.json')['version']).toBe('1.2.0');
+      expect(parse(plan, 'packages/operative/package.json')['version']).toBe(
+        operativeRecordedVersion,
+      );
+      expect(parse(plan, 'packages/armorer/package.json')['version']).toBe(armorerRecordedVersion);
+      expect(parse(plan, 'packages/conversationalist/package.json')['version']).toBe(
+        conversationalistRecordedVersion,
+      );
       expect(plan.seededFromPackageMap.toSorted()).toEqual(
         ['@lostgradient/operative', 'armorer', 'conversationalist'].toSorted(),
       );
-      // Lifecycle's target manifest already exists, so it is carried through rather than seeded —
-      // at the target's own `9.9.9` here, which is also why it is not a `firstPublish` despite
-      // `package-map.json` recording no published version for it.
+      // Lifecycle's target manifest already exists, so it is carried through at the target's own
+      // `9.9.9` rather than seeded or reported as a first publish — true regardless of whatever
+      // `package-map.json` records for its own `lastPublishedVersion`, since an existing target
+      // manifest short-circuits both branches before either is ever consulted.
       expect(plan.seededFromPackageMap).not.toContain('@lostgradient/lifecycle');
       expect(plan.firstPublish).not.toContain('@lostgradient/lifecycle');
       expect(parse(plan, 'packages/lifecycle/package.json')['version']).toBe('9.9.9');

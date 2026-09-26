@@ -254,7 +254,3 @@ export function composeConversationActions<T>(hooks: CompositionHooks<T>): Conve
     dispose,
   };
 }
-
-declare module './history' {
-  interface Conversation extends ConversationActions<Conversation> {}
-}

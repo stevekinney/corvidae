@@ -2,10 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { committedPlans } from './committed-plans.ts';
 
-import { tarballFilename } from './packaging.ts';
+import { importableSpecifierEntries, verifyTarballFilename } from './packaging.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
 import {
   buildVerifySteps,
+  relocateTarballScript,
   VerifyStepOrderError,
   type VerifyEnvironment,
   type VerifyStepKind,
@@ -72,6 +73,7 @@ describe('buildVerifySteps', () => {
       'build',
       'typecheck-published',
       'pack',
+      'pack-relocate',
       'publint',
       'attw',
       'typecheck-private',
@@ -174,14 +176,14 @@ describe('buildVerifySteps', () => {
     expect(typechecked.map((step) => step.publicName)).toEqual(['@lostgradient/testing']);
   });
 
-  test('the tarball path is computed ahead of time from the public name and version, not left to be parsed later', () => {
+  test('the tarball path is computed ahead of time from the public name alone, so a later version bump cannot move it', () => {
     const steps = buildVerifySteps(
       { installCommand: ['bun', 'install'], published, privateWorkspaces: [] },
       localEnvironment(),
     );
     const publint = steps.find((step) => step.kind === 'publint');
     const attw = steps.find((step) => step.kind === 'attw');
-    const expected = `/scratch/tarballs/${tarballFilename('@lostgradient/cryptography', '1.2.3')}`;
+    const expected = `/scratch/tarballs/${verifyTarballFilename('@lostgradient/cryptography')}`;
     expect(publint?.tarball).toBe(expected);
     expect(attw?.tarball).toBe(expected);
     expect(publint?.command).toContain(expected);
@@ -290,6 +292,186 @@ describe('buildVerifySteps', () => {
 });
 
 /**
+ * `package-surface.json` records `packedBy: "pack-script"` for `@lostgradient/cinder`, `chat`,
+ * `editor` and `markdown` — see `surface.ts`'s `isExpectedPackRewrite` — because their committed
+ * manifests keep `./src/**` targets in non-`bun` `exports` conditions that only their own
+ * `scripts/pack-for-publish.ts` rewrites to `dist` equivalents before packing. Before this
+ * (COR-1196), `buildVerifySteps` packed every package with a plain `bun pm pack`, which ships the
+ * untransformed manifest: `publint`/`attw` then read a tarball whose `exports` point at source the
+ * tarball never contains, and every affected subpath 404s.
+ */
+describe('packedBy determines how a published package is packed (COR-1196)', () => {
+  function publishedPackage(packedBy: 'files' | 'pack-script'): PublishedPackage {
+    return {
+      ...published[0]!,
+      entry: { build: { packedBy } } as PublishedPackage['entry'],
+    };
+  }
+
+  test('a "files" package keeps the plain bun pm pack step, into the shared scratch tarballs directory', () => {
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install'],
+        published: [publishedPackage('files')],
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const pack = steps.find((step) => step.kind === 'pack');
+    expect(pack?.command).toEqual([
+      'bun',
+      'pm',
+      'pack',
+      '--ignore-scripts',
+      '--quiet',
+      '--destination',
+      '/scratch/tarballs',
+    ]);
+    const publint = steps.find((step) => step.kind === 'publint');
+    expect(publint?.tarball).toBe(
+      `/scratch/tarballs/${verifyTarballFilename('@lostgradient/cryptography')}`,
+    );
+  });
+
+  test('a "pack-script" package runs its own scripts/pack-for-publish.ts from its own directory, then relocates the tarball it writes there into the shared scratch tarballs directory publint/attw and the consumer project all read from', () => {
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install'],
+        published: [publishedPackage('pack-script')],
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const pack = steps.find((step) => step.kind === 'pack');
+    expect(pack?.command).toEqual(['bun', 'run', 'scripts/pack-for-publish.ts']);
+    expect(pack?.cwd).toBe('/clone/packages/cryptography');
+
+    const tarballName = verifyTarballFilename('@lostgradient/cryptography');
+    const expectedTarball = `/scratch/tarballs/${tarballName}`;
+    // Both relocate steps run from the package directory (where `pack-for-publish.ts` wrote the
+    // tarball, and whose manifest carries the version the rename reads), with source `.`.
+    const relocateSteps = steps.filter((step) => step.kind === 'pack-relocate');
+    expect(relocateSteps).toHaveLength(2);
+    for (const step of relocateSteps) expect(step.cwd).toBe('/clone/packages/cryptography');
+    expect(relocateSteps[0]?.command).toEqual(['mkdir', '-p', '/scratch/tarballs']);
+    expect(relocateSteps[1]?.command).toEqual([
+      'bun',
+      '-e',
+      relocateTarballScript,
+      '.',
+      'lostgradient-cryptography',
+      expectedTarball,
+    ]);
+
+    const publint = steps.find((step) => step.kind === 'publint');
+    const attw = steps.find((step) => step.kind === 'attw');
+    expect(publint?.tarball).toBe(expectedTarball);
+    expect(attw?.tarball).toBe(expectedTarball);
+    expect(publint?.command).toContain(expectedTarball);
+    // The consumer smoke-test project installs from the shared scratch tarball path too, exactly
+    // as a "files" package's would — not from the package directory `pack-for-publish.ts` wrote to.
+    const write = steps.find((step) => step.kind === 'write-consumer-project');
+    expect(write?.files?.['package.json']).toContain(expectedTarball);
+    expect(write?.files?.['package.json']).not.toContain('packages/cryptography/lostgradient');
+  });
+
+  test('the pack, pack-relocate, publint and attw steps run in that order for a "pack-script" package', () => {
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install'],
+        published: [publishedPackage('pack-script')],
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const kinds = steps
+      .filter((step) =>
+        (['pack', 'pack-relocate', 'publint', 'attw'] as const).includes(
+          step.kind as 'pack' | 'pack-relocate' | 'publint' | 'attw',
+        ),
+      )
+      .map((step) => step.kind);
+    expect(kinds).toEqual(['pack', 'pack-relocate', 'pack-relocate', 'publint', 'attw']);
+  });
+
+  test('a "pack-script" package resolves and relocates identically in the rendered-workflow environment, where `command` is re-joined into a flat shell line rather than run as real argv', () => {
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install', '--frozen-lockfile'],
+        published: [publishedPackage('pack-script')],
+        privateWorkspaces: [],
+      },
+      workflowEnvironment(),
+    );
+    const pack = steps.find((step) => step.kind === 'pack');
+    expect(pack?.cwd).toBe('packages/cryptography');
+    const tarballName = verifyTarballFilename('@lostgradient/cryptography');
+    const expectedTarball = `\${{ runner.temp }}/mirror-verify/tarballs/${tarballName}`;
+    const relocateSteps = steps.filter((step) => step.kind === 'pack-relocate');
+    expect(relocateSteps.map((step) => step.command)).toEqual([
+      ['mkdir', '-p', '${{ runner.temp }}/mirror-verify/tarballs'],
+      ['bun', '-e', relocateTarballScript, '.', 'lostgradient-cryptography', expectedTarball],
+    ]);
+    const publint = steps.find((step) => step.kind === 'publint');
+    expect(publint?.tarball).toBe(expectedTarball);
+    // The regression this guards: before COR-1196's pack-relocate fix, `tarballFor` resolved a
+    // pack-script package's tarball onto `env.resolveDirectory(entry.directory)` — an absolute
+    // path locally, but a bare repo-relative path in this environment (`packages/components/...`).
+    // Embedded in the consumer project's `package.json` as `file:packages/components/....tgz`,
+    // that resolves relative to the consumer project's own directory
+    // (`${{ runner.temp }}/mirror-verify/consumer`), not the clone — a path that does not exist.
+    const write = steps.find((step) => step.kind === 'write-consumer-project');
+    const manifest = JSON.parse(write?.files?.['package.json'] ?? '{}') as {
+      dependencies: Record<string, string>;
+    };
+    expect(manifest.dependencies['@lostgradient/cryptography']).toBe(`file:${expectedTarball}`);
+  });
+
+  test("cinder's committed plan: cinder, chat, editor and markdown are pack-script; nothing else in it is", () => {
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install', '--frozen-lockfile'],
+        published: committedPlans.cinder.plan.published,
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const packSteps = steps.filter((step) => step.kind === 'pack');
+    expect(
+      packSteps.map((step) => step.publicName).toSorted((a, b) => (a ?? '').localeCompare(b ?? '')),
+    ).toEqual([
+      '@lostgradient/chat',
+      '@lostgradient/cinder',
+      '@lostgradient/editor',
+      '@lostgradient/markdown',
+    ]);
+    for (const step of packSteps) {
+      expect(step.command).toEqual(['bun', 'run', 'scripts/pack-for-publish.ts']);
+    }
+  });
+
+  test("weft's and agent-bureau's committed plans carry no pack-script package, so their pack steps and rendered workflows are unchanged", () => {
+    for (const target of [committedPlans.weft, committedPlans['agent-bureau']]) {
+      const steps = buildVerifySteps(
+        {
+          installCommand: ['bun', 'install', '--frozen-lockfile'],
+          published: target.plan.published,
+          privateWorkspaces: [],
+        },
+        localEnvironment(),
+      );
+      const packSteps = steps.filter((step) => step.kind === 'pack');
+      expect(packSteps.length).toBeGreaterThan(0);
+      for (const step of packSteps) {
+        expect(step.command[0]).toBe('bun');
+        expect(step.command[1]).toBe('pm');
+        expect(step.command).toContain('/scratch/tarballs');
+      }
+    }
+  });
+});
+
+/**
  * COR-1192. The packed 0.26.0 tarball imported cleanly under bun and failed under node
  * (`import.meta.require` from an inlined CommonJS dependency), and the emitted workflow was green
  * because its smoke test ran under bun alone. The consumer script is plain JavaScript and runs
@@ -387,5 +569,153 @@ describe('prepack runs in verification when the surface records it', () => {
     const { plan } = committedPlans.weft;
     const weft = plan.published.find((entry) => entry.publicName === '@lostgradient/weft');
     expect(weft?.entry.build.scripts['prepack']).toContain('verify:exports');
+  });
+});
+
+describe('the consumer manifest resolves intra-target siblings from this run (COR-1292)', () => {
+  function consumerManifestFor(packages: PublishedPackage[]): Record<string, unknown> {
+    const steps = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: packages, privateWorkspaces: [] },
+      localEnvironment(),
+    );
+    const write = steps.find((step) => step.kind === 'write-consumer-project');
+    return JSON.parse(write?.files?.['package.json'] ?? '{}') as Record<string, unknown>;
+  }
+
+  // A packed tarball rewrites its `workspace:*` edge to a registry range. For a first publish that
+  // range names a version the registry does not have yet, so without an override the consumer's
+  // install fetches the sibling from npm and gets a 404 (agent-bureau's cryptography, embeddings,
+  // lifecycle and tool-protocol; COR-1196 moved cinder's other example, weft-ui, to
+  // `private-workspace`, so it no longer packs a tarball at all). Bun honors an `overrides` entry
+  // pointing at a `file:` tarball for such a sibling; measured under Bun 1.4.0 and 1.4.2 on
+  // 2026-09-23.
+  test('a sibling another published package depends on is overridden to its own tarball', () => {
+    const armorer: PublishedPackage = {
+      ...published[0]!,
+      workspace: 'armorer',
+      directory: 'packages/armorer',
+      publicName: 'armorer',
+      version: '2.4.0',
+      dependsOn: ['@lostgradient/cryptography'],
+    };
+    const manifest = consumerManifestFor([armorer, published[0]!]);
+    const dependencies = manifest['dependencies'] as Record<string, string>;
+    expect(manifest['overrides']).toEqual({
+      '@lostgradient/cryptography': dependencies['@lostgradient/cryptography'],
+    });
+    expect(dependencies['@lostgradient/cryptography']).toBe(
+      `file:/scratch/tarballs/${verifyTarballFilename('@lostgradient/cryptography')}`,
+    );
+  });
+
+  test('a target with no intra-target edge renders no overrides key at all', () => {
+    expect('overrides' in consumerManifestFor(published)).toBe(false);
+  });
+
+  test("weft's committed plan renders no overrides key, so its rendered workflow is unchanged", () => {
+    expect('overrides' in consumerManifestFor(committedPlans.weft.plan.published)).toBe(false);
+  });
+});
+
+/**
+ * COR-1196. Node refuses to load a `.json` export target without `with { type: 'json' }` on the
+ * import statement (`ERR_IMPORT_ATTRIBUTE_MISSING`), which failed `consumer-run-node` on cinder's
+ * real `chat-composer-popover.examples.json` sidecar. `buildVerifySteps` writes `smoke.mjs`/
+ * `smoke-node.mjs` through `packaging.ts`'s single `smokeScript`, so this is also the parity test:
+ * there is only one writer left, rather than two hand-kept-identical copies.
+ */
+describe('the smoke script attaches the JSON import attribute where it is needed (COR-1196)', () => {
+  function packageWithJsonSubpaths(): PublishedPackage {
+    return {
+      ...published[0]!,
+      exports: {
+        '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+        // The plain-string shape `package-surface.json` vendors for chat's/editor's
+        // `*.examples.json` sidecars.
+        './manifest': './dist/manifest.json',
+        // The conditional shape cinder's own `jsonSidecarExport` generates.
+        './examples': {
+          import: './dist/widget.examples.json',
+          default: './dist/widget.examples.json',
+        },
+      },
+    };
+  }
+
+  test('the module import is unchanged; both json subpaths carry the attribute, in local and rendered-workflow environments alike', () => {
+    for (const environment of [localEnvironment(), workflowEnvironment()]) {
+      const steps = buildVerifySteps(
+        {
+          installCommand: ['bun', 'install'],
+          published: [packageWithJsonSubpaths()],
+          privateWorkspaces: [],
+        },
+        environment,
+      );
+      const write = steps.find((step) => step.kind === 'write-consumer-project');
+      const smoke = write?.files?.['smoke.mjs'] ?? '';
+      expect(smoke).toContain(`import * as module0 from '${published[0]!.publicName}';\n`);
+      expect(smoke).toContain(
+        `import * as module1 from '${published[0]!.publicName}/examples' with { type: 'json' };\n`,
+      );
+      expect(smoke).toContain(
+        `import * as module2 from '${published[0]!.publicName}/manifest' with { type: 'json' };\n`,
+      );
+      // `smoke-node.mjs` resolves the same three subpaths under node's conditions (`import`/
+      // `default`), so it carries the identical three lines.
+      expect(write?.files?.['smoke-node.mjs']).toBe(smoke);
+    }
+  });
+
+  test('the "plain JavaScript both runtimes can execute" guard still holds with the JSON attribute present', () => {
+    // `with { type: 'json' }` must not trip the guard (verify-steps.test.ts's own regex above)
+    // that keeps this script free of TypeScript-only syntax the way a stray `: word)`/`: word;`
+    // annotation would.
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install'],
+        published: [packageWithJsonSubpaths()],
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const smoke = steps.find((step) => step.kind === 'write-consumer-project')?.files?.[
+      'smoke.mjs'
+    ];
+    expect(smoke).toContain("with { type: 'json' }");
+    expect(smoke).not.toMatch(/:\s*\w+\s*[=;)]/);
+  });
+
+  test("cinder's committed plan: every .json-target specifier carries the attribute, every other specifier does not", () => {
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install', '--frozen-lockfile'],
+        published: committedPlans.cinder.plan.published,
+        privateWorkspaces: [],
+      },
+      localEnvironment(),
+    );
+    const smoke =
+      steps.find((step) => step.kind === 'write-consumer-project')?.files?.['smoke.mjs'] ?? '';
+    const entries = committedPlans.cinder.plan.published.flatMap((entry) =>
+      importableSpecifierEntries(entry.publicName, entry.exports),
+    );
+    const jsonSpecifiers = entries.filter((entry) => entry.json).map((entry) => entry.specifier);
+    const plainSpecifiers = entries.filter((entry) => !entry.json).map((entry) => entry.specifier);
+    // The real regression: cinder's committed plan carries hundreds of `.json` sidecars, including
+    // COR-1196's own `chat-composer-popover.examples.json` (`@lostgradient/chat`'s vendored
+    // plain-string shape) and cinder's own generated conditional `{ import, default }` shape — not
+    // a synthetic fixture standing in for either.
+    expect(jsonSpecifiers).toContain('@lostgradient/chat/composer-popover/examples');
+    expect(jsonSpecifiers).toContain('@lostgradient/cinder/access-gate/examples');
+    expect(jsonSpecifiers.length).toBeGreaterThan(100);
+    expect(plainSpecifiers).toContain('@lostgradient/chat');
+    expect(plainSpecifiers).toContain('@lostgradient/cinder');
+    for (const specifier of jsonSpecifiers) {
+      expect(smoke).toContain(`from '${specifier}' with { type: 'json' };`);
+    }
+    for (const specifier of plainSpecifiers) {
+      expect(smoke).not.toContain(`from '${specifier}' with`);
+    }
   });
 });

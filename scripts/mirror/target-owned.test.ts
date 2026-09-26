@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { committedPlans } from './committed-plans.ts';
 import { mirrorTargets } from './manifests.ts';
 import {
   assertNoEmissionsIntoRetired,
@@ -701,6 +702,24 @@ describe('retiring a directory the target still carries', () => {
     ).not.toThrow();
   });
 
+  // The runtime refusal above stops a sync; this stops the edit. A retirement added for
+  // agent-bureau's stale `packages/*/test` trees once collided with a helper corvidae still emitted
+  // there (`packages/armorer/test/helpers/async-assertions.ts`, imported by five colocated `src`
+  // tests), and nothing in test:self noticed until a staging proof refused the whole plan.
+  test.each([...mirrorTargets])(
+    'the committed %s plan emits nothing into its own retired paths',
+    async (target) => {
+      const policy = await loadTargetOwnedPolicy();
+      expect(() =>
+        assertNoEmissionsIntoRetired(
+          policy,
+          target,
+          Object.keys(committedPlans[target].plan.files),
+        ),
+      ).not.toThrow();
+    },
+  );
+
   test('the committed enumeration retires each target only what its own issue ruled on', async () => {
     const policy = await loadTargetOwnedPolicy();
     const retired = retiredDirectoriesFor(policy, 'weft');
@@ -727,12 +746,47 @@ describe('retiring a directory the target still carries', () => {
       'packages/gateway',
       'packages/integration',
       'packages/interoperability',
+      // The target's own test trees and the configurations that type-check them: stale forks of
+      // corvidae's tests, which run in corvidae alone (COR-1286's ruling). Found by the agent-bureau
+      // staging proof of 2026-09-23, where they were every typecheck failure outside `src`.
+      'packages/armorer/test',
+      'packages/conversationalist/test',
+      'packages/lifecycle/test',
+      'packages/memory/test',
+      'packages/operative/test',
+      'packages/skills/test',
+      'packages/armorer/tsconfig.test.json',
+      'packages/bureau/tsconfig.test.json',
+      'packages/conversationalist/tsconfig.test.json',
+      'packages/lifecycle/tsconfig.test.json',
+      'packages/memory/tsconfig.test.json',
+      'packages/operative/tsconfig.test.json',
+      'packages/skills/tsconfig.test.json',
     ]);
-    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
+    // COR-1196: the target's stale packages/components/scripts/generate-component-examples.ts
+    // is *not* retired, even though it fails the target's own tsconfig.check.json once a sync
+    // overwrites src/manifest.meta.ts with corvidae's copy (TS2305 on
+    // allowedExampleExclusionReasons, which corvidae's current manifest.meta.ts no longer
+    // exports). packages/chat/scripts/generate-component-artifacts.ts and
+    // packages/editor/scripts/generate-component-artifacts.ts — both target-owned, neither with
+    // a corvidae source — import types from it across the package boundary; retiring it turns
+    // one red tsc line into two broken active `components:check` gates. Left in place and red:
+    // an owner ruling on chat and editor's own generators, not a mirror-transform fix.
+    //
+    // The two tokens test files ARE retired (COR-1196): the target's monolithic
+    // generate-artifacts.test.ts and generate.test.ts have no corvidae equivalent under either
+    // name — corvidae replaced them with a per-concern split test suite under the same directory
+    // that does not reuse either filename — so there is nothing to declare under `source.ts`'s
+    // `validationInputs` at these two paths, unlike `generate-component-examples.ts` above, which
+    // corvidae genuinely has no replacement for at all.
+    expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([
+      'packages/components/scripts/tokens/generate-artifacts.test.ts',
+      'packages/components/scripts/tokens/generate.test.ts',
+    ]);
     for (const entry of policy.retired.entries) {
-      expect(['weft', 'agent-bureau']).toContain(entry.target);
+      expect(['weft', 'agent-bureau', 'cinder']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286', 'COR-1287']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1286', 'COR-1287', 'COR-1196']).toContain(entry.issue);
     }
     // A retirement names exactly one repository, so no target's list may reach another's paths.
     for (const target of mirrorTargets) {

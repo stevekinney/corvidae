@@ -5,7 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { describe, expect, it } from 'bun:test';
 import { PassThrough } from 'node:stream';
 import { z } from 'zod';
-import { expectPromiseToReject } from './helpers/async-assertions';
+import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';

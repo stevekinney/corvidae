@@ -230,33 +230,50 @@ describe('a tsconfig’s `extends`', () => {
 });
 
 describe('a declared additional source root', () => {
-  const armorer = {
-    workspace: 'armorer',
-    corvidaeDirectory: 'packages/armorer',
-    targetDirectory: 'packages/armorer',
+  const weftUi = {
+    workspace: '@lostgradient/weft-ui',
+    corvidaeDirectory: 'components/weft-ui',
+    targetDirectory: 'packages/weft-ui',
   } as const;
 
   /**
-   * `@lostgradient/armorer` declares exactly one path — `test/helpers/async-assertions.ts` — so it is
-   * the smallest workspace in the table that proves the mechanism end to end.
+   * `@lostgradient/weft-ui` declares a DOM harness its route suites import from outside `src/`,
+   * plus twelve workflow fixtures. A declared file corvidae does not carry is a refusal, so every
+   * fixture carries all thirteen; only the harness carries a real edge.
    */
+  const declaredFixtures = Object.fromEntries(
+    [
+      'async-activity',
+      'children',
+      'coordination',
+      'failures',
+      'finalizer',
+      'history',
+      'restart-lineage',
+      'reviews',
+      'saga',
+      'schedules',
+      'tagged',
+      'workflows',
+    ].map((name) => [`components/weft-ui/fixtures/${name}.ts`, 'export {};\n']),
+  );
+
   test('satisfies the gate, because the declared file is emitted beside the source', async () => {
     await withTree(
       {
-        'packages/armorer/src/compose.test.ts':
-          "import { settles } from '../test/helpers/async-assertions';\nexport const used = settles;\n",
-        'packages/armorer/test/helpers/async-assertions.ts': 'export const settles = true;\n',
+        'components/weft-ui/src/routes/runs.test.ts':
+          "import { dom } from '../../tests/dom-test-support';\nexport const used = dom;\n",
+        'components/weft-ui/tests/dom-test-support.ts': 'export const dom = true;\n',
+        'components/weft-ui/tests/setup.ts': 'export {};\n',
+        ...declaredFixtures,
       },
       async (root) => {
-        const plan = await planSource(root, [armorer]);
-        expect(Object.keys(plan.files).toSorted()).toEqual([
-          'packages/armorer/src/compose.test.ts',
-          'packages/armorer/test/helpers/async-assertions.ts',
-        ]);
+        const plan = await planSource(root, [weftUi]);
+        expect(Object.keys(plan.files)).toContain('packages/weft-ui/tests/dom-test-support.ts');
         expect(findSourceEscapes(plan.files)).toEqual([]);
         // Declaration is emission, not deletion authority: the prune scope is still `src/` alone,
-        // so nothing under the target's own `test/` can be removed by a sync.
-        expect(plan.ownedPrefixes).toEqual(['packages/armorer/src']);
+        // so nothing else under the target's own `tests/` can be removed by a sync.
+        expect(plan.ownedPrefixes).toEqual(['packages/weft-ui/src']);
       },
     );
   });
@@ -264,19 +281,20 @@ describe('a declared additional source root', () => {
   test('is not a bypass: the declared file’s own imports are checked the same way', async () => {
     await withTree(
       {
-        'packages/armorer/src/compose.test.ts':
-          "import { settles } from '../test/helpers/async-assertions';\nexport const used = settles;\n",
-        'packages/armorer/test/helpers/async-assertions.ts':
-          "export { settles } from '../../vendor/assertions.ts';\n",
-        'packages/armorer/vendor/assertions.ts': 'export const settles = true;\n',
+        'components/weft-ui/src/routes/runs.test.ts':
+          "import { dom } from '../../tests/dom-test-support';\nexport const used = dom;\n",
+        'components/weft-ui/tests/dom-test-support.ts': "export { dom } from '../vendor/dom.ts';\n",
+        'components/weft-ui/vendor/dom.ts': 'export const dom = true;\n',
+        'components/weft-ui/tests/setup.ts': 'export {};\n',
+        ...declaredFixtures,
       },
       async (root) => {
-        const plan = await planSource(root, [armorer]);
+        const plan = await planSource(root, [weftUi]);
         expect(findSourceEscapes(plan.files)).toEqual([
           {
-            file: 'packages/armorer/test/helpers/async-assertions.ts',
-            specifier: '../../vendor/assertions.ts',
-            resolved: 'packages/armorer/vendor/assertions.ts',
+            file: 'packages/weft-ui/tests/dom-test-support.ts',
+            specifier: '../vendor/dom.ts',
+            resolved: 'packages/weft-ui/vendor/dom.ts',
           },
         ]);
       },
@@ -289,6 +307,10 @@ describe('a declared additional source root', () => {
         'components/editor/src/compose.test.ts':
           "import { settles } from '../test/helpers/async-assertions.ts';\nexport const used = settles;\n",
         'components/editor/test/helpers/async-assertions.ts': 'export const settles = true;\n',
+        // `validationInputs['@lostgradient/editor']` declares `scripts/preload.ts` (COR-1196), so
+        // `planSource` requires it wherever this workspace name is planned, even in a fixture
+        // that is otherwise about an unrelated escape.
+        'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
         const plan = await planSource(root, [

@@ -4,28 +4,28 @@
     "@lostgradient/telephone": {
       "disposition": "exclude",
       "basis": "owner-excluded-from-public-mirror",
-      "reason": "Never published and new in this repository. It carries an Operative agent run onto the chat stream wire, and its only consumer is `@lostgradient/desktop`, which the owner excluded from the mirror \u2014 so nothing the mirror emits depends on it. `private-workspace` would ship its source to the public repository, making a brand-new package public for the first time as a side effect of an internal refactor; `exclude` keeps that a deliberate decision. Reversible: promote to `private-workspace` or `publish-as` when a public consumer exists."
+      "reason": "Never published and new in this repository. It carries an Operative agent run onto the chat stream wire, and its only consumer is `@lostgradient/desktop`, which the owner excluded from the mirror — so nothing the mirror emits depends on it. `private-workspace` would ship its source to the public repository, making a brand-new package public for the first time as a side effect of an internal refactor; `exclude` keeps that a deliberate decision. Reversible: promote to `private-workspace` or `publish-as` when a public consumer exists."
     },
     "@lostgradient/weft": {
       "disposition": "publish-as",
       "name": "@lostgradient/weft",
       "basis": "settled",
-      "lastPublishedVersion": "0.25.0",
-      "reason": "Already published under this name. Ships standalone from stevekinney/weft."
+      "lastPublishedVersion": "0.26.0",
+      "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
+      "sourceDigest": "68a852f5d08c4b2139c50cca83293e3e3c50d8a6d591c0241ed5b19db1dfa600"
     },
     "@lostgradient/weft-ui": {
-      "disposition": "publish-as",
-      "name": "@lostgradient/weft-ui",
-      "basis": "settled",
-      "lastPublishedVersion": null,
-      "reason": "Name is settled, but `npm view @lostgradient/weft-ui` returns 404 \u2014 the manifest carries 0.1.0 and no `private` flag, yet it was never published. COR-1194 records that its trusted-publisher registration was never completed. Treat the first monorepo release as a first publish, not a re-publish."
+      "disposition": "private-workspace",
+      "basis": "held-for-api-design",
+      "reason": "The repository owner ruled 2026-09-23 (COR-1196) that weft-ui ships to the cinder mirror as unpublished source rather than as a published package. `scripts/mirror/package-surface.json` recorded a surface for an old `dist/mount.js` bundle whose build scripts corvidae does not carry, while corvidae's source (`components/weft-ui/src/index.ts`) now exports a `WeftConsole` Svelte component — the recorded surface described a package that no longer exists. `npm view @lostgradient/weft-ui` still returns 404 and COR-1194 records its trusted-publisher registration as never completed, so this ruling changes nothing on the registry. A separate issue is to design its public API before any publish; the `@lostgradient/weft-ui` name stays available for that publish."
     },
     "@lostgradient/operative": {
       "disposition": "publish-as",
       "name": "@lostgradient/operative",
       "basis": "settled",
-      "lastPublishedVersion": "0.12.0",
-      "reason": "Already published under this name."
+      "lastPublishedVersion": "0.12.1",
+      "reason": "Already published under this name.",
+      "sourceDigest": "731de7060226e503e18c55029727e106d58f3ecce27b8cae4f1bfc891b6d36d4"
     },
     "@lostgradient/cinder": {
       "disposition": "publish-as",
@@ -59,52 +59,53 @@
       "disposition": "publish-as",
       "name": "armorer",
       "basis": "settled",
-      "lastPublishedVersion": "2.4.0",
+      "lastPublishedVersion": "2.4.1",
       "reason": "Keeps its unscoped name deliberately. Roughly 30,872 installs a month; renaming breaks real consumers for a cosmetic gain."
     },
     "conversationalist": {
       "disposition": "publish-as",
       "name": "conversationalist",
       "basis": "settled",
-      "lastPublishedVersion": "1.2.0",
-      "reason": "Keeps its unscoped name deliberately. Roughly 53,608 installs a month, the most-installed package in the graph."
+      "lastPublishedVersion": "1.3.0",
+      "reason": "Keeps its unscoped name deliberately. Roughly 53,608 installs a month, the most-installed package in the graph.",
+      "sourceDigest": "7eca5439093a1a9225c51ff57a56366fa08760c3332de6ee7f4f93a25cdf10d7"
     },
     "@lostgradient/cryptography": {
       "disposition": "publish-as",
       "name": "@lostgradient/cryptography",
       "basis": "runtime-closure-forced",
-      "lastPublishedVersion": null,
+      "lastPublishedVersion": "0.0.1",
       "requiredBy": ["armorer", "operative"],
-      "reason": "Inside the runtime dependency closure of published armorer and operative, so it must publish or those packages are uninstallable. Never published before. The unscoped name `cryptography` belongs to an unrelated third party (jnssnmrcs, 1.2.3, 2018) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of published armorer and operative, so it must publish or those packages are uninstallable. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `cryptography` belongs to an unrelated third party (jnssnmrcs, 1.2.3, 2018) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
     },
     "@lostgradient/embeddings": {
       "disposition": "publish-as",
       "name": "@lostgradient/embeddings",
       "basis": "runtime-closure-forced",
-      "lastPublishedVersion": null,
+      "lastPublishedVersion": "0.0.1",
       "requiredBy": ["armorer", "operative"],
-      "reason": "Inside the runtime dependency closure of published armorer and operative. Never published before. The unscoped name `embeddings` belongs to an unrelated third party (pagepixels, 2.0.5, 2023) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of published armorer and operative. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `embeddings` belongs to an unrelated third party (pagepixels, 2.0.5, 2023) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
     },
     "@lostgradient/tool-protocol": {
       "disposition": "publish-as",
       "name": "@lostgradient/tool-protocol",
       "basis": "runtime-closure-forced",
-      "lastPublishedVersion": null,
+      "lastPublishedVersion": "0.0.1",
       "requiredBy": ["armorer", "conversationalist", "operative", "chat"],
-      "reason": "Inside the runtime dependency closure of four published packages. Never published before. The unscoped name `tool-protocol` is genuinely unregistered, but the scoped name was chosen for consistency with its siblings and approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of four published packages. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `tool-protocol` is genuinely unregistered, but the scoped name was chosen for consistency with its siblings and approved by the repository owner 2026-09-18."
     },
     "@lostgradient/lifecycle": {
       "disposition": "publish-as",
       "name": "@lostgradient/lifecycle",
       "basis": "runtime-closure-forced",
-      "lastPublishedVersion": null,
+      "lastPublishedVersion": "0.0.2",
       "requiredBy": ["armorer", "conversationalist", "operative", "chat"],
-      "reason": "Inside the runtime dependency closure of four published packages, reached both directly and through tool-protocol. Never published \u2014 agent-bureau's manifest is `private: true` at 0.0.1. The unscoped name `lifecycle` belongs to an unrelated third party (kmalakoff, 1.0.4, 2015) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
+      "reason": "Inside the runtime dependency closure of four published packages, reached both directly and through tool-protocol. First published 2026-09-25: the owner claimed the name with one interactive publish so npm trusted publishing could be registered for agent-bureau's release.yml, and the provenance release followed through that workflow (COR-1194, COR-1198). The unscoped name `lifecycle` belongs to an unrelated third party (kmalakoff, 1.0.4, 2015) and is unavailable. Scoped name approved by the repository owner 2026-09-18."
     },
     "@lostgradient/typescript": {
       "disposition": "private-workspace",
       "basis": "development-only",
-      "reason": "Every published package extends it, but only through devDependencies \u2014 it appears in no runtime `dependencies` edge anywhere. Must remain in the repository because dropping it breaks typecheck and build for every workspace. COR-1189 vendors it to a local path for the single-package weft target and keeps it workspace-native for the monorepo."
+      "reason": "Every published package extends it, but only through devDependencies — it appears in no runtime `dependencies` edge anywhere. Must remain in the repository because dropping it breaks typecheck and build for every workspace. COR-1189 vendors it to a local path for the single-package weft target and keeps it workspace-native for the monorepo."
     },
     "@lostgradient/testing": {
       "disposition": "private-workspace",
