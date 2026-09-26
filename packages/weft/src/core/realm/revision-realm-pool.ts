@@ -84,6 +84,15 @@ export class RevisionRealmPool {
 
     const outcome = await realm.waitUntilReady();
     if (!outcome.ok) {
+      // A rejected/timed-out ready handshake already leaves the realm's own
+      // lifecycle in `Crashed` (see `WorkerRealm#settleReady`), but it never
+      // terminates the underlying real Worker thread on its own -- that is
+      // this pool's job, matching the existing `WorkerFaultHandler
+      // .discardWorkerAndFailWorkflows` precedent for the identical failure
+      // in the generic Worker-execution-mode path
+      // (`worker-execution-strategy.ts`'s `#ensureRealmReady`). Without this,
+      // the Worker thread outlives its dropped realm indefinitely.
+      realm.discard();
       this.#realms.delete(realm);
       return { ok: false, reason: 'realm-ready-handshake-failed', error: outcome.error };
     }

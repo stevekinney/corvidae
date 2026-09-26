@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { RevisionRealmPool } from './revision-realm-pool.ts';
 
@@ -122,5 +122,46 @@ describe('RevisionRealmPool', () => {
 
     expect(outcome.realm.restart()).toEqual({ ok: false, reason: 'unreferenced' });
     pool.forgetCrashedRealm(outcome.realm);
+  });
+
+  describe('a failed realm-ready handshake', () => {
+    afterEach(() => {
+      // `spyOn` wraps the shared, process-global `Worker.prototype` -- left
+      // unrestored, it would leak into every other test file `bun test`
+      // runs in this same process (worker-realm.test.ts in particular).
+      Worker.prototype.terminate &&
+        (Worker.prototype.terminate as unknown as { mockRestore?: () => void }).mockRestore?.();
+    });
+
+    it('terminates the underlying Worker thread instead of leaking it when the ready handshake rejects a digest mismatch', async () => {
+      const terminateSpy = spyOn(Worker.prototype, 'terminate');
+      const pool = new RevisionRealmPool({
+        workflowRevision: 'revision-a',
+        workerUrl,
+        expectedWorkflowTypes: ['order-workflow'],
+        // The fixture worker advertises `digest-a`; the pool expects
+        // `digest-b`, so `validateRealmReadyMessage` rejects the handshake
+        // and `acquireForExecution` takes its `!outcome.ok` branch.
+        expectedArtifactDigest: 'digest-b',
+        workerName: 'digest-a',
+        concurrency: 1,
+      });
+
+      const outcome = await pool.acquireForExecution('execution-1');
+
+      expect(outcome).toEqual({
+        ok: false,
+        reason: 'realm-ready-handshake-failed',
+        error: expect.any(String),
+      });
+      // The pool's own bookkeeping already reports zero realms on this
+      // failure path (that part was never broken) -- the regression is
+      // that the real Worker thread behind the dropped realm kept running.
+      // `realmCount === 0` alone cannot distinguish "properly discarded"
+      // from "silently leaked"; the terminate spy is the only check that can.
+      expect(pool.realmCount).toBe(0);
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+      pool.dispose();
+    });
   });
 });
