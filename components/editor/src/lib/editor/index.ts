@@ -65,9 +65,24 @@ export {
   type ShortcutDefinition,
 } from './keymap-plugin.ts';
 
-// Template placeholder plugins (DEP-583)
-export { createTemplateCompletionPlugin } from './template-completion-plugin.ts';
+// Template placeholder plugins (DEP-583, COR-526)
+export {
+  createTemplateCompletionPlugin,
+  type TemplateCompletionPluginOptions,
+} from './template-completion-plugin.ts';
 export { templateCompletionPluginKey } from './template-completion-state.ts';
+export {
+  createPlaceholderConfigurationTransaction,
+  createTemplatePlaceholderConfigurationPlugin,
+  templatePlaceholderConfigurationPluginKey,
+} from './template-placeholder-configuration-plugin.ts';
+export {
+  classifyPlaceholderValues,
+  resolvePlaceholderConfiguration,
+  type PlaceholderEditorConfiguration,
+  type PlaceholderValuesStatus,
+  type ResolvedPlaceholderConfiguration,
+} from './template-placeholder-configuration.ts';
 
 export {
   createTemplateInvalidDecorationPlugin,

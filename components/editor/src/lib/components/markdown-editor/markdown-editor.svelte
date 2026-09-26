@@ -48,6 +48,8 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { Segment, SegmentedControl, FileCode, Pencil, Textarea } from '@lostgradient/cinder';
   import EditorSkeleton from './editor-skeleton.svelte';
+  import MarkdownEditorPlaceholderRegions from './markdown-editor-placeholder-regions.svelte';
+  import { createMarkdownEditorPlaceholders } from './markdown-editor-placeholders.svelte.ts';
   import { EditorToolbar, LinkPopover } from './editor-toolbar/index.ts';
   import type { LinkPopoverMode } from './editor-toolbar/link-popover.svelte';
   import type { EditorMode, MarkdownEditorProps, ToolbarContext } from './markdown-editor.types.ts';
@@ -82,6 +84,9 @@
     plugins = [],
     placeholderCompletion,
     placeholderDecoration,
+    placeholderDefinitions,
+    placeholderValues,
+    onPlaceholderDiagnosticsChange,
     toolbar,
     toolbarActions,
     toolbarLeading,
@@ -139,6 +144,18 @@
   const accessibleEditorLabel = $derived(
     label.trim().length > 0 ? label.trim() : 'Markdown editor',
   );
+
+  const placeholders = createMarkdownEditorPlaceholders({
+    id: () => id,
+    value: () => value,
+    readonly: () => readonly,
+    wysiwyg: () => mode === 'wysiwyg',
+    definitions: () => placeholderDefinitions,
+    values: () => placeholderValues,
+    completion: () => placeholderCompletion,
+    decoration: () => placeholderDecoration,
+    onDiagnosticsChange: () => onPlaceholderDiagnosticsChange,
+  });
 
   // Internal state
   let editorState = $state<EditorState | null>(null);
@@ -489,8 +506,9 @@
     getAriaLabel: () => accessibleEditorLabel,
     debounceMs: DEFAULT_DEBOUNCE_MS,
     getPlugins: () => plugins,
-    getPlaceholderCompletion: () => placeholderCompletion,
-    getPlaceholderDecoration: () => placeholderDecoration,
+    getPlaceholderConfiguration: () => placeholders.configuration,
+    placeholderListboxId: placeholders.listboxId,
+    onPlaceholderStatusChange: (message) => placeholders.setStatusMessage(message),
     onready: (state) => {
       editorState = state;
       isInitializing = false;
@@ -633,8 +651,9 @@
 
     viewDom.setAttribute('aria-label', accessibleEditorLabel);
 
-    if (ariaDescribedby) {
-      viewDom.setAttribute('aria-describedby', ariaDescribedby);
+    const describedBy = placeholders.describedBy(ariaDescribedby);
+    if (describedBy) {
+      viewDom.setAttribute('aria-describedby', describedBy);
     } else {
       viewDom.removeAttribute('aria-describedby');
     }
@@ -857,6 +876,13 @@
       onOutsideDismiss={handleLinkPopoverOutsideDismiss}
     />
   {/if}
+
+  <MarkdownEditorPlaceholderRegions
+    {id}
+    instructionsVisible={placeholders.instructionsVisible}
+    statusMessage={placeholders.statusMessage}
+    diagnostics={placeholders.diagnostics}
+  />
 </div>
 
 <style>
@@ -1064,13 +1090,6 @@
    * .prose stylesheet for MarkdownEditor to render correctly.
    */
 
-  /* Template placeholder invalid token decoration (DEP-583) */
-  .markdown-editor :global(.template-placeholder-invalid) {
-    text-decoration: wavy underline var(--cinder-status-warning-solid, #e5a200);
-    text-decoration-skip-ink: none;
-    text-underline-offset: 2px;
-  }
-
   /*
    * Snapshot mode: suppress the blinking caret and text selection highlights
    * so visual regression screenshots are pixel-stable across runs.
@@ -1102,50 +1121,5 @@
   .markdown-editor-wrapper[data-snapshot-mode] :global(::selection) {
     background: transparent;
     color: inherit;
-  }
-
-  /* Template completion popup (DEP-583) */
-  .markdown-editor :global(.template-completion-popup) {
-    background: var(--cinder-surface-raised, #fff);
-    border: 1px solid var(--cinder-border, #d0d5dd);
-    border-radius: var(--cinder-radius-md, 6px);
-    box-shadow: var(--cinder-shadow-md, 0 4px 6px -1px rgb(0 0 0 / 0.1));
-    max-height: 240px;
-    overflow-y: auto;
-    min-width: 200px;
-    max-width: 360px;
-    padding: var(--cinder-space-1, 4px);
-  }
-
-  .markdown-editor :global(.template-completion-item) {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    padding: var(--cinder-space-1, 4px) var(--cinder-space-2, 8px);
-    border-radius: var(--cinder-radius-sm, 4px);
-    cursor: pointer;
-    font-size: var(--cinder-text-sm, 0.875rem);
-    line-height: 1.4;
-  }
-
-  .markdown-editor :global(.template-completion-item--active) {
-    background: var(--cinder-surface-hover);
-  }
-
-  @media (hover: hover) {
-    .markdown-editor :global(.template-completion-item:hover) {
-      background: var(--cinder-surface-hover);
-    }
-  }
-
-  .markdown-editor :global(.template-completion-item-path) {
-    font-family: var(--cinder-font-mono);
-    font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-default, #1a1a1a);
-  }
-
-  .markdown-editor :global(.template-completion-item-description) {
-    font-size: var(--cinder-text-xs, 0.75rem);
-    color: var(--cinder-text-muted, #6b7280);
   }
 </style>

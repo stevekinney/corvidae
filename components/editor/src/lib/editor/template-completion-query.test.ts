@@ -42,24 +42,33 @@ describe('filterAndSortCandidates', () => {
     expect(paths).toEqual(['input.address', 'input.age', 'input.name']);
   });
 
-  it('limits results to MAXIMUM_VISIBLE_SUGGESTIONS', () => {
-    // Create more candidates than the limit.
+  it('returns every match, not just the visible rows, so all stay reachable', () => {
     const manyCandidates = Array.from({ length: 20 }, (_, index) =>
       makeCandidate(`field${String(index).padStart(2, '0')}`),
     );
 
     const result = filterAndSortCandidates(manyCandidates, 'field');
 
-    expect(result).toHaveLength(MAXIMUM_VISIBLE_SUGGESTIONS);
+    expect(MAXIMUM_VISIBLE_SUGGESTIONS).toBe(8);
+    expect(result).toHaveLength(20);
   });
 
-  it('returns all candidates (up to max) when query is empty', () => {
-    const result = filterAndSortCandidates(candidates, '');
+  it('returns every candidate sorted by path in code-unit order when the query is empty', () => {
+    const result = filterAndSortCandidates(
+      [...candidates, makeCandidate('Zeta'), makeCandidate('alpha')],
+      '',
+    );
 
-    expect(result).toHaveLength(MAXIMUM_VISIBLE_SUGGESTIONS);
-    // Should be sorted lexicographically.
     const paths = result.map((candidate) => candidate.path);
-    expect(paths).toEqual(paths.toSorted());
+    expect(paths).toHaveLength(candidates.length + 2);
+    expect(paths[0]).toBe('Zeta');
+    expect(paths).toEqual(paths.toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+  });
+
+  it('filters case-insensitively but keeps canonical case', () => {
+    const result = filterAndSortCandidates([makeCandidate('User.Name')], 'user.n');
+
+    expect(result.map((candidate) => candidate.path)).toEqual(['User.Name']);
   });
 
   it('returns empty array when no candidates match', () => {

@@ -1,8 +1,5 @@
-import type {
-  PlaceholderCandidate,
-  PlaceholderCompletionConfiguration,
-  PlaceholderValueKind,
-} from '@lostgradient/markdown';
+import type { PlaceholderCandidate, PlaceholderSchemaType } from '@lostgradient/markdown';
+import type { Mark } from 'prosemirror-model';
 import type { EditorState, Transaction } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
 
@@ -10,32 +7,56 @@ import {
   detectTokenQuery,
   filterAndSortCandidates,
   mergeCandidates,
+  type DetectedTokenQuery,
 } from './template-completion-query.js';
-
-const DEFAULT_MINIMUM_QUERY_LENGTH = 1;
+import type { PlaceholderCompletionSource } from './template-placeholder-configuration.js';
 
 export interface CompletionState {
+  /** Whether the caret is in a token that completion is tracking. */
   active: boolean;
+  /** Set by an Escape or Tab dismissal; cleared by the next document change. */
+  dismissed: boolean;
   query: string;
+  /** Every match, sorted; the popup shows up to eight rows at a time. */
   suggestions: PlaceholderCandidate[];
+  /** Async lookup results received for `query`; discarded when the query or configuration changes. */
+  asyncCandidates: PlaceholderCandidate[];
   activeIndex: number;
   tokenFrom: number;
+  tokenTo: number;
   cursorPos: number;
+  marks: readonly Mark[];
 }
 
-export const INACTIVE_STATE: CompletionState = {
+export const INACTIVE_STATE: CompletionState = Object.freeze<CompletionState>({
   active: false,
+  dismissed: false,
   query: '',
   suggestions: [],
+  asyncCandidates: [],
   activeIndex: 0,
   tokenFrom: 0,
+  tokenTo: 0,
   cursorPos: 0,
-};
+  marks: [],
+});
+
+const DISMISSED_STATE: CompletionState = Object.freeze<CompletionState>({
+  ...INACTIVE_STATE,
+  dismissed: true,
+});
 
 export type CompletionMeta =
   | { type: 'close' }
+  | { type: 'dismiss' }
   | { type: 'navigate'; index: number }
-  | { type: 'asyncResults'; candidates: PlaceholderCandidate[] };
+  | {
+      type: 'asyncResults';
+      query: string;
+      candidates: PlaceholderCandidate[];
+      /** The completion configuration the lookup ran under; results for any other are stale. */
+      source: PlaceholderCompletionSource;
+    };
 
 export const templateCompletionPluginKey = new PluginKey<CompletionState>('template-completion');
 
@@ -45,7 +66,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isCompletionMeta(value: unknown): value is CompletionMeta {
   if (!isRecord(value)) return false;
-  if (value['type'] === 'close') return true;
+  if (value['type'] === 'close' || value['type'] === 'dismiss') return true;
   if (value['type'] === 'navigate') {
     return (
       typeof value['index'] === 'number' &&
@@ -53,25 +74,45 @@ function isCompletionMeta(value: unknown): value is CompletionMeta {
       value['index'] >= 0
     );
   }
-  return value['type'] === 'asyncResults' && isCandidateArray(value['candidates']);
-}
-
-function isValueKind(value: unknown): value is PlaceholderValueKind {
   return (
-    value === 'string' ||
-    value === 'number' ||
-    value === 'boolean' ||
-    value === 'array' ||
-    value === 'object' ||
-    value === 'unknown'
+    value['type'] === 'asyncResults' &&
+    typeof value['query'] === 'string' &&
+    isRecord(value['source']) &&
+    isCandidateArray(value['candidates'])
   );
 }
 
+const SCHEMA_TYPES: ReadonlySet<unknown> = new Set<PlaceholderSchemaType>([
+  'string',
+  'number',
+  'integer',
+  'boolean',
+  'null',
+  'object',
+  'array',
+]);
+
+function isSchemaTypeList(value: unknown): value is readonly PlaceholderSchemaType[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    new Set(value).size === value.length &&
+    value.every((type) => SCHEMA_TYPES.has(type))
+  );
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
 function isCandidate(value: unknown): value is PlaceholderCandidate {
-  if (!isRecord(value) || typeof value['path'] !== 'string' || !isValueKind(value['valueKind'])) {
-    return false;
-  }
-  return value['description'] === undefined || typeof value['description'] === 'string';
+  return (
+    isRecord(value) &&
+    typeof value['path'] === 'string' &&
+    (value['types'] === undefined || isSchemaTypeList(value['types'])) &&
+    isOptionalString(value['title']) &&
+    isOptionalString(value['description'])
+  );
 }
 
 function isCandidateArray(value: unknown): value is PlaceholderCandidate[] {
@@ -81,56 +122,74 @@ function isCandidateArray(value: unknown): value is PlaceholderCandidate[] {
 function applyMeta(
   meta: CompletionMeta,
   previousState: CompletionState,
-  configuration: PlaceholderCompletionConfiguration,
+  configuration: PlaceholderCompletionSource,
 ): CompletionState | undefined {
   if (meta.type === 'close') return INACTIVE_STATE;
+  if (meta.type === 'dismiss') return DISMISSED_STATE;
   if (meta.type === 'navigate') {
     return meta.index < previousState.suggestions.length
       ? { ...previousState, activeIndex: meta.index }
       : undefined;
   }
 
+  // Results for another configuration, a query the user has since changed, or a
+  // closed popup are stale.
+  if (
+    meta.source !== configuration ||
+    !previousState.active ||
+    meta.query !== previousState.query
+  ) {
+    return previousState;
+  }
   const suggestions = filterAndSortCandidates(
     mergeCandidates(configuration.candidates, meta.candidates),
     previousState.query,
   );
-  if (suggestions.length === 0) return INACTIVE_STATE;
-
   return {
     ...previousState,
     suggestions,
-    activeIndex: Math.min(previousState.activeIndex, suggestions.length - 1),
+    asyncCandidates: meta.candidates,
+    activeIndex: Math.min(previousState.activeIndex, Math.max(suggestions.length - 1, 0)),
   };
 }
 
 function buildDetectedState(
   previousState: CompletionState,
-  configuration: PlaceholderCompletionConfiguration,
-  detected: NonNullable<ReturnType<typeof detectTokenQuery>>,
+  configuration: PlaceholderCompletionSource,
+  detected: DetectedTokenQuery,
+  configurationChanged: boolean,
 ): CompletionState {
-  const { query, tokenFrom, cursorPos } = detected;
-  const minimumQueryLength = configuration.minimumQueryLength ?? DEFAULT_MINIMUM_QUERY_LENGTH;
-  if (query.length < minimumQueryLength) return INACTIVE_STATE;
+  const { query } = detected;
+  if (query.length < configuration.minimumQueryLength) return INACTIVE_STATE;
 
-  const suggestions = filterAndSortCandidates(configuration.candidates, query);
-  if (suggestions.length === 0) {
-    return configuration.lookupCandidates
-      ? { active: true, query, suggestions: [], activeIndex: 0, tokenFrom, cursorPos }
-      : INACTIVE_STATE;
-  }
-
-  const activeIndex =
-    previousState.active && previousState.query === query
-      ? Math.min(previousState.activeIndex, suggestions.length - 1)
-      : 0;
-  return { active: true, query, suggestions, activeIndex, tokenFrom, cursorPos };
+  const sameQuery = previousState.active && previousState.query === query;
+  // Async results belong to one query under one configuration.
+  const asyncCandidates = sameQuery && !configurationChanged ? previousState.asyncCandidates : [];
+  const suggestions = filterAndSortCandidates(
+    mergeCandidates(configuration.candidates, asyncCandidates),
+    query,
+  );
+  const activeIndex = sameQuery
+    ? Math.min(previousState.activeIndex, Math.max(suggestions.length - 1, 0))
+    : 0;
+  return { active: true, dismissed: false, suggestions, asyncCandidates, activeIndex, ...detected };
 }
 
+/**
+ * Compute the next completion state.
+ *
+ * A dismissal persists through selection-only and configuration-only
+ * transactions and ends with the next document change, except while
+ * `keepDismissal` is set for changes made by the dismissing key. With no
+ * completion configured the state is always inactive.
+ */
 export function computeCompletionState(
   previousState: CompletionState,
   transaction: Transaction,
   editorState: EditorState,
-  configuration: PlaceholderCompletionConfiguration | undefined,
+  configuration: PlaceholderCompletionSource | undefined,
+  configurationChanged = false,
+  keepDismissal = false,
 ): CompletionState {
   if (!configuration) return INACTIVE_STATE;
 
@@ -140,7 +199,14 @@ export function computeCompletionState(
     const metaState = applyMeta(meta, previousState, configuration);
     if (metaState) return metaState;
   }
+  // A dismissal lasts until the next editing action. Document changes made by
+  // the dismissing key itself (Tab indenting a list item) do not end it.
+  if (previousState.dismissed && (!transaction.docChanged || keepDismissal)) {
+    return previousState;
+  }
 
   const detected = detectTokenQuery(editorState);
-  return detected ? buildDetectedState(previousState, configuration, detected) : INACTIVE_STATE;
+  return detected
+    ? buildDetectedState(previousState, configuration, detected, configurationChanged)
+    : INACTIVE_STATE;
 }
