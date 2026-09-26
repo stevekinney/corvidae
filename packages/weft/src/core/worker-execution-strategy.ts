@@ -410,6 +410,27 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     const handlerFailed = emitResult instanceof Promise ? await emitResult : emitResult;
 
     try {
+      // COR-113: a realm's `completed`/`failed` result is only ACCEPTED once
+      // the handler's durable commit has actually succeeded — the host must
+      // never acknowledge a workflow turn solely because a realm sent a
+      // result. Checked BEFORE `#settleTerminalWorkerMessage`, which would
+      // otherwise unconditionally release the worker back to the pool and
+      // clear ownership regardless of `handlerFailed`, silently treating an
+      // uncommitted result as though it had landed durably. Routed through
+      // the same discard-and-refail path every other worker anomaly in this
+      // file uses, so the workflow is settled as failed/retryable per
+      // existing engine semantics rather than orphaned.
+      if (handlerFailed && (message.type === 'completed' || message.type === 'failed')) {
+        this.#faultHandler.discardWorkerAndFailWorkflows(worker, {
+          targetWorkflowId: message.workflowId,
+          targetCategory: 'system',
+          targetError: `Turn result for workflow ${message.workflowId} could not be durably committed`,
+          otherCategory: 'system',
+          otherError: `Worker discarded after a workflow turn result failed to commit durably: ${message.workflowId}`,
+        });
+        return;
+      }
+
       if (this.#settleTerminalWorkerMessage(worker, message)) {
         return;
       }
