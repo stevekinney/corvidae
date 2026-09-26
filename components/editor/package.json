@@ -8,17 +8,18 @@
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
-    "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src scripts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts"
   },
   "dependencies": {
+    "@floating-ui/dom": "catalog:",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/markdown": "workspace:*",
     "@milkdown/ctx": "catalog:",
     "@milkdown/kit": "catalog:",
     "@milkdown/prose": "catalog:",
-    "@floating-ui/dom": "catalog:",
+    "@noble/hashes": "catalog:",
     "esm-env": "catalog:",
-    "@lostgradient/cinder": "workspace:*",
-    "@lostgradient/markdown": "workspace:*",
     "prosemirror-inputrules": "catalog:",
     "prosemirror-model": "catalog:",
     "prosemirror-state": "catalog:",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@lostgradient/testing": "workspace:*",
+    "@playwright/test": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",

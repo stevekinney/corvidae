@@ -274,11 +274,31 @@ describe('the imperative surface reaches the published entry point', () => {
     'deleteComment',
     'exportUnifiedDiff',
     'exportMarkdownSummary',
+    'exportAggregateReviewMarkdown',
+    'exportAggregateReviewJson',
     'reset',
     'focus',
   ])('the wrapper forwards %s', (method) => {
     expect(wrapperSource).toMatch(new RegExp(`export function ${method}\\b`));
     expect(implementationSource).toMatch(new RegExp(`export function ${method}\\b`));
+  });
+});
+
+describe('ReviewEditor diff comments: the public wrapper forwards the opt-in props', () => {
+  /**
+   * `diffReviewState`/`onDiffReviewStateChange` reach the implementation through the wrapper's
+   * existing `{...rest}` spread (COR-512 / DR-7) -- they are never destructured by name in
+   * `review-editor.svelte`, unlike an imperative method. This pins that the wrapper's spread
+   * still exists and that the implementation actually declares both props, so a future
+   * refactor that starts naming props explicitly in the wrapper cannot silently drop these two.
+   */
+  test('the wrapper still spreads unrecognized props onto the implementation', () => {
+    expect(wrapperSource).toMatch(/<ReviewEditorImplementation[\s\S]*?\{\.\.\.rest\}/);
+  });
+
+  test('the implementation declares both opt-in diff-review props', () => {
+    expect(implementationSource).toContain('diffReviewState,');
+    expect(implementationSource).toContain('onDiffReviewStateChange,');
   });
 });
 

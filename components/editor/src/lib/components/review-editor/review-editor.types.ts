@@ -12,6 +12,7 @@ import type {
   ThreadCreateEvent,
   ThreadDeleteEvent,
 } from '../../comments/index.ts';
+import type { DiffReviewState } from '../../diff-review-state/index.ts';
 
 /** Review editor mode: edit allows full editing, readonly is view-only. */
 export type ReviewMode = 'edit' | 'readonly';
@@ -101,6 +102,35 @@ export type ReviewEditorProps = {
    * ProseMirror state, or any prop controlled by `readonly` / `mode`.
    */
   snapshotMode?: boolean;
+
+  /**
+   * Opt-in, host-controlled diff-review session for this document's embedded diff tab
+   * (COR-512 / DR-7). Absent by default: every existing consumer's behavior, DOM, and export
+   * scope are exactly unchanged. Never mutated directly — every change flows back out through
+   * `onDiffReviewStateChange`. Independent of `threads`/`ProseMirror` anchoring: enabling or
+   * removing this prop never touches document comment threads, and a bound `original`/`value`
+   * change latches diff comments outdated without affecting prose threads.
+   *
+   * `ReviewEditor` reconciles this against its own bound `original`/`value` as a single
+   * `markdown` target keyed by its `id` prop (see `buildReviewEditorDiffReviewTarget`), through
+   * `restoreDiffReviewState` — the same atomic validate-and-reconcile path a remount uses. An
+   * input that fails that validation shows an integration error and keeps the last valid state;
+   * ordinary document editing is never affected. Removing this prop stops diff controls/export
+   * integration without erasing or overwriting the host's own state; supplying it again
+   * re-validates from the current input.
+   */
+  diffReviewState?: DiffReviewState | undefined;
+  /**
+   * Called whenever the reconciled diff-review state changes: after a comment/draft/review-note
+   * action the diff tab's controls dispatch, and whenever a bound `original`/`value` change
+   * latches affected diff comments outdated. Never called for a supplied state that fails
+   * validation. Named `onDiffReviewStateChange` (not the cross-package contract's lowercase
+   * `ondiffreviewstatechange`): this repository's `check-prop-conventions` gate structurally
+   * bans a non-native-passthrough lowercase `on*` prop, exactly like `DiffReview`'s
+   * `onStateChange` and `SourceDiffViewer`'s `onFilesChange` before it. The field and payload
+   * are otherwise exactly the ratified contract's.
+   */
+  onDiffReviewStateChange?: (next: DiffReviewState) => void;
 };
 
 /** Position for fixed-position popovers (viewport-relative coordinates) */

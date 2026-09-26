@@ -1,0 +1,447 @@
+import { describe, expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import {
+  buildManifest,
+  HYDRATION_BUNDLE_PATH,
+  hydrationFetchHandler,
+  hydrationPageHtml,
+  parseArguments,
+  runValidator,
+  sha256File,
+  type CaseResult,
+  type Spawner,
+  type SpawnResult,
+} from './validate-diff-review-registry.ts';
+
+const ABSOLUTE_CINDER = '/tmp/example/cinder.tgz';
+const ABSOLUTE_EDITOR = '/tmp/example/editor.tgz';
+const ABSOLUTE_EVIDENCE = '/tmp/example/evidence';
+
+describe('validate-diff-review-registry parseArguments', () => {
+  test('accepts the three required absolute options', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      ABSOLUTE_CINDER,
+      '--editor-tarball',
+      ABSOLUTE_EDITOR,
+      '--evidence-directory',
+      ABSOLUTE_EVIDENCE,
+    ]);
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        cinderTarball: ABSOLUTE_CINDER,
+        editorTarball: ABSOLUTE_EDITOR,
+        evidenceDirectory: ABSOLUTE_EVIDENCE,
+        markdownTarball: undefined,
+      },
+    });
+  });
+
+  test('accepts an optional absolute --markdown-tarball', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      ABSOLUTE_CINDER,
+      '--editor-tarball',
+      ABSOLUTE_EDITOR,
+      '--evidence-directory',
+      ABSOLUTE_EVIDENCE,
+      '--markdown-tarball',
+      '/tmp/example/markdown.tgz',
+    ]);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.markdownTarball).toBe('/tmp/example/markdown.tgz');
+  });
+
+  test('rejects a missing --cinder-tarball', () => {
+    const result = parseArguments([
+      '--editor-tarball',
+      ABSOLUTE_EDITOR,
+      '--evidence-directory',
+      ABSOLUTE_EVIDENCE,
+    ]);
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'missing-argument',
+        option: 'cinder-tarball',
+        message: 'Missing required option --cinder-tarball',
+      },
+    });
+  });
+
+  test('rejects a missing --editor-tarball', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      ABSOLUTE_CINDER,
+      '--evidence-directory',
+      ABSOLUTE_EVIDENCE,
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toEqual({
+        code: 'missing-argument',
+        option: 'editor-tarball',
+        message: 'Missing required option --editor-tarball',
+      });
+  });
+
+  test('rejects a missing --evidence-directory', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      ABSOLUTE_CINDER,
+      '--editor-tarball',
+      ABSOLUTE_EDITOR,
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.option).toBe('evidence-directory');
+  });
+
+  test('rejects a relative --cinder-tarball', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      'relative/cinder.tgz',
+      '--editor-tarball',
+      ABSOLUTE_EDITOR,
+      '--evidence-directory',
+      ABSOLUTE_EVIDENCE,
+    ]);
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'not-absolute',
+        option: 'cinder-tarball',
+        message: '--cinder-tarball must be an absolute path, got "relative/cinder.tgz"',
+      },
+    });
+  });
+
+  test('rejects a relative --editor-tarball', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      ABSOLUTE_CINDER,
+      '--editor-tarball',
+      'relative/editor.tgz',
+      '--evidence-directory',
+      ABSOLUTE_EVIDENCE,
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toEqual({
+        code: 'not-absolute',
+        option: 'editor-tarball',
+        message: '--editor-tarball must be an absolute path, got "relative/editor.tgz"',
+      });
+  });
+
+  test('rejects a relative --evidence-directory', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      ABSOLUTE_CINDER,
+      '--editor-tarball',
+      ABSOLUTE_EDITOR,
+      '--evidence-directory',
+      'relative/evidence',
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('not-absolute');
+  });
+
+  test('rejects a relative --markdown-tarball', () => {
+    const result = parseArguments([
+      '--cinder-tarball',
+      ABSOLUTE_CINDER,
+      '--editor-tarball',
+      ABSOLUTE_EDITOR,
+      '--evidence-directory',
+      ABSOLUTE_EVIDENCE,
+      '--markdown-tarball',
+      'relative/markdown.tgz',
+    ]);
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.error).toEqual({
+        code: 'not-absolute',
+        option: 'markdown-tarball',
+        message: '--markdown-tarball must be an absolute path, got "relative/markdown.tgz"',
+      });
+  });
+});
+
+describe('validate-diff-review-registry buildManifest', () => {
+  const tarball = { path: ABSOLUTE_CINDER, sha256: 'a'.repeat(64) };
+
+  test('exit code is 0 when every case passes', () => {
+    const cases: CaseResult[] = [
+      { id: 'plain-cinder/import', fixture: 'plain-cinder', status: 'pass' },
+      { id: 'aggregate/export', fixture: 'aggregate', status: 'pass' },
+    ];
+    const manifest = buildManifest({
+      now: () => '2026-01-01T00:00:00.000Z',
+      cinderTarball: tarball,
+      editorTarball: tarball,
+      markdownTarball: { registryRange: '^0.5.0' },
+      installedVersions: {},
+      cases,
+    });
+    expect(manifest.exitCode).toBe(0);
+    expect(manifest.cases).toEqual(cases);
+    expect(manifest.schemaVersion).toBe(1);
+    expect(manifest.generatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  test('exit code is 1 when any case fails', () => {
+    const manifest = buildManifest({
+      cinderTarball: tarball,
+      editorTarball: tarball,
+      markdownTarball: { registryRange: '^0.5.0' },
+      installedVersions: {},
+      cases: [
+        { id: 'plain-cinder/import', fixture: 'plain-cinder', status: 'pass' },
+        { id: 'annotated/ssr:x', fixture: 'annotated', status: 'fail', detail: 'boom' },
+      ],
+    });
+    expect(manifest.exitCode).toBe(1);
+  });
+
+  test('an empty case list fails atomically rather than reporting a silent pass', () => {
+    const manifest = buildManifest({
+      cinderTarball: tarball,
+      editorTarball: tarball,
+      markdownTarball: { registryRange: '^0.5.0' },
+      installedVersions: {},
+      cases: [],
+    });
+    expect(manifest.exitCode).toBe(1);
+    expect(manifest.cases).toHaveLength(1);
+    expect(manifest.cases[0]?.id).toBe('matrix/no-cases');
+    expect(manifest.cases[0]?.status).toBe('fail');
+  });
+
+  test('carries installed versions and tarball records through unchanged', () => {
+    const manifest = buildManifest({
+      cinderTarball: { path: '/a/cinder.tgz', sha256: 'b'.repeat(64) },
+      editorTarball: { path: '/a/editor.tgz', sha256: 'c'.repeat(64) },
+      markdownTarball: { path: '/a/markdown.tgz', sha256: 'd'.repeat(64) },
+      installedVersions: { '@lostgradient/cinder': '0.27.0' },
+      cases: [{ id: 'plain-cinder/import', fixture: 'plain-cinder', status: 'pass' }],
+    });
+    expect(manifest.cinderTarball.sha256).toBe('b'.repeat(64));
+    expect(manifest.markdownTarball).toEqual({ path: '/a/markdown.tgz', sha256: 'd'.repeat(64) });
+    expect(manifest.installedVersions).toEqual({ '@lostgradient/cinder': '0.27.0' });
+  });
+});
+
+describe('validate-diff-review-registry sha256File', () => {
+  test('hashes a file to the expected lowercase hex digest', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'sha256-probe-'));
+    try {
+      const path = join(directory, 'fixture.txt');
+      await Bun.write(path, 'diff-review\n');
+      const digest = await sha256File(path);
+      // sha256("diff-review\n"), computed independently of this module.
+      expect(digest).toMatch(/^[0-9a-f]{64}$/);
+      const again = await sha256File(path);
+      expect(again).toBe(digest);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('validate-diff-review-registry runValidator failure paths', () => {
+  test('reports a fixture install failure as a case, without crashing, and still writes a manifest', async () => {
+    const evidenceDirectory = await mkdtemp(join(tmpdir(), 'diff-review-evidence-'));
+    const cinderTarball = await mkdtemp(join(tmpdir(), 'diff-review-tarball-'));
+    const cinderTarballPath = join(cinderTarball, 'cinder.tgz');
+    const editorTarballPath = join(cinderTarball, 'editor.tgz');
+    await Bun.write(cinderTarballPath, 'not a real tarball, only its bytes are hashed\n');
+    await Bun.write(editorTarballPath, 'not a real tarball, only its bytes are hashed\n');
+
+    const failingInstall: Spawner = async (command): Promise<SpawnResult> => {
+      if (command[1] === 'install') {
+        return { exitCode: 1, stdout: '', stderr: 'simulated: no network in this test' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    };
+
+    try {
+      const manifest = await runValidator(
+        {
+          cinderTarball: cinderTarballPath,
+          editorTarball: editorTarballPath,
+          evidenceDirectory,
+          markdownTarball: undefined,
+        },
+        { spawn: failingInstall },
+      );
+
+      expect(manifest.exitCode).toBe(1);
+      expect(manifest.cases).toHaveLength(3);
+      for (const fixture of ['plain-cinder', 'annotated', 'aggregate']) {
+        const installCase = manifest.cases.find((c) => c.id === `${fixture}/install`);
+        expect(installCase?.status, fixture).toBe('fail');
+        expect(installCase?.detail, fixture).toContain('simulated: no network in this test');
+      }
+      expect(manifest.installedVersions).toEqual({});
+
+      const written = await Bun.file(join(evidenceDirectory, 'manifest.json')).json();
+      expect(written.exitCode).toBe(1);
+      expect(written.cinderTarball.sha256).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      await rm(evidenceDirectory, { recursive: true, force: true });
+      await rm(cinderTarball, { recursive: true, force: true });
+    }
+  });
+
+  test('a probe that produces no parseable output is reported as a failed case, not a thrown error', async () => {
+    const evidenceDirectory = await mkdtemp(join(tmpdir(), 'diff-review-evidence-'));
+    const tarballDirectory = await mkdtemp(join(tmpdir(), 'diff-review-tarball-'));
+    const cinderTarballPath = join(tarballDirectory, 'cinder.tgz');
+    const editorTarballPath = join(tarballDirectory, 'editor.tgz');
+    await Bun.write(cinderTarballPath, 'bytes\n');
+    await Bun.write(editorTarballPath, 'bytes\n');
+
+    // Install "succeeds" but every probe run prints nothing and exits non-zero, simulating a
+    // consumer whose install silently produced an unusable tree.
+    const silentSpawner: Spawner = async (command): Promise<SpawnResult> => {
+      if (command[1] === 'install') return { exitCode: 0, stdout: '', stderr: '' };
+      return { exitCode: 1, stdout: '', stderr: 'probe crashed before printing anything' };
+    };
+
+    try {
+      const manifest = await runValidator(
+        {
+          cinderTarball: cinderTarballPath,
+          editorTarball: editorTarballPath,
+          evidenceDirectory,
+          markdownTarball: undefined,
+        },
+        { spawn: silentSpawner },
+      );
+
+      expect(manifest.exitCode).toBe(1);
+      const plainCinderImport = manifest.cases.find((c) => c.id === 'plain-cinder/import-style');
+      expect(plainCinderImport?.status).toBe('fail');
+      expect(plainCinderImport?.detail).toContain('probe crashed before printing anything');
+    } finally {
+      await rm(evidenceDirectory, { recursive: true, force: true });
+      await rm(tarballDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test('an optional --markdown-tarball is hashed and reported instead of the registry range', async () => {
+    const evidenceDirectory = await mkdtemp(join(tmpdir(), 'diff-review-evidence-'));
+    const tarballDirectory = await mkdtemp(join(tmpdir(), 'diff-review-tarball-'));
+    const cinderTarballPath = join(tarballDirectory, 'cinder.tgz');
+    const editorTarballPath = join(tarballDirectory, 'editor.tgz');
+    const markdownTarballPath = join(tarballDirectory, 'markdown.tgz');
+    await Bun.write(cinderTarballPath, 'cinder bytes\n');
+    await Bun.write(editorTarballPath, 'editor bytes\n');
+    await Bun.write(markdownTarballPath, 'markdown bytes\n');
+
+    // Install succeeds; every probe prints one passing `PROBE` line naming the script that ran,
+    // so the happy-path parsing/mapping in each probe runner is exercised without a real `bun
+    // install`/`Bun.build`/Playwright. Hydration is left to fail (`Bun.build` cannot resolve
+    // anything from a directory with no real `node_modules`) — its bundling-failure branch is
+    // exactly what this covers, and it does not open a browser to get there.
+    const fakeProbes: Spawner = async (command): Promise<SpawnResult> => {
+      if (command[1] === 'install') return { exitCode: 0, stdout: '', stderr: '' };
+      const script = command[2] ?? '';
+      if (script.endsWith('.no-editor-probe.mjs')) {
+        return {
+          exitCode: 0,
+          stdout: `PROBE ${JSON.stringify({ id: 'no-editor', status: 'pass' })}\n`,
+          stderr: '',
+        };
+      }
+      if (script.endsWith('.aggregate-export-probe.mjs')) {
+        return {
+          exitCode: 0,
+          stdout: `PROBE ${JSON.stringify({ id: 'aggregate-export', status: 'pass' })}\n`,
+          stderr: '',
+        };
+      }
+      // import-style and ssr probes both report one specifier as passing.
+      return {
+        exitCode: 0,
+        stdout: `PROBE ${JSON.stringify({ id: '@lostgradient/example', status: 'pass', resolvedPaths: { '@lostgradient/example': 'file:///node_modules/@lostgradient/example/dist/index.js' } })}\n`,
+        stderr: '',
+      };
+    };
+
+    try {
+      const manifest = await runValidator(
+        {
+          cinderTarball: cinderTarballPath,
+          editorTarball: editorTarballPath,
+          evidenceDirectory,
+          markdownTarball: markdownTarballPath,
+        },
+        { spawn: fakeProbes },
+      );
+
+      expect(manifest.markdownTarball).toEqual({
+        path: markdownTarballPath,
+        sha256: await sha256File(markdownTarballPath),
+      });
+      const noEditor = manifest.cases.find((c) => c.id === 'plain-cinder/no-editor');
+      expect(noEditor?.status).toBe('pass');
+      const aggregateExport = manifest.cases.find((c) => c.id === 'aggregate/export');
+      expect(aggregateExport?.status).toBe('pass');
+      const hydrationFailures = manifest.cases.filter((c) => c.id.endsWith('/hydration'));
+      expect(hydrationFailures.length).toBeGreaterThan(0);
+      for (const hydration of hydrationFailures) expect(hydration.status).toBe('fail');
+    } finally {
+      await rm(evidenceDirectory, { recursive: true, force: true });
+      await rm(tarballDirectory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('validate-diff-review-registry hydration page construction (COR-1294)', () => {
+  // A minimal stand-in for a real installed-tarball bundle that happens to embed a
+  // `</script>`-shaped string -- exactly what an installed `@lostgradient/cinder` tarball's
+  // bundled Shiki HTML grammar (reached transitively through `CodeBlock`'s default highlighter,
+  // inlined because `buildHydrationBundle` bundles without `splitting: true`) contains verbatim.
+  // Everything past the closing `</script>` below is unreachable JS-syntax-wise, matching the real
+  // bundle: it exists only to prove the page construction never lets the HTML parser see it.
+  const BUNDLE_WITH_SCRIPT_CLOSER =
+    'const grammar = { end: "</script>" }; window.__MOUNTED__ = true; <svg width="" viewBox="">';
+
+  test('the served page never contains the bundle text, so a literal </script> in the bundle cannot close the tag early', () => {
+    const html = hydrationPageHtml();
+    expect(html).not.toContain(BUNDLE_WITH_SCRIPT_CLOSER);
+    // Exactly one `</script>` -- the page's own tag, closing its `src=` reference immediately.
+    // Before the fix, the bundle text sat between an opening and closing script tag, so a second,
+    // earlier `</script>` embedded in the bundle (this test's `BUNDLE_WITH_SCRIPT_CLOSER`) would
+    // close the real tag first; asserting there is only ever one proves that hazard is gone.
+    expect(html.split('</script>')).toHaveLength(2);
+    expect(html).toContain(`<script type="module" src="${HYDRATION_BUNDLE_PATH}">`);
+  });
+
+  test('the fetch handler serves the fixed page at "/" and the bundle verbatim at its own path', async () => {
+    const handler = hydrationFetchHandler(BUNDLE_WITH_SCRIPT_CLOSER);
+
+    const pageResponse = handler(new Request('http://localhost/'));
+    const pageText = await pageResponse.text();
+    expect(pageResponse.headers.get('content-type')).toBe('text/html');
+    // This is the regression: before the fix, this text WAS the page's own content, and a browser's
+    // HTML parser would close the `<script>` tag at the bundle's embedded `</script>`, dumping the
+    // remainder of the bundle into the page as markup instead of running it as JavaScript.
+    expect(pageText).not.toContain(BUNDLE_WITH_SCRIPT_CLOSER);
+
+    const bundleResponse = handler(new Request(`http://localhost${HYDRATION_BUNDLE_PATH}`));
+    expect(bundleResponse.headers.get('content-type')).toBe('text/javascript');
+    expect(await bundleResponse.text()).toBe(BUNDLE_WITH_SCRIPT_CLOSER);
+  });
+
+  test('an unrecognized path still falls back to the page, not a 404, matching the single-route test server', async () => {
+    const handler = hydrationFetchHandler(BUNDLE_WITH_SCRIPT_CLOSER);
+    const response = handler(new Request('http://localhost/anything-else'));
+    expect(response.headers.get('content-type')).toBe('text/html');
+  });
+});

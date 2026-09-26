@@ -76,6 +76,7 @@ export const appFixtureDeclarations = {
   'functional-residual': ['assertion'],
   'review-editor-accessibility': ['assertion'],
   'review-editor-comments': ['assertion'],
+  'review-editor-diff-comments': ['assertion'],
   'review-editor-readonly': ['assertion'],
   'review-editor-scroll': ['assertion'],
   banner: ['assertion'],
@@ -186,6 +187,7 @@ export const appFixtureDeclarations = {
   'chat-conversation-header': ['assertion'],
   'chat-conversation-list': ['assertion'],
   'diff-viewer': ['assertion'],
+  'diff-review': ['assertion'],
 } as const satisfies Record<string, readonly string[]>;
 
 export function declaredAppFixtureNames(component: string): readonly string[] {

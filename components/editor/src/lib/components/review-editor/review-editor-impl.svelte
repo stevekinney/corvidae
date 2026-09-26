@@ -62,14 +62,39 @@
     type SelectionAnchorPosition,
   } from './review-editor-selection-geometry.ts';
   import DiffViewer from '../diff-viewer/diff-viewer.svelte';
+  import type {
+    DiffViewerAnnotationSelection,
+    DiffViewerRef,
+  } from '../diff-viewer/diff-viewer.types.ts';
   import { Button, Callout, SelectionPopover } from '@lostgradient/cinder';
   import { createReviewEditorExportActions } from './review-editor-exports.ts';
-  import type {
-    MarkdownSummaryOptions,
-    MarkdownSummaryResult,
-    UnifiedDiffOptions,
-    UnifiedDiffResult,
+  import {
+    exportDiffReviewJson,
+    exportDiffReviewMarkdown,
+    type DiffReviewExportOptions,
+    type MarkdownSummaryOptions,
+    type MarkdownSummaryResult,
+    type UnifiedDiffOptions,
+    type UnifiedDiffResult,
   } from '../../export/index.ts';
+  import type {
+    DiffReviewAction,
+    DiffReviewAnchor,
+    DiffReviewComment,
+    DiffReviewDraft,
+    DiffReviewError,
+    DiffReviewResult,
+    DiffReviewState,
+  } from '../../diff-review-state/index.ts';
+  import { restoreDiffReviewState } from '../../diff-review-state/index.ts';
+  import { dispatchDiffReviewAction } from '../../utilities/diff-review-dispatch.ts';
+  import { formatDiffReviewCommentLocation } from '../diff-review-comments/diff-review-comment-location.ts';
+  import DiffReviewDraftsInventory from '../diff-review/diff-review-drafts-inventory.svelte';
+  import {
+    buildReviewEditorDiffReviewTarget,
+    diffReviewStatesEqual,
+    projectReviewEditorDocumentThreads,
+  } from './review-editor-diff-review.ts';
 
   // Shared reduced-motion preference (OVERLAY-POLICY: use the shared hook, not inline matchMedia).
   const reducedMotion = useReducedMotion();
@@ -92,6 +117,8 @@
     onCommentUpdate,
     onCommentDelete,
     snapshotMode = false,
+    diffReviewState,
+    onDiffReviewStateChange,
   }: ReviewEditorProps = $props();
 
   // Blur any focused element inside this component on mount when snapshotMode
@@ -247,6 +274,253 @@
   });
   const summaryContent = $derived(reviewEditorExports.getSummaryContent());
   const formData = $derived(reviewEditorExports.getFormData());
+
+  // =========================================================================
+  // Diff-review integration (COR-512 / DR-7)
+  //
+  // Opt-in and controlled: absent `diffReviewState` means every branch below
+  // is inert and the diff tab renders exactly as it did before this feature
+  // existed (regression coverage: `review-editor-diff-comments.test.ts`).
+  // Enabling reconciles the host's supplied state against ReviewEditor's own
+  // bound `original`/`value`, expressed as the one `markdown` target a
+  // single-target host has, through `restoreDiffReviewState` -- the same
+  // atomic validate-then-reconcile path a remount already uses, so an
+  // invalid supplied state and a live content change share one code path
+  // rather than two independently-maintained ones.
+  // =========================================================================
+
+  /** The last diff-review state that passed validation. Survives an invalid supplied update
+   * (contract: "keeps the last valid state") and survives the prop going away entirely
+   * (contract: "never erases the host-owned state") -- only a later, validated `diffReviewState`
+   * ever replaces it. */
+  let lastValidDiffReviewState = $state<DiffReviewState | undefined>(undefined);
+  /** Set when the currently supplied `diffReviewState` fails validation; cleared on the next
+   * validated input. Never blocks document editing -- nothing here touches `value`/`original`. */
+  let diffReviewIntegrationError = $state<DiffReviewError | undefined>(undefined);
+  let diffReviewAnnotationSelection = $state<DiffViewerAnnotationSelection | null>(null);
+  let activeDiffDraftId = $state<string | null>(null);
+  let diffViewerRef = $state<DiffViewerRef | undefined>(undefined);
+  /** Set by `handleDiffDraftOpen`; the effect below focuses the composer once it is in the DOM
+   * (COR-511 review follow-up, mirrors `diff-review.svelte`'s identical fix). */
+  let diffComposerFocusRequested = $state(false);
+  let diffComposerTextareaElement = $state<HTMLTextAreaElement | undefined>(undefined);
+
+  const diffReviewEnabled = $derived(diffReviewState !== undefined);
+  /** The state the diff tab and comment list render from. Only ever a validated value -- an
+   * invalid supplied update leaves this exactly where it was. */
+  const effectiveDiffReviewState = $derived(
+    diffReviewEnabled ? lastValidDiffReviewState : undefined,
+  );
+
+  $effect(() => {
+    if (diffReviewState === undefined) return;
+    const target = buildReviewEditorDiffReviewTarget(id, original, value);
+    const result = restoreDiffReviewState(diffReviewState, [target]);
+    if (!result.ok) {
+      diffReviewIntegrationError = result.error;
+      return;
+    }
+    diffReviewIntegrationError = undefined;
+    lastValidDiffReviewState = result.value;
+    // `restoreDiffReviewState` always allocates fresh `comments`/`drafts` arrays even when
+    // nothing changed (`applySetTargets` maps both unconditionally), so only a value comparison
+    // -- never reference equality -- can tell "genuinely changed" from "reconciled to the same
+    // thing", and only the former may notify the host (otherwise accepting the host's own
+    // echoed-back state here would re-emit forever).
+    if (!diffReviewStatesEqual(result.value, diffReviewState)) {
+      onDiffReviewStateChange?.(result.value);
+    }
+  });
+
+  /** Dispatches a mutating diff-review action against the last valid state, forwarding
+   * `isReadonly` so a read-only host gets the same `readonly` rejection every other diff-review
+   * control already returns for its mutating actions. */
+  function dispatchDiffReviewChange(action: DiffReviewAction): DiffReviewResult<DiffReviewState> {
+    if (!lastValidDiffReviewState) {
+      return {
+        ok: false,
+        error: { code: 'invalid-record', path: '', message: 'Diff review is not enabled.' },
+      };
+    }
+    return dispatchDiffReviewAction(
+      lastValidDiffReviewState,
+      action,
+      (next) => {
+        lastValidDiffReviewState = next;
+        onDiffReviewStateChange?.(next);
+      },
+      { readonly: isReadonly },
+    );
+  }
+
+  const activeDiffDraft = $derived(
+    effectiveDiffReviewState?.drafts.find((draft) => draft.draftId === activeDiffDraftId) ?? null,
+  );
+
+  /** Mirrors `DiffReview`'s own `handleSelectionChange` (COR-509 / DR-6): a cleared selection
+   * only closes the composer panel (an already-created draft stays in state, recoverable from
+   * the `Unsaved drafts` inventory below -- see `handleDiffDraftOpen`), and a committed
+   * selection opens a new draft at that anchor. */
+  function handleDiffAnnotationSelectionChange(
+    selection: DiffViewerAnnotationSelection | null,
+  ): void {
+    diffReviewAnnotationSelection = selection;
+    if (selection === null) {
+      activeDiffDraftId = null;
+      return;
+    }
+    const anchor: DiffReviewAnchor = {
+      kind: 'range',
+      fileOccurrence: selection.fileOccurrence,
+      hunkOccurrence: selection.hunkOccurrence,
+      side: selection.side,
+      startLine: selection.startLine,
+      endLine: selection.endLine,
+      coordinateSpace: selection.coordinateSpace,
+      selectedText: selection.selectedText,
+      contextBefore: selection.contextBefore,
+      contextAfter: selection.contextAfter,
+    };
+    const draftId = crypto.randomUUID();
+    const outcome = dispatchDiffReviewChange({
+      type: 'create-draft',
+      draftId,
+      targetId: id,
+      anchor,
+      oldPath: null,
+      newPath: null,
+    });
+    if (outcome.ok) activeDiffDraftId = draftId;
+  }
+
+  function updateDiffComposerBody(body: string): void {
+    if (!activeDiffDraftId) return;
+    dispatchDiffReviewChange({ type: 'update-draft', draftId: activeDiffDraftId, body });
+  }
+
+  function closeDiffComposer(): void {
+    activeDiffDraftId = null;
+    diffReviewAnnotationSelection = null;
+  }
+
+  function saveDiffComposer(): void {
+    if (!activeDiffDraftId) return;
+    const outcome = dispatchDiffReviewChange({ type: 'save-draft', draftId: activeDiffDraftId });
+    if (outcome.ok) closeDiffComposer();
+  }
+
+  /**
+   * Unsaved-drafts inventory (contract, "Drafts, modes, and ReviewEditor": "Cancel preserves an
+   * existing draft; only the explicitly confirmed discard action deletes nonempty text," and
+   * "All nonempty drafts ... appear in a persistent `Unsaved drafts` inventory with location,
+   * Open, Save, and Discard actions"). Cancelling the inline composer (`closeDiffComposer`) never
+   * deletes a nonempty draft -- without this, that draft would have no surviving UI path back
+   * into view, and every export scope stays `drafts-pending`-blocked with no visible way to
+   * clear it. `ReviewEditor` is a single-target, single-file host, so "Open" reduces to opening
+   * the diff tab and re-selecting that draft as the active composer; there is no file/target
+   * filter to clear.
+   *
+   * Contract: "Open clears only the necessary filters and focuses its composer" (COR-511 review
+   * follow-up -- `activeView = 'diff'` above already satisfies the filter-clearing half for this
+   * single-target host; this request flag drives the effect below that focuses the reopened
+   * composer's `<textarea>` once it exists in the DOM, in both editable and read-only modes).
+   */
+  function handleDiffDraftOpen(draft: DiffReviewDraft): void {
+    activeView = 'diff';
+    activeDiffDraftId = draft.draftId;
+    diffComposerFocusRequested = true;
+  }
+
+  // Focuses the diff composer once `handleDiffDraftOpen` has requested it and the composer
+  // textarea is actually in the DOM (it renders inside `{#if activeDiffDraft}` on the diff tab,
+  // so on a first open -- which also has to switch `activeView` -- the element does not exist yet
+  // in the same tick).
+  $effect(() => {
+    if (!diffComposerFocusRequested || !diffComposerTextareaElement) return;
+    diffComposerTextareaElement.focus();
+    diffComposerFocusRequested = false;
+  });
+
+  function handleDiffDraftSave(draftId: string): void {
+    const outcome = dispatchDiffReviewChange({ type: 'save-draft', draftId });
+    if (outcome.ok && draftId === activeDiffDraftId) closeDiffComposer();
+  }
+
+  function handleDiffDraftDiscard(draftId: string): void {
+    const outcome = dispatchDiffReviewChange({ type: 'discard-draft', draftId });
+    if (outcome.ok && draftId === activeDiffDraftId) closeDiffComposer();
+  }
+
+  /**
+   * Only ever called for a CURRENT diff comment (contract, "Viewer selection and navigation" /
+   * `DiffReviewComments`' identical `onNavigate` note): opens the diff tab, then focuses the
+   * anchor through `DiffViewer`'s own public `focusAnchor`, which self-adjusts the bound
+   * `diffViewMode` to expose the anchor's side. A file anchor has no line to focus -- opening
+   * the tab is the whole of "exposes its side" for one. An outdated/removed comment never
+   * reaches here; the merged comment list focuses its own captured detail in place instead.
+   */
+  function navigateToDiffComment(comment: DiffReviewComment): void {
+    activeView = 'diff';
+    announce('Switched to diff view');
+    if (comment.anchor.kind !== 'range') return;
+    const anchor = comment.anchor;
+    void tick().then(() => {
+      diffViewerRef?.focusAnchor({ side: anchor.side, startLine: anchor.startLine });
+      return undefined;
+    });
+  }
+
+  function handleDiffCommentAction(action: DiffReviewAction): void {
+    dispatchDiffReviewChange(action);
+  }
+
+  /**
+   * The aggregate export gate (contract: "Disabled integration returns `invalid-record`").
+   * Distinct from `getDiffReviewExportGate` (which only ever runs once diff review IS enabled,
+   * for the drafts-pending/empty-state UI) -- this is the "not enabled at all" branch that
+   * precedes it.
+   */
+  function requireDiffReviewStateForExport(): DiffReviewResult<DiffReviewState> {
+    if (!diffReviewEnabled || !lastValidDiffReviewState) {
+      return {
+        ok: false,
+        error: {
+          code: 'invalid-record',
+          path: '',
+          message:
+            'Diff review is not enabled, or its supplied state is invalid -- there is nothing to export.',
+        },
+      };
+    }
+    return { ok: true, value: lastValidDiffReviewState };
+  }
+
+  /**
+   * Exports every saved diff comment plus every existing document thread/reply, each exactly
+   * once, through DR-5's real exporters -- not a reimplementation. `threads` projects through
+   * `projectReviewEditorDocumentThreads` into DR-5's existing-document (`document`/
+   * `document-text`) variant; diff comments need no projection, since they are already a real
+   * `DiffReviewState`. Distinct from `exportMarkdownSummary`/`exportUnifiedDiff`/`getFormData`,
+   * whose scope this does not change.
+   */
+  export function exportAggregateReviewMarkdown(
+    options: DiffReviewExportOptions = {},
+  ): DiffReviewResult<string> {
+    const state = requireDiffReviewStateForExport();
+    if (!state.ok) return state;
+    const documentThreads = projectReviewEditorDocumentThreads(id, threads);
+    return exportDiffReviewMarkdown(state.value, { ...options, documentThreads });
+  }
+
+  /** JSON counterpart of {@link exportAggregateReviewMarkdown}; see its doc for scope. */
+  export function exportAggregateReviewJson(
+    options: DiffReviewExportOptions = {},
+  ): DiffReviewResult<string> {
+    const state = requireDiffReviewStateForExport();
+    if (!state.ok) return state;
+    const documentThreads = projectReviewEditorDocumentThreads(id, threads);
+    return exportDiffReviewJson(state.value, { ...options, documentThreads });
+  }
 
   // =========================================================================
   // Selection Popover State (DEP-47)
@@ -1997,6 +2271,47 @@
   <!-- Screen reader announcements (DEP-47) -->
   <LiveRegion bind:this={liveRegionRef} />
 
+  <!-- Diff review integration error (COR-512 / DR-7): a condition of the supplied
+       `diffReviewState` prop, not of which tab is open -- visible regardless of `activeView`
+       so an invalid update is never hidden behind a tab the person hasn't opened. Document
+       editing is never affected: nothing here touches `value`/`original`/`threads`. -->
+  {#if diffReviewIntegrationError}
+    <Callout
+      semantic="note"
+      variant="danger"
+      title="Diff review data couldn't be applied"
+      class="review-editor-diff-review-error"
+    >
+      <p>
+        {diffReviewIntegrationError.message} ({diffReviewIntegrationError.code} at
+        {diffReviewIntegrationError.path || '/'}). Showing the last valid diff review state;
+        document editing is unaffected.
+      </p>
+    </Callout>
+  {/if}
+
+  <!-- Unsaved diff-review drafts inventory (COR-512 / DR-7): "persistent" per the contract, so
+       it renders regardless of `activeView`, not only while the diff tab happens to be open --
+       otherwise a draft cancelled from the composer (which never deletes nonempty text) would be
+       invisible again the moment the person left the diff tab, with `drafts-pending` silently
+       blocking every export scope and no visible way back to it. `handleDiffDraftOpen` switches
+       to the diff tab itself when the person chooses "Open". Excludes `activeDiffDraftId`: that
+       one already has its own dedicated composer panel open (immediately, on `create-draft`,
+       before any text is typed) -- listing it here too would duplicate it under a second,
+       ambiguous "Save" control for the exact same draft. -->
+  {#if effectiveDiffReviewState}
+    {@const hiddenDrafts = effectiveDiffReviewState.drafts.filter(
+      (draft) => draft.draftId !== activeDiffDraftId,
+    )}
+    <DiffReviewDraftsInventory
+      drafts={hiddenDrafts}
+      readonly={isReadonly}
+      onopen={handleDiffDraftOpen}
+      onsave={handleDiffDraftSave}
+      ondiscard={handleDiffDraftDiscard}
+    />
+  {/if}
+
   <!-- Hidden form inputs for FormData participation -->
   {#if name}
     <input
@@ -2178,11 +2493,69 @@
         role="tabpanel"
         aria-label="Diff view"
       >
-        <DiffViewer {original} current={value} bind:viewMode={diffViewMode} readonly={isReadonly}>
+        <DiffViewer
+          {original}
+          current={value}
+          bind:viewMode={diffViewMode}
+          readonly={isReadonly}
+          bind:ref={diffViewerRef}
+          {...diffReviewEnabled && effectiveDiffReviewState && !isReadonly
+            ? {
+                annotationSelection: diffReviewAnnotationSelection,
+                onAnnotationSelectionChange: handleDiffAnnotationSelectionChange,
+              }
+            : {}}
+        >
           {#snippet toolbar()}
             <!-- Empty toolbar - controls are in the unified bar above -->
           {/snippet}
         </DiffViewer>
+        {#if activeDiffDraft}
+          <div
+            class="review-editor-diff-composer"
+            role="group"
+            aria-label={`New diff comment on ${formatDiffReviewCommentLocation(activeDiffDraft)}`}
+          >
+            <p class="review-editor-diff-composer-location">
+              {formatDiffReviewCommentLocation(activeDiffDraft)}
+            </p>
+            {#if isReadonly}
+              <!-- Reaching a nonempty draft's composer while read-only is now possible through
+                   the drafts inventory's "Open" action (COR-512 / DR-7 follow-up), which the
+                   shared `DiffReviewDraftsInventory` leaf always shows regardless of `readonly`
+                   (only its own Save/Discard are hidden). Before this, `activeDiffDraftId` could
+                   only be set from `onAnnotationSelectionChange`, which is never wired when
+                   read-only -- so this branch was previously unreachable there. A disabled Save
+                   plus visible explanatory text, per contract ("Use native disabled buttons/
+                   inputs with nearby visible explanatory text"). The textarea itself uses native
+                   `readonly`, not `disabled` (COR-511 review): a `disabled` textarea can never
+                   receive focus in a real browser, which would silently break "Open ... focuses
+                   its composer" -- stated with no read-only exception -- for exactly this case.
+                   `readonly` blocks editing identically while keeping the element focusable and
+                   its text selectable/copyable. -->
+              <p class="review-editor-diff-composer-readonly-note">
+                Enable editing to change or save this draft.
+              </p>
+            {/if}
+            <textarea
+              aria-label="Diff comment"
+              value={activeDiffDraft.body}
+              readonly={isReadonly}
+              bind:this={diffComposerTextareaElement}
+              oninput={(event) => updateDiffComposerBody(event.currentTarget.value)}></textarea>
+            <div class="review-editor-diff-composer-actions">
+              <Button
+                onclick={saveDiffComposer}
+                disabled={isReadonly || activeDiffDraft.body.trim().length === 0}
+              >
+                Save
+              </Button>
+              <Button variant="ghost" onclick={closeDiffComposer}
+                >{isReadonly ? 'Close' : 'Cancel'}</Button
+              >
+            </div>
+          </div>
+        {/if}
       </div>
     {:else}
       <!-- Summary view (auto-generated, readonly preview) -->
@@ -2224,6 +2597,9 @@
       onThreadDelete={deleteThread}
       onclearall={clearAllThreads}
       onadddocumentcomment={handleAddDocumentComment}
+      diffReviewState={effectiveDiffReviewState}
+      onDiffCommentNavigate={navigateToDiffComment}
+      onDiffCommentAction={handleDiffCommentAction}
     />
   {/if}
 
@@ -2278,6 +2654,33 @@
 
   .review-editor-view-panel {
     min-width: 0;
+  }
+
+  .review-editor-diff-composer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2, 0.5rem);
+    padding: var(--cinder-space-3, 0.75rem);
+    margin-block-start: var(--cinder-space-2, 0.5rem);
+    border: 1px solid var(--cinder-border, #ccc);
+    border-radius: var(--cinder-radius-md, 6px);
+  }
+
+  .review-editor-diff-composer-location {
+    margin: 0;
+    font-size: var(--cinder-text-xs, 0.75rem);
+    color: var(--cinder-text-muted, #666);
+  }
+
+  .review-editor-diff-composer-actions {
+    display: flex;
+    gap: var(--cinder-space-2, 0.5rem);
+  }
+
+  .review-editor-diff-composer-readonly-note {
+    margin: 0;
+    font-size: var(--cinder-text-xs, 0.75rem);
+    color: var(--cinder-text-muted, #666);
   }
 
   /*
