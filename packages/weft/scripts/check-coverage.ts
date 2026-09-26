@@ -1082,9 +1082,18 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       'src/cli/conformance.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
+          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered.',
+        lines: new Set([63, 136, 216]),
+        requireUncoveredLines: true,
+      },
+    ],
+    [
+      'src/cli/conformance-harness.ts',
+      {
+        reason:
+          "Process lifecycle and observation primitives extracted from `conformance.ts` (COR-235, to keep that file under the line-count ceiling). Same rationale as that file previously carried: `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
         functions: 1,
-        lines: new Set([53, 104, 126, 139, 149, 150, 166, 167, 251, 324, 394]),
+        lines: new Set([45, 99, 121, 134, 144, 161]),
         requireUncoveredLines: true,
       },
     ],

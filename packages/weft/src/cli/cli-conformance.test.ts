@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import { rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { executeConformance } from './index.ts';
 
@@ -116,19 +113,16 @@ describe('executeConformance', () => {
   });
 
   it('surfaces a replacement worker that disconnects before graceful shutdown', async () => {
-    const launchStateFile = join(tmpdir(), `weft-short-sleep-exit-${crypto.randomUUID()}.txt`);
     const result = await executeConformance({
       timeoutMs: 1_000,
       json: true,
       workerCommand: [
         'env',
         'WEFT_SHORT_SLEEP_EXIT_MODE=replacement-disconnect',
-        `WEFT_SHORT_SLEEP_EXIT_STATE_FILE=${launchStateFile}`,
         'bun',
         './src/cli/__fixtures__/conformance-short-sleep-exit-worker.ts',
       ],
     });
-    rmSync(launchStateFile, { force: true });
 
     expect(result.exitCode).toBe(1);
     const report: {
