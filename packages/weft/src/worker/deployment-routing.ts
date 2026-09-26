@@ -308,6 +308,7 @@ export class WorkerDeploymentCatalog {
     validateRouting(routing.rampBasisPoints);
     await validateRoutingVersions(this, routing);
     const key = routingKey(routing.deploymentName);
+    const targetConditions = await routingTargetConditions(this.#storage, routing);
     const currentBytes = await this.#storage.get(key);
     const current = currentBytes === null ? null : decodeRouting(currentBytes);
     if (
@@ -325,7 +326,7 @@ export class WorkerDeploymentCatalog {
     };
     const applied = await storageConditionalBatch(
       this.#storage,
-      [{ key, expectedValue: currentBytes }],
+      [{ key, expectedValue: currentBytes }, ...targetConditions],
       [{ type: 'put', key, value: encode(next) }],
     );
     return applied ? next : null;
@@ -381,6 +382,24 @@ export class WorkerDeploymentCatalog {
   async diagnostics(deploymentName?: string): Promise<ReadonlyArray<WorkerDeploymentVersion>> {
     return this.listVersions(deploymentName);
   }
+}
+
+async function routingTargetConditions(
+  storage: Storage,
+  routing: Omit<WorkerDeploymentRouting, 'generation'> & { expectedGeneration?: number },
+): Promise<ReadonlyArray<{ key: string; expectedValue: Uint8Array }>> {
+  const buildIds = [
+    routing.currentBuildId,
+    ...(routing.rampingBuildId === undefined ? [] : [routing.rampingBuildId]),
+  ];
+  const conditions: Array<{ key: string; expectedValue: Uint8Array }> = [];
+  for (const buildId of buildIds) {
+    const key = versionKey(routing.deploymentName, buildId);
+    const value = await storage.get(key);
+    if (value === null) throw new Error('Routing target disappeared during validation.');
+    conditions.push({ key, expectedValue: value });
+  }
+  return conditions;
 }
 
 async function validateRoutingVersions(

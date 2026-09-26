@@ -19,6 +19,19 @@ import {
 } from './deployment-routing.ts';
 import type { WorkerManifest } from './manifest/types.ts';
 
+class DrainBeforeConditionalStorage extends MemoryStorage {
+  #beforeCommit: (() => Promise<void>) | undefined;
+  arm(beforeCommit: () => Promise<void>): void {
+    this.#beforeCommit = beforeCommit;
+  }
+  override async conditionalBatch(...args: Parameters<MemoryStorage['conditionalBatch']>) {
+    const beforeCommit = this.#beforeCommit;
+    this.#beforeCommit = undefined;
+    if (beforeCommit !== undefined) await beforeCommit();
+    return super.conditionalBatch(...args);
+  }
+}
+
 function manifest(buildId: string, workflowRevision = 'revision-a'): WorkerManifest {
   return {
     manifestVersion: 1,
@@ -361,5 +374,38 @@ describe('revision-aware worker deployment routing', () => {
       await server.stop();
       await engine[Symbol.asyncDispose]();
     }
+  });
+  it('serializes routing targets with lifecycle transitions in one CAS', async () => {
+    let storage!: DrainBeforeConditionalStorage;
+    let lifecycle!: WorkerDeploymentCatalog;
+    storage = new DrainBeforeConditionalStorage();
+    const catalog = new WorkerDeploymentCatalog(storage);
+    lifecycle = new WorkerDeploymentCatalog(storage);
+    for (const buildId of ['build-a', 'build-b']) {
+      await catalog.registerVersion({
+        deploymentName: 'billing',
+        buildId,
+        artifactDigest: `sha256:${buildId}`,
+        manifestDigest: `sha256:${buildId}`,
+        manifest: manifest(buildId),
+        state: 'ready',
+        firstSeenAt: 1,
+      });
+    }
+    storage.arm(async () => {
+      await lifecycle.markDraining('billing', 'build-b');
+    });
+    expect(
+      await catalog.setRouting({
+        deploymentName: 'billing',
+        currentBuildId: 'build-a',
+        rampingBuildId: 'build-b',
+        rampBasisPoints: 100,
+        updatedAt: 1,
+      }),
+    ).toBeNull();
+    expect(await catalog.getRouting('billing')).toBeNull();
+    const drainedVersion = await catalog.getVersion('billing', 'build-b');
+    expect(drainedVersion?.state).toBe('draining');
   });
 });
