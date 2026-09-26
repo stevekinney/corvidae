@@ -1,5 +1,6 @@
 import {
   buildClaimAttemptRecordWrite,
+  buildTaskAttemptTransitionEvent,
   digestAttemptToken,
 } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
@@ -314,6 +315,21 @@ async function selectAndReserveWorker(
     operationId: task.operationId,
     deadline: result.record.leaseDeadline,
   });
+
+  // COR-198: attempt-by-attempt worker transition, fired only after the
+  // durable claim above actually committed.
+  options.engine.dispatchEvent(
+    await buildTaskAttemptTransitionEvent(options.engine.storage, {
+      operationId: task.operationId,
+      workflowId: task.workflowId,
+      activityName: task.activityName,
+      attempt: result.record.attempt,
+      attemptTokenDigest,
+      workerSessionId: worker.id,
+      executionIdentity,
+      executionRequirement: result.record.executionRequirement,
+    }),
+  );
 
   ws.send(
     JSON.stringify({
