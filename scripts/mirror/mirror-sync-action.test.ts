@@ -361,6 +361,12 @@ async function withHarness(
 
     const corvidae = join(root, 'corvidae');
     await writeTree(corvidae, corvidaeFixture());
+    for (const policyFile of ['package-map.json', 'package-surface.json']) {
+      await Bun.write(
+        join(corvidae, 'scripts/mirror', policyFile),
+        await Bun.file(join(import.meta.dir, policyFile)).text(),
+      );
+    }
 
     await body({ remote, corvidae, workRoot: join(root, 'work') });
   } finally {
