@@ -23,8 +23,10 @@ export function isCompletionPopupOpen(view: EditorView): boolean {
  *
  * - ArrowDown/ArrowUp move the active option and stop at the ends.
  * - Enter accepts the active option, never during IME composition.
- * - Tab dismisses without inserting and keeps its normal editor behavior
- *   (indent a list item, move between table cells, or move focus).
+ * - Tab dismisses without inserting and is not consumed, so the editor's own
+ *   Tab binding runs next (meant to indent a list item or move between table
+ *   cells, otherwise focus moves; in Chromium plain Tab in a list item
+ *   currently moves focus instead, COR-1324).
  * - Escape dismisses and is consumed only while the popup is open, so a
  *   second Escape reaches enclosing handlers.
  *
@@ -63,9 +65,10 @@ function handleOpenPopupKey(
     return true;
   }
   if (!action.consume) {
-    // Dismiss, then let Tab do what it normally does here: indent a list item,
-    // move between table cells, or move focus. The dismissal survives the
-    // document change that same keypress makes.
+    // Dismiss without consuming Tab, so the editor's own Tab binding runs next
+    // (meant to indent a list item or move between table cells, otherwise
+    // focus moves). The dismissal survives any document change that same
+    // keypress makes.
     holdDismissalForCurrentKey();
     dispatchMeta(view, { type: 'dismiss' });
     return false;
