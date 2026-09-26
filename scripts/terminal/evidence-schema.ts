@@ -26,6 +26,7 @@ type CandidateEvidence = {
   version: string;
   passed: boolean;
   cells: EvidenceCell[];
+  status?: string;
 };
 
 type SelectedEngine = { name: string; version: string };
@@ -78,7 +79,9 @@ function validateCandidates(
     const ids = candidate.cells.map((cell) => cell?.id);
     if (ids.some((id) => typeof id !== 'string') || new Set(ids).size !== ids.length)
       errors.push('candidate cells');
-    const qualifiedIds = new Set(expectedCellIds.filter((id) => id.startsWith(`${candidate.name}:`)));
+    const qualifiedIds = new Set(
+      expectedCellIds.filter((id) => id.startsWith(`${candidate.name}:`)),
+    );
     if (
       qualifiedIds.size === 0 ||
       ids.some((id) => typeof id !== 'string' || !qualifiedIds.has(`${candidate.name}:${id}`)) ||
@@ -87,6 +90,12 @@ function validateCandidates(
       errors.push('candidate cell completeness');
     if (candidate.passed !== candidate.cells.every((cell) => cell.passed))
       errors.push('candidate passed consistency');
+    if (
+      candidate.status !== undefined &&
+      candidate.status !== 'ready' &&
+      candidate.status !== 'unavailable'
+    )
+      errors.push('candidate status');
   }
   if (value.selectedEngine === null) {
     if (value.passed) errors.push('selected engine required');
@@ -165,7 +174,10 @@ export function validateEvidence(
       )
     )
       errors.push('cell metrics');
-    if (Array.isArray(cell?.observations) && cell.observations.some((item) => typeof item !== 'string'))
+    if (
+      Array.isArray(cell?.observations) &&
+      cell.observations.some((item) => typeof item !== 'string')
+    )
       errors.push('cell observations');
     if (
       cell?.metrics &&
@@ -184,7 +196,8 @@ export function validateEvidence(
       cell?.versions &&
       typeof cell.versions === 'object' &&
       Object.values(cell.versions).some(
-        (version) => typeof version !== 'string' || version === 'unknown' || version.trim().length === 0,
+        (version) =>
+          typeof version !== 'string' || version === 'unknown' || version.trim().length === 0,
       )
     )
       errors.push('version value');
@@ -192,7 +205,12 @@ export function validateEvidence(
   if (typeof value.passed !== 'boolean') errors.push('passed type');
   const observedPass =
     expectedKind === 'engine'
-      ? value.selectedEngine !== null && value.selectedEngine !== undefined
+      ? Array.isArray(value.candidates) &&
+        value.candidates.every(
+          (candidate) => isCandidateEvidence(candidate) && candidate.status !== 'unavailable',
+        ) &&
+        value.selectedEngine !== null &&
+        value.selectedEngine !== undefined
       : value.cells.every((cell) => cell.passed);
   if (value.passed !== observedPass) errors.push('passed consistency');
   validateCandidates(value as Record<string, unknown>, value.expectedCellIds ?? [], errors);

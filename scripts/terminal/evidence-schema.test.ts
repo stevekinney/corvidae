@@ -95,4 +95,52 @@ describe('terminal evidence schema', () => {
       ),
     ).toContain('cell metrics');
   });
+
+  test('rejects unresolved candidates and failed or missing selections', () => {
+    const candidate = {
+      name: '@xterm/xterm',
+      version: '6.0.0',
+      passed: true,
+      status: 'ready',
+      cells: [validReport.cells[0]],
+    };
+    const engine = {
+      ...validReport,
+      reportKind: 'engine',
+      expectedCellIds: ['@xterm/xterm:launch'],
+      cells: [{ ...validReport.cells[0], id: '@xterm/xterm:launch' }],
+      candidates: [candidate],
+      selectedEngine: { name: '@xterm/xterm', version: '6.0.0' },
+      passed: true,
+    };
+    expect(
+      validateEvidence(
+        { ...engine, candidates: [{ ...candidate, status: 'unavailable' }], passed: false },
+        'engine',
+      ),
+    ).toEqual([]);
+    expect(
+      validateEvidence(
+        { ...engine, candidates: [{ ...candidate, passed: false }], passed: true },
+        'engine',
+      ),
+    ).toContain('candidate passed consistency');
+    expect(
+      validateEvidence(
+        { ...engine, candidates: [{ ...candidate, passed: false }], passed: false },
+        'engine',
+      ),
+    ).toContain('selected engine failed');
+    expect(
+      validateEvidence(
+        {
+          ...engine,
+          selectedEngine: { name: '@xterm/xterm', version: '6.0.0' },
+          candidates: [],
+          passed: false,
+        },
+        'engine',
+      ),
+    ).toContain('selected engine candidates');
+  });
 });
