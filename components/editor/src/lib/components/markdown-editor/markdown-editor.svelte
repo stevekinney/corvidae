@@ -18,7 +18,7 @@
 
 <script lang="ts">
   import { BROWSER as browser } from 'esm-env';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { devWarn } from '../../utilities/dev-warn.ts';
   import type { Ctx } from '@milkdown/kit/ctx';
   import {
@@ -46,10 +46,20 @@
 
   import './prosemirror.css';
   import { classNames } from '../../utilities/class-names.ts';
-  import { Segment, SegmentedControl, FileCode, Pencil, Textarea } from '@lostgradient/cinder';
+  import { Textarea } from '@lostgradient/cinder';
   import EditorSkeleton from './editor-skeleton.svelte';
+  import MarkdownEditorModeControl from './markdown-editor-mode-control.svelte';
   import MarkdownEditorPlaceholderRegions from './markdown-editor-placeholder-regions.svelte';
+  import MarkdownEditorPreview from './markdown-editor-preview.svelte';
+  import { modeOptionDiagnostics } from './markdown-editor-mode.ts';
+  import { createMarkdownEditorModeController } from './markdown-editor-mode-controller.svelte.ts';
   import { createMarkdownEditorPlaceholders } from './markdown-editor-placeholders.svelte.ts';
+  import {
+    createMarkdownEditorPreview,
+    planPreviewFill,
+  } from './markdown-editor-preview.svelte.ts';
+  import { buildToolbarContext } from './markdown-editor-toolbar-context.ts';
+  import { resolveLinkPopoverAnchor } from './link-popover-anchor.ts';
   import { createSourceEditingAttachment } from './source-placeholder-completion.ts';
   import { EditorToolbar, LinkPopover } from './editor-toolbar/index.ts';
   import type { LinkPopoverMode } from './editor-toolbar/link-popover.svelte';
@@ -87,6 +97,7 @@
     placeholderDecoration,
     placeholderDefinitions,
     placeholderValues,
+    placeholderValueMode,
     onPlaceholderDiagnosticsChange,
     toolbar,
     toolbarActions,
@@ -101,7 +112,41 @@
   // ring or blinking caret at an arbitrary position. We target the wrapper
   // element via a reactive reference set during rendering.
   let wrapperElement = $state<HTMLDivElement | null>(null);
+  let previewComponent = $state<MarkdownEditorPreview | null>(null);
   let lastObservedExternalValue: string | undefined;
+  // The value the component last saw, from the parent or its own writes. A
+  // different `value` at a mode change is a parent update in the same flush.
+  let lastSeenValue = untrack(() => value);
+
+  // Registered before the value sync below, so a mode change sees a parent
+  // value from the same flush before that sync applies it.
+  const modes = createMarkdownEditorModeController({
+    mode: () => mode,
+    setMode: (next) => {
+      mode = next;
+    },
+    value: () => value,
+    lastSeenValue: () => lastSeenValue,
+    editorState: () => editorState,
+    releaseEditorState: () => {
+      // Avoid keeping references to a destroyed Milkdown instance.
+      editorState = null;
+    },
+    setInitializing: (initializing) => {
+      isInitializing = initializing;
+    },
+    normalize: (markdown) => normalizeSafely(markdown),
+    publishValue: publishInternalValue,
+    closeTransientUi: () => {
+      // Prevent stale editor context when switching modes.
+      linkPopoverOpen = false;
+      linkPopoverAnchorElement = null;
+    },
+    onModeChange: () => onModeChange,
+    focusMode,
+    warn: devWarn,
+  });
+  const currentMode = $derived(modes.mode);
 
   $effect(() => {
     if (!snapshotMode) return;
@@ -155,11 +200,26 @@
     completion: () => placeholderCompletion,
     decoration: () => placeholderDecoration,
     onDiagnosticsChange: () => onPlaceholderDiagnosticsChange,
+    optionDiagnostics: () => modeOptionDiagnostics(mode, placeholderValueMode),
+    previewDiagnostics: () => preview.diagnostics,
+  });
+
+  const preview = createMarkdownEditorPreview({
+    active: () => currentMode === 'preview',
+    source: () => value,
+    fill: () =>
+      planPreviewFill({
+        definitions: placeholderDefinitions,
+        values: placeholderValues,
+        valueMode: placeholderValueMode,
+        catalogEnabled: placeholders.resolved.validationCandidates !== undefined,
+      }),
+    configurationIssues: () => placeholders.resolved.issues,
   });
 
   // Internal state
   let editorState = $state<EditorState | null>(null);
-  let isInitializing = $state(true);
+  let isInitializing = $state(untrack(() => currentMode !== 'preview'));
   let pipelineUtilities = $state<MarkdownPipelineUtilities | null>(null);
 
   // Guard to prevent effect loops on two-way binding
@@ -200,6 +260,8 @@
 
   $effect(() => {
     if (!browser) return;
+    // Load only once a rich editor exists, so a preview-only mount never does.
+    if (editorState === null || untrack(() => historyUtilities) !== null) return;
 
     let cancelled = false;
     // Milkdown/ProseMirror runtime graph is browser-bound; keep this import inside the browser-only effect.
@@ -282,8 +344,13 @@
   // Should toolbar be visible?
   // Show toolbar in wysiwyg mode, or always when mode toggle is enabled (so users can switch modes)
   const toolbarVisible = $derived(
-    toolbarEnabled && !readonly && browser && (mode === 'wysiwyg' || modeToggleVisible),
+    toolbarEnabled && !readonly && browser && (currentMode === 'wysiwyg' || modeToggleVisible),
   );
+  // The one built-in mode control sits in the default toolbar when that
+  // renders, and in its own bar otherwise: custom toolbar, toolbar disabled
+  // or readonly never hide it.
+  const modeControlInToolbar = $derived(toolbarVisible && !toolbar);
+  const modeBarVisible = $derived(browser && modeToggleVisible && !modeControlInToolbar);
 
   // Link popover state
   let linkPopoverOpen = $state(false);
@@ -293,18 +360,24 @@
 
   // Toolbar context for snippets. Declared after the link-popover state it
   // reads; the handlers below are function declarations, so they hoist.
-  const toolbarContext: ToolbarContext = $derived({
-    editorContext,
-    activeMarks,
-    activeBlockType,
-    canUndo,
-    canRedo,
-    readonly,
-    onUndo: handleUndo,
-    onRedo: handleRedo,
-    onLinkClick: handleLinkClick,
-    linkPopoverOpen,
-  });
+  const toolbarContext: ToolbarContext = $derived(
+    buildToolbarContext({
+      mode: currentMode,
+      readonly,
+      rich: {
+        editorContext,
+        activeMarks,
+        activeBlockType,
+        canUndo,
+        canRedo,
+        linkPopoverOpen,
+        onUndo: handleUndo,
+        onRedo: handleRedo,
+        onLinkClick: handleLinkClick,
+      },
+      onModeChange: modes.request,
+    }),
+  );
 
   // Publish the context so a parent can host the formatting controls itself.
   $effect(() => {
@@ -363,65 +436,6 @@
 
   // Store the link range when popover opens (captured from the last known value)
   let capturedLinkRange = $state<[number, number] | null>(null);
-
-  /**
-   * Resolve the best available anchor for the link popover when opened via keyboard shortcut.
-   * Priority:
-   * 1. Floating UI VirtualElement built from ProseMirror coordsAtPos (WYSIWYG mode)
-   * 2. editor view.dom bounding rect fallback
-   * 3. source textarea bounding rect fallback
-   * 4. markdown-editor wrapper bounding rect fallback
-   */
-  function resolveLinkPopoverAnchor():
-    import('@floating-ui/dom').VirtualElement | HTMLElement | null {
-    if (editorState?.view) {
-      try {
-        const view = editorState.view;
-        const from = view.state.selection.from;
-        // Probe once up front so an unusable position falls through to the
-        // view.dom fallback below.
-        const probe = view.coordsAtPos(from);
-        if (probe && probe.top > 0) {
-          // Recompute coords live inside getBoundingClientRect so Floating UI's
-          // autoUpdate tracks the selection through scroll/layout changes rather
-          // than freezing the open-time rectangle. contextElement lets Floating
-          // UI resolve the correct scroll ancestors. Only needs a rect-shaped
-          // object — no DOMRect instance or toJSON.
-          return {
-            ...(view.dom instanceof HTMLElement ? { contextElement: view.dom } : {}),
-            getBoundingClientRect: () => {
-              // autoUpdate calls this on every scroll/resize. coordsAtPos can
-              // throw if the position is no longer resolvable after a state
-              // change — fall back to the editor's own rect so Floating UI keeps
-              // a valid anchor instead of rejecting the position update.
-              try {
-                const coords = view.coordsAtPos(view.state.selection.from);
-                return {
-                  x: coords.left,
-                  y: coords.top,
-                  width: coords.right - coords.left,
-                  height: coords.bottom - coords.top,
-                  top: coords.top,
-                  right: coords.right,
-                  bottom: coords.bottom,
-                  left: coords.left,
-                };
-              } catch {
-                return view.dom.getBoundingClientRect();
-              }
-            },
-          };
-        }
-      } catch {
-        // Fall through to view.dom fallback
-      }
-      const viewDom = editorState.view.dom;
-      if (viewDom instanceof HTMLElement) return viewDom;
-    }
-
-    if (wrapperElement) return wrapperElement;
-    return null;
-  }
 
   function handleLinkClick(triggerElement: HTMLElement) {
     // Use the last known link range (updated reactively before focus changes)
@@ -537,7 +551,7 @@
       // current link range (as handleLinkClick does) so a subsequent Remove
       // acts on the right link rather than a stale/null range.
       capturedLinkRange = lastKnownLinkRange;
-      linkPopoverAnchorElement = resolveLinkPopoverAnchor();
+      linkPopoverAnchorElement = resolveLinkPopoverAnchor(editorState?.view, wrapperElement);
       linkPopoverOpen = true;
     },
     // DEP-47: Comment shortcut (Ctrl-Alt-c)
@@ -547,7 +561,7 @@
   // Source mode's explicit history and placeholder completion (COR-521).
   const sourceEditingAttachment = createSourceEditingAttachment({
     value: () => value,
-    readonly: () => readonly,
+    readonly: () => readonly || currentMode === 'preview',
     configuration: () => placeholders.resolved,
     listboxId: () => placeholders.sourceListboxId,
     popupContainer: () => wrapperElement,
@@ -558,69 +572,29 @@
     },
   });
 
-  // Track mode transitions to normalize content on switch (DEP-45).
-  let previousMode: EditorMode = mode;
+  /**
+   * Publish a value the component derived itself, once, if it changed. It
+   * never needs the `isInternalUpdate` guard: it is either the live rich
+   * document (so the value sync finds nothing to apply) or published after
+   * the rich editor is released. Leaving the guard off keeps a parent value
+   * that follows in the same task from being mistaken for this one.
+   */
+  function publishInternalValue(next: string): void {
+    if (next === value) return;
+    value = next;
+    onValueChange?.(next);
+  }
 
-  $effect(() => {
-    if (mode === previousMode) return;
-
-    const nextMode = mode;
-    const priorMode = previousMode;
-    previousMode = nextMode;
-
-    onModeChange?.(nextMode);
-
-    // Prevent stale editor context when switching modes.
-    linkPopoverOpen = false;
-    linkPopoverAnchorElement = null;
-
-    if (nextMode === 'source') {
-      // Flush pending WYSIWYG edits and canonicalize before showing raw markdown.
-      let latestMarkdown = value;
-      if (editorState) {
-        try {
-          latestMarkdown = editorState.getMarkdown();
-        } catch (error) {
-          devWarn('Failed to read markdown from editor during mode switch:', error);
-        }
-        editorState.clearPendingTimers();
-      }
-
-      const normalized = normalizeSafely(latestMarkdown);
-      if (normalized !== value) {
-        isInternalUpdate = true;
-        value = normalized;
-        onValueChange?.(normalized);
-        queueMicrotask(() => {
-          isInternalUpdate = false;
-        });
-      }
-
-      // Avoid keeping references to a destroyed Milkdown instance.
-      editorState = null;
-      isInitializing = false;
-      return;
-    }
-
-    if (nextMode === 'wysiwyg' && priorMode === 'source') {
-      // Canonicalize the textarea content before initializing Milkdown.
-      const normalized = normalizeSafely(value);
-      if (normalized !== value) {
-        isInternalUpdate = true;
-        value = normalized;
-        onValueChange?.(normalized);
-        queueMicrotask(() => {
-          isInternalUpdate = false;
-        });
-      }
-
-      isInitializing = true;
-    }
-  });
+  function focusMode(nextMode: EditorMode): void {
+    if (nextMode === 'preview') previewComponent?.focus();
+    else if (nextMode === 'wysiwyg') editorState?.focus();
+    else wrapperElement?.querySelector<HTMLElement>('textarea.source-mode')?.focus();
+  }
 
   // Sync external value changes to editor
   $effect(() => {
     const externalValue = value;
+    lastSeenValue = externalValue;
 
     if (editorState && !isInternalUpdate) {
       if (editorState.hasPendingInternalChange() && externalValue === lastObservedExternalValue) {
@@ -637,7 +611,9 @@
       // Only update if actually different
       if (externalValue !== currentMarkdown) {
         try {
-          editorState.setMarkdown(externalValue);
+          // Behind preview, a replacement becomes the retained editor's new baseline.
+          if (untrack(() => currentMode) === 'preview') editorState.resetDocument(externalValue);
+          else editorState.setMarkdown(externalValue);
         } catch {
           // Ignore errors during teardown or transient editor state.
         }
@@ -648,7 +624,7 @@
   // Sync readonly prop changes to editor (action's update() is never called without parameters)
   $effect(() => {
     if (editorState) {
-      setEditorReadonly(editorState, readonly);
+      setEditorReadonly(editorState, readonly || currentMode === 'preview');
     }
     // Close link popover when editor becomes readonly (toolbar disappears but popover might stay)
     if (readonly) {
@@ -686,7 +662,9 @@
     if (editorState) {
       // Push the content into the live document synchronously — a caller
       // reading getMarkdown()/getAst() right after this call must see it.
-      editorState.setMarkdown(content);
+      // Behind preview it becomes the retained editor's new baseline.
+      if (currentMode === 'preview') editorState.resetDocument(content);
+      else editorState.setMarkdown(content);
     }
 
     // `value` is $bindable — a consumer that binds it (`bind:value`) expects
@@ -771,13 +749,22 @@
   });
 </script>
 
+{#snippet modeControl()}
+  <MarkdownEditorModeControl
+    id={`${id}-mode-toggle`}
+    label={modeLabel}
+    mode={currentMode}
+    onSelect={modes.request}
+  />
+{/snippet}
+
 <div
   bind:this={wrapperElement}
   class={classNames('markdown-editor-wrapper', className)}
   data-initializing={isInitializing || undefined}
   data-ready={!isInitializing ? true : undefined}
-  data-mode={mode}
-  data-has-toolbar={toolbarVisible || undefined}
+  data-mode={currentMode}
+  data-has-toolbar={toolbarVisible || modeBarVisible || undefined}
   data-snapshot-mode={snapshotMode || undefined}
   {...rest}
 >
@@ -798,16 +785,16 @@
           <EditorToolbar
             id={`${id}-toolbar`}
             editorId={id}
-            {editorContext}
-            {activeMarks}
-            {activeBlockType}
-            {canUndo}
-            {canRedo}
-            {linkPopoverOpen}
-            disabled={!editorContext}
-            onLinkClick={handleLinkClick}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
+            editorContext={toolbarContext.editorContext}
+            activeMarks={toolbarContext.activeMarks}
+            activeBlockType={toolbarContext.activeBlockType}
+            canUndo={toolbarContext.canUndo}
+            canRedo={toolbarContext.canRedo}
+            linkPopoverOpen={toolbarContext.linkPopoverOpen}
+            disabled={!toolbarContext.editorContext}
+            onLinkClick={toolbarContext.onLinkClick}
+            onUndo={toolbarContext.onUndo}
+            onRedo={toolbarContext.onRedo}
           />
 
           {#if toolbarActions}
@@ -817,67 +804,63 @@
           {/if}
 
           {#if modeToggleVisible}
-            <div class="toolbar-mode-toggle">
-              <SegmentedControl
-                id={`${id}-mode-toggle`}
-                selectionMode="single"
-                size="sm"
-                bind:value={mode}
-                label={modeLabel}
-                labelVisible={false}
-              >
-                <Segment value="wysiwyg" aria-label="Rich editor"
-                  ><Pencil class="cinder-icon-xs" aria-hidden="true" /><span class="cinder-sr-only"
-                    >Rich</span
-                  ></Segment
-                >
-                <Segment value="source" aria-label="Raw Markdown"
-                  ><FileCode class="cinder-icon-xs" aria-hidden="true" /><span
-                    class="cinder-sr-only">Raw</span
-                  ></Segment
-                >
-              </SegmentedControl>
-            </div>
+            <div class="toolbar-mode-toggle">{@render modeControl()}</div>
           {/if}
         </div>
       {/if}
     {/if}
 
+    {#if modeBarVisible}
+      <div class="markdown-editor-mode-bar">
+        <div class="toolbar-mode-toggle">{@render modeControl()}</div>
+      </div>
+    {/if}
+
     {#if browser}
-      {#if mode === 'wysiwyg'}
-        <!-- eslint-disable-next-line svelte/no-unused-svelte-ignore -- ESLint doesn't see Svelte's a11y warning -->
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div
-          {id}
-          class="cinder-markdown-content markdown-editor surface"
-          data-readonly={readonly || undefined}
-          style:--editor-placeholder={placeholderStyleValue}
-          role="application"
-          aria-label={accessibleEditorLabel}
-          tabindex="0"
-          {@attach editorAttachment}
-        ></div>
-      {:else}
-        <Textarea
-          {id}
-          bind:value
-          variant="code"
-          class="markdown-editor surface source-mode"
-          oninput={(e) => onValueChange?.(e.currentTarget.value)}
-          {placeholder}
-          readonly={readonly || undefined}
-          aria-label={accessibleEditorLabel}
-          aria-describedby={placeholders.describedBy(ariaDescribedby)}
-          aria-multiline="true"
-          {@attach sourceEditingAttachment}
-        />
-      {/if}
-    {:else}
+      <div
+        class="markdown-editor-surface"
+        hidden={currentMode === 'preview' || undefined}
+        inert={currentMode === 'preview' || undefined}
+      >
+        {#if modes.editingMode === 'wysiwyg'}
+          <!-- eslint-disable-next-line svelte/no-unused-svelte-ignore -- ESLint doesn't see Svelte's a11y warning -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <div
+            {id}
+            class="cinder-markdown-content markdown-editor surface"
+            data-readonly={readonly || undefined}
+            style:--editor-placeholder={placeholderStyleValue}
+            role="application"
+            aria-label={accessibleEditorLabel}
+            tabindex="0"
+            {@attach editorAttachment}
+          ></div>
+        {:else if modes.editingMode === 'source'}
+          <Textarea
+            {id}
+            bind:value
+            variant="code"
+            class="markdown-editor surface source-mode"
+            oninput={(e) => onValueChange?.(e.currentTarget.value)}
+            {placeholder}
+            readonly={readonly || undefined}
+            aria-label={accessibleEditorLabel}
+            aria-describedby={placeholders.describedBy(ariaDescribedby)}
+            aria-multiline="true"
+            {@attach sourceEditingAttachment}
+          />
+        {/if}
+      </div>
+    {:else if currentMode !== 'preview'}
       <EditorSkeleton class="markdown-editor" />
+    {/if}
+
+    {#if currentMode === 'preview'}
+      <MarkdownEditorPreview bind:this={previewComponent} {id} view={preview.view} />
     {/if}
   </div>
 
-  {#if linkPopoverOpen && mode === 'wysiwyg'}
+  {#if linkPopoverOpen && currentMode === 'wysiwyg'}
     <LinkPopover
       id={`${id}-link-popover`}
       mode={linkPopoverMode}
@@ -961,6 +944,14 @@
 
   /* SegmentedControl uses size="sm" — no height override needed */
 
+  /* The mode control's own row when the default toolbar does not render. */
+  .markdown-editor-mode-bar {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border-bottom: 1px solid var(--cinder-border);
+  }
+
   .toolbar-leading,
   .toolbar-actions {
     display: flex;
@@ -1013,12 +1004,22 @@
    * `.cinder-textarea-field` is Textarea's own field wrapper (rendered
    * because no ambient FormFieldContext exists here); it has no consumer
    * `class` hook, so it's targeted by its fixed class name. Scoped to a
-   * DIRECT child of `.markdown-editor-layout` — not just to source mode —
+   * DIRECT child of `.markdown-editor-surface` (the `display: contents`
+   * wrapper that holds only the editing surface) — not just to source mode —
    * so it can only ever match this one Textarea, never a consumer-rendered
    * Textarea nested inside `toolbarActions`/`toolbarLeading` while source
    * mode happens to also be active.
    */
-  .markdown-editor-layout > :global(.cinder-textarea-field) {
+  .markdown-editor-surface {
+    display: contents;
+  }
+
+  /* Behind preview the retained editing surface keeps its state, hidden. */
+  .markdown-editor-surface[hidden] {
+    display: none;
+  }
+
+  .markdown-editor-surface > :global(.cinder-textarea-field) {
     flex: 1;
     min-height: 0;
   }

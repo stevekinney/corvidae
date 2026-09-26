@@ -6,11 +6,12 @@
  * here; they never reach the editor or a diagnostic.
  */
 
-import type {
-  PlaceholderCompletionConfiguration,
-  PlaceholderDecorationConfiguration,
-  PlaceholderDefinitions,
-  PlaceholderDiagnostic,
+import {
+  sortPlaceholderDiagnostics,
+  type PlaceholderCompletionConfiguration,
+  type PlaceholderDecorationConfiguration,
+  type PlaceholderDefinitions,
+  type PlaceholderDiagnostic,
 } from '@lostgradient/markdown';
 import { untrack } from 'svelte';
 
@@ -36,6 +37,13 @@ export interface MarkdownEditorPlaceholderProps {
   completion: () => PlaceholderCompletionConfiguration | undefined;
   decoration: () => PlaceholderDecorationConfiguration | undefined;
   onDiagnosticsChange: () => ((diagnostics: readonly PlaceholderDiagnostic[]) => void) | undefined;
+  /** Configuration diagnostics for other component props, such as `mode`. */
+  optionDiagnostics?: () => readonly PlaceholderDiagnostic[];
+  /**
+   * The filled preview's own diagnostics, which replace the authoring
+   * diagnostics while it shows; `undefined` otherwise.
+   */
+  previewDiagnostics?: () => readonly PlaceholderDiagnostic[] | undefined;
 }
 
 const NO_DIAGNOSTICS: readonly PlaceholderDiagnostic[] = Object.freeze([]);
@@ -45,6 +53,14 @@ export function mergeIdReferences(...lists: (string | null | undefined)[]): stri
   const tokens = lists.flatMap((list) => list?.split(/\s+/).filter(Boolean) ?? []);
   const unique = [...new Set(tokens)];
   return unique.length > 0 ? unique.join(' ') : undefined;
+}
+
+function withOptionDiagnostics(
+  diagnostics: readonly PlaceholderDiagnostic[],
+  options: readonly PlaceholderDiagnostic[],
+): readonly PlaceholderDiagnostic[] {
+  if (options.length === 0) return diagnostics;
+  return Object.freeze(sortPlaceholderDiagnostics([...diagnostics, ...options]));
 }
 
 export function createMarkdownEditorPlaceholders(props: MarkdownEditorPlaceholderProps) {
@@ -65,7 +81,10 @@ export function createMarkdownEditorPlaceholders(props: MarkdownEditorPlaceholde
   // Report only when the ordered list changes. The initial empty list is
   // never reported, so `[]` goes out only to clear earlier diagnostics.
   $effect(() => {
-    const next = computePlaceholderDiagnostics(resolved, props.value());
+    const next = withOptionDiagnostics(
+      props.previewDiagnostics?.() ?? computePlaceholderDiagnostics(resolved, props.value()),
+      props.optionDiagnostics?.() ?? NO_DIAGNOSTICS,
+    );
     untrack(() => {
       if (samePlaceholderDiagnostics(next, diagnostics)) return;
       diagnostics = next;

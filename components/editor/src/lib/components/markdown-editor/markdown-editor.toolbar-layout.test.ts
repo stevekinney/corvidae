@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 const markdownEditorPath = new URL('./markdown-editor.svelte', import.meta.url);
 const editorToolbarPath = new URL('./editor-toolbar/editor-toolbar.svelte', import.meta.url);
+const modeControlPath = new URL('./markdown-editor-mode-control.svelte', import.meta.url);
 const toolbarDropdownPath = new URL('./editor-toolbar/toolbar-dropdown.svelte', import.meta.url);
 // Cinder owns `.cinder-markdown-content`'s prose and task-list styling —
 // `MarkdownEditor` composes it rather than redeclaring it, so this reaches
@@ -87,12 +88,15 @@ describe('MarkdownEditor toolbar layout CSS ownership', () => {
     const modeToggleBlock = cssBlock(markdownEditorSource, '.toolbar-mode-toggle');
     expectDeclaration(modeToggleBlock, 'display', 'flex');
     expectDeclaration(modeToggleBlock, 'justify-content', 'flex-end');
-    expect(markdownEditorSource).toContain('aria-label="Rich editor"');
-    expect(markdownEditorSource).toContain('aria-label="Raw Markdown"');
-    expect(markdownEditorSource).toContain('<Pencil class="cinder-icon-xs" aria-hidden="true" />');
-    expect(markdownEditorSource).toContain(
-      '<FileCode class="cinder-icon-xs" aria-hidden="true" />',
-    );
+    // COR-525 moved the segments into the one built-in mode control component.
+    const modeControlSource = await Bun.file(modeControlPath).text();
+    expect(modeControlSource).toContain('aria-label="Rich editor"');
+    expect(modeControlSource).toContain('aria-label="Raw Markdown"');
+    expect(modeControlSource).toContain('aria-label="Preview"');
+    expect(modeControlSource).toContain('<Pencil class="cinder-icon-xs" aria-hidden="true" />');
+    expect(modeControlSource).toContain('<FileCode class="cinder-icon-xs" aria-hidden="true" />');
+    expect(modeControlSource).toContain('<FileText class="cinder-icon-xs" aria-hidden="true" />');
+    expect(markdownEditorSource).toContain('<div class="toolbar-mode-toggle">');
     expect(editorToolbarSource).toContain('label="More formatting"');
     expect(editorToolbarSource).toContain('focusManagement="panel"');
     expect(editorToolbarSource).toContain('aria-label="Additional formatting"');

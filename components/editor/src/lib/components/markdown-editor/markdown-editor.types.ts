@@ -4,6 +4,7 @@ import type {
   PlaceholderDecorationConfiguration,
   PlaceholderDefinitions,
   PlaceholderDiagnostic,
+  PlaceholderValueMode,
 } from '@lostgradient/markdown';
 import type { MilkdownPlugin } from '@milkdown/ctx';
 import type { Ctx } from '@milkdown/kit/ctx';
@@ -11,8 +12,11 @@ import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 import type { ActiveBlockType, ActiveMarks, EditorSelection } from '../../editor/index.ts';
 
-/** Editor display mode */
-export type EditorMode = 'wysiwyg' | 'source';
+/**
+ * Editor display mode: the rich WYSIWYG editor, the raw Markdown source, or a
+ * read-only rendered preview.
+ */
+export type EditorMode = 'wysiwyg' | 'source' | 'preview';
 
 /**
  * Context passed to toolbar snippets for custom rendering.
@@ -34,8 +38,23 @@ export interface ToolbarContext {
   canUndo: boolean;
   /** Whether redo is available */
   canRedo: boolean;
-  /** Whether the editor is readonly */
+  /** Whether the editor is readonly: the caller's `readonly` flag, in every mode */
   readonly: boolean;
+  /** The current display mode */
+  mode: EditorMode;
+  /**
+   * Whether formatting can apply right now: the rich editor is showing and
+   * ready, and the editor is not readonly. False in source and preview mode,
+   * where the formatting fields are inactive: no editor context, no undo or
+   * redo, no active marks, a paragraph block, a closed link popover and
+   * handlers that do nothing.
+   */
+  canEdit: boolean;
+  /**
+   * Switch to another display mode. Invalid modes are ignored; a real change
+   * updates `mode` and calls `onModeChange` once.
+   */
+  onModeChange: (nextMode: EditorMode) => void;
   /** Apply an undo step */
   onUndo: () => void;
   /** Apply a redo step */
@@ -85,9 +104,16 @@ export type MarkdownEditorProps = Omit<
   label?: string;
   /** Current markdown content (two-way bindable) */
   value?: string;
-  /** Editor display mode (two-way bindable) */
+  /**
+   * Editor display mode (two-way bindable). An invalid value keeps the last
+   * valid mode (`'wysiwyg'` on mount) and reports `invalid_option` at `mode`.
+   */
   mode?: EditorMode;
-  /** Show an inline toggle for switching between WYSIWYG and raw Markdown */
+  /**
+   * Show the built-in mode control for switching between the rich editor, raw
+   * Markdown and preview. It renders whenever this is true, including with a
+   * custom `toolbar`, `toolbarEnabled={false}` or `readonly`.
+   */
   modeToggleVisible?: boolean;
   /** Accessible label for the mode toggle (visually hidden) */
   modeLabel?: string;
@@ -121,6 +147,14 @@ export type MarkdownEditorProps = Omit<
    * or values that are not a plain JSON object, reports a configuration diagnostic.
    */
   placeholderValues?: JsonObject | undefined;
+
+  /**
+   * How preview inserts string placeholder values: `'text'` (the default)
+   * renders them as literal text, `'markdown'` lets them contribute Markdown
+   * formatting. Other values render as literal JSON either way. An invalid
+   * string reports `invalid_option` at `placeholderValueMode` and disables fill.
+   */
+  placeholderValueMode?: PlaceholderValueMode | undefined;
 
   /**
    * Called with the ordered placeholder diagnostics whenever that list changes.

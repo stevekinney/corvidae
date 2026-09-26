@@ -135,6 +135,20 @@ export interface EditorState {
   hasPendingInternalChange(): boolean;
   setMarkdown(content: string): void;
   /**
+   * Take a live document change that is still waiting for its debounced
+   * `onchange`: cancel that notification and return the serialized Markdown,
+   * or `null` when nothing is pending. Milkdown's listener may still report
+   * the same document afterwards; that late report never reaches `onchange`.
+   */
+  flushPendingChange(): string | null;
+  /**
+   * Replace the document as a new baseline: the undo history is emptied, the
+   * caret moves to the end, pending and late change notifications are
+   * dropped, and the current placeholder configuration stays installed. No
+   * `onchange` fires.
+   */
+  resetDocument(content: string): void;
+  /**
    * Replace the placeholder configuration without recreating the editor.
    * Installs it with a metadata-only transaction that adds no undo history,
    * leaves the document and selection unchanged and fires no content
