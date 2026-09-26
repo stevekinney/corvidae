@@ -20,6 +20,7 @@ import {
   pickFairShare,
   pickLeastLoaded,
   pickRoundRobin,
+  workerMatchesRequirement,
 } from './registry/routing.ts';
 import {
   deploymentHealth,
@@ -96,13 +97,9 @@ export class WorkerRegistry {
   #inFlightTasks: Map<string, InFlightTask>;
   #deploymentDrainStates: Map<string, DrainRecord>;
   #policy: RoutingPolicy;
-  /** Keyed by `${queue}::${activity}` — independent cursors per (queue, activity) pair. */
   #roundRobinCursor: Map<string, number>;
-  /** Per-worker, per-key in-flight counts for fair-share routing. */
   #fairShareCounts: FairShareCounters;
-  /** One `(deploymentName, buildId)` pair never registers two artifact digests. */
   #deploymentConsistency: DeploymentConsistencyGuard;
-  /** Bounded, in-memory log of declined `register` attempts (WFT-29). */
   #rejections: RegistrationRejectionEntry[];
 
   constructor(options?: WorkerRegistryOptions) {
@@ -221,7 +218,6 @@ export class WorkerRegistry {
     };
   }
 
-  /** Unregister a worker. Purges fair-share counters and in-flight task entries for this worker. */
   unregister(workerId: string): WorkerInfo | undefined {
     const info = this.#workers.get(workerId);
     if (info === undefined) return undefined;
@@ -238,7 +234,6 @@ export class WorkerRegistry {
     return info;
   }
 
-  /** Record a heartbeat from a worker. */
   heartbeat(workerId: string): void {
     const info = this.#workers.get(workerId);
     if (info !== undefined) {
@@ -246,7 +241,6 @@ export class WorkerRegistry {
     }
   }
 
-  /** Increment in-flight count for a worker. */
   taskAssigned(workerId: string): void {
     const info = this.#workers.get(workerId);
     if (info !== undefined) {
@@ -273,11 +267,20 @@ export class WorkerRegistry {
    * 4. A `sticky` worker that also satisfies the above wins regardless of policy.
    */
   findWorker(activityName: string, options: RoutingOptions = {}): WorkerInfo | undefined {
-    const { queue, sticky: stickyId, fairShareKey, excludeWorkerIds } = options;
+    const {
+      queue,
+      sticky: stickyId,
+      fairShareKey,
+      excludeWorkerIds,
+      executionRequirement,
+    } = options;
     const eligible: WorkerInfo[] = [];
     let stickyCandidate: WorkerInfo | undefined;
     for (const worker of this.#workers.values()) {
-      if (!this.#workerIsEligible(worker, activityName, queue, excludeWorkerIds)) continue;
+      if (
+        !this.#workerIsEligible(worker, activityName, queue, excludeWorkerIds, executionRequirement)
+      )
+        continue;
       if (stickyId !== undefined && worker.id === stickyId) stickyCandidate = worker;
       eligible.push(worker);
     }
@@ -291,10 +294,16 @@ export class WorkerRegistry {
     activityName: string,
     queue: string | undefined,
     excludeWorkerIds: ReadonlySet<string> | undefined,
+    executionRequirement: RoutingOptions['executionRequirement'],
   ): boolean {
     if (excludeWorkerIds?.has(worker.id)) return false;
     if (!matchesWorkerCapabilities(worker, activityName, queue)) return false;
     if (isWorkerDraining(worker, this.#deploymentDrainStates)) return false;
+    if (
+      executionRequirement !== undefined &&
+      !workerMatchesRequirement(worker, executionRequirement, activityName)
+    )
+      return false;
     return true;
   }
 

@@ -807,3 +807,11 @@ type ListTaskQueuesResponse = {
 ```
 
 Queues are sorted by `queue` ascending.
+
+## Revision-aware deployment routing
+
+`WorkerDeploymentCatalog` stores immutable `(deploymentName, buildId)` versions and a conditional routing pointer in the configured storage backend. A version records its artifact and manifest digests, accepted manifest, lifecycle state, first-seen time, and execution references. Re-registering a build with different digests is rejected. Routing pointers carry a monotonically increasing generation, a current build, an optional ramping build, and an integer `rampBasisPoints` value from `0` through `10_000`; stale expected generations are rejected.
+
+`selectWorkerDeployment` resolves a task to one exact build before applying worker policy. A pinned `buildId`, `artifactDigest`, `workflowRevision`, or activity contract never falls forward to another build. Unpinned traffic chooses the ramping build when the deterministic `worker-rollout-v1` bucket for `(deploymentName, workflowId, generation)` is below `rampBasisPoints`, otherwise it chooses the current build. Candidate workers are then filtered for the requested workflow/activity, capacity, and drain state, and ties are ordered by worker ID.
+
+Deployment versions remain reachable while their execution-reference count is non-zero. Calling `markDraining` with references present leaves the version ready; after references are released it may transition to draining. Diagnostic failures distinguish revision incompatibility from unavailable capacity so an unavailable build does not hide runnable work on another version. The catalog is durable, but connected worker sessions and in-flight leases remain live registry state and must be recovered through the normal task-ledger recovery path.
