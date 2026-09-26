@@ -839,6 +839,16 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
   'CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH',
   [
     [
+      'examples/remote-worker/src/index.ts',
+      {
+        reason:
+          'Three distinct unreachable classes, none a test gap: (1) lines 30-32, the body of formatGreetingRemotely.execute, are unreachable by design — activityExecution.mode is "remote" has no local-fallback branch at all, so the engine never calls this local implementation, the same invariant COR-154’s zero-invocation spy tests assert elsewhere in this package; (2) lines 80 and 95 are defensive validation the example’s own happy-path fixture (remote-worker.test.ts) never violates — isGreetingInput always accepts the fixture’s well-formed input, and the remote worker always returns a string, so triggering either throw would mean injecting a malformed wire payload past RemoteWorker’s own contract, not exercising this example; (3) lines 106-107, the `if (import.meta.main)` CLI entry point, only run when this file is spawned directly (remote-worker.test.ts’s second test does this via `Bun.spawn`), and that child process’s hits are not attributed to the parent Bun LCOV report — the same class of gap already documented for examples/order-processing/src/client.ts and src/server.ts above and examples/hello-world/src/index.ts in TARGET_ONLY_COVERAGE_ALLOWANCES.',
+        functions: 1,
+        lines: new Set([30, 31, 32, 80, 95, 106, 107]),
+        requireUncoveredLines: true,
+      },
+    ],
+    [
       'examples/order-processing/src/server.ts',
       {
         reason:
@@ -1782,8 +1792,17 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'src/server/operations/task-diagnostics-collector.ts',
     {
       reason:
-        "addRecordDiagnostics()'s switch over RemoteTaskRecord['state'] ends with a closed-union exhaustiveness guard (`const exhaustive: never = decoded`). Every record this module-private function receives was already validated by decodeRemoteTaskRecord() -> isRemoteTaskRecord(), which returns null (silently skipped by the one caller, collectTaskDiagnostics) for any record whose state is not one of the six known values. A record with an out-of-union state can therefore never reach this switch at all — the sibling decode validator forecloses it before addRecordDiagnostics is ever called, the same class of guard already documented for get-task-detail.ts/task-ledger-recovery.ts's case-label/brace lines elsewhere in this file.",
-      lines: new Set([104, 107, 108, 109]),
+        "addRecordDiagnostics()'s switch over RemoteTaskRecord['state'] ends with a closed-union exhaustiveness guard (`const exhaustive: never = decoded`). Every record this module-private function receives was already validated by decodeRemoteTaskRecord() -> isRemoteTaskRecord(), which returns null (silently skipped by the one caller, collectTaskDiagnostics) for any record whose state is not one of the six known values. A record with an out-of-union state can therefore never reach this switch at all — the sibling decode validator forecloses it before addRecordDiagnostics is ever called, the same class of guard already documented for get-task-detail.ts/task-ledger-recovery.ts's case-label/brace lines elsewhere in this file. Realigned by +2 lines (COR-198): collectTaskDiagnostics gained one new import and one new execution-identity-filter line ahead of this function, shifting the exhaustiveness guard's block-opening line (was 104), its two statement lines (were 107, 108), and its closing brace (was 109) down to 106, 109, 110, and 111 — the guard itself is unchanged.",
+      lines: new Set([106, 109, 110, 111]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
+    'src/server/operations/task-attempt-identity-filter.ts',
+    {
+      reason:
+        "currentAttemptTokenOf()'s switch over RemoteTaskRecord['state'] ends with the same closed-union exhaustiveness guard as task-diagnostics-collector.ts's addRecordDiagnostics(), immediately above this entry: `record` is already a validated RemoteTaskRecord by the time it reaches this module-private function (decodeRemoteTaskRecord()'s caller never passes anything else), so a record with an out-of-union state can never reach the `default` branch. The 'queued' (line 34-35) and 'terminal' (line 41-44) branches this same switch also covers are exercised directly by get-task-diagnostics-filters.test.ts's 'excludes a queued record from every identity filter' and 'matches a resolved terminal record's identity filter via its retained attempt record' tests — only the unreachable default block (lines 45-47) is allowed.",
+      lines: new Set([45, 46, 47]),
       requireUncoveredLines: true,
     },
   ],
