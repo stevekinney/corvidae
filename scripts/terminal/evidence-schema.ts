@@ -82,7 +82,11 @@ export function validateEvidence(
       errors.push('cell metrics');
   }
   if (typeof value.passed !== 'boolean') errors.push('passed type');
-  if (value.passed !== value.cells.every((cell) => cell.passed)) errors.push('passed consistency');
+  const observedPass =
+    expectedKind === 'engine'
+      ? value.selectedEngine !== null && value.selectedEngine !== undefined
+      : value.cells.every((cell) => cell.passed);
+  if (value.passed !== observedPass) errors.push('passed consistency');
   return errors;
 }
 
