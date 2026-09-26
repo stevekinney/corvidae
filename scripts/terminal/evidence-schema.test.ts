@@ -1,6 +1,8 @@
+import { chromium } from '@playwright/test';
 import { describe, expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { classifyBrowserFailure } from './engine-probe.ts';
 import { validateEvidence } from './evidence-schema.ts';
 
 const schemaPath = join(import.meta.dir, 'evidence.schema.json');
@@ -144,12 +146,32 @@ describe('terminal evidence schema', () => {
     ).toContain('selected engine candidates');
   });
 
-  test('keeps browser phase serialization in the Bun context', async () => {
-    const probe = await readFile(join(import.meta.dir, 'engine-probe.ts'), 'utf8');
-    expect(probe).toContain(
-      ".evaluate(() => (globalThis as { probePhase?: unknown }).probePhase ?? 'not-started')",
-    );
-    expect(probe).toContain('const phaseText = formatUnknown(phase);');
-    expect(probe).not.toContain('.evaluate(() => formatUnknown(');
+  test('serializes browser failure phase in the Bun context', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent('<main>terminal probe fixture</main>');
+      await page.evaluate(() => {
+        globalThis.probePhase = { phase: 'after-init' };
+      });
+      const requests = ['/'];
+      const diagnostics = ['console:info:fixture'];
+      const result = await classifyBrowserFailure(
+        () =>
+          page.evaluate(() => (globalThis as { probePhase?: unknown }).probePhase ?? 'not-started'),
+        new Error('TimeoutError: forced probe failure'),
+        requests,
+        diagnostics,
+      );
+
+      expect(result.status).toBe('unavailable');
+      expect(result.requests).toBe(requests);
+      expect(result.diagnostics).toContain('phase:{"phase":"after-init"}');
+      expect(result.cells['input-return-semantics']?.observation).toContain(
+        'unavailable:timeout:{"phase":"after-init"}',
+      );
+    } finally {
+      await browser.close();
+    }
   });
 });
