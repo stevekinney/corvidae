@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { readdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 
 import {
   importSvelteOnServer,
@@ -57,5 +57,26 @@ describe('isolated Svelte server execution', () => {
     const second = await renderSvelteOnServer(stateSource);
     expect(first).toContain('<p>Render 1</p>');
     expect(second).toBe(first);
+  });
+
+  test('preparing under export conditions caches exactly that compilation', async () => {
+    // Inside the package so the compiler can resolve `svelte` from the source's directory.
+    const directory = await mkdtemp(
+      resolve(import.meta.dir, '../../node_modules/.svelte-prepare-'),
+    );
+    const source = join(directory, 'prepared.svelte');
+    try {
+      await Bun.write(source, '<p>prepared</p>\n');
+      await prepareSvelteServerSource(source, { conditions: ['browser', 'svelte'] });
+      await Bun.write(source, '<p>edited</p>\n');
+
+      // The prepared condition set renders what was compiled at setup; any other set compiles now.
+      expect(
+        await renderSvelteOnServer(source, {}, { conditions: ['browser', 'svelte'] }),
+      ).toContain('<p>prepared</p>');
+      expect(await renderSvelteOnServer(source)).toContain('<p>edited</p>');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
