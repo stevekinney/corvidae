@@ -7,6 +7,8 @@
  * @module core/engine/lifecycle/start-state
  */
 
+import type { WorkflowWorkerBinding } from '../../../worker/versioning-policy.ts';
+import { resolveWorkflowWorkerStartBinding } from '../../../worker/versioning-policy.ts';
 import { createCheckpoint } from '../../checkpoint.ts';
 import { normalizeStorageTimestamp } from '../../scheduler.ts';
 import {
@@ -25,6 +27,24 @@ export function parseStartOptionDuration(
   _callbacks: LifecycleCallbacks,
 ): number {
   return parseStartWorkflowDuration(duration, fieldName);
+}
+
+export async function resolveStartWorkerBinding(
+  internals: EngineInternals,
+  registration: RegistrationEntry,
+  workflowId: string,
+  type: string,
+  revision: string,
+): Promise<WorkflowWorkerBinding | undefined> {
+  if (registration.workerVersioningPolicy === undefined) return undefined;
+  return resolveWorkflowWorkerStartBinding(internals.storage, {
+    workflowId,
+    workflowType: type,
+    workflowRevision: revision,
+    policy: registration.workerVersioningPolicy,
+    boundAt: internals.options.getNow(),
+    checkpointId: workflowId,
+  });
 }
 
 function buildInitialIdentitySlice(
@@ -113,6 +133,7 @@ export function createInitialWorkflowState(
   /** See {@link buildInitialIdentitySlice}'s parameter of the same name (COR-75). */
   forcePendingWithoutTimer?: boolean,
   registration?: RegistrationEntry,
+  workerBinding?: WorkflowWorkerBinding,
 ): WorkflowState {
   const now = internals.options.getNow();
   const state = buildInitialIdentitySlice(
@@ -143,21 +164,11 @@ export function createInitialWorkflowState(
   }
 
   if (registration?.workerVersioningPolicy !== undefined) {
-    state.workerVersioningPolicy = registration?.workerVersioningPolicy ?? { mode: 'pinned' };
-    const binding = {
-      workflowId,
-      workflowType: type,
-      deploymentName: `workflow:${type}`,
-      buildId: versionTuple.workflowVersion,
-      artifactDigest: `revision:${revision}`,
-      manifestDigest: `manifest:${revision}`,
-      workflowRevision: revision,
-      activityName: '*',
-      activityContractHash: `workflow:${type}:activities`,
-      boundAt: now,
-      checkpointId: workflowId,
-    };
-    state.workerBinding = { current: binding, history: [] };
+    state.workerVersioningPolicy = registration.workerVersioningPolicy;
+    if (workerBinding === undefined) {
+      throw new Error('Accepted worker deployment binding is required for versioned workflows.');
+    }
+    state.workerBinding = { current: workerBinding, history: [] };
   }
 
   return state;

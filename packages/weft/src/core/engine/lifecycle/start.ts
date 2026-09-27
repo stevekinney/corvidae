@@ -47,6 +47,7 @@ import {
   createInitialCheckpoint,
   createInitialWorkflowState,
   parseStartOptionDuration,
+  resolveStartWorkerBinding,
 } from './start-state.ts';
 import {
   enforceReplayOnlyIdFence,
@@ -343,6 +344,13 @@ export async function startWorkflow(
 
     const versionTuple = createWorkflowVersionTuple(internals, registration, callbacks);
 
+    const workerBinding = await resolveStartWorkerBinding(
+      internals,
+      registration,
+      workflowId,
+      type,
+      revision,
+    );
     const state = createInitialWorkflowState(
       internals,
       workflowId,
@@ -359,6 +367,7 @@ export async function startWorkflow(
       callbacks,
       undefined,
       registration,
+      workerBinding,
     );
     applyRestartLineage(state, terminalRunToPurge);
     const checkpoint = createInitialCheckpoint(

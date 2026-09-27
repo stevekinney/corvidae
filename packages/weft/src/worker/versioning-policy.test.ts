@@ -51,7 +51,7 @@ describe('workflow worker versioning policy', () => {
     );
   });
 
-  it('rejects a lost concurrent start binding CAS', async () => {
+  it('rejects a lost concurrent start binding CAS during the initial batch', async () => {
     class LostCasStorage extends MemoryStorage {
       override async conditionalBatch(): Promise<boolean> {
         return false;

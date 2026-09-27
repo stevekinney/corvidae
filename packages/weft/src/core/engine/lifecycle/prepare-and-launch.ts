@@ -43,6 +43,7 @@
  */
 
 import { KEYS } from '../../../storage/interface.ts';
+import { resolveWorkflowWorkerStartBinding } from '../../../worker/versioning-policy.ts';
 import { deserializeCheckpoint, serializeCheckpoint } from '../../checkpoint.ts';
 import { encode } from '../../codec.ts';
 import { assertPayloadWithinLimit } from '../../payload-size.ts';
@@ -212,6 +213,16 @@ export async function prepareWorkflow(
 
     const versionTuple = createWorkflowVersionTuple(internals, registration, callbacks);
 
+    const workerBinding = registration.workerVersioningPolicy
+      ? await resolveWorkflowWorkerStartBinding(internals.storage, {
+          workflowId,
+          workflowType: type,
+          workflowRevision: revision,
+          policy: registration.workerVersioningPolicy,
+          boundAt: internals.options.getNow(),
+          checkpointId: workflowId,
+        })
+      : undefined;
     const state = createInitialWorkflowState(
       internals,
       workflowId,
@@ -228,6 +239,7 @@ export async function prepareWorkflow(
       callbacks,
       true,
       registration,
+      workerBinding,
     );
     applyRestartLineage(state, terminalRunToPurge);
     const checkpoint = createInitialCheckpoint(
