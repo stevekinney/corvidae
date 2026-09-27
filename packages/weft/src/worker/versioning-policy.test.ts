@@ -51,6 +51,19 @@ describe('workflow worker versioning policy', () => {
     );
   });
 
+  it('rejects a lost concurrent start binding CAS', async () => {
+    class LostCasStorage extends MemoryStorage {
+      override async conditionalBatch(): Promise<boolean> {
+        return false;
+      }
+    }
+    using storage = new LostCasStorage();
+    await seedWorkflow(storage);
+    await expect(bindWorkflowWorkerAtStart(storage, binding('build-1'))).rejects.toThrow(
+      'Concurrent worker binding changed workflow',
+    );
+  });
+
   it('records bounded upgrades only under the exact contract at a checkpoint boundary', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage);
