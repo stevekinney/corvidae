@@ -202,6 +202,24 @@ describe('retention sweep disposal', () => {
     expect(await storage.get(KEYS.workflow(WORKFLOW_ID))).toBeNull();
   });
 
+  it('a purge commit that fails while async disposal waits on it is still reported', async () => {
+    // Disposal silences what it caused, not a write that genuinely failed.
+    const storage = new GatedStorage();
+    const { clock, engine, warnings } = await createEngineWithCompletedRun(storage);
+    await holdSweepAt(storage, clock, { kind: 'commit', key: KEYS.workflow(WORKFLOW_ID) });
+    const sweep = getInternals(engine).retentionSweepInFlight;
+
+    const disposal = engine[Symbol.asyncDispose]();
+    const commitFailure = new Error('storage write failed');
+    storage.release(commitFailure);
+    await disposal;
+    await sweep;
+
+    expect(warnings.map(({ source, error }) => [source, error])).toEqual([
+      ['retentionSweep', commitFailure],
+    ]);
+  });
+
   it('async disposal after a synchronous disposal still waits for a purge commit already issued', async () => {
     const storage = new GatedStorage();
     const { clock, engine } = await createEngineWithCompletedRun(storage);
