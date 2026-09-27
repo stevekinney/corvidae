@@ -2,7 +2,10 @@
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
-import { checkBuildFlagHydrationSafety } from '../../test/hydration-safety.ts';
+import {
+  checkBuildFlagHydrationSafety,
+  prepareBuildFlagHydrationSafety,
+} from '../../test/hydration-safety.ts';
 import {
   flushTreeFilterStatus,
   treeItem,
@@ -17,6 +20,7 @@ const treeFilterHydrationSource = new URL(
   '../../test/fixtures/tree-filter-hydration-fixture.svelte',
   import.meta.url,
 ).pathname;
+await prepareBuildFlagHydrationSafety(treeFilterHydrationSource);
 afterEach(() => cleanup());
 
 describe('Tree — filter/search', () => {
