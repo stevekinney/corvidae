@@ -1,4 +1,4 @@
-import { sveltePlugin } from '@lostgradient/testing';
+import { sveltePlugin } from './svelte-plugin.ts';
 import { join } from 'node:path';
 
 // The unwasm condition exposes binary modules. Bun emits their bytes as assets;

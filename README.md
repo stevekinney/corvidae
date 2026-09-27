@@ -62,7 +62,7 @@ Compiler options live in the configuration-only `@lostgradient/typescript` works
 
 Turbo hashes upstream library source through transit tasks—dependency-only tasks that affect cache keys without running a build. Changing a provider therefore invalidates its consumers' checks without building the libraries. Root tool configuration and shared scripts also participate in cache keys. Chat-room owns its [Vite](https://vite.dev/) grammar-asset plugin.
 
-The root browser fixtures and Weft UI's browser host share the build helpers in `scripts/build-browser.ts` and the Svelte compiler in `@lostgradient/testing`, while each host owns its own server and routes. Chat-room checks generate and cache their SvelteKit configuration and types. Root browser fixture tests generate and cache a manifest plus the explicit list of fixture modules they can load lazily; no upstream library build is required.
+The root browser fixtures and Weft UI's browser host share `buildBrowser` and the Svelte compiler from `@lostgradient/testing`, while each host owns its own server and routes. Chat-room checks generate and cache their SvelteKit configuration and types. Root browser fixture tests generate and cache a manifest plus the explicit list of fixture modules they can load lazily; no upstream library build is required.
 
 `bun run test:self` checks the workspace architecture, including source exports, dependency cycles, declared imports, catalog use, cache invalidation, build ownership, and the absence of publishing and hook installation. These checks keep the consolidation rules executable.
 

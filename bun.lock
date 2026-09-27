@@ -6,11 +6,7 @@
       "name": "corvidae",
       "devDependencies": {
         "@arethetypeswrong/cli": "catalog:",
-        "@lostgradient/chat": "workspace:*",
-        "@lostgradient/cinder": "workspace:*",
-        "@lostgradient/editor": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
-        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@playwright/test": "catalog:",
         "@shikijs/langs": "catalog:",
@@ -19,7 +15,6 @@
         "@types/pngjs": "catalog:",
         "ajv": "catalog:",
         "ajv-formats": "catalog:",
-        "conversationalist": "workspace:*",
         "oxlint": "catalog:",
         "oxlint-tsgolint": "catalog:",
         "pixelmatch": "catalog:",
@@ -482,6 +477,17 @@
         "typescript": "catalog:",
       },
     },
+    "scripts/browser-fixtures": {
+      "name": "@lostgradient/browser-fixtures",
+      "devDependencies": {
+        "@lostgradient/chat": "workspace:*",
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/editor": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "conversationalist": "workspace:*",
+      },
+    },
   },
   "overrides": {
     "cookie": "0.7.2",
@@ -726,6 +732,8 @@
     "@lmdb/lmdb-win32-x64": ["@lmdb/lmdb-win32-x64@3.5.6", "", { "os": "win32", "cpu": "x64" }, "sha512-1g7G0knRX2iV/voDu54yxrGqw5Dk0w2oIYb7dgJq8IkOi+m7wbD8Q3QpPFjh0C01G58S88dqGn03len6UPCXsg=="],
 
     "@loaderkit/resolve": ["@loaderkit/resolve@1.0.6", "", { "dependencies": { "@braidai/lang": "^1.0.0" } }, "sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg=="],
+
+    "@lostgradient/browser-fixtures": ["@lostgradient/browser-fixtures@workspace:scripts/browser-fixtures"],
 
     "@lostgradient/bureau": ["@lostgradient/bureau@workspace:packages/bureau"],
 

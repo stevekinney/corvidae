@@ -13,6 +13,7 @@ export * from './helpers/theme.ts';
 export { expectNoLeakedTimers, trackTimers } from './helpers/timer-lifecycle.ts';
 export * from './style-markers.ts';
 export * from './svelte-plugin.ts';
+export { buildBrowser } from './build-browser.ts';
 export * from './visual-fixtures.ts';
 
 export { requiredInstance, requiredValue } from './helpers/required-value.ts';
