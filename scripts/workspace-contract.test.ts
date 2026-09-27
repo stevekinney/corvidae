@@ -134,7 +134,9 @@ describe('internal workspace architecture', () => {
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
-    expect(scripts['test:self']).toBe('bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts');
+    expect(scripts['test:self']).toBe(
+      'bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
+    );
     expect(scripts['audit']).toBe('bun audit --audit-level=high');
   });
 

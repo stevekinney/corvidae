@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
+import { fileReadConcurrency, mapWithConcurrency } from '../map-with-concurrency.ts';
 import { filesCoverPath, loadPackageSurface } from './package-surface.ts';
 import { additionalSourceRoots, isSourceFile, sourceTree, versionConstants } from './source.ts';
 
@@ -151,16 +152,18 @@ export async function collectDigestedFiles({
   workspace,
 }: DigestScope): Promise<DigestedFile[]> {
   const workspaceRoot = join(corvidaeRoot, corvidaeDirectory);
-  const files: DigestedFile[] = [];
   const excludedPath = versionConstants[workspace];
 
   const sourceRoot = join(workspaceRoot, sourceTree);
-  for (const path of await collectSourceFiles(sourceRoot)) {
-    const relativePath = `${sourceTree}/${path}`;
-    if (relativePath === excludedPath) continue;
-    const bytes = new Uint8Array(await Bun.file(join(sourceRoot, path)).arrayBuffer());
-    files.push({ path: relativePath, bytes });
-  }
+  const sourcePaths = await collectSourceFiles(sourceRoot);
+  const files: DigestedFile[] = await mapWithConcurrency(
+    sourcePaths.filter((path) => `${sourceTree}/${path}` !== excludedPath),
+    fileReadConcurrency,
+    async (path) => ({
+      path: `${sourceTree}/${path}`,
+      bytes: new Uint8Array(await Bun.file(join(sourceRoot, path)).arrayBuffer()),
+    }),
+  );
 
   for (const declared of additionalSourceRoots[workspace] ?? []) {
     for (const path of declared.paths) {

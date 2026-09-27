@@ -65,8 +65,11 @@ export async function drainLongPollQueue(
   try {
     do {
       state.rerun = false;
-      while (!context.stopping && (await moveOneHint(context, options, queue))) {
-        // Each iteration moves (or discards) one hint; stop when none moved.
+      // Hints whose dispatch failed this pass, so one no worker can take does
+      // not block the ones behind it. Each hint is tried at most once a pass.
+      const skipped = new Set<string>();
+      while (!context.stopping && (await moveOneHint(context, options, queue, skipped))) {
+        // Each iteration handles one hint; stop when none is left to try.
       }
     } while (state.rerun && !context.stopping);
   } finally {
@@ -75,19 +78,20 @@ export async function drainLongPollQueue(
 }
 
 /**
- * Withdraw the first hint a connected WebSocket worker could take and
- * dispatch it. Returns `true` when the drain should keep going: the task went
- * to a WebSocket worker, or its hint was stale and is discarded. Returns
- * `false` when nothing was eligible or the dispatch did not land, in which
- * case the hint is restored where it was.
+ * Withdraw the first untried hint a connected WebSocket worker could take and
+ * dispatch it. A stale hint is discarded; a dispatch that does not land
+ * restores the hint where it was and adds it to `skipped`. Returns `false`
+ * only when no untried hint is eligible.
  */
 async function moveOneHint(
   context: ServerContext,
   options: ServeOptions,
   queue: string,
+  skipped: Set<string>,
 ): Promise<boolean> {
-  const withdrawn = context.taskQueue.withdrawPending(queue, (task) =>
-    webSocketWorkerCanTake(context, queue, task),
+  const withdrawn = context.taskQueue.withdrawPending(
+    queue,
+    (task) => !skipped.has(task.operationId) && webSocketWorkerCanTake(context, queue, task),
   );
   if (withdrawn === undefined) return false;
   recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
@@ -111,18 +115,22 @@ async function moveOneHint(
   }
   if (dispatched) return true;
 
-  // The worker's room went to another dispatch first, or the claim lost a
-  // race. The hint goes back where it was, and the next trigger retries.
+  // The worker's room went to another dispatch first, the claim lost a race,
+  // or the task is not claimable yet. The hint goes back where it was, and a
+  // later trigger retries it.
   context.taskQueue.restorePending(withdrawn);
   recordTaskBacklogMetric(context.metricsCollector, context.taskQueue);
-  return false;
+  skipped.add(operationId);
+  return true;
 }
 
 /**
  * Whether a connected WebSocket worker could take `task` right now. The
  * registry can also hold long-poll workers, which have no socket, and a
  * worker inside its reconnect grace window still has one but must not be
- * routed to — the same exclusion `dispatchTaskImpl`'s routing applies.
+ * routed to. The eligibility inputs are the ones `buildRoutingOptions` in
+ * `task-dispatch.ts` gives WebSocket dispatch; sticky affinity and the
+ * fair-share key only choose among eligible workers, so they are left out.
  */
 function webSocketWorkerCanTake(context: ServerContext, queue: string, task: PendingTask): boolean {
   return context.registry.hasEligibleWorker(

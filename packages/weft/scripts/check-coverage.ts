@@ -1166,8 +1166,8 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       'src/cli/conformance.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217.',
-        lines: new Set([63, 136, 217]),
+          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217. Realigned a fourth time after `createRegisterCheck` (unit-tested directly, so fully covered) was added above the dispatch helper, moving the same three throws from 63/136/217 to 91/158/239.',
+        lines: new Set([91, 158, 239]),
         requireUncoveredLines: true,
       },
     ],
@@ -1428,17 +1428,8 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       'src/core/engine/retention.ts',
       {
         reason:
-          'Bun maps the closing braces of the resolved-dynamic-retention loop as uncovered after the direct `return true` inside them executes (retention.test.ts + workflow-retention.test.ts both exercise the branch itself).',
-        lines: new Set([34, 35]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/termination/finalizer-registration.ts',
-      {
-        reason:
-          "Bun maps the closing brace after the DynamicWorkflowSourceUnavailableError/WorkflowRevisionUnavailableError catch branch's `return undefined` and the trailing `throw error;` rethrow as uncovered, although finalizer.test.ts directly exercises the return (both a load-failure and an unresolvable-pinned-revision dynamic finalizer resolve) — only the unmatched-error rethrow itself has no reachable test (WFT-19 shifted these two lines from 43-44 to 56-57 when the catch grew a second error type).",
-        lines: new Set([56, 57]),
+          'Bun maps the closing braces of the resolved-dynamic-retention loop as uncovered after the direct `return true` inside them executes (retention.test.ts + workflow-retention.test.ts both exercise the branch itself). Realigned from 34-35 when the EngineDisposedError import for the disposed-sweep check shifted the file by one line.',
+        lines: new Set([35, 36]),
         requireUncoveredLines: true,
       },
     ],
@@ -1469,15 +1460,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
           57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 70, 110, 111, 112, 131, 138, 139, 206,
           207,
         ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/workflow-retention-deadline.ts',
-      {
-        reason:
-          "New async resolve path (WFT-19 review round 1, re-derived in round 2 after the fail-closed rewrite shifted this line from 59 to 72): Bun maps the closing brace after the DynamicWorkflowSourceUnavailableError/WorkflowRevisionUnavailableError catch branch's `return { kind: 'unresolvable' }` as uncovered, the same brace-attribution artifact already documented for `termination/finalizer-registration.ts`'s identical catch shape — although workflow-retention.test.ts directly exercises both that return (an unresolvable-pinned-revision, now asserted NOT-purged rather than default-purged) and the success path (an async-resolved entry's own policy), and the suite's own `throw error;` rethrow line reads as hit from an unrelated disposal-race elsewhere in the full run.",
-        lines: new Set([72]),
         requireUncoveredLines: true,
       },
     ],

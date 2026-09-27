@@ -1,4 +1,6 @@
+/* oxlint-disable max-lines -- Worker lifecycle, leases, and routing share one cohesive registry state machine. */
 // Server-side worker tracking and pluggable routing policies.
+import { workerDeploymentRolloutBucket } from './deployment-routing.ts';
 import {
   DeploymentConsistencyGuard,
   type DeploymentConsistencyResult,
@@ -20,6 +22,7 @@ import {
   pickFairShare,
   pickLeastLoaded,
   pickRoundRobin,
+  workerMatchesRequirement,
 } from './registry/routing.ts';
 import {
   deploymentHealth,
@@ -287,22 +290,51 @@ export class WorkerRegistry {
    */
   hasEligibleWorker(
     activityName: string,
-    options: Pick<RoutingOptions, 'queue' | 'excludeWorkerIds'> = {},
+    options: RoutingOptions = {},
     include: (worker: WorkerInfo) => boolean = () => true,
   ): boolean {
     return this.#eligibleWorkers(activityName, options).some(include);
   }
 
-  #eligibleWorkers(
-    activityName: string,
-    { queue, excludeWorkerIds }: Pick<RoutingOptions, 'queue' | 'excludeWorkerIds'>,
-  ): WorkerInfo[] {
-    return [...this.#workers.values()].filter(
-      (worker) =>
-        !excludeWorkerIds?.has(worker.id) &&
-        matchesWorkerCapabilities(worker, activityName, queue) &&
-        !isWorkerDraining(worker, this.#deploymentDrainStates),
+  #eligibleWorkers(activityName: string, options: RoutingOptions): WorkerInfo[] {
+    return [...this.#workers.values()].filter((worker) =>
+      this.#workerIsEligible(worker, activityName, options),
     );
+  }
+
+  #workerIsEligible(
+    worker: WorkerInfo,
+    activityName: string,
+    {
+      queue,
+      excludeWorkerIds,
+      executionRequirement,
+      deploymentRouting,
+      workflowId,
+    }: RoutingOptions,
+  ): boolean {
+    if (excludeWorkerIds?.has(worker.id)) return false;
+    if (!matchesWorkerCapabilities(worker, activityName, queue)) return false;
+    if (isWorkerDraining(worker, this.#deploymentDrainStates)) return false;
+    if (
+      executionRequirement !== undefined &&
+      !workerMatchesRequirement(worker, executionRequirement, activityName)
+    )
+      return false;
+    if (deploymentRouting !== undefined) {
+      const bucket = workerDeploymentRolloutBucket(
+        deploymentRouting.deploymentName,
+        workflowId ?? activityName,
+        deploymentRouting.generation,
+      );
+      const selectedBuild =
+        deploymentRouting.rampingBuildId !== undefined && bucket < deploymentRouting.rampBasisPoints
+          ? deploymentRouting.rampingBuildId
+          : deploymentRouting.currentBuildId;
+      if (worker.manifest.deployment.name !== deploymentRouting.deploymentName) return false;
+      if (worker.manifest.deployment.buildId !== selectedBuild) return false;
+    }
+    return true;
   }
 
   /** Dispatch to the configured routing policy. Called only when `eligible` is non-empty. */

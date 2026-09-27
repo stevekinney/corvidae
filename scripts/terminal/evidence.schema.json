@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://corvidae.lostgradient.internal/terminal/evidence.schema.json",
+  "$defs": {
+    "metric": {
+      "type": "object",
+      "required": ["value", "unit"],
+      "properties": {
+        "value": { "type": "number" },
+        "unit": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "cell": {
+      "type": "object",
+      "required": ["id", "passed", "observations", "versions", "metrics"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "passed": { "type": "boolean" },
+        "observations": { "type": "array", "items": { "type": "string" } },
+        "versions": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "minProperties": 1
+        },
+        "metrics": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/metric" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "reportKind",
+    "sourceSha",
+    "runId",
+    "observedAt",
+    "expectedCellIds",
+    "cells",
+    "passed"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reportKind": { "enum": ["runtime", "engine"] },
+    "sourceSha": { "type": "string", "minLength": 7 },
+    "runId": { "type": "string", "minLength": 1 },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "expectedCellIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "cells": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cell" },
+      "minItems": 1
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version", "passed", "cells"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "passed": { "type": "boolean" },
+          "status": { "enum": ["ready", "unavailable"] },
+          "preferred": { "type": "boolean" },
+          "diagnostics": { "type": "array", "items": { "type": "string" } },
+          "provenance": { "type": "object" },
+          "cells": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/cell" },
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "selectedEngine": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      },
+      "required": ["name", "version"],
+      "additionalProperties": false
+    },
+    "passed": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

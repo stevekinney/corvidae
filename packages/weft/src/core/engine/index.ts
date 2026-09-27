@@ -3050,6 +3050,12 @@ export class Engine<
         // (EngineDisposedError) — that rejection is the intended outcome, not a
         // failure to surface, so swallow it here.
         await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
+        // Disposal does not cancel a retention sweep the interval already
+        // started; the sweep stops at its next disposal check. Await it so no
+        // sweep read or write outlives this promise, and so it has settled
+        // before the lease handoff below. It never rejects: `runRetentionSweep`
+        // reports its own failures.
+        await getInternals(this).retentionSweepInFlight;
         // Clean deploy handoff: release the ownership lease as the LAST durable
         // action, AFTER queued starts have drained and all write paths are down, so
         // the incoming instance cannot acquire and recover while this one is still
@@ -3072,6 +3078,9 @@ export class Engine<
     }
     this[Symbol.dispose]();
     await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
+    // An engine already disposed synchronously may still have a sweep in
+    // flight; settle it here too (see the first-disposal branch above).
+    await getInternals(this).retentionSweepInFlight;
     return (await this.#synchronousDisposeResult) ?? true;
   }
 

@@ -105,6 +105,9 @@ function validateTaskEnvelope(context: ServerContext, task: TaskDispatch): boole
 
 /**
  * Resolve routing options from the task envelope and sticky affinity state.
+ * An option added here that narrows which workers are eligible belongs in
+ * `long-poll-drain.ts`'s `webSocketWorkerCanTake` too, so the drain never
+ * withdraws a hint this routing would refuse.
  */
 function buildRoutingOptions(
   context: ServerContext,

@@ -221,6 +221,53 @@ describe('drainLongPollQueue', () => {
     ).toEqual(notYetAvailable);
   });
 
+  it('keeps draining past a hint whose dispatch does not land', async () => {
+    const context = contextWithIdleWebSocketWorker();
+    context.workerSockets.set('idle-worker', { send: () => 1 } as never);
+    const options = minimalServeOptions();
+    const queuedRecord = (operationId: string, availableAt: number) =>
+      ({
+        recordVersion: 1,
+        operationId,
+        workflowType: 'test',
+        workflowExecutionToken: 'token-1',
+        activityName: ACTIVITY,
+        queue: 'default',
+        input: null,
+        headers: {},
+        visibilityTimeoutMilliseconds: 30_000,
+        createdAt: 1_000,
+        generation: 1,
+        state: 'queued',
+        attempt: 1,
+        availableAt,
+        firstQueuedAt: 1_000,
+        lastQueuedAt: 1_000,
+        retryCount: 0,
+        requeueCount: 0,
+      }) satisfies RemoteTaskRecord;
+    await options.engine.storage.put(
+      taskLedgerKey('backing-off'),
+      encodeRemoteTaskRecord(queuedRecord('backing-off', Date.now() + 60_000)),
+    );
+    await options.engine.storage.put(
+      taskLedgerKey('claimable'),
+      encodeRemoteTaskRecord(queuedRecord('claimable', 0)),
+    );
+    context.taskQueue.enqueue('default', hint('backing-off'));
+    context.taskQueue.enqueue('default', hint('claimable'));
+
+    await drainLongPollQueue(context, options, 'default');
+
+    expect(context.registry.isAssigned('claimable')).toBe(true);
+    expect(
+      decodeRemoteTaskRecord(await options.engine.storage.get(taskLedgerKey('claimable')))?.state,
+    ).toBe('leased');
+    expect(context.taskQueue.peekPending('default').map((task) => task.operationId)).toEqual([
+      'backing-off',
+    ]);
+  });
+
   it('folds a trigger that arrives mid-drain into the running drain', async () => {
     const context = contextWithIdleWebSocketWorker();
     const options = minimalServeOptions();

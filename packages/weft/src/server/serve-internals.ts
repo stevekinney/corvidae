@@ -10,6 +10,7 @@ import { getEnginePayloadSizeMaxBytes } from '../core/engine/payload-size-policy
 import { createMcpSessionManager } from '../mcp/session.ts';
 import { createMetricsCollectorExporter, MetricsCollector } from '../observability/metrics.ts';
 import { resolveServerEnvironment } from '../runtime/environment-configuration.ts';
+import { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import { WorkerRegistry } from '../worker/registry.ts';
 import {
   buildTLSOptions,
@@ -260,6 +261,7 @@ export function buildServerContext(
       ? { schedulingPolicy: options.schedulingPolicy }
       : undefined,
   );
+  const workerDeploymentCatalog = new WorkerDeploymentCatalog(options.engine.storage);
   // Registry-erase the widened `ServeOptions.engine` back to the plain
   // default `Engine` these internal helpers expect — see the field's JSDoc /
   // #708. Every helper below only exercises registry-erased `Engine`
@@ -303,6 +305,7 @@ export function buildServerContext(
       workerRegistry,
       taskQueue,
       metricsCollector: serverMetricsCollector,
+      workerDeploymentCatalog,
       ...(options.operations === undefined ? {} : { additionalOperations: options.operations }),
     }),
     liveRestBindings: createLiveRestBindings(),

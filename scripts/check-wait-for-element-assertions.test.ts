@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative } from 'node:path';
 import ts from 'typescript';
-import { findWaitForElementAssertionViolations } from './check-wait-for-element-assertions.ts';
+import {
+  collectTestFiles,
+  findWaitForElementAssertionViolations,
+} from './check-wait-for-element-assertions';
 
 function inspect(source: string): string[] {
   const parsed = ts.createSourceFile('fixture.test.ts', source, ts.ScriptTarget.Latest, true);
@@ -95,5 +101,33 @@ describe('violation reporting', () => {
     expect(findWaitForElementAssertionViolations(parsed)).toEqual([
       { line: 3, text: 'expect(queryMenu()).toBeNull()' },
     ]);
+  });
+});
+
+describe('test file discovery', () => {
+  test('reaches nested workspace tests and skips installed and generated directories', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'wait-for-scan-'));
+    try {
+      for (const path of [
+        'components/weft-ui/src/routes/list.test.ts',
+        'components/chat/scripts/tool.test.ts',
+        'components/chat/src/helper.ts',
+        'components/chat/node_modules/dependency/index.test.ts',
+        'components/chat/.svelte-kit/generated.test.ts',
+        'applications/desktop/build/bundled.test.ts',
+        'packages/weft/coverage/report.test.ts',
+      ]) {
+        mkdirSync(dirname(join(directory, path)), { recursive: true });
+        writeFileSync(join(directory, path), '');
+      }
+      const paths: string[] = [];
+      collectTestFiles(directory, paths);
+      expect(paths.map((path) => relative(directory, path)).toSorted()).toEqual([
+        'components/chat/scripts/tool.test.ts',
+        'components/weft-ui/src/routes/list.test.ts',
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
