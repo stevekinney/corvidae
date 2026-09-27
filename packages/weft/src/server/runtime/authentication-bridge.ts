@@ -387,19 +387,6 @@ export function createServerWebSocketHandlers(
 
       const workerId = ws.data.workerId;
       if (workerId) {
-        // Shutdown interlock (COR-1343): `registerStackDisposers`' timer-
-        // clearing disposer sets `context.stopping` and clears
-        // `context.pendingWorkerRequeues` FIRST (it is registered last, so
-        // it is disposed first), and only LATER-disposed steps —
-        // `shutdownAllWorkers`, then the Bun server's own forced socket
-        // close — actually close each worker's socket. A close event
-        // reaching this handler once `stopping` is set is therefore always
-        // part of that later teardown, never a live disconnect a fresh
-        // grace-period timer should track — and nothing would ever clear
-        // such a timer again, since the one disposer that does already
-        // ran. Bail out before either scheduling one or running the
-        // inline (grace period 0) requeue against already-torn-down state.
-        if (context.stopping) return;
         // Stale-socket guard: if the worker already reconnected with a fresh
         // socket, this close event is for the displaced connection — skip
         // cleanup entirely. Object identity is sufficient because
@@ -420,6 +407,17 @@ export function createServerWebSocketHandlers(
           void runWorkerDisconnectRequeue(context, options, workerId, cleanupWorkflowIndex);
           return;
         }
+
+        // Shutdown interlock (COR-1343): `registerStackDisposers`' timer-
+        // clearing disposer sets `context.stopping` and clears
+        // `context.pendingWorkerRequeues` FIRST (it is registered last, so it
+        // is disposed first); only LATER-disposed steps (`shutdownAllWorkers`,
+        // then the Bun server's own forced socket close) close each worker's
+        // socket. A grace-period timer armed by such a close would never be
+        // cleared again, so none is armed once `stopping` is set. Only this
+        // timer branch is gated: the grace-0 inline requeue above keeps its
+        // existing behaviour during shutdown.
+        if (context.stopping) return;
 
         // Cancel any previously-scheduled requeue for this worker before
         // scheduling a new one (defensive — close should only fire once per
