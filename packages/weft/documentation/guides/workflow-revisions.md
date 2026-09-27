@@ -129,6 +129,14 @@ Once a pointer exists, omitting `expectedGeneration` returns `expected-generatio
 
 By default, compatibility requires the same name, supported manifest version, equal payload contract hash, equal workflow version, and exact revision. `policy: { requireExactRevision: false }` relaxes only the last check. It does not permit payload-contract drift, version ranges, or automatic schema migration. Review an `incompatible` result's `verdict.reasons` before changing policy.
 
+## Conditional refresh
+
+`engine.workflows.registerRefreshSource()` and `engine.workflows.refresh()` expose `WorkflowRefreshCoordinator` through the engine lifecycle for hosts that obtain immutable workflow artifacts from a registry. The host supplies a source fetcher and a candidate warmer; Weft sends the last ETag, accepts `304 Not Modified` only after a validated prior artifact, bounds artifact size, verifies the SHA-256 content digest and `(name, revision)` identity, validates the runtime, cryptographically binds the manifest/identity/runtime proof to the downloaded bytes, warms the candidate, and installs it through the durable catalog. Concurrent refresh calls share a request only when their activation and generation-fence options are semantically equivalent.
+
+Refresh never changes routing by default. Pass `activate: 'if-compatible'` with the generation returned by `getActive()` to request guarded activation; use `activate: 'never'` (the default) to install and warm a candidate without changing the active pointer. A stale generation or incompatible contract is returned as an installed-but-not-activated result with the catalog's structured refusal, so a refresh cannot overwrite a newer activation.
+
+Polling is disabled unless `engine.workflows.startRefreshPolling()` is called. Serverless hosts should call `engine.workflows.runRefreshMaintenance()` from their alarm or Cron handler and await it before starting another cycle. Engine disposal aborts blocked fetch and warm operations and awaits in-flight refreshes, so shutdown cannot leave a refresh capable of activating after disposal. `refreshDiagnostics()` exposes bounded state, revision, digest, generation, ETag, and the last failure for operator telemetry.
+
 ## What runs after activation
 
 Lazy execution resolves a registered source for the selected revision. New runs persist the resolved revision during admission; recovery resolves that persisted revision rather than substituting whichever source is active now. Keep old source descriptors and loader capabilities available for as long as their runs can recover.

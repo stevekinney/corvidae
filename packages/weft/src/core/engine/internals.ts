@@ -442,6 +442,8 @@ export interface EngineInternals {
    * directly.
    */
   workflowCatalog: import('../catalog/index.ts').WorkflowCatalog | null;
+  /** Opt-in conditional refresh coordinator owned by this engine lifecycle. */
+  workflowRefreshCoordinator: import('../catalog/index.ts').WorkflowRefreshCoordinator | null;
   /** Workflow names `commitWorkflowDefinition` (`registration.ts`) has queued for catalog install+activate since the last drain — `engine.register()` stays synchronous (it cannot itself build a manifest) and defers to the next `ensureWorkflowCatalogReady` call. */
   pendingCatalogInstalls: string[];
   /** Whether {@link workflowCatalog} has been restored from storage at least once. */
