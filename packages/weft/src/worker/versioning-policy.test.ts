@@ -115,10 +115,17 @@ describe('workflow worker versioning policy', () => {
 
   it('derives a complete binding from an accepted worker execution identity', () => {
     expect(bindingFromExecution({
+      workerId: 'worker-1',
       deploymentName: 'orders',
       buildId: 'build-1',
       artifactDigest: 'sha256:artifact',
       manifestDigest: 'sha256:manifest',
+      protocolVersion: 1,
+      sdkVersion: 'weft-test',
+      runtimeName: 'bun',
+      runtimeVersion: '1.4.2',
+      workflowType: 'orders',
+      activityName: 'charge',
       workflowRevision: 'revision-1',
       activityContractHash: 'sha256:contract',
     }, 'workflow-1', 'orders', 'charge', 'checkpoint-1', 42)).toMatchObject({
