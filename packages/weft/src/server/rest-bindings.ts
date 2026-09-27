@@ -80,10 +80,7 @@ import {
   drainDeploymentOperation,
   drainWorkerOperation,
 } from './operations/worker-drain.ts';
-import {
-  createWorkerStartOverridePreviewOperation,
-  workerStartOverridePreviewRestBinding,
-} from './operations/worker-start-override-preview.ts';
+import { createWorkerStartOverridePreviewOperation } from './operations/worker-start-override-preview.ts';
 import type { RestBinding } from './rest-binding.ts';
 import type { TaskQueue } from './task-queue.ts';
 
@@ -134,7 +131,6 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
     workerDeploymentPromoteRestBinding,
     workerDeploymentRollbackRestBinding,
     workerDeploymentPreviewRestBinding,
-    workerStartOverridePreviewRestBinding,
   ];
 }
 
@@ -319,7 +315,9 @@ export function createLiveOperationRegistry(
     ...STATIC_OPERATIONS.map((operation) =>
       operation.name === 'weft.workflows.start'
         ? buildStartWorkflowOperationForRegistry(resolved)
-        : operation,
+        : operation.name === 'weft.worker.startoverrides.preview'
+          ? buildWorkerStartOverridePreviewOperation(resolved)
+          : operation,
     ),
     buildTaskDiagnosticsOperationForRegistry(resolved),
     buildSystemMetricsOperation(resolved),
@@ -332,7 +330,6 @@ export function createLiveOperationRegistry(
     buildWorkerDiagnosticsOperationForRegistry(resolved),
     buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
     ...buildWorkerDeploymentRoutingOperations(resolved),
-    buildWorkerStartOverridePreviewOperation(resolved),
     ...(resolved.additionalOperations ?? []),
   ]);
 }
