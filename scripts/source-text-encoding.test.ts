@@ -10,6 +10,14 @@ const ignoredPathSegment =
 const NUL = 0x00;
 
 /**
+ * Files read at once. The scan covers several thousand files, and reading them
+ * one at a time spent seconds waiting on the filesystem, enough on a loaded
+ * host to outlast the per-test timeout with nothing wrong. A bounded batch
+ * keeps the reads overlapped without exhausting file descriptors.
+ */
+const READ_BATCH_SIZE = 64;
+
+/**
  * A source file containing a raw NUL byte is not a text file, and the tools
  * that read source treat it accordingly: `grep` classifies it as binary and
  * silently reports no matches, and `git diff` prints "Binary files differ"
@@ -50,10 +58,16 @@ async function sourceFiles(): Promise<string[]> {
 
 function nulOffsets(bytes: Uint8Array): number[] {
   const offsets: number[] = [];
-  for (let index = 0; index < bytes.length; index += 1) {
-    if (bytes[index] === NUL) offsets.push(index);
+  for (let index = bytes.indexOf(NUL); index !== -1; index = bytes.indexOf(NUL, index + 1)) {
+    offsets.push(index);
   }
   return offsets;
+}
+
+async function offenderReport(file: string): Promise<string | null> {
+  const offsets = nulOffsets(await Bun.file(file).bytes());
+  if (offsets.length === 0) return null;
+  return `${file.slice(root.length + 1)} (${offsets.length} at ${offsets.join(', ')})`;
 }
 
 describe('source text encoding', () => {
@@ -62,13 +76,12 @@ describe('source text encoding', () => {
     expect(files.length).toBeGreaterThan(0);
 
     const offenders: string[] = [];
-    for (const file of files) {
-      const bytes = new Uint8Array(await Bun.file(file).arrayBuffer());
-      const offsets = nulOffsets(bytes);
-      if (offsets.length > 0) {
-        offenders.push(
-          `${file.slice(root.length + 1)} (${offsets.length} at ${offsets.join(', ')})`,
-        );
+    for (let start = 0; start < files.length; start += READ_BATCH_SIZE) {
+      const reports = await Promise.all(
+        files.slice(start, start + READ_BATCH_SIZE).map(offenderReport),
+      );
+      for (const report of reports) {
+        if (report !== null) offenders.push(report);
       }
     }
 
