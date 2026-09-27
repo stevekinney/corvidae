@@ -7,12 +7,22 @@ import {
   checkCoverage,
   CORVIDAE_COVERAGE_ALLOWANCES,
   COVERAGE_ALLOWANCES,
+  formatCoverageFailureReason,
   listCoverageTestFiles,
   parseLcov,
   readCoveragePathIgnorePatterns,
   readTestScriptPathIgnorePatterns,
   runCoverageShard,
 } from './check-coverage.ts';
+
+/** An already-closed byte stream, standing in for a spawned child's empty stdout/stderr. */
+function closedByteStream(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.close();
+    },
+  });
+}
 
 describe('listCoverageTestFiles', () => {
   it('discovers only repository-owned test files without depending on ripgrep', async () => {
@@ -233,9 +243,7 @@ describe('parseLcov', () => {
       exitCode: 1,
       lcovPath: 'coverage/lcov.info',
     }));
-    const errorSpy = mock((_message?: unknown, ..._args: unknown[]) => {});
-
-    using consoleErrorSpy = spyOn(console, 'error').mockImplementation(errorSpy);
+    using stderrWriteSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     await expect(
       checkCoverage({
@@ -250,7 +258,7 @@ describe('parseLcov', () => {
       coverageDirectory: 'coverage',
       testFiles: ['src/example.test.ts'],
     });
-    expect(consoleErrorSpy).toHaveBeenCalledWith('Coverage execution failed.');
+    expect(stderrWriteSpy).toHaveBeenCalledWith('Coverage execution failed.\n');
   });
 
   it('propagates a non-zero child exit through the real coverage shard runner', async () => {
@@ -267,7 +275,7 @@ describe('parseLcov', () => {
         },
       }),
     }));
-    using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+    using stderrWriteSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     await expect(
       runCoverageShard(
@@ -283,7 +291,388 @@ describe('parseLcov', () => {
       lcovPath: 'coverage/synthetic/lcov.info',
     });
     expect(spawnCoverageProcess).toHaveBeenCalledTimes(1);
-    expect(consoleErrorSpy).toHaveBeenCalledWith('synthetic coverage shard exited with code 7.');
+    expect(stderrWriteSpy).toHaveBeenCalledWith('synthetic coverage shard exited with code 7.\n');
+  });
+
+  it('delivers a large failure tail and every diagnostic after it through a piped stderr (COR-1329)', async () => {
+    // A real child process with piped stderr, because the defect only exists there:
+    // `process.exit()` discarded whatever the pipe had not yet accepted, and a
+    // `console.error` issued behind a large queued `process.stderr.write` was dropped,
+    // so a failing run's tail was cut mid-line and its stage reason never arrived.
+    const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+
+    const payloadBytes = 2 * 1024 * 1024;
+    // `checkCoverage` removes `coverage/` under its working directory, so the child runs
+    // in a scratch directory rather than this package.
+    const root = await mkdtemp(join(tmpdir(), 'weft-cov-pipe-'));
+    try {
+      const entry = join(root, 'failing-coverage-cli.ts');
+      await writeFile(
+        entry,
+        [
+          `import { runCheckCoverageCli, runCoverageShard } from ${JSON.stringify(new URL('./check-coverage.ts', import.meta.url).pathname)};`,
+          `const payload = new TextEncoder().encode('x'.repeat(${String(payloadBytes)}));`,
+          `const stream = (bytes) => new ReadableStream({ start(controller) { if (bytes) controller.enqueue(bytes); controller.close(); } });`,
+          `await runCheckCoverageCli({`,
+          `  listCoverageTestFiles: async () => ['src/example.test.ts'],`,
+          `  runCoverageShard: (shard) => runCoverageShard(shard, {`,
+          `    spawnCoverageProcess: () => ({ exited: Promise.resolve(1), signalCode: null, stdout: stream(payload), stderr: stream() }),`,
+          `  }),`,
+          `});`,
+          '',
+        ].join('\n'),
+      );
+
+      const child = Bun.spawn(['bun', entry], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+      const [stderr, exitCode] = await Promise.all([
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+
+      expect(exitCode).toBe(1);
+      // `toBe(true)` rather than `toContain`, so a failure does not print 2 MiB of payload.
+      expect(stderr.includes('x'.repeat(payloadBytes))).toBe(true);
+      expect(stderr).toContain('exiting non-zero at stage "child exit"');
+      expect(stderr.endsWith('Coverage execution failed.\n')).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe('formatCoverageFailureReason', () => {
+  it('names the stage and detail with no child suffix when no child was involved', () => {
+    expect(
+      formatCoverageFailureReason(
+        'missing report',
+        'expected an lcov report at coverage/lcov.info.',
+      ),
+    ).toBe(
+      'check-coverage: exiting non-zero at stage "missing report": expected an lcov report at coverage/lcov.info.',
+    );
+  });
+
+  it('reports the child exit code and "none" for signal when the child exited without one', () => {
+    expect(
+      formatCoverageFailureReason('child exit', 'coverage coverage shard exited with code 7.', {
+        exitCode: 7,
+        signal: null,
+      }),
+    ).toBe(
+      'check-coverage: exiting non-zero at stage "child exit": coverage coverage shard exited with code 7. (child exit code 7, signal none)',
+    );
+  });
+
+  it('reports the signal name and "none" for exit code when the child was signaled', () => {
+    expect(
+      formatCoverageFailureReason(
+        'child signal',
+        'coverage coverage shard was terminated by signal SIGKILL.',
+        { exitCode: null, signal: 'SIGKILL' },
+      ),
+    ).toBe(
+      'check-coverage: exiting non-zero at stage "child signal": coverage coverage shard was terminated by signal SIGKILL. (child exit code none, signal SIGKILL)',
+    );
+  });
+});
+
+describe('runCoverageShard failure diagnostics', () => {
+  it('reports the spawn stage, without crashing, when starting the child throws', async () => {
+    const spawnCoverageProcess = mock(() => {
+      throw new Error('spawn ENOENT');
+    });
+    using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      runCoverageShard(
+        {
+          name: 'synthetic',
+          coverageDirectory: 'coverage/synthetic',
+          testFiles: ['src/example.test.ts'],
+        },
+        { spawnCoverageProcess },
+      ),
+    ).resolves.toEqual({
+      exitCode: 1,
+      lcovPath: 'coverage/synthetic/lcov.info',
+    });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exiting non-zero at stage "spawn"'),
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('spawn ENOENT'));
+  });
+
+  it('reports the child-signal stage and signal name when the child was terminated by a signal', async () => {
+    const spawnCoverageProcess = mock(() => ({
+      exited: Promise.resolve(143),
+      signalCode: 'SIGTERM' as NodeJS.Signals,
+      stderr: closedByteStream(),
+      stdout: closedByteStream(),
+    }));
+    using stderrWriteSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await expect(
+      runCoverageShard(
+        {
+          name: 'synthetic',
+          coverageDirectory: 'coverage/synthetic',
+          testFiles: ['src/example.test.ts'],
+        },
+        { spawnCoverageProcess },
+      ),
+    ).resolves.toEqual({
+      exitCode: 143,
+      lcovPath: 'coverage/synthetic/lcov.info',
+    });
+    expect(stderrWriteSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exiting non-zero at stage "child signal"'),
+    );
+    expect(stderrWriteSpy).toHaveBeenCalledWith(expect.stringContaining('SIGTERM'));
+  });
+
+  it('reports the child-exit stage, not child-signal, when the child exits with no signal', async () => {
+    const spawnCoverageProcess = mock(() => ({
+      exited: Promise.resolve(7),
+      signalCode: null,
+      stderr: closedByteStream(),
+      stdout: closedByteStream(),
+    }));
+    using stderrWriteSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await runCoverageShard(
+      {
+        name: 'synthetic',
+        coverageDirectory: 'coverage/synthetic',
+        testFiles: ['src/example.test.ts'],
+      },
+      { spawnCoverageProcess },
+    );
+
+    expect(stderrWriteSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exiting non-zero at stage "child exit"'),
+    );
+    expect(stderrWriteSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('stage "child signal"'),
+    );
+  });
+
+  /**
+   * Registers the shared handler for both signals, so proving one wiring proves both;
+   * this asserts each is independently exercised without duplicating the whole scenario.
+   */
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    it(`forwards ${signal} to the running child, exits non-zero via the injected hook, and names the stage and pid`, async () => {
+      let resolveExited: (code: number) => void = () => {};
+      const exited = new Promise<number>((resolve) => {
+        resolveExited = resolve;
+      });
+      const kill = mock((_signal?: number | NodeJS.Signals) => {
+        resolveExited(143);
+      });
+      const exitProcess = mock((_code: number) => {});
+      const spawnCoverageProcess = mock(() => ({
+        pid: 4242,
+        kill,
+        exited,
+        stderr: closedByteStream(),
+        stdout: closedByteStream(),
+      }));
+      using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+      // Barrier: wait for the handler to actually be registered via `process.on`
+      // (an observed event) rather than a timing margin, before emitting the signal.
+      let notifyRegistered: () => void = () => {};
+      const registered = new Promise<void>((resolve) => {
+        notifyRegistered = resolve;
+      });
+      const originalProcessOn = process.on.bind(process);
+      using processOnSpy = spyOn(process, 'on').mockImplementation(((
+        event: string,
+        listener: (...args: unknown[]) => void,
+      ) => {
+        const result = originalProcessOn(event, listener);
+        if (event === signal) notifyRegistered();
+        return result;
+      }) as typeof process.on);
+
+      const runPromise = runCoverageShard(
+        {
+          name: 'synthetic',
+          coverageDirectory: 'coverage/synthetic',
+          testFiles: ['src/example.test.ts'],
+        },
+        { spawnCoverageProcess, exitProcess },
+      );
+
+      await registered;
+      // Node/Bun fire a real signal as `process.emit(signal, signal)` — the signal
+      // name is both the event and its argument — so mirror that exactly here.
+      process.emit(signal, signal);
+      await runPromise;
+
+      expect(kill).toHaveBeenCalledWith(signal);
+      expect(exitProcess).toHaveBeenCalledWith(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `received ${signal} while running the "synthetic" coverage shard (child pid 4242)`,
+        ),
+      );
+      void processOnSpy;
+    });
+  }
+});
+
+/**
+ * Write `content` to a fresh temp lcov file outside `coverage/` — `checkCoverage`
+ * itself `rm -rf coverage`s at the top of every run, which would delete a fixture
+ * planted there before the stubbed shard ever got to "read" it — run `use` against
+ * its path, then remove the temp directory.
+ */
+async function withTempLcovFixture<T>(
+  content: string,
+  use: (lcovPath: string) => Promise<T>,
+): Promise<T> {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const root = await mkdtemp(join(tmpdir(), 'weft-coverage-fixture-'));
+  try {
+    const lcovPath = join(root, 'lcov.info');
+    await Bun.write(lcovPath, content);
+    return await use(lcovPath);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+describe('checkCoverage failure diagnostics', () => {
+  const listOneTestFile = async () => ['src/example.test.ts'];
+
+  it('reports the missing-report stage when the lcov report does not exist', async () => {
+    const runCoverageShardStub = mock(async () => ({
+      exitCode: 0,
+      lcovPath: 'coverage/synthetic-missing/lcov.info',
+    }));
+    using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      checkCoverage({
+        listCoverageTestFiles: listOneTestFile,
+        runCoverageShard: runCoverageShardStub,
+      }),
+    ).resolves.toBe(false);
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('exiting non-zero at stage "missing report"'),
+    );
+  });
+
+  it('reports the empty-report stage when the lcov report instruments zero lines', async () => {
+    await withTempLcovFixture(
+      'SF:src/synthetic-empty-fixture.ts\nFNF:0\nFNH:0\nend_of_record\n',
+      async (lcovPath) => {
+        const runCoverageShardStub = mock(async () => ({ exitCode: 0, lcovPath }));
+        using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(
+          checkCoverage({
+            listCoverageTestFiles: listOneTestFile,
+            runCoverageShard: runCoverageShardStub,
+          }),
+        ).resolves.toBe(false);
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('exiting non-zero at stage "empty report"'),
+        );
+      },
+    );
+  });
+
+  it('reports the parse-failure stage when the lcov report fails to parse', async () => {
+    // The same allowance-violation fixture `parseLcov` is proven to throw on above:
+    // a hit on a line `COVERAGE_ALLOWANCES` only excuses while uncovered.
+    await withTempLcovFixture(
+      [
+        'SF:src/core/context/parallel-operations.ts',
+        'FNF:0',
+        'FNH:0',
+        'DA:19,1',
+        'end_of_record',
+      ].join('\n'),
+      async (lcovPath) => {
+        const runCoverageShardStub = mock(async () => ({ exitCode: 0, lcovPath }));
+        using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(
+          checkCoverage({
+            listCoverageTestFiles: listOneTestFile,
+            runCoverageShard: runCoverageShardStub,
+          }),
+        ).resolves.toBe(false);
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('exiting non-zero at stage "parse failure"'),
+        );
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('points at a covered line'),
+        );
+      },
+    );
+  });
+
+  it('reports the coverage-gap stage alongside the existing gaps list when lines are uncovered', async () => {
+    await withTempLcovFixture(
+      [
+        'SF:src/synthetic-coverage-gap-fixture.ts',
+        'FNF:0',
+        'FNH:0',
+        'DA:1,0',
+        'end_of_record',
+      ].join('\n'),
+      async (lcovPath) => {
+        const runCoverageShardStub = mock(async () => ({ exitCode: 0, lcovPath }));
+        using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+        using consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {});
+
+        await expect(
+          checkCoverage({
+            listCoverageTestFiles: listOneTestFile,
+            runCoverageShard: runCoverageShardStub,
+          }),
+        ).resolves.toBe(false);
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('exiting non-zero at stage "coverage gap"'),
+        );
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Files with gaps'));
+      },
+    );
+  });
+
+  it('prints only the existing summary lines on a fully covered run — no new diagnostic noise', async () => {
+    await withTempLcovFixture(
+      ['SF:src/synthetic-passing-fixture.ts', 'FNF:1', 'FNH:1', 'DA:1,1', 'end_of_record'].join(
+        '\n',
+      ),
+      async (lcovPath) => {
+        const runCoverageShardStub = mock(async () => ({ exitCode: 0, lcovPath }));
+        using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
+        using consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {});
+
+        await expect(
+          checkCoverage({
+            listCoverageTestFiles: listOneTestFile,
+            runCoverageShard: runCoverageShardStub,
+          }),
+        ).resolves.toBe(true);
+
+        expect(consoleErrorSpy).not.toHaveBeenCalled();
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Lines:'));
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Functions:'));
+      },
+    );
   });
 });
 

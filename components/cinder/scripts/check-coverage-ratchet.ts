@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type CoverageThresholds = {
@@ -212,6 +212,81 @@ function toPackageRootRelativePath(file: string, packageRoot: string): string {
 }
 
 /**
+ * Test support modules sit beside the source they exercise and are named
+ * `<subject>-test-<role>.ts` (`drawer-test-helpers.ts`,
+ * `clipboard-test-support.ts`, `token-contrast-test-readers.ts`). The package
+ * entry never reaches them, which {@link runtimeImportsOfTestSupport} enforces,
+ * so they carry no runtime coverage obligation. The subject prefix is required:
+ * `test-result.ts` is ordinary source.
+ */
+const TEST_SUPPORT_MODULE = /[^/]-test-[a-z]+(?:-[a-z]+)*\.ts$/;
+
+function isTestSupportModule(file: string): boolean {
+  return TEST_SUPPORT_MODULE.test(file);
+}
+
+function isTestOnlySource(packageRelativeFile: string): boolean {
+  return (
+    packageRelativeFile.endsWith('.test.ts') ||
+    packageRelativeFile.endsWith('.spec.ts') ||
+    packageRelativeFile.startsWith('src/test/') ||
+    packageRelativeFile.startsWith('src/lib/test/') ||
+    isTestSupportModule(packageRelativeFile)
+  );
+}
+
+const IMPORT_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"]([^'"]+)['"]/g;
+
+/**
+ * Every import of a test support module on a path reachable from the package
+ * entry. The ratchet excludes test support modules on the promise that only
+ * tests reach them; one reachable from the entry would be uncounted shipped
+ * code, so the gate fails on any. Test fixtures that sit beside source (such
+ * as `_menu-bar-ssr-test.svelte`) may import test support freely because the
+ * entry never reaches them. Package source imports its own modules only by
+ * relative specifier, so the walk follows relative imports.
+ */
+export function runtimeImportsOfTestSupport(
+  packageRoot: string,
+  entry = 'src/index.ts',
+): { file: string; specifier: string }[] {
+  if (!isFile(resolve(packageRoot, entry))) {
+    throw new Error(`Package entry ${entry} does not exist under ${packageRoot}.`);
+  }
+  const imports: { file: string; specifier: string }[] = [];
+  const visited = new Set<string>();
+  const pending = [entry];
+  while (pending.length > 0) {
+    const file = pending.pop()!;
+    if (visited.has(file)) continue;
+    visited.add(file);
+    const source = readFileSync(resolve(packageRoot, file), 'utf8');
+    for (const [, specifier] of source.matchAll(IMPORT_SPECIFIER)) {
+      if (specifier === undefined || !specifier.startsWith('.')) continue;
+      const target = resolveRelativeModule(packageRoot, file, specifier);
+      if (target === undefined) continue;
+      if (isTestSupportModule(target)) imports.push({ file, specifier });
+      else pending.push(target);
+    }
+  }
+  return imports.toSorted((left, right) => left.file.localeCompare(right.file));
+}
+
+function resolveRelativeModule(
+  packageRoot: string,
+  importer: string,
+  specifier: string,
+): string | undefined {
+  const base = posix.join(posix.dirname(importer), specifier);
+  const candidates = [base, base.replace(/\.js$/, '.ts'), `${base}.ts`, `${base}/index.ts`];
+  return candidates.find((candidate) => isFile(resolve(packageRoot, candidate)));
+}
+
+function isFile(path: string): boolean {
+  return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+}
+
+/**
  * Keep the default ratchet focused on package runtime TypeScript that Bun can
  * measure deterministically. Svelte component modules and `.svelte.ts` rune
  * modules are checked by a separate measured gate because Bun's generated
@@ -222,10 +297,7 @@ function toPackageRootRelativePath(file: string, packageRoot: string): string {
 function isOutsideCoverageScope(file: string, scope: CoverageScope, packageRoot: string): boolean {
   const normalizedFile = toPackageRootRelativePath(file, packageRoot);
   if (normalizedFile.startsWith('scripts/')) return true;
-  if (normalizedFile.endsWith('.test.ts') || normalizedFile.endsWith('.spec.ts')) return true;
-  if (normalizedFile.startsWith('src/test/') || normalizedFile.startsWith('src/lib/test/')) {
-    return true;
-  }
+  if (isTestOnlySource(normalizedFile)) return true;
   const isSvelteSource =
     normalizedFile.endsWith('.svelte') || normalizedFile.endsWith('.svelte.ts');
   if (scope === 'runtime') return isSvelteSource;
@@ -552,6 +624,15 @@ export async function main(): Promise<void> {
 
   if (notices.length > 0) {
     console.warn(notices.join('\n'));
+  }
+
+  const supportImports = runtimeImportsOfTestSupport(packageRoot);
+  if (supportImports.length > 0) {
+    failures.push(`${supportImports.length} runtime import(s) of test support modules`);
+    console.error('Runtime source imports test support modules the ratchet excludes:');
+    for (const { file, specifier } of supportImports) {
+      console.error(`  ${file} imports ${specifier}`);
+    }
   }
 
   if (failures.length > 0) {

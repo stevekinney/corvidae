@@ -15,17 +15,21 @@
 
 import { expect, test } from 'bun:test';
 
-test('committed token artifacts match what the generator renders', async () => {
-  const scriptPath = new URL('./generate-artifacts.ts', import.meta.url).pathname;
-  const child = Bun.spawn(['bun', scriptPath, '--check'], {
-    cwd: new URL('../..', import.meta.url).pathname,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
+// COR-1334: the check regenerates every artifact and runs Prettier, which takes seconds on a
+// loaded machine. Running it here, at module scope, keeps that subprocess off bun's five-second
+// per-test clock; the test below only asserts on its settled result.
+const scriptPath = new URL('./generate-artifacts.ts', import.meta.url).pathname;
+const child = Bun.spawn(['bun', scriptPath, '--check'], {
+  cwd: new URL('../..', import.meta.url).pathname,
+  stdout: 'pipe',
+  stderr: 'pipe',
+});
+const [stdout, stderr, exitCode] = await Promise.all([
+  new Response(child.stdout).text(),
+  new Response(child.stderr).text(),
+  child.exited,
+]);
+
+test('committed token artifacts match what the generator renders', () => {
   expect(exitCode, `tokens:check exited ${exitCode}:\n${stdout}${stderr}`).toBe(0);
 });

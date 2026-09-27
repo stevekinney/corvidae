@@ -133,6 +133,23 @@
         "WEFT_TEST_POSTGRES_URL"
       ]
     },
+    "@lostgradient/chat#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"],
+      "env": ["CODEX_CI", "NODE_ENV"]
+    },
+    "@lostgradient/cinder#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"],
+      "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/components/chat/src/**",
+        "$TURBO_ROOT$/components/editor/src/**",
+        "$TURBO_ROOT$/applications/desktop/src/**",
+        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+      ]
+    },
     "@lostgradient/cinder#test": {
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],

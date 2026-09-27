@@ -21,7 +21,7 @@ export function extractTextFromElement(element: Element): string {
 }
 
 export function extractLanguageFromClass(element: Element): string | null {
-  const className = element.properties?.className;
+  const className = element.properties?.['className'];
   if (!Array.isArray(className)) return null;
   for (const cls of className) {
     if (typeof cls !== 'string') continue;

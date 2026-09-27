@@ -105,3 +105,59 @@ No assistive-technology software (VoiceOver, NVDA, JAWS) was run against this pa
 Composes the shared floating-surface treatment (`components/cinder/src/styles/components/_floating-surface.css`'s `cinder-_floating-surface` class — the same class Cinder's own Popover and ChatNavigationRail's preview surface use) for the border, medium radius, raised surface, and elevation shadow, with the wrapper's own padding zeroed so the header/content/footer bands own their padding once. Header and footer are each ≤40px on a fine pointer (6px block padding around a 28px row — the sm Button height and the Close button share that 28px). Title and action icons are the existing 16px (`cinder-icon-sm`) utility, unchanged. Content padding and gap are ≤12px (`--cinder-space-3`). The Close button is 28px on a fine pointer, bumped to the 44px WCAG 2.2 AA touch target under `@media (pointer: coarse)` — the same pointer-aware convention `number-input`'s stepper buttons use — rather than enlarging every desktop icon.
 
 Verified at 320×800 and 1280×720, light and dark, across the five popup cases (insert with selected text, insert without selection, edit an existing link, invalid URL, disabled submit with missing required data) in `scripts/browser-fixtures/tests/markdown-editor-toolbar.playwright.ts`: no horizontal viewport overflow, header/footer height, icon size, close-button size, content padding/gap, and that the initial focus and Close control are reachable, for every case.
+
+## Template placeholders (COR-519)
+
+This section records the implemented `{{path}}` placeholder interaction (COR-526, COR-521, COR-525) and the review it still needs. The interactive route is the `markdown-editor-template-placeholders` browser fixture (`bun run dev:browser-fixtures`), which uses fixed synthetic data; `scripts/browser-fixtures/tests/markdown-editor-template-placeholders.playwright.ts` is its automated Chromium coverage.
+
+### Implemented interaction
+
+Typing `{{` in eligible text opens a listbox named "Placeholders" immediately, in the rich editor and in raw Markdown alike. Focus never leaves the editing element: the ProseMirror element (`role="textbox"`, `aria-multiline="true"`) or the source textarea (implicit textbox, `aria-multiline="true"`) carries `aria-autocomplete="list"` and `aria-haspopup="listbox"` while placeholders are configured and the editor is not readonly, `aria-controls` naming the visible listbox, and `aria-activedescendant` naming the active option. It never gets `aria-expanded`. Options are `role="option"` with `aria-selected`, sit outside the Tab order, and show path, types and description, never a value. Invalid tokens in the rich editor get a wavy underline (a non-color cue that survives forced colors) and a `data-placeholder-validation-reason`; both modes add a visible "Placeholder problems" summary, referenced from the editing element's `aria-describedby` after any IDs the caller passes. Readonly editors show no completion. Preview is a labeled, read-only region; a user-triggered switch to preview moves focus to it, and a programmatic `mode` change never moves focus.
+
+### Keyboard matrix
+
+| Key or action | Rich editor | Raw Markdown (source) |
+| --- | --- | --- |
+| `{{` | Opens the listbox at zero query characters | Same |
+| Letters, digits, `.`, `_` | Filter by case-insensitive path prefix | Same |
+| `ArrowDown` / `ArrowUp` | Move the active option; stop at the first and last | Same |
+| `Enter` | Inserts the active option as one canonical `{{path}}`, replacing the whole token; never during IME composition | Same |
+| `Tab` | Dismisses without inserting and is not consumed; the editor's own Tab binding runs next (meant to indent a list item or move to the next table cell; in Chromium it currently moves focus from a list item, COR-1324) | Dismisses without inserting; focus moves normally |
+| `Escape` | Dismisses and is consumed only while the list is open; a second `Escape` reaches enclosing handlers | Same |
+| `Home`, `End`, `ArrowLeft`, `ArrowRight` | Native caret movement | Same |
+| Mod-Z / Mod-Shift-Z | One undo removes one acceptance | Same, through the explicit source history; Ctrl-Y also redoes on Windows |
+| Pointer or tap on an option | Inserts it; focus stays in the editor | Same |
+| Pointer or touch that scrolls the list, or a cancelled touch | Inserts nothing | Same |
+| Pointer press outside | Dismisses without moving focus | Same |
+
+### Screen-reader announcements
+
+One persistent status region (`${id}-placeholder-status`, `role="status"`, `aria-live="polite"`, `aria-atomic="true"`) announces "N placeholders available" or "1 placeholder available" when the match list changes, "No matching placeholders" when nothing matches, and "path, types, i of N" when the active option moves. The visually hidden instructions (`${id}-placeholder-instructions`) read "Type two opening braces to insert a placeholder. Use arrow keys and Enter to choose; Escape or Tab dismisses." The preview region is labeled "Preview", "Unfilled template preview" or, before the renderer loads, "Loading preview".
+
+### Human design and accessibility review
+
+Chromium automation covers the rows marked in the feature spec. It is not a substitute for this review: Steve Kinney (or a human reviewer he names) performs each row below against the fixture route and records the tested commit, date, versions, observed result and outcome. Until then every result is pending, and COR-519 stays open.
+
+Waiver (2026-09-26): Steve Kinney waived this human design and accessibility review and closed COR-519 without performing it. Every row below is marked "Not performed"; none records an observed result or a pass. The Chromium automation in `markdown-editor-template-placeholders.playwright.ts` remains the only verification of these behaviors, and each row still describes the check a future human review should run.
+
+| Commit | Date | Browser / OS / assistive technology versions | Checklist action | Expected result | Actual result | Reviewer | Pass/fail |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Design review: view the route at desktop and phone widths in light and dark themes, open the listbox in both modes, show preview in each value interpretation, and trigger the diagnostics summary | Controls, editor, listbox rows, diagnostics summary and preview are legible and aligned; nothing overflows horizontally; the popup stays inside the viewport | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Full keyboard matrix in the rich editor (every row of the table above) | Each key behaves as the matrix states; focus never leaves the editor except on Tab | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Full keyboard matrix in raw Markdown (every row of the table above) | Each key behaves as the matrix states; Mod-Z and Mod-Shift-Z replay the explicit history one step at a time | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Rich editor: open the listbox inside the second item of a bulleted list and inside a table cell, then press Tab | Tab dismisses without inserting and the listbox does not reopen; record what Tab then does (indent, next cell, or focus move). Known: in Chromium a list item loses focus instead of indenting (COR-1324) | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | IME in the rich editor: after `{{`, compose a path with a Japanese or Chinese input method, confirm with Enter, then accept with Enter | The list does not refilter or accept during composition; after it ends the list filters, and the next Enter inserts one token | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | IME in raw Markdown: the same composition, then one undo | As in the rich editor; one undo removes the whole composition | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Safari, raw Markdown: accept a placeholder, then use Edit > Undo and Edit > Redo from the menu bar, then Undo from the textarea's context menu | Each command replays the component's source history one step, never native undo as well; the text never doubles or skips | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | VoiceOver and Safari: type `{{` in each mode | VoiceOver speaks "13 placeholders available" (the count of the current list) | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | VoiceOver and Safari: type `{{zz` in each mode | VoiceOver speaks "No matching placeholders"; the text is unchanged | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | VoiceOver and Safari: open the list and press ArrowDown in each mode | VoiceOver speaks the active option as "path, types, i of N" and the option reads as selected | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | VoiceOver and Safari: move the VoiceOver cursor onto an option and activate it (VO-Space) | The option is inserted once and focus returns to the editing element | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | VoiceOver and Safari: focus each editing element with invalid tokens present | VoiceOver reads the instructions and the "Placeholder problems" summary as the description | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Watch the editor while switching into raw Markdown and while opening the listbox for the first time (automation once saw a 16.5 px editor shift under load) | No visible layout shift of the editor or the page | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Choose Preview with the mode control (keyboard and pointer), then change Preview data and Value interpretation | Focus moves to the labeled preview region only on the mode-control choice; changing data, interpretation or definitions never moves focus | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Check Readonly, then reach the mode control with Tab and switch modes with the keyboard | The mode control is reachable and operable; no formatting toolbar or completion appears; preview stays read-only | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Safari with VoiceOver: reload the route in preview (or switch to preview on a cold load) | The inert "Loading preview" region is replaced by the rendered preview without a stale announcement or a focus jump | Not performed | Waived by Steve Kinney | Waived |
+| Not performed (waived) | 2026-09-26 (waiver) | Not performed | Real touch device (iPhone or iPad Safari): tap an option; scroll the list with a finger; start a touch and drag off before lifting | A tap inserts; scrolling or a cancelled touch inserts nothing; focus stays in the editor | Not performed | Waived by Steve Kinney | Waived |
+
+Open blocking findings: none recorded, because the review was waived rather than performed. No row above is a human observation. The known Chromium Tab-in-list defect (COR-1324) remains open outside this project.

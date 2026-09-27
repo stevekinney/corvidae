@@ -1,10 +1,21 @@
 import { getMarkdown, replaceAll } from '@milkdown/kit/utils';
+import { EditorState as ProseMirrorState, Selection } from 'prosemirror-state';
 import { preloadCommandRuntime } from './commands.ts';
 import { notifySelection } from './editor-selection.ts';
 import { createEditorKeymap } from './keymap-plugin.ts';
 import { preloadLazyPluginRuntime } from './milkdown-plugin-runtime.js';
 import { createTemplateCompletionPlugin } from './template-completion-plugin.ts';
 import { createTemplateInvalidDecorationPlugin } from './template-invalid-decoration-plugin.ts';
+import {
+  createPlaceholderConfigurationTransaction,
+  createTemplatePlaceholderConfigurationPlugin,
+  readPlaceholderConfiguration,
+} from './template-placeholder-configuration-plugin.ts';
+import {
+  resolvePlaceholderConfiguration,
+  type PlaceholderEditorConfiguration,
+  type ResolvedPlaceholderConfiguration,
+} from './template-placeholder-configuration.ts';
 
 import { applyReadonlyAria } from './editor-lifecycle.ts';
 import type { EditorConfig, EditorState } from './types.js';
@@ -95,39 +106,72 @@ function withAriaLabel(
   return { ...attributes, 'aria-label': ariaLabel };
 }
 
+/**
+ * Install the placeholder plugins on every editor. They stay inert until a
+ * configuration enables them, so configuration can arrive or change after
+ * mount without recreating the editor.
+ */
 function addOptionalPlugins(
   builder: EditorBuilder,
-  placeholderCompletion: EditorConfig['placeholderCompletion'],
-  placeholderDecoration: EditorConfig['placeholderDecoration'],
+  initialPlaceholders: ResolvedPlaceholderConfiguration,
+  config: Pick<EditorConfig, 'placeholderListboxId' | 'onPlaceholderStatusChange'>,
   plugins: NonNullable<EditorConfig['plugins']>,
 ): EditorBuilder {
-  if (placeholderCompletion) {
-    builder = builder.use(createTemplateCompletionPlugin(() => placeholderCompletion));
-  }
-  if (placeholderDecoration) {
-    builder = builder.use(
-      createTemplateInvalidDecorationPlugin(
-        () => placeholderDecoration.candidates,
-        placeholderDecoration.invalidClassName
-          ? () => placeholderDecoration.invalidClassName!
-          : undefined,
-      ),
-    );
-  }
+  builder = builder
+    .use(createTemplatePlaceholderConfigurationPlugin(initialPlaceholders))
+    .use(
+      createTemplateCompletionPlugin({
+        ...(config.placeholderListboxId ? { listboxId: config.placeholderListboxId } : {}),
+        ...(config.onPlaceholderStatusChange
+          ? { onStatusChange: config.onPlaceholderStatusChange }
+          : {}),
+      }),
+    )
+    .use(createTemplateInvalidDecorationPlugin(initialPlaceholders));
   for (const plugin of plugins) builder = builder.use(plugin);
   return builder;
+}
+
+/**
+ * Tracks which document the change callback has already accounted for.
+ *
+ * Milkdown's listener reports a document change after its own debounce, so a
+ * report can arrive after MarkdownEditor already took that document with
+ * `flushPendingChange()`, or after `resetDocument()` replaced it. Every
+ * document-changing transaction the listener reports advances `version`;
+ * `settle()` records the current version, and a later report is stale while
+ * no newer transaction has happened.
+ */
+function createDocumentVersions() {
+  let version = 0;
+  let settledVersion = -1;
+  return {
+    /** Record a transaction the Milkdown listener will report. */
+    noteTransaction(transaction: { docChanged: boolean; getMeta(key: string): unknown }): void {
+      if (transaction.docChanged && transaction.getMeta('addToHistory') !== false) version += 1;
+    },
+    settle(): void {
+      settledVersion = version;
+    },
+    isSettled(): boolean {
+      return version === settledVersion;
+    },
+  };
 }
 
 function createMarkdownChangeHandler(
   isDestroyed: () => boolean,
   isExternalUpdate: () => boolean,
+  isSettled: () => boolean,
   timer: { value: ReturnType<typeof setTimeout> | null },
   setPendingInternalChange: (pending: boolean) => void,
   onchange: EditorConfig['onchange'],
   debounceMs: number,
 ): (markdown: string, previousMarkdown: string) => void {
   return (markdown, previousMarkdown) => {
-    if (isDestroyed() || isExternalUpdate() || markdown === previousMarkdown) return;
+    if (isDestroyed() || isExternalUpdate() || markdown === previousMarkdown || isSettled()) {
+      return;
+    }
     if (timer.value) clearTimeout(timer.value);
     timer.value = setTimeout(() => {
       if (isDestroyed()) return;
@@ -154,18 +198,21 @@ function configureView(
   readonly: boolean,
   ariaLabel: string | undefined,
   setPendingInternalChange: (pending: boolean) => void,
+  noteTransaction: (transaction: Parameters<EditorState['view']['dispatch']>[0]) => void,
 ): void {
   const dispatchTransaction = view.props.dispatchTransaction;
   view.setProps({
     dispatchTransaction: (transaction) => {
       if (dispatchTransaction) dispatchTransaction.call(view, transaction);
       else view.updateState(view.state.apply(transaction));
+      noteTransaction(transaction);
       if (transaction.docChanged && !isDestroyed() && !isExternalUpdate()) {
         setPendingInternalChange(true);
       }
     },
   });
   if (readonly) view.setProps({ editable: () => false });
+  view.dom.setAttribute('aria-multiline', 'true');
   applyReadonlyAria(view, readonly);
   if (ariaLabel) view.dom.setAttribute('aria-label', ariaLabel);
 }
@@ -179,7 +226,7 @@ export async function createEditor(
   }
 
   const [
-    { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorViewOptionsCtx },
+    { Editor, rootCtx, defaultValueCtx, editorViewCtx, editorViewOptionsCtx, parserCtx },
     { commonmark, listItemKeymap },
     { gfm, tableKeymap },
     { history },
@@ -210,8 +257,7 @@ export async function createEditor(
     onlinkshortcut,
     onCommentShortcut,
     plugins = [],
-    placeholderCompletion,
-    placeholderDecoration,
+    placeholders,
   } = config;
   const resolvedAriaLabel =
     typeof ariaLabel === 'string' && ariaLabel.trim().length > 0 ? ariaLabel.trim() : undefined;
@@ -220,9 +266,11 @@ export async function createEditor(
   let isDestroyed = false;
   const debounceTimeout = { value: null as ReturnType<typeof setTimeout> | null };
   let hasPendingInternalChange = false;
+  const versions = createDocumentVersions();
   const onmarkdownupdated = createMarkdownChangeHandler(
     () => isDestroyed,
     () => isExternalUpdate,
+    () => versions.isSettled(),
     debounceTimeout,
     (pending) => {
       hasPendingInternalChange = pending;
@@ -255,10 +303,11 @@ export async function createEditor(
     onmarkdownupdated,
     onselectionchange,
   );
+  let installedPlaceholders: PlaceholderEditorConfiguration | undefined = placeholders;
   const editor = await addOptionalPlugins(
     builder,
-    placeholderCompletion,
-    placeholderDecoration,
+    resolvePlaceholderConfiguration(placeholders),
+    config,
     plugins,
   ).create();
 
@@ -273,7 +322,16 @@ export async function createEditor(
     (pending) => {
       hasPendingInternalChange = pending;
     },
+    (transaction) => versions.noteTransaction(transaction),
   );
+
+  function cancelPendingChange(): void {
+    if (debounceTimeout.value) {
+      clearTimeout(debounceTimeout.value);
+      debounceTimeout.value = null;
+    }
+    hasPendingInternalChange = false;
+  }
 
   const state: EditorState = {
     editor,
@@ -305,6 +363,50 @@ export async function createEditor(
       } finally {
         isExternalUpdate = false;
       }
+    },
+
+    flushPendingChange() {
+      if (!hasPendingInternalChange) return null;
+      cancelPendingChange();
+      versions.settle();
+      return editor.action(getMarkdown());
+    },
+
+    resetDocument(content: string) {
+      cancelPendingChange();
+      isExternalUpdate = true;
+      try {
+        const doc = editor.ctx.get(parserCtx)(content);
+        if (!doc) return;
+        // A fresh state with the same plugins empties the undo history.
+        view.updateState(
+          ProseMirrorState.create({
+            schema: view.state.schema,
+            doc,
+            plugins: view.state.plugins,
+            selection: Selection.atEnd(doc),
+          }),
+        );
+        // The new state starts from the placeholder configuration the editor
+        // was created with; reinstall the current one without history.
+        view.dispatch(
+          createPlaceholderConfigurationTransaction(
+            view.state,
+            resolvePlaceholderConfiguration(installedPlaceholders),
+          ),
+        );
+      } finally {
+        isExternalUpdate = false;
+        versions.settle();
+      }
+    },
+
+    setPlaceholderConfiguration(next: PlaceholderEditorConfiguration | undefined) {
+      if (isDestroyed || next === installedPlaceholders) return;
+      installedPlaceholders = next;
+      const resolved = resolvePlaceholderConfiguration(next);
+      if (resolved === readPlaceholderConfiguration(view.state)) return;
+      view.dispatch(createPlaceholderConfigurationTransaction(view.state, resolved));
     },
 
     clearPendingTimers() {

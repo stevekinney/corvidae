@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from 'bun:test';
-import { tick } from 'svelte';
+import { flushSync, tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -404,7 +404,7 @@ describe('Autocomplete — keyboard completion', () => {
         cancelable: true,
       });
       window.dispatchEvent(firstEscape);
-      await waitFor(() => expect(getListbox()).toBeNull());
+      await waitFor(() => expect(getListbox()?.outerHTML ?? null).toBeNull());
 
       expect(firstEscape.defaultPrevented).toBe(true);
       expect(parentEscape).not.toHaveBeenCalled();
@@ -620,9 +620,8 @@ describe('Autocomplete — async source handling', () => {
     await fireEvent.input(getInput(container), { target: { value: 'ap' } });
     await tick();
 
-    await waitFor(() => {
-      expect(getListbox()).toBeNull();
-    });
+    flushSync();
+    expect(getListbox()?.outerHTML ?? null).toBeNull();
 
     expect(warnings.some((warning) => warning.includes('[cinder/autocomplete]'))).toBe(true);
     console.warn = originalWarn;
@@ -649,10 +648,9 @@ describe('Autocomplete — async source handling', () => {
     await fireEvent.input(getInput(container), { target: { value: 'ap' } });
     await tick();
 
-    await waitFor(() => {
-      expect(getListbox()).toBeNull();
-      expect(document.body.textContent).not.toContain('Loading suggestions');
-    });
+    flushSync();
+    expect(getListbox()?.outerHTML ?? null).toBeNull();
+    expect(document.body.textContent).not.toContain('Loading suggestions');
 
     expect(warnings.some((warning) => warning.includes('[cinder/autocomplete]'))).toBe(true);
     console.warn = originalWarn;
@@ -678,9 +676,8 @@ describe('Autocomplete — async source handling', () => {
     });
 
     await fireEvent.keyDown(input, { key: 'Escape' });
-    await waitFor(() => {
-      expect(getListbox()).toBeNull();
-    });
+    flushSync();
+    expect(getListbox()?.outerHTML ?? null).toBeNull();
 
     await rendered.rerender({
       id: 'fruit-search',

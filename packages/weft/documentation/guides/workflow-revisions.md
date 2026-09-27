@@ -159,6 +159,113 @@ Use `getWorkflowRevisionDiagnostics(engine, name, revision)` to inspect referenc
 
 Fork, recovery, and terminal cleanup also preserve or check revision identity. Forking a persisted run is not an implicit upgrade to the active revision. Decide how old code remains available before you retire an artifact.
 
+## Revision realms
+
+Both `'inline'` and `'worker'` execution modes load a workflow's real implementation module into the host process — `'worker'` mode never _invokes_ the handler it holds, but it still imports it to register it. `workflowExecutionMode: 'realm'` (COR-249, ADR 0005) goes further: the host never imports the implementation module at all. Each immutable `(name, revision)` gets its own pool of realms, and only a realm's own bootstrap script imports the real code.
+
+Opting in requires two things: `workflowExecutionMode: 'realm'` and `revisionRealmExecution.resolveRevisionRealmConfig`, a function mapping `(workflowType, revision)` to a `RevisionRealmConfig` — most importantly the realm's own `workerUrl`. Weft cannot honestly turn a `registerSource()` descriptor's `location` into a Worker script URL (see that field's own doc), so you supply the bootstrap URL for each revision explicitly, exactly the way `workerExecution.workerUrl` already works for `'worker'` mode.
+
+`RevisionRealmConfig.transport` selects which real process backs a revision's realms: `'worker'` (a real Bun `Worker`, the default when `transport` is omitted — unchanged from before this option existed) or `'child-process'` (a real `Bun.spawn` IPC child process, COR-246). A child process is a stronger crash/resource boundary than a Worker's shared-process heap — a realm that segfaults, leaks native memory, or hangs the event loop cannot corrupt the host's own process the way a Worker thread sharing the host's address space theoretically could — at the cost of a real OS process per realm rather than a thread, so it suits untrusted or failure-prone workflow code. The transport is selected per `(workflowType, revision)`, so `resolveRevisionRealmConfig` can mix both in one engine. `workerUrl` doubles as the child-process bootstrap script path under this transport; both speak the identical realm protocol, so only the transport and the resource-boundary knobs (`env`) differ, never the protocol or the engine-visible behavior.
+
+You still register each revision through the ordinary `registerSource()`/`workflows.activate()` catalog — the same multi-revision tracking, compatibility checks, and activation events every dynamic source uses. The definition you register is a **metadata-only placeholder**: its `handler` is never invoked (`RevisionRealmExecutionStrategy` routes every turn to the realm instead), so it only needs to match the real implementation's declared contract, name, and version. The real generator body lives in a separate module that only the realm's own bootstrap script imports:
+
+```typescript
+// checkout-v1.workflow.ts — the REAL implementation.
+// Imported only by checkout-v1-worker.ts below, never by the host.
+import { workflow } from '@lostgradient/weft';
+
+export const checkout = workflow({ name: 'checkout', version: '1.0.0' }).execute(async function* (
+  _ctx,
+  cartId: string,
+) {
+  return `shipped:${cartId}`;
+});
+```
+
+`checkout-v1-worker.ts` (the `workerUrl` above points at it) is the one piece this guide cannot hand you as a copy-pasteable public import: **a production revision-bootstrap helper is not yet published API.** ADR 0004 deferred building one, and this project's own engine-level tests use a package-internal, test-only reference implementation (`src/core/realm/__fixtures__/revision-realm-generator-worker-entry.ts`) rather than a supported export. Until a public one ships, your bootstrap script owns the wire protocol directly: listen for `realm-configure`, respond with a `ready` handshake, then on each `realm-run` message step the real generator and reply with `realm-result`/`realm-failure`. Read `src/core/realm/__fixtures__/revision-realm-generator-worker-entry.ts` for a complete, tested implementation of that protocol (it reuses this project's own internal generator-stepping helpers) and `src/core/realm/worker-realm-messages.ts` for the exact message shapes (`RealmRunMessage`/`RealmResultMessage`/`RealmFailureMessage`) before writing one.
+
+```typescript
+// host.ts — never imports checkout-v1.workflow.ts.
+import { Engine, workflow, workflowSource } from '@lostgradient/weft';
+
+const checkoutRevisionV1 = 'sha256:...'; // the same content-derived revision the real implementation resolves to
+
+const engine = new Engine({
+  workflowExecutionMode: 'realm',
+  revisionRealmExecution: {
+    resolveRevisionRealmConfig: (workflowType, revision) => {
+      if (workflowType === 'checkout' && revision === checkoutRevisionV1) {
+        return {
+          workerUrl: new URL('./checkout-v1-worker.ts', import.meta.url),
+          expectedWorkflowTypes: ['checkout'],
+        };
+      }
+      return undefined;
+    },
+  },
+});
+
+// A placeholder — never invoked. Its contract must match the real
+// implementation's; its body never runs.
+const checkoutPlaceholder = workflow({ name: 'checkout', version: '1.0.0' }).execute(
+  async function* () {
+    throw new Error('checkout: placeholder handler invoked on the host — this should never happen');
+  },
+);
+
+engine.registerSource(
+  workflowSource(
+    {
+      name: 'checkout',
+      location: './checkout-v1.workflow.ts',
+      exportName: 'checkout',
+      revision: checkoutRevisionV1,
+    },
+    async () => ({ checkout: checkoutPlaceholder }),
+  ),
+);
+await engine.resolveWorkflowSource('checkout', checkoutRevisionV1);
+await engine.workflows.activate('checkout', checkoutRevisionV1);
+
+await engine.start('checkout', 'cart-42');
+```
+
+Activation and recovery behave exactly like any other dynamic source: `catalog:revision-activated` routes new starts to the newly active revision while a run already executing keeps its own realm until it finishes; a run recovered after a process restart resumes in its own pinned revision's realm even if a newer revision has since become active, using the same durable revision pin `WorkflowState.revision` already carries.
+
+Two things this mode does **not** provide, matching ADR 0005's own scope: a real production pipeline that turns `location` into a bootstrap script for you (you build and point `workerUrl` at your own per-revision bundle, for either transport), and cooperative in-flight completion on cancellation — a realm-mode workflow's cancellation is non-cooperative, matching hardened `'worker'` mode's own `discardOnCancel` posture.
+
+See [ADR 0003](../contributing/architecture-decisions/0003-revision-realm-lifecycle-and-protocol.md), [ADR 0004](../contributing/architecture-decisions/0004-worker-revision-realm-pool.md), [ADR 0005](../contributing/architecture-decisions/0005-engine-revision-realm-integration.md), [ADR 0006](../contributing/architecture-decisions/0006-child-process-revision-realm.md), and [ADR 0007](../contributing/architecture-decisions/0007-realm-operational-integration.md) for the full lifecycle, protocol, engine-integration, and operational-integration design; [`revision-realm-execution.test.ts`](../../src/core/engine/revision-realm-execution.test.ts) and [`revision-realm-execution-child-process.test.ts`](../../src/core/engine/revision-realm-execution-child-process.test.ts) are the source-verified, runnable versions of the example above.
+
+## Realm diagnostics and the Console (COR-243)
+
+The `weft.realms.diagnostics` operation (`GET /v1/realms/diagnostics`) reports every `(name, revision)` realm pool the live engine currently owns: whether the catalog still considers it the active pointer (`revisionActive`), and each realm's lifecycle state (`warming`/`ready`/`active`/`draining`/`terminated`/`crashed`), activation generation, restart count, and in-flight turn count. It requires `system:read`, is classified non-destructive, and returns `pools: []` for an engine that never set `workflowExecutionMode: 'realm'` — never an error.
+
+```typescript
+import { HttpClient } from '@lostgradient/weft';
+
+const client = new HttpClient({ baseUrl: 'https://weft.example.com' });
+const diagnostics = await client.operations['weft.realms.diagnostics']({});
+console.log(diagnostics.pools.length, 'realm pool(s)');
+```
+
+The Console's System tab has a matching **Realms** view (`components/weft-ui/src/routes/system/realms-tab.svelte`) rendering the same data as a table, one row per realm — or one row for a pool tracking no realms yet, so an active, idle revision is still visible rather than silently absent.
+
+## `bun --watch` in development and coarse production deployment, and why `bun --hot` is rejected for this host
+
+**`bun --watch <entrypoint>` is a supported strategy for both local development and a coarse production deployment** of the durable engine host (`serve()`'s process): editing a file the entrypoint imports makes Bun fully tear down and re-run the module from the top in the same OS process — no child process, and no manual restart script required. Every top-level binding — the `Engine` instance, its storage handle, and its `Bun.serve()` listener — is recreated together on each reload; nothing from before the reload survives implicitly. A workflow parked on a durable checkpoint (`ctx.waitForSignal`, a timer, a remote activity) is unaffected: the checkpoint lives in durable storage, not in the reloaded module's memory, so the freshly constructed `Engine`'s own `recoverAll()` call resumes it exactly like an ordinary process restart would. [`bun-watch-restart.test.ts`](../../src/server/bun-watch-restart.test.ts) proves this against a real `bun --watch` subprocess: a workflow started before a `bun --watch`-triggered reload completes correctly after it, addressed only through the reloaded process's own fresh HTTP listener.
+
+Calling this strategy "coarse" is deliberate: a reload has no isolation between generations (unlike a real process restart, which gets a fresh heap and file descriptor table from the OS) and no rolling/staged rollout — every in-flight request loses its connection at the moment of reload, and every durable run resumes only once the reload finishes. For workloads that need graceful draining, blue/green rollout, or OS-level resource isolation between deployments, use a real process supervisor (a process manager, container orchestrator, or `systemd`) that starts a fresh `bun run <entrypoint>` process and only routes traffic to it once its own readiness check passes — `bun --watch` is not a substitute for that.
+
+**`bun --hot` is explicitly rejected for this host in production.** `--hot`'s whole premise is preserving as much running state as possible across a reload — including live generator instances and closures already in flight — while `--watch` tears everything down uniformly. For an ordinary script that is a feature. For the durable engine host it is a hazard: a `bun --hot` reload can leave an **old, already-executing workflow generator's closure alive**, still referencing the pre-reload module's bindings, while the module-level `Engine` instance, its timers, and its `Bun.serve()` listener are recreated fresh under the new code — a torn mix of one generation's generator against another generation's singletons. Nothing in this project's execution model is designed to detect or reconcile that mix; the failure mode is silent (no error, no crash — an in-flight run just keeps executing against stale bindings) rather than a clean restart. Restart the host with `bun --watch` or a full process restart instead of `bun --hot` whenever the workflow contract, activity implementations, or engine construction code may have changed. (This is unrelated to `Engine`'s own workflow **revision** isolation described above — `bun --hot`'s hazard is at the Bun module-reload layer, beneath any revision the engine tracks.)
+
+## Resident parking in worker mode
+
+`workflowExecutionMode: 'worker'` (in-process Bun `Worker` threads, the sibling of `'realm'` and `'inline'`) keeps a workflow's `Worker` **parked** rather than immediately returning it to the general pool when that workflow suspends on a durable wait-signal checkpoint. Parking is a pure performance optimization: the parked `Worker`'s own generator and module state stay warm in memory, so resuming that exact workflow later reuses it instead of cold-starting a fresh `Worker` and replaying the workflow's history from scratch inside it.
+
+Parking is best-effort, not a reservation. The parked `Worker` is returned to the pool's ordinary availability (`WorkerPool.release`) — an unrelated workflow's `acquire()` call can and does take it in the meantime if it is otherwise idle. Resuming the parked workflow always waits for that _exact_ `Worker` to come free again (`WorkerPool.acquireSpecificWorker`) rather than silently falling back to a different one, so a busy parked `Worker` can add latency to a resume, but never causes it to resume against the wrong `Worker`'s state.
+
+**Checkpoint eviction is not implied.** There is no separate capacity limit or eviction policy for parked workflows distinct from the pool's own `concurrency` bound, and losing the in-memory parked `Worker` — whether it crashes while parked (handled by the same fault path as any other `Worker` failure) or the process restarts — never loses the workflow's durable checkpoint. That checkpoint lives in storage, not in the parked `Worker`'s memory; `engine.recoverAll()` resumes it the same way it resumes any other durably suspended workflow, just without the warm-`Worker` optimization. Parking changes resume performance, never durability or correctness.
+
 ## Client types and runtime validation
 
 Registry snapshot version `2` contains a deterministic array of workflow revision manifests and an `activeRevisions` map. Generated client declarations describe the active payload contracts while retaining revision metadata. Unsupported schema constructs become `unknown`; generated types do not pretend an unsupported schema is narrower than it is.

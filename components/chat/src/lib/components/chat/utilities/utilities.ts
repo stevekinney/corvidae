@@ -358,23 +358,21 @@ function deriveReasoningContent(
  * branch of {@link deriveMessageParts} so the approval prompt renders for either
  * transcript shape. The human-readable tool name resolves from the paired
  * tool-call when available (else the call id); the approval state comes from the
- * container's approved/denied id sets. Caller guarantees `result.action` exists.
+ * container's approved/denied id sets. Callers pass `result.action` once they have
+ * narrowed it to an approval, so the type carries that guarantee.
  */
 function deriveToolApprovalPart(
   messageId: string,
   result: ToolResult,
+  action: ToolApprovalMessagePart['action'],
   context: MessagePartDerivationContext,
 ): ToolApprovalMessagePart {
-  if (result.action?.type !== 'approval') {
-    throw new Error('Tool approval parts require an approval action.');
-  }
-
   return {
     type: 'tool-approval',
     key: `${messageId}:tool-approval:${result.callId}`,
     toolCallId: result.callId,
     toolName: context.toolCallPair?.call.name ?? result.callId,
-    action: result.action,
+    action,
     state: context.approvalStates?.get(result.callId) ?? 'pending',
     resolutionInFlight: context.approvalResolutionInFlightIds?.has(result.callId) ?? false,
   };
@@ -443,7 +441,7 @@ export function deriveMessageParts(
     const result = context.toolCallPair.result;
     const approvalPart =
       result && result.outcome === 'action_required' && result.action?.type === 'approval'
-        ? deriveToolApprovalPart(message.id, result, context)
+        ? deriveToolApprovalPart(message.id, result, result.action, context)
         : undefined;
     const toolCallPart: ToolCallMessagePart = context.toolCallPresentation
       ? {
@@ -471,7 +469,11 @@ export function deriveMessageParts(
   if (message.role === 'tool-result' && message.toolResult) {
     const result = message.toolResult;
     if (result.outcome === 'action_required' && result.action?.type === 'approval') {
-      return [...entryParts, deriveToolApprovalPart(message.id, result, context), ...imageParts];
+      return [
+        ...entryParts,
+        deriveToolApprovalPart(message.id, result, result.action, context),
+        ...imageParts,
+      ];
     }
     return [
       ...entryParts,

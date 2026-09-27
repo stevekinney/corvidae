@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import { renderSvelteOnServer, requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { injectStrippedStyles } from '../../test/css.ts';
@@ -75,10 +76,10 @@ describe('JsonEditor', () => {
       label: 'Baseline payload',
       value: '{"ready":true}',
     });
-    await waitFor(() =>
-      expect(baseline.container.querySelector('.cinder-json-editor__highlight')).toBeNull(),
-    );
-    expect(baseline.container.querySelector('.cinder-json-editor__highlight')).toBeNull();
+    flushSync();
+    expect(
+      baseline.container.querySelector('.cinder-json-editor__highlight')?.outerHTML ?? null,
+    ).toBeNull();
     baseline.unmount();
 
     const view = render(JsonEditor, {

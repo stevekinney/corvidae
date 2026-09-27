@@ -21,7 +21,18 @@ const KEYWORDS = [
   { value: 'false', kind: 'boolean' },
   { value: 'null', kind: 'null' },
 ];
-const PUNCTUATION = new Set(['{', '[', '}', ']', ',', ':']);
+type PunctuationCharacter = '{' | '[' | '}' | ']' | ',' | ':';
+
+function isPunctuationCharacter(character: string): character is PunctuationCharacter {
+  return (
+    character === '{' ||
+    character === '[' ||
+    character === '}' ||
+    character === ']' ||
+    character === ',' ||
+    character === ':'
+  );
+}
 
 // Only escape characters that are syntactically meaningful in HTML *text*
 // content. The double-quote needs escaping only inside attribute values, and
@@ -84,7 +95,7 @@ function tokenize(source: string): string {
     if (/^[ \t\n\r]$/.test(character)) {
       output += escapeHtml(character);
       index += 1;
-    } else if (PUNCTUATION.has(character)) {
+    } else if (isPunctuationCharacter(character)) {
       output += span('punctuation', character);
       pendingKey = updateContainerState(character, openerStack, pendingKey);
       index += 1;
@@ -98,7 +109,7 @@ function tokenize(source: string): string {
 }
 
 function updateContainerState(
-  character: string,
+  character: PunctuationCharacter,
   openerStack: Array<'{' | '['>,
   pendingKey: boolean,
 ): boolean {
@@ -115,8 +126,6 @@ function updateContainerState(
       return openerStack[openerStack.length - 1] === '{';
     case ':':
       return false;
-    default:
-      return pendingKey;
   }
 }
 

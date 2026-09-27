@@ -223,3 +223,174 @@ describe('import-boundary matcher fixtures (fail-closed regression coverage)', (
     expect(result.staticValueViolations).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// COR-525: preview and mode modules
+//
+// Preview must not initialize Milkdown on a preview-only mount. The component
+// graph already reaches Milkdown statically through `../../editor/index.ts`
+// (a pre-existing fact outside COR-525's scope), so this guards what COR-525
+// can: the new modules add no static Milkdown or ProseMirror import anywhere
+// in their own local graph, and the component's history import waits for a
+// rich editor to exist.
+// ---------------------------------------------------------------------------
+
+const COR_525_MODULES = [
+  './markdown-editor-mode.ts',
+  './markdown-editor-mode-controller.svelte.ts',
+  './markdown-editor-mode-control.svelte',
+  './markdown-editor-preview.svelte',
+  './markdown-editor-preview.svelte.ts',
+  './markdown-editor-toolbar-context.ts',
+] as const;
+
+/** Parse a `.svelte` file, or a TypeScript module as the instance script of one. */
+async function moduleStatements(path: string): Promise<AstNode[]> {
+  const text = await Bun.file(path).text();
+  if (path.endsWith('.svelte')) {
+    const root = parseSvelte(text, path);
+    return [...scriptStatements(root, 'module'), ...scriptStatements(root, 'instance')];
+  }
+  return scriptStatements(parseSvelte(`<script lang="ts">${text}</script>`, path), 'instance');
+}
+
+/** Static imports that load code: not `import type`, and not all-`type` specifiers. */
+function staticValueSpecifiers(statements: readonly AstNode[]): string[] {
+  const specifiers: string[] = [];
+  for (const statement of statements) {
+    if (statement.type !== 'ImportDeclaration' || nodeField(statement, 'importKind') === 'type') {
+      continue;
+    }
+    const imported = nodeField(statement, 'specifiers');
+    const list = Array.isArray(imported) ? imported.filter(isNode) : [];
+    if (list.length > 0 && list.every((node) => nodeField(node, 'importKind') === 'type')) continue;
+    const source = nodeField(statement, 'source');
+    const value = isNode(source) ? nodeField(source, 'value') : undefined;
+    if (typeof value === 'string') specifiers.push(value);
+  }
+  return specifiers;
+}
+
+/** Resolve a `.js` specifier to the `.ts` source it names, as the TypeScript build does. */
+async function resolveLocalModule(path: string): Promise<string> {
+  if (path.endsWith('.js') && !(await Bun.file(path).exists())) return `${path.slice(0, -3)}.ts`;
+  return path;
+}
+
+/** Every package specifier statically reachable from `entries` through local files. */
+async function reachablePackages(entries: readonly string[]): Promise<Map<string, string>> {
+  const reached = new Map<string, string>();
+  const seen = new Set<string>();
+  const queue = entries.map((entry) => new URL(entry, import.meta.url).pathname);
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    if (seen.has(path) || path.endsWith('.css')) continue;
+    seen.add(path);
+    for (const specifier of staticValueSpecifiers(await moduleStatements(path))) {
+      if (specifier.startsWith('.')) {
+        queue.push(await resolveLocalModule(new URL(specifier, `file://${path}`).pathname));
+      } else if (!reached.has(specifier)) {
+        reached.set(specifier, path);
+      }
+    }
+  }
+  return reached;
+}
+
+/** Identifiers tested by the leading early-return guards of the arrow that dynamically imports `specifier`. */
+function guardIdentifiersFor(statements: readonly AstNode[], specifier: string): string[] | null {
+  for (const statement of statements) {
+    const found = findGuardedImport(statement, specifier);
+    if (found) return found;
+  }
+  return null;
+}
+
+function containsImportOf(node: AstNode, specifier: string): boolean {
+  if (node.type === 'ImportExpression') {
+    const source = nodeField(node, 'source');
+    return isNode(source) && nodeField(source, 'value') === specifier;
+  }
+  return childNodes(node).some((child) => containsImportOf(child, specifier));
+}
+
+function identifierNames(node: AstNode): string[] {
+  if (node.type === 'Identifier') return [String(nodeField(node, 'name'))];
+  return childNodes(node).flatMap(identifierNames);
+}
+
+function findGuardedImport(node: AstNode, specifier: string): string[] | null {
+  if (node.type === 'ArrowFunctionExpression') {
+    const body = nodeField(node, 'body');
+    const statements = isNode(body) ? nodeField(body, 'body') : undefined;
+    if (Array.isArray(statements) && containsImportOf(node, specifier)) {
+      const guards: string[] = [];
+      for (const statement of statements.filter(isNode)) {
+        const consequent = nodeField(statement, 'consequent');
+        const test = nodeField(statement, 'test');
+        if (statement.type !== 'IfStatement' || !isBareReturn(consequent) || !isNode(test)) break;
+        guards.push(...identifierNames(test));
+      }
+      const nested = statements.filter(isNode).flatMap((child) => {
+        const inner = findGuardedImport(child, specifier);
+        return inner ? [inner] : [];
+      });
+      return nested[0] ?? guards;
+    }
+  }
+  for (const child of childNodes(node)) {
+    const found = findGuardedImport(child, specifier);
+    if (found) return found;
+  }
+  return null;
+}
+
+describe('MarkdownEditor import boundary for preview and mode modules (COR-525)', () => {
+  it.each([...COR_525_MODULES])('%s has no static or unguarded protected import', async (path) => {
+    const result = collectViolations(
+      await moduleStatements(new URL(path, import.meta.url).pathname),
+    );
+    expect(result).toEqual({
+      staticValueViolations: [],
+      unguardedDynamicViolations: [],
+      nonLiteralDynamicViolations: [],
+    });
+  });
+
+  it('their local static graph reaches no @milkdown/ or prosemirror- package', async () => {
+    const reached = await reachablePackages(COR_525_MODULES);
+    const protectedReached = [...reached].filter(([specifier]) => isProtected(specifier));
+    expect(protectedReached).toEqual([]);
+    // The walk really follows local files: the preview module reaches the
+    // Markdown package through the editor's configuration module.
+    expect(reached.has('@lostgradient/markdown')).toBe(true);
+  });
+
+  it('loads Milkdown history only once a rich editor exists', () => {
+    const guards = guardIdentifiersFor(instanceBody, '@milkdown/kit/prose/history');
+    expect(guards).toContain('browser');
+    expect(guards).toContain('editorState');
+  });
+
+  it('matcher: a history import guarded only by `browser` is reported as such', () => {
+    const fixture = parseSvelte(
+      `<script lang="ts">
+        $effect(() => {
+          if (!browser) return;
+          void import('@milkdown/kit/prose/history');
+        });
+      </script>`,
+      'fixture.svelte',
+    );
+    const guards = guardIdentifiersFor(
+      scriptStatements(fixture, 'instance'),
+      '@milkdown/kit/prose/history',
+    );
+    expect(guards).toEqual(['browser']);
+  });
+
+  it('matcher: a static Milkdown import in a local dependency is found', async () => {
+    const reached = await reachablePackages(['../../editor/editor.ts']);
+    expect([...reached.keys()].some(isProtected)).toBe(true);
+  });
+});
