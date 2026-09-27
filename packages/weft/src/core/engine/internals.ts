@@ -272,6 +272,12 @@ export interface EngineInternals {
   cleanupIntervalDisposalTracker: EngineCleanupIntervalDisposalTracker | null;
   retentionSweepInterval: ReturnType<typeof setInterval> | null;
   retentionSweepInFlight: Promise<void> | null;
+  /**
+   * Purge writes (a purge commit, or the retention scan's orphaned-index
+   * delete) issued and not yet settled. Async disposal settles these instead of
+   * the whole sweep; see `purge-write-tracking.ts`. Never cleared by disposal.
+   */
+  inFlightPurgeWrites: Set<Promise<unknown>>;
   nextRetentionSweepAt: number | null;
   /** Interval driving the best-effort second-instance detector; `null` when off. */
   secondInstanceDetectionInterval: ReturnType<typeof setInterval> | null;
@@ -438,6 +444,8 @@ export interface EngineInternals {
    * directly.
    */
   workflowCatalog: import('../catalog/index.ts').WorkflowCatalog | null;
+  /** Opt-in conditional refresh coordinator owned by this engine lifecycle. */
+  workflowRefreshCoordinator: import('../catalog/index.ts').WorkflowRefreshCoordinator | null;
   /** Workflow names `commitWorkflowDefinition` (`registration.ts`) has queued for catalog install+activate since the last drain — `engine.register()` stays synchronous (it cannot itself build a manifest) and defers to the next `ensureWorkflowCatalogReady` call. */
   pendingCatalogInstalls: string[];
   /** Whether {@link workflowCatalog} has been restored from storage at least once. */

@@ -403,7 +403,14 @@ export function createServerWebSocketHandlers(
         // Reconnect grace period: defer the requeue so a same-`workerId`
         // re-register inside the window keeps its in-flight work. `0`
         // disables the grace period and runs the requeue inline.
-        if (context.workerReconnectGracePeriodMs <= 0) {
+        //
+        // A stopping server also runs it inline: `server.stop()` closes
+        // worker sockets only after its timer-clearing disposer has already
+        // emptied `pendingWorkerRequeues`, so a grace timer armed here would
+        // outlive the server and fire against its torn-down registry.
+        // `runWorkerDisconnectRequeue` itself skips the durable forfeit once
+        // `context.stopping` is set.
+        if (context.workerReconnectGracePeriodMs <= 0 || context.stopping) {
           void runWorkerDisconnectRequeue(context, options, workerId, cleanupWorkflowIndex);
           return;
         }

@@ -705,9 +705,18 @@ export class RemoteWorker implements Disposable {
     // visibilityTimeout, mirroring LongPollWorker's identical per-attempt
     // heartbeat timer. Never sent once the activity settles — cleared in
     // `finally` below, exactly like LongPollWorker's own `heartbeatTimer`.
+    // Also registered with `#taskAbortControllers` so a task whose activity
+    // never settles (ignores the abort signal) still has this real timer
+    // cleared when the attempt is torn down out from under it — by
+    // `#abortAllTasks()` at drain/dispose time — instead of firing forever.
     const heartbeatTimer = setInterval(
       () => this.#sendActivityHeartbeat(task),
       activityHeartbeatIntervalMs(task.visibilityTimeout),
+    );
+    this.#taskAbortControllers.setHeartbeatTimer(
+      task.operationId,
+      task.attemptToken,
+      heartbeatTimer,
     );
 
     try {
