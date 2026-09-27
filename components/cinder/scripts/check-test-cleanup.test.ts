@@ -18,4 +18,18 @@ describe('global override analysis', () => {
       'matchMedia',
     );
   });
+
+  test('accepts a hazardous override restored by a finally block in the same file', () => {
+    expect(
+      inspect(`
+        const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+        Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: undefined });
+        try {
+          run();
+        } finally {
+          restoreGlobal('ResizeObserver', descriptor);
+        }
+      `),
+    ).toBeNull();
+  });
 });
