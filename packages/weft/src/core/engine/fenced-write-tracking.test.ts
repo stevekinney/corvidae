@@ -117,7 +117,8 @@ describe('commitFencedEngineWrite write tracking', () => {
       claimRenewIntervalMs: 5_000,
     });
     internals.workflowClaimRegistry = registry;
-    expect((await registry.acquire(workflowId)).status).toBe('acquired');
+    const acquisition = await registry.acquire(workflowId);
+    expect(acquisition.status).toBe('acquired');
 
     await expectOnlyTheWriteTracked(internals, workflowId, KEYS.workflowOwnerEpoch(workflowId));
 
