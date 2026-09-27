@@ -1,14 +1,7 @@
 export {
   WorkflowCatalogConflictError,
-  WorkflowRevisionNotInstalledError,
-} from './catalog/index.ts';
-export type {
-  WorkflowCatalogActivationResult,
-  WorkflowCatalogActivePointer,
-  WorkflowRevisionRecord,
-} from './catalog/index.ts';
-export {
   WorkflowRefreshCoordinator,
+  WorkflowRevisionNotInstalledError,
   type WorkflowCatalogActivationMode,
   type WorkflowRefreshArtifact,
   type WorkflowRefreshCoordinatorOptions,
@@ -17,6 +10,11 @@ export {
   type WorkflowRefreshResponse,
   type WorkflowRefreshResult,
   type WorkflowRefreshSource,
+} from './catalog/index.ts';
+export type {
+  WorkflowCatalogActivationResult,
+  WorkflowCatalogActivePointer,
+  WorkflowRevisionRecord,
 } from './catalog/index.ts';
 export {
   DEFAULT_WORKFLOW_COMPATIBILITY_POLICY,

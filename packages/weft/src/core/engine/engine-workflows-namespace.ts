@@ -31,16 +31,16 @@
  */
 
 import {
+  WorkflowRefreshCoordinator,
   WorkflowRevisionNotInstalledError,
   WorkflowRevisionTombstonedError,
   type WorkflowCatalogActivationResult,
   type WorkflowCatalogActivePointer,
-  type WorkflowRevisionRecord,
-  WorkflowRefreshCoordinator,
   type WorkflowRefreshDiagnostics,
   type WorkflowRefreshOptions,
   type WorkflowRefreshResult,
   type WorkflowRefreshSource,
+  type WorkflowRevisionRecord,
 } from '../catalog/index.ts';
 import type { WorkflowCompatibilityPolicy } from '../contract/compatibility.ts';
 import type { WorkflowRevisionManifest } from '../contract/types.ts';
@@ -52,9 +52,9 @@ import {
 } from './catalog-readiness.ts';
 import { WorkflowNotRegisteredError } from './errors.ts';
 import type { Engine } from './index.ts';
+import { getInternals } from './internals.ts';
 import { WorkflowRevisionUnavailableError } from './revision-errors.ts';
 import { resolveWorkflowSource, type ResolveWorkflowSourceOptions } from './source-resolution.ts';
-import { getInternals } from './internals.ts';
 
 /**
  * Options accepted by {@link EngineWorkflowsNamespace.activate}.
@@ -286,7 +286,8 @@ export function createEngineWorkflowsNamespace(engine: Engine): EngineWorkflowsN
       await ensureCatalogReady(engine);
       return getRefreshCoordinator(engine).refresh(name, options);
     },
-    refreshDiagnostics: (name) => getInternals(engine).workflowRefreshCoordinator?.diagnostics(name) ?? [],
+    refreshDiagnostics: (name) =>
+      getInternals(engine).workflowRefreshCoordinator?.diagnostics(name) ?? [],
     startRefreshPolling: async () => {
       await ensureCatalogReady(engine);
       getRefreshCoordinator(engine).startPolling();

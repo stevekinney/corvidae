@@ -47,12 +47,13 @@ export {
   type RestoredWorkflowCatalogState,
 } from './storage-io.ts';
 export type {
+  WorkflowCatalogActivationMode,
   WorkflowCatalogActivationResult,
   WorkflowCatalogActivePointer,
   WorkflowCatalogEntry,
-  WorkflowCatalogActivationMode,
   WorkflowRevisionRecord,
 } from './types.ts';
+export { WorkflowCatalog, type ActivateCandidateOptions } from './workflow-catalog.ts';
 export {
   WorkflowRefreshCoordinator,
   type WorkflowRefreshArtifact,
@@ -63,7 +64,3 @@ export {
   type WorkflowRefreshResult,
   type WorkflowRefreshSource,
 } from './workflow-refresh.ts';
-export {
-  WorkflowCatalog,
-  type ActivateCandidateOptions,
-} from './workflow-catalog.ts';
