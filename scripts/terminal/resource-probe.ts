@@ -339,13 +339,13 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
           const duration = performance.now() - startedAt;
           await client.send('Page.setWebLifecycleState', { state: 'active' });
           return {
-            passed: liveness === 'suspended',
+            passed: liveness === 'ran',
             observations: [`cdpState=frozen;timer=${String(liveness)};stateRestored=active`],
-            metrics: { liveness: { value: liveness === 'suspended' ? 1 : 0, unit: 'boolean' } },
+            metrics: { liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' } },
             workload: workload(
               'hidden-page-liveness',
               'Chromium CDP Page.setWebLifecycleState frozen plus timer observation',
-              'timer suspended while frozen',
+              'timer remained live while frozen',
             ),
           };
         } finally {
