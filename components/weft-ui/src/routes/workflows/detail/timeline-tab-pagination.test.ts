@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
@@ -99,11 +100,10 @@ describe('TimelineTab pagination', () => {
     ).toBe(true);
 
     await fireEvent.click(paginationControls(getByRole).getByRole('button', { name: 'Next' }));
-    await waitFor(() => {
-      expect(getByText('Page 2 of 3')).not.toBeNull();
-      expect(queryByText('step-1')).toBeNull();
-      expect(getByText('step-201')).not.toBeNull();
-    });
+    flushSync();
+    expect(getByText('Page 2 of 3')).not.toBeNull();
+    expect(queryByText('step-1')?.outerHTML ?? null).toBeNull();
+    expect(getByText('step-201')).not.toBeNull();
 
     await fireEvent.click(paginationControls(getByRole).getByRole('button', { name: 'Previous' }));
     await waitFor(() => expect(getByText('step-1')).not.toBeNull());

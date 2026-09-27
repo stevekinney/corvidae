@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
@@ -100,10 +101,9 @@ describe('additional coverage', () => {
     await waitFor(() => expect(getByText('reserveFlight')).not.toBeNull());
     await fireEvent.click(getByRole('radio', { name: 'Failed' }));
 
-    await waitFor(() => {
-      expect(queryByText('reserveFlight')).toBeNull();
-      expect(getByText('chargeTripCard')).not.toBeNull();
-    });
+    flushSync();
+    expect(queryByText('reserveFlight')?.outerHTML ?? null).toBeNull();
+    expect(getByText('chargeTripCard')).not.toBeNull();
   });
 
   test('shows the Finalizing badge when the durable finalizer field reports still-in-flight (weft#732 item 4)', async () => {
@@ -213,16 +213,14 @@ describe('additional coverage', () => {
 
     await waitFor(() => expect(getByText('Race')).not.toBeNull());
     await fireEvent.click(getByRole('radio', { name: 'Coordination' }));
-    await waitFor(() => {
-      expect(getByText('Race')).not.toBeNull();
-      expect(queryByText('chargeCard')).toBeNull();
-    });
+    flushSync();
+    expect(getByText('Race')).not.toBeNull();
+    expect(queryByText('chargeCard')?.outerHTML ?? null).toBeNull();
 
     await fireEvent.click(getByRole('radio', { name: 'Saga' }));
-    await waitFor(() => {
-      expect(getByText('compensate:refund')).not.toBeNull();
-      expect(queryByText('Race')).toBeNull();
-    });
+    flushSync();
+    expect(getByText('compensate:refund')).not.toBeNull();
+    expect(queryByText('Race')?.outerHTML ?? null).toBeNull();
   });
 
   test('a cancelled workflow with a failed finalizer shows the cleanup-failed strip', async () => {
@@ -285,8 +283,7 @@ describe('additional coverage', () => {
 
     await fireEvent.click(getByRole('button', { name: 'Close drawer' }));
 
-    await waitFor(() => {
-      expect(queryByText('tok-drawer-1')).toBeNull();
-    });
+    flushSync();
+    expect(queryByText('tok-drawer-1')?.outerHTML ?? null).toBeNull();
   });
 });

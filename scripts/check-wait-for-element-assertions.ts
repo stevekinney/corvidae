@@ -47,18 +47,32 @@
  *
  * Detection walks the TypeScript AST rather than matching text, so multi-line
  * and block-bodied callbacks are covered. oxlint's rule set cannot express
- * "inside the callback passed to `waitFor`", so this stays a local check wired
- * into the package's `lint` script.
+ * "inside the callback passed to `waitFor`", so this stays a local check.
+ *
+ * The hazard belongs to bun and happy-dom, not to any one package, so the scan
+ * covers every `*.test.ts` in every workspace directory and root `scripts/`,
+ * and runs from the root `lint:root` script. A workspace added later is
+ * covered without opting in.
  */
 
-import { Glob } from 'bun';
-import { dirname, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import ts from 'typescript';
 
-const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(scriptDirectory, '..');
-const sourceRoot = resolve(packageRoot, 'src');
+const root = join(import.meta.dir, '..');
+const SCANNED_DIRECTORIES = ['applications', 'components', 'packages', 'internal', 'scripts'];
+// Installed dependencies and generated output, mirroring `.gitignore`. Dot
+// directories (`.svelte-kit`, `.turbo`, `.playwright`) are skipped wholesale.
+const SKIPPED_DIRECTORIES = new Set([
+  'node_modules',
+  'build',
+  'dist',
+  'artifacts',
+  'coverage',
+  'playwright-report',
+  'test-results',
+  'test-output',
+]);
 
 const ABSENCE_MATCHERS = new Set(['toBeNull', 'toBeUndefined', 'toBeFalsy']);
 const NEGATED_ABSENCE_MATCHERS = new Set(['toBeTruthy', 'toBeDefined']);
@@ -309,17 +323,29 @@ export function findWaitForElementAssertionViolations(
   return violations;
 }
 
+export function collectTestFiles(directory: string, paths: string[]): void {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      collectTestFiles(path, paths);
+    } else if (entry.isFile() && entry.name.endsWith('.test.ts')) {
+      paths.push(path);
+    }
+  }
+}
+
 async function scan(): Promise<string[]> {
   const findings: string[] = [];
-  const glob = new Glob('**/*.test.ts');
-  const paths = [...glob.scanSync({ cwd: sourceRoot, absolute: true })].toSorted();
+  const paths: string[] = [];
+  for (const directory of SCANNED_DIRECTORIES) collectTestFiles(join(root, directory), paths);
 
-  for (const path of paths) {
+  for (const path of paths.toSorted()) {
     const source = await Bun.file(path).text();
     if (!source.includes('waitFor')) continue;
     const sourceFile = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
     for (const violation of findWaitForElementAssertionViolations(sourceFile)) {
-      findings.push(`${relative(packageRoot, path)}:${violation.line} — ${violation.text}`);
+      findings.push(`${relative(root, path)}:${violation.line} — ${violation.text}`);
     }
   }
 
