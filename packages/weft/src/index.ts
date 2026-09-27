@@ -248,6 +248,21 @@ export { TestEngine } from './testing/test-engine.ts';
 export type { RunNOptions, RunNResult } from './testing/test-engine.ts';
 export { TimeControl } from './testing/time-control.ts';
 export { VERSION } from './version.ts';
+export {
+  WORKER_DEPLOYMENT_ROUTING_PREFIX,
+  WORKER_DEPLOYMENT_VERSION_PREFIX,
+  WorkerDeploymentCatalog,
+  selectWorkerDeployment,
+} from './worker/deployment-routing.ts';
+export type {
+  DeploymentRoutingCandidate,
+  DeploymentSelection,
+  DeploymentSelectionFailure,
+  DeploymentSelectionResult,
+  WorkerDeploymentRouting,
+  WorkerDeploymentVersion,
+  WorkerDeploymentVersionState,
+} from './worker/deployment-routing.ts';
 export { HeartbeatManager } from './worker/heartbeat.ts';
 export { RemoteWorker } from './worker/index.ts';
 export { LongPollWorker } from './worker/long-poll.ts';

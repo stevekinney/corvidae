@@ -2,6 +2,8 @@
 import type {
   SharedAffectedWorkersDeploymen_e4c61ae8,
   SharedAffectedWorkersHealthInF_c3f6ebcc,
+  SharedCurrentBuildIdDeployment_a9512ca3,
+  SharedCurrentBuildIdDeployment_d4467560,
 } from './shared-operation-types.generated.ts';
 export type SystemOperationTypes = {
   'weft.recover.all': {
@@ -87,16 +89,48 @@ export type SystemOperationTypes = {
     };
     readonly faults: never;
   };
+  'weft.worker.deployments.diagnostics': {
+    readonly input: { readonly deploymentName?: string };
+    readonly output: { readonly routing: unknown; readonly versions: ReadonlyArray<unknown> };
+    readonly faults: never;
+  };
   'weft.worker.deployments.drain': {
     readonly input: { readonly deploymentName: string; readonly reason?: string };
     readonly output:
       SharedAffectedWorkersHealthInF_c3f6ebcc | SharedAffectedWorkersDeploymen_e4c61ae8;
     readonly faults: never;
   };
+  'weft.worker.deployments.preview': {
+    readonly input: SharedCurrentBuildIdDeployment_a9512ca3;
+    readonly output: { readonly message: string; readonly valid: boolean };
+    readonly faults: never;
+  };
+  'weft.worker.deployments.promote': {
+    readonly input: { readonly buildId: string; readonly deploymentName: string };
+    readonly output: SharedCurrentBuildIdDeployment_d4467560;
+    readonly faults: never;
+  };
   'weft.worker.deployments.resume': {
     readonly input: { readonly deploymentName: string };
     readonly output:
       SharedAffectedWorkersHealthInF_c3f6ebcc | SharedAffectedWorkersDeploymen_e4c61ae8;
+    readonly faults: never;
+  };
+  'weft.worker.deployments.rollback': {
+    readonly input: { readonly buildId: string; readonly deploymentName: string };
+    readonly output: SharedCurrentBuildIdDeployment_d4467560;
+    readonly faults: never;
+  };
+  'weft.worker.deployments.setrouting': {
+    readonly input: SharedCurrentBuildIdDeployment_a9512ca3;
+    readonly output: {
+      readonly currentBuildId: string;
+      readonly deploymentName: string;
+      readonly generation: number;
+      readonly rampBasisPoints: number;
+      readonly rampingBuildId?: string;
+      readonly updatedAt: number;
+    };
     readonly faults: never;
   };
   'weft.workers.drain': {

@@ -15,6 +15,7 @@
  */
 
 import type { MetricsCollector } from '../observability/metrics.ts';
+import type { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../worker/registry.ts';
 import {
   createOperationRegistry,
@@ -51,6 +52,18 @@ import {
 } from './operations/list-workers.ts';
 import { STATIC_OPERATIONS } from './operations/static-operations.ts';
 import { STATIC_REST_BINDINGS } from './operations/static-rest-bindings.ts';
+import {
+  createPreviewWorkerDeploymentRoutingOperation,
+  createPromoteWorkerDeploymentOperation,
+  createRollbackWorkerDeploymentOperation,
+  createSetWorkerDeploymentRoutingOperation,
+  createWorkerDeploymentDiagnosticsOperation,
+  workerDeploymentDiagnosticsRestBinding,
+  workerDeploymentPreviewRestBinding,
+  workerDeploymentPromoteRestBinding,
+  workerDeploymentRollbackRestBinding,
+  workerDeploymentRoutingRestBinding,
+} from './operations/worker-deployment-routing.ts';
 import {
   clearDeploymentDrainOperation,
   clearWorkerDrainOperation,
@@ -110,6 +123,11 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
     createListTaskQueuesRestBinding(),
     createGetWorkerDiagnosticsRestBinding(),
     createListWorkerRegistrationRejectionsRestBinding(),
+    workerDeploymentRoutingRestBinding,
+    workerDeploymentDiagnosticsRestBinding,
+    workerDeploymentPromoteRestBinding,
+    workerDeploymentRollbackRestBinding,
+    workerDeploymentPreviewRestBinding,
   ];
 }
 
@@ -129,6 +147,7 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
 export type LiveOperationRegistryOptions = {
   metricsCollector?: MetricsCollector;
   workerRegistry?: WorkerRegistry;
+  workerDeploymentCatalog?: WorkerDeploymentCatalog;
   taskQueue?: TaskQueue;
   clock?: () => number;
   /**
@@ -224,6 +243,27 @@ function buildWorkerRegistrationRejectionsOperationForRegistry(
   });
 }
 
+function buildWorkerDeploymentRoutingOperations(options: LiveOperationRegistryOptions) {
+  const catalog = options.workerDeploymentCatalog;
+  return [
+    catalog === undefined
+      ? createSetWorkerDeploymentRoutingOperation()
+      : createSetWorkerDeploymentRoutingOperation({ catalog }),
+    catalog === undefined
+      ? createPromoteWorkerDeploymentOperation()
+      : createPromoteWorkerDeploymentOperation({ catalog }),
+    catalog === undefined
+      ? createRollbackWorkerDeploymentOperation()
+      : createRollbackWorkerDeploymentOperation({ catalog }),
+    catalog === undefined
+      ? createWorkerDeploymentDiagnosticsOperation()
+      : createWorkerDeploymentDiagnosticsOperation({ catalog }),
+    catalog === undefined
+      ? createPreviewWorkerDeploymentRoutingOperation()
+      : createPreviewWorkerDeploymentRoutingOperation({ catalog }),
+  ];
+}
+
 /**
  * Build the registry of every operation this build serves, wiring the ones
  * that need live collaborators — task diagnostics, system metrics, the worker
@@ -260,6 +300,7 @@ export function createLiveOperationRegistry(
     buildListTaskQueuesOperationForRegistry(resolved),
     buildWorkerDiagnosticsOperationForRegistry(resolved),
     buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
+    ...buildWorkerDeploymentRoutingOperations(resolved),
     ...(resolved.additionalOperations ?? []),
   ]);
 }
