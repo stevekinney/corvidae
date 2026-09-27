@@ -114,5 +114,18 @@ describe('createServerWebSocketHandlers', () => {
       expect(record.attempt).toBe(2);
       expect(record.lastRequeueReason).toBe('worker-disconnect');
     }
+
+    // The ledger commit above only marks the record `queued`; the actual
+    // re-enqueue onto `context.taskQueue` (which arms a pending-task
+    // expiration timer, default TTL 5 minutes) happens later, off a separate
+    // `scheduleDelayedDispatch` timer (task-dispatch.ts). Wait for it to
+    // land before disposing, or a dispose that races ahead of it leaves the
+    // timer armed on an already-disposed queue with nothing left to clear it.
+    await waitForCondition(() => context.taskQueue.isTracked('op-disconnect'), {
+      label: 'worker-disconnect redispatch re-enqueued',
+    });
+    // `minimalServerContext()` is a bare fixture with no server shutdown path
+    // to clear this timer on its own, so dispose it directly.
+    context.taskQueue[Symbol.dispose]();
   });
 });
