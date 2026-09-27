@@ -44,6 +44,25 @@ export { WorkerRegistry } from './registry.ts';
 export type { InFlightTask, RoutingOptions, WorkerInfo } from './registry.ts';
 export type { RemoteActivityContext } from './remote-activity-context.ts';
 export {
+  bindingFromExecution,
+  bindWorkflowWorkerAtStart,
+  DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
+  evaluateWorkflowWorkerUpgrade,
+  inheritWorkflowWorkerBinding,
+  issueWorkflowWorkerStartOverridePreview,
+  readWorkflowWorkerBinding,
+  recordWorkflowWorkerUpgrade,
+  selectWorkflowActivityBinding,
+  verifyWorkflowWorkerStartOverridePreview,
+} from './versioning-policy.ts';
+export type {
+  WorkerStartOverridePreview,
+  WorkerUpgradeBlockedReason,
+  WorkerUpgradeEvaluation,
+  WorkflowWorkerBinding,
+  WorkflowWorkerBindingRecord,
+} from './versioning-policy.ts';
+export {
   buildQualifiedActivityTable,
   type RemoteWorkerActivityFunction,
   type RemoteWorkerActivityImplementation,

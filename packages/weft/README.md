@@ -456,6 +456,8 @@ const worker = new RemoteWorker({
 await worker.connect();
 ```
 
+Workflow worker selection is pinned by default. Persist the binding returned by `bindWorkflowWorkerAtStart()` with the workflow so retries, children, forks, scheduled runs, and terminal restarts inherit the same deployment, build, artifact, manifest, workflow revision, and activity contract. An `auto-upgrade` policy must provide the exact `workflowRevision` and `activityContractHash` compatibility contract; evaluate it only after a durable checkpoint and before acquiring the next execution realm. Upgrades use compare-and-swap and retain bounded binding history. Use `issueWorkflowWorkerStartOverridePreview()` only for an explicitly destructive start-time override, and require the server-issued scoped token before applying it.
+
 ### Browser Support
 
 The core engine runs inside a Web Worker, with a Service Worker acting as the durable persistence layer over `IndexedDB`. Browser-compatible workflow logic ships across server and browser without modification—useful for offline-first apps that need durable client-side workflows. Activities, storage adapters, and other environment-bound pieces still need browser-safe implementations: use `IndexedDBStorage`, `WebExtensionStorage`, or `resolveDefaultStorage()` instead of SQLite storage, swap server-only activities for `fetch`-based equivalents, and so on.

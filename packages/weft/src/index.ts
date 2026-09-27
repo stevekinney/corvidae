@@ -305,6 +305,25 @@ export * from './worker/protocol.ts';
 export { WorkerRegistry } from './worker/registry.ts';
 export type { RoutingPolicy } from './worker/registry.ts';
 export {
+  DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
+  bindWorkflowWorkerAtStart,
+  bindingFromExecution,
+  evaluateWorkflowWorkerUpgrade,
+  inheritWorkflowWorkerBinding,
+  issueWorkflowWorkerStartOverridePreview,
+  readWorkflowWorkerBinding,
+  recordWorkflowWorkerUpgrade,
+  selectWorkflowActivityBinding,
+  verifyWorkflowWorkerStartOverridePreview,
+} from './worker/versioning-policy.ts';
+export type {
+  WorkerStartOverridePreview,
+  WorkerUpgradeBlockedReason,
+  WorkerUpgradeEvaluation,
+  WorkflowWorkerBinding,
+  WorkflowWorkerBindingRecord,
+} from './worker/versioning-policy.ts';
+export {
   WorkerProtocolIncompatibleError,
   workerProtocolIncompatibleMessage,
 } from './worker/worker-protocol-incompatible-error.ts';
