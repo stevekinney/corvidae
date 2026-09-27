@@ -426,6 +426,14 @@ export class LongPollWorker implements Disposable {
       () => void this.#sendHeartbeat(task),
       this.#options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
     );
+    // Registered so a task whose activity never settles (ignores the abort
+    // signal) still has this real timer cleared when the attempt is torn
+    // down out from under it — see AttemptControllerTable.setHeartbeatTimer.
+    this.#taskAbortControllers.setHeartbeatTimer(
+      task.operationId,
+      task.attemptToken,
+      heartbeatTimer,
+    );
 
     try {
       const activityFunction = this.#options.activities[task.activityName];
