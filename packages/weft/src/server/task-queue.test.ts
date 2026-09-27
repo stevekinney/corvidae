@@ -29,7 +29,7 @@ function makeTask(overrides: Partial<PendingTask> = {}): PendingTask {
 describe('TaskQueue', () => {
   describe('enqueue and poll', () => {
     it('returns a queued task immediately when a matching poll arrives', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const task = makeTask({ activityName: 'charge' });
 
       queue.enqueue('default', task);
@@ -40,7 +40,7 @@ describe('TaskQueue', () => {
     });
 
     it('returns null when no matching task exists and timeout expires', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const result = await queue.poll('default', ['charge'], 50);
 
@@ -48,7 +48,7 @@ describe('TaskQueue', () => {
     });
 
     it('dispatches directly to a waiting poller when a task is enqueued', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       // Start a poll that will block
       const pollPromise = queue.poll('default', ['charge'], 5000);
@@ -62,7 +62,7 @@ describe('TaskQueue', () => {
     });
 
     it('respects activity filtering on poll', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       queue.enqueue('default', makeTask({ activityName: 'ship' }));
 
@@ -74,7 +74,7 @@ describe('TaskQueue', () => {
     });
 
     it('respects activity filtering on enqueue with waiters', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       // Waiter wants 'charge' only
       const pollPromise = queue.poll('default', ['charge'], 5000);
@@ -93,7 +93,7 @@ describe('TaskQueue', () => {
     });
 
     it('isolates tasks by queue name', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       queue.enqueue('billing', makeTask({ activityName: 'charge' }));
 
@@ -104,7 +104,7 @@ describe('TaskQueue', () => {
     });
 
     it('serves tasks in FIFO order', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const first = makeTask({ operationId: 'first', activityName: 'charge' });
       const second = makeTask({ operationId: 'second', activityName: 'charge' });
@@ -119,7 +119,7 @@ describe('TaskQueue', () => {
     });
 
     it('resolves the earliest waiter when multiple are waiting', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const poll1 = queue.poll('default', ['charge'], 5000);
       const poll2 = queue.poll('default', ['charge'], 5000);
@@ -139,7 +139,7 @@ describe('TaskQueue', () => {
     });
 
     it('supports multiple activities in a single poll', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const task = makeTask({ activityName: 'ship' });
       queue.enqueue('default', task);
@@ -152,7 +152,7 @@ describe('TaskQueue', () => {
 
   describe('abort signal', () => {
     it('resolves null when the signal is aborted', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const controller = new AbortController();
 
       const pollPromise = queue.poll('default', ['charge'], 60_000, controller.signal);
@@ -164,7 +164,7 @@ describe('TaskQueue', () => {
     });
 
     it('resolves null immediately when the signal is already aborted (no parked waiter)', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const controller = new AbortController();
       controller.abort();
 
@@ -178,7 +178,7 @@ describe('TaskQueue', () => {
     });
 
     it('does not hand a pending task to an already-aborted poll; the task stays queued', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const controller = new AbortController();
       controller.abort();
 
@@ -194,7 +194,7 @@ describe('TaskQueue', () => {
     });
 
     it('cleans up the waiter after abort', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const controller = new AbortController();
 
       const pollPromise = queue.poll('default', ['charge'], 60_000, controller.signal);
@@ -207,7 +207,7 @@ describe('TaskQueue', () => {
     });
 
     it('does not accumulate abort listeners across many polls on the same signal', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const controller = new AbortController();
 
       // Wrap the real signal so we can count `addEventListener` /
@@ -264,7 +264,7 @@ describe('TaskQueue', () => {
 
   describe('complete', () => {
     it('invokes the completion callback registered during enqueue', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const results: TaskResult[] = [];
 
       const task = makeTask({ operationId: 'op-1' });
@@ -286,7 +286,7 @@ describe('TaskQueue', () => {
     });
 
     it('returns false when no callback is registered', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const found = queue.complete({
         operationId: 'op-unknown',
@@ -298,7 +298,7 @@ describe('TaskQueue', () => {
     });
 
     it('removes the callback after invocation', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       let callCount = 0;
 
       const task = makeTask({ operationId: 'op-once' });
@@ -313,7 +313,7 @@ describe('TaskQueue', () => {
     });
 
     it('forwards failure results to the callback', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const results: TaskResult[] = [];
 
       const task = makeTask({ operationId: 'op-fail' });
@@ -332,7 +332,7 @@ describe('TaskQueue', () => {
 
   describe('hasWaiter', () => {
     it('returns true when a waiter can handle the activity', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       // Start a poll that will block
       const pollPromise = queue.poll('default', ['charge', 'ship'], 5000);
@@ -347,7 +347,7 @@ describe('TaskQueue', () => {
     });
 
     it('returns false when no waiters exist', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       expect(queue.hasWaiter('default', 'charge')).toBe(false);
     });
@@ -355,7 +355,7 @@ describe('TaskQueue', () => {
 
   describe('deduplication', () => {
     it('rejects a second enqueue with the same operationId', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const first = queue.enqueue('default', makeTask({ operationId: 'op-1' }));
       const second = queue.enqueue('default', makeTask({ operationId: 'op-1' }));
@@ -366,7 +366,7 @@ describe('TaskQueue', () => {
     });
 
     it('rejects duplicate even when first was dispatched to a waiter', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       // Start a poll that will block
       const pollPromise = queue.poll('default', ['charge'], 5000);
@@ -388,7 +388,7 @@ describe('TaskQueue', () => {
     });
 
     it('allows re-enqueue after completion', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       queue.enqueue('default', makeTask({ operationId: 'op-reuse' }), () => {});
       queue.complete({ operationId: 'op-reuse', status: 'completed', value: null });
@@ -399,7 +399,7 @@ describe('TaskQueue', () => {
     });
 
     it('isTracked returns true for pending tasks', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       expect(queue.isTracked('op-1')).toBe(false);
 
@@ -408,7 +408,7 @@ describe('TaskQueue', () => {
     });
 
     it('isTracked returns false after task is completed', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       queue.enqueue('default', makeTask({ operationId: 'op-1' }), () => {});
       queue.complete({ operationId: 'op-1', status: 'completed' });
@@ -419,7 +419,7 @@ describe('TaskQueue', () => {
 
   describe('removeStale', () => {
     it('removes tasks older than maxAge and invokes completion callbacks with failed status', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const results: TaskResult[] = [];
 
       const task = makeTask({ operationId: 'stale-1' });
@@ -440,7 +440,7 @@ describe('TaskQueue', () => {
     });
 
     it('does not remove tasks younger than maxAge', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const task = makeTask({ operationId: 'fresh-1' });
 
       queue.enqueue('default', task);
@@ -453,7 +453,7 @@ describe('TaskQueue', () => {
     });
 
     it('allows re-enqueue of a stale operationId after removal', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const task = makeTask({ operationId: 'reuse-stale' });
       task.enqueuedAt = Date.now() - 10_000;
 
@@ -470,7 +470,7 @@ describe('TaskQueue', () => {
 
   describe('pendingCount', () => {
     it('tracks the number of pending tasks', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       expect(queue.pendingCount('default')).toBe(0);
 
@@ -481,7 +481,7 @@ describe('TaskQueue', () => {
     });
 
     it('decrements when tasks are polled', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       queue.enqueue('default', makeTask({ activityName: 'charge' }));
       queue.enqueue('default', makeTask({ activityName: 'charge' }));
@@ -492,7 +492,7 @@ describe('TaskQueue', () => {
     });
 
     it('returns 0 for unknown queues', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       expect(queue.pendingCount('nonexistent')).toBe(0);
     });
@@ -508,7 +508,7 @@ describe('TaskQueue', () => {
     });
 
     it('removes a pending task after the TTL expires', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
 
       queue.enqueue('default', makeTask({ operationId: 'ttl-1', activityName: 'charge' }));
       expect(queue.pendingCount('default')).toBe(1);
@@ -522,7 +522,7 @@ describe('TaskQueue', () => {
     });
 
     it('invokes the completion callback with a failure on expiration', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
       const results: TaskResult[] = [];
 
       queue.enqueue('default', makeTask({ operationId: 'ttl-cb' }), (result) =>
@@ -538,7 +538,7 @@ describe('TaskQueue', () => {
     });
 
     it('does not expire a task that was polled before the TTL', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: 100 });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: 100 });
       const results: TaskResult[] = [];
 
       queue.enqueue(
@@ -561,7 +561,7 @@ describe('TaskQueue', () => {
     });
 
     it('does not expire a task dispatched directly to a waiter', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
       const results: TaskResult[] = [];
 
       // Start a poll that will block
@@ -585,7 +585,7 @@ describe('TaskQueue', () => {
     });
 
     it('allows re-enqueue after a task expires', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
 
       queue.enqueue('default', makeTask({ operationId: 'ttl-reuse' }));
 
@@ -600,7 +600,7 @@ describe('TaskQueue', () => {
     });
 
     it('does not expire tasks when TTL is Infinity', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: Infinity });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: Infinity });
 
       queue.enqueue('default', makeTask({ operationId: 'ttl-inf', activityName: 'charge' }));
 
@@ -611,7 +611,7 @@ describe('TaskQueue', () => {
     });
 
     it('does not expire tasks when TTL is 0', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: 0 });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: 0 });
 
       queue.enqueue('default', makeTask({ operationId: 'ttl-zero', activityName: 'charge' }));
 
@@ -622,7 +622,7 @@ describe('TaskQueue', () => {
     });
 
     it('cleans up completion callback when task expires without one', async () => {
-      const queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
+      using queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
 
       // Enqueue without a callback
       queue.enqueue('default', makeTask({ operationId: 'ttl-no-cb' }));
@@ -641,7 +641,7 @@ describe('TaskQueue', () => {
 
   describe('abort and dispose', () => {
     it('settles a poll promptly when its signal aborts, without dispatching to the gone client', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const controller = new AbortController();
 
       // Park a long-lived poll; only the abort signal can settle it within the test.
@@ -665,7 +665,7 @@ describe('TaskQueue', () => {
     });
 
     it('resolves every outstanding waiter with null on dispose', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       // Park waiters on two different queues so dispose exercises iteration
       // across the #waiters map keys, not just a single per-queue array.
@@ -680,7 +680,7 @@ describe('TaskQueue', () => {
     });
 
     it('is idempotent — a second dispose does not throw or re-settle waiters', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const pollPromise = queue.poll('q', ['charge'], 60_000);
 
       queue[Symbol.dispose]();
@@ -707,7 +707,7 @@ describe('TaskQueue', () => {
         // clearTimeout loop from dispose.
         const clearTimeoutSpy = spyOn(globalThis, 'clearTimeout');
         try {
-          const queue = new TaskQueue({ pendingTaskTimeToLive: 1000 });
+          using queue = new TaskQueue({ pendingTaskTimeToLive: 1000 });
           const results: TaskResult[] = [];
 
           queue.enqueue('default', makeTask({ operationId: 'disposed-ttl' }), (result) =>
@@ -735,7 +735,7 @@ describe('TaskQueue', () => {
 
   describe('priority queuing', () => {
     it('dequeues high-priority tasks before low-priority tasks', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const low = makeTask({ operationId: 'low', activityName: 'charge', priority: 0 });
       const high = makeTask({ operationId: 'high', activityName: 'charge', priority: 10 });
@@ -751,7 +751,7 @@ describe('TaskQueue', () => {
     });
 
     it('maintains FIFO order for same-priority tasks', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const first = makeTask({ operationId: 'first', activityName: 'charge', priority: 10 });
       const second = makeTask({ operationId: 'second', activityName: 'charge', priority: 10 });
@@ -771,7 +771,7 @@ describe('TaskQueue', () => {
     });
 
     it('handles mixed priorities correctly', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const p0a = makeTask({ operationId: 'p0a', activityName: 'charge', priority: 0 });
       const p10a = makeTask({ operationId: 'p10a', activityName: 'charge', priority: 10 });
@@ -795,7 +795,7 @@ describe('TaskQueue', () => {
     });
 
     it('defaults to priority 0 when not specified', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
 
       const noPriority = makeTask({ operationId: 'no-prio', activityName: 'charge' });
       const highPriority = makeTask({
@@ -814,7 +814,7 @@ describe('TaskQueue', () => {
 
   describe('enqueue timestamp default', () => {
     it('defaults enqueuedAt to the current wall clock when the caller omits it', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const task = makeTask({ operationId: 'op-no-ts' });
       expect(task.enqueuedAt).toBeUndefined();
 
@@ -827,7 +827,7 @@ describe('TaskQueue', () => {
     });
 
     it('preserves a caller-supplied enqueuedAt instead of overwriting it', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const task: PendingTask = {
         ...makeTask({ operationId: 'op-pinned' }),
         enqueuedAt: 12345,
@@ -845,7 +845,7 @@ describe('TaskQueue', () => {
     }
 
     it('reports backlog and oldest enqueue time per pending queue, sorted by name', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       queue.enqueue('alpha', pinnedTask('a1', 1000));
       queue.enqueue('alpha', pinnedTask('a2', 500));
       queue.enqueue('zebra', pinnedTask('z1', 2000));
@@ -870,7 +870,7 @@ describe('TaskQueue', () => {
     });
 
     it('includes queues with only waiting pollers, with backlog 0 and null oldestEnqueuedAt', async () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       const controller = new AbortController();
       const pollPromise = queue.poll('idle-queue', ['never-matches'], 30_000, controller.signal);
 
@@ -892,12 +892,12 @@ describe('TaskQueue', () => {
     });
 
     it('returns an empty array when neither pending tasks nor waiters exist', () => {
-      const queue = new TaskQueue();
+      using queue = new TaskQueue();
       expect(queue.getQueueSummaries()).toEqual([]);
     });
 
     it('carries the configured schedulingPolicy through each summary', () => {
-      const queue = new TaskQueue({ schedulingPolicy: 'fifo' });
+      using queue = new TaskQueue({ schedulingPolicy: 'fifo' });
       queue.enqueue('alpha', makeTask({ operationId: 'a1' }));
       const summaries = queue.getQueueSummaries();
       expect(summaries[0]?.schedulingPolicy).toBe('fifo');
