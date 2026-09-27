@@ -11,7 +11,7 @@ describe('workflow worker versioning integration', () => {
     const storage = new MemoryStorage();
     await using engine = new Engine({ storage });
     engine.register(
-      workflow({ name: 'versioned-start' }).execute(async function* () {
+      workflow({ name: 'versioned-start', workerVersioningPolicy: { mode: 'pinned' } }).execute(async function* () {
         return 'ok';
       }),
     );

@@ -227,6 +227,7 @@ export async function prepareWorkflow(
       undefined,
       callbacks,
       true,
+      registration,
     );
     applyRestartLineage(state, terminalRunToPurge);
     const checkpoint = createInitialCheckpoint(

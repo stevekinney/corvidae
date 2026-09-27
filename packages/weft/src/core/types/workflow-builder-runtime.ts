@@ -27,6 +27,7 @@ import type { BuiltWorkflowDefinition } from './workflow-builder.ts';
 import type { WorkflowConcurrencyOptions } from './workflow-concurrency.ts';
 import type { WorkflowFunction } from './workflow-function.ts';
 import type { AnyActivityDefinition } from './workflow-registries.ts';
+import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 
 // ---------------------------------------------------------------------------
 // Errors and options shape
@@ -102,6 +103,7 @@ export interface WorkflowBuilderOptions<
   finalizer?: AnyActivityDefinition;
   inputSchema?: DefinitionSchema<unknown, unknown>;
   outputSchema?: DefinitionSchema<unknown, unknown>;
+  workerVersioningPolicy?: WorkflowWorkerVersioningPolicy;
   /**
    * Explicitly forbidden: `workflow({ name }).execute(handler)` is the only
    * way to attach a handler. The builder rejects an in-options `handler`
@@ -269,6 +271,7 @@ export class WorkflowBuilderImpl<TName extends string> {
       ...(this.#options.outputSchema !== undefined
         ? { outputSchema: this.#options.outputSchema }
         : {}),
+      ...workerVersioningPolicyField(this.#options.workerVersioningPolicy),
     };
 
     return Object.freeze(built);
@@ -300,6 +303,12 @@ function freezeRecord<T extends object>(
 
 function isFunction(value: unknown): value is (...arguments_: unknown[]) => unknown {
   return typeof value === 'function';
+}
+
+function workerVersioningPolicyField(
+  policy: WorkflowWorkerVersioningPolicy | undefined,
+): { workerVersioningPolicy?: WorkflowWorkerVersioningPolicy } {
+  return policy === undefined ? {} : { workerVersioningPolicy: policy };
 }
 
 function hasExecuteProperty(

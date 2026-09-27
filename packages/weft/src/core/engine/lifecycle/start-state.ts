@@ -142,7 +142,7 @@ export function createInitialWorkflowState(
     state.executionDeadline = executionDeadline;
   }
 
-  {
+  if (registration?.workerVersioningPolicy !== undefined) {
     state.workerVersioningPolicy = registration?.workerVersioningPolicy ?? { mode: 'pinned' };
     const binding = {
       workflowId,
