@@ -1434,15 +1434,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       },
     ],
     [
-      'src/core/engine/termination/finalizer-registration.ts',
-      {
-        reason:
-          "Bun maps the closing brace after the DynamicWorkflowSourceUnavailableError/WorkflowRevisionUnavailableError catch branch's `return undefined` and the trailing `throw error;` rethrow as uncovered, although finalizer.test.ts directly exercises the return (both a load-failure and an unresolvable-pinned-revision dynamic finalizer resolve) — only the unmatched-error rethrow itself has no reachable test (WFT-19 shifted these two lines from 43-44 to 56-57 when the catch grew a second error type).",
-        lines: new Set([56, 57]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/core/engine/storage-io.ts',
       {
         reason:
@@ -1469,15 +1460,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
           57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 70, 110, 111, 112, 131, 138, 139, 206,
           207,
         ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/workflow-retention-deadline.ts',
-      {
-        reason:
-          "New async resolve path (WFT-19 review round 1, re-derived in round 2 after the fail-closed rewrite shifted this line from 59 to 72): Bun maps the closing brace after the DynamicWorkflowSourceUnavailableError/WorkflowRevisionUnavailableError catch branch's `return { kind: 'unresolvable' }` as uncovered, the same brace-attribution artifact already documented for `termination/finalizer-registration.ts`'s identical catch shape — although workflow-retention.test.ts directly exercises both that return (an unresolvable-pinned-revision, now asserted NOT-purged rather than default-purged) and the success path (an async-resolved entry's own policy), and the suite's own `throw error;` rethrow line reads as hit from an unrelated disposal-race elsewhere in the full run.",
-        lines: new Set([72]),
         requireUncoveredLines: true,
       },
     ],

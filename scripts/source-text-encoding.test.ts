@@ -1,13 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { nulByteOffenders } from './source-text-encoding';
+
 const root = join(import.meta.dir, '..');
-
-const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.svelte']);
-const ignoredPathSegment =
-  /^(?:node_modules|dist|build|coverage|\.turbo|\.svelte-kit|\.playwright|\.bun)$/;
-
-const NUL = 0x00;
 
 /**
  * A source file containing a raw NUL byte is not a text file, and the tools
@@ -31,47 +29,60 @@ const NUL = 0x00;
  * This comment deliberately spells that escape out in words rather than
  * writing it. Several tools that generate or rewrite files interpret the
  * escape and emit the byte itself — which is how this very file first tripped
- * the check it defines.
+ * the check it defines. For the same reason, the fixtures below build their
+ * NUL bytes from numbers rather than from string escapes.
  */
-async function sourceFiles(): Promise<string[]> {
-  const entries = await Array.fromAsync(
-    new Bun.Glob('{applications,components,packages,internal,scripts}/**/*').scan({
-      cwd: root,
-      absolute: true,
-      onlyFiles: true,
-    }),
-  );
-  return entries.filter(
-    (file) =>
-      sourceExtensions.has(file.slice(file.lastIndexOf('.'))) &&
-      !file.split('/').some((segment) => ignoredPathSegment.test(segment)),
-  );
-}
-
-function nulOffsets(bytes: Uint8Array): number[] {
-  const offsets: number[] = [];
-  for (let index = 0; index < bytes.length; index += 1) {
-    if (bytes[index] === NUL) offsets.push(index);
-  }
-  return offsets;
-}
-
 describe('source text encoding', () => {
   test('no source file contains a raw NUL byte', async () => {
-    const files = await sourceFiles();
-    expect(files.length).toBeGreaterThan(0);
-
-    const offenders: string[] = [];
-    for (const file of files) {
-      const bytes = new Uint8Array(await Bun.file(file).arrayBuffer());
-      const offsets = nulOffsets(bytes);
-      if (offsets.length > 0) {
-        offenders.push(
-          `${file.slice(root.length + 1)} (${offsets.length} at ${offsets.join(', ')})`,
-        );
-      }
-    }
-
+    const { files, offenders } = await nulByteOffenders(root);
+    expect(files).toBeGreaterThan(0);
     expect(offenders).toEqual([]);
+  });
+
+  test('catches tracked and untracked source regardless of local excludes', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'source-text-encoding-'));
+    try {
+      const text = (value: string) => new TextEncoder().encode(value);
+      const withNul = new Uint8Array([0x61, 0x00, 0x62, 0x00]);
+      const git = (...command: string[]) => {
+        const result = Bun.spawnSync(['git', ...command], { cwd: directory });
+        expect(result.exitCode, result.stderr.toString()).toBe(0);
+      };
+      git('init', '--quiet');
+      await Bun.write(join(directory, '.gitignore'), Bun.file(join(root, '.gitignore')));
+      const fixtures: Record<string, Uint8Array> = {
+        'packages/example/src/tracked.ts': withNul,
+        'packages/example/src/deleted.ts': withNul,
+        '.agents/skills/example/helper.mjs': withNul,
+        'packages/example/src/escaped.ts': text('export const delimiter = "\\u0000";\n'),
+        'packages/example/src/image.png': withNul,
+      };
+      for (const [path, bytes] of Object.entries(fixtures)) {
+        await Bun.write(join(directory, path), bytes);
+      }
+      git('add', '--all');
+      await rm(join(directory, 'packages/example/src/deleted.ts'));
+      await Bun.write(join(directory, 'scripts/untracked.ts'), new Uint8Array([0x00]));
+      await Bun.write(join(directory, 'scripts/excluded-locally.ts'), withNul);
+      await Bun.write(join(directory, 'scripts/excluded-globally.cts'), withNul);
+      await Bun.write(join(directory, 'packages/example/build/output.js'), withNul);
+      await Bun.write(join(directory, 'node_modules/dependency/index.js'), withNul);
+      await Bun.write(join(directory, '.git/info/exclude'), 'excluded-locally.ts\n');
+      const globalExcludes = join(directory, 'global-excludes');
+      await Bun.write(globalExcludes, 'excluded-globally.cts\n');
+      git('config', 'core.excludesFile', globalExcludes);
+
+      const { offenders } = await nulByteOffenders(directory);
+
+      expect(offenders).toEqual([
+        '.agents/skills/example/helper.mjs (2 at 1, 3)',
+        'packages/example/src/tracked.ts (2 at 1, 3)',
+        'scripts/excluded-globally.cts (2 at 1, 3)',
+        'scripts/excluded-locally.ts (2 at 1, 3)',
+        'scripts/untracked.ts (1 at 0)',
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

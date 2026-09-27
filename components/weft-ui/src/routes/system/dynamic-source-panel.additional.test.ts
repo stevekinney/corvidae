@@ -295,7 +295,7 @@ describe('additional coverage', () => {
 
     await inspect(container, getByRole, NAME, 'another-revision');
     await waitFor(() => {
-      expect(queryByText('Refused: load-failed')).toBeNull();
+      expect(queryByText('Refused: load-failed')?.outerHTML ?? null).toBeNull();
     });
   });
 });

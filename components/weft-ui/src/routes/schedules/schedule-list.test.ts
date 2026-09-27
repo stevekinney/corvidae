@@ -10,6 +10,7 @@ import { requireElement } from '../../../tests/dom-test-support.ts';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
+import { flushSync } from 'svelte';
 
 import { HttpClient } from '@lostgradient/weft';
 
@@ -300,9 +301,8 @@ describe('ScheduleList', () => {
 
       await fireEvent.click(getByRole('button', { name: 'Cancel' }));
 
-      await waitFor(() => {
-        expect(queryByText('Cancel this schedule?')).toBeNull();
-      });
+      flushSync();
+      expect(queryByText('Cancel this schedule?')?.outerHTML ?? null).toBeNull();
       expect(within(getByRole('table')).getByText('Active')).not.toBeNull();
     } finally {
       await server.stop();
