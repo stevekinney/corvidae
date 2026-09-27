@@ -331,6 +331,7 @@ export function buildServerContext(
     scanRunning: false,
     processingOperations: new Set(),
     reconciliationRunning: false,
+    longPollDrains: new Map(),
     taskLedgerRecovery: { ready: taskLedgerRecoveryReady },
     stopping: false,
   };

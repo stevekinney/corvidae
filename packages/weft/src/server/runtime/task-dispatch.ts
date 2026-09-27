@@ -450,7 +450,18 @@ export async function dispatchTaskImpl(
   context: ServerContext,
   options: ServeOptions,
   task: TaskDispatch,
-  { redispatch = false }: { redispatch?: boolean } = {},
+  {
+    redispatch = false,
+    longPollFallback = true,
+  }: {
+    redispatch?: boolean;
+    /**
+     * `false` returns `false` instead of falling back to the long-poll queue
+     * when no WebSocket worker takes the task — for a caller that already
+     * holds the task's long-poll hint and restores it itself.
+     */
+    longPollFallback?: boolean;
+  } = {},
 ): Promise<boolean> {
   await awaitTaskLedgerRecoveryReady(context, task);
   assertFreshDispatchOperationIdAdmissible(task, redispatch);
@@ -499,6 +510,7 @@ export async function dispatchTaskImpl(
     revisionFenceConditions,
   );
   if (dispatched) return true;
+  if (!longPollFallback) return false;
 
   // Fall back to long-poll task queue.
   return enqueueTaskForLongPoll(

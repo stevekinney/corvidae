@@ -100,10 +100,9 @@ describe('remote activity recovery (COR-152)', () => {
     // "Durably queued" is not a dead end once infrastructure DOES appear —
     // proven end-to-end (server and worker both already present at enqueue
     // time) by `remote-activity-execution.test.ts`'s criterion-1 test. A
-    // worker that connects strictly AFTER this exact record already fell
-    // back to the long-poll queue's in-memory hint is a separate, pre-existing
-    // `reconcileOrphanedRecords`/`WorkerRegistry` interaction this test does
-    // not exercise.
+    // WebSocket worker that connects only AFTER the record already fell back
+    // to the long-poll queue's in-memory hint receives it through the
+    // registration drain, covered by `server/runtime/long-poll-drain.test.ts`.
     expect(localChargeCard).toHaveBeenCalledTimes(0);
   });
 
@@ -300,10 +299,10 @@ describe('remote activity recovery (COR-152)', () => {
     // the lease cannot expire — and startup recovery cannot find it expired —
     // until this test moves the clock. The one expiry is an explicit scan run
     // only after the replacement worker has registered, so the redispatch
-    // always has somewhere to land. (A lease that expires before any worker
-    // registers falls back to the long-poll queue instead, which a WebSocket
-    // worker registering afterwards never drains — the same interaction
-    // criterion 7's test above leaves out of scope.) The lease stays well
+    // lands on it directly. (A lease that expired before any worker
+    // registered would fall back to the long-poll queue and reach the
+    // replacement worker through the registration drain instead — see
+    // `server/runtime/long-poll-drain.test.ts`.) The lease stays well
     // under the engine's 30s workflow-claim TTL, so jumping the clock past it
     // never expires the engine's own claim on the run.
     engine = new Engine({

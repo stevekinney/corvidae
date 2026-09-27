@@ -273,29 +273,36 @@ export class WorkerRegistry {
    * 4. A `sticky` worker that also satisfies the above wins regardless of policy.
    */
   findWorker(activityName: string, options: RoutingOptions = {}): WorkerInfo | undefined {
-    const { queue, sticky: stickyId, fairShareKey, excludeWorkerIds } = options;
-    const eligible: WorkerInfo[] = [];
-    let stickyCandidate: WorkerInfo | undefined;
-    for (const worker of this.#workers.values()) {
-      if (!this.#workerIsEligible(worker, activityName, queue, excludeWorkerIds)) continue;
-      if (stickyId !== undefined && worker.id === stickyId) stickyCandidate = worker;
-      eligible.push(worker);
-    }
-    if (stickyCandidate !== undefined) return stickyCandidate;
+    const eligible = this.#eligibleWorkers(activityName, options);
+    const sticky = eligible.find((worker) => worker.id === options.sticky);
+    if (sticky !== undefined) return sticky;
     if (eligible.length === 0) return undefined;
-    return this.#selectByPolicy(eligible, queue, activityName, fairShareKey);
+    return this.#selectByPolicy(eligible, options.queue, activityName, options.fairShareKey);
   }
 
-  #workerIsEligible(
-    worker: WorkerInfo,
+  /**
+   * Whether {@link findWorker} has an eligible worker that `include` accepts,
+   * without running the routing policy — so asking never advances round-robin
+   * or fair-share state.
+   */
+  hasEligibleWorker(
     activityName: string,
-    queue: string | undefined,
-    excludeWorkerIds: ReadonlySet<string> | undefined,
+    options: Pick<RoutingOptions, 'queue' | 'excludeWorkerIds'> = {},
+    include: (worker: WorkerInfo) => boolean = () => true,
   ): boolean {
-    if (excludeWorkerIds?.has(worker.id)) return false;
-    if (!matchesWorkerCapabilities(worker, activityName, queue)) return false;
-    if (isWorkerDraining(worker, this.#deploymentDrainStates)) return false;
-    return true;
+    return this.#eligibleWorkers(activityName, options).some(include);
+  }
+
+  #eligibleWorkers(
+    activityName: string,
+    { queue, excludeWorkerIds }: Pick<RoutingOptions, 'queue' | 'excludeWorkerIds'>,
+  ): WorkerInfo[] {
+    return [...this.#workers.values()].filter(
+      (worker) =>
+        !excludeWorkerIds?.has(worker.id) &&
+        matchesWorkerCapabilities(worker, activityName, queue) &&
+        !isWorkerDraining(worker, this.#deploymentDrainStates),
+    );
   }
 
   /** Dispatch to the configured routing policy. Called only when `eligible` is non-empty. */

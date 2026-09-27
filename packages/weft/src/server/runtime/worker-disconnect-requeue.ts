@@ -93,7 +93,19 @@ export async function runWorkerDisconnectRequeue(
           await options.engine.storage.get(taskLedgerKey(task.operationId)),
         );
 
-        if (record !== null && record.state === 'leased') {
+        if (
+          record !== null &&
+          record.state === 'leased' &&
+          record.attemptToken !== task.attemptToken
+        ) {
+          // Forfeit only the attempt this worker held. A different attempt
+          // means another actor — a peer or restarted server sharing this
+          // storage — already requeued and re-leased the task, and that live
+          // attempt belongs to someone else's worker.
+          console.warn(
+            `[weft] Task "${task.operationId}" was re-leased to another attempt — skipping reassignment`,
+          );
+        } else if (record !== null && record.state === 'leased') {
           await reassignOrExpireTask(
             context,
             options,

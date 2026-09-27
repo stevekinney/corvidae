@@ -1706,13 +1706,19 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // block) — not a line this allowance should ever have covered for. Final coordinates below
       // reflect that fix: 161-164 -> 164-167, 257-265 -> 260-268, 288 -> 291, 462-468 -> 492-498,
       // 669/670/673/674 -> 700/701/704/705.
+      //
+      // Realigned again for the long-poll drain: its `long-poll-drain.ts` import added +1 to every
+      // coordinate, and the drain trigger after `completeTask()` in `onTaskResultMessage` a further
+      // +3 below it. Re-derived from a fresh coverage/lcov.info, which reports exactly the same 25
+      // missed lines and one missed function: 164-167 -> 165-168, 260-268 -> 261-269,
+      // 291 -> 292, 492-498 -> 496-502, 700/701/704/705 -> 704/705/708/709.
       {
         reason:
-          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (164-167, 291), a revision-mismatch rejection unreachable without fabricating a non-resend (260-268), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (492-498), and the closed WorkerToServerMessage union default branch (700, 701, 704, 705).",
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (165-168, 292), a revision-mismatch rejection unreachable without fabricating a non-resend (261-269), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (496-502), and the closed WorkerToServerMessage union default branch (704, 705, 708, 709).",
         functions: 1,
         lines: new Set([
-          164, 165, 166, 167, 260, 261, 262, 263, 264, 265, 266, 267, 268, 291, 492, 493, 494, 495,
-          496, 497, 498, 700, 701, 704, 705,
+          165, 166, 167, 168, 261, 262, 263, 264, 265, 266, 267, 268, 269, 292, 496, 497, 498, 499,
+          500, 501, 502, 704, 705, 708, 709,
         ]),
         requireUncoveredLines: true,
       },

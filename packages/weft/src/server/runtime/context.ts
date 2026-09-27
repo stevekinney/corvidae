@@ -93,6 +93,12 @@ export interface ServerContext {
   readonly processingOperations: Set<string>;
   /** Mutex: prevents concurrent reconciliation scans from running simultaneously. */
   reconciliationRunning: boolean;
+  /**
+   * Long-poll queues a drain is currently moving onto WebSocket workers, each
+   * with a flag a trigger sets when it arrives mid-drain — see
+   * `drainLongPollQueue` in `long-poll-drain.ts`.
+   */
+  readonly longPollDrains: Map<string, { rerun: boolean }>;
   /** Startup task-ledger recovery gate — see {@link TaskLedgerRecoveryGate}. */
   readonly taskLedgerRecovery: TaskLedgerRecoveryGate;
   /**

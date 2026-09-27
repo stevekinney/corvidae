@@ -156,6 +156,36 @@ describe('createServerWebSocketHandlers', () => {
     ).toEqual(leased);
   });
 
+  it('leaves an attempt re-leased elsewhere untouched when the worker that held the earlier one disconnects', async () => {
+    const context = minimalServerContext();
+    const options = minimalServeOptions();
+    context.registry.assignTask('worker-1', 'op-disconnect', 30_000, undefined, 'attempt-1');
+    // Another server sharing this storage already requeued attempt 1 and
+    // leased attempt 2 to its own worker.
+    const releasedElsewhere = leasedFixture({
+      attempt: 2,
+      attemptToken: 'attempt-2',
+      workerSessionId: 'peer-worker',
+      generation: 3,
+    });
+    await options.engine.storage.put(
+      taskLedgerKey('op-disconnect'),
+      encodeRemoteTaskRecord(releasedElsewhere),
+    );
+
+    using warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    // Resolves only once every durable requeue attempt it started has
+    // settled, so the unchanged record below is final, not a race.
+    await runWorkerDisconnectRequeue(context, options, 'worker-1', () => {});
+
+    expect(
+      decodeRemoteTaskRecord(await options.engine.storage.get(taskLedgerKey('op-disconnect'))),
+    ).toEqual(releasedElsewhere);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[weft] Task "op-disconnect" was re-leased to another attempt — skipping reassignment',
+    );
+  });
+
   it('leaves every lease durable when a stopping server forfeits a disconnected worker', async () => {
     const context = { ...minimalServerContext(), stopping: true };
     const options = minimalServeOptions();
