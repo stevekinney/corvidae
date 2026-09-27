@@ -4,6 +4,7 @@ import { KEYS } from '../storage/interface.ts';
 import { encode } from '../core/codec.ts';
 import {
   DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
+  bindingFromExecution,
   bindWorkflowWorkerAtStart,
   consumeWorkflowWorkerStartOverridePreview,
   evaluateWorkflowWorkerUpgrade,
@@ -95,6 +96,36 @@ describe('workflow worker versioning policy', () => {
     expect(upgraded.history).toHaveLength(1);
     const stored = await readWorkflowWorkerBinding(storage, first.workflowId);
     expect(stored?.current.buildId).toBe('build-2');
+    await expect(
+      recordWorkflowWorkerUpgrade(
+        storage,
+        { mode: 'auto-upgrade', maxBindingHistory: 0, compatibility: {
+          deploymentName: candidate.deploymentName,
+          buildId: candidate.buildId,
+          artifactDigest: candidate.artifactDigest,
+          manifestDigest: candidate.manifestDigest,
+          workflowRevision: first.workflowRevision,
+          activityContractHash: first.activityContractHash,
+        } },
+        candidate,
+        binding('build-3'),
+      ),
+    ).rejects.toThrow('maxBindingHistory');
+  });
+
+  it('derives a complete binding from an accepted worker execution identity', () => {
+    expect(bindingFromExecution({
+      deploymentName: 'orders',
+      buildId: 'build-1',
+      artifactDigest: 'sha256:artifact',
+      manifestDigest: 'sha256:manifest',
+      workflowRevision: 'revision-1',
+      activityContractHash: 'sha256:contract',
+    }, 'workflow-1', 'orders', 'charge', 'checkpoint-1', 42)).toMatchObject({
+      workflowId: 'workflow-1', workflowType: 'orders', deploymentName: 'orders', buildId: 'build-1',
+      artifactDigest: 'sha256:artifact', manifestDigest: 'sha256:manifest', workflowRevision: 'revision-1',
+      activityName: 'charge', activityContractHash: 'sha256:contract', boundAt: 42, checkpointId: 'checkpoint-1',
+    });
   });
 
   it('blocks upgrades outside a checkpoint boundary, after realm acquisition, or for a mismatch', () => {
