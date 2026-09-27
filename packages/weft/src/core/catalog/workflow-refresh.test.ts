@@ -385,6 +385,37 @@ describe('WorkflowRefreshCoordinator', () => {
     expect(await engine.workflows.getRevision('checkout', current.revision)).toBeNull();
   });
 
+  it('blocks non-cooperative warm completion after synchronous engine disposal', async () => {
+    const current = await manifest();
+    const currentArtifact = await artifact(current);
+    let warmResolve!: () => void;
+    const warmStarted = new Promise<void>((resolve) => {
+      warmResolve = resolve;
+    });
+    let completeWarm!: () => void;
+    const warmGate = new Promise<void>((resolve) => {
+      completeWarm = resolve;
+    });
+    const engine = new Engine();
+    const source = {
+      fetch: async () => ({ status: 200 as const, artifact: currentArtifact }),
+      warm: async () => {
+        warmResolve();
+        await warmGate;
+        return definition;
+      },
+      validateRuntime: () => {},
+    };
+
+    await engine.workflows.registerRefreshSource('checkout', source);
+    const pending = engine.workflows.refresh('checkout');
+    await warmStarted;
+    engine[Symbol.dispose]();
+    completeWarm();
+    await expect(pending).rejects.toThrow('stopped');
+    expect(await engine.workflows.getRevision('checkout', current.revision)).toBeNull();
+  });
+
   it('runs one bounded polling tick and reschedules it before shutdown', async () => {
     const current = await manifest();
     const currentArtifact = await artifact(current);

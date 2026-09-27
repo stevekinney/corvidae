@@ -230,6 +230,7 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
   }
 
   #notModified(name: string): RefreshResult {
+    this.#assertActive();
     if (!this.#etags.has(name) || !this.#lastValidatedArtifact.has(name)) {
       throw new Error('304 Not Modified requires a prior validated ETag and artifact');
     }
@@ -248,11 +249,13 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
     const artifact = response.artifact;
     if (artifact === undefined) throw new Error('Refresh response status 200 omitted artifact');
     const digest = await digestBytes(artifact.bytes);
+    this.#assertActive();
     this.#validateArtifact(name, artifact, digest);
     validateArtifactBinding(artifact);
     const parsed = await parseWorkflowRevisionManifest(artifact.manifest);
     if (!parsed.ok) throw new Error(`Workflow artifact manifest is invalid: ${parsed.reason}`);
     await source.validateRuntime(artifact.runtime, signal);
+    this.#assertActive();
     this.#artifacts.set(digest, artifact);
     this.#lastValidatedArtifact.set(name, artifact);
     this.#etags.set(name, response.etag ?? digest);
@@ -273,7 +276,9 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
     signal: AbortSignal,
   ) {
     const definition = await source.warm(artifact, signal);
+    this.#assertActive();
     await this.#catalog.install(artifact.manifest, definition);
+    this.#assertActive();
     if (options?.activate !== 'if-compatible') return undefined;
     const activationOptions =
       options.expectedGeneration === undefined
@@ -327,6 +332,10 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
   #record(name: string, patch: Partial<WorkflowRefreshDiagnostics>): void {
     const previous = this.#diagnostics.get(name);
     this.#diagnostics.set(name, { name, state: previous?.state ?? 'idle', ...previous, ...patch });
+  }
+
+  #assertActive(): void {
+    if (this.#stopped) throw new Error('Workflow refresh coordinator is stopped');
   }
 
   #schedulePoll(delay: number): void {
