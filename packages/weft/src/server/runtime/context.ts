@@ -93,14 +93,22 @@ export interface ServerContext {
   readonly processingOperations: Set<string>;
   /** Mutex: prevents concurrent reconciliation scans from running simultaneously. */
   reconciliationRunning: boolean;
+  /**
+   * Long-poll queues a drain is currently moving onto WebSocket workers, each
+   * with a flag a trigger sets when it arrives mid-drain — see
+   * `drainLongPollQueue` in `long-poll-drain.ts`.
+   */
+  readonly longPollDrains: Map<string, { rerun: boolean }>;
   /** Startup task-ledger recovery gate — see {@link TaskLedgerRecoveryGate}. */
   readonly taskLedgerRecovery: TaskLedgerRecoveryGate;
   /**
    * Set once `server.stop()`'s timer-clearing disposer has run. Startup
-   * recovery's scan loop and `scheduleDelayedDispatch` both check this before
-   * doing further work so a still-running recovery scan (or a reconciliation
-   * pass racing shutdown) cannot arm a new timer or issue a durable write
-   * after `pendingTimers` has already been cleared.
+   * recovery's scan loop, `scheduleDelayedDispatch`, the worker socket close
+   * handler, and `runWorkerDisconnectRequeue` all check this before doing
+   * further work so a still-running recovery scan, a reconciliation pass
+   * racing shutdown, or a worker socket closed by the stop itself cannot arm
+   * a new timer or issue a durable write after `pendingTimers` has already
+   * been cleared.
    */
   stopping: boolean;
 }

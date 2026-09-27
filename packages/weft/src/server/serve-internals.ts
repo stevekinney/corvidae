@@ -46,6 +46,7 @@ import {
   scanExpiredTasks,
 } from './runtime/task-reconciliation.ts';
 import { DEFAULT_MAX_STREAM_CONNECTIONS_PER_WORKFLOW } from './runtime/websocket-stream.ts';
+import { endWorkerReconnectGracePeriods } from './runtime/worker-disconnect-requeue.ts';
 import { TaskQueue } from './task-queue.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
 
@@ -333,6 +334,7 @@ export function buildServerContext(
     scanRunning: false,
     processingOperations: new Set(),
     reconciliationRunning: false,
+    longPollDrains: new Map(),
     taskLedgerRecovery: { ready: taskLedgerRecoveryReady },
     stopping: false,
   };
@@ -495,12 +497,10 @@ export function registerStackDisposers(
       clearTimeout(timer);
     }
     context.pendingTimers.clear();
-    // Clear any pending worker-reconnect grace timers so they cannot fire
-    // against a torn-down registry/storage.
-    for (const timer of context.pendingWorkerRequeues.values()) {
-      clearTimeout(timer);
-    }
-    context.pendingWorkerRequeues.clear();
+    // End any pending worker-reconnect grace windows so their timers cannot
+    // fire against a torn-down registry/storage, and so `shutdownAllWorkers`
+    // below does not wait on a socket that already closed.
+    endWorkerReconnectGracePeriods(context, options, onOperationCleanup);
     // Tear down the task queue: clears expiration timers and settles any parked
     // long-poll waiters with null so no timer fires and no poll promise leaks
     // against a stopped server.

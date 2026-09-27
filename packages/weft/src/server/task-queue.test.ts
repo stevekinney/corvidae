@@ -639,6 +639,128 @@ describe('TaskQueue', () => {
     });
   });
 
+  describe('withdraw and restore', () => {
+    beforeEach(() => {
+      useFakeTimers();
+    });
+
+    afterEach(() => {
+      restoreRealTimers();
+    });
+
+    it('withdraws the first task the predicate accepts, in scheduling order, and stops tracking it', () => {
+      const queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'first', activityName: 'ship' }));
+      queue.enqueue('default', makeTask({ operationId: 'second', activityName: 'charge' }));
+      queue.enqueue('default', makeTask({ operationId: 'third', activityName: 'charge' }));
+
+      const withdrawn = queue.withdrawPending('default', (task) => task.activityName === 'charge');
+
+      expect(withdrawn?.task.operationId).toBe('second');
+      expect(withdrawn?.index).toBe(1);
+      expect(queue.isTracked('second')).toBe(false);
+      expect(queue.peekPending('default').map((task) => task.operationId)).toEqual([
+        'first',
+        'third',
+      ]);
+    });
+
+    it('returns undefined when no pending task is accepted', () => {
+      const queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'only', activityName: 'ship' }));
+
+      expect(queue.withdrawPending('default', () => false)).toBeUndefined();
+      expect(queue.withdrawPending('empty', () => true)).toBeUndefined();
+      expect(queue.isTracked('only')).toBe(true);
+    });
+
+    it('never withdraws a task whose outcome is reported through a completion callback', () => {
+      const queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'with-callback' }), () => {});
+      queue.enqueue('default', makeTask({ operationId: 'plain' }));
+
+      expect(queue.withdrawPending('default', () => true)?.task.operationId).toBe('plain');
+      expect(queue.withdrawPending('default', () => true)).toBeUndefined();
+    });
+
+    it('cancels the expiration of a withdrawn task', async () => {
+      const queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
+      const results: TaskResult[] = [];
+      queue.enqueue('default', makeTask({ operationId: 'withdrawn' }));
+      queue.withdrawPending('default', () => true);
+      await sleepForTesting(30);
+      // Re-enqueued under the same id with its own timer due at 80ms, so a
+      // leaked timer from the first enqueue — due at 50ms — would expire it.
+      queue.enqueue('default', makeTask({ operationId: 'withdrawn' }), (result) =>
+        results.push(result),
+      );
+
+      await sleepForTesting(30);
+
+      expect(results).toHaveLength(0);
+      expect(queue.isTracked('withdrawn')).toBe(true);
+    });
+
+    it('restores a withdrawn task to its former position', () => {
+      const queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'first' }));
+      queue.enqueue('default', makeTask({ operationId: 'second' }));
+      queue.enqueue('default', makeTask({ operationId: 'third' }));
+      const withdrawn = queue.withdrawPending('default', (task) => task.operationId === 'second');
+      if (withdrawn === undefined) throw new Error('expected a withdrawn task');
+
+      expect(queue.restorePending(withdrawn)).toBe(true);
+
+      expect(queue.isTracked('second')).toBe(true);
+      expect(queue.peekPending('default').map((task) => task.operationId)).toEqual([
+        'first',
+        'second',
+        'third',
+      ]);
+    });
+
+    it('keeps only the remaining time to live of a restored task', async () => {
+      const queue = new TaskQueue({ pendingTaskTimeToLive: 50 });
+      queue.enqueue('default', makeTask({ operationId: 'aging' }));
+      await sleepForTesting(30);
+      const withdrawn = queue.withdrawPending('default', () => true);
+      if (withdrawn === undefined) throw new Error('expected a withdrawn task');
+
+      queue.restorePending(withdrawn);
+      await sleepForTesting(19);
+      expect(queue.isTracked('aging')).toBe(true);
+      await sleepForTesting(2);
+
+      expect(queue.isTracked('aging')).toBe(false);
+    });
+
+    it('hands a restored task to a long-poll worker that parked in the meantime', async () => {
+      const queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'parked-for', activityName: 'charge' }));
+      const withdrawn = queue.withdrawPending('default', () => true);
+      if (withdrawn === undefined) throw new Error('expected a withdrawn task');
+      const polled = queue.poll('default', ['charge'], 1_000);
+
+      queue.restorePending(withdrawn);
+
+      const handed = await polled;
+      expect(handed?.operationId).toBe('parked-for');
+      expect(queue.pendingCount('default')).toBe(0);
+      expect(queue.isTracked('parked-for')).toBe(true);
+    });
+
+    it('refuses to restore a task that was tracked again meanwhile', () => {
+      const queue = new TaskQueue();
+      queue.enqueue('default', makeTask({ operationId: 'requeued' }));
+      const withdrawn = queue.withdrawPending('default', () => true);
+      if (withdrawn === undefined) throw new Error('expected a withdrawn task');
+      queue.enqueue('default', makeTask({ operationId: 'requeued' }));
+
+      expect(queue.restorePending(withdrawn)).toBe(false);
+      expect(queue.pendingCount('default')).toBe(1);
+    });
+  });
+
   describe('abort and dispose', () => {
     it('settles a poll promptly when its signal aborts, without dispatching to the gone client', async () => {
       const queue = new TaskQueue();
