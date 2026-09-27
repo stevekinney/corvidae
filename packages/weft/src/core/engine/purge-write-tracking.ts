@@ -2,10 +2,11 @@ import type { EngineInternals } from './internals.ts';
 
 /**
  * Register a purge write (or a bulk operation's audit record) in
- * `internals.inFlightPurgeWrites` for as long as it is pending. Storage calls cannot be cancelled, so async disposal waits for writes
- * already issued (a purge that half-lands is worse than a slower shutdown) but
- * never for the reads around them: every purge write checks `internals.disposed`
- * before it is issued, so a read still pending at disposal is safe to abandon.
+ * `internals.inFlightPurgeWrites` for as long as it is pending. Storage calls
+ * cannot be cancelled, so async disposal waits for writes already issued (a
+ * purge that half-lands is worse than a slower shutdown) but never for the
+ * reads around them: every tracked write checks `internals.disposed` before it
+ * is issued, so a read still pending at disposal is safe to abandon.
  * Pass only the storage write itself, never a promise that also awaits a read.
  */
 export function trackPurgeWrite<T>(internals: EngineInternals, write: Promise<T>): Promise<T> {
