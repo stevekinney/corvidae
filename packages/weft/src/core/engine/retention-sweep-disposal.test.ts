@@ -12,36 +12,69 @@ import { copyWorkflowDefinition } from './construction.ts';
 import { getInternals } from './internals.ts';
 import { buildRegistrationEntry } from './registration.ts';
 
+import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
+
+type HeldCall = { kind: 'read' | 'delete' | 'commit'; key: string };
+
 /**
- * A `MemoryStorage` whose `get` of one armed key parks until the test releases
- * it, so a retention sweep can be held at an exact point while the test
- * disposes the engine underneath it.
+ * A `MemoryStorage` that parks one armed call until the test releases it, so a
+ * retention sweep can be held at an exact point while the test disposes the
+ * engine underneath it. The armed call is a `get` of a key, a `delete` of a
+ * key, or a purge commit (`batch` or `conditionalBatch`) deleting a key.
+ * `release(error)` fails the held call instead of letting it proceed.
  */
-class GatedGetStorage extends MemoryStorage {
-  #armedKey: string | null = null;
+class GatedStorage extends MemoryStorage {
+  #held: HeldCall | null = null;
   #reached = Promise.withResolvers<void>();
   #release = Promise.withResolvers<void>();
 
-  arm(key: string): void {
-    this.#armedKey = key;
+  arm(held: HeldCall): void {
+    this.#held = held;
   }
 
   get reached(): Promise<void> {
     return this.#reached.promise;
   }
 
-  release(): void {
-    this.#armedKey = null;
-    this.#release.resolve();
+  release(error?: Error): void {
+    this.#held = null;
+    if (error === undefined) this.#release.resolve();
+    else this.#release.reject(error);
+  }
+
+  async #hold(kind: HeldCall['kind'], keys: readonly string[]): Promise<void> {
+    const held = this.#held;
+    if (held?.kind !== kind || !keys.includes(held.key)) return;
+    this.#reached.resolve();
+    await this.#release.promise;
   }
 
   override async get(key: string): Promise<Uint8Array | null> {
-    if (key === this.#armedKey) {
-      this.#reached.resolve();
-      await this.#release.promise;
-    }
+    await this.#hold('read', [key]);
     return super.get(key);
   }
+
+  override async delete(key: string): Promise<void> {
+    await this.#hold('delete', [key]);
+    return super.delete(key);
+  }
+
+  override async batch(operations: BatchOperation[]): Promise<void> {
+    await this.#hold('commit', deletedKeys(operations));
+    return super.batch(operations);
+  }
+
+  override async conditionalBatch(
+    conditions: ConditionalBatchCondition[],
+    operations: BatchOperation[],
+  ): Promise<boolean> {
+    await this.#hold('commit', deletedKeys(operations));
+    return super.conditionalBatch(conditions, operations);
+  }
+}
+
+function deletedKeys(operations: readonly BatchOperation[]): string[] {
+  return operations.flatMap((operation) => (operation.type === 'delete' ? [operation.key] : []));
 }
 
 const TYPE = 'retention-sweep-disposal';
@@ -51,7 +84,7 @@ const WORKFLOW_ID = 'retention-sweep-disposal-run';
  * An engine with a 1s completed-run retention and a live 10ms sweep, holding
  * one completed run that becomes purge-eligible once `clock.now` advances.
  */
-async function createEngineWithCompletedRun(storage: GatedGetStorage) {
+async function createEngineWithCompletedRun(storage: GatedStorage) {
   const clock = { now: 5_000 };
   const engine = new Engine({
     storage,
@@ -73,19 +106,19 @@ async function createEngineWithCompletedRun(storage: GatedGetStorage) {
   return { clock, engine, warnings };
 }
 
-async function holdSweepAt(storage: GatedGetStorage, clock: { now: number }, key: string) {
-  storage.arm(key);
+async function holdSweepAt(storage: GatedStorage, clock: { now: number }, held: HeldCall) {
+  storage.arm(held);
   clock.now += 1_500; // past the 1s retention window: the next sweep purges the run
   await storage.reached;
 }
 
 describe('retention sweep disposal', () => {
   it('a sweep still scanning when the engine is disposed purges nothing afterwards and reports no cleanup warning', async () => {
-    const storage = new GatedGetStorage();
+    const storage = new GatedStorage();
     const { clock, engine, warnings } = await createEngineWithCompletedRun(storage);
     // The sweep's terminal-index scan reads each candidate's state record
     // before deciding whether to purge it.
-    await holdSweepAt(storage, clock, KEYS.workflow(WORKFLOW_ID));
+    await holdSweepAt(storage, clock, { kind: 'read', key: KEYS.workflow(WORKFLOW_ID) });
     const sweep = getInternals(engine).retentionSweepInFlight;
     expect(sweep).not.toBeNull();
 
@@ -98,11 +131,11 @@ describe('retention sweep disposal', () => {
   });
 
   it('a sweep already collecting a purge when the engine is disposed does not commit it', async () => {
-    const storage = new GatedGetStorage();
+    const storage = new GatedStorage();
     const { clock, engine, warnings } = await createEngineWithCompletedRun(storage);
     // Reading the run's attribute record is the purge's own delete-set
     // collection, after eligibility is decided and before the commit.
-    await holdSweepAt(storage, clock, KEYS.attribute(WORKFLOW_ID));
+    await holdSweepAt(storage, clock, { kind: 'read', key: KEYS.attribute(WORKFLOW_ID) });
     const sweep = getInternals(engine).retentionSweepInFlight;
     expect(sweep).not.toBeNull();
 
@@ -114,31 +147,65 @@ describe('retention sweep disposal', () => {
     expect(warnings).toEqual([]);
   });
 
-  it('async disposal resolves only after an in-flight sweep has settled', async () => {
-    const storage = new GatedGetStorage();
+  it('async disposal does not wait on a sweep held at a storage read', async () => {
+    // Storage calls cannot be cancelled, so a read that never returns would
+    // otherwise hold disposal, and the lease release after it, forever. A read
+    // is safe to abandon: the sweep checks for disposal before any write.
+    const storage = new GatedStorage();
+    const { clock, engine, warnings } = await createEngineWithCompletedRun(storage);
+    await holdSweepAt(storage, clock, { kind: 'read', key: KEYS.workflow(WORKFLOW_ID) });
+    const sweep = getInternals(engine).retentionSweepInFlight;
+    expect(sweep).not.toBeNull();
+
+    await engine[Symbol.asyncDispose]();
+
+    storage.release();
+    await sweep;
+    expect(await storage.get(KEYS.workflow(WORKFLOW_ID))).not.toBeNull();
+    expect(warnings).toEqual([]);
+  });
+
+  it('async disposal after a synchronous disposal does not wait on a sweep held at a storage read', async () => {
+    const storage = new GatedStorage();
+    const { clock, engine, warnings } = await createEngineWithCompletedRun(storage);
+    await holdSweepAt(storage, clock, { kind: 'read', key: KEYS.workflow(WORKFLOW_ID) });
+    const sweep = getInternals(engine).retentionSweepInFlight;
+    expect(sweep).not.toBeNull();
+
+    engine[Symbol.dispose]();
+    await engine[Symbol.asyncDispose]();
+
+    storage.release();
+    await sweep;
+    expect(await storage.get(KEYS.workflow(WORKFLOW_ID))).not.toBeNull();
+    expect(warnings).toEqual([]);
+  });
+
+  it('async disposal waits for a purge commit the sweep had already issued', async () => {
+    const storage = new GatedStorage();
     const { clock, engine } = await createEngineWithCompletedRun(storage);
-    await holdSweepAt(storage, clock, KEYS.workflow(WORKFLOW_ID));
+    await holdSweepAt(storage, clock, { kind: 'commit', key: KEYS.workflow(WORKFLOW_ID) });
 
     let disposalSettled = false;
     const disposal = engine[Symbol.asyncDispose]().then(() => {
       disposalSettled = true;
     });
-    // The held storage read is the sweep's only pending work, so nothing but
-    // the release below can let it, and therefore disposal, finish.
+    // The held commit is the only thing disposal can be waiting on, so nothing
+    // but the release below can let it finish.
     await Bun.sleep(0);
     expect(disposalSettled).toBe(false);
 
     storage.release();
     await disposal;
-
-    expect(getInternals(engine).retentionSweepInFlight).toBeNull();
-    expect(await storage.get(KEYS.workflow(WORKFLOW_ID))).not.toBeNull();
+    // The commit was issued before disposal, so it lands rather than being
+    // abandoned half-way.
+    expect(await storage.get(KEYS.workflow(WORKFLOW_ID))).toBeNull();
   });
 
-  it('async disposal after a synchronous disposal still waits for the in-flight sweep', async () => {
-    const storage = new GatedGetStorage();
+  it('async disposal after a synchronous disposal still waits for a purge commit already issued', async () => {
+    const storage = new GatedStorage();
     const { clock, engine } = await createEngineWithCompletedRun(storage);
-    await holdSweepAt(storage, clock, KEYS.workflow(WORKFLOW_ID));
+    await holdSweepAt(storage, clock, { kind: 'commit', key: KEYS.workflow(WORKFLOW_ID) });
 
     engine[Symbol.dispose]();
     let disposalSettled = false;
@@ -150,15 +217,54 @@ describe('retention sweep disposal', () => {
 
     storage.release();
     await disposal;
+    expect(await storage.get(KEYS.workflow(WORKFLOW_ID))).toBeNull();
+  });
 
-    expect(getInternals(engine).retentionSweepInFlight).toBeNull();
-    expect(await storage.get(KEYS.workflow(WORKFLOW_ID))).not.toBeNull();
+  it('async disposal waits for an orphaned-index delete the sweep had already issued', async () => {
+    const storage = new GatedStorage();
+    const engine = new Engine({
+      storage,
+      getNow: () => 5_000,
+      retention: { completed: '1s' },
+      retentionSweepInterval: '10ms',
+    });
+    const orphanIndexKey = KEYS.terminalWorkflow(1_000, 'retention-sweep-disposal-orphan');
+    storage.arm({ kind: 'delete', key: orphanIndexKey });
+    await storage.put(orphanIndexKey, new Uint8Array());
+    await storage.reached;
+
+    let disposalSettled = false;
+    const disposal = engine[Symbol.asyncDispose]().then(() => {
+      disposalSettled = true;
+    });
+    await Bun.sleep(0);
+    expect(disposalSettled).toBe(false);
+
+    storage.release();
+    await disposal;
+    expect(await storage.get(orphanIndexKey)).toBeNull();
+  });
+
+  it('a sweep read that fails after async disposal reports no cleanup warning', async () => {
+    // Once async disposal has returned, a host may close its storage, failing
+    // the read the abandoned sweep was still waiting on. That failure belongs
+    // to work disposal already gave up on, not to a live engine.
+    const storage = new GatedStorage();
+    const { clock, engine, warnings } = await createEngineWithCompletedRun(storage);
+    await holdSweepAt(storage, clock, { kind: 'read', key: KEYS.workflow(WORKFLOW_ID) });
+    const sweep = getInternals(engine).retentionSweepInFlight;
+
+    await engine[Symbol.asyncDispose]();
+    storage.release(new Error('storage closed'));
+    await sweep;
+
+    expect(warnings).toEqual([]);
   });
 
   it('a sweep checking an orphaned terminal-index entry when the engine is disposed leaves the entry in place', async () => {
     // The scan deletes a terminal-index entry whose state record is gone. That
     // self-heal is still a storage write, so it must not land after disposal.
-    const storage = new GatedGetStorage();
+    const storage = new GatedStorage();
     const now = 5_000;
     const engine = new Engine({
       storage,
@@ -172,7 +278,7 @@ describe('retention sweep disposal', () => {
     });
     const orphanId = 'retention-sweep-disposal-orphan';
     const orphanIndexKey = KEYS.terminalWorkflow(1_000, orphanId); // past the 1s window
-    storage.arm(KEYS.workflow(orphanId));
+    storage.arm({ kind: 'read', key: KEYS.workflow(orphanId) });
     await storage.put(orphanIndexKey, new Uint8Array());
     await storage.reached;
     const sweep = getInternals(engine).retentionSweepInFlight;

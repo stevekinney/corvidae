@@ -2,6 +2,7 @@ import { KEYS, tryDecodeStorageKeyComponent } from '../../storage/interface.ts';
 import type { NormalizedRetentionPolicy, WorkflowState } from '../types.ts';
 import { EngineDisposedError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
+import { trackPurgeWrite } from './purge-write-tracking.ts';
 import {
   forEachResolvedDynamicRetentionPolicy,
   hasUnresolvedDynamicSourceCandidate,
@@ -67,7 +68,7 @@ export async function* streamExpiredRetentionWorkflowStates(
     // or handing another candidate to the purge loop.
     if (internals.disposed) throw new EngineDisposedError();
     if (!stateBytes) {
-      await internals.storage.delete(key);
+      await trackPurgeWrite(internals, internals.storage.delete(key));
       continue;
     }
 

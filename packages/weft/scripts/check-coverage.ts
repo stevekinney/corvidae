@@ -1428,8 +1428,8 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       'src/core/engine/retention.ts',
       {
         reason:
-          'Bun maps the closing braces of the resolved-dynamic-retention loop as uncovered after the direct `return true` inside them executes (retention.test.ts + workflow-retention.test.ts both exercise the branch itself). Realigned from 34-35 when the EngineDisposedError import for the disposed-sweep check shifted the file by one line.',
-        lines: new Set([35, 36]),
+          'Bun maps the closing braces of the resolved-dynamic-retention loop as uncovered after the direct `return true` inside them executes (retention.test.ts + workflow-retention.test.ts both exercise the branch itself). Back at 34-35 since COR-1341 removed the EngineDisposedError import COR-1340 had added (which had shifted them to 35-36).',
+        lines: new Set([34, 35]),
         requireUncoveredLines: true,
       },
     ],
