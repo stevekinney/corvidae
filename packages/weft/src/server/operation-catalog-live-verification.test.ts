@@ -176,14 +176,17 @@ describe('operation catalog — live operation registry matches REST_BINDINGS', 
 
 describe('operation catalog — end-to-end serve() to REST pipeline', () => {
   let server: WeftServer | undefined;
+  let engine: Engine | undefined;
 
   afterEach(async () => {
     await server?.stop();
     server = undefined;
+    engine?.[Symbol.dispose]();
+    engine = undefined;
   });
 
   it('GET /v1/workflows/:id returns the workflow state', async () => {
-    const engine = createHoldEngine();
+    engine = createHoldEngine();
     const handle = await engine.start('hold', { track: 8 }, {});
     await waitForStatus(engine, handle.id, 'running');
 
@@ -196,7 +199,7 @@ describe('operation catalog — end-to-end serve() to REST pipeline', () => {
   });
 
   it('GET /openapi.json returns a valid OpenAPI 3.1 document that includes the route', async () => {
-    const engine = createHoldEngine();
+    engine = createHoldEngine();
     server = serve({ engine, port: 0 });
 
     const response = await fetch(`${server.url}/openapi.json`);
