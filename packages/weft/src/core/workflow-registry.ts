@@ -8,6 +8,17 @@ export type {
   WorkflowRevisionRecord,
 } from './catalog/index.ts';
 export {
+  WorkflowRefreshCoordinator,
+  type WorkflowCatalogActivationMode,
+  type WorkflowRefreshArtifact,
+  type WorkflowRefreshCoordinatorOptions,
+  type WorkflowRefreshDiagnostics,
+  type WorkflowRefreshOptions,
+  type WorkflowRefreshResponse,
+  type WorkflowRefreshResult,
+  type WorkflowRefreshSource,
+} from './catalog/index.ts';
+export {
   DEFAULT_WORKFLOW_COMPATIBILITY_POLICY,
   MAX_CONTRACT_IDENTIFIER_BYTES,
   MAX_CONTRACT_MESSAGE_COUNT,

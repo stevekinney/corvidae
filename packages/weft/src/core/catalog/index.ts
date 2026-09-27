@@ -50,6 +50,20 @@ export type {
   WorkflowCatalogActivationResult,
   WorkflowCatalogActivePointer,
   WorkflowCatalogEntry,
+  WorkflowCatalogActivationMode,
   WorkflowRevisionRecord,
 } from './types.ts';
-export { WorkflowCatalog, type ActivateCandidateOptions } from './workflow-catalog.ts';
+export {
+  WorkflowRefreshCoordinator,
+  type WorkflowRefreshArtifact,
+  type WorkflowRefreshCoordinatorOptions,
+  type WorkflowRefreshDiagnostics,
+  type WorkflowRefreshOptions,
+  type WorkflowRefreshResponse,
+  type WorkflowRefreshResult,
+  type WorkflowRefreshSource,
+} from './workflow-refresh.ts';
+export {
+  WorkflowCatalog,
+  type ActivateCandidateOptions,
+} from './workflow-catalog.ts';
