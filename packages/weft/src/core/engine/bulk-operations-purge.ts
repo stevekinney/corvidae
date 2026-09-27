@@ -4,31 +4,22 @@ import {
   encodeStorageKeyComponent,
   storageHas,
   storageKeys,
-  tryDecodeStorageKeyComponent,
 } from '../../storage/interface.ts';
 import { decode } from '../codec.ts';
 import { buildIndexOperations } from '../search-attributes.ts';
-import type {
-  ListFilter,
-  NormalizedRetentionPolicy,
-  PurgeResult,
-  SearchAttributeValue,
-  WorkflowState,
-} from '../types.ts';
+import type { ListFilter, PurgeResult, SearchAttributeValue, WorkflowState } from '../types.ts';
 import { buildWorkflowTagIndexOperations, normalizeWorkflowTags } from '../workflow-tags.ts';
 import { asyncActivityWorkflowPrefix } from './async-activity-records.ts';
 import { forgetCommittedCheckpointBytes } from './checkpoint-commit-snapshots.ts';
+import { EngineDisposedError } from './errors.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { streamWorkflowStates } from './listing.ts';
-import {
-  forEachResolvedDynamicRetentionPolicy,
-  hasUnresolvedDynamicSourceCandidate,
-} from './registration.ts';
+import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
 import { buildExternalTerminalRotationFragment } from './storage-io.ts';
-import { decodeWorkflowState, isTerminalWorkflowStatus } from './validation.ts';
+import { isTerminalWorkflowStatus } from './validation.ts';
 import { foldWorkflowGenerationBumpForPurge } from './workflow-generation-fence.ts';
 import { buildWorkflowVisibilityIndexTransition } from './workflow-indexes.ts';
 import { getWorkflowRetentionDeadline } from './workflow-retention-deadline.ts';
@@ -80,72 +71,6 @@ export async function purgeInternal(
   }
 
   return { deleted };
-}
-
-function getMinimumRetentionMs(internals: EngineInternals): number | null {
-  let minimumRetentionMs: number | null = null;
-
-  const considerRetentionPolicy = (policy: NormalizedRetentionPolicy | null | undefined): void => {
-    for (const retentionMs of [
-      policy?.completed,
-      policy?.failed,
-      policy?.cancelled,
-      policy?.timedOut,
-    ]) {
-      if (retentionMs === undefined) continue;
-
-      minimumRetentionMs =
-        minimumRetentionMs === null ? retentionMs : Math.min(minimumRetentionMs, retentionMs);
-    }
-  };
-
-  considerRetentionPolicy(internals.options.retention);
-  for (const registration of internals.registrations.values()) {
-    considerRetentionPolicy(registration.retention);
-  }
-  forEachResolvedDynamicRetentionPolicy(internals, considerRetentionPolicy);
-
-  return minimumRetentionMs;
-}
-
-async function* streamExpiredRetentionWorkflowStates(
-  internals: EngineInternals,
-  now: number,
-): AsyncGenerator<WorkflowState> {
-  // A registered-but-unresolved dynamic-source candidate's retention policy
-  // is unknown, so the minimum-retention scan bound below cannot be
-  // trusted while one exists (WFT-19 review round 1) — fall back to an
-  // unbounded terminal scan, letting `shouldPurgeWorkflowState`'s own
-  // per-run async resolve decide each state; self-heals once the sweep's
-  // own resolve installs the candidate and the fast bound re-engages.
-  const untrustworthyBound = hasUnresolvedDynamicSourceCandidate(internals);
-  const minimumRetentionMs = untrustworthyBound ? null : getMinimumRetentionMs(internals);
-  if (!untrustworthyBound && minimumRetentionMs === null) return;
-
-  const terminalWorkflowPrefix = KEYS.terminalWorkflowPrefix();
-  const scanOptions =
-    minimumRetentionMs === null
-      ? {}
-      : {
-          lte: `${terminalWorkflowPrefix}${String(now - minimumRetentionMs).padStart(16, '0')}:\xff`,
-        };
-
-  for await (const [key] of internals.storage.scan(terminalWorkflowPrefix, scanOptions)) {
-    const encodedWorkflowId = key.slice(key.lastIndexOf(':') + 1);
-    const workflowId = tryDecodeStorageKeyComponent(encodedWorkflowId);
-    if (workflowId === null) continue;
-
-    const stateBytes = await internals.storage.get(KEYS.workflow(workflowId));
-    if (!stateBytes) {
-      await internals.storage.delete(key);
-      continue;
-    }
-
-    const state = decodeWorkflowState(stateBytes);
-    if (!isTerminalWorkflowStatus(state.status)) continue;
-
-    yield state;
-  }
 }
 
 function resolvePurgeWindow(
@@ -215,6 +140,9 @@ export async function purgeWorkflow(
   const rotation = await buildExternalTerminalRotationFragment(internals, state.id);
   const fenced = await foldWorkflowGenerationBumpForPurge(internals, state.id, rotation);
   const operations = [...deleteOperations, ...fenced.operations];
+  // Collecting the delete set awaits storage, so disposal can land after the
+  // caller decided to purge. A disposed engine commits no further deletes.
+  if (internals.disposed) throw new EngineDisposedError();
   await commitFencedEngineWrite(internals, null, operations, fenced.conditions, () => {
     return new Error(`Purge commit for workflow "${state.id}" lost its precondition.`);
   });
