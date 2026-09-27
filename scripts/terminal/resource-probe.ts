@@ -209,7 +209,16 @@ async function cleanupOrder(): Promise<ProbeResult> {
   const queue = boundedQueue(4);
   for (let index = 0; index < 4; index += 1) queue.push(new Uint8Array([index]));
   const child = Bun.spawn(
-    ['setsid', 'sh', '-c', 'sleep 30 & descendant=$!; printf "%s\\n" "$descendant"; wait'],
+    [
+      'perl',
+      '-MPOSIX',
+      '-e',
+      'POSIX::setsid(); exec @ARGV',
+      '--',
+      'sh',
+      '-c',
+      'sleep 30 & descendant=$!; printf "%s\\n" "$descendant"; wait',
+    ],
     {
       stdout: 'pipe',
       stderr: 'ignore',
