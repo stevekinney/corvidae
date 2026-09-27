@@ -415,17 +415,6 @@ export function createServerWebSocketHandlers(
           return;
         }
 
-        // Shutdown interlock (COR-1343): `registerStackDisposers`' timer-
-        // clearing disposer sets `context.stopping` and clears
-        // `context.pendingWorkerRequeues` FIRST (it is registered last, so it
-        // is disposed first); only LATER-disposed steps (`shutdownAllWorkers`,
-        // then the Bun server's own forced socket close) close each worker's
-        // socket. A grace-period timer armed by such a close would never be
-        // cleared again, so none is armed once `stopping` is set. Only this
-        // timer branch is gated: the grace-0 inline requeue above keeps its
-        // existing behaviour during shutdown.
-        if (context.stopping) return;
-
         // Cancel any previously-scheduled requeue for this worker before
         // scheduling a new one (defensive — close should only fire once per
         // socket, but a future change could break that invariant silently).
