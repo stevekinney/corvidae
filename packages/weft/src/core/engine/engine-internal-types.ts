@@ -20,6 +20,7 @@ import type {
   WorkflowFunction,
   WorkflowTimelineEntry,
 } from '../types.ts';
+import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 
 /**
  * The identity a running workflow instance was launched under, cached by
@@ -53,6 +54,7 @@ export interface RegistrationEntry {
    * survives per-workflow terminal cleanup; resolved at teardown by workflow type.
    */
   finalizer?: AnyActivityDefinition;
+  workerVersioningPolicy?: WorkflowWorkerVersioningPolicy;
 }
 
 export interface ResolvedOptions {

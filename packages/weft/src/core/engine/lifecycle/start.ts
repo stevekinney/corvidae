@@ -357,6 +357,8 @@ export async function startWorkflow(
       parentWorkflowExecutionToken,
       delayedStartTimer,
       callbacks,
+      undefined,
+      registration,
     );
     applyRestartLineage(state, terminalRunToPurge);
     const checkpoint = createInitialCheckpoint(

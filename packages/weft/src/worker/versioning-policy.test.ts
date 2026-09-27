@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '../storage/memory.ts';
+import { KEYS } from '../storage/interface.ts';
+import { encode } from '../core/codec.ts';
 import {
   DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
   bindWorkflowWorkerAtStart,
+  consumeWorkflowWorkerStartOverridePreview,
   evaluateWorkflowWorkerUpgrade,
   inheritWorkflowWorkerBinding,
   issueWorkflowWorkerStartOverridePreview,
@@ -27,10 +30,18 @@ const binding = (buildId: string, revision = 'workflow-revision'): WorkflowWorke
   checkpointId: `checkpoint-${buildId}`,
 });
 
+async function seedWorkflow(storage: MemoryStorage): Promise<void> {
+  await storage.put(
+    KEYS.workflow('workflow-1'),
+    encode({ id: 'workflow-1', type: 'orders', status: 'running', input: null, versionTuple: { workflowVersion: '1' }, createdAt: 1, updatedAt: 1 }),
+  );
+}
+
 describe('workflow worker versioning policy', () => {
   it('defaults to pinned and binds start atomically and idempotently', async () => {
     expect(DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY.mode).toBe('pinned');
     using storage = new MemoryStorage();
+    await seedWorkflow(storage);
     const first = await bindWorkflowWorkerAtStart(storage, binding('build-1'));
     const retry = await bindWorkflowWorkerAtStart(storage, binding('build-1'));
     expect(retry).toEqual(first);
@@ -41,6 +52,7 @@ describe('workflow worker versioning policy', () => {
 
   it('records bounded upgrades only under the exact contract at a checkpoint boundary', async () => {
     using storage = new MemoryStorage();
+    await seedWorkflow(storage);
     const first = binding('build-1');
     await bindWorkflowWorkerAtStart(storage, first);
     const candidate = binding('build-2');
@@ -155,5 +167,20 @@ describe('workflow worker versioning policy', () => {
     expect(verifyWorkflowWorkerStartOverridePreview(preview, 'secret', 1050)).toBe(true);
     expect(verifyWorkflowWorkerStartOverridePreview(preview, 'wrong-secret', 1050)).toBe(false);
     expect(verifyWorkflowWorkerStartOverridePreview(preview, 'secret', 1101)).toBe(false);
+  });
+
+  it('consumes a start override once and rejects replay', async () => {
+    using storage = new MemoryStorage();
+    const preview = issueWorkflowWorkerStartOverridePreview({
+      workflowId: 'workflow-1',
+      serverSecret: 'secret',
+      now: 10,
+    });
+    expect(await consumeWorkflowWorkerStartOverridePreview(storage, preview, 'secret', 20)).toBe(
+      true,
+    );
+    expect(await consumeWorkflowWorkerStartOverridePreview(storage, preview, 'secret', 20)).toBe(
+      false,
+    );
   });
 });

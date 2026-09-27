@@ -13,6 +13,7 @@ import type { SearchAttributeSchema } from './search-attributes.ts';
 import type { WorkflowConcurrencyOptions } from './workflow-concurrency.ts';
 import type { WorkflowFunction } from './workflow-function.ts';
 import type { AnyActivityDefinition } from './workflow-registries.ts';
+import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 
 /**
  * Named workflow definition returned by {@link workflow}. The runtime object
@@ -108,4 +109,6 @@ export interface WorkflowDefinition<
    * `try/finally`).
    */
   finalizer?: AnyActivityDefinition;
+  /** Per-workflow worker identity binding policy. */
+  workerVersioningPolicy?: WorkflowWorkerVersioningPolicy;
 }

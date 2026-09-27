@@ -16,7 +16,7 @@ import {
 import type { Checkpoint, Duration, StartOptions, TimerEntry, WorkflowState } from '../../types.ts';
 import { type WorkflowVersionTuple } from '../../workflow-version-tuple.ts';
 import type { EngineInternals } from '../internals.ts';
-import { type LifecycleCallbacks } from './shared.ts';
+import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
 
 export function parseStartOptionDuration(
   _internals: EngineInternals,
@@ -112,6 +112,7 @@ export function createInitialWorkflowState(
   callbacks: LifecycleCallbacks,
   /** See {@link buildInitialIdentitySlice}'s parameter of the same name (COR-75). */
   forcePendingWithoutTimer?: boolean,
+  registration?: RegistrationEntry,
 ): WorkflowState {
   const now = internals.options.getNow();
   const state = buildInitialIdentitySlice(
@@ -139,6 +140,24 @@ export function createInitialWorkflowState(
     : resolveInitialExecutionDeadline(internals, options, delayedStartTimer, now, callbacks);
   if (executionDeadline !== undefined) {
     state.executionDeadline = executionDeadline;
+  }
+
+  {
+    state.workerVersioningPolicy = registration?.workerVersioningPolicy ?? { mode: 'pinned' };
+    const binding = {
+      workflowId,
+      workflowType: type,
+      deploymentName: `workflow:${type}`,
+      buildId: versionTuple.workflowVersion,
+      artifactDigest: `revision:${revision}`,
+      manifestDigest: `manifest:${revision}`,
+      workflowRevision: revision,
+      activityName: '*',
+      activityContractHash: `workflow:${type}:activities`,
+      boundAt: now,
+      checkpointId: workflowId,
+    };
+    state.workerBinding = { current: binding, history: [] };
   }
 
   return state;

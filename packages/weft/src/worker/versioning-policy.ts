@@ -3,7 +3,7 @@
 import { decode, encode } from '../core/codec/index.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../core/versioning.ts';
 import { hashString } from '../runtime/portable.ts';
-import { storageConditionalBatch, type Storage } from '../storage/interface.ts';
+import { KEYS, storageConditionalBatch, type Storage } from '../storage/interface.ts';
 import type { WorkerExecutionIdentity } from './manifest/types.ts';
 
 export const DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY = {
@@ -11,7 +11,6 @@ export const DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY = {
   maxBindingHistory: 8,
 } as const satisfies WorkflowWorkerVersioningPolicy;
 
-const BINDING_PREFIX = 'workflow-worker-binding:';
 const DEFAULT_HISTORY_LIMIT = 8;
 const MAX_HISTORY_LIMIT = 64;
 
@@ -57,8 +56,15 @@ export type WorkerStartOverridePreview = Readonly<{
   expiresAt: number;
 }>;
 
-function bindingKey(workflowId: string): string {
-  return `${BINDING_PREFIX}${encodeURIComponent(workflowId)}`;
+const OVERRIDE_CONSUMED_PREFIX = 'workflow-worker-override-consumed:';
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const length = Math.max(left.length, right.length);
+  let difference = left.length ^ right.length;
+  for (let index = 0; index < length; index += 1) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+  }
+  return difference === 0;
 }
 
 function historyLimit(policy: WorkflowWorkerVersioningPolicy): number {
@@ -109,8 +115,10 @@ function decodeRecord(value: Uint8Array): WorkflowWorkerBindingRecord {
   return { current: asBinding(decoded.current), history: decoded.history.map(asBinding) };
 }
 
-function encodeRecord(record: WorkflowWorkerBindingRecord): Uint8Array {
-  return encode({ current: record.current, history: [...record.history] });
+function workflowRecord(value: Uint8Array): Record<string, unknown> {
+  const decoded = decode(value);
+  if (typeof decoded !== 'object' || decoded === null) throw new Error('Invalid workflow state.');
+  return decoded as Record<string, unknown>;
 }
 
 function satisfiesExactCompatibility(
@@ -156,8 +164,12 @@ export async function readWorkflowWorkerBinding(
   storage: Storage,
   workflowId: string,
 ): Promise<WorkflowWorkerBindingRecord | null> {
-  const value = await storage.get(bindingKey(workflowId));
-  return value === null ? null : decodeRecord(value);
+  const value = await storage.get(KEYS.workflow(workflowId));
+  if (value === null) return null;
+  const state = workflowRecord(value);
+  return state["workerBinding"] === undefined
+    ? null
+    : decodeRecord(encode(state["workerBinding"]));
 }
 
 /** Bind exactly once at start; retries are idempotent, conflicting starts are rejected. */
@@ -165,20 +177,23 @@ export async function bindWorkflowWorkerAtStart(
   storage: Storage,
   binding: WorkflowWorkerBinding,
 ): Promise<WorkflowWorkerBindingRecord> {
-  const key = bindingKey(binding.workflowId);
+  const key = KEYS.workflow(binding.workflowId);
   const existing = await storage.get(key);
-  if (existing !== null) {
-    const record = decodeRecord(existing);
+  if (existing === null) throw new Error(`Workflow "${binding.workflowId}" does not exist.`);
+  const state = workflowRecord(existing);
+  if (state["workerBinding"] !== undefined) {
+    const record = decodeRecord(encode(state["workerBinding"]));
     if (!bindingEquals(record.current, binding)) {
       throw new Error(`Workflow "${binding.workflowId}" already has a different worker binding.`);
     }
     return record;
   }
   const record: WorkflowWorkerBindingRecord = { current: binding, history: [] };
+  state["workerBinding"] = record;
   const applied = await storageConditionalBatch(
     storage,
-    [{ key, expectedValue: null }],
-    [{ type: 'put', key, value: encodeRecord(record) }],
+    [{ key, expectedValue: existing }],
+    [{ type: 'put', key, value: encode(state) }],
   );
   if (!applied) {
     const raced = await readWorkflowWorkerBinding(storage, binding.workflowId);
@@ -197,20 +212,23 @@ export async function recordWorkflowWorkerUpgrade(
 ): Promise<WorkflowWorkerBindingRecord> {
   if (policy.mode !== 'auto-upgrade')
     throw new Error('Worker upgrade requires auto-upgrade policy.');
-  const key = bindingKey(current.workflowId);
+  const key = KEYS.workflow(current.workflowId);
   const previousBytes = await storage.get(key);
   if (previousBytes === null) throw new Error('Workflow worker binding is missing.');
-  const previous = decodeRecord(previousBytes);
+  const state = workflowRecord(previousBytes);
+  if (state["workerBinding"] === undefined) throw new Error('Workflow worker binding is missing.');
+  const previous = decodeRecord(encode(state["workerBinding"]));
   if (!bindingEquals(previous.current, current)) throw new Error('Stale workflow worker binding.');
   const limit = historyLimit(policy);
   const record: WorkflowWorkerBindingRecord = {
     current: next,
     history: [current, ...previous.history].slice(0, limit),
   };
+  state["workerBinding"] = record;
   const applied = await storageConditionalBatch(
     storage,
     [{ key, expectedValue: previousBytes }],
-    [{ type: 'put', key, value: encodeRecord(record) }],
+    [{ type: 'put', key, value: encode(state) }],
   );
   if (!applied) throw new Error('Concurrent workflow worker upgrade lost the binding CAS.');
   return record;
@@ -322,9 +340,27 @@ export function verifyWorkflowWorkerStartOverridePreview(
   if (preview.scope !== 'destructive:workflow-worker-version-binding' || preview.expiresAt < now)
     return false;
   return (
-    preview.token ===
-    hashString(
-      `workflow-worker-override\0${preview.workflowId}\0${preview.expiresAt}\0${serverSecret}`,
+    constantTimeEqual(
+      preview.token,
+      hashString(
+        `workflow-worker-override\0${preview.workflowId}\0${preview.expiresAt}\0${serverSecret}`,
+      ),
     )
+  );
+}
+
+/** Consume a valid destructive override exactly once using a storage CAS. */
+export async function consumeWorkflowWorkerStartOverridePreview(
+  storage: Storage,
+  preview: WorkerStartOverridePreview,
+  serverSecret: string,
+  now = Date.now(),
+): Promise<boolean> {
+  if (!verifyWorkflowWorkerStartOverridePreview(preview, serverSecret, now)) return false;
+  const key = `${OVERRIDE_CONSUMED_PREFIX}${encodeURIComponent(preview.workflowId)}:${preview.token}`;
+  return storageConditionalBatch(
+    storage,
+    [{ key, expectedValue: null }],
+    [{ type: 'put', key, value: new Uint8Array(0) }],
   );
 }

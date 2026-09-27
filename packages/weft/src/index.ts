@@ -309,6 +309,7 @@ export {
   bindWorkflowWorkerAtStart,
   bindingFromExecution,
   evaluateWorkflowWorkerUpgrade,
+  consumeWorkflowWorkerStartOverridePreview,
   inheritWorkflowWorkerBinding,
   issueWorkflowWorkerStartOverridePreview,
   readWorkflowWorkerBinding,

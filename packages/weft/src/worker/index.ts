@@ -46,6 +46,7 @@ export type { RemoteActivityContext } from './remote-activity-context.ts';
 export {
   bindingFromExecution,
   bindWorkflowWorkerAtStart,
+  consumeWorkflowWorkerStartOverridePreview,
   DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
   evaluateWorkflowWorkerUpgrade,
   inheritWorkflowWorkerBinding,
