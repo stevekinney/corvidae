@@ -24,7 +24,7 @@
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, jest, test } from 'bun:test';
-import { createRawSnippet, mount, tick, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import { importWithoutDomGlobals } from '../../test/import-without-dom-globals.ts';
@@ -811,7 +811,8 @@ describe('Chat — interactions', () => {
     expect(container.querySelector('.chat-drop-overlay')).not.toBeNull();
 
     await fireEvent(root, createDragEvent('drop', [file]));
-    await waitFor(() => expect(container.querySelector('.chat-drop-overlay')).toBeNull());
+    flushSync();
+    expect(container.querySelector('.chat-drop-overlay')?.outerHTML ?? null).toBeNull();
   });
 
   test('file drag overlay stays hidden when attachments are disabled', async () => {
