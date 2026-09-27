@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -540,7 +541,8 @@ describe('MultiSelect', () => {
 
     await fireEvent.keyDown(listbox, { key: 'Escape' });
 
-    await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -566,7 +568,8 @@ describe('MultiSelect', () => {
 
       expect(escapeEvent.defaultPrevented).toBe(true);
       expect(parentEscapeCount).toBe(0);
-      await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+      flushSync();
+      expect(container.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
 
       // Released when close begins: the parent handler (now top-most) sees
       // the very next Escape.
@@ -590,7 +593,8 @@ describe('MultiSelect', () => {
       window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
       expect(parentEscapeCount).toBe(0);
-      await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+      flushSync();
+      expect(container.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
     } finally {
       releaseParent();
     }
@@ -608,7 +612,8 @@ describe('MultiSelect', () => {
 
     window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
-    await waitFor(() => expect(container.querySelector('[role="listbox"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="listbox"]')?.outerHTML ?? null).toBeNull();
     outside.remove();
   });
 
@@ -763,9 +768,8 @@ describe('MultiSelect', () => {
       filterable: true,
     });
     await openMenu(container);
-    await waitFor(() => {
-      expect(document.activeElement).toBe(container.querySelector('.cinder-multi-select__filter'));
-    });
+    flushSync();
+    expect(document.activeElement).toBe(container.querySelector('.cinder-multi-select__filter'));
 
     const outside = document.createElement('button');
     outside.type = 'button';
@@ -773,9 +777,8 @@ describe('MultiSelect', () => {
     outside.focus();
     await fireEvent.focusIn(outside);
 
-    await waitFor(() => {
-      expect(container.querySelector('#fruits-popover')).toBeNull();
-    });
+    flushSync();
+    expect(container.querySelector('#fruits-popover')?.outerHTML ?? null).toBeNull();
 
     const trigger = container.querySelector<HTMLButtonElement>('#fruits');
     expect(trigger?.getAttribute('aria-expanded')).toBe('false');

@@ -64,7 +64,7 @@ describe('BulkActionDialog — dry-run preview', () => {
   });
 
   test('renders no previewNote paragraph when omitted — no regression for cancel/signal/delete/tags callers', async () => {
-    const { queryByText } = render(BulkActionDialog, {
+    const { getByText, queryByText } = render(BulkActionDialog, {
       props: {
         title: 'Bulk cancel',
         verb: 'cancel',
@@ -74,9 +74,12 @@ describe('BulkActionDialog — dry-run preview', () => {
       },
     });
 
+    // Wait for the preview phase, where a supplied previewNote would render,
+    // so the absence assertion is not satisfied by the loading phase alone.
     await waitFor(() => {
-      expect(queryByText(/persisted revision/)).toBeNull();
+      expect(getByText('47 matching workflows')).not.toBeNull();
     });
+    expect(queryByText(/persisted revision/)?.outerHTML ?? null).toBeNull();
   });
 
   test('0 matched disables the confirm affordance and offers no type-to-confirm field', async () => {
