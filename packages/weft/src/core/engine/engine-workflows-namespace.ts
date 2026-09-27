@@ -36,6 +36,11 @@ import {
   type WorkflowCatalogActivationResult,
   type WorkflowCatalogActivePointer,
   type WorkflowRevisionRecord,
+  WorkflowRefreshCoordinator,
+  type WorkflowRefreshDiagnostics,
+  type WorkflowRefreshOptions,
+  type WorkflowRefreshResult,
+  type WorkflowRefreshSource,
 } from '../catalog/index.ts';
 import type { WorkflowCompatibilityPolicy } from '../contract/compatibility.ts';
 import type { WorkflowRevisionManifest } from '../contract/types.ts';
@@ -49,6 +54,7 @@ import { WorkflowNotRegisteredError } from './errors.ts';
 import type { Engine } from './index.ts';
 import { WorkflowRevisionUnavailableError } from './revision-errors.ts';
 import { resolveWorkflowSource, type ResolveWorkflowSourceOptions } from './source-resolution.ts';
+import { getInternals } from './internals.ts';
 
 /**
  * Options accepted by {@link EngineWorkflowsNamespace.activate}.
@@ -160,6 +166,27 @@ export interface EngineWorkflowsNamespace {
     revision: string,
     options?: ResolveWorkflowSourceOptions,
   ): Promise<WorkflowRevisionRecord>;
+  /** Register an opt-in conditional refresh source for a workflow name. */
+  registerRefreshSource(name: string, source: WorkflowRefreshSource): Promise<void>;
+  /** Fetch, validate, warm, install, and optionally activate a workflow candidate. */
+  refresh(name: string, options?: WorkflowRefreshOptions): Promise<WorkflowRefreshResult>;
+  /** Read refresh diagnostics for one workflow or every registered source. */
+  refreshDiagnostics(name?: string): readonly WorkflowRefreshDiagnostics[];
+  /** Start bounded opt-in refresh polling. */
+  startRefreshPolling(): Promise<void>;
+  /** Run one refresh maintenance cycle, including manual-background-task hosts. */
+  runRefreshMaintenance(): Promise<readonly WorkflowRefreshResult[]>;
+}
+
+function getRefreshCoordinator(engine: Engine): WorkflowRefreshCoordinator {
+  const internals = getInternals(engine);
+  if (internals.workflowRefreshCoordinator === null) {
+    internals.workflowRefreshCoordinator = new WorkflowRefreshCoordinator({
+      catalog: getWorkflowCatalog(engine),
+      sources: new Map(),
+    });
+  }
+  return internals.workflowRefreshCoordinator;
 }
 
 async function ensureCatalogReady(engine: Engine): Promise<void> {
@@ -251,5 +278,22 @@ export function createEngineWorkflowsNamespace(engine: Engine): EngineWorkflowsN
     getRevision: (name, revision) => getInstalledWorkflowRevision(engine, name, revision),
     listRevisions: (name) => listInstalledWorkflowRevisions(engine, name),
     preload: (name, revision, options) => resolveWorkflowSource(engine, name, revision, options),
+    registerRefreshSource: async (name, source) => {
+      await ensureCatalogReady(engine);
+      getRefreshCoordinator(engine).registerSource(name, source);
+    },
+    refresh: async (name, options) => {
+      await ensureCatalogReady(engine);
+      return getRefreshCoordinator(engine).refresh(name, options);
+    },
+    refreshDiagnostics: (name) => getInternals(engine).workflowRefreshCoordinator?.diagnostics(name) ?? [],
+    startRefreshPolling: async () => {
+      await ensureCatalogReady(engine);
+      getRefreshCoordinator(engine).startPolling();
+    },
+    runRefreshMaintenance: async () => {
+      await ensureCatalogReady(engine);
+      return getRefreshCoordinator(engine).runMaintenance();
+    },
   };
 }

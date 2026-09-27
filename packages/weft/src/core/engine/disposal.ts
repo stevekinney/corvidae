@@ -30,6 +30,10 @@ function clearPendingResultPollTimers(internals: EngineInternals): void {
   internals.pendingResultPollTimers.clear();
 }
 
+function disposeWorkflowRefreshCoordinator(internals: EngineInternals): void {
+  internals.workflowRefreshCoordinator?.dispose();
+}
+
 /**
  * Reject pending result waiters before clearing so external `handle.result()`
  * callers observe a deterministic rejection instead of a promise that never
@@ -113,6 +117,7 @@ export function disposeEngine(
   internals.alertManager?.[Symbol.dispose]();
   internals.alertManager = null;
   internals.abortController.abort();
+  disposeWorkflowRefreshCoordinator(internals);
   for (const resolveSignalWaiter of internals.signalWaiters.values()) {
     resolveSignalWaiter();
   }

@@ -950,6 +950,7 @@ export class Engine<
         )
       : null;
     getInternals(this).workflowCatalog = null;
+    getInternals(this).workflowRefreshCoordinator = null;
     getInternals(this).pendingCatalogInstalls = [];
     getInternals(this).catalogRestored = false;
     getInternals(this).catalogDrainPromise = null;
@@ -2076,6 +2077,7 @@ export class Engine<
       await this.#runRetentionSweep();
     }
     internals.alertManager?.tick();
+    await internals.workflowRefreshCoordinator?.runMaintenance();
   }
   /**
    * Deterministically drain the inline launch queue (COR-74): every queued
@@ -3041,6 +3043,7 @@ export class Engine<
         // before any awaited release.
         const { registry: workflowClaimRegistry } = this.#detachWorkflowClaimOwnership();
         disposeEngine(getInternals(this), (event) => this.dispatchEvent(event));
+        await getInternals(this).workflowRefreshCoordinator?.[Symbol.asyncDispose]();
         // A lease acquire may still be parked (waiting for handoff) when disposal
         // runs. disposeEngine() set `disposed` and stopped the manager, so the
         // parked acquire's wait loop exits (or, if it already committed a holder
