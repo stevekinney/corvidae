@@ -60,6 +60,42 @@ describe('terminal evidence schema', () => {
     ).toEqual([]);
   });
 
+  test('requires complete workload definitions for resource evidence', () => {
+    const workload = {
+      fixture: 'fixture',
+      durationMilliseconds: 1,
+      samples: 1,
+      warmup: 0,
+      hardware: 'arm64/darwin',
+      runtime: 'Bun 1.4.2',
+      method: 'control fixture',
+      unit: 'boolean',
+      comparator: 'true',
+      target: 'pass',
+      control: 'control passed',
+      rawObservations: ['raw'],
+    };
+    const resource = {
+      ...validReport,
+      reportKind: 'resource' as const,
+      expectedCellIds: ['fixture'],
+      cells: [{ ...validReport.cells[0], id: 'fixture', workload }],
+    };
+    expect(validateEvidence(resource, 'resource')).toEqual([]);
+    expect(
+      validateEvidence(
+        { ...resource, cells: [{ ...resource.cells[0], workload: undefined }] },
+        'resource',
+      ),
+    ).toContain('workload definition');
+    expect(
+      validateEvidence(
+        { ...resource, cells: [{ ...resource.cells[0], workload: { ...workload, control: '' } }] },
+        'resource',
+      ),
+    ).toContain('workload definition');
+  });
+
   test('committed schema rejects hostile candidate structures before semantic checks', async () => {
     const committedSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
     const validator = new Ajv2020({ allErrors: true, strict: false });

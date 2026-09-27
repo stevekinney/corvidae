@@ -313,7 +313,7 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
   }
 }
 
-async function probeCandidate(
+export async function probeCandidate(
   candidate: Candidate,
   directory: string,
 ): Promise<{

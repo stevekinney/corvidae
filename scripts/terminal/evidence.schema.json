@@ -27,7 +27,44 @@
           "type": "object",
           "minProperties": 1,
           "additionalProperties": { "$ref": "#/$defs/metric" }
+        },
+        "workload": {
+          "$ref": "#/$defs/workload"
         }
+      },
+      "additionalProperties": false
+    },
+    "workload": {
+      "type": "object",
+      "required": [
+        "fixture",
+        "durationMilliseconds",
+        "samples",
+        "warmup",
+        "hardware",
+        "runtime",
+        "method",
+        "unit",
+        "comparator",
+        "target",
+        "control",
+        "rawObservations"
+      ],
+      "properties": {
+        "fixture": { "type": "string", "minLength": 1 },
+        "durationMilliseconds": { "type": "number", "exclusiveMinimum": 0 },
+        "samples": { "type": "integer", "minimum": 1 },
+        "warmup": { "type": "integer", "minimum": 0 },
+        "hardware": { "type": "string", "minLength": 1 },
+        "runtime": { "type": "string", "minLength": 1 },
+        "browser": { "type": "string", "minLength": 1 },
+        "engine": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "minLength": 1 },
+        "comparator": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "control": { "type": "string", "minLength": 1 },
+        "rawObservations": { "type": "array", "minItems": 1, "items": { "type": "string" } }
       },
       "additionalProperties": false
     }
@@ -45,7 +82,7 @@
   ],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "reportKind": { "enum": ["runtime", "engine"] },
+    "reportKind": { "enum": ["runtime", "engine", "resource"] },
     "sourceSha": { "type": "string", "minLength": 7 },
     "runId": { "type": "string", "minLength": 1 },
     "observedAt": { "type": "string", "format": "date-time" },
@@ -93,5 +130,15 @@
     },
     "passed": { "type": "boolean" }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "reportKind": { "const": "resource" } } },
+      "then": {
+        "properties": {
+          "cells": { "items": { "required": ["workload"] } }
+        }
+      }
+    }
+  ]
 }

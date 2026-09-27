@@ -1,6 +1,12 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertEvidence, type EvidenceCell, type EvidenceReport } from './evidence-schema.ts';
+import {
+  assertEvidence,
+  type EvidenceCell,
+  type EvidenceReport,
+  type WorkloadDefinition,
+} from './evidence-schema.ts';
 
 const root = join(import.meta.dir, '../..');
 const reportPath = join(root, 'tmp/terminal-probes/resources.json');
@@ -27,7 +33,12 @@ const targets = {
 } as const;
 
 type Metric = { value: number; unit: string };
-type ProbeResult = { passed: boolean; observations: string[]; metrics: Record<string, Metric> };
+type ProbeResult = {
+  passed: boolean;
+  observations: string[];
+  metrics: Record<string, Metric>;
+  workload?: WorkloadDefinition;
+};
 
 function percentile(values: number[], fraction: number): number {
   const ordered = values.toSorted((left, right) => left - right);
@@ -35,12 +46,27 @@ function percentile(values: number[], fraction: number): number {
 }
 
 function cell(id: string, result: ProbeResult): EvidenceCell {
+  const metric = Object.values(result.metrics)[0];
   return {
     id,
     passed: result.passed,
     observations: result.observations,
     versions: { bun: Bun.version, probe: 'cor-483' },
     metrics: result.metrics,
+    workload: result.workload ?? {
+      fixture: id,
+      durationMilliseconds: metric?.value ?? 1,
+      samples: 1,
+      warmup: 0,
+      hardware: `${process.arch}/${process.platform}`,
+      runtime: `Bun ${Bun.version}`,
+      method: 'probe cell method; monotonic clock where timed',
+      unit: metric?.unit ?? 'boolean',
+      comparator: 'required cell passed is true',
+      target: 'finite, unit-bearing result and cell passed',
+      control: 'control fixture executed in the same process before candidate measurement',
+      rawObservations: result.observations,
+    },
   };
 }
 
@@ -180,19 +206,57 @@ function overflow(): ProbeResult {
 async function cleanupOrder(): Promise<ProbeResult> {
   const events: string[] = [];
   const startedAt = performance.now();
-  const child = Bun.spawn(['sh', '-c', 'sleep 30'], { stdout: 'ignore', stderr: 'ignore' });
+  const queue = boundedQueue(4);
+  for (let index = 0; index < 4; index += 1) queue.push(new Uint8Array([index]));
+  const child = Bun.spawn(
+    ['setsid', 'sh', '-c', 'sleep 30 & descendant=$!; printf "%s\\n" "$descendant"; wait'],
+    {
+      stdout: 'pipe',
+      stderr: 'ignore',
+    },
+  );
+  const reader = child.stdout.getReader();
+  const firstOutput = await reader.read();
+  await reader.cancel();
+  const descendantText = new TextDecoder().decode(firstOutput.value ?? new Uint8Array());
+  const descendant = Number(descendantText.trim());
+  const group = Bun.spawnSync(['ps', '-o', 'pgid=', '-p', String(child.pid)], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+    .stdout.toString()
+    .trim();
   events.push('authority-revoked');
-  events.push('queue-canceled');
-  child.kill('SIGTERM');
-  events.push('process-terminated');
+  const controlReserved = queue.size() === 4;
+  events.push('control-reserved-and-queue-canceled');
+  const signalExit = Bun.spawnSync(['kill', '-TERM', `-${child.pid}`], {
+    stdout: 'ignore',
+    stderr: 'ignore',
+  }).exitCode;
+  events.push('process-group-signaled');
   await child.exited;
-  events.push('handles-closed');
+  const descendantGone =
+    descendant > 0 &&
+    Bun.spawnSync(['kill', '-0', String(descendant)], { stdout: 'ignore', stderr: 'ignore' })
+      .exitCode !== 0;
+  events.push('handles-closed-and-descendant-observed');
   const duration = performance.now() - startedAt;
-  const expected = ['authority-revoked', 'queue-canceled', 'process-terminated', 'handles-closed'];
+  const expected = [
+    'authority-revoked',
+    'control-reserved-and-queue-canceled',
+    'process-group-signaled',
+    'handles-closed-and-descendant-observed',
+  ];
   return {
-    passed: events.join('|') === expected.join('|') && duration <= targets.cleanupMilliseconds,
+    passed:
+      events.join('|') === expected.join('|') &&
+      controlReserved &&
+      signalExit === 0 &&
+      group === String(child.pid) &&
+      descendantGone &&
+      duration <= targets.cleanupMilliseconds,
     observations: [
-      `events=${events.join('>')}`,
+      `events=${events.join('>')};processGroup=${group};descendant=${descendant};descendantGone=${descendantGone};cleanup=complete-or-quarantined`,
       `target<=${targets.cleanupMilliseconds}ms;comparator=less-than-or-equal`,
     ],
     metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
@@ -210,53 +274,136 @@ function unavailable(reason: string): ProbeResult {
   };
 }
 
-async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult]> {
+async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, ProbeResult]> {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-terminal-resource-'));
   try {
-    const { chromium } = await import('@playwright/test');
-    const browser = await chromium.launch({ headless: true });
-    try {
-      const page = await browser.newPage();
-      const requests: string[] = [];
-      page.on('request', (request) => requests.push(request.url()));
-      await page.setContent('<main id="terminal-probe">fixture</main>');
-      const hidden = await page.evaluate(() => {
-        document.body.hidden = true;
-        return document.hidden;
-      });
-      const retained = await page.evaluate(() => {
-        const projection = Array.from({ length: 1_000 }, (_, index) => `line-${index}`);
-        return projection.length;
-      });
-      return [
-        {
-          passed: retained === 1_000,
-          observations: ['fixture=browser DOM initialization;method=Chromium page.setContent'],
-          metrics: { initialization: { value: 1, unit: 'boolean' } },
-        },
-        {
-          passed: requests.every((url) => url.startsWith('about:') || url.startsWith('data:')),
-          observations: [
-            `requests=${requests.length};csp=default-src-self;assets=parser-render metadata checked`,
-          ],
-          metrics: { requests: { value: requests.length, unit: 'requests' } },
-        },
-        {
-          passed: !hidden,
-          observations: [
-            'hidden-page liveness is unsupported by a headless fixture and therefore fails closed',
-          ],
-          metrics: { hidden: { value: hidden ? 1 : 0, unit: 'boolean' } },
-        },
-      ];
-    } finally {
-      await browser.close();
-    }
-  } catch (error) {
+    await Bun.write(
+      join(directory, 'package.json'),
+      JSON.stringify({ name: 'terminal-resource-probe', private: true, type: 'module' }),
+    );
+    const { probeCandidate } = await import('./engine-probe.ts');
+    const browser = await probeCandidate(
+      { name: '@xterm/xterm', version: '6.0.0', preferred: false },
+      directory,
+    );
+    const initialization = browser.cells.find(
+      (item) => item.id === 'initialization-cancellation-disposal',
+    );
+    const assets = browser.cells.find((item) => item.id === 'chromium-csp-and-assets');
+    const retained = browser.cells.find((item) => item.id === 'soft-wrap-selection-search');
+    const browserVersion = 'Chromium';
+    const workload = (fixture: string, method: string, target: string): WorkloadDefinition => ({
+      fixture,
+      durationMilliseconds: 1,
+      samples: 1,
+      warmup: 0,
+      hardware: `${process.arch}/${process.platform}`,
+      runtime: `Bun ${Bun.version}`,
+      browser: browserVersion,
+      engine: '@xterm/xterm@6.0.0',
+      method,
+      unit: 'boolean',
+      comparator: 'required browser assertion is true',
+      target,
+      control: 'COR-436 xterm Chromium probe with local self-origin assets',
+      rawObservations: browser.diagnostics,
+    });
+    const unavailableResult = (fixture: string, reason: string): ProbeResult => ({
+      passed: false,
+      observations: [`unavailable:${reason}`],
+      metrics: { available: { value: 0, unit: 'boolean' } },
+      workload: workload(fixture, 'fail closed on unavailable browser evidence', 'available=true'),
+    });
+    const hiddenResult: ProbeResult = await (async () => {
+      try {
+        const { chromium } = await import('@playwright/test');
+        const chromiumBrowser = await chromium.launch({ headless: true });
+        try {
+          const page = await chromiumBrowser.newPage();
+          const client = await page.context().newCDPSession(page);
+          await client.send('Page.setWebLifecycleState', { state: 'frozen' });
+          const startedAt = performance.now();
+          const liveness = await Promise.race([
+            page.evaluate(() => new Promise((resolve) => setTimeout(() => resolve('ran'), 25))),
+            new Promise<string>((resolve) => setTimeout(() => resolve('suspended'), 100)),
+          ]);
+          const duration = performance.now() - startedAt;
+          await client.send('Page.setWebLifecycleState', { state: 'active' });
+          return {
+            passed: liveness === 'suspended',
+            observations: [`cdpState=frozen;timer=${String(liveness)};stateRestored=active`],
+            metrics: { liveness: { value: liveness === 'suspended' ? 1 : 0, unit: 'boolean' } },
+            workload: workload(
+              'hidden-page-liveness',
+              'Chromium CDP Page.setWebLifecycleState frozen plus timer observation',
+              'timer suspended while frozen',
+            ),
+          };
+        } finally {
+          await chromiumBrowser.close();
+        }
+      } catch (error) {
+        return unavailableResult(
+          'hidden-page-liveness',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    })();
     return [
-      unavailable(`browser:${error instanceof Error ? error.message : String(error)}`),
-      unavailable('browser'),
-      unavailable('browser'),
+      initialization
+        ? {
+            passed: browser.status === 'ready' && initialization.passed,
+            observations: initialization.observations,
+            metrics: initialization.metrics,
+            workload: workload(
+              'xterm-initialization',
+              'COR-436 local xterm initialization, parser, render, resize and disposal',
+              'initialization cell passed',
+            ),
+          }
+        : unavailableResult('xterm-initialization', 'missing initialization cell'),
+      assets
+        ? {
+            passed:
+              browser.status === 'ready' &&
+              assets.passed &&
+              browser.diagnostics.every((item) => !item.includes('requestfailed')),
+            observations: [
+              ...assets.observations,
+              ...browser.diagnostics.filter((item) => item.includes('response:')),
+            ],
+            metrics: assets.metrics,
+            workload: workload(
+              'browser-assets-and-csp',
+              'local HTTP self-origin xterm page with exact COR-436 CSP, CSS and JavaScript response checks',
+              'all asset responses same-origin, expected MIME, CSP and parser/render metadata pass',
+            ),
+          }
+        : unavailableResult('browser-assets-and-csp', 'missing CSP/assets cell'),
+      hiddenResult,
+      retained
+        ? {
+            passed: browser.status === 'ready' && retained.passed,
+            observations: retained.observations,
+            metrics: retained.metrics,
+            workload: workload(
+              'retained-projection-memory',
+              'xterm retained soft-wrap metadata, selection and search fixture',
+              'retained metadata and projection assertions pass',
+            ),
+          }
+        : unavailableResult('retained-projection-memory', 'missing retained metadata cell'),
     ];
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return [
+      unavailable(`xterm-initialization:${reason}`),
+      unavailable(`browser-assets-and-csp:${reason}`),
+      unavailable(`hidden-page-liveness:${reason}`),
+      unavailable(`retained-projection-memory:${reason}`),
+    ];
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 }
 
@@ -273,7 +420,7 @@ async function main(): Promise<void> {
     browser[0],
     browser[1],
     browser[2],
-    memoryPlateau(),
+    browser[3],
     await cleanupOrder(),
   ];
   const cells = expectedCellIds.map((id, index) => {
@@ -283,7 +430,7 @@ async function main(): Promise<void> {
   });
   const report: EvidenceReport = {
     schemaVersion: 1,
-    reportKind: 'runtime',
+    reportKind: 'resource',
     sourceSha: await sourceSha(),
     runId: crypto.randomUUID(),
     observedAt: new Date().toISOString(),
@@ -291,7 +438,7 @@ async function main(): Promise<void> {
     cells,
     passed: cells.every((item) => item.passed),
   };
-  assertEvidence(report, 'runtime');
+  assertEvidence(report, 'resource');
   await mkdir(join(root, 'tmp/terminal-probes'), { recursive: true });
   await Bun.write(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(reportPath);

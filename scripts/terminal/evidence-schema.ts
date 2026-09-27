@@ -6,11 +6,29 @@ export type EvidenceCell = {
   observations: string[];
   versions: Record<string, string>;
   metrics: Record<string, { value: number; unit: string }>;
+  workload?: WorkloadDefinition;
+};
+
+export type WorkloadDefinition = {
+  fixture: string;
+  durationMilliseconds: number;
+  samples: number;
+  warmup: number;
+  hardware: string;
+  runtime: string;
+  browser?: string;
+  engine?: string;
+  method: string;
+  unit: string;
+  comparator: string;
+  target: string;
+  control: string;
+  rawObservations: string[];
 };
 
 export type EvidenceReport = {
   schemaVersion: 1;
-  reportKind: 'runtime' | 'engine';
+  reportKind: 'runtime' | 'engine' | 'resource';
   sourceSha: string;
   runId: string;
   observedAt: string;
@@ -56,6 +74,36 @@ function isEvidenceCell(value: unknown): value is EvidenceCell {
         metric['unit'].length > 0 &&
         Object.keys(metric).every((key) => key === 'value' || key === 'unit'),
     )
+  );
+}
+
+function isWorkloadDefinition(value: unknown): value is WorkloadDefinition {
+  if (!isRecord(value)) return false;
+  const requiredStrings = [
+    'fixture',
+    'hardware',
+    'runtime',
+    'method',
+    'unit',
+    'comparator',
+    'target',
+    'control',
+  ];
+  return (
+    requiredStrings.every((key) => typeof value[key] === 'string' && value[key].length > 0) &&
+    typeof value['durationMilliseconds'] === 'number' &&
+    Number.isFinite(value['durationMilliseconds']) &&
+    typeof value['samples'] === 'number' &&
+    Number.isInteger(value['samples']) &&
+    value['samples'] > 0 &&
+    typeof value['warmup'] === 'number' &&
+    Number.isInteger(value['warmup']) &&
+    value['warmup'] >= 0 &&
+    (value['browser'] === undefined || typeof value['browser'] === 'string') &&
+    (value['engine'] === undefined || typeof value['engine'] === 'string') &&
+    Array.isArray(value['rawObservations']) &&
+    value['rawObservations'].length > 0 &&
+    value['rawObservations'].every((item) => typeof item === 'string')
   );
 }
 
@@ -211,7 +259,7 @@ export function validateEvidence(
     if (
       cellRecord &&
       !Object.keys(cellRecord).every((key) =>
-        ['id', 'passed', 'observations', 'versions', 'metrics'].includes(key),
+        ['id', 'passed', 'observations', 'versions', 'metrics', 'workload'].includes(key),
       )
     )
       errors.push('schema constraints');
@@ -263,6 +311,8 @@ export function validateEvidence(
       )
     )
       errors.push('metric value or unit');
+    if (expectedKind === 'resource' && !isWorkloadDefinition(cellRecord?.['workload']))
+      errors.push('workload definition');
     if (
       cellRecord &&
       isRecord(cellRecord['versions']) &&
