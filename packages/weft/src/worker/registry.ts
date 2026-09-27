@@ -276,46 +276,42 @@ export class WorkerRegistry {
    * 4. A `sticky` worker that also satisfies the above wins regardless of policy.
    */
   findWorker(activityName: string, options: RoutingOptions = {}): WorkerInfo | undefined {
-    const {
-      queue,
-      sticky: stickyId,
-      fairShareKey,
-      excludeWorkerIds,
-      executionRequirement,
-      deploymentRouting,
-      workflowId,
-    } = options;
-    const eligible: WorkerInfo[] = [];
-    let stickyCandidate: WorkerInfo | undefined;
-    for (const worker of this.#workers.values()) {
-      if (
-        !this.#workerIsEligible(
-          worker,
-          activityName,
-          queue,
-          excludeWorkerIds,
-          executionRequirement,
-          deploymentRouting,
-          workflowId,
-        )
-      )
-        continue;
-      if (stickyId !== undefined && worker.id === stickyId) stickyCandidate = worker;
-      eligible.push(worker);
-    }
-    if (stickyCandidate !== undefined) return stickyCandidate;
+    const eligible = this.#eligibleWorkers(activityName, options);
+    const sticky = eligible.find((worker) => worker.id === options.sticky);
+    if (sticky !== undefined) return sticky;
     if (eligible.length === 0) return undefined;
-    return this.#selectByPolicy(eligible, queue, activityName, fairShareKey);
+    return this.#selectByPolicy(eligible, options.queue, activityName, options.fairShareKey);
+  }
+
+  /**
+   * Whether {@link findWorker} has an eligible worker that `include` accepts,
+   * without running the routing policy — so asking never advances round-robin
+   * or fair-share state.
+   */
+  hasEligibleWorker(
+    activityName: string,
+    options: RoutingOptions = {},
+    include: (worker: WorkerInfo) => boolean = () => true,
+  ): boolean {
+    return this.#eligibleWorkers(activityName, options).some(include);
+  }
+
+  #eligibleWorkers(activityName: string, options: RoutingOptions): WorkerInfo[] {
+    return [...this.#workers.values()].filter((worker) =>
+      this.#workerIsEligible(worker, activityName, options),
+    );
   }
 
   #workerIsEligible(
     worker: WorkerInfo,
     activityName: string,
-    queue: string | undefined,
-    excludeWorkerIds: ReadonlySet<string> | undefined,
-    executionRequirement: RoutingOptions['executionRequirement'],
-    deploymentRouting: RoutingOptions['deploymentRouting'],
-    workflowId: string | undefined,
+    {
+      queue,
+      excludeWorkerIds,
+      executionRequirement,
+      deploymentRouting,
+      workflowId,
+    }: RoutingOptions,
   ): boolean {
     if (excludeWorkerIds?.has(worker.id)) return false;
     if (!matchesWorkerCapabilities(worker, activityName, queue)) return false;

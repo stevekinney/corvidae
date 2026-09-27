@@ -64,6 +64,7 @@ export function minimalServerContext(
     scanRunning: false,
     processingOperations: new Set(),
     reconciliationRunning: false,
+    longPollDrains: new Map(),
     taskLedgerRecovery: { ready: Promise.resolve() },
     stopping: false,
   };
