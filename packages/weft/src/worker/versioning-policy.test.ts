@@ -1,19 +1,27 @@
 import { describe, expect, it } from 'bun:test';
-import { MemoryStorage } from '../storage/memory.ts';
-import { KEYS } from '../storage/interface.ts';
 import { encode } from '../core/codec.ts';
+import { KEYS } from '../storage/interface.ts';
+import { MemoryStorage } from '../storage/memory.ts';
 import {
-  DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
   bindingFromExecution,
-  bindWorkflowWorkerAtStart,
-  consumeWorkflowWorkerStartOverridePreview,
-  evaluateWorkflowWorkerUpgrade,
   inheritWorkflowWorkerBinding,
+  selectWorkflowActivityBinding,
+} from './binding-helpers.ts';
+import { WorkerDeploymentCatalog } from './deployment-routing.ts';
+import type { WorkerManifest } from './manifest/types.ts';
+import {
+  buildWorkflowWorkerStartOverrideConsumption,
+  consumeWorkflowWorkerStartOverridePreview,
   issueWorkflowWorkerStartOverridePreview,
+  verifyWorkflowWorkerStartOverridePreview,
+} from './start-override-preview.ts';
+import {
+  bindWorkflowWorkerAtStart,
+  DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
+  evaluateAndRecordWorkflowWorkerUpgradeAfterCheckpoint,
+  evaluateWorkflowWorkerUpgrade,
   readWorkflowWorkerBinding,
   recordWorkflowWorkerUpgrade,
-  selectWorkflowActivityBinding,
-  verifyWorkflowWorkerStartOverridePreview,
   type WorkflowWorkerBinding,
 } from './versioning-policy.ts';
 
@@ -24,7 +32,10 @@ const binding = (buildId: string, revision = 'workflow-revision'): WorkflowWorke
   buildId,
   artifactDigest: `sha256:${buildId}`,
   manifestDigest: `sha256:manifest-${buildId}`,
+  routingGeneration: 1,
   workflowRevision: revision,
+  workflowContractHash: 'sha256:workflow-contract',
+  activityContracts: { charge: 'sha256:charge-contract' },
   activityName: 'charge',
   activityContractHash: 'sha256:charge-contract',
   boundAt: 1,
@@ -34,8 +45,93 @@ const binding = (buildId: string, revision = 'workflow-revision'): WorkflowWorke
 async function seedWorkflow(storage: MemoryStorage): Promise<void> {
   await storage.put(
     KEYS.workflow('workflow-1'),
-    encode({ id: 'workflow-1', type: 'orders', status: 'running', input: null, versionTuple: { workflowVersion: '1' }, createdAt: 1, updatedAt: 1 }),
+    encode({
+      id: 'workflow-1',
+      type: 'orders',
+      status: 'running',
+      input: null,
+      versionTuple: { workflowVersion: '1' },
+      createdAt: 1,
+      updatedAt: 1,
+    }),
   );
+}
+
+async function seedVersionedWorkflow(
+  storage: MemoryStorage,
+  current = binding('build-1'),
+): Promise<void> {
+  await storage.put(
+    KEYS.workflow('workflow-1'),
+    encode({
+      id: 'workflow-1',
+      type: 'orders',
+      status: 'running',
+      input: null,
+      versionTuple: { workflowVersion: '1' },
+      revision: current.workflowRevision,
+      createdAt: 1,
+      updatedAt: 1,
+      workerVersioningPolicy: {
+        mode: 'auto-upgrade',
+        compatibility: {
+          deploymentName: 'orders',
+          buildId: 'build-2',
+          artifactDigest: 'sha256:build-2',
+          manifestDigest: 'sha256:manifest-build-2',
+          workflowRevision: current.workflowRevision,
+          activityContractHash: current.activityContractHash,
+        },
+      },
+      workerBinding: { current, history: [] },
+    }),
+  );
+}
+
+function manifest(
+  buildId: string,
+  activityContractHash = 'sha256:charge-contract',
+): WorkerManifest {
+  return {
+    manifestVersion: 1,
+    protocolVersion: 1,
+    sdkVersion: 'test',
+    runtime: { name: 'bun', version: 'test' },
+    deployment: { name: 'orders', buildId, artifactDigest: `sha256:${buildId}` },
+    workflows: {
+      orders: {
+        workflowVersion: '1',
+        workflowRevision: 'workflow-revision',
+        contractHash: 'sha256:workflow-contract',
+        activities: {
+          charge: { contractHash: activityContractHash, implementationRevision: buildId },
+        },
+      },
+    },
+    capabilities: {},
+  };
+}
+
+async function seedDeploymentCatalog(storage: MemoryStorage): Promise<void> {
+  const catalog = new WorkerDeploymentCatalog(storage);
+  for (const buildId of ['build-1', 'build-2']) {
+    const buildManifest = manifest(buildId);
+    await catalog.registerVersion({
+      deploymentName: 'orders',
+      buildId,
+      artifactDigest: `sha256:${buildId}`,
+      manifestDigest: `sha256:manifest-${buildId}`,
+      manifest: buildManifest,
+      state: 'ready',
+      firstSeenAt: 1,
+    });
+  }
+  await catalog.setRouting({
+    deploymentName: 'orders',
+    currentBuildId: 'build-2',
+    rampBasisPoints: 10_000,
+    updatedAt: 2,
+  });
 }
 
 describe('workflow worker versioning policy', () => {
@@ -112,39 +208,118 @@ describe('workflow worker versioning policy', () => {
     await expect(
       recordWorkflowWorkerUpgrade(
         storage,
-        { mode: 'auto-upgrade', maxBindingHistory: 0, compatibility: {
-          deploymentName: candidate.deploymentName,
-          buildId: candidate.buildId,
-          artifactDigest: candidate.artifactDigest,
-          manifestDigest: candidate.manifestDigest,
-          workflowRevision: first.workflowRevision,
-          activityContractHash: first.activityContractHash,
-        } },
+        {
+          mode: 'auto-upgrade',
+          maxBindingHistory: 0,
+          compatibility: {
+            deploymentName: candidate.deploymentName,
+            buildId: candidate.buildId,
+            artifactDigest: candidate.artifactDigest,
+            manifestDigest: candidate.manifestDigest,
+            workflowRevision: first.workflowRevision,
+            activityContractHash: first.activityContractHash,
+          },
+        },
         candidate,
         binding('build-3'),
       ),
     ).rejects.toThrow('maxBindingHistory');
   });
 
+  it('automatically records a compatible upgrade after a checkpoint commit', async () => {
+    using storage = new MemoryStorage();
+    await seedVersionedWorkflow(storage);
+    await seedDeploymentCatalog(storage);
+
+    const result = await evaluateAndRecordWorkflowWorkerUpgradeAfterCheckpoint(
+      storage,
+      'workflow-1',
+      'checkpoint-2',
+      2,
+    );
+
+    expect(result).toMatchObject({ upgraded: true, binding: { buildId: 'build-2' } });
+    const stored = await readWorkflowWorkerBinding(storage, 'workflow-1');
+    expect(stored?.current.buildId).toBe('build-2');
+    expect(stored?.history[0]?.buildId).toBe('build-1');
+  });
+
+  it('leaves the binding unchanged when post-checkpoint compatibility fails', async () => {
+    using storage = new MemoryStorage();
+    await seedVersionedWorkflow(storage);
+    const catalog = new WorkerDeploymentCatalog(storage);
+    const incompatibleManifest = manifest('build-2', 'sha256:other-contract');
+    await catalog.registerVersion({
+      deploymentName: 'orders',
+      buildId: 'build-2',
+      artifactDigest: 'sha256:build-2',
+      manifestDigest: 'sha256:manifest-build-2',
+      manifest: incompatibleManifest,
+      state: 'ready',
+      firstSeenAt: 1,
+    });
+    await catalog.setRouting({
+      deploymentName: 'orders',
+      currentBuildId: 'build-2',
+      rampBasisPoints: 10_000,
+      updatedAt: 2,
+    });
+
+    const result = await evaluateAndRecordWorkflowWorkerUpgradeAfterCheckpoint(
+      storage,
+      'workflow-1',
+      'checkpoint-2',
+      2,
+    );
+
+    expect(result).toMatchObject({
+      upgraded: false,
+      evaluation: { allowed: false, reason: 'incompatible-contract' },
+    });
+    const stored = await readWorkflowWorkerBinding(storage, 'workflow-1');
+    expect(stored?.current.buildId).toBe('build-1');
+    expect(stored?.history).toHaveLength(0);
+  });
+
   it('derives a complete binding from an accepted worker execution identity', () => {
-    expect(bindingFromExecution({
-      workerId: 'worker-1',
+    expect(
+      bindingFromExecution(
+        {
+          workerId: 'worker-1',
+          deploymentName: 'orders',
+          buildId: 'build-1',
+          artifactDigest: 'sha256:artifact',
+          manifestDigest: 'sha256:manifest',
+          protocolVersion: 1,
+          sdkVersion: 'weft-test',
+          runtimeName: 'bun',
+          runtimeVersion: '1.4.2',
+          workflowType: 'orders',
+          activityName: 'charge',
+          workflowRevision: 'revision-1',
+          activityContractHash: 'sha256:contract',
+        },
+        'workflow-1',
+        'orders',
+        'charge',
+        'checkpoint-1',
+        42,
+      ),
+    ).toMatchObject({
+      workflowId: 'workflow-1',
+      workflowType: 'orders',
       deploymentName: 'orders',
       buildId: 'build-1',
       artifactDigest: 'sha256:artifact',
       manifestDigest: 'sha256:manifest',
-      protocolVersion: 1,
-      sdkVersion: 'weft-test',
-      runtimeName: 'bun',
-      runtimeVersion: '1.4.2',
-      workflowType: 'orders',
-      activityName: 'charge',
+      routingGeneration: 0,
       workflowRevision: 'revision-1',
+      workflowContractHash: 'sha256:contract',
+      activityContracts: { charge: 'sha256:contract' },
+      activityName: 'charge',
       activityContractHash: 'sha256:contract',
-    }, 'workflow-1', 'orders', 'charge', 'checkpoint-1', 42)).toMatchObject({
-      workflowId: 'workflow-1', workflowType: 'orders', deploymentName: 'orders', buildId: 'build-1',
-      artifactDigest: 'sha256:artifact', manifestDigest: 'sha256:manifest', workflowRevision: 'revision-1',
-      activityName: 'charge', activityContractHash: 'sha256:contract', boundAt: 42, checkpointId: 'checkpoint-1',
+      boundAt: 42,
+      checkpointId: 'checkpoint-1',
     });
   });
 
@@ -228,6 +403,8 @@ describe('workflow worker versioning policy', () => {
   it('requires a scoped, server-issued preview token for a start override', () => {
     const preview = issueWorkflowWorkerStartOverridePreview({
       workflowId: 'workflow-1',
+      previousBinding: binding('build-1'),
+      targetBinding: binding('build-2'),
       serverSecret: 'secret',
       now: 1000,
       ttlMs: 100,
@@ -242,6 +419,8 @@ describe('workflow worker versioning policy', () => {
     using storage = new MemoryStorage();
     const preview = issueWorkflowWorkerStartOverridePreview({
       workflowId: 'workflow-1',
+      previousBinding: binding('build-1'),
+      targetBinding: binding('build-2'),
       serverSecret: 'secret',
       now: 10,
     });
@@ -251,5 +430,48 @@ describe('workflow worker versioning policy', () => {
     expect(await consumeWorkflowWorkerStartOverridePreview(storage, preview, 'secret', 20)).toBe(
       false,
     );
+  });
+
+  it('builds atomic start override consumption only for the issued scope and contracts', () => {
+    const previousBinding = binding('build-1');
+    const targetBinding = { ...binding('build-2'), routingGeneration: 2 };
+    const preview = issueWorkflowWorkerStartOverridePreview({
+      workflowId: 'workflow-1',
+      previousBinding,
+      targetBinding,
+      serverSecret: 'secret',
+      now: 10,
+    });
+
+    const consumption = buildWorkflowWorkerStartOverrideConsumption({
+      workflowId: 'workflow-1',
+      preview,
+      previousBinding,
+      targetBinding,
+      serverSecret: 'secret',
+      now: 20,
+    });
+    expect(consumption?.conditions).toHaveLength(1);
+    expect(consumption?.operations).toHaveLength(1);
+    expect(
+      buildWorkflowWorkerStartOverrideConsumption({
+        workflowId: 'workflow-1',
+        preview,
+        previousBinding: { ...previousBinding, routingGeneration: 3 },
+        targetBinding,
+        serverSecret: 'secret',
+        now: 20,
+      }),
+    ).toBeNull();
+    expect(
+      buildWorkflowWorkerStartOverrideConsumption({
+        workflowId: 'workflow-1',
+        preview,
+        previousBinding,
+        targetBinding: { ...targetBinding, workflowContractHash: 'sha256:changed' },
+        serverSecret: 'secret',
+        now: 20,
+      }),
+    ).toBeNull();
   });
 });

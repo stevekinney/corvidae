@@ -6,6 +6,7 @@
  */
 
 import type { ConstraintDefinition } from '../constraint.ts';
+import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 import { WeftError } from '../weft-error.ts';
 import type { ActivityDefinition, ActivityFunction } from './activity.ts';
 import { clonePlain } from './clone-plain.ts';
@@ -27,7 +28,6 @@ import type { BuiltWorkflowDefinition } from './workflow-builder.ts';
 import type { WorkflowConcurrencyOptions } from './workflow-concurrency.ts';
 import type { WorkflowFunction } from './workflow-function.ts';
 import type { AnyActivityDefinition } from './workflow-registries.ts';
-import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 
 // ---------------------------------------------------------------------------
 // Errors and options shape
@@ -305,9 +305,9 @@ function isFunction(value: unknown): value is (...arguments_: unknown[]) => unkn
   return typeof value === 'function';
 }
 
-function workerVersioningPolicyField(
-  policy: WorkflowWorkerVersioningPolicy | undefined,
-): { workerVersioningPolicy?: WorkflowWorkerVersioningPolicy } {
+function workerVersioningPolicyField(policy: WorkflowWorkerVersioningPolicy | undefined): {
+  workerVersioningPolicy?: WorkflowWorkerVersioningPolicy;
+} {
   return policy === undefined ? {} : { workerVersioningPolicy: policy };
 }
 

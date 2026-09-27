@@ -7,13 +7,13 @@
  */
 
 import type { ConstraintDefinition } from '../constraint.ts';
+import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 import type { DefinitionSchema } from './definition-schema.ts';
 import type { RetentionPolicy } from './retry-retention.ts';
 import type { SearchAttributeSchema } from './search-attributes.ts';
 import type { WorkflowConcurrencyOptions } from './workflow-concurrency.ts';
 import type { WorkflowFunction } from './workflow-function.ts';
 import type { AnyActivityDefinition } from './workflow-registries.ts';
-import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 
 /**
  * Named workflow definition returned by {@link workflow}. The runtime object

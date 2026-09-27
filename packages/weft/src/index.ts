@@ -249,6 +249,12 @@ export type { RunNOptions, RunNResult } from './testing/test-engine.ts';
 export { TimeControl } from './testing/time-control.ts';
 export { VERSION } from './version.ts';
 export {
+  bindingFromExecution,
+  executionRequirementFromWorkflowWorkerBinding,
+  inheritWorkflowWorkerBinding,
+  selectWorkflowActivityBinding,
+} from './worker/binding-helpers.ts';
+export {
   WORKER_DEPLOYMENT_ROUTING_PREFIX,
   WORKER_DEPLOYMENT_VERSION_PREFIX,
   WorkerDeploymentCatalog,
@@ -305,20 +311,20 @@ export * from './worker/protocol.ts';
 export { WorkerRegistry } from './worker/registry.ts';
 export type { RoutingPolicy } from './worker/registry.ts';
 export {
+  consumeWorkflowWorkerStartOverridePreview,
+  issueWorkflowWorkerStartOverridePreview,
+  verifyWorkflowWorkerStartOverridePreview,
+} from './worker/start-override-preview.ts';
+export type { WorkerStartOverridePreview } from './worker/start-override-preview.ts';
+export {
   DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
   bindWorkflowWorkerAtStart,
-  bindingFromExecution,
+  evaluateAndRecordWorkflowWorkerUpgradeAfterCheckpoint,
   evaluateWorkflowWorkerUpgrade,
-  consumeWorkflowWorkerStartOverridePreview,
-  inheritWorkflowWorkerBinding,
-  issueWorkflowWorkerStartOverridePreview,
   readWorkflowWorkerBinding,
   recordWorkflowWorkerUpgrade,
-  selectWorkflowActivityBinding,
-  verifyWorkflowWorkerStartOverridePreview,
 } from './worker/versioning-policy.ts';
 export type {
-  WorkerStartOverridePreview,
   WorkerUpgradeBlockedReason,
   WorkerUpgradeEvaluation,
   WorkflowWorkerBinding,

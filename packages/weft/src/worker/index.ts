@@ -37,6 +37,12 @@ import type { RemoteWorkerActivityFunction } from './workflow-activity-binding.t
 export type { RemoteWorkerOptions } from './options.ts';
 export { isOutboxFull, MAX_BUFFERED_TASK_RESULTS } from './task-result-outbox.ts';
 
+export {
+  bindingFromExecution,
+  executionRequirementFromWorkflowWorkerBinding,
+  inheritWorkflowWorkerBinding,
+  selectWorkflowActivityBinding,
+} from './binding-helpers.ts';
 export { HeartbeatManager } from './heartbeat.ts';
 export { LongPollWorker } from './long-poll.ts';
 export type { LongPollWorkerOptions } from './long-poll.ts';
@@ -44,20 +50,20 @@ export { WorkerRegistry } from './registry.ts';
 export type { InFlightTask, RoutingOptions, WorkerInfo } from './registry.ts';
 export type { RemoteActivityContext } from './remote-activity-context.ts';
 export {
-  bindingFromExecution,
-  bindWorkflowWorkerAtStart,
   consumeWorkflowWorkerStartOverridePreview,
-  DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
-  evaluateWorkflowWorkerUpgrade,
-  inheritWorkflowWorkerBinding,
   issueWorkflowWorkerStartOverridePreview,
+  verifyWorkflowWorkerStartOverridePreview,
+} from './start-override-preview.ts';
+export type { WorkerStartOverridePreview } from './start-override-preview.ts';
+export {
+  bindWorkflowWorkerAtStart,
+  DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY,
+  evaluateAndRecordWorkflowWorkerUpgradeAfterCheckpoint,
+  evaluateWorkflowWorkerUpgrade,
   readWorkflowWorkerBinding,
   recordWorkflowWorkerUpgrade,
-  selectWorkflowActivityBinding,
-  verifyWorkflowWorkerStartOverridePreview,
 } from './versioning-policy.ts';
 export type {
-  WorkerStartOverridePreview,
   WorkerUpgradeBlockedReason,
   WorkerUpgradeEvaluation,
   WorkflowWorkerBinding,

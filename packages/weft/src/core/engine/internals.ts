@@ -220,6 +220,8 @@ export interface EngineInternals {
   pendingExecutionStateOwnerId: string | null | undefined;
   pendingParentWorkflowId: string | undefined;
   pendingParentWorkflowExecutionToken: string | undefined;
+  pendingParentWorkerBinding:
+    import('../../worker/versioning-policy.ts').WorkflowWorkerBinding | undefined;
   workflowNestingDepths: Map<string, number>;
   workflowHeaders: Map<string, Map<string, string>>;
   workflowStateWriteChains: Map<string, Promise<void>>;

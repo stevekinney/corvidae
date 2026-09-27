@@ -1,12 +1,12 @@
+import type { WorkflowWorkerBindingRecord } from '../../worker/versioning-policy.ts';
 import type { AtomicStateOptions } from '../atomic-state.ts';
+import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import type { ActivityCallOptions } from './activity.ts';
 import type { CheckpointState } from './checkpoint.ts';
 import type { TerminationReason } from './history-policy.ts';
 import type { FailureCategory, WorkflowId, WorkflowStatus } from './identity.ts';
 import type { WorkflowOperation } from './workflow-function.ts';
-import type { WorkflowWorkerBindingRecord } from '../../worker/versioning-policy.ts';
-import type { WorkflowWorkerVersioningPolicy } from '../versioning.ts';
 
 // ---------------------------------------------------------------------------
 // Workflow state persisted in storage

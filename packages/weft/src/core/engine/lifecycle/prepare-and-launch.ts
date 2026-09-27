@@ -80,6 +80,7 @@ import {
   resolveCachedStartRevision,
   resolveStartRevisionUncached,
 } from './start-revision-resolution.ts';
+import { assertServicesSupportedForMode } from './start-services.ts';
 import {
   applyRestartLineage,
   createInitialCheckpoint,
@@ -92,12 +93,8 @@ import {
   prepareTerminalRunPurge,
   resolveTerminalConflictForRestart,
 } from './start-terminal-conflict-purge.ts';
-import {
-  assertServicesSupportedForMode,
-  prepareStartWorkflow,
-  resolveAndReserveStartRegistration,
-  rollbackTransientStartState,
-} from './start.ts';
+import { rollbackTransientStartState } from './start-transient-state.ts';
+import { prepareStartWorkflow, resolveAndReserveStartRegistration } from './start.ts';
 
 /**
  * Everything `launchPreparedWorkflow`/`abandonPreparedWorkflow` need to act
@@ -286,6 +283,7 @@ export async function prepareWorkflow(
         delayedStartTimer: undefined,
         persistedWorkflowStartHeaders,
         additionalStartOperations: undefined,
+        additionalStartConditions: undefined,
         buildWorkflowConcurrencyStartOperations:
           workflowConcurrency === undefined
             ? undefined

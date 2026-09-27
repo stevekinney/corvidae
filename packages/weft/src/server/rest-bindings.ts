@@ -15,6 +15,7 @@
  */
 
 import type { MetricsCollector } from '../observability/metrics.ts';
+import type { Storage } from '../storage/interface.ts';
 import type { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
 import type { WorkerRegistry } from '../worker/registry.ts';
 import {
@@ -50,6 +51,7 @@ import {
   createListWorkersRestBinding,
   listWorkersOperation,
 } from './operations/list-workers.ts';
+import { createStartWorkflowOperation } from './operations/start-workflow.ts';
 import { STATIC_OPERATIONS } from './operations/static-operations.ts';
 import { STATIC_REST_BINDINGS } from './operations/static-rest-bindings.ts';
 import {
@@ -78,6 +80,10 @@ import {
   drainDeploymentOperation,
   drainWorkerOperation,
 } from './operations/worker-drain.ts';
+import {
+  createWorkerStartOverridePreviewOperation,
+  workerStartOverridePreviewRestBinding,
+} from './operations/worker-start-override-preview.ts';
 import type { RestBinding } from './rest-binding.ts';
 import type { TaskQueue } from './task-queue.ts';
 
@@ -128,6 +134,7 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
     workerDeploymentPromoteRestBinding,
     workerDeploymentRollbackRestBinding,
     workerDeploymentPreviewRestBinding,
+    workerStartOverridePreviewRestBinding,
   ];
 }
 
@@ -148,8 +155,10 @@ export type LiveOperationRegistryOptions = {
   metricsCollector?: MetricsCollector;
   workerRegistry?: WorkerRegistry;
   workerDeploymentCatalog?: WorkerDeploymentCatalog;
+  storage?: Storage;
   taskQueue?: TaskQueue;
   clock?: () => number;
+  workerStartOverrideSigningSecret?: string;
   /**
    * Operations declared outside this package, registered alongside Weft's own.
    *
@@ -264,6 +273,24 @@ function buildWorkerDeploymentRoutingOperations(options: LiveOperationRegistryOp
   ];
 }
 
+function buildWorkerStartOverridePreviewOperation(options: LiveOperationRegistryOptions) {
+  return createWorkerStartOverridePreviewOperation({
+    ...(options.storage === undefined ? {} : { storage: options.storage }),
+    ...(options.workerStartOverrideSigningSecret === undefined
+      ? {}
+      : { serverSecret: options.workerStartOverrideSigningSecret }),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
+}
+
+function buildStartWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
+  return createStartWorkflowOperation(
+    options.workerStartOverrideSigningSecret === undefined
+      ? {}
+      : { workerStartOverrideSigningSecret: options.workerStartOverrideSigningSecret },
+  );
+}
+
 /**
  * Build the registry of every operation this build serves, wiring the ones
  * that need live collaborators — task diagnostics, system metrics, the worker
@@ -289,7 +316,11 @@ export function createLiveOperationRegistry(
 ): OperationRegistry {
   const resolved: LiveOperationRegistryOptions = options ?? {};
   return createOperationRegistry([
-    ...STATIC_OPERATIONS,
+    ...STATIC_OPERATIONS.map((operation) =>
+      operation.name === 'weft.workflows.start'
+        ? buildStartWorkflowOperationForRegistry(resolved)
+        : operation,
+    ),
     buildTaskDiagnosticsOperationForRegistry(resolved),
     buildSystemMetricsOperation(resolved),
     buildListWorkersOperationForRegistry(resolved),
@@ -301,6 +332,7 @@ export function createLiveOperationRegistry(
     buildWorkerDiagnosticsOperationForRegistry(resolved),
     buildWorkerRegistrationRejectionsOperationForRegistry(resolved),
     ...buildWorkerDeploymentRoutingOperations(resolved),
+    buildWorkerStartOverridePreviewOperation(resolved),
     ...(resolved.additionalOperations ?? []),
   ]);
 }

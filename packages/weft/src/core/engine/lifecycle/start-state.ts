@@ -7,6 +7,7 @@
  * @module core/engine/lifecycle/start-state
  */
 
+import { inheritWorkflowWorkerBinding } from '../../../worker/binding-helpers.ts';
 import type { WorkflowWorkerBinding } from '../../../worker/versioning-policy.ts';
 import { resolveWorkflowWorkerStartBinding } from '../../../worker/versioning-policy.ts';
 import { createCheckpoint } from '../../checkpoint.ts';
@@ -45,6 +46,52 @@ export async function resolveStartWorkerBinding(
     boundAt: internals.options.getNow(),
     checkpointId: workflowId,
   });
+}
+
+function shouldInheritParentWorkerBinding(
+  parentWorkerBinding: WorkflowWorkerBinding | undefined,
+  type: string,
+  revision: string,
+  options: StartOptions | undefined,
+): parentWorkerBinding is WorkflowWorkerBinding {
+  return (
+    parentWorkerBinding !== undefined &&
+    options?.workerStartOverridePreview === undefined &&
+    parentWorkerBinding.workflowType === type &&
+    parentWorkerBinding.workflowRevision === revision
+  );
+}
+
+export async function resolveInitialWorkerBinding(
+  internals: EngineInternals,
+  registration: RegistrationEntry,
+  workflowId: string,
+  type: string,
+  revision: string,
+  options: StartOptions | undefined,
+  terminalRunToPurge: WorkflowState | null,
+  parentWorkerBinding: WorkflowWorkerBinding | undefined,
+  submissionTime: number,
+): Promise<WorkflowWorkerBinding | undefined> {
+  if (registration.workerVersioningPolicy === undefined) return undefined;
+  if (
+    terminalRunToPurge?.workerBinding !== undefined &&
+    options?.workerStartOverridePreview === undefined
+  ) {
+    return inheritWorkflowWorkerBinding(terminalRunToPurge.workerBinding.current, {
+      workflowId,
+      boundAt: submissionTime,
+      checkpointId: workflowId,
+    });
+  }
+  if (shouldInheritParentWorkerBinding(parentWorkerBinding, type, revision, options)) {
+    return inheritWorkflowWorkerBinding(parentWorkerBinding, {
+      workflowId,
+      boundAt: submissionTime,
+      checkpointId: workflowId,
+    });
+  }
+  return resolveStartWorkerBinding(internals, registration, workflowId, type, revision);
 }
 
 function buildInitialIdentitySlice(

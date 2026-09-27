@@ -2,7 +2,6 @@
 
 import { decode, encode } from '../core/codec/index.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../core/versioning.ts';
-import { hashString } from '../runtime/portable.ts';
 import { KEYS, storageConditionalBatch, type Storage } from '../storage/interface.ts';
 import {
   WorkerDeploymentCatalog,
@@ -11,7 +10,7 @@ import {
   type DeploymentSelection,
   type WorkerDeploymentVersion,
 } from './deployment-routing.ts';
-import type { WorkerExecutionIdentity, WorkerExecutionRequirement } from './manifest/types.ts';
+import type { WorkerExecutionRequirement } from './manifest/types.ts';
 
 export const DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY = {
   mode: 'pinned',
@@ -28,7 +27,10 @@ export type WorkflowWorkerBinding = Readonly<{
   buildId: string;
   artifactDigest: string;
   manifestDigest: string;
+  routingGeneration: number;
   workflowRevision: string;
+  workflowContractHash: string;
+  activityContracts: Readonly<Record<string, string>>;
   activityName: string;
   activityContractHash: string;
   boundAt: number;
@@ -149,7 +151,14 @@ function bindingFromDeploymentSelection(
     buildId: selection.candidate.manifest.deployment.buildId,
     artifactDigest: selection.candidate.manifest.deployment.artifactDigest,
     manifestDigest: version.manifestDigest,
+    routingGeneration: selection.generation,
     workflowRevision: workflow.workflowRevision,
+    workflowContractHash: workflow.contractHash,
+    activityContracts: Object.fromEntries(
+      Object.entries(workflow.activities)
+        .toSorted(([left], [right]) => left.localeCompare(right))
+        .map(([name, contract]) => [name, contract.contractHash]),
+    ),
     activityName: activity?.[0] ?? '*',
     activityContractHash: activity?.[1].contractHash ?? workflow.contractHash,
     boundAt: options.boundAt ?? Date.now(),
@@ -173,23 +182,9 @@ export type WorkerUpgradeEvaluation =
       current: WorkflowWorkerBinding;
     };
 
-export type WorkerStartOverridePreview = Readonly<{
-  token: string;
-  scope: 'destructive:workflow-worker-version-binding';
-  workflowId: string;
-  expiresAt: number;
-}>;
-
-const OVERRIDE_CONSUMED_PREFIX = 'workflow-worker-override-consumed:';
-
-function constantTimeEqual(left: string, right: string): boolean {
-  const length = Math.max(left.length, right.length);
-  let difference = left.length ^ right.length;
-  for (let index = 0; index < length; index += 1) {
-    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
-  }
-  return difference === 0;
-}
+export type WorkerUpgradeAttempt =
+  | { upgraded: true; binding: WorkflowWorkerBinding }
+  | { upgraded: false; evaluation: WorkerUpgradeEvaluation | null };
 
 function historyLimit(policy: WorkflowWorkerVersioningPolicy): number {
   const limit = policy.maxBindingHistory ?? DEFAULT_HISTORY_LIMIT;
@@ -200,16 +195,29 @@ function historyLimit(policy: WorkflowWorkerVersioningPolicy): number {
 }
 
 function bindingEquals(left: WorkflowWorkerBinding, right: WorkflowWorkerBinding): boolean {
+  const equalFields = [
+    left.workflowId === right.workflowId,
+    left.workflowType === right.workflowType,
+    left.deploymentName === right.deploymentName,
+    left.buildId === right.buildId,
+    left.artifactDigest === right.artifactDigest,
+    left.manifestDigest === right.manifestDigest,
+    left.routingGeneration === right.routingGeneration,
+    left.workflowRevision === right.workflowRevision,
+    left.workflowContractHash === right.workflowContractHash,
+    left.activityName === right.activityName,
+    left.activityContractHash === right.activityContractHash,
+    JSON.stringify(left.activityContracts) === JSON.stringify(right.activityContracts),
+  ];
+  return equalFields.every(Boolean);
+}
+
+function isActivityContractMap(value: unknown): value is Readonly<Record<string, string>> {
   return (
-    left.workflowId === right.workflowId &&
-    left.workflowType === right.workflowType &&
-    left.deploymentName === right.deploymentName &&
-    left.buildId === right.buildId &&
-    left.artifactDigest === right.artifactDigest &&
-    left.manifestDigest === right.manifestDigest &&
-    left.workflowRevision === right.workflowRevision &&
-    left.activityName === right.activityName &&
-    left.activityContractHash === right.activityContractHash
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === 'string')
   );
 }
 
@@ -223,7 +231,10 @@ function asBinding(value: unknown): WorkflowWorkerBinding {
     typeof binding.buildId === 'string',
     typeof binding.artifactDigest === 'string',
     typeof binding.manifestDigest === 'string',
+    typeof binding.routingGeneration === 'number',
     typeof binding.workflowRevision === 'string',
+    typeof binding.workflowContractHash === 'string',
+    isActivityContractMap(binding.activityContracts),
     typeof binding.activityName === 'string',
     typeof binding.activityContractHash === 'string',
     typeof binding.boundAt === 'number',
@@ -257,30 +268,6 @@ function satisfiesExactCompatibility(
     binding.workflowRevision === compatibility.workflowRevision,
     binding.activityContractHash === compatibility.activityContractHash,
   ].every(Boolean);
-}
-
-/** Convert an accepted manifest execution identity into the durable binding fact. */
-export function bindingFromExecution(
-  execution: WorkerExecutionIdentity,
-  workflowId: string,
-  workflowType: string,
-  activityName: string,
-  checkpointId: string,
-  boundAt = Date.now(),
-): WorkflowWorkerBinding {
-  return {
-    workflowId,
-    workflowType,
-    deploymentName: execution.deploymentName,
-    buildId: execution.buildId,
-    artifactDigest: execution.artifactDigest,
-    manifestDigest: execution.manifestDigest,
-    workflowRevision: execution.workflowRevision,
-    activityName,
-    activityContractHash: execution.activityContractHash,
-    boundAt,
-    checkpointId,
-  };
 }
 
 /** Read the single authoritative binding record for a workflow. */
@@ -356,6 +343,102 @@ export async function recordWorkflowWorkerUpgrade(
   return record;
 }
 
+/** Evaluate and CAS-record an auto-upgrade after a checkpoint commit, before the next realm/task selection. */
+export async function evaluateAndRecordWorkflowWorkerUpgradeAfterCheckpoint(
+  storage: Storage,
+  workflowId: string,
+  checkpointId: string,
+  boundAt?: number | (() => number),
+): Promise<WorkerUpgradeAttempt> {
+  const stateBytes = await storage.get(KEYS.workflow(workflowId));
+  if (stateBytes === null) return { upgraded: false, evaluation: null };
+  const state = workflowRecord(stateBytes);
+  const policy = state['workerVersioningPolicy'] as WorkflowWorkerVersioningPolicy | undefined;
+  const record =
+    state['workerBinding'] === undefined ? null : decodeRecord(encode(state['workerBinding']));
+  const startIdentity = workflowStartIdentity(state);
+  const context = autoUpgradeContext(policy, record, startIdentity);
+  if (context === null) {
+    return { upgraded: false, evaluation: null };
+  }
+  const bindingBoundAt = typeof boundAt === 'function' ? boundAt() : (boundAt ?? Date.now());
+  const candidate = await resolveUpgradeCandidateAfterCheckpoint(storage, {
+    workflowId,
+    workflowType: context.startIdentity.type,
+    workflowRevision: context.startIdentity.revision,
+    policy: context.policy,
+    boundAt: bindingBoundAt,
+    checkpointId,
+  });
+  if (candidate === null) return { upgraded: false, evaluation: null };
+
+  const evaluation = evaluateWorkflowWorkerUpgrade({
+    policy: context.policy,
+    current: context.record.current,
+    candidate,
+    checkpointCommitted: true,
+    realmAcquired: false,
+  });
+  if (!evaluation.allowed || bindingEquals(context.record.current, candidate)) {
+    return { upgraded: false, evaluation };
+  }
+  return recordUpgradeAttempt(
+    storage,
+    context.policy,
+    context.record.current,
+    candidate,
+    evaluation,
+  );
+}
+
+function autoUpgradeContext(
+  policy: WorkflowWorkerVersioningPolicy | undefined,
+  record: WorkflowWorkerBindingRecord | null,
+  startIdentity: { type: string; revision: string } | null,
+): {
+  policy: Extract<WorkflowWorkerVersioningPolicy, { mode: 'auto-upgrade' }>;
+  record: WorkflowWorkerBindingRecord;
+  startIdentity: { type: string; revision: string };
+} | null {
+  return policy?.mode === 'auto-upgrade' && record !== null && startIdentity !== null
+    ? { policy, record, startIdentity }
+    : null;
+}
+
+async function resolveUpgradeCandidateAfterCheckpoint(
+  storage: Storage,
+  options: Parameters<typeof resolveWorkflowWorkerStartBinding>[1],
+): Promise<WorkflowWorkerBinding | null> {
+  try {
+    return await resolveWorkflowWorkerStartBinding(storage, options);
+  } catch {
+    return null;
+  }
+}
+
+async function recordUpgradeAttempt(
+  storage: Storage,
+  policy: Extract<WorkflowWorkerVersioningPolicy, { mode: 'auto-upgrade' }>,
+  current: WorkflowWorkerBinding,
+  candidate: WorkflowWorkerBinding,
+  evaluation: WorkerUpgradeEvaluation,
+): Promise<WorkerUpgradeAttempt> {
+  try {
+    const upgraded = await recordWorkflowWorkerUpgrade(storage, policy, current, candidate);
+    return { upgraded: true, binding: upgraded.current };
+  } catch {
+    return { upgraded: false, evaluation };
+  }
+}
+
+function workflowStartIdentity(
+  state: Record<string, unknown>,
+): { type: string; revision: string } | null {
+  return typeof state['type'] === 'string' && typeof state['revision'] === 'string'
+    ? { type: state['type'], revision: state['revision'] }
+    : null;
+}
+
 /** Evaluate upgrade eligibility at the checkpoint boundary, before acquiring a realm. */
 export function evaluateWorkflowWorkerUpgrade(
   options: Readonly<{
@@ -408,79 +491,4 @@ export function evaluateWorkflowWorkerUpgrade(
     };
   }
   return { allowed: true, binding: candidate };
-}
-
-/** Child, retry, schedule, fork, and continue-as-new operations inherit this exact binding. */
-export function inheritWorkflowWorkerBinding(
-  binding: WorkflowWorkerBinding,
-): WorkflowWorkerBinding {
-  return { ...binding };
-}
-
-/** Couple activities to the workflow unless an explicit activity binding is selected. */
-export function selectWorkflowActivityBinding(
-  workflowBinding: WorkflowWorkerBinding,
-  activityBinding?: WorkflowWorkerBinding,
-): WorkflowWorkerBinding {
-  if (activityBinding === undefined) return workflowBinding;
-  if (
-    activityBinding.workflowId !== workflowBinding.workflowId ||
-    activityBinding.workflowType !== workflowBinding.workflowType
-  ) {
-    throw new Error('Activity binding must belong to the bound workflow.');
-  }
-  return activityBinding;
-}
-
-/** Issue a short-lived, server-created token for the explicitly destructive start override. */
-export function issueWorkflowWorkerStartOverridePreview(
-  options: Readonly<{
-    workflowId: string;
-    serverSecret: string;
-    now?: number;
-    ttlMs?: number;
-  }>,
-): WorkerStartOverridePreview {
-  const now = options.now ?? Date.now();
-  const expiresAt = now + (options.ttlMs ?? 60_000);
-  const token = hashString(
-    `workflow-worker-override\0${options.workflowId}\0${expiresAt}\0${options.serverSecret}`,
-  );
-  return {
-    token,
-    scope: 'destructive:workflow-worker-version-binding',
-    workflowId: options.workflowId,
-    expiresAt,
-  };
-}
-
-export function verifyWorkflowWorkerStartOverridePreview(
-  preview: WorkerStartOverridePreview,
-  serverSecret: string,
-  now = Date.now(),
-): boolean {
-  if (preview.scope !== 'destructive:workflow-worker-version-binding' || preview.expiresAt < now)
-    return false;
-  return constantTimeEqual(
-    preview.token,
-    hashString(
-      `workflow-worker-override\0${preview.workflowId}\0${preview.expiresAt}\0${serverSecret}`,
-    ),
-  );
-}
-
-/** Consume a valid destructive override exactly once using a storage CAS. */
-export async function consumeWorkflowWorkerStartOverridePreview(
-  storage: Storage,
-  preview: WorkerStartOverridePreview,
-  serverSecret: string,
-  now = Date.now(),
-): Promise<boolean> {
-  if (!verifyWorkflowWorkerStartOverridePreview(preview, serverSecret, now)) return false;
-  const key = `${OVERRIDE_CONSUMED_PREFIX}${encodeURIComponent(preview.workflowId)}:${preview.token}`;
-  return storageConditionalBatch(
-    storage,
-    [{ key, expectedValue: null }],
-    [{ type: 'put', key, value: new Uint8Array(0) }],
-  );
 }

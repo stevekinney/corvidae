@@ -68,6 +68,8 @@ export interface ResolvedOptions {
   maxNestingDepth: number;
   /** Durable-timer scheduler poll interval (ms). */
   schedulerPollIntervalMs: number;
+  /** Server-side authority for destructive worker start override previews. */
+  workerStartOverrideSigningSecret: string | null;
   broadcastEvents: boolean;
   retention: NormalizedRetentionPolicy | null;
   retentionSweepIntervalMs: number;
