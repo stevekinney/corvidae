@@ -270,6 +270,12 @@ export interface EngineInternals {
   cleanupIntervalDisposalTracker: EngineCleanupIntervalDisposalTracker | null;
   retentionSweepInterval: ReturnType<typeof setInterval> | null;
   retentionSweepInFlight: Promise<void> | null;
+  /**
+   * Purge writes (a purge commit, or the retention scan's orphaned-index
+   * delete) issued and not yet settled. Async disposal settles these instead of
+   * the whole sweep; see `purge-write-tracking.ts`. Never cleared by disposal.
+   */
+  inFlightPurgeWrites: Set<Promise<unknown>>;
   nextRetentionSweepAt: number | null;
   /** Interval driving the best-effort second-instance detector; `null` when off. */
   secondInstanceDetectionInterval: ReturnType<typeof setInterval> | null;

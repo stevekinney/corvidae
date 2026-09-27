@@ -149,8 +149,17 @@ describe('long-poll drain onto WebSocket workers', () => {
 });
 
 describe('drainLongPollQueue', () => {
+  // Each bare context owns a TaskQueue whose pending hints arm a real
+  // expiration timer; nothing else disposes it, so every test's queue is
+  // disposed here (COR-1343).
+  const contexts: Array<ReturnType<typeof minimalServerContext>> = [];
+  afterEach(() => {
+    for (const context of contexts.splice(0)) context.taskQueue[Symbol.dispose]();
+  });
+
   function contextWithIdleWebSocketWorker() {
     const context = minimalServerContext();
+    contexts.push(context);
     context.registry.register({
       manifest: testWorkerManifest(),
       acceptedManifestDigest: TEST_ACCEPTED_MANIFEST_DIGEST,

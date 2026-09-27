@@ -15,6 +15,7 @@ import { EngineDisposedError } from './errors.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { streamWorkflowStates } from './listing.ts';
+import { markPurgeWriteFailures, trackPurgeWrite } from './purge-write-tracking.ts';
 import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
@@ -143,9 +144,20 @@ export async function purgeWorkflow(
   // Collecting the delete set awaits storage, so disposal can land after the
   // caller decided to purge. A disposed engine commits no further deletes.
   if (internals.disposed) throw new EngineDisposedError();
-  await commitFencedEngineWrite(internals, null, operations, fenced.conditions, () => {
-    return new Error(`Purge commit for workflow "${state.id}" lost its precondition.`);
-  });
+  // The two wraps cover different extents on purpose. `trackPurgeWrite` gets
+  // only the raw storage write, so async disposal never waits on the epoch
+  // re-read after a lost CAS; `markPurgeWriteFailures` gets the whole commit,
+  // so a lost race or deposition still counts as a reportable write failure.
+  await markPurgeWriteFailures(
+    commitFencedEngineWrite(
+      internals,
+      null,
+      operations,
+      fenced.conditions,
+      () => new Error(`Purge commit for workflow "${state.id}" lost its precondition.`),
+      (write) => trackPurgeWrite(internals, write),
+    ),
+  );
   clearPurgedWorkflowInMemoryState(internals, state.id, cleanupWaiters);
 }
 

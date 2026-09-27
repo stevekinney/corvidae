@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, jest } from 'bun:test';
 
 import {
   createRealTimerTracker,
@@ -166,6 +166,17 @@ describe('createRealTimerTracker', () => {
 
     target.clearTimeout(leakedHandle);
     await tracker.assertNoLeaks(exemptions);
+  });
+
+  it('by default reads Bun fake-timer state and restores real timers before the settle turn', async () => {
+    const target = freshTarget();
+    const tracker = createRealTimerTracker(target);
+    tracker.install();
+    armed.push(() => tracker.uninstall());
+    jest.useFakeTimers();
+
+    expect(await tracker.leaked()).toEqual([]);
+    expect(jest.isFakeTimers()).toBe(false);
   });
 
   it('install and uninstall are idempotent and restore the original functions', () => {

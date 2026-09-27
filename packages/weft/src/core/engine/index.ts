@@ -254,6 +254,7 @@ import {
 import { bootstrapOwnershipGates } from './ownership-mode-marker.ts';
 import { processPendingUpdatesForHandlers as processPendingUpdatesForHandlersFromInternals } from './pending-updates.ts';
 import { assertCompatiblePersistedDataVersion } from './persisted-data-version.ts';
+import { settleInFlightPurgeWrites } from './purge-write-tracking.ts';
 import { query as queryWorkflow } from './queries.ts';
 import {
   register as registerWorkflow,
@@ -907,6 +908,7 @@ export class Engine<
     );
     getInternals(this).retentionSweepInterval = null;
     getInternals(this).retentionSweepInFlight = null;
+    getInternals(this).inFlightPurgeWrites = new Set();
     getInternals(this).nextRetentionSweepAt = null;
     getInternals(this).secondInstanceDetectionInterval = null;
     getInternals(this).secondInstanceDetector = null;
@@ -3054,12 +3056,12 @@ export class Engine<
         // (EngineDisposedError) — that rejection is the intended outcome, not a
         // failure to surface, so swallow it here.
         await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
-        // Disposal does not cancel a retention sweep the interval already
-        // started; the sweep stops at its next disposal check. Await it so no
-        // sweep read or write outlives this promise, and so it has settled
-        // before the lease handoff below. It never rejects: `runRetentionSweep`
-        // reports its own failures.
-        await getInternals(this).retentionSweepInFlight;
+        // Disposal does not cancel a purge already in flight (a retention
+        // sweep's, or a `purge()`/`deleteAll()` call's). Settle the writes it
+        // already issued so none lands after this promise or the lease handoff
+        // below. Its pending reads are abandoned instead: storage calls cannot
+        // be cancelled, and every purge write checks for disposal first.
+        await settleInFlightPurgeWrites(getInternals(this));
         // Clean deploy handoff: release the ownership lease as the LAST durable
         // action, AFTER queued starts have drained and all write paths are down, so
         // the incoming instance cannot acquire and recover while this one is still
@@ -3082,9 +3084,9 @@ export class Engine<
     }
     this[Symbol.dispose]();
     await getInternals(this).inFlightLeaseAcquire?.catch(() => {});
-    // An engine already disposed synchronously may still have a sweep in
-    // flight; settle it here too (see the first-disposal branch above).
-    await getInternals(this).retentionSweepInFlight;
+    // An engine already disposed synchronously may still have purge writes in
+    // flight; settle them here too (see the first-disposal branch above).
+    await settleInFlightPurgeWrites(getInternals(this));
     return (await this.#synchronousDisposeResult) ?? true;
   }
 

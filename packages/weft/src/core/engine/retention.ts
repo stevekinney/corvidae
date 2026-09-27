@@ -1,8 +1,8 @@
 import type { RetentionOverview, WorkflowTypeRetentionPolicy } from '../types.ts';
 import { purgeInternal } from './bulk-operations.ts';
 import { resolveLastKnownDynamicRegistration } from './dynamic-source-execution.ts';
-import { EngineDisposedError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
+import { isPurgeWriteFailure } from './purge-write-tracking.ts';
 
 type CleanupWaiters = (workflowId: string) => void;
 type RetentionSweepCallbacks = {
@@ -99,10 +99,12 @@ export async function runRetentionSweep(
       cleanupWaiters,
     );
   } catch (error) {
-    // Disposal ends an in-flight sweep with `EngineDisposedError`, either from
-    // the purge path's own disposal checks or from a source load it aborted.
-    // That is the engine shutting down as asked, not a cleanup failure.
-    if (internals.disposed && error instanceof EngineDisposedError) return;
+    // Once the engine is disposed, only a failed purge write is still a real
+    // cleanup failure. Anything else that ended the sweep (its own disposal
+    // checks, a source load disposal aborted, or a read that failed because the
+    // host closed storage after async disposal stopped waiting on it) belongs
+    // to work disposal already gave up on.
+    if (internals.disposed && !isPurgeWriteFailure(error)) return;
     handleCleanupError('retentionSweep', error);
   }
 }
