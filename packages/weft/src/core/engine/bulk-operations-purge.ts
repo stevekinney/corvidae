@@ -144,6 +144,10 @@ export async function purgeWorkflow(
   // Collecting the delete set awaits storage, so disposal can land after the
   // caller decided to purge. A disposed engine commits no further deletes.
   if (internals.disposed) throw new EngineDisposedError();
+  // The two wraps cover different extents on purpose. `trackPurgeWrite` gets
+  // only the raw storage write, so async disposal never waits on the epoch
+  // re-read after a lost CAS; `markPurgeWriteFailures` gets the whole commit,
+  // so a lost race or deposition still counts as a reportable write failure.
   await markPurgeWriteFailures(
     commitFencedEngineWrite(
       internals,
