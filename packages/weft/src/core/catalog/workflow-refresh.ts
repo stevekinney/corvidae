@@ -144,6 +144,14 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
     for (const controller of this.#abortControllers) controller.abort();
   }
 
+  assertSynchronousDisposeSafe(): void {
+    if (this.#inFlight.size > 0) {
+      throw new Error(
+        'Cannot synchronously dispose while workflow refresh is in flight; use async disposal',
+      );
+    }
+  }
+
   diagnostics(name?: string): readonly WorkflowRefreshDiagnostics[] {
     if (name !== undefined) {
       const diagnostic = this.#diagnostics.get(name);

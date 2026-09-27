@@ -2971,6 +2971,7 @@ export class Engine<
       void this.#asyncDisposeResult;
       return;
     }
+    getInternals(this).workflowRefreshCoordinator?.assertSynchronousDisposeSafe();
 
     // Capture the lease manager before disposeEngine() detaches it (disposeEngine
     // only stops renewals — it does NOT release the holder, so each disposal path

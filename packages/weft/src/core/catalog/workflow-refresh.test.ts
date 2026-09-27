@@ -375,7 +375,10 @@ describe('WorkflowRefreshCoordinator', () => {
     };
 
     await engine.workflows.registerRefreshSource('checkout', source);
-    const pending = engine.workflows.refresh('checkout');
+    const pending = engine.workflows.refresh('checkout', {
+      activate: 'if-compatible',
+      expectedGeneration: 0,
+    });
     await warmStarted;
     const disposal = engine[Symbol.asyncDispose]();
     await aborted;
@@ -385,35 +388,46 @@ describe('WorkflowRefreshCoordinator', () => {
     expect(await engine.workflows.getRevision('checkout', current.revision)).toBeNull();
   });
 
-  it('blocks non-cooperative warm completion after synchronous engine disposal', async () => {
+  it('refuses synchronous disposal while activation CAS is blocked', async () => {
     const current = await manifest();
     const currentArtifact = await artifact(current);
-    let warmResolve!: () => void;
-    const warmStarted = new Promise<void>((resolve) => {
-      warmResolve = resolve;
+    let activationResolve!: () => void;
+    const activationEntered = new Promise<void>((resolve) => {
+      activationResolve = resolve;
     });
-    let completeWarm!: () => void;
-    const warmGate = new Promise<void>((resolve) => {
-      completeWarm = resolve;
+    let releaseActivation!: () => void;
+    const activationGate = new Promise<void>((resolve) => {
+      releaseActivation = resolve;
     });
     const engine = new Engine();
+    const storage = engine.storage;
+    const conditionalBatch = storage.conditionalBatch!.bind(storage);
+    storage.conditionalBatch = async (conditions, operations) => {
+      if (conditions.length === 2 && operations.length === 1) {
+        activationResolve();
+        await activationGate;
+      }
+      return conditionalBatch(conditions, operations);
+    };
     const source = {
       fetch: async () => ({ status: 200 as const, artifact: currentArtifact }),
-      warm: async () => {
-        warmResolve();
-        await warmGate;
-        return definition;
-      },
+      warm: async () => definition,
       validateRuntime: () => {},
     };
 
     await engine.workflows.registerRefreshSource('checkout', source);
-    const pending = engine.workflows.refresh('checkout');
-    await warmStarted;
-    engine[Symbol.dispose]();
-    completeWarm();
-    await expect(pending).rejects.toThrow('stopped');
-    expect(await engine.workflows.getRevision('checkout', current.revision)).toBeNull();
+    const pending = engine.workflows.refresh('checkout', {
+      activate: 'if-compatible',
+      expectedGeneration: 0,
+    });
+    await activationEntered;
+    expect(() => engine[Symbol.dispose]()).toThrow('Cannot synchronously dispose');
+    releaseActivation();
+    const result = await pending;
+    expect(result.status).toBe('activated');
+    const active = await engine.workflows.getActive('checkout');
+    expect(active?.revision).toBe(current.revision);
+    await engine[Symbol.asyncDispose]();
   });
 
   it('runs one bounded polling tick and reschedules it before shutdown', async () => {
