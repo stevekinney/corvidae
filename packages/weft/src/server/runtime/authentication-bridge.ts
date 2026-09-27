@@ -387,6 +387,19 @@ export function createServerWebSocketHandlers(
 
       const workerId = ws.data.workerId;
       if (workerId) {
+        // Shutdown interlock (COR-1343): `registerStackDisposers`' timer-
+        // clearing disposer sets `context.stopping` and clears
+        // `context.pendingWorkerRequeues` FIRST (it is registered last, so
+        // it is disposed first), and only LATER-disposed steps —
+        // `shutdownAllWorkers`, then the Bun server's own forced socket
+        // close — actually close each worker's socket. A close event
+        // reaching this handler once `stopping` is set is therefore always
+        // part of that later teardown, never a live disconnect a fresh
+        // grace-period timer should track — and nothing would ever clear
+        // such a timer again, since the one disposer that does already
+        // ran. Bail out before either scheduling one or running the
+        // inline (grace period 0) requeue against already-torn-down state.
+        if (context.stopping) return;
         // Stale-socket guard: if the worker already reconnected with a fresh
         // socket, this close event is for the displaced connection — skip
         // cleanup entirely. Object identity is sufficient because

@@ -128,4 +128,34 @@ describe('createServerWebSocketHandlers', () => {
     // to clear this timer on its own, so dispose it directly.
     context.taskQueue[Symbol.dispose]();
   });
+
+  it('does not arm a reconnect-grace timer for a close event received while the server is stopping (COR-1343)', () => {
+    // Regression: serve-internals.ts's shutdown disposer sets context.stopping
+    // and clears context.pendingWorkerRequeues BEFORE later-registered
+    // disposers (shutdownAllWorkers, then the Bun server's own forced socket
+    // close) run — see registerStackDisposers' "Registered last — disposed
+    // first" ordering. A worker socket that closes as part of THAT later
+    // teardown reaches this close() handler with context.stopping already
+    // true. Before this fix, close() never checked that flag, so it still
+    // scheduled a fresh grace-period timer here — one nothing would ever
+    // clear again, since the timer-clearing disposer had already run. That
+    // showed up as a real timer outliving `server.stop()` under
+    // WEFT_STRICT_TIMER_LEAK_GUARD=1 (src/server/index.test.ts's "stop
+    // drains connected workers..." test).
+    const context = minimalServerContext();
+    // workerReconnectGracePeriodMs is readonly on ServerContext (set once by
+    // serve()'s options resolution); only a test can still poke past that to
+    // exercise the nonzero-grace-period branch this bug lives in.
+    (context as { workerReconnectGracePeriodMs: number }).workerReconnectGracePeriodMs = 2_000;
+    const options = minimalServeOptions();
+    const socket = createWorkerSocket('worker-stopping');
+    context.workerSockets.set('worker-stopping', socket as never);
+    context.registry.assignTask('worker-stopping', 'op-stopping', 30_000, undefined, 'attempt-1');
+
+    context.stopping = true;
+    const handlers = createServerWebSocketHandlers(context, options, () => {});
+    handlers.close(socket as never);
+
+    expect(context.pendingWorkerRequeues.size).toBe(0);
+  });
 });
