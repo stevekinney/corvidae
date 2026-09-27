@@ -137,6 +137,24 @@ describe('workflow worker versioning policy', () => {
         realmAcquired: false,
       }),
     ).toMatchObject({ allowed: false, reason: 'incompatible-contract' });
+    expect(
+      evaluateWorkflowWorkerUpgrade({
+        policy: { mode: 'pinned' },
+        current,
+        candidate: binding('build-2'),
+        checkpointCommitted: true,
+        realmAcquired: false,
+      }),
+    ).toMatchObject({ allowed: false, reason: 'policy-pinned' });
+    expect(
+      evaluateWorkflowWorkerUpgrade({
+        policy,
+        current,
+        candidate: { ...binding('build-2'), workflowId: 'other-workflow' },
+        checkpointCommitted: true,
+        realmAcquired: false,
+      }),
+    ).toMatchObject({ allowed: false, reason: 'stale-binding' });
   });
 
   it('inherits one immutable binding across derived workflow executions', () => {
