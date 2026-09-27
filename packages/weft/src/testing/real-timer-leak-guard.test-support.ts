@@ -47,19 +47,6 @@ export type RealTimerTracker = {
   assertNoLeaks(exemptions?: readonly RealTimerExemption[]): Promise<void>;
 };
 
-/**
- * TEMPORARY, removed by COR-1342: the 60 s update-response cleanup interval an
- * undisposed `new Engine` arms (`src/core/engine/index.ts`). Test files that
- * still leave engines undisposed keep it alive until the engine is
- * garbage-collected and its finalizer clears it.
- */
-export const ENGINE_CLEANUP_INTERVAL_EXEMPTION: RealTimerExemption = {
-  reason: 'undisposed engine cleanup interval',
-  matches: (timer) =>
-    timer.kind === 'interval' &&
-    /^at new Engine \(.*\/src\/core\/engine\/index\.ts:\d+:\d+\)$/.test(timer.frames[0] ?? ''),
-};
-
 const TRACKER_FRAME = 'real-timer-leak-guard.test-support.ts';
 const MAX_REPORTED_FRAMES = 8;
 

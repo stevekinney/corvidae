@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
   createRealTimerTracker,
-  ENGINE_CLEANUP_INTERVAL_EXEMPTION,
   type RealTimerTracker,
   type TimerGlobals,
 } from './real-timer-leak-guard.test-support.ts';
@@ -208,39 +207,5 @@ describe('createRealTimerTracker', () => {
 
     expect(calls).toHaveLength(2);
     expect(tracker.live()).toEqual([]);
-  });
-});
-
-describe('ENGINE_CLEANUP_INTERVAL_EXEMPTION', () => {
-  const engineFrame = 'at new Engine (/repo/packages/weft/src/core/engine/index.ts:898:11)';
-
-  it('matches an interval whose creation frame is new Engine in the engine index module', () => {
-    expect(
-      ENGINE_CLEANUP_INTERVAL_EXEMPTION.matches({
-        kind: 'interval',
-        delay: 60_000,
-        frames: [engineFrame, 'at create (/repo/x.test.ts:1:1)'],
-      }),
-    ).toBe(true);
-  });
-
-  it('does not match a timeout from the same frame, or an interval armed anywhere else', () => {
-    expect(
-      ENGINE_CLEANUP_INTERVAL_EXEMPTION.matches({
-        kind: 'timeout',
-        delay: 60_000,
-        frames: [engineFrame],
-      }),
-    ).toBe(false);
-    expect(
-      ENGINE_CLEANUP_INTERVAL_EXEMPTION.matches({
-        kind: 'interval',
-        delay: 1_000,
-        frames: ['at start (/repo/packages/weft/src/core/scheduler/scheduler-class.ts:95:28)'],
-      }),
-    ).toBe(false);
-    expect(
-      ENGINE_CLEANUP_INTERVAL_EXEMPTION.matches({ kind: 'interval', delay: 1, frames: [] }),
-    ).toBe(false);
   });
 });
