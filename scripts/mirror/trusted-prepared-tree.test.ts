@@ -175,6 +175,14 @@ async function trustedHarness(marker?: string): Promise<Harness> {
 
   const corvidae = join(root, 'corvidae');
   await writeTree(corvidae, corvidaeFixture());
+  await writeTree(corvidae, {
+    'scripts/mirror/target-definitions.ts': await Bun.file(
+      new URL('./target-definitions.ts', import.meta.url),
+    ).text(),
+    'scripts/mirror/layout-map.json': await Bun.file(
+      new URL('./layout-map.json', import.meta.url),
+    ).text(),
+  });
   for (const policyFile of ['package-map.json', 'package-surface.json']) {
     await Bun.write(
       join(corvidae, 'scripts/mirror', policyFile),

@@ -43,8 +43,11 @@ export const vendoredDirectory = 'typescript';
 type JsonObject = Record<string, unknown>;
 
 /** Whether the target can hold `@lostgradient/typescript` as a workspace of its own. */
-export function vendorsConfiguration(target: MirrorTarget): boolean {
-  return targetFor(configurationWorkspace) !== target;
+export function vendorsConfiguration(
+  target: MirrorTarget,
+  configurationTarget = targetFor(configurationWorkspace),
+): boolean {
+  return configurationTarget !== target;
 }
 
 /**
@@ -135,6 +138,10 @@ function depthOf(configurationPath: string): number {
 export interface TypeScriptPlanOptions {
   corvidaeRoot: string;
   target: MirrorTarget;
+  /** Historical target routing for the configuration workspace, when planning a historical tree. */
+  configurationTarget?: MirrorTarget | undefined;
+  /** Historical target directory for the configuration workspace, when planning a historical tree. */
+  configurationDirectory?: string | undefined;
   /**
    * One entry per workspace the target receives. Both directories are needed and they differ:
    * the configuration is read from corvidae's directory and emitted into the target's.
@@ -207,12 +214,14 @@ export interface TypeScriptPlan {
 export async function planTypeScriptConfiguration({
   corvidaeRoot,
   target,
+  configurationTarget,
+  configurationDirectory,
   workspaces,
   targetDirectory,
   policy,
 }: TypeScriptPlanOptions): Promise<TypeScriptPlan> {
   const resolvedPolicy = policy ?? (await loadTargetOwnedPolicy());
-  const vendor = vendorsConfiguration(target);
+  const vendor = vendorsConfiguration(target, configurationTarget);
 
   const files: Record<string, string> = {};
   const vendoredInto: string[] = [];
@@ -253,10 +262,11 @@ export async function planTypeScriptConfiguration({
   if (!vendor) {
     // The target keeps the package, so its own files ship as an ordinary workspace, at whatever
     // directory `layout-map.json` places it in rather than at corvidae's own path.
-    const configurationDirectory = await targetDirectoryFor(configurationWorkspace);
+    const emittedConfigurationDirectory =
+      configurationDirectory ?? (await targetDirectoryFor(configurationWorkspace));
     for (const file of configurationFiles) {
       const source = join(corvidaeRoot, 'internal', 'typescript', file);
-      files[`${configurationDirectory}/${file}`] = await Bun.file(source).text();
+      files[`${emittedConfigurationDirectory}/${file}`] = await Bun.file(source).text();
     }
   }
 

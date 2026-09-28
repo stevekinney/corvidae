@@ -92,6 +92,12 @@ async function withPublication(
       join(historical, 'scripts/mirror/target-owned.json'),
       await Bun.file(join(sourceRoot, 'scripts/mirror/target-owned.json')).text(),
     );
+    for (const file of ['target-definitions.ts', 'layout-map.json']) {
+      await Bun.write(
+        join(historical, 'scripts/mirror', file),
+        await Bun.file(join(sourceRoot, 'scripts/mirror', file)).text(),
+      );
+    }
     const sourceCommit = await commit(historical, 'source');
     await cp(historical, current, { recursive: true, filter: (path) => !path.includes('/.git') });
     // Current policy declares no operative additional root: the historical extra must be detected.
@@ -718,6 +724,10 @@ test('publication inputs include effective emitted TypeScript configuration', as
       await cp(join(current, 'packages/operative'), join(current, 'components/operative'), {
         recursive: true,
       });
+      const layoutPath = join(current, 'scripts/mirror/layout-map.json');
+      const layout = await Bun.file(layoutPath).json();
+      layout.workspaces[workspace].corvidaeDirectory = 'components/operative';
+      await Bun.write(layoutPath, json(layout));
       expect(
         await publicationInputContract({
           corvidaeRoot: current,
@@ -727,6 +737,163 @@ test('publication inputs include effective emitted TypeScript configuration', as
       ).toEqual(afterBaseConfiguration);
     });
   }
+});
+
+test('publication inputs use the historical layout', async () => {
+  await withPublication(async ({ current, historical }) => {
+    const writeCompilerInputs = async (root: string) => {
+      await mkdir(join(root, 'internal/typescript'), { recursive: true });
+      await Bun.write(
+        join(root, 'packages/operative/tsconfig.json'),
+        json({ extends: '@lostgradient/typescript/library.json' }),
+      );
+      for (const file of ['base.json', 'library.json', 'browser.json']) {
+        await Bun.write(join(root, 'internal/typescript', file), json({}));
+      }
+    };
+    await writeCompilerInputs(current);
+    await writeCompilerInputs(historical);
+    const read = (root: string) =>
+      publicationInputContract({
+        corvidaeRoot: root,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      });
+    const currentContract = await read(current);
+    const equivalentHistoricalContract = await read(historical);
+    expect(equivalentHistoricalContract.digest).toBe(currentContract.digest);
+
+    const historicalLayoutPath = join(historical, 'scripts/mirror/layout-map.json');
+    const historicalLayout = await Bun.file(historicalLayoutPath).json();
+    historicalLayout.workspaces[workspace].targetDirectory = 'packages/operative-legacy';
+    await Bun.write(historicalLayoutPath, json(historicalLayout));
+    const relocatedHistoricalContract = await read(historical);
+    expect(relocatedHistoricalContract.digest).not.toBe(currentContract.digest);
+  });
+});
+
+test('publication inputs use the historical target routing', async () => {
+  await withPublication(async ({ current, historical }) => {
+    const writeCompilerInputs = async (root: string) => {
+      await mkdir(join(root, 'internal/typescript'), { recursive: true });
+      await Bun.write(
+        join(root, 'packages/operative/tsconfig.json'),
+        json({ extends: '@lostgradient/typescript/library.json' }),
+      );
+      for (const file of ['base.json', 'library.json', 'browser.json']) {
+        await Bun.write(join(root, 'internal/typescript', file), json({}));
+      }
+    };
+    await writeCompilerInputs(current);
+    await writeCompilerInputs(historical);
+    const read = (root: string) =>
+      publicationInputContract({
+        corvidaeRoot: root,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      });
+    const currentContract = await read(current);
+    await Bun.write(
+      join(historical, 'scripts/mirror/target-definitions.ts'),
+      `export const targetFor = (_workspace: string) => 'cinder';\n`,
+    );
+    const reroutedHistoricalContract = await read(historical);
+    expect(reroutedHistoricalContract.digest).not.toBe(currentContract.digest);
+  });
+});
+
+test('publication inputs load historical target routing from manifests', async () => {
+  await withPublication(async ({ current, historical }) => {
+    const writeCompilerInputs = async (root: string) => {
+      await mkdir(join(root, 'internal/typescript'), { recursive: true });
+      await Bun.write(
+        join(root, 'packages/operative/tsconfig.json'),
+        json({ extends: '@lostgradient/typescript/library.json' }),
+      );
+      for (const file of ['base.json', 'library.json', 'browser.json']) {
+        await Bun.write(join(root, 'internal/typescript', file), json({}));
+      }
+    };
+    await writeCompilerInputs(current);
+    await writeCompilerInputs(historical);
+    await rm(join(historical, 'scripts/mirror/target-definitions.ts'));
+    await Bun.write(
+      join(historical, 'scripts/mirror/manifests.ts'),
+      `export const targetFor = (_workspace: string) => 'cinder';\n`,
+    );
+    const currentContract = await publicationInputContract({
+      corvidaeRoot: current,
+      corvidaeDirectory: 'packages/operative',
+      workspace,
+    });
+    const historicalContract = await publicationInputContract({
+      corvidaeRoot: historical,
+      corvidaeDirectory: 'packages/operative',
+      workspace,
+    });
+    expect(historicalContract.digest).not.toBe(currentContract.digest);
+  });
+});
+
+test('publication inputs use historical routing for workspace dependency ranges', async () => {
+  await withPublication(async ({ current, historical }) => {
+    for (const root of [current, historical]) {
+      await mkdir(join(root, 'internal/typescript'), { recursive: true });
+      await Bun.write(
+        join(root, 'packages/operative/tsconfig.json'),
+        json({ extends: '@lostgradient/typescript/library.json' }),
+      );
+      for (const file of ['base.json', 'library.json', 'browser.json']) {
+        await Bun.write(join(root, 'internal/typescript', file), json({}));
+      }
+      const manifestPath = join(root, 'packages/operative/package.json');
+      const manifest = await Bun.file(manifestPath).json();
+      manifest.dependencies = { '@lostgradient/lifecycle': 'workspace:*' };
+      await Bun.write(manifestPath, json(manifest));
+      const map = await Bun.file(join(root, 'scripts/mirror/package-map.json')).json();
+      map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = '1.0.0';
+      await Bun.write(join(root, 'scripts/mirror/package-map.json'), json(map));
+    }
+    const read = (root: string) =>
+      publicationInputContract({
+        corvidaeRoot: root,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      });
+    const currentContract = await read(current);
+    await Bun.write(
+      join(historical, 'scripts/mirror/target-definitions.ts'),
+      `export const targetFor = (workspace: string) => workspace === '@lostgradient/lifecycle' || workspace === '@lostgradient/typescript' ? 'cinder' : 'agent-bureau';\n`,
+    );
+    const historicalContract = await read(historical);
+    expect(historicalContract.digest).not.toBe(currentContract.digest);
+  });
+});
+
+test('publication inputs fail closed when historical routing facts are missing', async () => {
+  await withPublication(async ({ historical }) => {
+    await rm(join(historical, 'scripts/mirror/layout-map.json'));
+    await expect(
+      publicationInputContract({
+        corvidaeRoot: historical,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      }),
+    ).rejects.toThrow('historical layout is missing');
+  });
+});
+
+test('publication inputs fail closed when historical routing modules are missing', async () => {
+  await withPublication(async ({ historical }) => {
+    await rm(join(historical, 'scripts/mirror/target-definitions.ts'));
+    await expect(
+      publicationInputContract({
+        corvidaeRoot: historical,
+        corvidaeDirectory: 'packages/operative',
+        workspace,
+      }),
+    ).rejects.toThrow('historical target routing is missing');
+  });
 });
 
 test('publication inputs bind workspace dependencies to their recorded published versions', async () => {

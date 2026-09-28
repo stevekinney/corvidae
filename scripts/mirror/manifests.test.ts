@@ -157,6 +157,12 @@ async function withTree(
       },
       'scripts/mirror/package-map.json': realPackageMap,
       'scripts/mirror/package-surface.json': surface,
+      'scripts/mirror/target-definitions.ts': await Bun.file(
+        new URL('./target-definitions.ts', import.meta.url),
+      ).text(),
+      'scripts/mirror/layout-map.json': await Bun.file(
+        new URL('./layout-map.json', import.meta.url),
+      ).text(),
     });
     await writeTree(root, files);
     await body(root);

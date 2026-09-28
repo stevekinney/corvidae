@@ -1,12 +1,12 @@
 import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { targetDirectoryFor } from './layout-map.ts';
 import { packagePayloadAlgorithm, type PackagePayloadContract } from './package-payload.ts';
 import { canonicalManifest, objectRecord } from './registry-manifest.ts';
-import { publishedVersionRange, targetFor } from './target-definitions.ts';
+import { publishedVersionRange } from './target-definitions.ts';
 
 import { filesCoverPath, loadPackageSurface } from './package-surface.ts';
+import { loadHistoricalPublicationRouting } from './publication-routing.ts';
 import { additionalSourceRoots, isSourceFile, sourceTree, versionConstants } from './source.ts';
 import { planTypeScriptConfiguration } from './typescript-configuration.ts';
 
@@ -249,6 +249,16 @@ export async function publicationInputContract({
   publishedWorkspaceVersions?: ReadonlyMap<string, string>;
 }): Promise<PublicationInputContract> {
   const packageRoot = join(corvidaeRoot, corvidaeDirectory);
+  let routing;
+  try {
+    routing = await loadHistoricalPublicationRouting(corvidaeRoot, workspace, corvidaeDirectory);
+  } catch (error) {
+    if (error instanceof SourceDigestError) throw error;
+    throw new SourceDigestError(
+      `${workspace}: historical publication routing is invalid: ${(error as Error).message}`,
+      { cause: error },
+    );
+  }
   const manifest = objectRecord(await Bun.file(join(packageRoot, 'package.json')).json());
   const root = objectRecord(await Bun.file(join(corvidaeRoot, 'package.json')).json());
   const map = objectRecord(
@@ -281,7 +291,10 @@ export async function publicationInputContract({
               : undefined) ?? disposition?.['lastPublishedVersion'];
           if (disposition?.['disposition'] !== 'publish-as' || typeof version !== 'string')
             throw new SourceDigestError(`${name}: no recorded published version`);
-          range = publishedVersionRange(version, targetFor(workspace) !== targetFor(name));
+          range = publishedVersionRange(
+            version,
+            routing.targetFor(workspace) !== routing.targetFor(name),
+          );
         }
         const publicName =
           disposition?.['disposition'] === 'publish-as' ? disposition['name'] : name;
@@ -321,11 +334,12 @@ export async function publicationInputContract({
       }),
     };
   }
-  const targetDirectory = await targetDirectoryFor(workspace);
   const typeScriptPlan = await planTypeScriptConfiguration({
     corvidaeRoot,
-    target: targetFor(workspace),
-    workspaces: [{ corvidaeDirectory, targetDirectory }],
+    target: routing.target,
+    configurationTarget: routing.configurationTarget,
+    configurationDirectory: routing.configurationDirectory,
+    workspaces: [{ corvidaeDirectory, targetDirectory: routing.targetDirectory }],
   });
   const payload = {
     manifestFields,
