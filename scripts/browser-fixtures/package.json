@@ -1,0 +1,13 @@
+{
+  "name": "@lostgradient/browser-fixtures",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@lostgradient/chat": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/editor": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "conversationalist": "workspace:*"
+  }
+}

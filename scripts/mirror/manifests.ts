@@ -8,8 +8,22 @@ import {
   type WorkspaceLayout,
 } from './layout-map.ts';
 import { dispositionFor, type PackageMap, type WorkspaceDisposition } from './package-map.ts';
-import { assertEdgeNotStale, computeSourceDigest } from './source-digest.ts';
+import { childProcessEnvironment } from './packaging.ts';
+import {
+  assertEdgeNotStale,
+  collectDigestedFiles,
+  hashDigestedFiles,
+  publicationInputContract,
+} from './source-digest.ts';
 import type { EmittedWorkspace } from './source.ts';
+import {
+  mirrorTargets,
+  publishedVersionRange,
+  targetDefinitions,
+  targetFor,
+  workspaceDirectories,
+  type MirrorTarget,
+} from './target-definitions.ts';
 import {
   keysFor,
   loadTargetOwnedPolicy,
@@ -49,13 +63,8 @@ import {
  * live dry run failed twelve of the weft repository's twenty checks because of it.
  */
 
-export type MirrorTarget = 'weft' | 'cinder' | 'agent-bureau';
-
 /** Raised when a manifest cannot be rewritten without inventing a fact the map does not carry. */
 export class ManifestTransformError extends Error {}
-
-/** The workspace directories corvidae declares, in the order its root manifest lists them. */
-const workspaceDirectories = ['applications', 'components', 'packages', 'internal'] as const;
 
 const dependencyFields = [
   'dependencies',
@@ -86,108 +95,6 @@ const publishedEdgeFields = new Set<(typeof dependencyFields)[number]>([
   'peerDependencies',
   'optionalDependencies',
 ]);
-
-/**
- * Per-target facts that are not in `package-map.json`, which rules on what a workspace *becomes*
- * rather than on which repository it lands in.
- *
- * `rootName` and `workspaces` are read off the targets as they exist today (`weft-monorepo` with
- * `packages/*`, `cinder-workspace` with its explicit list, `agent-bureau` with `packages/*`)
- * rather than invented, so a sync does not rewrite a key that was already correct. `catalog`
- * records whether the target has a workspace root able to hold one: `agent-bureau`'s root declares
- * `workspaces` but no `catalog`, so its specifiers inline to concrete ranges the way weft's do.
- *
- * `members` is exhaustive as of COR-1287. It used to be a single list — weft's — with every other
- * workspace falling through to cinder, which was correct while there were two targets and stopped
- * being correct the moment a third one claimed ten of the workspaces that fell through. Every
- * non-excluded workspace in `package-map.json` is now named by exactly one list, enforced by
- * `manifests.test.ts` against the map rather than left to this comment.
- */
-const targetDefinitions = {
-  weft: {
-    rootName: 'weft-monorepo',
-    workspaces: ['packages/*'],
-    catalog: false,
-    /** The weft target is a single-package repository; every other workspace ships elsewhere. */
-    members: ['@lostgradient/weft'],
-  },
-  cinder: {
-    rootName: 'cinder-workspace',
-    workspaces: workspaceDirectories.map((directory) => `${directory}/*`),
-    catalog: true,
-    members: [
-      '@lostgradient/cinder',
-      '@lostgradient/chat',
-      '@lostgradient/editor',
-      '@lostgradient/markdown',
-      '@lostgradient/weft-ui',
-      '@lostgradient/testing',
-      '@lostgradient/typescript',
-    ],
-  },
-  'agent-bureau': {
-    rootName: 'agent-bureau',
-    workspaces: ['packages/*'],
-    catalog: false,
-    members: [
-      '@lostgradient/operative',
-      'armorer',
-      'conversationalist',
-      '@lostgradient/cryptography',
-      '@lostgradient/embeddings',
-      '@lostgradient/tool-protocol',
-      '@lostgradient/lifecycle',
-      '@lostgradient/bureau',
-      '@lostgradient/memory',
-      '@lostgradient/skills',
-    ],
-  },
-} as const satisfies Record<
-  MirrorTarget,
-  {
-    rootName: string;
-    workspaces: readonly string[];
-    catalog: boolean;
-    members: readonly string[];
-  }
->;
-
-export const mirrorTargets = Object.keys(targetDefinitions) as readonly MirrorTarget[];
-
-/**
- * Which target a workspace ships from.
- *
- * Throws rather than defaulting. A default was what made the two-target version read cleanly, and
- * it is exactly what a third target cannot have: an unlisted workspace silently joining whichever
- * target held the fallback is a package published from the wrong repository, which no downstream
- * check would notice. Every caller here filters `exclude` first, so a workspace reaching this
- * function is one the mirror emits and therefore one that must have a home.
- */
-export function targetFor(workspace: string): MirrorTarget {
-  for (const target of mirrorTargets) {
-    if ((targetDefinitions[target].members as readonly string[]).includes(workspace)) return target;
-  }
-  throw new ManifestTransformError(
-    `${workspace} is not a member of any mirror target; add it to one of targetDefinitions' member lists or exclude it in package-map.json`,
-  );
-}
-
-/**
- * Whether the target's root can hold a Bun catalog, which decides whether a `catalog:` specifier
- * survives into it or is inlined to the concrete range corvidae's root catalog declares.
- *
- * Exported because `surface.ts` asks the same question about the toolchain dependencies it adds
- * and used to answer it with its own `options.target === 'cinder'`. Two literals, one fact: a
- * third target made the copy wrong rather than merely duplicated.
- */
-export function targetHasCatalog(target: MirrorTarget): boolean {
-  return targetDefinitions[target].catalog;
-}
-
-/** The member workspaces of one target, for the map-coverage test rather than for the transform. */
-export function membersOf(target: MirrorTarget): readonly string[] {
-  return targetDefinitions[target].members;
-}
 
 type JsonObject = Record<string, unknown>;
 
@@ -273,10 +180,12 @@ function publishedRangeFor(
     workspace,
     publicName: disposition.name,
     version: disposition.lastPublishedVersion,
-    recordedDigest: disposition.sourceDigest,
+    snapshot: disposition.publishedSnapshot,
     currentDigest,
+    currentPaths: context.currentSourcePaths.get(workspace) ?? [],
+    currentPublicationInputDigest: context.currentPublicationInputs.get(workspace) ?? '',
   });
-  return `^${disposition.lastPublishedVersion}`;
+  return publishedVersionRange(disposition.lastPublishedVersion, true);
 }
 
 interface RewriteContext {
@@ -292,6 +201,8 @@ interface RewriteContext {
    * than digesting on demand because it is called from a synchronous rewrite chain.
    */
   currentDigests: ReadonlyMap<string, string>;
+  currentSourcePaths: ReadonlyMap<string, readonly string[]>;
+  currentPublicationInputs: ReadonlyMap<string, string>;
   /** Catalog entries this target must declare, accumulated as cross-target edges are resolved. */
   requiredCatalog: Map<string, string>;
   /** Edges dropped because the other end does not exist downstream, reported rather than silent. */
@@ -810,23 +721,44 @@ export async function planManifests({
   }
   assertPublicNamesUnique(publicNames);
 
-  // Every publish-as workspace's current source digest, computed once before any dependency
-  // block is rewritten. `publishedRangeFor` (via `assertEdgeNotStale`) needs one for any workspace
-  // that turns out to be a cross-target dependency, but which ones those are is not known until
-  // the rewrite loop below reads each consumer's own manifest — so every publish-as workspace is
-  // digested up front rather than the smaller set actually crossing a target boundary. The count
-  // is small (a dozen or so today) and the digest itself is a handful of file reads per workspace.
+  // Publication identity is needed only where this target consumes another target's package.
+  // Inspect the same manifest blocks rewriteWorkspaceManifest consumes, including development
+  // dependencies. Unrelated packages must not add discovery work or block a standalone plan.
+  const crossTargetDependencies = new Set<string>();
+  for (const consumer of workspaces) {
+    if (dispositions.get(consumer.name)?.disposition === 'exclude') continue;
+    if (targetFor(consumer.name) !== target) continue;
+    if (layouts.get(consumer.name)?.disposition === 'deferred') continue;
+    for (const field of dependencyFields) {
+      const block = consumer.manifest[field];
+      if (!isJsonObject(block)) continue;
+      for (const dependency of Object.keys(block)) {
+        if (dispositions.get(dependency)?.disposition !== 'publish-as') continue;
+        if (targetFor(dependency) !== target) crossTargetDependencies.add(dependency);
+      }
+    }
+  }
   const currentDigests = new Map<string, string>();
+  const currentSourcePaths = new Map<string, readonly string[]>();
+  const currentPublicationInputs = new Map<string, string>();
   for (const workspace of workspaces) {
-    if (dispositions.get(workspace.name)?.disposition !== 'publish-as') continue;
-    currentDigests.set(
+    if (!crossTargetDependencies.has(workspace.name)) continue;
+    const sourceFiles = await collectDigestedFiles({
+      corvidaeRoot,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    currentDigests.set(workspace.name, hashDigestedFiles(sourceFiles));
+    currentSourcePaths.set(
       workspace.name,
-      await computeSourceDigest({
-        corvidaeRoot,
-        corvidaeDirectory: workspace.directory,
-        workspace: workspace.name,
-      }),
+      sourceFiles.map((file) => file.path),
     );
+    const publicationInputs = await publicationInputContract({
+      corvidaeRoot,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    currentPublicationInputs.set(workspace.name, publicationInputs.digest);
   }
 
   const context: RewriteContext = {
@@ -835,6 +767,8 @@ export async function planManifests({
     publicNames,
     dispositions,
     currentDigests,
+    currentSourcePaths,
+    currentPublicationInputs,
     requiredCatalog: new Map(),
     dropped: [],
     intraTargetEdges: new Map(),
@@ -995,6 +929,7 @@ export async function stageTarget(
 export async function runInstall(directory: string, extra: readonly string[] = []): Promise<void> {
   const install = Bun.spawn(['bun', 'install', '--ignore-scripts', ...extra], {
     cwd: directory,
+    env: childProcessEnvironment(),
     stdout: 'pipe',
     stderr: 'pipe',
   });

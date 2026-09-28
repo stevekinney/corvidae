@@ -1,7 +1,13 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  requiredInstance,
+  setupHappyDom,
+} from '@lostgradient/testing';
 import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
@@ -10,6 +16,8 @@ const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/s
 const { enhanceJson } = await import('./json-editor-enhancement.ts');
 const { default: JsonEditor } = await import('./json-editor.svelte');
 const { default: schema } = await import('./json-editor.schema.ts');
+const jsonEditorSource = new URL('./json-editor.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(jsonEditorSource);
 
 afterEach(() => {
   cleanup();
@@ -17,6 +25,19 @@ afterEach(() => {
 });
 
 describe('JsonEditor', () => {
+  test.each([false, true])(
+    'preserves native autofocus=%s in server-rendered markup',
+    async (autofocus) => {
+      const html = await renderSvelteOnServer(jsonEditorSource, {
+        id: 'server-autofocus',
+        label: 'Payload',
+        value: '{}',
+        autofocus,
+      });
+      expect(/<textarea\b[^>]*\sautofocus(?:[\s=>])/.test(html)).toBe(autofocus);
+    },
+  );
+
   test('the error live region is mounted before any error is set (CIN-315: FormFieldFrame defaults to errorMountedOnDemand=false)', () => {
     const { container } = render(JsonEditor, {
       id: 'no-error-yet-json',
@@ -64,10 +85,10 @@ describe('JsonEditor', () => {
       label: 'Baseline payload',
       value: '{"ready":true}',
     });
-    await waitFor(() =>
-      expect(baseline.container.querySelector('.cinder-json-editor__highlight')).toBeNull(),
-    );
-    expect(baseline.container.querySelector('.cinder-json-editor__highlight')).toBeNull();
+    flushSync();
+    expect(
+      baseline.container.querySelector('.cinder-json-editor__highlight')?.outerHTML ?? null,
+    ).toBeNull();
     baseline.unmount();
 
     const view = render(JsonEditor, {

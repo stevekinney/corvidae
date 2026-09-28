@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import type { WorkflowState, WorkflowTimelineEntry } from '@lostgradient/weft';
 import { QueryClient } from '@tanstack/svelte-query';
@@ -148,9 +149,8 @@ describe('TimelineTab', () => {
 
     await fireEvent.click(getByText('Clear'));
 
-    await waitFor(() => {
-      expect(queryByText('Selected — Events filtered to this step')).toBeNull();
-    });
+    flushSync();
+    expect(queryByText('Selected — Events filtered to this step')?.outerHTML ?? null).toBeNull();
   });
 
   /**
@@ -197,9 +197,8 @@ describe('TimelineTab', () => {
 
     await fireEvent.click(getByRole('button', { name: 'Select reserveFlight' }));
 
-    await waitFor(() => {
-      expect(queryByText('Selected — Events filtered to this step')).toBeNull();
-    });
+    flushSync();
+    expect(queryByText('Selected — Events filtered to this step')?.outerHTML ?? null).toBeNull();
     expect(getByRole('button', { name: 'Select reserveFlight' }).getAttribute('aria-pressed')).toBe(
       'false',
     );

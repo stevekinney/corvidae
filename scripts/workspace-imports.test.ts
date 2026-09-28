@@ -162,6 +162,8 @@ async function readWorkspaceSources(directory: string, sourceDirectory = directo
   return sources;
 }
 
+const browserFixturesDirectory = 'scripts/browser-fixtures';
+
 describe('workspace imports', () => {
   test('import scanning finds former package names without treating text fixtures as imports', () => {
     const source = `
@@ -225,6 +227,7 @@ describe('workspace imports', () => {
   });
   test.each([
     './package.json',
+    'scripts/browser-fixtures/package.json',
     ...new Bun.Glob('{packages,components,applications,internal}/*/package.json').scanSync({
       cwd: root,
     }),
@@ -233,10 +236,24 @@ describe('workspace imports', () => {
     async (path) => {
       const directory = path.slice(0, -'/package.json'.length);
       const manifest = await readManifest(directory);
-      const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
-      for (const { file, source } of await readWorkspaceSources(
+      let dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
+      if (directory === browserFixturesDirectory) {
+        // The fixtures workspace declares the workspaces it imports, which keeps them out of the
+        // root manifest and so out of every task's cache key. Its external tooling still resolves
+        // from the root, where the root's own browser commands need it too.
+        const rootManifest = await readManifest('.');
+        dependencies = {
+          ...rootManifest.dependencies,
+          ...rootManifest.devDependencies,
+          ...dependencies,
+        };
+      }
+      const sources = await readWorkspaceSources(
         directory,
         directory === '.' ? 'scripts' : directory,
+      );
+      for (const { file, source } of sources.filter(
+        ({ file }) => directory !== '.' || !file.startsWith('browser-fixtures/'),
       )) {
         expect(source, `${directory}/${file} suppresses TypeScript checking`).not.toMatch(
           /^\s*\/\/\s*@ts-(?:nocheck|ignore)\b/m,

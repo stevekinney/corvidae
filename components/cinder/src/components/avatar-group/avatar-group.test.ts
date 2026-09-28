@@ -246,13 +246,13 @@ describe('AvatarGroup', () => {
     });
   });
 
-  test('named avatar triggers are focusable tooltip buttons with accessible names', () => {
+  test('named avatar triggers are focusable images with accessible names', () => {
     const { container } = render(AvatarGroup, { avatars: collaborators.slice(0, 2) });
 
     const triggers = container.querySelectorAll<HTMLElement>('.cinder-avatar-group__trigger');
     for (const trigger of triggers) {
-      expect(trigger.tagName).toBe('BUTTON');
-      expect(trigger.getAttribute('type')).toBe('button');
+      expect(trigger.getAttribute('role')).toBe('img');
+      expect(trigger.getAttribute('tabindex')).toBe('0');
       expect(trigger.getAttribute('aria-label')).toBeTruthy();
     }
   });
@@ -344,7 +344,7 @@ describe('AvatarGroup', () => {
       const named = item.querySelectorAll('[aria-label]');
       expect(named).toHaveLength(1);
       expect(named[0]?.getAttribute('aria-label')).toBe(collaborators[index]?.name);
-      expect(named[0]?.tagName).toBe('BUTTON');
+      expect(named[0]?.getAttribute('role')).toBe('img');
       // No tooltip text inside the item to pollute what the list announces.
       expect(item.querySelector('[role="tooltip"]')).toBeNull();
     });

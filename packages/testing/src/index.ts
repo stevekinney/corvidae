@@ -1,3 +1,4 @@
+export { buildBrowser } from './build-browser.ts';
 export * from './fixture-extraction/index.ts';
 export * from './helpers/artifact-path.ts';
 export * from './helpers/axe-gate.ts';

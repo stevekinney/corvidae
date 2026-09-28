@@ -9,6 +9,7 @@ import type { WorkerDeploymentSummary, WorkerSummary } from './worker-catalog-ty
 function worker(overrides: Partial<WorkerSummary> = {}): WorkerSummary {
   return {
     id: 'wkr_1',
+    transport: 'websocket',
     queue: 'default',
     activities: ['Workflow.activity'],
     concurrency: 4,
@@ -35,6 +36,7 @@ function deployment(overrides: Partial<WorkerDeploymentSummary> = {}): WorkerDep
     inFlight: 1,
     oldestStartedAt: null,
     runtimeVersion: 'node 20',
+    transports: ['websocket'],
     workers: 1,
     ...overrides,
   };

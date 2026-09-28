@@ -1,18 +1,25 @@
+import { pushVerifiedBundle } from './authenticated-push.ts';
 import { createGitHubApi, installationTokenFromApp, type GitHubApi } from './github-api.ts';
-import { mirrorTargets, type MirrorTarget } from './manifests.ts';
+import { resolveReleaseWorkflowFile } from './install-parity.ts';
+import {
+  verifyPreparedSyncArtifact,
+  writePreparedSyncArtifact,
+  type PreparedSyncManifest,
+} from './prepared-sync.ts';
 import { scratchOwner } from './scratch-repository.ts';
 import {
   assertNoForeignCommits,
   cloneTarget,
-  declaredBuildInputs,
+  foreignCommitOwnership,
   git,
+  gitEnvironment,
   provenanceTrailer,
   runSync,
   stageSurface,
   SyncError,
   type SyncResult,
 } from './sync.ts';
-import { loadTargetOwnedPolicy } from './target-owned.ts';
+import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 /**
  * The two entry points COR-1195's GitHub Actions workflow drives, one `bun` invocation per job:
@@ -21,11 +28,10 @@ import { loadTargetOwnedPolicy } from './target-owned.ts';
  *   against a fresh clone and says whether it is behind, pushing nothing. `mirror-sync.yaml` runs
  *   this once per target in a matrix rather than looping all three in one process, so a target
  *   with a real problem fails its own job instead of aborting the other two.
- * - `--mode dispatch` (the manual `workflow_dispatch`) runs the same transform for one chosen
- *   target and, when it produced a change, opens a pull request in that target through the App
- *   installation rather than pushing straight to its default branch — `runSync`'s `pullRequest`
- *   option (COR-1195) does the branch-and-push-and-open, this module supplies the target's
- *   `owner/repo`, the branch name and the pull request body.
+ * - `--mode prepare` (the manual dispatch's first job) runs the verified transform and writes a
+ *   bundle-plus-manifest artifact, carrying no App private key at all.
+ * - `--mode publish` (the manual dispatch's second job) verifies that artifact in a fresh job and
+ *   then opens the pull request or snapshot dispatch through the App installation.
  *
  * Both reuse `sync.ts`'s pipeline outright: the same clone, the same ownership-aware
  * foreign-commit guard (so a hand release commit already on a target's default branch is
@@ -44,9 +50,54 @@ export function targetRemoteUrl(target: MirrorTarget): string {
   return `https://github.com/${targetRepositoryFullName(target)}.git`;
 }
 
-/** The sync branch a dispatch pushes, named after the corvidae commit it carries. */
+/** A fresh branch per attempt, so a retry never collides with an earlier partial push. */
 export function pullRequestBranchFor(corvidaeCommit: string): string {
-  return `mirror-sync-${corvidaeCommit.slice(0, 12)}`;
+  return `mirror-sync-${corvidaeCommit.slice(0, 12)}-${crypto.randomUUID()}`;
+}
+
+export function snapshotDispatchFor(
+  target: MirrorTarget,
+  workflowFile: string,
+  fullName: string,
+  branch: string,
+  result: Pick<SyncResult, 'decision' | 'commit' | 'baseBranch' | 'baseCommit' | 'pullRequest'>,
+): {
+  fullName: string;
+  workflowFile: string;
+  ref: string;
+  inputs: { snapshot: 'true'; expected_sha: string };
+} {
+  const ref = result.decision === 'pushed' ? branch : result.baseBranch;
+  if (result.decision === 'pushed' && result.pullRequest === undefined) {
+    throw new MirrorSyncActionError(`${target}: snapshot dispatch requires a source pull request`);
+  }
+  const expectedSha = result.decision === 'pushed' ? result.commit : result.baseCommit;
+  if (expectedSha === undefined) {
+    throw new MirrorSyncActionError(
+      `${target}: snapshot dispatch lacks the verified target commit`,
+    );
+  }
+  return {
+    fullName,
+    workflowFile,
+    ref,
+    inputs: { snapshot: 'true', expected_sha: expectedSha },
+  };
+}
+
+export async function dispatchSnapshotWorkflow(
+  api: Pick<GitHubApi, 'dispatchWorkflow'>,
+  target: MirrorTarget,
+  fullName: string,
+  branch: string,
+  result: Pick<SyncResult, 'decision' | 'commit' | 'baseBranch' | 'baseCommit' | 'pullRequest'>,
+  targetDirectory: string,
+): Promise<void> {
+  if (api.dispatchWorkflow === undefined) {
+    throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+  }
+  const workflowFile = await resolveReleaseWorkflowFile(targetDirectory);
+  await api.dispatchWorkflow(snapshotDispatchFor(target, workflowFile, fullName, branch, result));
 }
 
 /**
@@ -88,6 +139,16 @@ function readOption(argv: readonly string[], name: string): string | undefined {
   return index === -1 ? undefined : argv[index + 1];
 }
 
+function snapshotOption(argv: readonly string[]): boolean {
+  const index = argv.indexOf('--snapshot');
+  if (index === -1) return false;
+  const value = argv[index + 1];
+  if (value !== 'true' && value !== 'false') {
+    throw new MirrorSyncActionError('--snapshot must be "true" or "false"');
+  }
+  return value === 'true';
+}
+
 function required(argv: readonly string[], name: string): string {
   const value = readOption(argv, name);
   if (!value) throw new MirrorSyncActionError(`Missing required option --${name}`);
@@ -125,11 +186,14 @@ export async function reportDrift(options: {
   directory: string;
 }): Promise<DriftReport> {
   const clone = await cloneTarget({ remote: options.remote, directory: options.directory });
-  await assertNoForeignCommits(clone, {
-    policy: await loadTargetOwnedPolicy(),
-    target: options.target,
-    targetOwnedFiles: await declaredBuildInputs(options.target),
-  });
+  await assertNoForeignCommits(
+    clone,
+    await foreignCommitOwnership({
+      corvidaeRoot: options.corvidaeRoot,
+      target: options.target,
+      clone,
+    }),
+  );
   await stageSurface({
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
@@ -184,21 +248,21 @@ function installationOnlyApi(): GitHubApi {
   });
 }
 
-async function runDispatch(argv: readonly string[]): Promise<number> {
+async function corvidaeCommitFor(argv: readonly string[], corvidaeRoot: string): Promise<string> {
+  const suppliedCorvidaeCommit = readOption(argv, 'corvidae-commit');
+  if (suppliedCorvidaeCommit !== undefined) return suppliedCorvidaeCommit;
+  const head = await git(corvidaeRoot, 'rev-parse', 'HEAD');
+  return head.trim();
+}
+
+async function runPrepare(argv: readonly string[]): Promise<number> {
   const target = requiredTarget(argv);
+  const snapshot = snapshotOption(argv);
   const corvidaeRoot = defaultCorvidaeRoot(argv);
   const workDirectory = required(argv, 'work');
   const scratchDirectory = required(argv, 'scratch');
-  const suppliedCorvidaeCommit = readOption(argv, 'corvidae-commit');
-  let corvidaeCommit = suppliedCorvidaeCommit;
-  if (corvidaeCommit === undefined) {
-    const head = await git(corvidaeRoot, 'rev-parse', 'HEAD');
-    corvidaeCommit = head.trim();
-  }
-  const branch = pullRequestBranchFor(corvidaeCommit);
-  const api = installationOnlyApi();
-  const fullName = targetRepositoryFullName(target);
-
+  const artifactDirectory = required(argv, 'artifact');
+  const corvidaeCommit = await corvidaeCommitFor(argv, corvidaeRoot);
   const result: SyncResult = await runSync({
     corvidaeRoot,
     target,
@@ -206,31 +270,102 @@ async function runDispatch(argv: readonly string[]): Promise<number> {
     directory: `${workDirectory}/${target}`,
     scratchDirectory,
     corvidaeCommit,
-    pullRequest: {
-      branch,
-      pushEnvironment: () => api.pushEnvironment(),
-      openPullRequest: ({ base, changed }) =>
-        api.createPullRequest({
-          fullName,
-          base,
-          head: branch,
-          title: `Sync ${target} from corvidae`,
-          body: pullRequestBodyFor({ target, corvidaeCommit, changed }),
-        }),
-    },
+    prepareBranch: `mirror-prepare-${target}-${corvidaeCommit.slice(0, 12)}`,
   });
+  const workflowFile = snapshot ? await resolveReleaseWorkflowFile(result.directory) : undefined;
+  const manifest = await writePreparedSyncArtifact({
+    artifactDirectory,
+    result,
+    corvidaeCommit,
+    snapshot,
+    workflowFile,
+  });
+  process.stdout.write(preparedMessage(manifest));
+  return 0;
+}
 
-  if (result.decision === 'skip') {
-    process.stdout.write(`${target}: no change, nothing to open\n`);
+function preparedMessage(manifest: PreparedSyncManifest): string {
+  if (manifest.decision === 'skip') {
+    return `${manifest.target}: verified no change; prepared publish artifact for ${manifest.baseBranch} (${manifest.baseCommit})\n`;
+  }
+  return `${manifest.target}: prepared verified commit ${manifest.commit} from ${manifest.changed.length} changed path(s)\n`;
+}
+
+async function runPublish(argv: readonly string[]): Promise<number> {
+  const target = requiredTarget(argv);
+  const snapshot = snapshotOption(argv);
+  const corvidaeRoot = defaultCorvidaeRoot(argv);
+  const artifactDirectory = required(argv, 'artifact');
+  const corvidaeCommit = await corvidaeCommitFor(argv, corvidaeRoot);
+  const { manifest, bundlePath } = await verifyPreparedSyncArtifact({
+    artifactDirectory,
+    corvidaeRoot,
+    remote: targetRemoteUrl(target),
+    expectedTarget: target,
+    expectedCorvidaeCommit: corvidaeCommit,
+    expectedSnapshot: snapshot,
+  });
+  const fullName = targetRepositoryFullName(target);
+  const branch = pullRequestBranchFor(corvidaeCommit);
+  if (manifest.decision === 'skip') {
+    if (snapshot) {
+      if (manifest.workflowFile === undefined) {
+        throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
+      }
+      const api = installationOnlyApi();
+      if (api.dispatchWorkflow === undefined) {
+        throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+      }
+      await api.dispatchWorkflow(
+        snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, manifest),
+      );
+      process.stdout.write(
+        `${target}: snapshot workflow dispatched for ${fullName}@${manifest.baseBranch} (${manifest.baseCommit})\n`,
+      );
+    } else {
+      process.stdout.write(`${target}: no change, nothing to open\n`);
+    }
     return 0;
   }
-  if (!result.pullRequest) {
-    // Unreachable while `pullRequest` was supplied above and the decision is `pushed`, since
-    // `runSync` only takes that branch when it opened one — kept explicit so a future change to
-    // `runSync`'s pull-request contract fails loudly here instead of printing `undefined`.
-    throw new SyncError(`${target}: pushed but no pull request was recorded`);
+  if (bundlePath === undefined || manifest.commit === undefined) {
+    throw new SyncError(`${target}: prepared artifact lacks a verified commit bundle`);
   }
-  process.stdout.write(`${target}: opened ${result.pullRequest.htmlUrl}\n`);
+  const api = installationOnlyApi();
+  await pushVerifiedBundle({
+    bundle: bundlePath,
+    remote: targetRemoteUrl(target),
+    commit: manifest.commit,
+    branch,
+    environment: gitEnvironment(),
+    credentialEnvironment: () => api.pushEnvironment(),
+  });
+  const pullRequest = await api.createPullRequest({
+    fullName,
+    base: manifest.baseBranch,
+    head: branch,
+    title: `Sync ${target} from corvidae`,
+    body: pullRequestBodyFor({ target, corvidaeCommit, changed: manifest.changed }),
+  });
+  if (snapshot) {
+    if (manifest.workflowFile === undefined) {
+      throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
+    }
+    if (api.dispatchWorkflow === undefined) {
+      throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+    }
+    await api.dispatchWorkflow(
+      snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, {
+        ...manifest,
+        decision: 'pushed',
+        pullRequest,
+      }),
+    );
+    process.stdout.write(
+      `${target}: source pull request ${pullRequest.htmlUrl}; snapshot workflow dispatched for ${fullName}@${branch} (${manifest.commit})\n`,
+    );
+    return 0;
+  }
+  process.stdout.write(`${target}: opened ${pullRequest.htmlUrl}\n`);
   return 0;
 }
 
@@ -238,8 +373,11 @@ export async function runMirrorSyncActionCommand(argv: readonly string[]): Promi
   try {
     const mode = required(argv, 'mode');
     if (mode === 'report') return await runReport(argv);
-    if (mode === 'dispatch') return await runDispatch(argv);
-    throw new MirrorSyncActionError(`Unknown --mode "${mode}"; expected "report" or "dispatch"`);
+    if (mode === 'prepare') return await runPrepare(argv);
+    if (mode === 'publish') return await runPublish(argv);
+    throw new MirrorSyncActionError(
+      `Unknown --mode "${mode}"; expected "report", "prepare" or "publish"`,
+    );
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;

@@ -27,6 +27,7 @@ import {
   ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING,
   ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING,
   ENGINE_SLEEP_RESOLVER_COUNT_FOR_TESTING,
+  ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING,
   ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING,
   ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING,
   EngineCreateNameMismatchError,
@@ -430,6 +431,49 @@ describe('Engine', () => {
     }
   });
 
+  it('reports test-only signal readiness when an inline workflow parks on a top-level signal wait', async () => {
+    const workflowId = 'wait-for-parked-signal-readiness';
+    const workflowStarted = Promise.withResolvers<void>();
+    const allowWait = Promise.withResolvers<void>();
+    useFakeTimers();
+    const engine = new Engine();
+    engine.register(
+      workflow({ name: 'wait-for-parked-signal-readiness' }).execute(async function* (ctx) {
+        workflowStarted.resolve();
+        await allowWait.promise;
+        // No accessors or update handlers, so inline mode parks this wait
+        // instead of registering a signal waiter.
+        return yield* ctx.waitForSignal('go');
+      }),
+    );
+
+    try {
+      await engine.start('wait-for-parked-signal-readiness', null, { id: workflowId });
+      await workflowStarted.promise;
+
+      let barrierSettled = false;
+      const barrier = engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId).then(() => {
+        barrierSettled = true;
+      });
+      await flushMicrotasks();
+      expect(barrierSettled).toBe(false);
+
+      allowWait.resolve();
+      await barrier;
+      expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
+      expect(engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]()).toBe(0);
+
+      // Already parked: resolves at once, with no timer of its own.
+      const timerCountBefore = jest.getTimerCount();
+      await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId);
+      expect(jest.getTimerCount()).toBe(timerCountBefore);
+    } finally {
+      allowWait.resolve();
+      await engine[Symbol.asyncDispose]();
+      restoreRealTimers();
+    }
+  });
+
   it('settles a pending test-only signal readiness wait when the engine is disposed', async () => {
     const workflowId = 'wait-for-signal-readiness-disposed';
     const workflowStarted = Promise.withResolvers<void>();
@@ -450,6 +494,78 @@ describe('Engine', () => {
     await engine[Symbol.asyncDispose]();
     await barrier;
     expect(engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]()).toBe(0);
+  });
+
+  it('waits for an inline park, not an earlier race-branch signal waiter, before reporting test-only park readiness', async () => {
+    const workflowId = 'wait-for-parked-workflow';
+    const releaseHold = Promise.withResolvers<void>();
+    const engine = new Engine();
+    engine.register(
+      workflow({ name: 'wait-for-parked-workflow' })
+        .activities({
+          hold: async () => {
+            await releaseHold.promise;
+            return 'held';
+          },
+        })
+        .execute(async function* (ctx: WorkflowContext) {
+          const winner = yield* ctx.race([ctx.waitForSignal('ev'), ctx.run('hold')]);
+          const gate = yield* ctx.waitForSignal('gate');
+          return { winner, gate };
+        }),
+    );
+
+    try {
+      await engine.start('wait-for-parked-workflow', null, { id: workflowId });
+      // The race's wait-signal branch registers a signal waiter well before
+      // the workflow parks on its top-level wait.
+      await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId);
+
+      let barrierSettled = false;
+      const barrier = engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](workflowId).then(() => {
+        barrierSettled = true;
+      });
+      await flushMicrotasks();
+      expect(barrierSettled).toBe(false);
+      expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(0);
+
+      releaseHold.resolve();
+      await barrier;
+      expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
+
+      // Already parked: resolves at once, with no timer of its own. Fake
+      // timers go on only here, so the park itself runs on real timers.
+      useFakeTimers();
+      const timerCountBefore = jest.getTimerCount();
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](workflowId);
+      expect(jest.getTimerCount()).toBe(timerCountBefore);
+    } finally {
+      releaseHold.resolve();
+      await engine[Symbol.asyncDispose]();
+      restoreRealTimers();
+    }
+  });
+
+  it('settles a pending test-only park readiness wait when the engine is disposed', async () => {
+    const workflowId = 'wait-for-parked-workflow-disposed';
+    const workflowStarted = Promise.withResolvers<void>();
+    const neverPark = Promise.withResolvers<void>();
+    const engine = new Engine();
+    engine.register(
+      workflow({ name: 'wait-for-parked-workflow-disposed' }).execute(async function* (ctx) {
+        workflowStarted.resolve();
+        await neverPark.promise;
+        return yield* ctx.waitForSignal('go');
+      }),
+    );
+
+    await engine.start('wait-for-parked-workflow-disposed', null, { id: workflowId });
+    await workflowStarted.promise;
+    const barrier = engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](workflowId);
+
+    await engine[Symbol.asyncDispose]();
+    await barrier;
+    expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(0);
   });
 
   it('fireTimer tolerates a sleep timer that has no registered resolver', async () => {
@@ -1341,13 +1457,7 @@ describe('Engine', () => {
 
     const handle = await engine.start('cancelled-parked-inline-workflow', null, { id: workflowId });
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) {
-        break;
-      }
-
-      await flush();
-    }
+    await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
 
     expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
 
@@ -1857,25 +1967,28 @@ describe('Engine', () => {
     const engine = new Engine({ storage });
     engine.register(
       workflow({ name: 'signal-waiter-cleanup' }).execute(async function* (ctx: WorkflowContext) {
+        // An exposed accessor keeps the run resident, so this wait registers
+        // a signal waiter instead of parking inline.
+        ctx.expose({ phase: () => 'waiting' });
         yield* ctx.waitForSignal('approval');
         return 'unreached';
       }),
     );
 
     const handle = await engine.start('signal-waiter-cleanup', null, { id: workflowId });
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      if (approvalScanCount === 2) {
-        break;
-      }
+    // The failed scan fails the wait-signal operation, which fails the
+    // workflow; the result settling is the event this test waits on.
+    const failure = await handle.result().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
 
-      await flush();
-    }
-
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('simulated signal scan failure');
     expect(approvalScanCount).toBe(2);
     expect(engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]()).toBe(0);
-    const resultPromise = handle.result().catch(() => undefined);
-    await engine.cancel(handle.id);
-    await resultPromise;
+    const workflowState = await engine.get(handle.id);
+    expect(workflowState?.status).toBe('failed');
 
     engine[Symbol.dispose]();
   });
@@ -2016,13 +2129,7 @@ describe('Engine', () => {
 
     const handle = await engine.start('parked-resume-cancel-race', null, { id: workflowId });
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) {
-        break;
-      }
-
-      await flush();
-    }
+    await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
 
     expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
 
@@ -2087,13 +2194,7 @@ describe('Engine', () => {
 
     const handle = await engine.start('parked-resume-termination-race', null, { id: workflowId });
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) {
-        break;
-      }
-
-      await flush();
-    }
+    await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
 
     expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
 
@@ -2764,21 +2865,19 @@ describe('Engine', () => {
       }),
     );
 
+    // Wait on the completion event, not result(), so the first result() call
+    // really does come after the workflow completed.
+    const completed = Promise.withResolvers<void>();
+    engine.addEventListener(WorkflowCompletedEvent.type, (event) => {
+      if (event.workflowId === 'late-result-id') completed.resolve();
+    });
+
     const handle = await engine.start('completed-before-result', null, { id: 'late-result-id' });
-    let completedBeforeSubscription = false;
+    await completed.promise;
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const state = await engine.get(handle.id);
-      if (state?.status === 'completed') {
-        completedBeforeSubscription = true;
-        break;
-      }
-
-      await flush();
-    }
-
-    expect(completedBeforeSubscription).toBe(true);
-    expect(handle.result()).resolves.toBe('late-result');
+    const workflowState = await engine.get(handle.id);
+    expect(workflowState?.status).toBe('completed');
+    expect(await handle.result()).toBe('late-result');
     engine[Symbol.dispose]();
   });
 
@@ -5909,10 +6008,7 @@ describe('Engine', () => {
 
       const handle = await engine.start('parked-query-workflow', null);
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) break;
-        await flush();
-      }
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
       expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
 
       // Query while parked — this should invoke the handler
@@ -5946,19 +6042,13 @@ describe('Engine', () => {
 
       const handle = await engine.start('parked-query-resume-workflow', null);
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) break;
-        await flush();
-      }
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
       expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
       expect(engine.query(handle.id, 'phase')).resolves.toBe('waiting');
 
       // Resume past the first park; the workflow advances then parks again.
       await engine.signal(handle.id, 'go1', null);
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) break;
-        await flush();
-      }
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
       expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
       // Querying while parked the second time hits the post-resume context.
       expect(engine.query(handle.id, 'phase')).resolves.toBe('resumed');
@@ -5984,10 +6074,7 @@ describe('Engine', () => {
 
       const handle = await engine.start('parked-no-handler-workflow', null);
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) break;
-        await flush();
-      }
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
       expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
 
       // Query a name that was never registered
@@ -6012,10 +6099,7 @@ describe('Engine', () => {
 
       const handle = await engine.start('parked-query-terminal-workflow', null);
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        if (engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]() === 1) break;
-        await flush();
-      }
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](handle.id);
       expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
 
       await engine.signal(handle.id, 'go', null);

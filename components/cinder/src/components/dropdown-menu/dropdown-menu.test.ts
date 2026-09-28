@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { createRawSnippet, tick } from 'svelte';
+import { createRawSnippet, flushSync, tick } from 'svelte';
 
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
@@ -93,7 +93,8 @@ describe('DropdownMenu', () => {
     await fireEvent.keyDown(requiredInstance(document.activeElement, HTMLElement), {
       key: 'Escape',
     });
-    await waitFor(() => expect(container.querySelector('[role="menu"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
 
     await fireEvent.click(trigger);
     await waitFor(() => expect(document.activeElement?.textContent).toContain('Copy link'));
@@ -185,7 +186,8 @@ describe('DropdownMenu', () => {
       expect(parentEscapeCount).toBe(0);
       // Release timing (CIN-428): released the instant close begins, so the
       // parent handler (now top-most) receives the very next Escape.
-      await waitFor(() => expect(container.querySelector('[role="menu"]')).toBeNull());
+      flushSync();
+      expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
       window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       expect(parentEscapeCount).toBe(1);
     } finally {
@@ -207,7 +209,8 @@ describe('DropdownMenu', () => {
       window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
       expect(parentEscapeCount).toBe(0);
-      await waitFor(() => expect(container.querySelector('[role="menu"]')).toBeNull());
+      flushSync();
+      expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
     } finally {
       releaseParent();
     }
@@ -229,7 +232,8 @@ describe('DropdownMenu', () => {
 
     window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
-    await waitFor(() => expect(container.querySelector('[role="menu"]')).toBeNull());
+    flushSync();
+    expect(container.querySelector('[role="menu"]')?.outerHTML ?? null).toBeNull();
     outside.remove();
   });
 

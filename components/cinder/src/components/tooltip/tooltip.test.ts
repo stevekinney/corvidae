@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, jest, mock, test } from 'bun:test';
 import { join } from 'node:path';
-import { createRawSnippet, tick } from 'svelte';
+import { createRawSnippet, flushSync, tick } from 'svelte';
 
 import {
   expectNoLeakedTimers,
@@ -216,9 +216,8 @@ describe('Tooltip', () => {
     );
 
     await triggerDelayedTooltipShow(wrapper);
-    await waitFor(() => {
-      expect(queryTooltip()?.parentElement).toBe(document.body);
-    });
+    flushSync();
+    expect(queryTooltip()?.parentElement).toBe(document.body);
   });
 
   test('server output omits the tooltip panel (OVERLAY-POLICY SSR hard constraint)', async () => {
@@ -307,9 +306,8 @@ describe('Tooltip', () => {
     // The show delay is the same 100ms as the wrapping mode, so drive it the
     // same way — the listeners are what is new here, not the timing.
     await triggerDelayedTooltipShow(trigger);
-    await waitFor(() => {
-      expect(queryTooltip()?.parentElement).toBe(document.body);
-    });
+    flushSync();
+    expect(queryTooltip()?.parentElement).toBe(document.body);
 
     await fireEvent.mouseLeave(trigger);
     await tick();

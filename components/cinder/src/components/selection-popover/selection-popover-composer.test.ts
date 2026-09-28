@@ -2,10 +2,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { flushSync } from 'svelte';
 
 setupHappyDom();
 
-const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/svelte');
+const { cleanup, fireEvent, render, screen } = await import('@testing-library/svelte');
 const { default: SelectionPopover } = await import('./selection-popover.svelte');
 const { default: RuntimeSelectionPopover } =
   await import('./selection-popover-javascript-consumer.svelte');
@@ -96,7 +97,8 @@ describe('SelectionPopover', () => {
       });
 
       await fireEvent.click(screen.getByRole('button', { name: 'Add comment' }));
-      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox')));
+      flushSync();
+      expect(document.activeElement).toBe(screen.getByRole('textbox'));
 
       expect(focusOptions).toEqual({ preventScroll: true });
     } finally {

@@ -165,9 +165,21 @@
       style={`--cinder-avatar-group-index: ${item.stackIndex}`}
     >
       {#if item.trimmedName}
-        <button
-          type="button"
+        <!-- role="img" is the honest semantic: a NAMED composite image, not an
+               action control. The trigger only reveals a name tooltip on focus/
+               hover — it has no onclick/Enter/Space activation, so role="button"
+               would be a false affordance (announces "button" but does nothing →
+               WCAG 4.1.2). img takes its name from the author, so aria-label is
+               valid here (no aria-prohibited-attr). tabindex="0" on a non-
+               interactive role is permitted by ARIA and is purposeful: it gives
+               keyboard users the same name-disclosure pointer users get on hover.
+               The inner <Avatar> uses alt="" so its image doesn't double-name the
+               composite. -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the name tooltip on this named image.) -->
+        <span
           class="cinder-avatar-group__trigger"
+          role="img"
+          tabindex="0"
           aria-label={item.trimmedName}
           bind:this={triggerElements[item.key]}
         >
@@ -178,7 +190,7 @@
             {size}
             {shape}
           />
-        </button>
+        </span>
       {:else}
         <span class="cinder-avatar-group__trigger">
           <Avatar {...avatarSourceProps(item.avatar.src)} name="" alt="" {size} {shape} />

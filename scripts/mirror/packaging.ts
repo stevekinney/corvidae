@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
@@ -39,6 +38,16 @@ export interface CommandOptions {
   env?: Record<string, string | undefined> | undefined;
 }
 
+/** Target tools receive build settings, never the mirror App's signing credential. */
+export function childProcessEnvironment(
+  environment: Record<string, string | undefined> = Bun.env,
+): Record<string, string | undefined> {
+  const childEnvironment = { ...environment };
+  delete childEnvironment['MIRROR_APP_PRIVATE_KEY'];
+  delete childEnvironment['MIRROR_APP_PRIVATE_KEY_FILE'];
+  return childEnvironment;
+}
+
 /** Run one command to completion, capturing both streams and its exit code. */
 export async function runCommand(
   command: readonly string[],
@@ -48,7 +57,7 @@ export async function runCommand(
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
-    ...(env ? { env } : {}),
+    env: childProcessEnvironment(env),
   });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(spawned.stdout).text(),
@@ -115,13 +124,11 @@ export interface PackOptions {
   destination: string;
   /**
    * When supplied, the pack's own filename is computed with {@link tarballFilename} and asserted
-   * against what `bun pm pack` actually printed, rather than trusted from stdout alone. COR-1286
-   * needs this: a shared step list that both `verifyTarget` and the rendered `mirror-verify.yaml`
-   * workflow read has nowhere to capture a runtime-parsed path in the rendered YAML, so the
-   * tarball's location there has to be a name computed ahead of time from `publicName` and
-   * `version`, the same way this option computes it. Optional and unused by every caller that
-   * predates COR-1286, so packing with only `packageDirectory`/`destination` behaves exactly as it
-   * always has.
+   * against what `bun pm pack` actually printed, rather than trusted from stdout alone. The shared
+   * step list's relocate step (`verify-steps.ts`'s `relocateTarballScript`) finds a packed tarball
+   * by exactly this `<stem>-<version>.tgz` convention, so this assertion is what notices if
+   * `bun pm pack` ever changes it. Optional, so packing with only `packageDirectory`/`destination`
+   * behaves exactly as it always has.
    */
   publicName?: string;
   version?: string;
@@ -137,7 +144,24 @@ export interface PackOptions {
  * here rather than silently producing a workflow step that reads a tarball nothing wrote.
  */
 export function tarballFilename(publicName: string, version: string): string {
-  return `${publicName.replace(/^@/, '').replace('/', '-')}-${version}.tgz`;
+  return `${tarballStem(publicName)}-${version}.tgz`;
+}
+
+/** The part of a packed tarball's filename that does not change with the version. */
+export function tarballStem(publicName: string): string {
+  return publicName.replace(/^@/, '').replace('/', '-');
+}
+
+/**
+ * The version-free name a packed tarball is moved to in the verification scratch directory.
+ *
+ * COR-1198. `mirror-verify.yaml` is rendered at sync time but runs on every later pull request,
+ * including a Version Packages pull request that bumps each manifest's version before packing. A
+ * step that named the tarball by the version the sync saw read a file nothing wrote, so every
+ * step after the pack names it by the public name alone.
+ */
+export function verifyTarballFilename(publicName: string): string {
+  return `${tarballStem(publicName)}.tgz`;
 }
 
 /**
@@ -176,7 +200,7 @@ export async function packWorkspace({
     const expected = join(destination, tarballFilename(publicName, version));
     if (expected !== tarball) {
       throw new PackagingError(
-        `bun pm pack wrote ${tarball} for ${publicName}@${version}, but tarballFilename computed ${expected}. The shared verification step list (COR-1286) depends on this name being predictable from the public name and version alone; a mismatch means \`bun pm pack\`'s naming convention changed underneath it.`,
+        `bun pm pack wrote ${tarball} for ${publicName}@${version}, but tarballFilename computed ${expected}. The shared verification step list's relocate step finds a packed tarball by this name; a mismatch means \`bun pm pack\`'s naming convention changed underneath it.`,
       );
     }
   }
@@ -218,24 +242,14 @@ export function findInternalReadmeMarker(text: string): string | undefined {
   return internalReadmeMarkers.find((marker) => text.includes(marker));
 }
 
-/** Read `README.md` out of a packed tarball, or `undefined` when the tarball carries none. */
-async function readReadmeFromTarball(
-  tarball: string,
-  runner: CommandRunner,
-): Promise<string | undefined> {
-  const scratch = await mkdtemp(join(tmpdir(), 'corvidae-readme-check-'));
-  try {
-    const result = await runner(['tar', '-xzf', tarball, '-C', scratch, 'package/README.md'], {
-      cwd: scratch,
-    });
-    if (result.exitCode !== 0) return undefined;
-    const file = Bun.file(join(scratch, 'package/README.md'));
-    if (!(await file.exists())) return undefined;
-    return await file.text();
-  } finally {
-    await rm(scratch, { recursive: true, force: true });
-  }
-}
+/** The same executable artifact check runs locally and in the emitted mirror workflow. */
+export const readmePublicityScript = [
+  'const archive = Bun.spawn(["tar", "-xOf", process.argv.at(-1), "package/README.md"], {stdout: "pipe", stderr: "pipe"});',
+  'const [text, , status] = await Promise.all([new Response(archive.stdout).text(), new Response(archive.stderr).text(), archive.exited]);',
+  `const marker = ${JSON.stringify(internalReadmeMarkers)}.find(value => text.includes(value));`,
+  'const result = status !== 0 ? {ok: false, problem: {kind: "missing"}} : marker ? {ok: false, problem: {kind: "internal-marker", marker}} : {ok: true};',
+  'console.log(JSON.stringify(result)); process.exit(result.ok ? 0 : 1);',
+].join(' ');
 
 /**
  * Refuse a packed tarball whose `README.md` is missing or still reads as corvidae's internal
@@ -253,11 +267,13 @@ export async function checkReadmePublicity(
   tarball: string,
   runner: CommandRunner = runCommand,
 ): Promise<ReadmePublicityResult> {
-  const text = await readReadmeFromTarball(tarball, runner);
-  if (text === undefined) return { ok: false, problem: { kind: 'missing' } };
-  const marker = findInternalReadmeMarker(text);
-  if (marker !== undefined) return { ok: false, problem: { kind: 'internal-marker', marker } };
-  return { ok: true };
+  const result = await runner(['bun', '-e', readmePublicityScript, tarball], {
+    cwd: process.cwd(),
+  });
+  if (result.exitCode !== 0 && result.exitCode !== 1) {
+    assertSucceeded(result, 'checking the packed README');
+  }
+  return JSON.parse(result.stdout) as ReadmePublicityResult;
 }
 
 /**

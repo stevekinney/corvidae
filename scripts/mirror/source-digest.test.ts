@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { committedPlans, corvidaeRoot, packageMapForFixtures } from './committed-plans.ts';
-import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import {
   assertEdgeNotStale,
@@ -13,8 +12,10 @@ import {
   hashDigestedFiles,
   isDigestExcluded,
   StaleCrossTargetEdgeError,
+  type PublishedSnapshot,
 } from './source-digest.ts';
 import { planSurface } from './surface.ts';
+import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 /** Stand up a throwaway tree, hand it to the body, and remove it however the body ends. */
 async function withTree(
@@ -33,14 +34,14 @@ async function withTree(
 }
 
 describe('isDigestExcluded', () => {
-  test('excludes tests, fixtures and both plural spellings', () => {
+  test('excludes test modules while retaining potentially public fixture files', () => {
     expect(isDigestExcluded('index.test.ts')).toBe(true);
-    expect(isDigestExcluded('token.fixture.ts')).toBe(true);
-    expect(isDigestExcluded('token-fixture.ts')).toBe(true);
-    expect(isDigestExcluded('tokens-fixtures.ts')).toBe(true);
-    expect(isDigestExcluded('__fixtures__/baseline.png')).toBe(true);
-    expect(isDigestExcluded('lib/test/helper.ts')).toBe(true);
-    expect(isDigestExcluded('lib/tests/helper.ts')).toBe(true);
+    expect(isDigestExcluded('token.fixture.ts')).toBe(false);
+    expect(isDigestExcluded('token-fixture.ts')).toBe(false);
+    expect(isDigestExcluded('tokens-fixtures.ts')).toBe(false);
+    expect(isDigestExcluded('__fixtures__/baseline.png')).toBe(false);
+    expect(isDigestExcluded('lib/test/helper.ts')).toBe(false);
+    expect(isDigestExcluded('lib/tests/helper.ts')).toBe(false);
   });
 
   test('does not exclude ordinary source', () => {
@@ -51,7 +52,7 @@ describe('isDigestExcluded', () => {
 });
 
 describe('collectDigestedFiles', () => {
-  test('reads src/, minus tests and fixtures — no README, no LICENSE', async () => {
+  test('reads source and fixture inputs, excluding test modules and documentation', async () => {
     await withTree(
       {
         LICENSE: 'MIT License\n',
@@ -66,7 +67,10 @@ describe('collectDigestedFiles', () => {
           corvidaeDirectory: 'packages/example',
           workspace: '@lostgradient/example',
         });
-        expect(files.map((file) => file.path)).toEqual(['src/index.ts']);
+        expect(files.map((file) => file.path)).toEqual([
+          'src/__fixtures__/data.json',
+          'src/index.ts',
+        ]);
       },
     );
   });
@@ -257,6 +261,33 @@ describe('computeSourceDigest', () => {
       },
     );
   });
+
+  test('is unaffected by a declared source file excluded by the public manifest changing', async () => {
+    await withTree(
+      {
+        'packages/weft/src/index.ts': 'export const weft = true;\n',
+        'packages/weft/documentation/guides/remote-task-recovery.md': '# Recovery\n',
+      },
+      async (root) => {
+        const before = await computeSourceDigest({
+          corvidaeRoot: root,
+          corvidaeDirectory: 'packages/weft',
+          workspace: '@lostgradient/weft',
+        });
+        await Bun.write(
+          join(root, 'packages/weft/documentation/guides/remote-task-recovery.md'),
+          '# Recovery, rewritten\n',
+        );
+        expect(
+          await computeSourceDigest({
+            corvidaeRoot: root,
+            corvidaeDirectory: 'packages/weft',
+            workspace: '@lostgradient/weft',
+          }),
+        ).toBe(before);
+      },
+    );
+  });
 });
 
 describe('assertEdgeNotStale', () => {
@@ -264,20 +295,79 @@ describe('assertEdgeNotStale', () => {
     workspace: '@lostgradient/example',
     publicName: '@lostgradient/example',
     version: '1.0.0',
+    currentPaths: ['src/index.ts'],
   };
+  const snapshot = (sourceDigest: string, publicationDigest = 'contract'): PublishedSnapshot => ({
+    schemaVersion: 1,
+    version: '1.0.0',
+    gitHead: '0'.repeat(40),
+    corvidaeCommit: '0'.repeat(40),
+    source: { algorithm: 'sha256-files-v1', paths: ['src/index.ts'], digest: sourceDigest },
+    publicationInputContract: { algorithm: 'sha256-json-v1', digest: publicationDigest },
+    registryManifestContract: { algorithm: 'sha256-json-v1', digest: 'registry' },
+    registryPayloadContract: {
+      algorithm: 'sha256-package-payload-v1',
+      files: [],
+      digest: '0'.repeat(64),
+    },
+  });
+
+  test('rejects a different published version, path list, or publication input contract', () => {
+    const check = {
+      ...base,
+      snapshot: snapshot('abc'),
+      currentDigest: 'abc',
+      currentPublicationInputDigest: 'contract',
+    };
+    expect(() => assertEdgeNotStale({ ...check, version: '2.0.0' })).toThrow('version');
+    expect(() => assertEdgeNotStale({ ...check, currentPaths: ['src/other.ts'] })).toThrow(
+      'source',
+    );
+    expect(() =>
+      assertEdgeNotStale({ ...check, currentPublicationInputDigest: 'different' }),
+    ).toThrow('publication inputs');
+  });
 
   test('passes when the recorded digest matches the current one', () => {
     expect(() =>
-      assertEdgeNotStale({ ...base, recordedDigest: 'abc', currentDigest: 'abc' }),
+      assertEdgeNotStale({
+        ...base,
+        snapshot: snapshot('abc'),
+        currentDigest: 'abc',
+        currentPublicationInputDigest: 'contract',
+      }),
     ).not.toThrow();
+  });
+
+  test('refuses a snapshot that has no verified package payload', () => {
+    const unverified = snapshot('abc');
+    Reflect.deleteProperty(unverified, 'registryPayloadContract');
+    expect(() =>
+      assertEdgeNotStale({
+        ...base,
+        snapshot: unverified,
+        currentDigest: 'abc',
+        currentPublicationInputDigest: 'contract',
+      }),
+    ).toThrow('no verified registry payload contract');
   });
 
   test('refuses when the recorded digest no longer matches, naming both digests and the version', () => {
     expect(() =>
-      assertEdgeNotStale({ ...base, recordedDigest: 'abc', currentDigest: 'def' }),
+      assertEdgeNotStale({
+        ...base,
+        snapshot: snapshot('abc'),
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      }),
     ).toThrow(StaleCrossTargetEdgeError);
     try {
-      assertEdgeNotStale({ ...base, recordedDigest: 'abc', currentDigest: 'def' });
+      assertEdgeNotStale({
+        ...base,
+        snapshot: snapshot('abc'),
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      });
       throw new Error('expected a throw');
     } catch (error) {
       const message = (error as Error).message;
@@ -291,14 +381,24 @@ describe('assertEdgeNotStale', () => {
 
   test('refuses when no digest has ever been recorded, with a message distinct from a mismatch', () => {
     expect(() =>
-      assertEdgeNotStale({ ...base, recordedDigest: undefined, currentDigest: 'def' }),
+      assertEdgeNotStale({
+        ...base,
+        snapshot: undefined,
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      }),
     ).toThrow(StaleCrossTargetEdgeError);
     try {
-      assertEdgeNotStale({ ...base, recordedDigest: undefined, currentDigest: 'def' });
+      assertEdgeNotStale({
+        ...base,
+        snapshot: undefined,
+        currentDigest: 'def',
+        currentPublicationInputDigest: 'contract',
+      });
       throw new Error('expected a throw');
     } catch (error) {
       const message = (error as Error).message;
-      expect(message).toContain('no recorded sourceDigest');
+      expect(message).toContain('no publishedSnapshot');
       expect(message).toContain('record-source-digest.ts --workspace @lostgradient/example');
     }
   });
@@ -350,8 +450,33 @@ describe('the guard against the real workspaces', () => {
     const map = packageMapForFixtures;
     const entry = map.workspaces[workspace];
     if (entry?.disposition !== 'publish-as') throw new Error(`${workspace} is not published`);
-    const { sourceDigest: _current, ...rest } = entry;
-    const updated = sourceDigest === undefined ? rest : { ...rest, sourceDigest };
+    const { publishedSnapshot: current, ...rest } = entry;
+    const updated =
+      sourceDigest === undefined
+        ? rest
+        : {
+            ...rest,
+            publishedSnapshot: {
+              ...(current ?? {
+                schemaVersion: 1,
+                version: '1.0.0',
+                gitHead: '0'.repeat(40),
+                corvidaeCommit: '0'.repeat(40),
+                source: { algorithm: 'sha256-files-v1', paths: [], digest: sourceDigest },
+                publicationInputContract: { algorithm: 'sha256-json-v1', digest: '0'.repeat(64) },
+                registryManifestContract: { algorithm: 'sha256-json-v1', digest: '0'.repeat(64) },
+                registryPayloadContract: {
+                  algorithm: 'sha256-package-payload-v1',
+                  files: [],
+                  digest: '0'.repeat(64),
+                },
+              }),
+              source: {
+                ...(current?.source ?? { algorithm: 'sha256-files-v1', paths: [] }),
+                digest: sourceDigest,
+              },
+            },
+          };
     return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
   };
 
@@ -372,6 +497,35 @@ describe('the guard against the real workspaces', () => {
         await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
         await expect(refusal).rejects.toThrow(dependency);
       }
+    },
+  );
+});
+
+test('exported provider test directories participate in the source digest', async () => {
+  await withTree(
+    {
+      'packages/operative/src/providers/test/index.ts': 'export const provider = 1;\n',
+      'packages/operative/src/test/prompt-injection-fixtures.ts': 'export const fixtures = 1;\n',
+      'packages/operative/src/providers/test/mock-clients.ts': 'export const client = 1;\n',
+    },
+    async (root) => {
+      const scope = {
+        corvidaeRoot: root,
+        corvidaeDirectory: 'packages/operative',
+        workspace: '@lostgradient/operative',
+      };
+      const files = await collectDigestedFiles(scope);
+      expect(files.map((file) => file.path)).toEqual([
+        'src/providers/test/index.ts',
+        'src/providers/test/mock-clients.ts',
+        'src/test/prompt-injection-fixtures.ts',
+      ]);
+      const before = hashDigestedFiles(files);
+      await Bun.write(
+        join(root, 'packages/operative/src/providers/test/mock-clients.ts'),
+        'export const client = 2;\n',
+      );
+      expect(hashDigestedFiles(await collectDigestedFiles(scope))).not.toBe(before);
     },
   );
 });

@@ -124,6 +124,14 @@ export function setupHappyDom(): void {
   // Use a document origin so relative resources have valid browser URLs.
   // about:blank makes Happy DOM synchronously emit errors for every /image path.
   const happyWindow = new Window({ url: 'https://corvidae.test/' });
+  const document = happyWindow.document;
+  document.insertBefore(
+    document.implementation.createDocumentType('html', '', ''),
+    document.documentElement,
+  );
+  // Happy DOM does not implement compatMode. This fixture starts in standards
+  // mode; libraries such as KaTeX require the corresponding browser contract.
+  Object.defineProperty(document, 'compatMode', { value: 'CSS1Compat' });
   const target = globalThis;
 
   // Copy each own property defined on the happy-dom Window onto Node's globalThis. DOM realm

@@ -135,7 +135,12 @@ async function compiledServerSource(
   }
 }
 
-/** Compile an immutable fixture once during test setup, before timed assertions. */
+/**
+ * Compile an immutable fixture once during test setup, before timed assertions.
+ *
+ * Pass the same `conditions` the timed render will use: compilation is cached per condition set,
+ * so preparing under the default conditions does nothing for a render under `browser`.
+ */
 export async function prepareSvelteServerSource(
   sourcePath: string,
   options: SvelteServerOptions = {},

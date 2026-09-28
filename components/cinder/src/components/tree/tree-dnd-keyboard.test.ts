@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Snippet } from 'svelte';
-import { createRawSnippet, mount, tick, unmount } from 'svelte';
+import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import type { TreeReorderTarget } from '../../_internal/tree-drag-controller.svelte.ts';
@@ -118,20 +118,18 @@ describe('Tree drag-and-drop reorder', () => {
     alpha.focus();
     await fireEvent.keyDown(alpha, { key: ' ', ctrlKey: true, shiftKey: true });
 
-    await waitFor(() => {
-      expect(alpha.hasAttribute('data-cinder-dragging')).toBe(true);
-      expect(document.activeElement).toBe(alpha);
-    });
+    flushSync();
+    expect(alpha.hasAttribute('data-cinder-dragging')).toBe(true);
+    expect(document.activeElement).toBe(alpha);
 
     await fireEvent.keyDown(alpha, { key: 'ArrowDown' });
     await fireEvent.keyDown(alpha, { key: ' ' });
 
-    await waitFor(() => {
-      expect(calls).toEqual([
-        ['a', { id: 'b', position: 'after', fromParentId: null, toParentId: null }],
-      ]);
-      expect(document.activeElement).toBe(alpha);
-    });
+    flushSync();
+    expect(calls).toEqual([
+      ['a', { id: 'b', position: 'after', fromParentId: null, toParentId: null }],
+    ]);
+    expect(document.activeElement).toBe(alpha);
   });
 
   test('pointerup does not drop a keyboard drag', async () => {
@@ -201,13 +199,12 @@ describe('Tree drag-and-drop reorder', () => {
     expect(treeItem(container, 'Beta').getAttribute('data-cinder-drop-target')).toBe('after');
     await fireEvent.keyDown(handle, { key: ' ' });
 
-    await waitFor(() => {
-      expect(calls).toEqual([
-        ['a', { id: 'b', position: 'after', fromParentId: null, toParentId: null }],
-      ]);
-      expect(document.activeElement).toBe(handle);
-      expect(handle.getAttribute('aria-pressed')).toBe('false');
-    });
+    flushSync();
+    expect(calls).toEqual([
+      ['a', { id: 'b', position: 'after', fromParentId: null, toParentId: null }],
+    ]);
+    expect(document.activeElement).toBe(handle);
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
   });
 
   test('Home and End move an active keyboard drag to the visible tree edges', async () => {
@@ -240,10 +237,9 @@ describe('Tree drag-and-drop reorder', () => {
     await fireEvent.keyDown(handle, { key: 'Escape' });
 
     expect(onReorder).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(handle.getAttribute('aria-pressed')).toBe('false');
-      expect(document.activeElement).toBe(handle);
-    });
+    flushSync();
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    expect(document.activeElement).toBe(handle);
   });
 
   test('Tab cancels an active keyboard drag without trapping focus', async () => {
@@ -280,9 +276,8 @@ describe('Tree drag-and-drop reorder', () => {
     await fireEvent.keyDown(handle, { key: ' ' });
 
     expect(onReorder).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(handle.getAttribute('aria-pressed')).toBe('false');
-      expect(document.activeElement).toBe(handle);
-    });
+    flushSync();
+    expect(handle.getAttribute('aria-pressed')).toBe('false');
+    expect(document.activeElement).toBe(handle);
   });
 });

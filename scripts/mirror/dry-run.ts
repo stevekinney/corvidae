@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 
 import { join } from 'node:path';
+import { pushVerifiedCommit } from './authenticated-push.ts';
 import {
   createGitHubApi,
   installationTokenFromApp,
@@ -13,7 +14,6 @@ import {
   type WorkflowRunRecord,
 } from './github-api.ts';
 import { installationSettingsUrl, mirrorAppId, mirrorInstallationId } from './github-app.ts';
-import { mirrorTargets, type MirrorTarget } from './manifests.ts';
 import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
 import { proveNpmPublishDryRun, type PublishProbe } from './publish-rehearsal.ts';
 import {
@@ -25,9 +25,11 @@ import {
   scratchRepositoryName,
   scratchStamp,
 } from './scratch-repository.ts';
+import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 import {
   assertNoForeignCommits,
+  assertVerificationSnapshot,
   credentialedGitEnvironment,
   gitEnvironment,
   provenanceTrailer,
@@ -308,15 +310,17 @@ export async function seedScratchRepository(options: {
   // held `workflows: write` since 2026-09-21, because the transform emits
   // `.github/workflows/mirror-verify.yaml` (COR-1286); the seed keeps the account path anyway so
   // the App's first write to the scratch repository is the one the run measures.
-  const pushEnvironment = credentialedGitEnvironment(await options.api.accountPushEnvironment());
-  await runGit(
+  const head = await runGit(run, workDirectory, environment, 'rev-parse', 'HEAD');
+  await pushVerifiedCommit({
+    directory: workDirectory,
+    remote: scratchRemoteUrl(options.scratchRepository),
+    commit: head.stdout.trim(),
+    branch: baseBranch,
+    environment,
+    credentialEnvironment: async () =>
+      credentialedGitEnvironment(await options.api.accountPushEnvironment()),
     run,
-    workDirectory,
-    pushEnvironment,
-    'push',
-    'origin',
-    `HEAD:refs/heads/${baseBranch}`,
-  );
+  });
 }
 
 export interface TransformOutcome {
@@ -356,6 +360,10 @@ export async function transformAndOpenPullRequest(options: {
     ...(options.installArguments ? { installArguments: options.installArguments } : {}),
   });
   await runGit(run, workDirectory, environment, 'add', '--all');
+  const stagedHeadResult = await runGit(run, workDirectory, environment, 'rev-parse', 'HEAD');
+  const stagedHead = stagedHeadResult.stdout.trim();
+  const stagedIndexTreeResult = await runGit(run, workDirectory, environment, 'write-tree');
+  const stagedIndexTree = stagedIndexTreeResult.stdout.trim();
   const status = await runGit(run, workDirectory, environment, 'status', '--porcelain');
   const changed = status.stdout.split('\n').filter((line) => line.length > 0);
   if (changed.length === 0) {
@@ -378,6 +386,12 @@ export async function transformAndOpenPullRequest(options: {
     scratchDirectory: join(options.scratchDirectory, 'verify'),
     ...(options.installArguments ? { installArguments: options.installArguments } : {}),
   });
+  await assertVerificationSnapshot({
+    expectedHead: stagedHead,
+    expectedIndexTree: stagedIndexTree,
+    run: (arguments_) =>
+      options.run(['git', ...arguments_], { cwd: workDirectory, env: environment }),
+  });
   await runGit(
     run,
     workDirectory,
@@ -387,8 +401,17 @@ export async function transformAndOpenPullRequest(options: {
     '--message',
     `Mirror dry run for ${options.target}\n\n${provenanceTrailer}: ${options.corvidaeCommit}`,
   );
-  const pushEnvironment = credentialedGitEnvironment(await options.api.pushEnvironment());
-  await runGit(run, workDirectory, pushEnvironment, 'push', 'origin', `HEAD:refs/heads/${branch}`);
+  const head = await runGit(run, workDirectory, environment, 'rev-parse', 'HEAD');
+  await pushVerifiedCommit({
+    directory: workDirectory,
+    remote: scratchRemoteUrl(options.scratchRepository),
+    commit: head.stdout.trim(),
+    branch,
+    environment,
+    credentialEnvironment: async () =>
+      credentialedGitEnvironment(await options.api.pushEnvironment()),
+    run,
+  });
   const pullRequest = await options.api.createPullRequest({
     fullName: options.scratchRepository,
     base: baseBranch,

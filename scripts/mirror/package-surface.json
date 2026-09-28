@@ -569,6 +569,60 @@
           "default": "./dist/components/diff-viewer/diff-viewer.variables.js"
         },
         "./diff-viewer/examples": "./dist/components/diff-viewer/diff-viewer.examples.json",
+        "./diff-review": {
+          "types": "./dist/components/diff-review/index.d.ts",
+          "browser": "./src/lib/components/diff-review/index.ts",
+          "svelte": "./src/lib/components/diff-review/index.ts",
+          "node": "./dist/server/components/diff-review/index.js",
+          "import": "./src/lib/components/diff-review/index.ts",
+          "default": "./dist/components/diff-review/index.js"
+        },
+        "./diff-review/schema": {
+          "types": "./dist/components/diff-review/diff-review.schema.d.ts",
+          "browser": "./src/lib/components/diff-review/diff-review.schema.ts",
+          "svelte": "./src/lib/components/diff-review/diff-review.schema.ts",
+          "import": "./src/lib/components/diff-review/diff-review.schema.ts",
+          "default": "./dist/components/diff-review/diff-review.schema.js"
+        },
+        "./diff-review/variables": {
+          "types": "./dist/components/diff-review/diff-review.variables.d.ts",
+          "browser": "./src/lib/components/diff-review/diff-review.variables.ts",
+          "svelte": "./src/lib/components/diff-review/diff-review.variables.ts",
+          "import": "./src/lib/components/diff-review/diff-review.variables.ts",
+          "default": "./dist/components/diff-review/diff-review.variables.js"
+        },
+        "./diff-review/styles": {
+          "types": "./dist/components/diff-review/diff-review.css.d.ts",
+          "default": "./dist/components/diff-review/diff-review.css"
+        },
+        "./diff-review/examples": "./dist/components/diff-review/diff-review.examples.json",
+        "./diff-review-comments": {
+          "types": "./dist/components/diff-review-comments/index.d.ts",
+          "browser": "./src/lib/components/diff-review-comments/index.ts",
+          "svelte": "./src/lib/components/diff-review-comments/index.ts",
+          "node": "./dist/server/components/diff-review-comments/index.js",
+          "import": "./src/lib/components/diff-review-comments/index.ts",
+          "default": "./dist/components/diff-review-comments/index.js"
+        },
+        "./diff-review-comments/schema": {
+          "types": "./dist/components/diff-review-comments/diff-review-comments.schema.d.ts",
+          "browser": "./src/lib/components/diff-review-comments/diff-review-comments.schema.ts",
+          "svelte": "./src/lib/components/diff-review-comments/diff-review-comments.schema.ts",
+          "import": "./src/lib/components/diff-review-comments/diff-review-comments.schema.ts",
+          "default": "./dist/components/diff-review-comments/diff-review-comments.schema.js"
+        },
+        "./diff-review-comments/variables": {
+          "types": "./dist/components/diff-review-comments/diff-review-comments.variables.d.ts",
+          "browser": "./src/lib/components/diff-review-comments/diff-review-comments.variables.ts",
+          "svelte": "./src/lib/components/diff-review-comments/diff-review-comments.variables.ts",
+          "import": "./src/lib/components/diff-review-comments/diff-review-comments.variables.ts",
+          "default": "./dist/components/diff-review-comments/diff-review-comments.variables.js"
+        },
+        "./diff-review-comments/styles": {
+          "types": "./dist/components/diff-review-comments/diff-review-comments.css.d.ts",
+          "default": "./dist/components/diff-review-comments/diff-review-comments.css"
+        },
+        "./diff-review-comments/examples": "./dist/components/diff-review-comments/diff-review-comments.examples.json",
         "./anchor-decorations": {
           "types": "./dist/anchor-decorations.d.ts",
           "bun": "./src/lib/anchor-decorations.ts",
@@ -600,6 +654,14 @@
           "svelte": "./src/lib/comments/types.ts",
           "import": "./dist/comments/types.js",
           "default": "./dist/comments/types.js"
+        },
+        "./diff-review-state": {
+          "types": "./dist/diff-review-state/index.d.ts",
+          "bun": "./src/lib/diff-review-state/index.ts",
+          "browser": "./src/lib/diff-review-state/index.ts",
+          "svelte": "./src/lib/diff-review-state/index.ts",
+          "import": "./dist/diff-review-state/index.js",
+          "default": "./dist/diff-review-state/index.js"
         },
         "./export": {
           "types": "./dist/export/index.d.ts",
@@ -690,8 +752,8 @@
         "packedBy": "pack-script"
       },
       "peerDependencies": {
-        "@lostgradient/cinder": "^0.26.0",
-        "@lostgradient/markdown": "^0.5.0",
+        "@lostgradient/cinder": "^0.27.0",
+        "@lostgradient/markdown": "^0.6.0",
         "@milkdown/ctx": "^7.17.3",
         "@milkdown/kit": "^7.17.3",
         "@milkdown/prose": "^7.17.3",
@@ -1951,7 +2013,6 @@
     }
   },
   "openQuestions": [
-    "The four packages with a null `lastPublishedVersion` in package-map.json (@lostgradient/cryptography, @lostgradient/embeddings, @lostgradient/tool-protocol, @lostgradient/lifecycle) have no upstream manifest to vendor. Their surface here follows the tsdown convention their published agent-bureau siblings use, but it is a proposal the coordinator should confirm before the first publish, not a port of anything.",
     "`requiredInputs` records that no build script in this list exists in corvidae. COR-1190 ruled that they stay target-owned rather than becoming transform-owned: the transform never prunes, so a file the target already carries survives every sync, and making the mirror author another repository’s build toolchain would put the mirror in charge of how the target builds. What changed is that the assumption is now checked — `assertBuildInputsPresent` in `sync.ts` fails a sync, naming every missing file, when a clone lacks one — so a manifest whose `build` script points at a file nothing wrote can no longer reach a publish silently.",
     "`toolchain` is derived from the import closure of each upstream build entrypoint, not from the upstream `devDependencies` block as a whole. A build that shells out to a tool it never imports would be missed."
   ]

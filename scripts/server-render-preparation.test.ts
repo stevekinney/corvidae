@@ -5,7 +5,6 @@ const root = join(import.meta.dir, '..');
 // Tooling tests under `scripts/` quote render calls inside string literals.
 const ignoredPathSegment =
   /^(?:node_modules|dist|build|coverage|scripts|\.turbo|\.svelte-kit|\.bun)$/;
-const optOutMarker = 'server-render-preparation: intentionally unprepared';
 
 /**
  * A server render compiles its source in a `Bun.build` subprocess before it
@@ -15,7 +14,7 @@ const optOutMarker = 'server-render-preparation: intentionally unprepared';
  * bun applies the same timeout to hooks.
  *
  * Every test file therefore awaits `prepareSvelteServerSource` (or, for the
- * build-flag check, `prepareBuildFlagHydrationCheck`) at module scope, where
+ * build-flag check, `prepareBuildFlagHydrationSafety`) at module scope, where
  * no timeout applies. The shared renderer caches that compilation, so the
  * calls inside tests only render.
  *
@@ -23,9 +22,7 @@ const optOutMarker = 'server-render-preparation: intentionally unprepared';
  * matching prepare call in the same file, unless the render itself sits at
  * module scope (an unindented line). It does not compare export conditions:
  * a render under non-default conditions needs a prepare under those same
- * conditions, which review has to confirm. A call that must stay unprepared,
- * such as a test of the unprepared-source guard, carries the opt-out marker in
- * a comment on the line above it.
+ * conditions, which review has to confirm.
  */
 const renderCalls = [
   { pattern: /\b(renderSvelteOnServer|importSvelteOnServer)\(\s*([^,)]+)/g, argument: 2 },
@@ -42,15 +39,13 @@ function escapeForPattern(text: string): string {
 function isPrepared(source: string, helper: string, argument: string): boolean {
   const preparers =
     helper === 'checkBuildFlagHydrationSafety'
-      ? 'prepareBuildFlagHydrationCheck'
-      : '(?:prepareSvelteServerSource|prepareBuildFlagHydrationCheck)';
+      ? 'prepareBuildFlagHydrationSafety'
+      : '(?:prepareSvelteServerSource|prepareBuildFlagHydrationSafety)';
   return new RegExp(`\\b${preparers}\\(\\s*${escapeForPattern(argument)}\\b`).test(source);
 }
 
-function isExempt(lines: readonly string[], line: number): boolean {
-  const text = lines[line - 1] ?? '';
-  const isModuleScope = !/^\s/.test(text);
-  return isModuleScope || (lines[line - 2] ?? '').includes(optOutMarker);
+function isModuleScope(lines: readonly string[], line: number): boolean {
+  return !/^\s/.test(lines[line - 1] ?? '');
 }
 
 function unpreparedServerRenders(source: string): string[] {
@@ -61,7 +56,7 @@ function unpreparedServerRenders(source: string): string[] {
       const helper = match[1] ?? '';
       const argument = (match[group] ?? '').trim();
       const line = source.slice(0, match.index).split('\n').length;
-      if (isExempt(lines, line)) continue;
+      if (isModuleScope(lines, line)) continue;
       if (!identifier.test(argument)) {
         problems.push({ line, message: `${helper} source must be a module-scope constant` });
       } else if (!isPrepared(source, helper, argument)) {
@@ -102,15 +97,13 @@ describe('server render preparation', () => {
     ]);
   });
 
-  test('accepts prepared sources, module-scope renders, and marked opt-outs', () => {
+  test('accepts prepared sources and module-scope renders', () => {
     const source = [
       "const sourcePath = new URL('./a.svelte', import.meta.url).pathname;",
       'await prepareSvelteServerSource(sourcePath);',
       'const html = await renderSvelteOnServer(otherPath);',
       "test('ssr', async () => {",
       '  await renderThenHydrate(\n    Component,\n    sourcePath,\n    {},\n  );',
-      `  // ${optOutMarker}`,
-      '  await checkBuildFlagHydrationSafety(unpreparedPath);',
       '});',
     ].join('\n');
     expect(unpreparedServerRenders(source)).toEqual([]);

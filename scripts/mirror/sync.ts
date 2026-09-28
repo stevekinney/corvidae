@@ -1,20 +1,16 @@
 import { mkdir, rm } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 
+import { pushVerifiedCommit } from './authenticated-push.ts';
+import { createGitHubApi, userTokenFromEnvironmentOrCli } from './github-api.ts';
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
 import { layoutFor } from './layout-map.ts';
-import {
-  assertNothingDeferred,
-  mirrorTargets,
-  runInstall,
-  targetFor,
-  type MirrorTarget,
-} from './manifests.ts';
+import { assertNothingDeferred, runInstall } from './manifests.ts';
 import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
 import {
   assertSucceeded,
   assertTarballsPublishable,
-  checkReadmePublicity,
+  childProcessEnvironment,
   defaultToolsRoot,
   PackagingError,
   runCommand,
@@ -28,6 +24,7 @@ import {
   type PrivateWorkspace,
   type PublishedPackage,
 } from './surface.ts';
+import { mirrorTargets, targetFor, type MirrorTarget } from './target-definitions.ts';
 import {
   assertNoEmissionsIntoRetired,
   collectRetiredPaths,
@@ -58,6 +55,30 @@ import { buildVerifySteps, createLocalVerifyEnvironment, specifiersFor } from '.
  */
 
 export class SyncError extends Error {}
+
+export async function directPushEnvironment(
+  remote: string,
+  provider?: () => Promise<Record<string, string>>,
+): Promise<Record<string, string>> {
+  if (isAbsolute(remote)) return {};
+  let url: URL;
+  try {
+    url = new URL(remote);
+  } catch {
+    throw new SyncError('Direct push requires an absolute local path or an HTTPS GitHub remote');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'github.com' ||
+    url.port ||
+    url.username ||
+    url.password
+  )
+    throw new SyncError('Direct push only supports GitHub HTTPS remotes without URL credentials');
+  if (provider === undefined)
+    throw new SyncError('Direct GitHub push requires a trusted account credential provider');
+  return provider();
+}
 
 /** Refusal to push over commits the mirror did not author. */
 export class ForeignCommitError extends SyncError {
@@ -138,7 +159,7 @@ export function gitEnvironment(
   const nextIndex = Number.isInteger(inheritedCount) && inheritedCount > 0 ? inheritedCount : 0;
 
   const mirrorEnvironment: Record<string, string | undefined> = {
-    ...environment,
+    ...childProcessEnvironment(environment),
     GIT_AUTHOR_NAME: mirrorIdentity.name,
     GIT_AUTHOR_EMAIL: mirrorIdentity.email,
     GIT_COMMITTER_NAME: mirrorIdentity.name,
@@ -163,26 +184,6 @@ export async function tryGit(
 /** Run one git command, throwing `SyncError` with both streams when it fails. */
 export async function git(directory: string, ...arguments_: string[]): Promise<string> {
   const result = await tryGit(directory, ...arguments_);
-  if (result.exitCode !== 0) {
-    throw new SyncError(
-      `git ${arguments_.join(' ')} failed in ${directory} (exit ${result.exitCode}):\n${result.stderr}${result.stdout}`,
-    );
-  }
-  return result.stdout;
-}
-
-/**
- * Run one git command under a caller-supplied environment rather than the ambient one `git`
- * builds through `gitEnvironment()` — the one case this module needs it is a credentialed push,
- * where the environment has to carry a bearer token `gitEnvironment()` knows nothing about. Errors
- * the same way `git` does, so a caller can treat the two interchangeably.
- */
-export async function gitWithEnvironment(
-  directory: string,
-  environment: Record<string, string | undefined>,
-  ...arguments_: string[]
-): Promise<string> {
-  const result = await runCommand(['git', ...arguments_], { cwd: directory, env: environment });
   if (result.exitCode !== 0) {
     throw new SyncError(
       `git ${arguments_.join(' ')} failed in ${directory} (exit ${result.exitCode}):\n${result.stderr}${result.stdout}`,
@@ -255,7 +256,7 @@ async function readHistory(directory: string): Promise<CommitRecord[]> {
   // An empty target has no HEAD to walk, which is a first sync rather than a failure.
   if (head.exitCode !== 0) return [];
   const format = `%H${unitSeparator}%s${unitSeparator}%(trailers:key=${provenanceTrailer},valueonly,separator=%x2C)${recordSeparator}`;
-  const log = await git(directory, 'log', `--format=${format}`);
+  const log = await git(directory, 'log', '--topo-order', `--format=${format}`);
   return log
     .split(recordSeparator)
     .map((record) => record.replace(/^\n/, ''))
@@ -288,11 +289,15 @@ export async function findForeignCommits(
   const history = await readHistory(directory);
   const newestMirrored = history.findIndex((commit) => commit.provenance.length > 0);
   if (newestMirrored === -1) return [];
-  const candidates = history.slice(0, newestMirrored);
+  const mirrorCommit = history[newestMirrored]!.sha;
+  const ancestry = await git(directory, 'rev-list', '--ancestry-path', `${mirrorCommit}..HEAD`);
+  const descendants = new Set(ancestry.trim().split('\n'));
+  const candidates = history.filter(({ sha }) => descendants.has(sha));
   if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
   const foreign: ForeignCommit[] = [];
   for (const { sha, subject } of candidates) {
-    if (!(await isTargetOwnedCommit(directory, sha, ownership))) foreign.push({ sha, subject });
+    if (!(await isTargetOwnedCommit(directory, sha, mirrorCommit, ownership)))
+      foreign.push({ sha, subject });
   }
   return foreign;
 }
@@ -307,6 +312,26 @@ export interface ForeignCommitOwnership {
    * COR-1190's ruling), which the transform reads for presence and never writes.
    */
   targetOwnedFiles?: ReadonlySet<string> | undefined;
+  /**
+   * What this sync's plan writes, prunes and retires. A path outside all three is one the sync
+   * leaves exactly as it is, so a hand change to it cannot be clobbered and is the target's own
+   * (COR-1223's inversion, applied to the guard by COR-1198).
+   */
+  transform: TransformReach;
+}
+
+/** The paths a sync can overwrite or delete: its emitted files and the prefixes it prunes or retires. */
+export interface TransformReach {
+  files: ReadonlySet<string>;
+  prefixes: readonly string[];
+}
+
+/** Whether a sync would write or delete this target-relative path. */
+function transformReaches(reach: TransformReach, path: string): boolean {
+  return (
+    reach.files.has(path) ||
+    reach.prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+  );
 }
 
 /**
@@ -316,26 +341,54 @@ export interface ForeignCommitOwnership {
  * one: a manifest's `version` is target-owned and the transform never writes it, so the target
  * has to, and a guard that called that foreign would refuse every release. A commit is the
  * target's own when each path it touches is either target-owned by `target-owned.json`'s
- * enumeration — the changelog, the readme, the release workflow — or a manifest the transform
+ * enumeration — the changelog, the readme, the release workflow — or outside everything the sync
+ * writes, prunes or retires (release tooling, a package README), or a manifest the transform
  * composes whose changed top-level keys are all outside the transform's own `manifestKeys`. A
- * manifest added or deleted outright is the transform's business, and so is any other path:
- * emitted source, a vendored tsconfig, the emitted workflow.
+ * manifest added or deleted outright is the transform's business, and so is any other path the
+ * sync reaches: emitted source, a vendored tsconfig, the emitted workflow, a file inside a source
+ * tree it prunes.
  */
 async function isTargetOwnedCommit(
   directory: string,
   sha: string,
-  { policy, target, targetOwnedFiles }: ForeignCommitOwnership,
+  mirrorCommit: string,
+  ownership: ForeignCommitOwnership,
 ): Promise<boolean> {
-  const status = await git(directory, 'show', '--format=', '--name-status', sha);
+  const parentRecord = await git(directory, 'rev-list', '--parents', '-n', '1', sha);
+  const parents = parentRecord.trim().split(/\s+/).slice(1);
+  let inspected = false;
+  for (const parent of parents) {
+    const ancestor = await tryGit(directory, 'merge-base', '--is-ancestor', mirrorCommit, parent);
+    if (ancestor.exitCode === 1) continue;
+    if (ancestor.exitCode !== 0)
+      throw new SyncError(`Cannot inspect mirror ancestry: ${ancestor.stderr}`);
+    inspected = true;
+    if (!(await isTargetOwnedDelta(directory, parent, sha, ownership))) return false;
+  }
+  return inspected;
+}
+
+/** Compare every ancestry edge after the mirror; combined merge diffs can omit imported changes. */
+async function isTargetOwnedDelta(
+  directory: string,
+  parent: string,
+  sha: string,
+  { policy, target, targetOwnedFiles, transform }: ForeignCommitOwnership,
+): Promise<boolean> {
+  // `--no-renames`: a rename is judged as the deletion of its old path plus the addition of its
+  // new one, so moving an emitted file out of the sync's reach is still a deletion the sync would
+  // undo. `-z`: paths arrive unquoted, so one git would escape still matches the plan's keys.
+  const status = await git(directory, 'diff', '--name-status', '--no-renames', '-z', parent, sha);
+  const fields = status.split('\0');
   const transformOwnedKeys = new Set(policy.insideFiles.manifestKeys.map((entry) => entry.key));
-  for (const line of status.split('\n').filter((entry) => entry.length > 0)) {
-    const fields = line.split('\t');
-    const kind = fields[0] ?? '';
-    const path = fields[fields.length - 1] ?? '';
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const kind = (fields[index] ?? '').trim();
+    const path = fields[index + 1] ?? '';
     if (findTargetOwner(policy, path, target) !== undefined) continue;
     if (targetOwnedFiles?.has(path)) continue;
+    if (!transformReaches(transform, path)) continue;
     if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
-    const before = await git(directory, 'show', `${sha}^:${path}`);
+    const before = await git(directory, 'show', `${parent}:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);
     for (const key of changedTopLevelKeys(before, after)) {
       if (transformOwnedKeys.has(key)) return false;
@@ -360,6 +413,33 @@ export async function declaredBuildInputs(target: string): Promise<Set<string>> 
     }
   }
   return files;
+}
+
+/**
+ * Everything the foreign-commit guard needs for one target, read against the clone as it arrived:
+ * the enumeration, the declared build inputs, and the reach of the plan this sync would stage.
+ */
+export async function foreignCommitOwnership(options: {
+  corvidaeRoot: string;
+  target: MirrorTarget;
+  clone: string;
+}): Promise<ForeignCommitOwnership> {
+  const policy = await loadTargetOwnedPolicy();
+  const plan = await planSurface({
+    corvidaeRoot: options.corvidaeRoot,
+    target: options.target,
+    targetDirectory: options.clone,
+    policy,
+  });
+  return {
+    policy,
+    target: options.target,
+    targetOwnedFiles: await declaredBuildInputs(options.target),
+    transform: {
+      files: new Set(Object.keys(plan.files)),
+      prefixes: [...plan.source.ownedPrefixes, ...retiredDirectoriesFor(policy, options.target)],
+    },
+  };
 }
 
 /** Top-level keys whose serialized value differs between two JSON documents. */
@@ -652,6 +732,10 @@ export async function verifyTarget({
         );
         break;
       }
+      case 'readme': {
+        assertSucceeded(result, `checking the packed README for ${step.publicName}`);
+        break;
+      }
       case 'publint': {
         assertSucceeded(result, `resolving publint for ${step.publicName}`);
         reportsByPublicName.set(step.publicName ?? '', {
@@ -663,18 +747,12 @@ export async function verifyTarget({
       case 'attw': {
         assertSucceeded(result, `resolving attw for ${step.publicName}`);
         const pending = reportsByPublicName.get(step.publicName ?? '');
-        // `checkTarball` folds this in for a direct caller (`publish-rehearsal.ts`, every test in
-        // `packaging.test.ts`), but this assembly bypasses `checkTarball` entirely — the steps
-        // above are real shell commands `buildVerifySteps` also renders into `mirror-verify.yaml`,
-        // and `publint`/`attw` are read off their own step results rather than invoked here. A
-        // README-publicity check has no external tool to shell out to, so it runs directly, at the
-        // same point `attw`'s result completes this report, rather than as its own rendered step.
         reports.push({
           publicName: step.publicName ?? '',
           tarball: step.tarball ?? '',
           publint: pending?.publint ?? result,
           typeResolution: result,
-          readme: await checkReadmePublicity(step.tarball ?? ''),
+          readme: { ok: true },
         });
         break;
       }
@@ -726,7 +804,7 @@ export async function verifyTarget({
   return { reports, smokeTest, privateTypechecks, installParity };
 }
 
-export type SyncDecision = 'skip' | 'pushed';
+export type SyncDecision = 'skip' | 'prepared' | 'pushed';
 
 export interface SyncOptions {
   corvidaeRoot: string;
@@ -739,6 +817,8 @@ export interface SyncOptions {
   scratchDirectory: string;
   /** The corvidae commit this sync transforms, recorded in the provenance trailer. */
   corvidaeCommit: string;
+  /** Trusted account credentials for a direct GitHub push, resolved only after verification. */
+  pushEnvironment?: (() => Promise<Record<string, string>>) | undefined;
   branch?: string | undefined;
   installArguments?: readonly string[] | undefined;
   /** The checkout whose devDependencies supply publint and attw; defaults to this one. */
@@ -755,6 +835,8 @@ export interface SyncOptions {
    * commit, exactly as it is on the direct-push path), the same stage and the same verification.
    */
   pullRequest?: PullRequestOptions | undefined;
+  /** Verify and commit locally for publication on a separate, credentialed runner. */
+  prepareBranch?: string | undefined;
 }
 
 export interface PullRequestOptions {
@@ -789,6 +871,46 @@ export interface SyncResult {
   verification: VerifyResult;
   /** Present only when `SyncOptions.pullRequest` was supplied and something changed. */
   pullRequest?: { number: number; htmlUrl: string };
+  /** The branch and commit the clone had before a sync branch was created. */
+  baseBranch: string;
+  baseCommit: string;
+}
+
+/** Refuse verification that changed the commit inputs after the transform was staged. */
+export async function assertVerificationSnapshot(options: {
+  expectedHead: string;
+  expectedIndexTree: string;
+  run: (arguments_: readonly string[]) => Promise<{
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+  }>;
+}): Promise<void> {
+  const { expectedHead, expectedIndexTree, run } = options;
+  const headResult = await run(['rev-parse', 'HEAD']);
+  if (headResult.exitCode !== 0)
+    throw new SyncError(`Could not read the target HEAD after verification: ${headResult.stderr}`);
+  const currentHead = headResult.stdout.trim();
+  if (currentHead !== expectedHead) {
+    throw new SyncError(
+      `The target HEAD changed during verification: expected ${expectedHead}, found ${currentHead}`,
+    );
+  }
+
+  const indexResult = await run(['write-tree']);
+  if (indexResult.exitCode !== 0)
+    throw new SyncError(`Could not read the staged tree after verification: ${indexResult.stderr}`);
+  const currentIndexTree = indexResult.stdout.trim();
+  if (currentIndexTree !== expectedIndexTree) {
+    throw new SyncError(
+      `The staged tree changed during verification: expected ${expectedIndexTree}, found ${currentIndexTree}`,
+    );
+  }
+
+  const workingTree = await run(['diff', '--quiet']);
+  if (workingTree.exitCode !== 0) {
+    throw new SyncError('The tracked working tree changed during verification');
+  }
 }
 
 /**
@@ -801,29 +923,35 @@ export interface SyncResult {
  * notice.
  */
 export async function runSync(options: SyncOptions): Promise<SyncResult> {
+  if (options.prepareBranch !== undefined && options.pullRequest !== undefined)
+    throw new SyncError('Prepare and pull-request modes are mutually exclusive');
   const clone = await cloneTarget({
     remote: options.remote,
     directory: options.directory,
     branch: options.branch,
   });
-  await assertNoForeignCommits(clone, {
-    policy: await loadTargetOwnedPolicy(),
-    target: options.target,
-    targetOwnedFiles: await declaredBuildInputs(options.target),
-  });
+  await assertNoForeignCommits(
+    clone,
+    await foreignCommitOwnership({
+      corvidaeRoot: options.corvidaeRoot,
+      target: options.target,
+      clone,
+    }),
+  );
 
-  // Read before the sync branch is created below, and only in pull-request mode: it is the base
-  // a pull request opens against, and the direct-push path never needs it because it pushes back
-  // to whatever branch is already checked out.
+  // Record the target branch before creating a local preparation or pull-request branch.
   let base: string | undefined;
-  if (options.pullRequest !== undefined) {
+  const baseCommit = await git(clone, 'rev-parse', 'HEAD');
+  const baseCommitBeforeSync = baseCommit.trim();
+  if (options.pullRequest !== undefined || options.prepareBranch !== undefined) {
     const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
     base = currentBranch.trim();
   }
   // Created after the guard and before the transform, so every hand commit already on the
   // target's default branch is an ancestor of the sync branch by construction, exactly as it
   // would be on the branch the direct-push path commits to.
-  if (options.pullRequest) await git(clone, 'checkout', '-b', options.pullRequest.branch);
+  const syncBranch = options.prepareBranch ?? options.pullRequest?.branch;
+  if (syncBranch !== undefined) await git(clone, 'checkout', '-b', syncBranch);
 
   const { plan } = await stageSurface({
     corvidaeRoot: options.corvidaeRoot,
@@ -843,6 +971,9 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   // from the working tree by the staging step above, and only `--all` stages a removal. It was
   // incidental while the transform only ever wrote; it is load-bearing now.
   if (changed.length > 0) await git(clone, 'add', '--all');
+  const stagedTreeResult = await git(clone, 'write-tree');
+  const stagedIndexTree = stagedTreeResult.trim();
+  const stagedHead = baseCommitBeforeSync;
 
   const verification = await verifyTarget({
     toolsRoot: options.toolsRoot,
@@ -852,8 +983,14 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     scratchDirectory: options.scratchDirectory,
     installArguments: options.installArguments,
   });
+  await assertVerificationSnapshot({
+    expectedHead: stagedHead,
+    expectedIndexTree: stagedIndexTree,
+    run: (arguments_) => tryGit(clone, ...arguments_),
+  });
 
   if (changed.length === 0) {
+    const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
     return {
       decision: 'skip',
       target: options.target,
@@ -862,6 +999,8 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
       firstPublish: plan.firstPublish,
       seededFromPackageMap: plan.seededFromPackageMap,
       verification,
+      baseBranch: base ?? currentBranch.trim(),
+      baseCommit: baseCommitBeforeSync,
     };
   }
 
@@ -875,15 +1014,32 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   const head = await git(clone, 'rev-parse', 'HEAD');
   const commit = head.trim();
 
+  if (options.prepareBranch !== undefined) {
+    return {
+      decision: 'prepared',
+      target: options.target,
+      directory: clone,
+      changed,
+      commit,
+      firstPublish: plan.firstPublish,
+      seededFromPackageMap: plan.seededFromPackageMap,
+      verification,
+      baseBranch: base ?? '',
+      baseCommit: baseCommitBeforeSync,
+    };
+  }
+
   if (options.pullRequest) {
-    const credential = await options.pullRequest.pushEnvironment();
-    await gitWithEnvironment(
-      clone,
-      credentialedGitEnvironment(credential),
-      'push',
-      'origin',
-      `HEAD:refs/heads/${options.pullRequest.branch}`,
-    );
+    const pullRequestOptions = options.pullRequest;
+    await pushVerifiedCommit({
+      directory: clone,
+      remote: options.remote,
+      commit,
+      branch: options.pullRequest.branch,
+      environment: gitEnvironment(),
+      credentialEnvironment: async () =>
+        credentialedGitEnvironment(await pullRequestOptions.pushEnvironment()),
+    });
     const pullRequest = await options.pullRequest.openPullRequest({
       branch: options.pullRequest.branch,
       // `base` was read before the sync branch was created and is always set alongside
@@ -902,10 +1058,21 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
       seededFromPackageMap: plan.seededFromPackageMap,
       verification,
       pullRequest,
+      baseBranch: base ?? '',
+      baseCommit: baseCommitBeforeSync,
     };
   }
 
-  await git(clone, 'push', 'origin', 'HEAD');
+  const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
+  await pushVerifiedCommit({
+    directory: clone,
+    remote: options.remote,
+    commit,
+    branch: currentBranch.trim(),
+    environment: gitEnvironment(),
+    credentialEnvironment: async () =>
+      directPushEnvironment(options.remote, options.pushEnvironment),
+  });
 
   return {
     decision: 'pushed',
@@ -916,6 +1083,8 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     firstPublish: plan.firstPublish,
     seededFromPackageMap: plan.seededFromPackageMap,
     verification,
+    baseBranch: base ?? currentBranch.trim(),
+    baseCommit: baseCommitBeforeSync,
   };
 }
 
@@ -943,6 +1112,12 @@ export async function runSyncCommand(argv: readonly string[]): Promise<number> {
         `Unknown --target "${target}"; expected one of ${mirrorTargets.join(', ')}`,
       );
     }
+    const api = createGitHubApi({
+      userToken: userTokenFromEnvironmentOrCli(),
+      installationToken: async () => {
+        throw new SyncError('Direct sync does not use an App installation credential');
+      },
+    });
     const result = await runSync({
       corvidaeRoot:
         readOption(argv, 'corvidae-root') ?? new URL('../../', import.meta.url).pathname,
@@ -952,6 +1127,7 @@ export async function runSyncCommand(argv: readonly string[]): Promise<number> {
       scratchDirectory: required(argv, 'scratch'),
       corvidaeCommit: required(argv, 'corvidae-commit'),
       branch: readOption(argv, 'branch'),
+      pushEnvironment: () => api.accountPushEnvironment(),
     });
     process.stdout.write(
       result.decision === 'skip'

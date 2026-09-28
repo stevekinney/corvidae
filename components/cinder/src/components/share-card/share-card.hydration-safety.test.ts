@@ -23,11 +23,11 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   checkBuildFlagHydrationSafety,
-  prepareBuildFlagHydrationCheck,
+  prepareBuildFlagHydrationSafety,
 } from '../../test/hydration-safety.ts';
 
 const shareCardPath = new URL('./share-card.svelte', import.meta.url).pathname;
-await prepareBuildFlagHydrationCheck(shareCardPath);
+await prepareBuildFlagHydrationSafety(shareCardPath);
 
 describe('ShareCard build-flag hydration safety', () => {
   test('native-share capability stays behind the post-hydration gate', () => {

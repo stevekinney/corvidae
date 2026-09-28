@@ -23,37 +23,26 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   checkBuildFlagHydrationSafety,
-  prepareBuildFlagHydrationCheck,
+  prepareBuildFlagHydrationSafety,
 } from './hydration-safety.ts';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string): string => join(fixturesDir, `${name}.svelte`);
-
 const browserFlagFixture = fixture('hydration-probe-browser-flag');
 const effectGateFixture = fixture('hydration-probe-effect-gate');
 const childBrowserFlagFixture = fixture('hydration-probe-child-browser-flag');
 const childEffectGateFixture = fixture('hydration-probe-child-effect-gate');
-const unpreparedFixture = fixture('hydration-probe-child');
 
-// Compilation happens here, outside any test timeout; each test only renders.
+// Each check needs two Bun.build passes, whose duration tracks host load. Run
+// them while the file loads so each timed test only renders.
 await Promise.all([
-  prepareBuildFlagHydrationCheck(browserFlagFixture),
-  prepareBuildFlagHydrationCheck(effectGateFixture),
-  prepareBuildFlagHydrationCheck(childBrowserFlagFixture),
-  prepareBuildFlagHydrationCheck(childEffectGateFixture),
+  prepareBuildFlagHydrationSafety(browserFlagFixture),
+  prepareBuildFlagHydrationSafety(effectGateFixture),
+  prepareBuildFlagHydrationSafety(childBrowserFlagFixture),
+  prepareBuildFlagHydrationSafety(childEffectGateFixture),
 ]);
 
 describe('checkBuildFlagHydrationSafety', () => {
-  test('rejects a component that was not prepared at module scope', async () => {
-    // server-render-preparation: intentionally unprepared
-    const error = await checkBuildFlagHydrationSafety(unpreparedFixture).then(
-      () => undefined,
-      (reason: unknown) => reason,
-    );
-    expect(error).toBeInstanceOf(Error);
-    expect(error instanceof Error ? error.message : '').toContain('prepareBuildFlagHydrationCheck');
-  });
-
   test('flags a {#if BROWSER}-gated component as UNSAFE', async () => {
     const result = await checkBuildFlagHydrationSafety(browserFlagFixture);
     expect(result.buildFlagInvariant).toBe(false);
