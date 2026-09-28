@@ -262,7 +262,7 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
             : metric.value === target.value;
       if (!passes) errors.push('target comparator failed');
     }
-    if (workload.control.passed !== true || !workload.control.observed.raw)
+    if (!workload.control.passed || !workload.control.observed.raw)
       errors.push('control observation');
   }
 }

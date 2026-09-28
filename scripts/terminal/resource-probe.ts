@@ -222,14 +222,14 @@ function throughputAndQueues(): ProbeResult {
   const bytes = 2 * 1024 * 1024;
   const chunk = new Uint8Array(64 * 1024);
   const queue = boundedQueue(256);
-  const startedAt = performance.now();
+  const memoryStartedAt = performance.now();
   let peak = 0;
   for (let offset = 0; offset < bytes; offset += chunk.byteLength) {
     const result = queue.push(chunk);
     if (!result.ok) break;
     peak = Math.max(peak, queue.size());
   }
-  const duration = performance.now() - startedAt;
+  const duration = performance.now() - memoryStartedAt;
   const seconds = duration / 1_000;
   const rate = bytes / Math.max(seconds, Number.EPSILON);
   return {
@@ -270,9 +270,9 @@ function inputLatency(): ProbeResult {
   const queue = boundedQueue(256);
   const startedAt = performance.now();
   for (let index = 0; index < 1_000; index += 1) {
-    const startedAt = performance.now();
+    const sampleStartedAt = performance.now();
     queue.push(new Uint8Array([index % 256]));
-    samples.push(performance.now() - startedAt);
+    samples.push(performance.now() - sampleStartedAt);
   }
   const p50 = percentile(samples, 0.5);
   const p95 = percentile(samples, 0.95);
