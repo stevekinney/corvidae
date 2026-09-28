@@ -1698,6 +1698,38 @@ const activeRun = createActiveRun({
 });
 ```
 
+#### Background compaction
+
+A step can also prepare compaction ahead of time without waiting for it. Create a scheduler for the run's conversation with conversationalist's `createCompactionScheduler`, then pass it as `contextManagement.background`. When a step's estimate is above `background.threshold` but at or below the synchronous `compactionThreshold`, the step requests background compaction and generates without waiting.
+
+The candidate publishes only through `Conversation.compact()`'s revision compare-and-swap. A step therefore reads either the whole history before the commit or the whole compacted history after it. When a message or streamed token lands while the summary is being written, the candidate goes stale and is rescheduled under the scheduler's bounded policy instead of overwriting the write. A candidate also starts only at a durable boundary: a window that opens while a step is streaming or while its tool calls are still running waits until the stream closes or the results land, so a summary never strands a streaming reply or removes a pending tool call. Aborting the run withdraws queued work and aborts a running summary. A step that reaches the synchronous threshold cancels background work and waits for any aborted summary to return before its own `onCompact` runs, so the synchronous summary never overlaps a background one. Overflow recovery through `createOverflowMutator` never waits for background work, and the retry loop hands it the history the failed request was sent with. What it does depends on where the background candidate is when the overflow arrives. If the candidate already committed after the request was sent, for example during the provider's network wait, recovery retries once against that compaction without writing a summary of its own. If the candidate is still running, recovery's summary overlaps it and the compare-and-swap publishes whichever commits first; when the candidate wins, recovery retries once against it. If no candidate is running, recovery compacts the history itself. In every case a second overflow against the same compacted history rethrows the provider error instead of compacting it again. The caller owns the scheduler and disposes it.
+
+```typescript
+import { Conversation, createCompactionScheduler } from 'conversationalist';
+
+const conversation = new Conversation();
+const scheduler = createCompactionScheduler(conversation, {
+  summarizer: async (messages) => `Summary of ${messages.length} prior messages.`,
+  compaction: { preserveRecentCount: 6 },
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  contextManagement: {
+    maxTokens: 80_000,
+    onCompact,
+    background: { threshold: 40_000, scheduler },
+  },
+});
+
+await activeRun.result;
+console.log(scheduler.state.phase, scheduler.state.counts);
+await scheduler.dispose();
+```
+
 ### Memory Bridge
 
 ```typescript
@@ -2175,7 +2207,7 @@ console.log(state.textContent);
 
 ### Retry Mutators
 
-Transforms the generate context before each retry attempt—escalate temperature, drop bad tools, inject schema error feedback, or add jitter to delays.
+Transforms the generate context before each retry attempt—escalate temperature, drop bad tools, inject schema error feedback, or add jitter to delays. A mutator receives the context, the error, the attempt number, and the conversation history the failed attempt was sent with, so it can tell whether another writer changed the history while the request was in flight.
 
 ```typescript
 import {
@@ -2200,7 +2232,7 @@ const schemaFeedback = createSchemaErrorMutator();
 // Remove tools that caused errors on the previous attempt
 const dropBadTools = createToolRemovalMutator();
 
-// Handle context-window overflow by trimming early messages
+// Recover from one context-window overflow by compacting the run's conversation
 const overflow = createOverflowMutator({
   summarize: async (messages) => `Summary of ${messages.length} trimmed messages.`,
   retainRecentMessages: 10,
@@ -2228,11 +2260,11 @@ const activeRun = createActiveRun({
 
 | Function | Description |
 | --- | --- |
-| `composeMutators(...mutators)` | Chains mutators left-to-right—each receives the context the previous one returned. |
+| `composeMutators(...mutators)` | Chains mutators left-to-right—each receives the context the previous one returned, and the history the failed attempt was sent with. |
 | `createTemperatureEscalationMutator(options)` | Increases temperature on each retry. Writes to `RETRY_TEMPERATURE_KEY` in metadata. |
 | `createSchemaErrorMutator()` | Appends schema validation error details as a user message. |
 | `createToolRemovalMutator()` | Removes tools that failed on the previous attempt. |
-| `createOverflowMutator(options)` | Trims the conversation when a context-overflow error is detected. |
+| `createOverflowMutator(options)` | On a context-overflow error, compacts the run's conversation once through `Conversation.compact()` and retries. When another writer, such as a background candidate, compacted the history after the failed request was sent, either before recovery started or while its own summary was being written, it retries once against that compaction instead of compacting again. A second overflow before any new durable message rethrows the provider error instead of looping. It never compacts over an open stream. |
 | `addJitter(options?)` | Wraps a delay function to add random offset. |
 | `RETRY_TEMPERATURE_KEY` | Metadata key used by `createTemperatureEscalationMutator`. |
 

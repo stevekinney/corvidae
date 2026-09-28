@@ -323,6 +323,39 @@ All four helpers return the original history unchanged for an unknown target. Su
 - `RewindOptions`
 - `TruncateOptions`
 
+## Background compaction
+
+### Functions and constants
+
+- `createCompactionScheduler(conversation, options)`
+- `createIdleCompactionSchedule(options?)`
+- `createTimerCompactionSchedule(options?)`
+- `DEFAULT_MAX_STALE_RETRIES`
+
+### Types
+
+- `CompactionCancelReason`
+- `CompactionRequestOptions`
+- `CompactionScheduleAdapter`
+- `CompactionScheduleCancel`
+- `CompactionScheduler`
+- `CompactionSchedulerCounts`
+- `CompactionSchedulerOptions`
+- `CompactionSchedulerOutcome`
+- `CompactionSchedulerPhase`
+- `CompactionSchedulerState`
+- `IdleCallbackHost`
+- `IdleCompactionScheduleOptions`
+- `TimerCompactionScheduleOptions`
+
+A `CompactionScheduler` prepares compaction candidates outside the caller's critical path. It publishes only by calling `Conversation.compact()`, so every candidate still commits through the revision compare-and-swap. The schedule adapter only decides when queued work runs. The default adapter uses a zero-delay timer, which is available on Bun, Node, and browsers. `createIdleCompactionSchedule()` uses `requestIdleCallback` with a starvation `timeout`, and falls back to a timer on hosts that do not have it.
+
+- **Single flight**: overlapping requests join the job that is already queued or running. A new candidate waits for a cancelled one that is still running, so two summaries never run at the same time.
+- **Stale policy**: when a newer write makes a candidate stale, the candidate is discarded and rescheduled in a new adapter window. This happens at most `maxStaleRetries` times per request (default `2`), after which the request settles `discarded`. Stale candidates are never rebased and never retried inline.
+- **Durable boundaries**: a candidate starts only when no stream is open and no tool call is waiting for its result. A commit rebuilds every retained message, so compacting mid-stream would strand the reply the stream is still writing, and compacting mid-tool-execution could summarize away a call whose result has not arrived. A window that opens away from a boundary starts nothing. The request stays `pending` until a committed change reaches a boundary, then queues a new window. That wait spends no candidate and no stale retry, it is withdrawn like queued work, and `counts.deferred` records each window that waited.
+- **Cancellation**: `cancel()`, `dispose()`, an aborted request `signal`, and closing or disposing the conversation all withdraw queued work and abort the running candidate. A summary that comes back after that point cannot publish. `cancel()` and `dispose()` resolve once the candidate that was running has settled.
+- **Observation**: `scheduler.state` is a frozen `{ phase, disposed, candidate, attempt, counts }` snapshot, where `phase` is one of `idle`, `pending`, `running`, `committed`, `no-op`, `discarded`, `cancelled`, or `failed`. `subscribe(listener)` delivers every new state. Neither depends on conversation events. `request()` resolves a typed outcome and never rejects.
+
 ## Streaming
 
 - `appendStreamingMessage`

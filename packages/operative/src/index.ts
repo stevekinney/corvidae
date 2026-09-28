@@ -390,6 +390,7 @@ export type {
   AfterGenerateHook,
   AfterToolExecutionHook,
   AnyToolbox,
+  BackgroundCompactionOptions,
   BeforeGenerateHook,
   BeforeToolExecutionHook,
   CleanupAcknowledgement,
