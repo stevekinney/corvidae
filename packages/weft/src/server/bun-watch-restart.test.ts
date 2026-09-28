@@ -140,16 +140,20 @@ describe('bun --watch drives durable-run recovery across a real restart (COR-243
     const databasePath = join(directory, 'weft.db');
 
     let stdoutText = '';
-    subprocess = Bun.spawn({
+    const watchProcess = Bun.spawn({
       cmd: ['bun', '--watch', entrypoint, '--database', databasePath],
       cwd: directory,
       stdout: 'pipe',
       stderr: 'inherit',
     });
+    subprocess = watchProcess;
     void (async () => {
       const decoder = new TextDecoder();
-      for await (const chunk of subprocess.stdout as ReadableStream<Uint8Array>) {
-        stdoutText += decoder.decode(chunk);
+      const reader = watchProcess.stdout.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        stdoutText += decoder.decode(value);
       }
     })();
 
