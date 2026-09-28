@@ -289,9 +289,9 @@ function overflow(): ProbeResult {
   };
 }
 
-async function cleanupOrder(): Promise<ProbeResult> {
+async function cleanupOrder(fixture = 'cleanup-order'): Promise<ProbeResult> {
   const workload = plannedWorkload(
-    'cleanup-order',
+    fixture,
     'owned process group and descendant cleanup',
     'milliseconds',
     `<=${targets.cleanupMilliseconds} milliseconds`,
@@ -558,7 +558,7 @@ async function main(): Promise<void> {
     inputLatency(),
     memoryPlateau(),
     overflow(),
-    await cleanupOrder(),
+    await cleanupOrder('teardown'),
     browser[0],
     browser[1],
     browser[2],
