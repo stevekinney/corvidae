@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'bun:test';
 import { createMemory } from '../src/create-memory';
 import { withNamespaceIsolation } from '../src/namespace-isolation';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Memory } from '../src/types';
 
 const DIMENSION = 64;
@@ -145,7 +146,9 @@ describe('withNamespaceIsolation', () => {
       const entryB = await tenantB.remember('Entry for B');
 
       await Promise.resolve(
-        expect(tenantA.forget(entryB.id)).rejects.toThrow(/does not belong to namespace/),
+        expect(await throwingRejectionOf(tenantA.forget(entryB.id))).toThrow(
+          /does not belong to namespace/,
+        ),
       );
     });
 
@@ -242,7 +245,9 @@ describe('requireNamespace', () => {
     await memory.init();
 
     await Promise.resolve(
-      expect(memory.remember('No namespace')).rejects.toThrow(/Namespace is required/),
+      expect(await throwingRejectionOf(memory.remember('No namespace'))).toThrow(
+        /Namespace is required/,
+      ),
     );
   });
 

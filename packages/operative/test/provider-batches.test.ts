@@ -41,6 +41,7 @@ import type {
   OpenAIBatch,
   OpenAIBatchClient,
 } from '../src/providers/types.ts';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 const PLACEHOLDER_TOKEN = 'placeholder-not-a-real-key-0000';
 
@@ -270,7 +271,7 @@ describe('createAnthropicBatchClient — injected client', () => {
     const { client } = createFakeAnthropicClient(original);
     const batches = createAnthropicBatchClient({ client });
 
-    await expect(batches.retrieve('msgbatch_01')).rejects.toBe(original);
+    expect(await rejectionOf(batches.retrieve('msgbatch_01'))).toBe(original);
   });
 });
 
@@ -426,7 +427,7 @@ describe('createOpenAIBatchClient — injected client', () => {
     const { client } = createFakeOpenAIClient(original);
     const batches = createOpenAIBatchClient({ client });
 
-    await expect(batches.retrieve('batch_01')).rejects.toBe(original);
+    expect(await rejectionOf(batches.retrieve('batch_01'))).toBe(original);
   });
 });
 

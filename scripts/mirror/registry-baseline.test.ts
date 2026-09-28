@@ -29,7 +29,7 @@ const stubResponse = (status: number, body: unknown): Response =>
 
 describe('registry-baseline.json', () => {
   test('parses', async () => {
-    await expect(loadRegistryBaseline()).resolves.toBeDefined();
+    expect(await loadRegistryBaseline()).toBeDefined();
   });
 
   test('records exactly the packages the map says have a published predecessor', async () => {

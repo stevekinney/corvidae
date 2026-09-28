@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import {
   appendToolCall,
@@ -318,8 +319,10 @@ describe('chat session controller', () => {
 
     await Promise.resolve(
       expect(
-        controller.adapter.sendMessage({ role: 'user', content: 'new branch' }, []),
-      ).rejects.toThrow('approval'),
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'new branch' }, []),
+        ),
+      ).toThrow('approval'),
     );
     expect(calls).toBe(1);
     expect(conversation).toBe(before);
@@ -370,8 +373,11 @@ describe('chat session controller', () => {
 
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-      ).resolves.toBe('pending'),
+        await controller.adapter.resolveToolApproval?.('call', {
+          decision: 'approve',
+          remember: false,
+        }),
+      ).toBe('pending'),
     );
     expect(
       Object.values(conversation.messages).find(
@@ -425,8 +431,11 @@ describe('chat session controller', () => {
 
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
-      ).resolves.toBe('pending'),
+        await controller.adapter.resolveToolApproval?.('call', {
+          decision: 'deny',
+          remember: false,
+        }),
+      ).toBe('pending'),
     );
     expect(
       Object.values(conversation.messages).find(
@@ -460,7 +469,7 @@ describe('chat session controller', () => {
     controller.invalidate();
     hookResult.resolve({ callId: 'call', outcome: 'success', content: 'allowed' });
 
-    await expect(resolution).resolves.toBe('pending');
+    expect(await resolution).toBe('pending');
     expect(currentToolResult(conversation)?.outcome).toBe('action_required');
     expect(continuations).toBe(0);
   });
@@ -488,7 +497,7 @@ describe('chat session controller', () => {
     controller.invalidate();
     hookResult.reject(new Error('old owner failed'));
 
-    await expect(resolution).resolves.toBe('pending');
+    expect(await resolution).toBe('pending');
     expect(errors).toEqual([]);
     expect(currentToolResult(conversation)?.outcome).toBe('action_required');
   });
@@ -529,7 +538,7 @@ describe('chat session controller', () => {
     conversation = approvalConversation('approval-reused-id', replacementAction);
     hookResult.resolve({ callId: 'call', outcome: 'success', content: 'allowed' });
 
-    await expect(resolution).resolves.toBe('pending');
+    expect(await resolution).toBe('pending');
     expect(currentToolResult(conversation)?.action).toEqual(replacementAction);
     expect(continuations).toBe(0);
   });
@@ -551,9 +560,11 @@ describe('chat session controller', () => {
       },
     });
 
-    await expect(
-      controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-    ).rejects.toThrow('different tool call');
+    expect(
+      await throwingRejectionOf(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+      ),
+    ).toThrow('different tool call');
     expect(hookCalls).toBe(1);
     expect(currentToolResult(conversation)?.outcome).toBe('action_required');
   });
@@ -575,12 +586,17 @@ describe('chat session controller', () => {
       },
     });
 
-    await expect(
-      controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-    ).resolves.toBe('resolved');
-    await expect(
-      controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
-    ).rejects.toThrow('not pending');
+    expect(
+      await controller.adapter.resolveToolApproval?.('call', {
+        decision: 'approve',
+        remember: false,
+      }),
+    ).toBe('resolved');
+    expect(
+      await throwingRejectionOf(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
+      ),
+    ).toThrow('not pending');
     expect(hookCalls).toBe(1);
     expect(currentToolResult(conversation)?.outcome).toBe('success');
   });
@@ -602,9 +618,11 @@ describe('chat session controller', () => {
       },
     });
 
-    await expect(
-      controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-    ).rejects.toThrow('not pending');
+    expect(
+      await throwingRejectionOf(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+      ),
+    ).toThrow('not pending');
     expect(hookCalls).toBe(0);
   });
 
@@ -636,7 +654,7 @@ describe('chat session controller', () => {
     );
     hookResult.resolve({ callId: 'call', outcome: 'success', content: 'allowed' });
 
-    await expect(resolution).resolves.toBe('pending');
+    expect(await resolution).toBe('pending');
     expect(currentToolResult(conversation)).toBeUndefined();
     expect(continuations).toBe(0);
   });
@@ -669,9 +687,11 @@ describe('chat session controller', () => {
       },
     });
 
-    await expect(
-      controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-    ).rejects.toThrow('without a current approval action');
+    expect(
+      await throwingRejectionOf(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+      ),
+    ).toThrow('without a current approval action');
     expect(hookCalls).toBe(0);
     expect(currentToolResult(conversation)?.outcome).toBe('action_required');
   });
@@ -713,9 +733,11 @@ describe('chat session controller', () => {
       },
     });
 
-    await expect(
-      controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-    ).rejects.toThrow('without a current approval action');
+    expect(
+      await throwingRejectionOf(
+        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
+      ),
+    ).toThrow('without a current approval action');
     expect(hookCalls).toBe(0);
   });
 });

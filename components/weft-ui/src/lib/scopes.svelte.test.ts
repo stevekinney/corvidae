@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import {
   AUTHORIZATION_SCOPES,
   isForbidden,
@@ -184,22 +185,26 @@ describe('resolvePrincipal', () => {
 
   test('a non-401 HttpClientError (e.g. 500) is rethrown, not swallowed', async () => {
     expect(
-      resolvePrincipal(
-        principalClient(async () => {
-          throw new HttpClientError(500, 'Internal server error');
-        }),
+      await throwingRejectionOf(
+        resolvePrincipal(
+          principalClient(async () => {
+            throw new HttpClientError(500, 'Internal server error');
+          }),
+        ),
       ),
-    ).rejects.toThrow('Internal server error');
+    ).toThrow('Internal server error');
   });
 
   test('a non-HttpClientError failure (e.g. a network error) is rethrown, not swallowed', async () => {
     expect(
-      resolvePrincipal(
-        principalClient(async () => {
-          throw new TypeError('fetch failed');
-        }),
+      await throwingRejectionOf(
+        resolvePrincipal(
+          principalClient(async () => {
+            throw new TypeError('fetch failed');
+          }),
+        ),
       ),
-    ).rejects.toThrow('fetch failed');
+    ).toThrow('fetch failed');
   });
 });
 

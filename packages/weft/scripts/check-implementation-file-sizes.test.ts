@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { write } from 'bun';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   assertUniqueClassifications,
   CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES,
@@ -216,7 +217,7 @@ describe('check-implementation-file-sizes', () => {
   });
 
   it('rejects unknown arguments', async () => {
-    await expect(runCli(['--unknown'])).rejects.toThrow('Unknown argument: --unknown');
+    expect(await throwingRejectionOf(runCli(['--unknown']))).toThrow('Unknown argument: --unknown');
   });
 
   it('rejects duplicate oversized-file classifications', () => {

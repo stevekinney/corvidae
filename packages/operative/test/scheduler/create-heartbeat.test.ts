@@ -568,8 +568,8 @@ describe('createHeartbeat', () => {
       });
 
       // Never started, so it is already "stopped".
-      await expect(heartbeat.stop()).resolves.toBeUndefined();
-      await expect(heartbeat.stop()).resolves.toBeUndefined();
+      expect(await heartbeat.stop()).toBeUndefined();
+      expect(await heartbeat.stop()).toBeUndefined();
     });
   });
 });

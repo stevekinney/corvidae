@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { Conversation } from '../src/history';
 import { createConversationHistory, defineMessagePlugin } from '../src/index';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MessagePluginIdentity } from '../src/types';
 
 describe('lifecycle streams and plugins', () => {
@@ -26,7 +27,7 @@ describe('lifecycle streams and plugins', () => {
     conversation.appendUserMessage('newer revision');
     release();
 
-    expect(append).rejects.toMatchObject({ code: 'error:revision-conflict' });
+    expect(await rejectionOf(append)).toMatchObject({ code: 'error:revision-conflict' });
     expect(conversation.getPendingToolCalls()).toHaveLength(1);
   });
 
@@ -58,7 +59,7 @@ describe('lifecycle streams and plugins', () => {
 
     await conversation.dispose();
 
-    expect(append).rejects.toMatchObject({ code: 'error:operation-cancelled' });
+    expect(await rejectionOf(append)).toMatchObject({ code: 'error:operation-cancelled' });
     expect(iteratorClosed).toBe(true);
   });
 

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   preparedSyncManifestFile,
   verifyPreparedSyncArtifact,
@@ -311,9 +312,11 @@ describe('trusted prepared tree reconstruction', () => {
   test('rejects a self-consistent forged artifact whose tree does not match reconstruction', async () => {
     const harness = await trustedHarness();
     try {
-      await expect(
-        verifyArtifact(harness, await prepareArtifact(harness, maliciousSource)),
-      ).rejects.toThrow(/Trusted reconstruction tree/);
+      expect(
+        await throwingRejectionOf(
+          verifyArtifact(harness, await prepareArtifact(harness, maliciousSource)),
+        ),
+      ).toThrow(/Trusted reconstruction tree/);
     } finally {
       await rm(harness.root, { recursive: true, force: true });
     }
@@ -328,7 +331,9 @@ describe('trusted prepared tree reconstruction', () => {
       await Bun.write(join(updater, 'README.md'), '# moved default branch\n');
       await commitAll(updater, 'Move target default branch');
       await git(updater, 'push', '--quiet', 'origin', 'HEAD:main');
-      await expect(verifyArtifact(harness, artifactDirectory)).rejects.toThrow(/default HEAD/);
+      expect(await throwingRejectionOf(verifyArtifact(harness, artifactDirectory))).toThrow(
+        /default HEAD/,
+      );
     } finally {
       await rm(harness.root, { recursive: true, force: true });
     }
@@ -342,7 +347,9 @@ describe('trusted prepared tree reconstruction', () => {
       const manifest = (await Bun.file(manifestPath).json()) as Record<string, unknown>;
       manifest['baseBranch'] = 'attacker-branch';
       await Bun.write(manifestPath, `${JSON.stringify(manifest)}\n`);
-      await expect(verifyArtifact(harness, artifactDirectory)).rejects.toThrow(/default branch/);
+      expect(await throwingRejectionOf(verifyArtifact(harness, artifactDirectory))).toThrow(
+        /default branch/,
+      );
     } finally {
       await rm(harness.root, { recursive: true, force: true });
     }
@@ -354,7 +361,7 @@ describe('trusted prepared tree reconstruction', () => {
       const artifactDirectory = await prepareArtifact(harness);
       await Bun.write(join(harness.corvidae, 'packages/cryptography/src/extra.ts'), 'export {};\n');
       await commitAll(harness.corvidae, 'Move trusted source');
-      await expect(verifyArtifact(harness, artifactDirectory)).rejects.toThrow(
+      expect(await throwingRejectionOf(verifyArtifact(harness, artifactDirectory))).toThrow(
         /corvidae checkout does not match/,
       );
     } finally {
@@ -367,7 +374,9 @@ describe('trusted prepared tree reconstruction', () => {
     try {
       const artifactDirectory = await prepareArtifact(harness);
       await Bun.write(join(harness.corvidae, 'DIRTY.md'), 'dirty\n');
-      await expect(verifyArtifact(harness, artifactDirectory)).rejects.toThrow(/must be clean/);
+      expect(await throwingRejectionOf(verifyArtifact(harness, artifactDirectory))).toThrow(
+        /must be clean/,
+      );
     } finally {
       await rm(harness.root, { recursive: true, force: true });
     }
@@ -382,21 +391,23 @@ describe('trusted prepared tree reconstruction', () => {
       await commitAll(symlinkClone, 'Add target symlink');
       await git(symlinkClone, 'push', '--quiet', 'origin', 'HEAD:main');
       const baseCommit = await git(symlinkClone, 'rev-parse', 'HEAD');
-      await expect(
-        verifyTrustedPreparedTree({
-          corvidaeRoot: harness.corvidae,
-          remote: harness.remote,
-          manifest: {
-            decision: 'skip',
-            target,
-            corvidaeCommit: harness.corvidaeCommit,
-            baseBranch: 'main',
-            baseCommit: baseCommit.trim(),
-            changed: [],
-            tree: '0'.repeat(40),
-          },
-        }),
-      ).rejects.toThrow(/symlink or gitlink/);
+      expect(
+        await throwingRejectionOf(
+          verifyTrustedPreparedTree({
+            corvidaeRoot: harness.corvidae,
+            remote: harness.remote,
+            manifest: {
+              decision: 'skip',
+              target,
+              corvidaeCommit: harness.corvidaeCommit,
+              baseBranch: 'main',
+              baseCommit: baseCommit.trim(),
+              changed: [],
+              tree: '0'.repeat(40),
+            },
+          }),
+        ),
+      ).toThrow(/symlink or gitlink/);
     } finally {
       await rm(harness.root, { recursive: true, force: true });
     }
@@ -426,21 +437,23 @@ describe('trusted prepared tree reconstruction', () => {
       await commitAll(gitlinkClone, 'Add target gitlink');
       await git(gitlinkClone, 'push', '--quiet', 'origin', 'HEAD:main');
       const baseCommit = await git(gitlinkClone, 'rev-parse', 'HEAD');
-      await expect(
-        verifyTrustedPreparedTree({
-          corvidaeRoot: harness.corvidae,
-          remote: harness.remote,
-          manifest: {
-            decision: 'skip',
-            target,
-            corvidaeCommit: harness.corvidaeCommit,
-            baseBranch: 'main',
-            baseCommit: baseCommit.trim(),
-            changed: [],
-            tree: '0'.repeat(40),
-          },
-        }),
-      ).rejects.toThrow(/symlink or gitlink/);
+      expect(
+        await throwingRejectionOf(
+          verifyTrustedPreparedTree({
+            corvidaeRoot: harness.corvidae,
+            remote: harness.remote,
+            manifest: {
+              decision: 'skip',
+              target,
+              corvidaeCommit: harness.corvidaeCommit,
+              baseBranch: 'main',
+              baseCommit: baseCommit.trim(),
+              changed: [],
+              tree: '0'.repeat(40),
+            },
+          }),
+        ),
+      ).toThrow(/symlink or gitlink/);
     } finally {
       await rm(harness.root, { recursive: true, force: true });
     }

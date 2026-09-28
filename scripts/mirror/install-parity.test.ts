@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   assertInstallParity,
   extractWorkflowInstalls,
@@ -228,7 +229,9 @@ describe('resolveReleaseWorkflowFile', () => {
   it('refuses a clone carrying both rather than letting probe order decide', async () => {
     const directory = cloneWith(['release.yaml', 'release.yml']);
     try {
-      await expect(resolveReleaseWorkflowFile(directory)).rejects.toThrow(InstallParityError);
+      expect(await throwingRejectionOf(resolveReleaseWorkflowFile(directory))).toThrow(
+        InstallParityError,
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -237,7 +240,7 @@ describe('resolveReleaseWorkflowFile', () => {
   it('refuses a clone carrying neither, naming both spellings it looked for', async () => {
     const directory = cloneWith([]);
     try {
-      await expect(resolveReleaseWorkflowFile(directory)).rejects.toThrow(
+      expect(await throwingRejectionOf(resolveReleaseWorkflowFile(directory))).toThrow(
         /neither release\.yaml nor release\.yml/,
       );
     } finally {
@@ -248,9 +251,9 @@ describe('resolveReleaseWorkflowFile', () => {
   it('still honours a filename a caller names explicitly', async () => {
     const directory = cloneWith(['release.yml']);
     try {
-      await expect(readReleaseWorkflowBunVersion(directory, 'release.yaml')).rejects.toThrow(
-        /release\.yaml does not exist/,
-      );
+      expect(
+        await throwingRejectionOf(readReleaseWorkflowBunVersion(directory, 'release.yaml')),
+      ).toThrow(/release\.yaml does not exist/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

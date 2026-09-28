@@ -51,7 +51,7 @@ describe('Conversation lazy provider helpers', () => {
       'tool-call',
     ]);
 
-    expect(conversation.toProvider('openai', { groupToolCalls: true })).resolves.toEqual(
+    expect(await conversation.toProvider('openai', { groupToolCalls: true })).toEqual(
       toOpenAIMessagesGrouped(conversation.current),
     );
 
@@ -75,10 +75,8 @@ describe('Conversation lazy provider helpers', () => {
     expect(getOrderedMessages(conversation.current).map((message) => message.role)).toEqual(
       getOrderedMessages(standalone).map((message) => message.role),
     );
-    expect(conversation.toOpenAIMessages()).resolves.toEqual(
-      toOpenAIMessages(conversation.current),
-    );
-    expect(conversation.toOpenAIMessagesGrouped()).resolves.toEqual(
+    expect(await conversation.toOpenAIMessages()).toEqual(toOpenAIMessages(conversation.current));
+    expect(await conversation.toOpenAIMessagesGrouped()).toEqual(
       toOpenAIMessagesGrouped(conversation.current),
     );
   });
@@ -96,7 +94,7 @@ describe('Conversation lazy provider helpers', () => {
     expect(getOrderedMessages(conversation.current).map((message) => message.role)).toEqual(
       getOrderedMessages(standalone).map((message) => message.role),
     );
-    expect(conversation.toAnthropicMessages()).resolves.toEqual(
+    expect(await conversation.toAnthropicMessages()).toEqual(
       toAnthropicMessages(conversation.current),
     );
   });
@@ -113,9 +111,7 @@ describe('Conversation lazy provider helpers', () => {
     expect(getOrderedMessages(conversation.current).map((message) => message.role)).toEqual(
       getOrderedMessages(standalone).map((message) => message.role),
     );
-    expect(conversation.toGeminiMessages()).resolves.toEqual(
-      toGeminiMessages(conversation.current),
-    );
+    expect(await conversation.toGeminiMessages()).toEqual(toGeminiMessages(conversation.current));
   });
 
   it('appends provider payloads through the direct adapter helpers', () => {

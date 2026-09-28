@@ -322,6 +322,6 @@ describe('skill client events', () => {
     });
 
     // Absent means silence, not a no-op emitter allocated per client.
-    await expect(client.activate('unobserved')).resolves.toMatchObject({ activated: true });
+    expect(await client.activate('unobserved')).toMatchObject({ activated: true });
   });
 });

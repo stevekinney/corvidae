@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import {
   appendToolCall,
@@ -58,7 +59,9 @@ describe('chat session controller', () => {
     const before = conversation;
 
     await Promise.resolve(
-      expect(controller.adapter.retryMessage?.(conversation.ids[0]!)).rejects.toThrow('failed'),
+      expect(
+        await throwingRejectionOf(controller.adapter.retryMessage?.(conversation.ids[0]!)),
+      ).toThrow('failed'),
     );
     expect(calls).toBe(1);
     expect(conversation).toBe(before);
@@ -79,13 +82,17 @@ describe('chat session controller', () => {
 
     await Promise.resolve(
       expect(
-        controller.adapter.editMessage?.({ messageId: 'stale', content: 'edited' }),
-      ).rejects.toThrow('user message'),
+        await throwingRejectionOf(
+          controller.adapter.editMessage?.({ messageId: 'stale', content: 'edited' }),
+        ),
+      ).toThrow('user message'),
     );
     await Promise.resolve(
       expect(
-        controller.adapter.editMessage?.({ messageId: assistantId, content: 'edited' }),
-      ).rejects.toThrow('user message'),
+        await throwingRejectionOf(
+          controller.adapter.editMessage?.({ messageId: assistantId, content: 'edited' }),
+        ),
+      ).toThrow('user message'),
     );
     expect(conversation).toBe(before);
   });
@@ -105,9 +112,11 @@ describe('chat session controller', () => {
       },
     });
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'run' }, [])).rejects.toThrow(
-        'failed after tool execution',
-      ),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'run' }, []),
+        ),
+      ).toThrow('failed after tool execution'),
     );
     const userMessageId = conversation.ids[0]!;
     conversation = appendToolResult(

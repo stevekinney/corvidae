@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine, getWorkflowRevisionDiagnostics } from '@lostgradient/weft';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import {
   DYNAMIC_SOURCE_FAILING_REVISION,
   DYNAMIC_SOURCE_LOADABLE_REVISION,
@@ -86,8 +87,10 @@ describe('seedDynamicSources', () => {
     const engine = await seededEngine();
 
     expect(
-      engine.workflows.preload(DYNAMIC_SOURCE_WORKFLOW_NAME, DYNAMIC_SOURCE_FAILING_REVISION),
-    ).rejects.toThrow();
+      await throwingRejectionOf(
+        engine.workflows.preload(DYNAMIC_SOURCE_WORKFLOW_NAME, DYNAMIC_SOURCE_FAILING_REVISION),
+      ),
+    ).toThrow();
 
     const diagnostics = await getWorkflowRevisionDiagnostics(
       engine,

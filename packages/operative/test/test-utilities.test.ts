@@ -9,6 +9,7 @@ import {
   waitForCondition,
   waitForRunState,
 } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 describe('createMockScratchpad', () => {
   it('creates a scratchpad with initial values', () => {
@@ -27,7 +28,7 @@ describe('createMockScratchpad', () => {
 
 describe('waitForCondition', () => {
   it('resolves immediately when the condition is already true', async () => {
-    await expect(waitForCondition(() => true, 'never fails')).resolves.toBeUndefined();
+    expect(await waitForCondition(() => true, 'never fails')).toBeUndefined();
   });
 
   it('polls until the condition becomes true', async () => {
@@ -42,9 +43,11 @@ describe('waitForCondition', () => {
 
   it('throws the failure message when the condition is never met', async () => {
     const neverTrue = () => false;
-    await expect(
-      waitForCondition(neverTrue, 'expected failure message', 3, async () => {}),
-    ).rejects.toThrow('expected failure message');
+    expect(
+      await throwingRejectionOf(
+        waitForCondition(neverTrue, 'expected failure message', 3, async () => {}),
+      ),
+    ).toThrow('expected failure message');
   });
 
   it('uses a custom yield function between attempts', async () => {
@@ -98,9 +101,11 @@ describe('waitForRunState', () => {
     const store = {
       getRun: (_id: string): { status: 'running' | 'completed' } => ({ status: 'running' }),
     };
-    await expect(
-      waitForRunState({ getRun: store.getRun }, 'run-never', (r) => r.status === 'completed'),
-    ).rejects.toThrow('run-never');
+    expect(
+      await throwingRejectionOf(
+        waitForRunState({ getRun: store.getRun }, 'run-never', (r) => r.status === 'completed'),
+      ),
+    ).toThrow('run-never');
   });
 });
 
@@ -110,7 +115,7 @@ describe('createManualDurableEngine', () => {
     const handle = await engine.start('test', {});
     const resultPromise = handle.result();
     resolveResult();
-    await expect(resultPromise).resolves.toMatchObject({ runId: 'manual-run' });
+    expect(await resultPromise).toMatchObject({ runId: 'manual-run' });
   });
 
   it('rejects the result when rejectResult is called', async () => {
@@ -118,7 +123,7 @@ describe('createManualDurableEngine', () => {
     const handle = await engine.start('test', {});
     const resultPromise = handle.result();
     rejectResult(new Error('test error'));
-    await expect(resultPromise).rejects.toThrow('test error');
+    expect(await throwingRejectionOf(resultPromise)).toThrow('test error');
   });
 
   it('cancel rejects the result with Workflow cancelled', async () => {
@@ -126,7 +131,7 @@ describe('createManualDurableEngine', () => {
     const handle = await engine.start('test', {});
     const resultPromise = handle.result();
     await engine.cancel('any-id');
-    await expect(resultPromise).rejects.toThrow('Workflow cancelled');
+    expect(await throwingRejectionOf(resultPromise)).toThrow('Workflow cancelled');
   });
 });
 
@@ -149,7 +154,7 @@ describe('spyEngine', () => {
     const spy = spyEngine(engine);
 
     // suspend on a manual engine is a no-op but should not throw
-    await expect(engine.suspend('run-x')).resolves.toBeUndefined();
+    expect(await engine.suspend('run-x')).toBeUndefined();
     expect(spy.suspends).toContain('run-x');
 
     // get should still return { status: 'suspended' }

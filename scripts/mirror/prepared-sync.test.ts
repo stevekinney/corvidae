@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import {
   preparedSyncBundleFile,
@@ -154,21 +155,25 @@ describe('prepared sync artifacts', () => {
       manifest['branch'] = 'main';
       await writeManifest(manifestPath, manifest);
 
-      await expect(readPreparedSyncManifest(manifestPath)).rejects.toThrow(/unknown field/);
+      expect(await throwingRejectionOf(readPreparedSyncManifest(manifestPath))).toThrow(
+        /unknown field/,
+      );
       let imported = false;
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: false,
-          run: async () => {
-            imported = true;
-            throw new Error('should not import');
-          },
-        }),
-      ).rejects.toThrow(/unknown field/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: false,
+            run: async () => {
+              imported = true;
+              throw new Error('should not import');
+            },
+          }),
+        ),
+      ).toThrow(/unknown field/);
       expect(imported).toBe(false);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
@@ -191,36 +196,42 @@ describe('prepared sync artifacts', () => {
         imported = true;
         throw new Error('should not import for workflow input mismatches');
       };
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'cinder',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: true,
-          run,
-        }),
-      ).rejects.toThrow(/target/);
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: 'b'.repeat(40),
-          expectedSnapshot: true,
-          run,
-        }),
-      ).rejects.toThrow(/source commit/);
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: false,
-          run,
-        }),
-      ).rejects.toThrow(/snapshot flag/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'cinder',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: true,
+            run,
+          }),
+        ),
+      ).toThrow(/target/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: 'b'.repeat(40),
+            expectedSnapshot: true,
+            run,
+          }),
+        ),
+      ).toThrow(/source commit/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: false,
+            run,
+          }),
+        ),
+      ).toThrow(/snapshot flag/);
       expect(imported).toBe(false);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
@@ -239,9 +250,9 @@ describe('prepared sync artifacts', () => {
         snapshot: true,
         workflowFile: 'release.yaml',
       });
-      await expect(
-        readPreparedSyncManifest(join(artifactDirectory, preparedSyncManifestFile)),
-      ).resolves.toMatchObject({ decision: 'skip', baseCommit: fixture.baseCommit });
+      expect(
+        await readPreparedSyncManifest(join(artifactDirectory, preparedSyncManifestFile)),
+      ).toMatchObject({ decision: 'skip', baseCommit: fixture.baseCommit });
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
@@ -259,15 +270,17 @@ describe('prepared sync artifacts', () => {
         workflowFile: 'release.yaml',
       });
       await Bun.write(join(artifactDirectory, preparedSyncBundleFile), 'tampered');
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: true,
-        }),
-      ).rejects.toThrow(/digest/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: true,
+          }),
+        ),
+      ).toThrow(/digest/);
 
       await writePreparedSyncArtifact({
         artifactDirectory,
@@ -280,28 +293,32 @@ describe('prepared sync artifacts', () => {
       const manifest = await readManifest(manifestPath);
       manifest['baseCommit'] = 'b'.repeat(40);
       await writeManifest(manifestPath, manifest);
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: true,
-        }),
-      ).rejects.toThrow(/base commit as its only parent/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: true,
+          }),
+        ),
+      ).toThrow(/base commit as its only parent/);
 
       manifest['baseCommit'] = fixture.baseCommit;
       manifest['workflowFile'] = 'release.yml';
       await writeManifest(manifestPath, manifest);
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: true,
-        }),
-      ).rejects.toThrow(/release workflow/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: true,
+          }),
+        ),
+      ).toThrow(/release workflow/);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
@@ -322,31 +339,35 @@ describe('prepared sync artifacts', () => {
       const commitMismatch = { ...original, commit: 'b'.repeat(40) };
       await writeManifest(manifestPath, commitMismatch);
       const commitRecorder = commandRecorder();
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: false,
-          run: commitRecorder.run,
-        }),
-      ).rejects.toThrow(/commit/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: false,
+            run: commitRecorder.run,
+          }),
+        ),
+      ).toThrow(/commit/);
       expect(commitRecorder.commands.some((command) => command.includes('push'))).toBe(false);
 
       const treeMismatch = { ...original, tree: 'b'.repeat(40) };
       await writeManifest(manifestPath, treeMismatch);
       const treeRecorder = commandRecorder();
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: false,
-          run: treeRecorder.run,
-        }),
-      ).rejects.toThrow(/tree/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: false,
+            run: treeRecorder.run,
+          }),
+        ),
+      ).toThrow(/tree/);
       expect(treeRecorder.commands.some((command) => command.includes('push'))).toBe(false);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
@@ -382,15 +403,17 @@ describe('prepared sync artifacts', () => {
         corvidaeCommit,
         snapshot: false,
       });
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: false,
-        }),
-      ).rejects.toThrow(/base commit as its only parent/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: false,
+          }),
+        ),
+      ).toThrow(/base commit as its only parent/);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
@@ -408,15 +431,17 @@ describe('prepared sync artifacts', () => {
         corvidaeCommit,
         snapshot: false,
       });
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: false,
-        }),
-      ).rejects.toThrow(/expected corvidae trailer/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: false,
+          }),
+        ),
+      ).toThrow(/expected corvidae trailer/);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
@@ -434,15 +459,17 @@ describe('prepared sync artifacts', () => {
         corvidaeCommit,
         snapshot: false,
       });
-      await expect(
-        verifyPreparedSyncArtifact({
-          artifactDirectory,
-          ...fixtureVerificationOptions(fixture),
-          expectedTarget: 'weft',
-          expectedCorvidaeCommit: corvidaeCommit,
-          expectedSnapshot: false,
-        }),
-      ).rejects.toThrow(/expected corvidae trailer/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: false,
+          }),
+        ),
+      ).toThrow(/expected corvidae trailer/);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }

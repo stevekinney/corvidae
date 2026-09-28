@@ -16,6 +16,7 @@ import { describe, expect, it } from 'bun:test';
 import type { GeminiEmbeddingClient } from '../src/providers/embeddings/gemini.ts';
 import { createGeminiEmbedder } from '../src/providers/embeddings/gemini.ts';
 import { ProviderError } from '../src/providers/errors.ts';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 type EmbedRequest = { model: string; contents: Array<{ parts: Array<{ text: string }> }> };
 type EmbedResponse = { embeddings?: Array<{ values?: number[] }> };
@@ -78,7 +79,7 @@ describe('createGeminiEmbedder — client injection', () => {
     const client = createFakeEmbeddingClient([{}]);
     const embed = createGeminiEmbedder({ client });
 
-    await expect(embed(['alpha'])).rejects.toBeInstanceOf(ProviderError);
+    expect(await rejectionOf(embed(['alpha']))).toBeInstanceOf(ProviderError);
   });
 
   it('throws a ProviderError when the returned embedding has no values', async () => {
@@ -100,7 +101,7 @@ describe('createGeminiEmbedder — client injection', () => {
       },
     });
 
-    await expect(embed(['alpha'])).rejects.toBeInstanceOf(ProviderError);
+    expect(await rejectionOf(embed(['alpha']))).toBeInstanceOf(ProviderError);
   });
 });
 
@@ -117,7 +118,7 @@ describe('createGeminiEmbedder — SDK construction', () => {
     const saved = Bun.env['GOOGLE_API_KEY'];
     Bun.env['GOOGLE_API_KEY'] = 'set-but-ignored-by-this-embedder';
     try {
-      await expect(createGeminiEmbedder()(['alpha'])).rejects.toBeInstanceOf(ProviderError);
+      expect(await rejectionOf(createGeminiEmbedder()(['alpha']))).toBeInstanceOf(ProviderError);
     } finally {
       if (saved === undefined) delete Bun.env['GOOGLE_API_KEY'];
       else Bun.env['GOOGLE_API_KEY'] = saved;

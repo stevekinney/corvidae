@@ -244,7 +244,7 @@ describe('createTool', () => {
       },
     });
 
-    await expect(tool({ value: 'execute' })).resolves.toBe('execute!');
+    expect(await tool({ value: 'execute' })).toBe('execute!');
     expect(parseCount).toBe(1);
     expect(
       await tool.rawExecute(
@@ -1997,7 +1997,7 @@ describe('isTool', () => {
     const handle = tool.executions.locate(snapshot.executionId);
     expect(handle).toBeDefined();
     if (!handle) throw new Error('Execution handle is missing');
-    await expect(handle.whenSettled()).resolves.toMatchObject({
+    expect(await handle.whenSettled()).toMatchObject({
       state: 'terminal',
       abortSource: 'deadline',
       result: { outcome: 'error', errorCategory: 'timeout' },
@@ -2057,7 +2057,7 @@ describe('isTool', () => {
     const handle = tool.executions.locate(snapshot.executionId);
     expect(handle).toBeDefined();
     if (!handle) throw new Error('Execution handle is missing');
-    await expect(handle.whenSettled()).resolves.toMatchObject({
+    expect(await handle.whenSettled()).toMatchObject({
       state: 'terminal',
       abortSource: 'deadline',
       result: { outcome: 'error', errorCategory: 'timeout' },
@@ -2109,7 +2109,7 @@ describe('isTool', () => {
     const handle = tool.executions.locate(snapshot.executionId);
     expect(handle).toBeDefined();
     if (!handle) throw new Error('Execution handle is missing');
-    await expect(handle.whenSettled()).resolves.toMatchObject({
+    expect(await handle.whenSettled()).toMatchObject({
       state: 'terminal',
       abortSource: 'deadline',
       result: { outcome: 'error', errorCategory: 'timeout' },
@@ -2168,7 +2168,7 @@ describe('isTool', () => {
     const handle = tool.executions.locate(snapshot.executionId);
     expect(handle).toBeDefined();
     if (!handle) throw new Error('Execution handle is missing');
-    await expect(handle.whenSettled()).resolves.toMatchObject({
+    expect(await handle.whenSettled()).toMatchObject({
       state: 'terminal',
       abortSource: 'deadline',
       result: { outcome: 'error', errorCategory: 'timeout' },
@@ -2235,7 +2235,7 @@ describe('isTool', () => {
     const handle = tool.executions.locate(snapshot.executionId);
     expect(handle).toBeDefined();
     if (!handle) throw new Error('Execution handle is missing');
-    await expect(handle.whenSettled()).resolves.toMatchObject({
+    expect(await handle.whenSettled()).toMatchObject({
       state: 'terminal',
       abortSource: 'deadline',
       result: { outcome: 'error', errorCategory: 'timeout' },
@@ -2292,7 +2292,7 @@ describe('isTool', () => {
     const handle = tool.executions.locate(snapshot.executionId);
     expect(handle).toBeDefined();
     if (!handle) throw new Error('Execution handle is missing');
-    await expect(handle.whenSettled()).resolves.toMatchObject({
+    expect(await handle.whenSettled()).toMatchObject({
       state: 'terminal',
       abortSource: 'caller',
       result: { outcome: 'error', errorCategory: 'cancelled' },

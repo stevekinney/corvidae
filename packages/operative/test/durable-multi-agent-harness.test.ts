@@ -27,6 +27,7 @@ import { workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createDurableMultiAgentHarness } from '../src/test/durable-multi-agent-harness';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 // Drain the inline-launch queue between tests — a pending deferred launch
 // from one test can starve the next under full `bun test` concurrency.
@@ -386,7 +387,9 @@ describe('createDurableMultiAgentHarness', () => {
 
         // Now calling waitForSuspend should surface the terminal status rather
         // than hanging.
-        await expect(harness.waitForSuspend(handle.id)).rejects.toThrow('terminal status');
+        expect(await throwingRejectionOf(harness.waitForSuspend(handle.id))).toThrow(
+          'terminal status',
+        );
       } finally {
         harness.dispose();
       }
@@ -464,9 +467,9 @@ describe('createDurableMultiAgentHarness', () => {
       const harness = await createDurableMultiAgentHarness();
 
       try {
-        await expect(harness.waitForCondition(() => false, 'always false', 3)).rejects.toThrow(
-          'always false',
-        );
+        expect(
+          await throwingRejectionOf(harness.waitForCondition(() => false, 'always false', 3)),
+        ).toThrow('always false');
       } finally {
         harness.dispose();
       }

@@ -139,7 +139,7 @@
     "typecheck": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && tsc --noEmit && svelte-check --workspace scripts/browser-fixtures --tsconfig ./tsconfig.json --fail-on-warnings && turbo run typecheck",
     "validate": "bun run lint && bun run typecheck && bun run test && bun run coverage && bun run build && bun run format:check && bun run audit",
     "lint:styles": "stylelint \"components/**/src/**/*.{css,svelte}\" \"packages/**/src/**/*.{css,svelte}\" \"applications/**/src/**/*.{css,svelte}\" \"scripts/browser-fixtures/src/**/*.{css,svelte}\"",
-    "lint:root": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json scripts && bun scripts/check-wait-for-element-assertions.ts",
+    "lint:root": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json scripts && bun scripts/check-wait-for-element-assertions.ts && bun scripts/check-promise-assertion-modifiers.ts",
     "test:browser-fixtures": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && bun test scripts/browser-fixtures/scripts && bun scripts/browser-fixtures/scripts/verify-curated-build.ts",
     "test:browser": "bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts",
     "test:browser:preview": "FIXTURE_HOST_MODE=preview bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts",

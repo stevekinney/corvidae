@@ -17,6 +17,7 @@ import type {
   ToolResultCacheEntry,
 } from '../../src/idempotency/types';
 import { withToolboxIdempotency as createIdempotentToolbox } from '../../src/idempotency/with-toolbox-idempotency';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { Toolbox } from '../../src/toolbox-interface';
 import type { SignedPendingToolApproval, ToolCallInput } from '../../src/types';
 
@@ -1922,7 +1923,7 @@ describe('withToolboxIdempotency', () => {
     });
   });
 
-  it('validates idempotency scope and duration options', () => {
+  it('validates idempotency scope and duration options', async () => {
     const toolbox = createToolbox([createToolWithKey()]);
     expect(() => withToolboxIdempotency(toolbox, { cache, tenantId: '' })).toThrow(
       'non-empty tenantId',
@@ -1940,11 +1941,13 @@ describe('withToolboxIdempotency', () => {
       toolRevision: '',
     });
     expect(
-      unversioned.execute(
-        { name: 'add', arguments: { a: 1, b: 2 } },
-        { idempotencyKey: 'unversioned' },
+      await throwingRejectionOf(
+        unversioned.execute(
+          { name: 'add', arguments: { a: 1, b: 2 } },
+          { idempotencyKey: 'unversioned' },
+        ),
       ),
-    ).rejects.toThrow('complete revision');
+    ).toThrow('complete revision');
   });
 
   it('uses atomic claim results that arrive after the initial read', async () => {

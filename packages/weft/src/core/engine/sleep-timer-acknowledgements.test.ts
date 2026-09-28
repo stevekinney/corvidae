@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
 import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   workflow,
   type WorkflowContext,
@@ -126,15 +127,15 @@ describe('sleep timer durable acknowledgements', () => {
     const internals = createInternals();
     const first = createSleepTimerAcknowledgement(internals, 'first', 'first:0', 1_000);
     rejectSleepTimerAcknowledgements(internals, 'first', 'checkpoint failed');
-    expect(first.promise).rejects.toThrow('checkpoint failed');
+    expect(await throwingRejectionOf(first.promise)).toThrow('checkpoint failed');
 
     const second = createSleepTimerAcknowledgement(internals, 'second', 'second:0', 2_000);
     const third = createSleepTimerAcknowledgement(internals, 'third', 'third:0', 3_000);
     const disposalError = new Error('engine disposed');
     rejectAllSleepTimerAcknowledgements(internals, disposalError);
 
-    expect(second.promise).rejects.toBe(disposalError);
-    expect(third.promise).rejects.toBe(disposalError);
+    expect(await rejectionOf(second.promise)).toBe(disposalError);
+    expect(await rejectionOf(third.promise)).toBe(disposalError);
     expect(internals.sleepTimerAcknowledgementWaiters.size).toBe(0);
   });
 });
@@ -160,12 +161,14 @@ describe('handleSleepTimerWithAcknowledgement: ADR 0002 "sleep" wake kind owners
     // proves the ownership check runs, and decides discard-vs-proceed,
     // BEFORE that unclaimed-timer logic ever sees this fire.
     expect(
-      handleSleepTimerWithAcknowledgement(
-        internals,
-        { id: 'sleep:wf-unowned:0', workflowId: 'wf-unowned', fireAt: 0, kind: 'sleep' },
-        loadWorkflowState,
+      await throwingRejectionOf(
+        handleSleepTimerWithAcknowledgement(
+          internals,
+          { id: 'sleep:wf-unowned:0', workflowId: 'wf-unowned', fireAt: 0, kind: 'sleep' },
+          loadWorkflowState,
+        ),
       ),
-    ).rejects.toThrow(/retaining it in storage for the true owner/);
+    ).toThrow(/retaining it in storage for the true owner/);
   });
 
   it('collects a fired timer for a workflow this engine holds no tracked claim for and that no longer exists', async () => {
@@ -179,12 +182,12 @@ describe('handleSleepTimerWithAcknowledgement: ADR 0002 "sleep" wake kind owners
     const loadWorkflowState = async (): Promise<null> => null;
 
     expect(
-      handleSleepTimerWithAcknowledgement(
+      await handleSleepTimerWithAcknowledgement(
         internals,
         { id: 'sleep:wf-gone:0', workflowId: 'wf-gone', fireAt: 0, kind: 'sleep' },
         loadWorkflowState,
       ),
-    ).resolves.toBeUndefined();
+    ).toBeUndefined();
   });
 
   it('collects a fired timer for a terminal workflow this engine holds no tracked claim for', async () => {
@@ -199,12 +202,12 @@ describe('handleSleepTimerWithAcknowledgement: ADR 0002 "sleep" wake kind owners
       createWorkflowState('wf-done', 'completed');
 
     expect(
-      handleSleepTimerWithAcknowledgement(
+      await handleSleepTimerWithAcknowledgement(
         internals,
         { id: 'sleep:wf-done:0', workflowId: 'wf-done', fireAt: 0, kind: 'sleep' },
         loadWorkflowState,
       ),
-    ).resolves.toBeUndefined();
+    ).toBeUndefined();
   });
 });
 
@@ -245,16 +248,18 @@ describe('resolveDiscardedTimerDisposition', () => {
 describe('retainDiscardedDurableTimer', () => {
   it('resolves without throwing when the disposition is collect', async () => {
     expect(
-      retainDiscardedDurableTimer('sleep:wf-gone:0', 'wf-gone', async () => null),
-    ).resolves.toBeUndefined();
+      await retainDiscardedDurableTimer('sleep:wf-gone:0', 'wf-gone', async () => null),
+    ).toBeUndefined();
   });
 
   it('throws a descriptive error naming the timer and workflow when the disposition is retain', async () => {
     expect(
-      retainDiscardedDurableTimer('sleep:wf-live:0', 'wf-live', async () =>
-        createWorkflowState('wf-live', 'running'),
+      await throwingRejectionOf(
+        retainDiscardedDurableTimer('sleep:wf-live:0', 'wf-live', async () =>
+          createWorkflowState('wf-live', 'running'),
+        ),
       ),
-    ).rejects.toThrow(/sleep:wf-live:0.*wf-live/s);
+    ).toThrow(/sleep:wf-live:0.*wf-live/s);
   });
 });
 
@@ -318,7 +323,7 @@ describe('handleSleepTimerWithAcknowledgement + Scheduler: WFT-79 finding 2 regr
     // The true owner's own copy of this same fire performs the real wake —
     // and, this time, actually deletes the durable timer key.
     await owner.scheduler.tick(now);
-    expect(handle.result()).resolves.toBe('woke');
+    expect(await handle.result()).toBe('woke');
     expect(await countSleepTimerIndexKeys(storage)).toBe(0);
   });
 

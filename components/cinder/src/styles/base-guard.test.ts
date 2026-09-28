@@ -123,7 +123,7 @@ describe('guard wires correctly: isBaseLoaded proves the failure case', () => {
     try {
       // import() returns a Promise — await it to assert resolution, not just
       // that the call was made. A rejected promise would cause this to throw.
-      await expect(import('./base-guard.ts')).resolves.toBeDefined();
+      expect(await import('./base-guard.ts')).toBeDefined();
     } finally {
       console.warn = originalWarn;
     }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { HookRegistry } from '../../src/hooks/hook-registry';
 import { mergeHookRegistries } from '../../src/hooks/merge-hook-registries';
 import type { HookPlanObservation } from '../../src/hooks/types';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 
 /**
  * The value Bureau pins a registration to when it must hold final narrowing
@@ -277,7 +278,7 @@ describe('error policy through a merge (criterion 12)', () => {
 
     const merged = mergeHookRegistries(registry);
 
-    await expect(merged.run('notify', 'x')).rejects.toThrow('unhandled');
+    expect(await throwingRejectionOf(merged.run('notify', 'x'))).toThrow('unhandled');
   });
 
   it("measures durations on the merged registry's own clock, not a source's", async () => {

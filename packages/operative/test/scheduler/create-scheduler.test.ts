@@ -12,6 +12,7 @@ import type { SchedulerEventType } from '../../src/scheduler/events';
 import { sleep } from '../../src/scheduler/sleep';
 import type { SchedulerPriority, SchedulerTask } from '../../src/scheduler/types';
 import { createMockGenerate } from '../../src/test/index';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateFunction, GenerateResponse } from '../../src/types';
 
 function textResponse(content: string): GenerateResponse {
@@ -417,7 +418,7 @@ describe('createScheduler', () => {
 
     const resultPromise = scheduler.submit(task);
 
-    await expect(resultPromise).rejects.toThrow('factory error');
+    expect(await throwingRejectionOf(resultPromise)).toThrow('factory error');
     expect(events).toContain('task.failed');
 
     await scheduler.stop();
@@ -630,7 +631,7 @@ describe('createScheduler', () => {
       hooks,
     }));
 
-    await expect(result).rejects.toThrow('selectTools boom');
+    expect(await throwingRejectionOf(result)).toThrow('selectTools boom');
     expect(failedTaskIds).toHaveLength(1);
   });
 
@@ -719,7 +720,7 @@ describe('createScheduler', () => {
       }),
     );
 
-    await expect(resultPromise).rejects.toThrow();
+    expect(await throwingRejectionOf(resultPromise)).toThrow();
     expect(failures).toContain('rejecting-task');
     await scheduler.stop();
   });
@@ -971,7 +972,7 @@ describe('createScheduler', () => {
       const stopPromise = scheduler.stop();
       deferred.reject(rejectionError);
 
-      await expect(stopPromise).resolves.toBeUndefined();
+      expect(await stopPromise).toBeUndefined();
       expect(failedEvents).toContainEqual({
         taskId: `scheduler-onPreempted-${bgTaskId}`,
         error: rejectionError,

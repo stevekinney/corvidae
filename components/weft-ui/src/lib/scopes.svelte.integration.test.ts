@@ -26,6 +26,7 @@
 import { Engine, HttpClient, serve } from '@lostgradient/weft';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { workflows } from '../../fixtures/workflows.ts';
 import { resolvePrincipal, type AuthorizationScope } from './scopes.svelte.ts';
 
@@ -94,13 +95,13 @@ describe('resolvePrincipal against a real auth-configured serve()', () => {
 
     // Not an anonymous principal — no principal at all, which is what drives
     // the console to its API-key entry surface.
-    expect(resolvePrincipal(client)).resolves.toBeNull();
+    expect(await resolvePrincipal(client)).toBeNull();
   });
 
   test('an invalid credential is likewise rejected, indistinguishably from none', async () => {
     const client = new HttpClient({ baseUrl: authedBaseUrl, token: 'not-the-key' });
 
-    expect(resolvePrincipal(client)).resolves.toBeNull();
+    expect(await resolvePrincipal(client)).toBeNull();
   });
 });
 
@@ -120,6 +121,6 @@ describe('resolvePrincipal against a real serve() with no auth configured', () =
     // anonymous callers real scopes surfaces here as a contradiction.
     const client = new HttpClient({ baseUrl: anonymousBaseUrl });
 
-    expect(client.operations['weft.system.registry']({})).rejects.toThrow();
+    expect(await throwingRejectionOf(client.operations['weft.system.registry']({}))).toThrow();
   });
 });
