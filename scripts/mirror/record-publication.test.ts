@@ -53,12 +53,17 @@ async function withPublication(
     ) => Promise<void>;
   }) => Promise<void>,
   historicalExtra = false,
+  targetConfiguration: { mirrorTarget: string; targetDirectory: string } = {
+    mirrorTarget: 'agent-bureau',
+    targetDirectory: 'packages/operative',
+  },
 ): Promise<void> {
   const scratch = await mkdtemp(join(tmpdir(), 'publication-proof-'));
   try {
     const historical = join(scratch, 'historical');
     const current = join(scratch, 'current');
     const target = join(scratch, 'target');
+    const targetPackage = (path: string) => join(target, targetConfiguration.targetDirectory, path);
     await initialize(historical);
     const sourceManifest = await Bun.file(join(sourceRoot, 'package.json')).json();
     await Bun.write(
@@ -98,6 +103,29 @@ async function withPublication(
         await Bun.file(join(sourceRoot, 'scripts/mirror', file)).text(),
       );
     }
+    if (
+      targetConfiguration.mirrorTarget !== 'agent-bureau' ||
+      targetConfiguration.targetDirectory !== 'packages/operative'
+    ) {
+      if (targetConfiguration.mirrorTarget !== 'agent-bureau') {
+        await Bun.write(
+          join(historical, 'scripts/mirror/target-definitions.ts'),
+          `export const targetFor = (_workspace: string) => '${targetConfiguration.mirrorTarget}';\n`,
+        );
+      }
+      const historicalLayoutPath = join(historical, 'scripts/mirror/layout-map.json');
+      const historicalLayout = await Bun.file(historicalLayoutPath).json();
+      historicalLayout.workspaces[workspace].targetDirectory = targetConfiguration.targetDirectory;
+      await Bun.write(historicalLayoutPath, json(historicalLayout));
+    }
+    await mkdir(join(historical, 'internal/typescript'), { recursive: true });
+    await Bun.write(
+      join(historical, 'packages/operative/tsconfig.json'),
+      json({ extends: '@lostgradient/typescript/library.json' }),
+    );
+    for (const file of ['base.json', 'library.json', 'browser.json']) {
+      await Bun.write(join(historical, 'internal/typescript', file), json({}));
+    }
     const sourceCommit = await commit(historical, 'source');
     await cp(historical, current, { recursive: true, filter: (path) => !path.includes('/.git') });
     // Current policy declares no operative additional root: the historical extra must be detected.
@@ -111,34 +139,25 @@ async function withPublication(
       join(target, 'package.json'),
       json({ private: true, workspaces: ['packages/*'] }),
     );
-    await Bun.write(join(target, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
-    await Bun.write(join(target, 'packages/operative/runtime.wasm'), 'published extra input');
+    await Bun.write(targetPackage('src/index.ts'), 'export const value = 1;\n');
+    await Bun.write(targetPackage('runtime.wasm'), 'published extra input');
     const registry: Record<string, unknown> = {
       name: workspace,
       version: '0.12.1',
       files: ['dist'],
       type: 'module',
     };
-    await Bun.write(
-      join(target, 'packages/operative/src/index.ts'),
-      'export const value = "old-default";\n',
-    );
-    await Bun.write(
-      join(target, 'packages/operative/package.json'),
-      json({ ...registry, version: '0.12.1' }),
-    );
+    await Bun.write(targetPackage('src/index.ts'), 'export const value = "old-default";\n');
+    await Bun.write(targetPackage('package.json'), json({ ...registry, version: '0.12.1' }));
     await commit(target, 'Target default before mirror');
-    await Bun.write(join(target, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
-    await Bun.write(
-      join(target, 'packages/operative/package.json'),
-      json({ ...registry, version: '0.12.0' }),
-    );
+    await Bun.write(targetPackage('src/index.ts'), 'export const value = 1;\n');
+    await Bun.write(targetPackage('package.json'), json({ ...registry, version: '0.12.0' }));
     const mirrorCommit = await commit(
       target,
-      `Sync agent-bureau from corvidae\n\nCorvidae-Commit: ${sourceCommit.slice(0, 12)}`,
+      `Sync ${targetConfiguration.mirrorTarget} from corvidae\n\nCorvidae-Commit: ${sourceCommit.slice(0, 12)}`,
       true,
     );
-    await Bun.write(join(target, 'packages/operative/package.json'), json(registry));
+    await Bun.write(targetPackage('package.json'), json(registry));
     const gitHead = await commit(target, 'Version packages');
     let tarball = new Uint8Array();
     let integrity = '';
@@ -199,11 +218,12 @@ async function withPublication(
       packageMap: map,
       registryRunner,
       fetcher,
-      buildPublishedPackage: async ({ gitHead: releaseCommit }) => {
+      buildPublishedPackage: async ({ gitHead: releaseCommit, targetDirectory }) => {
+        expect(targetDirectory).toBe(targetConfiguration.targetDirectory);
         const manifest = await committedPublicationManifest(
           target,
           releaseCommit,
-          'packages/operative',
+          targetConfiguration.targetDirectory,
         );
         const archive = await packFixture(manifest, builtFiles, 'clean-build');
         return { manifest, payload: await readPackagePayload(archive) };
@@ -241,6 +261,28 @@ test('binds a version-only target release to its historical private source and a
       result.snapshot.publicationInputContract.digest,
     );
   });
+});
+
+test('recorder uses the historical target for provenance verification', async () => {
+  await withPublication(
+    async ({ options }) => {
+      const result = await recordSourceDigest(options);
+      expect(result.snapshot.corvidaeCommit).toHaveLength(40);
+    },
+    false,
+    { mirrorTarget: 'cinder', targetDirectory: 'packages/operative' },
+  );
+});
+
+test('recorder uses the historical directory for commit comparison', async () => {
+  await withPublication(
+    async ({ options }) => {
+      const result = await recordSourceDigest(options);
+      expect(result.snapshot.corvidaeCommit).toHaveLength(40);
+    },
+    false,
+    { mirrorTarget: 'agent-bureau', targetDirectory: 'packages/operative-legacy' },
+  );
 });
 
 test('rejects changed historical input, source bytes, dirty checkout, and wrong historical HEAD', async () => {

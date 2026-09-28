@@ -207,6 +207,8 @@ export class DeclarationAgreementError extends Error {}
 class ValueExports {
   readonly #checker: ts.TypeChecker;
   readonly #memo = new Map<ts.SourceFile, Set<string>>();
+  readonly #bindingMemo = new Map<ts.SourceFile, Map<string, Set<ts.Symbol>>>();
+  readonly #bindingInProgress = new Set<ts.SourceFile>();
   readonly #inProgress = new Set<ts.SourceFile>();
   /** Whether the walk in progress has re-entered a module it was already inside. */
   #reenteredCycle = false;
@@ -225,31 +227,66 @@ class ValueExports {
     const enclosingReentered = this.#reenteredCycle;
     this.#reenteredCycle = false;
     this.#inProgress.add(file);
-    const values = new Set<string>();
-    const moduleSymbol = this.#checker.getSymbolAtLocation(file);
-    const local = new Set<string>();
-    if (moduleSymbol !== undefined) {
-      for (const exported of this.#checker.getExportsOfModule(moduleSymbol)) {
-        if (!exported.declarations?.some((node) => node.getSourceFile() === file)) continue;
-        local.add(exported.name);
-        if (this.#isValue(exported)) values.add(exported.name);
-      }
-    }
-    for (const statement of file.statements) {
-      if (!ts.isExportDeclaration(statement)) continue;
-      if (statement.exportClause !== undefined || statement.isTypeOnly) continue;
-      const target = this.#moduleFile(statement.moduleSpecifier);
-      if (target === undefined) continue;
-      for (const name of this.of(target)) {
-        // A local declaration shadows a star re-export of the same name, and `export *` never
-        // carries a default.
-        if (name !== 'default' && !local.has(name)) values.add(name);
-      }
-    }
+    const bindings = this.#bindingsOf(file);
+    const values = new Set(
+      [...bindings].flatMap(([name, origins]) => (origins.size === 1 ? [name] : [])),
+    );
     this.#inProgress.delete(file);
     if (!this.#reenteredCycle) this.#memo.set(file, values);
     this.#reenteredCycle = enclosingReentered || this.#reenteredCycle;
     return values;
+  }
+
+  #bindingsOf(file: ts.SourceFile): Map<string, Set<ts.Symbol>> {
+    const memoized = this.#bindingMemo.get(file);
+    if (memoized !== undefined) return memoized;
+    if (this.#bindingInProgress.has(file)) {
+      this.#reenteredCycle = true;
+      return new Map();
+    }
+    this.#bindingInProgress.add(file);
+    const bindings = new Map<string, Set<ts.Symbol>>();
+    const localNames = new Set<string>();
+    const moduleSymbol = this.#checker.getSymbolAtLocation(file);
+    if (moduleSymbol !== undefined) {
+      for (const exported of this.#checker.getExportsOfModule(moduleSymbol)) {
+        if (!exported.declarations?.some((node) => node.getSourceFile() === file)) continue;
+        if (!this.#isValue(exported)) continue;
+        const origin = this.#originOf(exported);
+        if (origin !== undefined) {
+          localNames.add(exported.name);
+          bindings.set(exported.name, new Set([origin]));
+        }
+      }
+    }
+    for (const statement of file.statements) {
+      if (
+        !ts.isExportDeclaration(statement) ||
+        statement.exportClause !== undefined ||
+        statement.isTypeOnly
+      )
+        continue;
+      const target = this.#moduleFile(statement.moduleSpecifier);
+      if (target === undefined) continue;
+      for (const [name, origins] of this.#bindingsOf(target)) {
+        // A runtime local export shadows star re-exports, and `export *` never carries default.
+        if (name === 'default' || localNames.has(name)) continue;
+        const existing = bindings.get(name);
+        if (existing === undefined) bindings.set(name, new Set(origins));
+        else for (const origin of origins) existing.add(origin);
+      }
+    }
+    this.#bindingInProgress.delete(file);
+    if (!this.#reenteredCycle) this.#bindingMemo.set(file, bindings);
+    return bindings;
+  }
+
+  #originOf(symbol: ts.Symbol): ts.Symbol | undefined {
+    if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) {
+      const resolved = this.#checker.getAliasedSymbol(symbol);
+      return resolved === symbol ? undefined : this.#originOf(resolved);
+    }
+    return symbol;
   }
 
   #moduleFile(specifier: ts.Expression | undefined): ts.SourceFile | undefined {

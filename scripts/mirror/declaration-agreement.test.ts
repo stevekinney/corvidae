@@ -244,6 +244,53 @@ export declare namespace TypesOnly { type Inner = number }
     expect(result.findings).toEqual([]);
   });
 
+  test('ambiguous duplicate star exports do not provide a runtime named export', async () => {
+    const result = await checkFixture(
+      {
+        'src/storage.ts': 'export declare const Storage: unknown;\n',
+        'src/first.ts': 'export const Storage = 1;\n',
+        'src/second.ts': 'export const Storage = 2;\n',
+        'src/bun-storage.ts': "export * from './first.ts';\nexport * from './second.ts';\n",
+        'src/node-storage.ts': 'export const Storage = 1;\n',
+      },
+      sqliteShape,
+    );
+    expect(result.findings.map((finding) => [finding.runtime, finding.missing])).toEqual([
+      ['src/bun-storage.ts', ['Storage']],
+    ]);
+  });
+
+  test('a type-only explicit export does not shadow a runtime star export', async () => {
+    const result = await checkFixture(
+      {
+        'src/storage.ts': 'export declare const Storage: unknown;\n',
+        'src/types.ts': 'export interface Storage { path: string }\n',
+        'src/implementation.ts': "export const Storage = { path: '/tmp' };\n",
+        'src/bun-storage.ts':
+          "export type { Storage } from './types.ts';\nexport * from './implementation.ts';\n",
+        'src/node-storage.ts': "export const Storage = { path: '/tmp' };\n",
+      },
+      sqliteShape,
+    );
+    expect(result.findings).toEqual([]);
+  });
+
+  test('the same binding through multiple stars is valid and an explicit value wins', async () => {
+    const result = await checkFixture(
+      {
+        'src/storage.ts': 'export declare const Storage: unknown;\n',
+        'src/shared.ts': 'export const Storage = 1;\n',
+        'src/first.ts': "export * from './shared.ts';\n",
+        'src/second.ts': "export * from './shared.ts';\n",
+        'src/bun-storage.ts': "export * from './first.ts';\nexport * from './second.ts';\n",
+        'src/node-storage.ts':
+          "export * from './first.ts';\nexport * from './second.ts';\nexport const Storage = 2;\n",
+      },
+      sqliteShape,
+    );
+    expect(result.findings).toEqual([]);
+  });
+
   test('a package configuration TypeScript cannot fully parse refuses rather than weakening resolution', async () => {
     const check = checkFixture(
       {

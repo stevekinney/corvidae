@@ -4,10 +4,20 @@ import { join } from 'node:path';
 
 import { buildCleanPublishedPackage } from './clean-package-build.ts';
 import { serializeJson } from './json-formatting.ts';
-import { targetDirectoryFor } from './layout-map.ts';
 import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
+import {
+  historicalCollector,
+  verifyHistoricalCheckout,
+  type HistoricalCollector,
+} from './publication-history.ts';
+import { loadHistoricalPublicationRouting } from './publication-routing.ts';
+import {
+  committedWorkspaceVersions,
+  fetchPublishedPackage,
+  verifyRegistryManifest,
+} from './registry-manifest.ts';
 import {
   collectDigestedFiles,
   hashDigestedFiles,
@@ -15,18 +25,6 @@ import {
   type DigestedFile,
   type PublishedSnapshot,
 } from './source-digest.ts';
-import { targetFor } from './target-definitions.ts';
-
-import {
-  historicalCollector,
-  verifyHistoricalCheckout,
-  type HistoricalCollector,
-} from './publication-history.ts';
-import {
-  committedWorkspaceVersions,
-  fetchPublishedPackage,
-  verifyRegistryManifest,
-} from './registry-manifest.ts';
 
 /** Record only a source and publication contract proven against historical provenance and npm. */
 export class RegistryVerificationError extends Error {}
@@ -270,17 +268,21 @@ export async function recordSourceDigest({
     );
   if (!publishedSourceRoot)
     throw new RegistryVerificationError('A published source checkout is required');
-  const target = targetFor(workspace);
+  const corvidaeDirectory = await directoryFor(corvidaeRoot, workspace);
+  const historicalDirectory = await directoryFor(publishedSourceRoot, workspace);
+  const historicalRouting = await loadHistoricalPublicationRouting(
+    publishedSourceRoot,
+    workspace,
+    historicalDirectory,
+  );
   const corvidaeCommit = await verifyHistoricalCheckout({
     targetRoot: targetRepositoryDirectory,
     gitHead,
     mirrorCommit,
     sourceRoot: publishedSourceRoot,
-    target,
+    target: historicalRouting.target,
     runner: gitRunner,
   });
-  const corvidaeDirectory = await directoryFor(corvidaeRoot, workspace);
-  const historicalDirectory = await directoryFor(publishedSourceRoot, workspace);
   const collector = await historicalCollector(publishedSourceRoot, workspace);
   const historicalFiles = await collector({
     corvidaeRoot: publishedSourceRoot,
@@ -297,11 +299,10 @@ export async function recordSourceDigest({
     throw new RegistryVerificationError(
       `${workspace}: historical source paths or bytes do not match current source`,
     );
-  const targetDirectory = await targetDirectoryFor(workspace);
   const comparison = await compareAgainstCommit(historicalFiles, {
     workspace,
     targetRepositoryDirectory,
-    targetDirectory,
+    targetDirectory: historicalRouting.targetDirectory,
     commit: gitHead,
     runner: gitRunner,
     collector,
@@ -336,7 +337,7 @@ export async function recordSourceDigest({
     publishedSourceRoot,
     workspace,
     publicName: entry.name,
-    targetDirectory,
+    targetDirectory: historicalRouting.targetDirectory,
     ...(bunExecutable === undefined ? {} : { bunExecutable }),
   });
   const registryManifestContract = verifyRegistryManifest(
