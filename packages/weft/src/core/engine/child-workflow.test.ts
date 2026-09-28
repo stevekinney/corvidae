@@ -675,7 +675,17 @@ describe('WFT-79: cross-engine parent/child completion (ownership: "workflow-lea
     };
 
     // Engine B claims and resumes the CHILD only — it never touches the parent.
-    await using engineB = await Engine.create({ storage, workflows, ...ownershipOptions });
+    // B registers only the child type: every `workflow-lease` engine's reclaim
+    // pass adopts an ownerless `running` workflow it is eligible to run (ADR
+    // 0002's rolling handoff), so a B that could run the parent would take its
+    // claim on a renewal tick before A resumes it. A needs both types, since
+    // its replay of `ctx.startChild()` resolves the child definition locally;
+    // it cannot adopt the child because B already holds and renews that claim.
+    await using engineB = await Engine.create({
+      storage,
+      workflows: { 'wft-79-child': childWorkflow },
+      ...ownershipOptions,
+    });
     await engineB.resume('wft-79-child-1');
 
     // Engine A claims and resumes the PARENT. Replay re-runs `ctx.startChild()`

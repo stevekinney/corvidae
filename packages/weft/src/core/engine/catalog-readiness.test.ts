@@ -13,7 +13,7 @@ import { RegistryManifestLimitError } from '../registry-workflow-manifest.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import type { RegisteredWorkflowDefinition } from '../types/workflow-registry.ts';
 import { DEFAULT_WORKFLOW_VERSION } from '../versioning.ts';
-import { ensureWorkflowCatalogReady } from './catalog-readiness.ts';
+import { ensureWorkflowCatalogReady, isWorkflowCatalogReady } from './catalog-readiness.ts';
 import { EngineDisposedError } from './errors.ts';
 import { Engine } from './index.ts';
 import { getInternals, getWorkflowCatalog } from './internals.ts';
@@ -95,6 +95,31 @@ describe('ensureWorkflowCatalogReady', () => {
     expect(getInternals(engine).catalogRestored).toBe(true);
     expect(getInternals(engine).pendingCatalogInstalls).toHaveLength(0);
     expect(ensureWorkflowCatalogReady(engine)).resolves.toBeUndefined();
+  });
+
+  it('reports not-ready while a drain is still installing its snapshot, and a caller arriving mid-drain waits for every name', async () => {
+    await using storage = new MemoryStorage();
+    await using engine = new Engine({ storage, backgroundTasks: 'manual' });
+    engine.register(noopWorkflow('alpha'));
+    engine.register(noopWorkflow('beta'));
+
+    // The drain snapshots and clears the pending queue before installing
+    // anything, so this listener runs after `alpha` is recorded but while
+    // `beta` is still only in the drain's local snapshot.
+    let readyMidDrain: boolean | undefined;
+    let midDrainCaller: Promise<boolean> | undefined;
+    engine.addEventListener(WorkflowRevisionInstalledEvent.type, (event) => {
+      if (event.workflowType !== 'alpha') return;
+      readyMidDrain = isWorkflowCatalogReady(engine);
+      midDrainCaller = ensureWorkflowCatalogReady(engine).then(() =>
+        getInternals(engine).registeredCatalogRevisions.has('beta'),
+      );
+    });
+
+    await ensureWorkflowCatalogReady(engine);
+
+    expect(readyMidDrain).toBe(false);
+    expect(await midDrainCaller).toBe(true);
   });
 
   it('re-queues the failing name AND every name behind it in the drain order, rather than dropping them, when one manifest build fails mid-drain', async () => {
