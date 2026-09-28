@@ -394,6 +394,7 @@ Like `createAgent`, a plain `ConversationHistory` passed here is SNAPSHOTTED on 
 | `hooks` | `HookRegistry<OperativeHookMap>` | The run's hook plan. The ONLY hook surface — COR-1268 removed the seven parallel array fields (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `validateResponse`, `validateToolResult`, `selectTools`), because two surfaces meant ordering depended on which one a caller reached for and everything built on registration identity was blind to the arrays. |
 | `sessionId` | `string` | The session this run belongs to, when it belongs to one. Read only to stamp the run's hook-plan observations. |
 | `childCorrelation` | `HookObservationCorrelation` | Set by `dispatchChildRun` when this run is somebody's child, so its hook observations name the parent-child pair. Correlation data, never a hook surface. |
+| `parentSignals` | `ChildSignalPort` | Set (through `AgentRunContext.parentSignals`) when this run's parent dispatched it with a signal contract. Every tool call receives it as `ToolContext.executionContext.parentSignals`; read it with `readParentSignals`. In-memory only. |
 | `signal` | `AbortSignal` | External cancellation signal. |
 | `runId` | `string` | Stable run identity, used to stamp curated `tool.*` bubble events. Optional for a run with no `steering` (only supplied when the run has one, e.g. session-owned runs)—**required whenever `steering` is set** (AB-236): `RunOptions` is a discriminated pair on `runId`/`steering`, not two independently-optional fields, so a steering-enabled `RunOptions` literal with no `runId` is a compile error, not a silently-dropped `steering.applied` event. |
 | `steering` | `SteeringGate` | AB-67 runtime steering: `{ sessionId, getDesiredState(), awaitResume(), getAppliedFloor?() }`, consulted at the entry of every step. `paused: true` blocks the step until `awaitResume()` resolves or `signal` fires. `sessionId` (AB-221) stamps `steering.applied`'s `sessionId` field. `getAppliedFloor?()` (AB-199)—optional, the highest `configVersion` the gate has already observed applied by ANY run on the session—seeds a brand-new run's cross-run dedupe cursor (`executeLoop`/the durable driver call it once, at run start only) so a `configVersion` a prior run already applied is not re-fired as `steering.applied`; a gate that omits it seeds every fresh run at 0, unchanged from before AB-199. Optional—omit for unsteered runs; setting it requires `runId` (see above). |
@@ -1209,6 +1210,51 @@ listChildRuns(registry, 'parent-1');
 ```
 
 A `parentRunId` with no registered children returns an empty array—never a throw. Deliberately not `bureau.*`-namespaced: `listChildRuns` is an operative-level export over operative's own in-process registry; a Bureau-level relationship-query API, if wanted later, wraps this function rather than being built here.
+
+**Typed parent-child signals (COR-814).** A parent and a live in-memory child can exchange typed, correlated messages without waiting for the child's terminal result. Define the contract once—`signals` flow parent → child, `events` flow child → parent, and every entry is a Zod schema—then pass it to `dispatchChildRun` as `signals`. The returned handle gains a `signals` endpoint, and the child receives the matching port as `AgentRunContext.parentSignals` (a `createAgent` child also hands it to every tool call as `ToolContext.executionContext.parentSignals`):
+
+```typescript
+import { createTool } from 'armorer';
+import { defineChildSignals, dispatchChildRun, readParentSignals } from '@lostgradient/operative';
+import { z } from 'zod';
+
+export const researchSignals = defineChildSignals({
+  signals: { focus: z.object({ topic: z.string() }) },
+  events: { progress: z.object({ percent: z.number().min(0).max(100) }) },
+});
+
+// Inside the child: a tool reads the port typed by the same contract object.
+const research = createTool({
+  name: 'research',
+  description: 'Researches the current topic.',
+  input: z.object({}),
+  async execute(_input, context) {
+    const parent = readParentSignals(context.executionContext, researchSignals);
+    parent?.onSignal('focus', ({ payload }) => refocus(payload.topic));
+    parent?.emit('progress', { percent: 50 });
+    return 'done';
+  },
+});
+
+// In the parent:
+const child = dispatchChildRun(researcherAgent, 'Research birds', {
+  agentName: 'researcher',
+  parentRunId,
+  signals: researchSignals,
+});
+child.signals.on('progress', ({ payload }) => console.log(payload.percent));
+const outcome = await child.signals.send('focus', { topic: 'corvids' });
+// { status: 'acknowledged', id, sequence, name: 'focus', parentRunId, childRunId }
+// or { status: 'rejected', code, reason, delivered, closeReason? }
+```
+
+- **Acknowledgement or typed rejection.** `send` never rejects: it resolves `acknowledged` once the child's handler returns or resolves, or `rejected` with a `code`—`handler-failed` (the handler threw), `invalid-payload` (the schema refused it or threw while parsing it—including a refinement or transform that throws, or one that is asynchronous—or it cannot be structurally cloned), `unknown-name`, `buffer-full`, or `channel-closed`. `emit` returns `emitted` (with `delivered: false` when it was buffered) or the same rejection shape, synchronously.
+- **Validated and isolated.** Every payload is parsed by its schema and then structurally cloned, so the recipient receives the schema's output and never shares a reference with the sender. The recipient still decides whether to act: a handler that refuses throws, and the parent sees `handler-failed`.
+- **Correlated to one pair.** Neither endpoint takes a run id—each is bound to one `parentRunId`/`childRunId` pair when `dispatchChildRun` builds the channel, and every message and outcome carries that pair. `readParentSignals` returns a port only for the exact contract object the channel was built with, and only for a port a channel created. A grandchild the child dispatches never receives its parent's port; there is no sibling addressing or global mailbox.
+- **Signal before listener.** A message sent before its consumer registers waits in a bounded buffer (`signalBufferLimit`, default `DEFAULT_CHILD_SIGNAL_BUFFER_LIMIT` = 64 per direction; `0` refuses instead of buffering) and is delivered in order the moment `onSignal`/`on` registers. One handler per signal name and one listener per event name at a time.
+- **Deterministic close.** The channel closes once, with the first of `aborted` (the handle's `abort()` or the parent's `signal`), `completed`/`failed`/`aborted` (the child's settled result, before `result()` resolves), or `disposed` (`[Symbol.dispose]()`). Closing resolves every unsettled send as `channel-closed`—`delivered: true` when the child's handler was already running—drops buffered messages, releases every handler and listener, and makes later sends, emits, and registrations inert. `closeReason` on either endpoint reports it.
+
+Everything here is in-process: no persistence, restart recovery, or network transport.
 
 **Cleanup acknowledgement.** `closed(options?)` (AB-37, delivered by AB-204) is on `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` alike—a truthful cleanup acknowledgement, backed by the same settlement `abort()` already uses, for a caller that wants more than "I fired `abort()` and hoped":
 

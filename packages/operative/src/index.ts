@@ -19,7 +19,29 @@ export type {
   ChildRunTerminalStatus,
   DispatchChildRunOptions,
   MutableChildRunRegistry,
+  SignaledChildRunHandle,
 } from './child-run';
+export {
+  DEFAULT_CHILD_SIGNAL_BUFFER_LIMIT,
+  defineChildSignals,
+  readParentSignals,
+} from './child-signals';
+export type {
+  ChildEventEmission,
+  ChildEventOutcome,
+  ChildSignalAcknowledgement,
+  ChildSignalCloseReason,
+  ChildSignalContract,
+  ChildSignalCorrelation,
+  ChildSignalHandler,
+  ChildSignalMessage,
+  ChildSignalOutcome,
+  ChildSignalPort,
+  ChildSignalRejection,
+  ChildSignalRejectionCode,
+  ChildSignalSchemas,
+  ParentSignalEndpoint,
+} from './child-signals';
 export * from './conditions/index';
 export * from './context/index';
 

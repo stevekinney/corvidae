@@ -10,6 +10,7 @@ import type { ZodType } from 'zod';
 
 import type { BackpressureStrategy } from './backpressure';
 import type { ChildRunRegistry } from './child-run';
+import type { ChildSignalPort } from './child-signals';
 import type { ContextEpochSealer } from './context-epoch';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SteeringDesiredState } from './durable/types';
@@ -638,6 +639,17 @@ export interface RunOptionsBase {
    * inherits no delegated-authority narrowing from a dispatching parent.
    */
   delegatedAuthority?: DelegatedAuthority | undefined;
+  /**
+   * COR-814 — this run's own end of the typed signal channel its parent
+   * opened through `dispatchChildRun` (forwarded from
+   * `AgentRunContext.parentSignals` by `createAgent`'s run path), threaded
+   * into every tool call's per-execution
+   * `ToolContext.executionContext.parentSignals`, matching the AB-300
+   * `delegatedAuthority` pattern. Tools read it with `readParentSignals`.
+   * In-memory only: a port is a live object, never persisted or replayed.
+   * `undefined` — the default — means this run has no parent channel.
+   */
+  parentSignals?: ChildSignalPort | undefined;
   /**
    * AB-241 — the authenticated principal attributed with this run, forwarded
    * unchanged from `AgentRunContext.principal` by `createAgent`'s run path,
