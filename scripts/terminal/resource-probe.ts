@@ -341,7 +341,10 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
           return {
             passed: liveness === 'ran',
             observations: [`cdpState=frozen;timer=${String(liveness)};stateRestored=active`],
-            metrics: { liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' } },
+            metrics: {
+              liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' },
+              duration: { value: duration, unit: 'milliseconds' },
+            },
             workload: workload(
               'hidden-page-liveness',
               'Chromium CDP Page.setWebLifecycleState frozen plus timer observation',
