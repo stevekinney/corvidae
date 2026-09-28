@@ -3,6 +3,10 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import {
+  validateBrowserAssetEvidence,
+  type BrowserAssetEvidence,
+} from './browser-asset-evidence.ts';
 import { assertEvidence, type EvidenceCell, type EvidenceReport } from './evidence-schema.ts';
 
 const root = join(import.meta.dir, '../..');
@@ -27,7 +31,9 @@ const baseCsp =
 const cspFor = (candidate: Candidate): string => {
   if (candidate.name === 'ghostty-web' || candidate.name === '@wterm/dom')
     return `${baseCsp}; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'`;
-  return `${baseCsp}; script-src 'self'; connect-src 'self'`;
+  return candidate.name === '@xterm/xterm'
+    ? acceptedXtermCsp
+    : `${baseCsp}; script-src 'self'; connect-src 'self'`;
 };
 type Candidate = (typeof candidates)[number];
 type Browser = Awaited<ReturnType<typeof chromium.launch>>;
@@ -37,7 +43,17 @@ type BrowserResult = {
   requests: string[];
   status: 'ready' | 'unavailable';
   diagnostics: string[];
+  origin?: string;
+  csp?: string;
+  responses?: Array<{ url: string; status: number; contentType: string }>;
+  failures?: string[];
 };
+
+const acceptedXtermCsp =
+  "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; script-src 'self'; connect-src 'self'";
+
+export { validateBrowserAssetEvidence } from './browser-asset-evidence.ts';
+export type { BrowserAssetEvidence } from './browser-asset-evidence.ts';
 type RawBrowserResult = Record<string, unknown>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -159,6 +175,8 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
   );
   const requests: string[] = [];
   const diagnostics: string[] = [];
+  const responses: Array<{ url: string; status: number; contentType: string }> = [];
+  const failures: string[] = [];
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
@@ -194,20 +212,20 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
     browser = await chromium.launch({ headless: true });
     page = await browser.newPage();
     page.on('request', (request) => requests.push(`request:${request.method()}:${request.url()}`));
-    page.on('response', (response) =>
-      diagnostics.push(
-        `response:${response.status()}:${response.headers()['content-type'] ?? ''}:${response.url()}`,
-      ),
-    );
+    page.on('response', (response) => {
+      const contentType = response.headers()['content-type'] ?? '';
+      responses.push({ url: response.url(), status: response.status(), contentType });
+      diagnostics.push(`response:${response.status()}:${contentType}:${response.url()}`);
+    });
     page.on('console', (message) =>
       diagnostics.push(`console:${message.type()}:${message.text()}`),
     );
     page.on('pageerror', (error) => diagnostics.push(`pageerror:${error.message}`));
-    page.on('requestfailed', (request) =>
-      diagnostics.push(
-        `requestfailed:${request.url()}:${request.failure()?.errorText ?? 'unknown'}`,
-      ),
-    );
+    page.on('requestfailed', (request) => {
+      const failure = `requestfailed:${request.url()}:${request.failure()?.errorText ?? 'unknown'}`;
+      failures.push(failure);
+      diagnostics.push(failure);
+    });
     await page.goto(`http://127.0.0.1:${server.port}/`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(
       () => Boolean((globalThis as { probeResult?: unknown }).probeResult),
@@ -281,20 +299,47 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
         passed: false,
         observation: `hard-gate:soft-wrap-metadata-untrustworthy;observed=${formatUnknown(raw['softWrapMetadata'])}`,
       };
+    const assetRequests = requests
+      .filter((request) => request.startsWith('request:'))
+      .map((request) => {
+        const match = /^request:([^:]+):(https?:\/\/.*)$/.exec(request);
+        if (!match) return { method: '', url: '', path: '' };
+        const method = match[1] ?? '';
+        const url = match[2] ?? '';
+        return { method, url, path: new URL(url).pathname };
+      });
+    const assetEvidence: BrowserAssetEvidence = {
+      origin: new URL(`http://127.0.0.1:${server.port}`).origin,
+      csp: cspFor(candidate),
+      requests: assetRequests,
+      responses,
+      failures,
+    };
     common['chromium-csp-and-assets'] = {
       passed:
-        diagnostics.every(
-          (item) =>
-            !item.startsWith('pageerror:') &&
-            !item.startsWith('requestfailed:') &&
-            !item.startsWith('console:warning:') &&
-            !item.startsWith('console:error:'),
-        ) &&
-        (candidate.name === 'ghostty-web' || requests.includes('/candidate.css')) &&
-        (candidate.name !== 'ghostty-web' || requests.includes('/ghostty-vt.wasm')),
-      observation: `csp=${cspFor(candidate)};requests=${requests.join(',')};diagnostics=${diagnostics.join('|')}`,
+        candidate.name === '@xterm/xterm'
+          ? validateBrowserAssetEvidence(assetEvidence)
+          : diagnostics.every(
+              (item) =>
+                !item.startsWith('pageerror:') &&
+                !item.startsWith('requestfailed:') &&
+                !item.startsWith('console:warning:') &&
+                !item.startsWith('console:error:'),
+            ) &&
+            (candidate.name === 'ghostty-web' || requests.includes('/candidate.css')) &&
+            (candidate.name !== 'ghostty-web' || requests.includes('/ghostty-vt.wasm')),
+      observation: `csp=${cspFor(candidate)};requests=${requests.join(',')};responses=${JSON.stringify(responses)};diagnostics=${diagnostics.join('|')}`,
     };
-    return { cells: common, requests, status: 'ready', diagnostics };
+    return {
+      cells: common,
+      requests,
+      status: 'ready',
+      diagnostics,
+      origin: assetEvidence.origin,
+      csp: assetEvidence.csp,
+      responses,
+      failures,
+    };
   } catch (error) {
     return classifyBrowserFailure(
       () =>
@@ -313,7 +358,7 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
   }
 }
 
-async function probeCandidate(
+export async function probeCandidate(
   candidate: Candidate,
   directory: string,
 ): Promise<{
@@ -322,6 +367,11 @@ async function probeCandidate(
   passed: boolean;
   status: BrowserResult['status'];
   diagnostics: string[];
+  origin?: string;
+  csp?: string;
+  requests?: string[];
+  responses?: Array<{ url: string; status: number; contentType: string }>;
+  failures?: string[];
 }> {
   const spec = `${candidate.name}@${candidate.version}`;
   const installed = await command(['bun', 'add', '--exact', spec], directory);
@@ -397,6 +447,11 @@ async function probeCandidate(
     passed: browser.status === 'ready' && cells.every((item) => item.passed),
     status: browser.status,
     diagnostics: browser.diagnostics,
+    origin: browser.origin ?? '',
+    csp: browser.csp ?? '',
+    requests: browser.requests ?? [],
+    responses: browser.responses ?? [],
+    failures: browser.failures ?? [],
   };
 }
 

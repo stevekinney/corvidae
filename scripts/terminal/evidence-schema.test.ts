@@ -60,6 +60,380 @@ describe('terminal evidence schema', () => {
     ).toEqual([]);
   });
 
+  test('requires complete workload definitions for resource evidence', () => {
+    const observed = {
+      durationMilliseconds: 1,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { duration: { value: 1, unit: 'milliseconds' } },
+      raw: { fixture: true },
+    };
+    const controlObserved = {
+      ...observed,
+      durationMilliseconds: 0.5,
+      raw: { fixture: 'control' },
+    };
+    const workload = {
+      fixtureId: 'fixture',
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2' },
+      plan: {
+        durationMilliseconds: 1,
+        sampleCount: 1,
+        warmupCount: 0,
+        method: 'control fixture',
+        target: { metric: 'duration', unit: 'milliseconds', comparator: 'eq' as const, value: 1 },
+      },
+      control: { passed: true, observed: controlObserved },
+      observed,
+    };
+    const resource = {
+      ...validReport,
+      reportKind: 'resource' as const,
+      expectedCellIds: ['fixture'],
+      cells: [{ ...validReport.cells[0], id: 'fixture', workload }],
+    };
+    expect(validateEvidence(resource, 'resource')).toEqual([]);
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, control: { passed: true, observed } },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('control observation identical');
+    expect(
+      validateEvidence(
+        { ...resource, cells: [{ ...resource.cells[0], workload: undefined }] },
+        'resource',
+      ),
+    ).toContain('workload definition');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, observed: { ...observed, durationMilliseconds: 0 } },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('workload definition');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, observed: { ...observed, sampleCount: 2 } },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('observed sample count mismatch');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [{ ...resource.cells[0], metrics: { measured: { value: 2, unit: 'boolean' } } }],
+        },
+        'resource',
+      ),
+    ).toContain('observed metrics mismatch');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: {
+                ...workload,
+                plan: { ...workload.plan, target: { ...workload.plan.target, unit: 'bytes' } },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('target unit mismatch');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, control: { passed: false, observed } },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('workload definition');
+  });
+
+  test('rejects false browser assertions and cleanup fact or event mutations', () => {
+    const assetEvidence = {
+      origin: 'http://127.0.0.1:1234',
+      csp: "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; script-src 'self'; connect-src 'self'",
+      requests: [
+        { method: 'GET', url: 'http://127.0.0.1:1234/', path: '/' },
+        { method: 'GET', url: 'http://127.0.0.1:1234/candidate.css', path: '/candidate.css' },
+        { method: 'GET', url: 'http://127.0.0.1:1234/probe.js', path: '/probe.js' },
+      ],
+      responses: [
+        { url: 'http://127.0.0.1:1234/', status: 200, contentType: 'text/html' },
+        { url: 'http://127.0.0.1:1234/candidate.css', status: 200, contentType: 'text/css' },
+        { url: 'http://127.0.0.1:1234/probe.js', status: 200, contentType: 'text/javascript' },
+      ],
+      failures: [],
+    };
+    const plan = {
+      durationMilliseconds: 1_000,
+      sampleCount: 1,
+      warmupCount: 0,
+      method: 'fixture',
+      target: { metric: 'assertion', unit: 'boolean', comparator: 'eq' as const, value: 1 },
+    };
+    const browserWorkload = {
+      fixtureId: 'browser-assets-and-csp',
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2', browser: 'Chromium' },
+      plan,
+      control: {
+        passed: true as const,
+        observed: {
+          durationMilliseconds: 2,
+          sampleCount: 1,
+          warmupCount: 0,
+          metrics: { assertion: { value: 1, unit: 'boolean' } },
+          raw: { assetEvidence, passed: true, control: true },
+        },
+      },
+      observed: {
+        durationMilliseconds: 2,
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { assertion: { value: 1, unit: 'boolean' } },
+        raw: { assetEvidence, passed: true },
+      },
+    };
+    const browserReport = {
+      ...validReport,
+      reportKind: 'resource' as const,
+      expectedCellIds: ['browser-assets-and-csp'],
+      cells: [
+        {
+          ...validReport.cells[0],
+          id: 'browser-assets-and-csp',
+          metrics: { assertion: { value: 1, unit: 'boolean' } },
+          workload: browserWorkload,
+        },
+      ],
+    };
+    expect(
+      validateEvidence(
+        {
+          ...browserReport,
+          cells: [
+            {
+              ...browserReport.cells[0],
+              workload: {
+                ...browserWorkload,
+                observed: { ...browserWorkload.observed, raw: { assetEvidence, passed: false } },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('browser asset evidence');
+    const cleanup = {
+      state: 'complete' as const,
+      quarantined: false,
+      facts: {
+        authorityRevoked: true,
+        controlCapacityReserved: true,
+        userQueueCanceled: true,
+        processGroupSignaled: true,
+        parentExited: true,
+        descendantObservedGone: true,
+        handlesClosed: true,
+      },
+    };
+    const cleanupWorkload = {
+      ...browserWorkload,
+      fixtureId: 'cleanup-order',
+      plan: {
+        ...plan,
+        target: {
+          metric: 'cleanup',
+          unit: 'milliseconds',
+          comparator: 'lte' as const,
+          value: 5_000,
+        },
+      },
+      control: {
+        ...browserWorkload.control,
+        observed: {
+          ...browserWorkload.control.observed,
+          metrics: { cleanup: { value: 2, unit: 'milliseconds' } },
+          raw: {
+            events: [
+              'authority-revoked',
+              'control-reserved-and-queue-canceled',
+              'process-group-signaled',
+              'handles-closed-and-descendant-observed',
+            ],
+            cleanup,
+          },
+        },
+      },
+      observed: {
+        ...browserWorkload.observed,
+        metrics: { cleanup: { value: 2, unit: 'milliseconds' } },
+        raw: {
+          events: [
+            'authority-revoked',
+            'control-reserved-and-queue-canceled',
+            'process-group-signaled',
+            'handles-closed-and-descendant-observed',
+          ],
+          cleanup,
+        },
+      },
+    };
+    const cleanupReport = {
+      ...browserReport,
+      expectedCellIds: ['cleanup-order'],
+      cells: [
+        {
+          ...browserReport.cells[0],
+          id: 'cleanup-order',
+          metrics: { cleanup: { value: 2, unit: 'milliseconds' } },
+          workload: cleanupWorkload,
+        },
+      ],
+    };
+    expect(
+      validateEvidence(
+        {
+          ...cleanupReport,
+          cells: [
+            {
+              ...cleanupReport.cells[0],
+              workload: {
+                ...cleanupWorkload,
+                observed: {
+                  ...cleanupWorkload.observed,
+                  raw: { ...cleanupWorkload.observed.raw, events: ['process-group-signaled'] },
+                },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('cleanup raw evidence');
+  });
+
+  test('rejects fabricated overflow duration evidence', () => {
+    const observed = {
+      durationMilliseconds: 2,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { capacity: { value: 256, unit: 'operations' } },
+      raw: { attempted: 257, result: 'input-overflow', finalQueueSize: 256, duration: 2 },
+    };
+    const control = { ...observed, durationMilliseconds: 3, raw: { ...observed.raw, duration: 3 } };
+    const workload = {
+      fixtureId: 'overflow',
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2' },
+      plan: {
+        durationMilliseconds: 1_000,
+        sampleCount: 1,
+        warmupCount: 0,
+        method: 'overflow',
+        target: { metric: 'capacity', unit: 'operations', comparator: 'eq' as const, value: 256 },
+      },
+      control: { passed: true as const, observed: control },
+      observed,
+    };
+    const report = {
+      ...validReport,
+      reportKind: 'resource' as const,
+      expectedCellIds: ['overflow'],
+      cells: [{ ...validReport.cells[0], id: 'overflow', metrics: observed.metrics, workload }],
+    };
+    expect(
+      validateEvidence(
+        {
+          ...report,
+          cells: [
+            {
+              ...report.cells[0],
+              workload: {
+                ...workload,
+                observed: { ...observed, raw: { ...observed.raw, duration: 1 } },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('overflow raw evidence');
+    expect(
+      validateEvidence(
+        {
+          ...report,
+          cells: [
+            {
+              ...report.cells[0],
+              workload: {
+                ...workload,
+                observed: { ...observed, raw: { ...observed.raw, finalQueueSize: 255 } },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('overflow raw evidence');
+    expect(
+      validateEvidence(
+        {
+          ...report,
+          cells: [
+            {
+              ...report.cells[0],
+              workload: {
+                ...workload,
+                control: {
+                  passed: true as const,
+                  observed: {
+                    ...control,
+                    raw: { attempted: 257, result: 'input-overflow', duration: 3 },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('control:overflow raw evidence');
+  });
+
   test('committed schema rejects hostile candidate structures before semantic checks', async () => {
     const committedSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
     const validator = new Ajv2020({ allErrors: true, strict: false });

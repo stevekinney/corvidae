@@ -27,7 +27,74 @@
           "type": "object",
           "minProperties": 1,
           "additionalProperties": { "$ref": "#/$defs/metric" }
+        },
+        "workload": {
+          "$ref": "#/$defs/workload"
         }
+      },
+      "additionalProperties": false
+    },
+    "workload": {
+      "type": "object",
+      "required": ["fixtureId", "environment", "plan", "control", "observed"],
+      "properties": {
+        "fixtureId": { "type": "string", "minLength": 1 },
+        "environment": {
+          "type": "object",
+          "required": ["hardware", "runtime"],
+          "properties": {
+            "hardware": { "type": "string", "minLength": 1 },
+            "runtime": { "type": "string", "minLength": 1 },
+            "browser": { "type": "string", "minLength": 1 },
+            "engine": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "plan": {
+          "type": "object",
+          "required": ["durationMilliseconds", "sampleCount", "warmupCount", "method", "target"],
+          "properties": {
+            "durationMilliseconds": { "type": "number", "exclusiveMinimum": 0 },
+            "sampleCount": { "type": "integer", "minimum": 1 },
+            "warmupCount": { "type": "integer", "minimum": 0 },
+            "method": { "type": "string", "minLength": 1 },
+            "target": {
+              "type": "object",
+              "required": ["metric", "unit", "comparator", "value"],
+              "properties": {
+                "metric": { "type": "string", "minLength": 1 },
+                "unit": { "type": "string", "minLength": 1 },
+                "comparator": { "enum": ["gte", "lte", "eq"] },
+                "value": { "type": "number" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "control": {
+          "type": "object",
+          "required": ["passed", "observed"],
+          "properties": { "passed": { "const": true }, "observed": { "$ref": "#/$defs/observed" } },
+          "additionalProperties": false
+        },
+        "observed": { "$ref": "#/$defs/observed" }
+      },
+      "additionalProperties": false
+    },
+    "observed": {
+      "type": "object",
+      "required": ["durationMilliseconds", "sampleCount", "warmupCount", "metrics", "raw"],
+      "properties": {
+        "durationMilliseconds": { "type": "number", "exclusiveMinimum": 0 },
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "warmupCount": { "type": "integer", "minimum": 0 },
+        "metrics": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/metric" }
+        },
+        "raw": { "type": "object" }
       },
       "additionalProperties": false
     }
@@ -45,7 +112,7 @@
   ],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "reportKind": { "enum": ["runtime", "engine"] },
+    "reportKind": { "enum": ["runtime", "engine", "resource"] },
     "sourceSha": { "type": "string", "minLength": 7 },
     "runId": { "type": "string", "minLength": 1 },
     "observedAt": { "type": "string", "format": "date-time" },
@@ -93,5 +160,15 @@
     },
     "passed": { "type": "boolean" }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "reportKind": { "const": "resource" } } },
+      "then": {
+        "properties": {
+          "cells": { "items": { "required": ["workload"] } }
+        }
+      }
+    }
+  ]
 }
