@@ -858,6 +858,33 @@ describe('createBureau', () => {
     expect(parsed.liveness.id).toBe(summary.id);
   });
 
+  it('getRun(id).transcript is the current conversation, not the snapshot history tree', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate('All done.'),
+      toolbox: createEmptyToolbox(),
+    });
+
+    try {
+      const summary = await bureau.createRun({ message: 'Hello' });
+      await waitForRunCompletion(bureau, summary.id);
+      const detail = bureau.getRun(summary.id);
+      const transcript = detail?.transcript;
+
+      expect(transcript).toBeDefined();
+      expect(transcript).not.toHaveProperty('root');
+      const contents = (transcript?.ids ?? []).map((id) => transcript?.messages[id]?.content);
+      expect(contents[0]).toBe('Hello');
+      expect(contents.at(-1)).toBe('All done.');
+      expect(transcript).toEqual(
+        bureau.store.getRun(summary.id)?.steps.at(-1)?.conversation.current,
+      );
+      expect(JSON.parse(JSON.stringify(detail)).transcript).toEqual(transcript);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('AB-88/AB-214 review (PRRT_kwDORvupsc6esZTF): getRun(id).liveness.owner carries the authenticated principal that started the run', async () => {
     const bureau = await createBureau({
       agents: {},

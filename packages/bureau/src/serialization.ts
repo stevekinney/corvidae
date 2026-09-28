@@ -1,6 +1,6 @@
 import type { RunState } from '@lostgradient/operative';
 import { AgentRunError } from '@lostgradient/operative';
-import { Conversation } from 'conversationalist';
+import { Conversation, currentConversationFromSnapshot } from 'conversationalist';
 import { safeStringify, serializeAgentRunErrorForBureau, toJsonSafe } from './serialization-json';
 import { serializeLivenessSnapshot } from './serialization-liveness';
 
@@ -237,6 +237,11 @@ export function serializeRunState(
   };
 }
 
+function latestTranscript(runState: RunState): RunDetail['transcript'] {
+  const latest = runState.snapshots.at(-1);
+  return latest === undefined ? undefined : currentConversationFromSnapshot(latest);
+}
+
 export function serializeRunDetail(
   runState: RunState,
   sessionId?: string,
@@ -269,6 +274,6 @@ export function serializeRunDetail(
           result.error?.message ?? (typeof result.error === 'string' ? result.error : undefined),
       })),
     })),
-    latestSnapshot: runState.snapshots.at(-1),
+    transcript: latestTranscript(runState),
   };
 }
