@@ -735,6 +735,14 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
+      'src/worker/long-poll.ts',
+      {
+        reason:
+          'Focused LCOV for src/worker/long-poll.test.ts reports 100% line coverage for long-poll.ts and FNF/FNH 39/38, while emitting no FN/FNDA function identity records for this file; every branch and public accessor is covered by the long-poll worker tests, so this is the same Bun FNH undercount artifact documented for other fully line-covered files.',
+        functions: 1,
+      },
+    ],
+    [
       'src/testing/scheduler-contract.test-support.ts',
       {
         reason:
@@ -816,19 +824,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
           421, 422, 423, 424, 425, 426, 427, 428, 429, 431, 440, 441, 447, 448, 453, 454, 467, 468,
           469, 470, 471, 472, 476, 477, 478, 479, 480, 484, 485, 486, 487, 488,
         ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/worker/registry/summary.ts',
-      // Was lines 134-139; shifted to 129-134 when WFT-27 dropped `gitSha`
-      // from the deployment-identity tuple, removing 5 lines above this
-      // function. Same unexercised `compareDeploymentSummaries` comparator.
-      {
-        reason:
-          'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
-        functions: 1,
-        lines: new Set([129, 130, 131, 132, 133, 134]),
         requireUncoveredLines: true,
       },
     ],

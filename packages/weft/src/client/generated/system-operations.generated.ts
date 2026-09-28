@@ -168,6 +168,7 @@ export type SystemOperationTypes = {
         readonly inFlight: number;
         readonly oldestStartedAt: number | null;
         readonly runtimeVersion: string | null;
+        readonly transports: ReadonlyArray<'websocket' | 'long-poll'>;
         readonly workers: number;
       }>;
       readonly items: ReadonlyArray<{
@@ -186,6 +187,7 @@ export type SystemOperationTypes = {
         readonly queue: string;
         readonly runtimeVersion?: string;
         readonly startedAt: number;
+        readonly transport: 'websocket' | 'long-poll';
       }>;
       readonly routingPolicy: 'least-loaded' | 'round-robin' | 'fair-share';
     };

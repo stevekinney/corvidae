@@ -33,6 +33,7 @@ export function minimalServerContext(
   const registry = overrides && 'registry' in overrides ? overrides.registry : new WorkerRegistry();
   return {
     registry,
+    longPollWorkerSessions: new Map(),
     taskQueue: new TaskQueue(),
     workerSockets: new Map(),
     streamSockets: new Map(),

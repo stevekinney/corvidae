@@ -231,7 +231,7 @@ type RemoteActivityContext = {
 
 ### `LongPollWorker`
 
-HTTP long-poll fallback for environments without WebSocket support. Polls `/api/v1/tasks/:queue` for tasks and reports results through `/api/v1/tasks/:queue/result`. Implements `Disposable`.
+HTTP long-poll fallback for environments without WebSocket support. Registers the same canonical worker manifest as the WebSocket transport, then polls `/api/v1/worker-sessions/:sessionId/tasks` and reports durable results through `/api/v1/worker-sessions/:sessionId/results`. Implements `Disposable`.
 
 ```ts partial
 class LongPollWorker implements Disposable {
@@ -262,7 +262,9 @@ class LongPollWorker implements Disposable {
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `serverUrl` | `string` | -- | Base HTTP URL of the Weft server |
-| `activities` | `Record<string, (input: unknown) => Promise<unknown>>` | -- | Activity functions |
+| `workflows` | `Record<string, { name: string; activities: Record<string, (input: unknown, context?: RemoteActivityContext) => Promise<unknown>> }>` | -- | Required workflow map used to derive the canonical worker manifest and qualified activity names |
+| `deploymentName` | `string` | -- | Logical deployment advertised in the worker manifest |
+| `buildId` | `string` | -- | Operator-visible build advertised in the worker manifest |
 | `concurrency` | `number` | `10` | Maximum concurrent tasks |
 | `queue` | `string` | `'default'` | Task queue |
 | `pollTimeout` | `number` | `30_000` | Long-poll timeout in ms |
@@ -278,9 +280,16 @@ import { LongPollWorker } from '@lostgradient/weft';
 
 const worker = new LongPollWorker({
   serverUrl: 'http://localhost:7233',
-  activities: {
-    sendEmail: async (input) => {
-      /* ... */
+  deploymentName: 'notifications-worker',
+  buildId: '2026-09-28',
+  workflows: {
+    notifications: {
+      name: 'notifications',
+      activities: {
+        sendEmail: async (input) => {
+          /* ... */
+        },
+      },
     },
   },
 });

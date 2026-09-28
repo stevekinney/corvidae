@@ -58,6 +58,7 @@ export type {
   WorkerRegistryOptions,
   WorkerSessionIdentity,
   WorkerSummary,
+  WorkerTransport,
 } from './registry/types.ts';
 
 /**
@@ -190,6 +191,7 @@ export class WorkerRegistry {
     this.#workers.set(info.id, {
       id: info.id,
       queue: info.queue,
+      transport: info.transport ?? 'websocket',
       activities: [...info.activities],
       concurrency: info.concurrency,
       ...(info.deploymentName !== undefined ? { deploymentName: info.deploymentName } : {}),
@@ -220,7 +222,7 @@ export class WorkerRegistry {
       workerId: info.id,
       sessionGeneration: info.sessionGeneration,
       manifestDigest: info.acceptedManifestDigest,
-      transport: 'websocket',
+      transport: info.transport,
     };
   }
 
@@ -578,6 +580,7 @@ export class WorkerRegistry {
     return [...this.#workers.values()].map((worker) => ({
       id: worker.id,
       queue: worker.queue,
+      transport: worker.transport,
       activities: worker.activities,
       concurrency: worker.concurrency,
       inFlight: worker.inFlight,

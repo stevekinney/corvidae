@@ -101,7 +101,7 @@ interface ForbiddenResultResponse {
  */
 export class LongPollResultDelivery {
   readonly #outbox: TaskResultOutbox<LongPollTaskResultBody>;
-  readonly #resultUrl: string;
+  #resultUrl: string;
   readonly #headers: Record<string, string> | undefined;
   readonly #retryBaseDelayMs: number;
   readonly #retryMaxDelayMs: number;
@@ -132,6 +132,11 @@ export class LongPollResultDelivery {
   /** See `TaskResultOutbox.shouldWarnFull`. */
   shouldWarnFull(): boolean {
     return this.#outbox.shouldWarnFull();
+  }
+
+  /** Point future sends at the active session endpoint without discarding buffered results. */
+  updateResultUrl(resultUrl: string): void {
+    this.#resultUrl = resultUrl;
   }
 
   /**

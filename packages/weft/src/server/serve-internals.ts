@@ -289,6 +289,7 @@ export function buildServerContext(
 
   const context: ServerContext = {
     registry: workerRegistry,
+    longPollWorkerSessions: new Map(),
     taskQueue,
     workerSockets: new Map(),
     streamSockets: new Map(),

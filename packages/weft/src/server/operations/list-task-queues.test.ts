@@ -263,6 +263,7 @@ describe('mergeQueueHealth', () => {
         {
           id: 'w1',
           queue: 'orders',
+          transport: 'websocket' as const,
           activities: ['charge'],
           concurrency: 5,
           inFlight: 2,
@@ -277,6 +278,7 @@ describe('mergeQueueHealth', () => {
         {
           id: 'w2',
           queue: 'orders',
+          transport: 'websocket' as const,
           activities: ['charge'],
           concurrency: 4,
           inFlight: 1,
@@ -321,6 +323,7 @@ describe('mergeQueueHealth', () => {
         {
           id: 'w1',
           queue: 'idle',
+          transport: 'websocket' as const,
           activities: ['x'],
           concurrency: 1,
           inFlight: 0,

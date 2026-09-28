@@ -2,6 +2,7 @@ import type { ServerWebSocket } from 'bun';
 
 import type { McpSessionManager } from '../../mcp/session.ts';
 import type { MetricsCollector } from '../../observability/metrics.ts';
+import type { WorkerManifest } from '../../worker/manifest/index.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import type { Authenticator, RateLimiter } from '../authentication.ts';
 import type { DeadlineTracker } from '../deadline-tracker.ts';
@@ -27,6 +28,17 @@ import type { ResolvedCorsPolicy } from './cors.ts';
  */
 export type TaskLedgerRecoveryGate = Readonly<{ ready: Promise<void> }>;
 
+export type LongPollWorkerSession = Readonly<{
+  sessionId: string;
+  queue: string;
+  activities: readonly string[];
+  concurrency: number;
+  manifest: WorkerManifest;
+  acceptedManifestDigest: string;
+  createdAt: number;
+  lastHeartbeatAt: number;
+}>;
+
 /**
  * Internal closure state for a single `serve()` invocation.
  *
@@ -35,6 +47,7 @@ export type TaskLedgerRecoveryGate = Readonly<{ ready: Promise<void> }>;
  */
 export interface ServerContext {
   readonly registry: WorkerRegistry;
+  readonly longPollWorkerSessions: Map<string, LongPollWorkerSession>;
   readonly taskQueue: TaskQueue;
   readonly workerSockets: Map<string, ServerWebSocket<WebSocketData>>;
   readonly streamSockets: Map<string, Set<ServerWebSocket<WebSocketData>>>;

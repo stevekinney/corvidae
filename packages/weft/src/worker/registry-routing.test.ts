@@ -394,6 +394,7 @@ describe('WorkerRegistry routing policies', () => {
       const worker: WorkerInfo = {
         id: 'worker',
         queue: 'default',
+        transport: 'websocket' as const,
         activities: ['sendEmail'],
         concurrency: 1,
         inFlight: 0,
