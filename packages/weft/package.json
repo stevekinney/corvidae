@@ -6,8 +6,18 @@
     "weft": "src/cli-main.ts",
     "weft-mcp": "src/cli-mcp.ts"
   },
+  "files": [
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "!src/**/*.test-d.ts",
+    "!src/**/*.test-support.ts",
+    "!src/**/__fixtures__/**"
+  ],
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./worker": "./src/worker/index.ts",
+    "./worker/authoring": "./src/worker/authoring.ts",
+    "./worker/generated-authoring": "./src/worker/generated-authoring.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error && bun scripts/check-lint-disables.ts && bun scripts/check-implementation-file-sizes.ts && bun scripts/check-import-cycles.ts && bun scripts/check-internal-imports.ts && bun scripts/check-engine-internals-field-access.ts && bun scripts/check-revision-keyed-lookups.ts && bun scripts/check-definition-vocabulary.ts && bun scripts/check-catalog-completeness.ts && bun scripts/check-type-ergonomics.ts",

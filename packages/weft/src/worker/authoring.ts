@@ -23,6 +23,8 @@ import type { BuiltWorkflowDefinition } from '../core/types/workflow-builder.ts'
 import type { RemoteActivityContext } from './remote-activity-context.ts';
 import type { RemoteWorkerWorkflowDefinition } from './workflow-activity-binding.ts';
 
+export type { RemoteActivityContext } from './remote-activity-context.ts';
+
 type WorkflowName<TDefinition> = TDefinition extends { readonly name: infer TName extends string }
   ? TName
   : string;

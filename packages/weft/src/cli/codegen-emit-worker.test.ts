@@ -26,10 +26,14 @@ describe('emitWorkerImplementationModule', () => {
       '@lostgradient/weft',
     );
 
-    expect(output).toContain("import { defineWorker } from '@lostgradient/weft';");
+    expect(output).toContain(
+      "import { defineWorker } from '@lostgradient/weft/worker/generated-authoring';",
+    );
     expect(output).toContain('type __WeftWorker_welcome = {');
     expect(output).toContain('"formatGreeting": (input: { "name": string; }');
-    expect(output).toContain('context?: import("@lostgradient/weft").RemoteActivityContext');
+    expect(output).toContain(
+      'context?: import("@lostgradient/weft/worker/generated-authoring").RemoteActivityContext',
+    );
     expect(output).toContain('export function defineGeneratedWorker');
     expect(output).toBe(
       emitWorkerImplementationModule(
