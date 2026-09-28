@@ -135,6 +135,19 @@ describe('withHyDE', () => {
     expect(generateHypothetical).not.toHaveBeenCalled();
   });
 
+  it('passes through rememberOnce() and list() without invoking the generator', async () => {
+    const generateHypothetical = mock(async () => 'hypothetical');
+    const hydeMemory = withHyDE(innerMemory, { generateHypothetical });
+
+    const first = await hydeMemory.rememberOnce('One entry', { dedupeKey: 'once' });
+    const duplicate = await hydeMemory.rememberOnce('One entry', { dedupeKey: 'once' });
+    const listed = await hydeMemory.list();
+
+    expect(duplicate.id).toBe(first.id);
+    expect(listed.map((entry) => entry.id)).toEqual([first.id]);
+    expect(generateHypothetical).not.toHaveBeenCalled();
+  });
+
   it('passes through init() and close() unchanged', async () => {
     const generateHypothetical = mock(async () => 'hypothetical');
     const hydeMemory = withHyDE(innerMemory, { generateHypothetical });
