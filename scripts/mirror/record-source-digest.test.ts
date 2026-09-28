@@ -111,6 +111,39 @@ describe('git-history readers, against a real fixture repository', () => {
 });
 
 describe('compareAgainstCommit', () => {
+  test('compares emitted TypeScript configuration bytes and rejects a changed target', async () => {
+    await withScratch(async (scratch) => {
+      const path = 'src/cli/__fixtures__/codegen/typecheck/tsconfig.json';
+      const source = '{"extends":"@lostgradient/typescript/library.json"}\n';
+      const emitted = '{"extends":"../../../../../typescript/library.json"}\n';
+      const [matching, changed] = await buildFixtureRepository(scratch, [
+        { files: { [`packages/example/${path}`]: emitted }, message: 'mirrored configuration' },
+        {
+          files: { [`packages/example/${path}`]: '{"extends":"./unexpected.json"}\n' },
+          message: 'changed published configuration',
+        },
+      ]);
+      const files = [{ path, bytes: new TextEncoder().encode(source) }];
+      const expectedEmittedFiles = async () => ({ [`packages/example/${path}`]: emitted });
+      const options = {
+        workspace: '@example/source',
+        targetRepositoryDirectory: scratch,
+        targetDirectory: 'packages/example',
+        expectedEmittedFiles,
+      };
+      expect(
+        sourceComparisonIsClean(
+          await compareAgainstCommit(files, { ...options, commit: matching! }),
+        ),
+      ).toBe(true);
+      const changedComparison = await compareAgainstCommit(files, {
+        ...options,
+        commit: changed!,
+      });
+      expect(changedComparison.differing).toEqual([path]);
+    });
+  });
+
   test('reports removed published additional roots without counting target-owned files', async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [

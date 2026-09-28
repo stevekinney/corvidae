@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { buildCleanPublishedPackage } from './clean-package-build.ts';
 import { serializeJson } from './json-formatting.ts';
@@ -12,7 +13,10 @@ import {
   verifyHistoricalCheckout,
   type HistoricalCollector,
 } from './publication-history.ts';
-import { loadHistoricalPublicationRouting } from './publication-routing.ts';
+import {
+  loadHistoricalPublicationRouting,
+  type HistoricalPublicationRouting,
+} from './publication-routing.ts';
 import {
   committedWorkspaceVersions,
   fetchPublishedPackage,
@@ -58,7 +62,7 @@ export async function commitExists(
 }
 
 /**
- * Extract `targetDirectory`'s tree at `commit` into `destination`, as two commands total
+ * Extract the exact target commit into `destination`, as two commands total
  * (`git archive`, then `tar -x`) rather than one subprocess per file.
  *
  * The first version of this comparison called `git show <commit>:<path>` once per corvidae file —
@@ -74,18 +78,17 @@ export async function commitExists(
 async function extractCommitDirectory(
   targetRepositoryDirectory: string,
   commit: string,
-  targetDirectory: string,
   destination: string,
   runner: CommandRunner,
 ): Promise<void> {
   const archivePath = join(destination, 'commit.tar');
   const archiveResult = await runner(
-    ['git', 'archive', '--format=tar', `--output=${archivePath}`, commit, '--', targetDirectory],
+    ['git', 'archive', '--format=tar', `--output=${archivePath}`, commit],
     { cwd: targetRepositoryDirectory },
   );
   if (archiveResult.exitCode !== 0) {
     throw new RegistryVerificationError(
-      `git archive ${commit} -- ${targetDirectory} in ${targetRepositoryDirectory} exited ${archiveResult.exitCode}\n${archiveResult.stdout}${archiveResult.stderr}`,
+      `git archive ${commit} in ${targetRepositoryDirectory} exited ${archiveResult.exitCode}\n${archiveResult.stdout}${archiveResult.stderr}`,
     );
   }
   const extractResult = await runner(['tar', '-xf', archivePath, '-C', destination], {
@@ -107,6 +110,23 @@ export interface SourceComparison {
   differing: string[];
 }
 
+type EmittedFiles = Record<string, string | Uint8Array>;
+
+async function historicalEmittedFiles(
+  publishedSourceRoot: string,
+  target: HistoricalPublicationRouting['target'],
+  targetCommitDirectory: string,
+): Promise<EmittedFiles> {
+  const source = join(publishedSourceRoot, 'scripts/mirror/surface.ts');
+  const module = (await import(pathToFileURL(source).href)) as typeof import('./surface.ts');
+  const plan = await module.planSurface({
+    corvidaeRoot: publishedSourceRoot,
+    target,
+    targetDirectory: targetCommitDirectory,
+  });
+  return plan.files;
+}
+
 /** Whether a comparison found nothing worth refusing on. */
 export function sourceComparisonIsClean(comparison: SourceComparison): boolean {
   return (
@@ -126,11 +146,10 @@ export function sourceComparisonIsClean(comparison: SourceComparison): boolean {
  * the commit with the same digest collector catches removed source and declared publication
  * roots. Both sides therefore apply the same README, surface, test and version exclusions.
  *
- * Both directions read from a single `extractCommitDirectory` extraction rather than one `git`
- * invocation per file, and compare raw bytes rather than decoded text — `extractCommitDirectory`'s
- * own doc comment has the reason (and the measurement) for the first change; the second follows
- * from it for free, since reading an extracted file off disk carries no text-decoding step the way
- * a subprocess's captured stdout did.
+ * Both directions read from one exact commit extraction rather than one `git` invocation per
+ * file. The recorder supplies the historical emitted plan so an intentional source transform is
+ * compared to its published bytes; the separate historical/current digest still compares raw
+ * source bytes. Direct callers without a plan compare their supplied bytes as before.
  */
 export async function compareAgainstCommit(
   corvidaeFiles: readonly DigestedFile[],
@@ -150,6 +169,7 @@ export async function compareAgainstCommit(
      * it is the one already-accounted-for difference between corvidae's tree and what shipped.
      */
     excludedFromExtra?: ReadonlySet<string>;
+    expectedEmittedFiles?: (targetCommitDirectory: string) => Promise<EmittedFiles>;
   },
 ): Promise<SourceComparison> {
   const {
@@ -160,6 +180,7 @@ export async function compareAgainstCommit(
     runner = runCommand,
     collector = collectDigestedFiles,
     excludedFromExtra = new Set<string>(),
+    expectedEmittedFiles,
   } = options;
   const missingInCommit: string[] = [];
   const differing: string[] = [];
@@ -167,23 +188,28 @@ export async function compareAgainstCommit(
 
   const scratch = await mkdtemp(join(tmpdir(), 'corvidae-commit-extract-'));
   try {
-    await extractCommitDirectory(
-      targetRepositoryDirectory,
-      commit,
-      targetDirectory,
-      scratch,
-      runner,
-    );
+    await extractCommitDirectory(targetRepositoryDirectory, commit, scratch, runner);
     const extractedRoot = join(scratch, targetDirectory);
+    const emittedFiles = await expectedEmittedFiles?.(scratch);
 
     for (const file of corvidaeFiles) {
+      const emitted = emittedFiles?.[`${targetDirectory}/${file.path}`];
+      if (emittedFiles !== undefined && emitted === undefined) {
+        throw new RegistryVerificationError(`${workspace}: no emitted plan file for ${file.path}`);
+      }
       const candidate = Bun.file(join(extractedRoot, file.path));
       if (!(await candidate.exists())) {
         missingInCommit.push(file.path);
         continue;
       }
       const committed = new Uint8Array(await candidate.arrayBuffer());
-      if (Buffer.compare(Buffer.from(file.bytes), Buffer.from(committed)) !== 0) {
+      const expected =
+        emitted === undefined
+          ? file.bytes
+          : typeof emitted === 'string'
+            ? new TextEncoder().encode(emitted)
+            : emitted;
+      if (Buffer.compare(Buffer.from(expected), Buffer.from(committed)) !== 0) {
         differing.push(file.path);
       }
     }
@@ -218,6 +244,11 @@ export interface RecordOptions {
   fetcher?: typeof fetch;
   packageMap?: PackageMap;
   buildPublishedPackage?: typeof buildCleanPublishedPackage;
+  buildHistoricalSurface?: (
+    publishedSourceRoot: string,
+    target: HistoricalPublicationRouting['target'],
+    targetCommitDirectory: string,
+  ) => Promise<EmittedFiles>;
   bunExecutable?: string;
 }
 
@@ -242,6 +273,7 @@ export async function recordSourceDigest({
   fetcher = fetch,
   packageMap,
   buildPublishedPackage = buildCleanPublishedPackage,
+  buildHistoricalSurface = historicalEmittedFiles,
   bunExecutable,
 }: RecordOptions): Promise<RecordResult> {
   const map = packageMap ?? (await loadPackageMap());
@@ -306,6 +338,8 @@ export async function recordSourceDigest({
     commit: gitHead,
     runner: gitRunner,
     collector,
+    expectedEmittedFiles: (targetCommitDirectory) =>
+      buildHistoricalSurface(publishedSourceRoot, historicalRouting.target, targetCommitDirectory),
   });
   if (!sourceComparisonIsClean(comparison))
     throw new RegistryVerificationError(

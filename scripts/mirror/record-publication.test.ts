@@ -228,6 +228,12 @@ async function withPublication(
         const archive = await packFixture(manifest, builtFiles, 'clean-build');
         return { manifest, payload: await readPackagePayload(archive) };
       },
+      buildHistoricalSurface: async () => ({
+        [`${targetConfiguration.targetDirectory}/src/index.ts`]: 'export const value = 1;\n',
+        ...(historicalExtra
+          ? { [`${targetConfiguration.targetDirectory}/runtime.wasm`]: 'published extra input' }
+          : {}),
+      }),
     };
     await body({
       options,
