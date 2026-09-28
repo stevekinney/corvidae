@@ -466,6 +466,85 @@ describe('partial-failure preservation worker-mode boundary', () => {
     expect(internals.signalWaiters.get('workflow-id:release')).toBe(replacement);
   });
 
+  it('discards a scan failure when the replacement waiter was already delivered', async () => {
+    // Delivery removes a waiter before invoking it, so by the time the stale
+    // scan rejects, the replacement is no longer registered either.
+    let replacementDelivered = false;
+    const replacement = (): void => {
+      replacementDelivered = true;
+    };
+    let internals: EngineInternals;
+    let scanCount = 0;
+    const storage = {
+      async delete() {},
+      scan() {
+        scanCount += 1;
+        return (async function* () {
+          if (scanCount === 2) {
+            internals.signalWaiters.set('workflow-id:release', replacement);
+            internals.signalWaiters.delete('workflow-id:release');
+            replacement();
+            throw new Error('simulated signal scan failure');
+          }
+        })();
+      },
+    };
+    internals = createSignalInternals(storage as never);
+    const failed = mock((_workflowId: string, _operation: unknown, _error: unknown) => {});
+
+    await processWaitSignalOperation(
+      internals,
+      'workflow-id',
+      { type: 'wait-signal', operationId: 'wait:superseded-delivered', signalName: 'release' },
+      {
+        completeOperation: () => {
+          throw new Error('should not complete');
+        },
+        failOperation: failed,
+      },
+    );
+
+    expect(replacementDelivered).toBe(true);
+    expect(failed).not.toHaveBeenCalled();
+  });
+
+  it('still fails the operation when the scan throws after a signal reached this waiter', async () => {
+    const scanFailure = new Error('simulated signal scan failure');
+    let internals: EngineInternals;
+    let scanCount = 0;
+    const storage = {
+      async delete() {},
+      scan() {
+        scanCount += 1;
+        return (async function* () {
+          if (scanCount === 2) {
+            const own = internals.signalWaiters.get('workflow-id:release');
+            internals.signalWaiters.delete('workflow-id:release');
+            own?.();
+            throw scanFailure;
+          }
+        })();
+      },
+    };
+    internals = createSignalInternals(storage as never);
+    const failed = mock((_workflowId: string, _operation: unknown, _error: unknown) => {});
+
+    await processWaitSignalOperation(
+      internals,
+      'workflow-id',
+      { type: 'wait-signal', operationId: 'wait:own-delivered', signalName: 'release' },
+      {
+        completeOperation: () => {
+          throw new Error('should not complete');
+        },
+        failOperation: failed,
+      },
+    );
+
+    expect(failed).toHaveBeenCalledTimes(1);
+    expect(failed.mock.calls[0]?.[2]).toBe(scanFailure);
+  });
+
   it('exits wait-signal cleanly when cancellation happens while awaiting the waiter promise', async () => {
     const signalWaiters = new WaiterTrackingMap();
     const internals = {

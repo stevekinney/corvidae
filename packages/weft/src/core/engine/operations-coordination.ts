@@ -101,10 +101,10 @@ export async function processWaitSignalOperation(
 ): Promise<void> {
   const abortSignal = internals.abortController.signal;
   const waiterKey = `${workflowId}:${operation.signalName}`;
-  // The waiter this loop registered and no signal has consumed yet. If a
-  // buffered-signal scan then throws, the waiter must be released here, or it
-  // outlives the failed operation and keeps the workflow looking waited-on.
-  let pendingWaiterResolve: (() => void) | undefined;
+  // The waiter this loop registered and no signal has consumed yet. A failed
+  // buffered-signal scan must release it, or it outlives the operation and
+  // keeps the workflow looking waited-on.
+  let pendingWaiter: PendingSignalWaiter | undefined;
 
   try {
     while (true) {
@@ -123,8 +123,15 @@ export async function processWaitSignalOperation(
       }
 
       const { promise, resolve } = Promise.withResolvers<void>();
-      registerSignalWaiter(internals, workflowId, waiterKey, resolve);
-      pendingWaiterResolve = resolve;
+      const waiter: PendingSignalWaiter = {
+        delivered: false,
+        resolve: () => {
+          waiter.delivered = true;
+          resolve();
+        },
+      };
+      registerSignalWaiter(internals, workflowId, waiterKey, waiter.resolve);
+      pendingWaiter = waiter;
 
       if (abortSignal.aborted) {
         internals.signalWaiters.delete(waiterKey);
@@ -138,7 +145,7 @@ export async function processWaitSignalOperation(
         operation.signalName,
       );
       if (bufferedPayload.found) {
-        if (internals.signalWaiters.get(waiterKey) === resolve) {
+        if (internals.signalWaiters.get(waiterKey) === waiter.resolve) {
           internals.signalWaiters.delete(waiterKey);
           untrackWaiterKey(internals.signalWaitersByWorkflow, workflowId, waiterKey);
         }
@@ -148,7 +155,7 @@ export async function processWaitSignalOperation(
 
       await promise;
       // Delivery removed the waiter before resolving it.
-      pendingWaiterResolve = undefined;
+      pendingWaiter = undefined;
 
       if (abortSignal.aborted) {
         return;
@@ -157,19 +164,26 @@ export async function processWaitSignalOperation(
   } catch (error) {
     failWaitSignalOperation(
       internals,
-      { workflowId, waiterKey, operation, pendingWaiterResolve },
+      { workflowId, waiterKey, operation, pendingWaiter },
       error,
       callbacks,
     );
   }
 }
 
+/** A signal waiter one wait-signal invocation registered, and whether a signal reached it. */
+type PendingSignalWaiter = { resolve: () => void; delivered: boolean };
+
 /**
  * Fail a wait-signal operation whose buffered-signal scan threw, releasing the
- * waiter it registered. If a replay or reclaim has since registered a
- * replacement waiter for the same key, this invocation is superseded: its
- * failure belongs to no live run, and feeding it by workflow id would fail the
- * replacement, so it is dropped.
+ * waiter it registered.
+ *
+ * The failure is fed by workflow id, so it must come from the live run. That
+ * holds when this invocation's waiter is still registered, or when a signal
+ * was delivered to it. If the waiter is gone without a delivery, a replay or
+ * reclaim replaced it (and may already have delivered to the replacement) or
+ * cleanup removed it, so this invocation is superseded and its failure is
+ * dropped rather than injected into another run.
  */
 function failWaitSignalOperation(
   internals: EngineInternals,
@@ -177,16 +191,18 @@ function failWaitSignalOperation(
     workflowId: string;
     waiterKey: string;
     operation: WaitSignalOperation;
-    pendingWaiterResolve: (() => void) | undefined;
+    pendingWaiter: PendingSignalWaiter | undefined;
   },
   error: unknown,
   callbacks: Pick<CoordinationOperationCallbacks, 'failOperation'>,
 ): void {
-  const { workflowId, waiterKey, operation, pendingWaiterResolve } = wait;
-  if (pendingWaiterResolve !== undefined) {
-    const currentWaiter = internals.signalWaiters.get(waiterKey);
-    if (currentWaiter !== undefined && currentWaiter !== pendingWaiterResolve) return;
-    releaseSignalWaiter(internals, workflowId, waiterKey, pendingWaiterResolve);
+  const { workflowId, waiterKey, operation, pendingWaiter } = wait;
+  if (pendingWaiter !== undefined) {
+    if (internals.signalWaiters.get(waiterKey) === pendingWaiter.resolve) {
+      releaseSignalWaiter(internals, workflowId, waiterKey, pendingWaiter.resolve);
+    } else if (!pendingWaiter.delivered) {
+      return;
+    }
   }
   callbacks.failOperation(workflowId, operation, error);
 }
