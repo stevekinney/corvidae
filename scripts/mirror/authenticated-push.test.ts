@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pushVerifiedCommit } from './authenticated-push.ts';
+import { runCommand } from './packaging.ts';
 import { git, gitEnvironment } from './sync.ts';
 
 test.each(['push-url', 'included-rewrite', 'receive-pack'])(
@@ -46,20 +47,31 @@ test.each(['push-url', 'included-rewrite', 'receive-pack'])(
       await git(source, 'config', 'core.hooksPath', hooks);
       await git(source, 'config', 'protocol.ext.allow', 'always');
       let failure: unknown;
+      const pushEnvironments: Record<string, string | undefined>[] = [];
       try {
         await pushVerifiedCommit({
           directory: source,
           remote,
           commit,
           branch: 'verified',
-          environment: gitEnvironment(),
+          environment: gitEnvironment({
+            ...Bun.env,
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: 'include.path',
+            GIT_CONFIG_VALUE_0: join(root, 'untrusted-config'),
+          }),
           credentialEnvironment: async () =>
             gitEnvironment({
               ...Bun.env,
+              GIT_CONFIG_VALUE_1: 'untrusted inherited configuration',
               GIT_CONFIG_COUNT: '1',
               GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
               GIT_CONFIG_VALUE_0: 'Authorization: Bearer harmless-test-sentinel',
             }),
+          run: async (command, options) => {
+            if (command.includes('push')) pushEnvironments.push(options?.env ?? {});
+            return runCommand(command, options);
+          },
         });
       } catch (error) {
         failure = error;
@@ -67,6 +79,20 @@ test.each(['push-url', 'included-rewrite', 'receive-pack'])(
       expect(await Bun.file(marker).exists()).toBe(false);
       expect(await Bun.file(captured).exists()).toBe(false);
       expect(failure).toBeUndefined();
+      expect(pushEnvironments).toHaveLength(1);
+      expect(pushEnvironments[0]?.['GIT_CONFIG_VALUE_1']).toBe('');
+      expect(pushEnvironments[0]?.['GIT_CONFIG_VALUE_2']).toBe(
+        'Authorization: Bearer harmless-test-sentinel',
+      );
+      const pushedConfiguration = Array.from({ length: 3 }, (_, index) => [
+        pushEnvironments[0]?.[`GIT_CONFIG_KEY_${index}`],
+        pushEnvironments[0]?.[`GIT_CONFIG_VALUE_${index}`],
+      ]);
+      expect(pushedConfiguration).toEqual([
+        ['core.hooksPath', '/dev/null'],
+        ['credential.helper', ''],
+        ['http.https://github.com/.extraHeader', 'Authorization: Bearer harmless-test-sentinel'],
+      ]);
       const pushed = await git(remote, 'rev-parse', 'refs/heads/verified');
       expect(pushed.trim()).toBe(commit);
     } finally {

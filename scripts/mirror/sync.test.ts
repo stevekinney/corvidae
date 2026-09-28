@@ -14,6 +14,7 @@ import {
   cloneTarget,
   collectMissingBuildInputs,
   credentialedGitEnvironment,
+  directPushEnvironment,
   findForeignCommits,
   ForeignCommitError,
   git,
@@ -106,6 +107,97 @@ describe('credentialedGitEnvironment', () => {
     );
     expect(environment['PATH']).toBe('/usr/bin');
   });
+});
+
+describe('direct push credentials', () => {
+  test('keeps local pushes credential-free, lazily authenticates GitHub, and rejects other hosts', async () => {
+    let requests = 0;
+    const provider = async () => {
+      requests += 1;
+      return {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+        GIT_CONFIG_VALUE_0: 'Authorization: Basic trusted-token',
+      };
+    };
+
+    await expect(directPushEnvironment('/tmp/mirror.git', provider)).resolves.toEqual({});
+    expect(requests).toBe(0);
+    await expect(
+      directPushEnvironment('https://github.com/stevekinney/mirror.git', provider),
+    ).resolves.toEqual({
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+      GIT_CONFIG_VALUE_0: 'Authorization: Basic trusted-token',
+    });
+    expect(requests).toBe(1);
+    await expect(
+      directPushEnvironment('https://gitlab.com/stevekinney/mirror.git', provider),
+    ).rejects.toThrow('only supports GitHub HTTPS remotes');
+    await expect(
+      directPushEnvironment('https://user:password@github.com/stevekinney/mirror.git', provider),
+    ).rejects.toThrow('without URL credentials');
+    await expect(
+      directPushEnvironment('https://github.com:8443/stevekinney/mirror.git', provider),
+    ).rejects.toThrow('only supports GitHub HTTPS remotes');
+    expect(requests).toBe(1);
+  });
+
+  test('runSync resolves the trusted provider through the verified push callback', async () => {
+    await withHarness(async (harness) => {
+      const report = join(harness.scratch, 'direct-push-environment.json');
+      const rewrite = join(harness.scratch, 'git-rewrite.config');
+      await Bun.write(
+        rewrite,
+        `[url "${harness.remote}"]\n\tinsteadOf = https://github.com/stevekinney/agent-bureau.git\n`,
+      );
+      const authenticatedPush = join(import.meta.dir, 'authenticated-push.ts');
+      const syncModule = join(import.meta.dir, 'sync.ts');
+      const script = `
+        import { mock } from 'bun:test';
+        import { writeFile } from 'node:fs/promises';
+        const report = ${JSON.stringify(report)};
+        mock.module(${JSON.stringify(authenticatedPush)}, () => ({
+          pushVerifiedCommit: async (options) => {
+            await writeFile(report, JSON.stringify(await options.credentialEnvironment()));
+          },
+        }));
+        const { runSync } = await import(${JSON.stringify(syncModule)});
+        await runSync({
+          corvidaeRoot: ${JSON.stringify(harness.corvidae)},
+          target: 'agent-bureau',
+          remote: 'https://github.com/stevekinney/agent-bureau.git',
+          directory: ${JSON.stringify(harness.runDirectory('subprocess'))},
+          scratchDirectory: ${JSON.stringify(join(harness.scratch, 'subprocess'))},
+          corvidaeCommit: 'corvidae-subprocess',
+          pushEnvironment: async () => ({
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+            GIT_CONFIG_VALUE_0: 'Authorization: Basic trusted-subprocess-token',
+          }),
+        });
+      `;
+      const process_ = Bun.spawn(['bun', '-e', script], {
+        cwd: join(import.meta.dir, '../..'),
+        env: {
+          ...Bun.env,
+          GIT_CONFIG_GLOBAL: rewrite,
+          GIT_CONFIG_COUNT: '1',
+          GIT_CONFIG_KEY_0: `url.${harness.remote}.insteadOf`,
+          GIT_CONFIG_VALUE_0: 'https://github.com/stevekinney/agent-bureau.git',
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const exitCode = await process_.exited;
+      const stderr = await new Response(process_.stderr).text();
+      expect(exitCode, stderr).toBe(0);
+      expect(JSON.parse(await readFile(report, 'utf8'))).toMatchObject({
+        GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+        GIT_CONFIG_VALUE_0: 'Authorization: Basic trusted-subprocess-token',
+      });
+    });
+  }, 30_000);
 });
 
 /**

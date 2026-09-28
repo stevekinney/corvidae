@@ -1,7 +1,8 @@
 import { mkdir, rm } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 
 import { pushVerifiedCommit } from './authenticated-push.ts';
+import { createGitHubApi, userTokenFromEnvironmentOrCli } from './github-api.ts';
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
 import { layoutFor } from './layout-map.ts';
 import { assertNothingDeferred, runInstall } from './manifests.ts';
@@ -54,6 +55,30 @@ import { buildVerifySteps, createLocalVerifyEnvironment, specifiersFor } from '.
  */
 
 export class SyncError extends Error {}
+
+export async function directPushEnvironment(
+  remote: string,
+  provider?: () => Promise<Record<string, string>>,
+): Promise<Record<string, string>> {
+  if (isAbsolute(remote)) return {};
+  let url: URL;
+  try {
+    url = new URL(remote);
+  } catch {
+    throw new SyncError('Direct push requires an absolute local path or an HTTPS GitHub remote');
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== 'github.com' ||
+    url.port ||
+    url.username ||
+    url.password
+  )
+    throw new SyncError('Direct push only supports GitHub HTTPS remotes without URL credentials');
+  if (provider === undefined)
+    throw new SyncError('Direct GitHub push requires a trusted account credential provider');
+  return provider();
+}
 
 /** Refusal to push over commits the mirror did not author. */
 export class ForeignCommitError extends SyncError {
@@ -774,6 +799,8 @@ export interface SyncOptions {
   scratchDirectory: string;
   /** The corvidae commit this sync transforms, recorded in the provenance trailer. */
   corvidaeCommit: string;
+  /** Trusted account credentials for a direct GitHub push, resolved only after verification. */
+  pushEnvironment?: (() => Promise<Record<string, string>>) | undefined;
   branch?: string | undefined;
   installArguments?: readonly string[] | undefined;
   /** The checkout whose devDependencies supply publint and attw; defaults to this one. */
@@ -1007,7 +1034,8 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     commit,
     branch: currentBranch.trim(),
     environment: gitEnvironment(),
-    credentialEnvironment: async () => ({}),
+    credentialEnvironment: async () =>
+      directPushEnvironment(options.remote, options.pushEnvironment),
   });
 
   return {
@@ -1048,6 +1076,12 @@ export async function runSyncCommand(argv: readonly string[]): Promise<number> {
         `Unknown --target "${target}"; expected one of ${mirrorTargets.join(', ')}`,
       );
     }
+    const api = createGitHubApi({
+      userToken: userTokenFromEnvironmentOrCli(),
+      installationToken: async () => {
+        throw new SyncError('Direct sync does not use an App installation credential');
+      },
+    });
     const result = await runSync({
       corvidaeRoot:
         readOption(argv, 'corvidae-root') ?? new URL('../../', import.meta.url).pathname,
@@ -1057,6 +1091,7 @@ export async function runSyncCommand(argv: readonly string[]): Promise<number> {
       scratchDirectory: required(argv, 'scratch'),
       corvidaeCommit: required(argv, 'corvidae-commit'),
       branch: readOption(argv, 'branch'),
+      pushEnvironment: () => api.accountPushEnvironment(),
     });
     process.stdout.write(
       result.decision === 'skip'
