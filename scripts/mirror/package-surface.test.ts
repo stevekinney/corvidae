@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { emitWorkerImplementationModule } from '../../packages/weft/src/cli/codegen-emit-worker.ts';
 import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap } from './package-map.ts';
 import {
@@ -54,6 +55,33 @@ function entryFor(overrides: Partial<PackageSurfaceEntry> = {}): PackageSurfaceE
 }
 
 describe('package-surface.json', () => {
+  test('exports every Weft package subpath emitted by worker codegen', async () => {
+    const packageSurface = await loadPackageSurface();
+    const entry = packageSurface.packages['@lostgradient/weft'];
+    expect(entry).toBeDefined();
+    if (entry === undefined) return;
+    const surface = resolveSurface({ entry, packageRoot: join(corvidaeRoot, 'packages/weft') });
+
+    const generated = emitWorkerImplementationModule({}, '@lostgradient/weft');
+    const imports = [...generated.matchAll(/from '(@lostgradient\/weft\/[^']+)'/g)];
+    expect(imports.length).toBeGreaterThan(0);
+    for (const match of imports) {
+      const specifier = match[1];
+      expect(specifier).toBeDefined();
+      if (specifier === undefined) continue;
+      const subpath = `.${specifier.slice('@lostgradient/weft'.length)}`;
+      const target = surface.exports[subpath];
+      expect(target, `${specifier} is missing from the public exports map`).toBeDefined();
+      if (target === undefined) continue;
+      const targets = flattenExportTarget(target).map(([, path]) => path);
+      expect(targets).toContain('./dist/worker/generated-authoring.d.ts');
+      expect(targets).toContain('./dist/worker/generated-authoring.js');
+      for (const path of targets) {
+        expect(filesCoverPath(surface.files, path.slice(2))).toBe(true);
+      }
+    }
+  });
+
   test('parses and covers every workspace the map publishes', async () => {
     const surface = await loadPackageSurface();
     const map = await loadPackageMap();
