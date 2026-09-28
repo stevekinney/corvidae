@@ -116,6 +116,12 @@ export function setScrollMeasurements(
   }
 }
 
+/** Put a global back exactly as `Object.getOwnPropertyDescriptor` captured it. */
+export function restoreGlobal(name: string, descriptor: PropertyDescriptor | undefined): void {
+  if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+  else Reflect.deleteProperty(globalThis, name);
+}
+
 export function flushAnimationFrames(): void {
   const callbacks = Array.from(animationFrameCallbacks.values());
   animationFrameCallbacks.clear();

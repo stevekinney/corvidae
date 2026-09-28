@@ -135,9 +135,17 @@ async function compiledServerSource(
   }
 }
 
-/** Compile an immutable fixture once during test setup, before timed assertions. */
-export async function prepareSvelteServerSource(sourcePath: string): Promise<void> {
-  await compiledServerSource(sourcePath, ['svelte']);
+/**
+ * Compile an immutable fixture once during test setup, before timed assertions.
+ *
+ * Pass the same `conditions` the timed render will use: compilation is cached per condition set,
+ * so preparing under the default conditions does nothing for a render under `browser`.
+ */
+export async function prepareSvelteServerSource(
+  sourcePath: string,
+  options: SvelteServerOptions = {},
+): Promise<void> {
+  await compiledServerSource(sourcePath, [...(options.conditions ?? ['svelte'])]);
 }
 
 async function runServerComponent(

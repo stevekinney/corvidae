@@ -283,12 +283,11 @@ describe('useToast api', () => {
       return element!;
     });
     api!.show('Second', { id: 'dup', duration: 0 });
-    await waitFor(() => {
-      const matches = container.querySelectorAll('[data-cinder-toast-id="dup"]');
-      expect(matches.length).toBe(1);
-      expect(matches[0]?.textContent).toContain('Second');
-      expect(matches[0]).not.toBe(firstToast);
-    });
+    flushSync();
+    const matches = container.querySelectorAll('[data-cinder-toast-id="dup"]');
+    expect(matches.length).toBe(1);
+    expect(matches[0]?.textContent).toContain('Second');
+    expect(matches[0]).not.toBe(firstToast);
   });
 
   test('same-id replacement moves a toast across live-region channels', async () => {
@@ -450,7 +449,7 @@ describe('useToast api', () => {
     await waitFor(() => {
       expect(container.querySelector('[role="status"]')?.textContent).toContain('Saved draft');
       expect(container.querySelector('[data-cinder-pending="true"]')?.outerHTML ?? null).toBeNull();
-      expect(container.querySelector('[data-cinder-toast-id="save"]')).not.toBe(loadingToast);
+      expect(container.querySelector('[data-cinder-toast-id="save"]') === loadingToast).toBe(false);
     });
   });
 

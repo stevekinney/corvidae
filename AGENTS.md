@@ -13,7 +13,7 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 
 ## Workspace and dependencies
 
-- `applications/*` contains deployable applications; `components/*` contains browser component libraries; `packages/*` contains other shared libraries; `internal/*` contains repository configuration. Every workspace is named `@lostgradient/*`, except `armorer` and `conversationalist`, which carry their unscoped npm names.
+- `applications/*` contains deployable applications; `components/*` contains browser component libraries; `packages/*` contains other shared libraries; `internal/*` contains repository configuration; `scripts/browser-fixtures` is a private workspace that only declares the workspaces the root browser fixtures import. Every workspace is named `@lostgradient/*`, except `armorer` and `conversationalist`, which carry their unscoped npm names.
 - Internal dependencies always use `workspace:*`. Shared external tool versions belong in the root Bun `catalog`; add runtime dependencies to the workspace that imports them.
 - Component source uses the shared browser TypeScript configuration and root browser lint policy. Keep Bun and Node APIs in tests or scripts. Run both the browser source check and the inclusive tooling/test check.
 - The `@lostgradient/typescript` configuration package under `internal/typescript` exports only `library.json` and `browser.json`; `base.json` is private composition.
@@ -27,6 +27,7 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 - Declare an environment variable in `turbo.json` only when it changes that task's result. Add task outputs whenever a task writes reusable artifacts; keep watchers and mutation tasks uncached.
 - Use `--filter` for focused work, for example `bunx turbo run test --filter=@lostgradient/operative`. Run `bun run validate` for the complete graph.
 - Every turbo task runs the uncached root `//#preflight` task (`bun install --frozen-lockfile`) first, by way of `transit`, so a `package.json` edit without a matching `bun install` fails every turbo command rather than running against a stale tree. Turbo hashes `bun.lock` but never `node_modules`, so a drifted install would otherwise cache a result under a key describing a toolchain it was not built with. A package-specific `<package>#<task>` entry replaces the generic task definition instead of merging with it, so any new override must restate `"dependsOn": ["transit"]`; `scripts/task-cache.test.ts` enforces that every cacheable task still reaches the preflight.
+- Keep cache keys scoped to what a task can observe, so a change reruns only the packages it can affect. Because every task depends on `//#preflight`, its inputs are only `bun.lock` and the `package.json` manifests. The root package depends on no workspace except `@lostgradient/typescript`: turbo folds the files of every workspace the root depends on into the global hash, which would invalidate every cached task whenever one of them changed. Give root tooling that needs a workspace its own workspace, as `scripts/browser-fixtures` does. `globalDependencies` names individual configuration files, never directory globs; a package task that runs a root script lists that script in its own `inputs`. `scripts/task-cache.test.ts` enforces all three.
 
 ## Worktrees and agents
 

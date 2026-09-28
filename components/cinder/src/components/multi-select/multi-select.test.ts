@@ -768,9 +768,8 @@ describe('MultiSelect', () => {
       filterable: true,
     });
     await openMenu(container);
-    await waitFor(() => {
-      expect(document.activeElement).toBe(container.querySelector('.cinder-multi-select__filter'));
-    });
+    flushSync();
+    expect(document.activeElement).toBe(container.querySelector('.cinder-multi-select__filter'));
 
     const outside = document.createElement('button');
     outside.type = 'button';

@@ -735,6 +735,14 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
+      'src/worker/long-poll.ts',
+      {
+        reason:
+          'Focused LCOV for src/worker/long-poll.test.ts reports 100% line coverage for long-poll.ts and FNF/FNH 39/38, while emitting no FN/FNDA function identity records for this file; every branch and public accessor is covered by the long-poll worker tests, so this is the same Bun FNH undercount artifact documented for other fully line-covered files.',
+        functions: 1,
+      },
+    ],
+    [
       'src/testing/scheduler-contract.test-support.ts',
       {
         reason:
@@ -819,19 +827,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         requireUncoveredLines: true,
       },
     ],
-    [
-      'src/worker/registry/summary.ts',
-      // Was lines 134-139; shifted to 129-134 when WFT-27 dropped `gitSha`
-      // from the deployment-identity tuple, removing 5 lines above this
-      // function. Same unexercised `compareDeploymentSummaries` comparator.
-      {
-        reason:
-          'Transport disconnect and concurrency exits are behaviorally tested, but Bun does not deterministically attribute these residual paths.',
-        functions: 1,
-        lines: new Set([129, 130, 131, 132, 133, 134]),
-        requireUncoveredLines: true,
-      },
-    ],
   ],
 );
 
@@ -905,7 +900,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
           'Filesystem/network edge cases unreachable through the public --from/--server path: an OS-level rename failure (and its best-effort temp-file cleanup), a parent path that exists but is not a directory, resolveConnection() rethrowing something other than ConnectionConfigurationError, AbortSignal.timeout() producing anything but a TimeoutError, composeRegistryUrl() throwing on a URL resolveConnection() already validated, and emitRegistryDeclaration() throwing something other than CodegenEmitError. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): confirmed each of these six branches still exists at the new coordinates; only the line numbers moved.',
         functions: 1,
         lines: new Set([
-          76, 77, 78, 79, 80, 169, 170, 219, 264, 265, 289, 320, 321, 322, 324, 325, 326, 327,
+          81, 82, 83, 84, 85, 174, 175, 224, 269, 270, 294, 325, 326, 327, 329, 330, 331, 332,
         ]),
         requireUncoveredLines: true,
       },
@@ -1166,8 +1161,8 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       'src/cli/conformance.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217.',
-        lines: new Set([63, 136, 217]),
+          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217. Realigned a fourth time after `createRegisterCheck` (unit-tested directly, so fully covered) was added above the dispatch helper, moving the same three throws from 63/136/217 to 91/158/239.',
+        lines: new Set([91, 158, 239]),
         requireUncoveredLines: true,
       },
     ],
@@ -1428,17 +1423,8 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       'src/core/engine/retention.ts',
       {
         reason:
-          'Bun maps the closing braces of the resolved-dynamic-retention loop as uncovered after the direct `return true` inside them executes (retention.test.ts + workflow-retention.test.ts both exercise the branch itself).',
-        lines: new Set([34, 35]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/termination/finalizer-registration.ts',
-      {
-        reason:
-          "Bun maps the closing brace after the DynamicWorkflowSourceUnavailableError/WorkflowRevisionUnavailableError catch branch's `return undefined` and the trailing `throw error;` rethrow as uncovered, although finalizer.test.ts directly exercises the return (both a load-failure and an unresolvable-pinned-revision dynamic finalizer resolve) — only the unmatched-error rethrow itself has no reachable test (WFT-19 shifted these two lines from 43-44 to 56-57 when the catch grew a second error type).",
-        lines: new Set([56, 57]),
+          'Bun maps the closing braces of the resolved-dynamic-retention loop as uncovered after the direct `return true` inside them executes (retention.test.ts + workflow-retention.test.ts both exercise the branch itself). Realigned from 34-35 when the EngineDisposedError import for the disposed-sweep check shifted the file by one line.',
+        lines: new Set([35, 36]),
         requireUncoveredLines: true,
       },
     ],
@@ -1469,15 +1455,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
           57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 70, 110, 111, 112, 131, 138, 139, 206,
           207,
         ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/core/engine/workflow-retention-deadline.ts',
-      {
-        reason:
-          "New async resolve path (WFT-19 review round 1, re-derived in round 2 after the fail-closed rewrite shifted this line from 59 to 72): Bun maps the closing brace after the DynamicWorkflowSourceUnavailableError/WorkflowRevisionUnavailableError catch branch's `return { kind: 'unresolvable' }` as uncovered, the same brace-attribution artifact already documented for `termination/finalizer-registration.ts`'s identical catch shape — although workflow-retention.test.ts directly exercises both that return (an unresolvable-pinned-revision, now asserted NOT-purged rather than default-purged) and the success path (an async-resolved entry's own policy), and the suite's own `throw error;` rethrow line reads as hit from an unrelated disposal-race elsewhere in the full run.",
-        lines: new Set([72]),
         requireUncoveredLines: true,
       },
     ],
@@ -1706,13 +1683,19 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // block) — not a line this allowance should ever have covered for. Final coordinates below
       // reflect that fix: 161-164 -> 164-167, 257-265 -> 260-268, 288 -> 291, 462-468 -> 492-498,
       // 669/670/673/674 -> 700/701/704/705.
+      //
+      // Realigned again for the long-poll drain: its `long-poll-drain.ts` import added +1 to every
+      // coordinate, and the drain trigger after `completeTask()` in `onTaskResultMessage` a further
+      // +3 below it. Re-derived from a fresh coverage/lcov.info, which reports exactly the same 25
+      // missed lines and one missed function: 164-167 -> 165-168, 260-268 -> 261-269,
+      // 291 -> 292, 492-498 -> 496-502, 700/701/704/705 -> 704/705/708/709.
       {
         reason:
-          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (164-167, 291), a revision-mismatch rejection unreachable without fabricating a non-resend (260-268), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (492-498), and the closed WorkerToServerMessage union default branch (700, 701, 704, 705).",
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (165-168, 292), a revision-mismatch rejection unreachable without fabricating a non-resend (261-269), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (496-502), and the closed WorkerToServerMessage union default branch (704, 705, 708, 709).",
         functions: 1,
         lines: new Set([
-          164, 165, 166, 167, 260, 261, 262, 263, 264, 265, 266, 267, 268, 291, 492, 493, 494, 495,
-          496, 497, 498, 700, 701, 704, 705,
+          165, 166, 167, 168, 261, 262, 263, 264, 265, 266, 267, 268, 269, 292, 496, 497, 498, 499,
+          500, 501, 502, 704, 705, 708, 709,
         ]),
         requireUncoveredLines: true,
       },
@@ -1776,6 +1759,16 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       reason:
         "The `if (import.meta.main) {...}` CLI entry point only runs when this file is spawned directly (bun src/hello-world-example.test-support.ts), never when imported — proven by a dedicated subprocess test (src/examples.test.ts) that spawns it and asserts its stdout, exit code, and empty stderr. That child process runs outside the parent Bun test process's --coverage instrumentation, so its hits are never attributed to the parent LCOV report — the same class of gap TARGET_ONLY_COVERAGE_ALLOWANCES documents for scripts/run-gates.ts, scripts/verify-no-test-sleeps.ts, and examples/hello-world/src/index.ts above.",
       lines: new Set([76, 77, 79, 80]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
+    'scripts/check-documentation-code-blocks.ts',
+    {
+      reason:
+        'The `if (import.meta.main)` entry point only resolves the package paths, calls runDocumentationCodeBlockCheck(), prints its result and sets the exit code. It runs when `bun run typecheck` spawns the script, a separate process whose hits are never attributed to the parent LCOV report; runDocumentationCodeBlockCheck() itself is covered by check-documentation-code-blocks.test.ts against a fixture package.',
+      functions: 1,
+      lines: new Set([262, 263, 264, 265, 266, 267, 268, 269, 270, 271]),
       requireUncoveredLines: true,
     },
   ],

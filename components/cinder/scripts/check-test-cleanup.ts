@@ -1,25 +1,13 @@
 /**
- * Test-isolation policy guard (three rules).
+ * Test-isolation policy guard (two rules).
  *
  * The suite runs every `*.test.ts` in ONE process under `bun test --parallel=1`,
  * sharing a single happy-dom `Window`. Anything a test leaves mounted, or any
  * global it overrides without restoring, bleeds into every later test file. This
  * passes in isolation and ONLY fails in the full suite, where shared state can
- * leak between test files. Three rules close it:
+ * leak between test files. Two rules close it:
  *
- *   Rule 1 — cleanup: a test that imports `@testing-library/svelte`, calls its
- *   `render(`, and reads shared global DOM (`document.activeElement` /
- *   `document.body`) MUST reference `cleanup` inside a teardown hook
- *   (`afterEach`/`afterAll`) — either `afterEach(cleanup)` or a call to
- *   `cleanup()` in the hook body.
- *
- *   NOTE: as of the global-cleanup fix below, `scripts/preload.ts` registers a
- *   package-wide `afterEach(cleanup)` before any test file loads, so this
- *   per-file rule is now belt-and-suspenders rather than load-bearing — the
- *   ~90 existing test files that satisfy it are redundant but harmless, and
- *   this script does not mass-edit them.
- *
- *   Rule 2 — orphaned override: a test that overrides a hazardous process-global
+ *   Rule 1 — orphaned override: a test that overrides a hazardous process-global
  *   (ResizeObserver, getComputedStyle, matchMedia, …) at module scope MUST have a
  *   teardown hook (`afterEach`/`afterAll`/`finally`) that can undo it. The guard
  *   checks only that a teardown EXISTS, not that it restores the saved original
@@ -29,7 +17,7 @@
  *   in their test files; this rule stops a future *orphaned* override (a stub
  *   with nothing to undo it) from reintroducing the class.
  *
- *   Rule 3 — global cleanup registration: `scripts/preload.ts` (the file every
+ *   Rule 2 — global cleanup registration: `scripts/preload.ts` (the file every
  *   test process loads before any test file, per `bunfig.toml`'s `[test]
  *   preload`) MUST register a package-wide `afterEach(cleanup)` for
  *   `@testing-library/svelte`, via the shared `@lostgradient/testing` cleanup helper. Without
@@ -39,10 +27,17 @@
  *   removed from preload, or if the shared cleanup helper stops calling
  *   `afterEach` with something that references `cleanup`.
  *
+ * There is deliberately no per-file "call cleanup() in a teardown hook" rule.
+ * One existed, but Rule 2 enforces a package-wide `afterEach(cleanup)` that
+ * unmounts every `render()` after every test in every file, so a per-file
+ * check covered nothing Rule 2 does not. What it did do was reject
+ * legitimate indirection, such as `afterEach(cleanupNumberInput)`, and push
+ * files back toward the boilerplate the global registration replaced.
+ *
  * Scope is the whole package `src/**` — the override hazard is not
- * component-specific; `_internal`/utility tests share the same Window. Files that
- * drive Svelte's `mount`/`unmount` directly (own target + teardown, no
- * testing-library) are out of Rule 1 via the testing-library-import requirement.
+ * component-specific; `_internal`/utility tests share the same Window. Only
+ * `*.test.ts` files are scanned, so an override inside a shared test-support
+ * module is not checked here.
  *
  * Detection walks the TypeScript AST (typescript is already a devDependency), so
  * braces/parens/keywords inside strings, template literals, regex literals, and
@@ -121,34 +116,6 @@ function isTeardownHookCall(node: ts.Node): node is ts.CallExpression {
   );
 }
 
-/** Does any node in `root`'s subtree reference an identifier named `cleanup`? */
-function subtreeReferencesCleanup(root: ts.Node): boolean {
-  let found = false;
-  walk(root, (node) => {
-    if (ts.isIdentifier(node) && node.text === 'cleanup') found = true;
-  });
-  return found;
-}
-
-function findCleanupViolation(source: string, sourceFile: ts.SourceFile): string | null {
-  const rendersIntoSharedDom =
-    /@testing-library\/svelte/.test(source) &&
-    /\brender\s*\(/.test(source) &&
-    /document\.(?:activeElement|body)\b/.test(source);
-  if (!rendersIntoSharedDom) return null;
-
-  // `cleanup` must be referenced inside an afterEach/afterAll hook — covers
-  // `afterEach(cleanup)` and `afterEach(() => cleanup())` / block bodies alike.
-  let cleanupInTeardown = false;
-  walk(sourceFile, (node) => {
-    if (isTeardownHookCall(node) && node.arguments.some(subtreeReferencesCleanup)) {
-      cleanupInTeardown = true;
-    }
-  });
-  if (cleanupInTeardown) return null;
-  return 'renders into shared document.body but never calls cleanup() in a teardown hook';
-}
-
 /** Hazardous globals overridden anywhere in the file (assignment or defineProperty). */
 function isGlobalReceiver(node: ts.Expression | undefined): boolean {
   return node !== undefined && ts.isIdentifier(node) && GLOBAL_RECEIVERS.has(node.text);
@@ -217,7 +184,7 @@ function subtreeReferencesIdentifier(root: ts.Node, name: string): boolean {
 }
 
 /**
- * Rule 3: the shared Svelte cleanup helper must register a runner teardown hook
+ * Rule 2: the shared Svelte cleanup helper must register a runner teardown hook
  * whose argument references `cleanup` — the package-wide teardown that replaces the
  * ~90 files' worth of per-file cleanup boilerplate. Checked independently of
  * Rule 1's per-file AST walk because this is a single, specific file, not a
@@ -252,7 +219,7 @@ async function findGlobalCleanupRegistrationViolation(): Promise<string | null> 
 }
 
 /**
- * Rule 3 (continued): `scripts/preload.ts` — the file `bunfig.toml`'s
+ * Rule 2 (continued): `scripts/preload.ts` — the file `bunfig.toml`'s
  * `[test] preload` loads before any test file — must actually invoke the
  * global-cleanup registration. Without this call, the shared cleanup helper
  * existing and being correct is moot: nothing ever runs it.
@@ -293,9 +260,6 @@ async function scan(): Promise<Violation[]> {
     const sourceFile = parse(source, absolutePath);
     const filePath = relative(repoRoot, absolutePath);
 
-    const cleanupReason = findCleanupViolation(source, sourceFile);
-    if (cleanupReason) violations.push({ filePath, reason: cleanupReason });
-
     const overrideReason = findGlobalOverrideViolation(sourceFile);
     if (overrideReason) violations.push({ filePath, reason: overrideReason });
   }
@@ -328,15 +292,13 @@ async function main(): Promise<void> {
   process.stderr.write(
     'check-test-cleanup — test-isolation hazard(s) detected. The suite shares one process-\n' +
       'global Window (--parallel=1), so un-torn-down state leaks into later test files and\n' +
-      'flakes in the full suite. Three rules:\n\n' +
-      '  1. A test that renders via @testing-library/svelte and reads document.activeElement/\n' +
-      '     document.body MUST call cleanup() inside an afterEach/afterAll.\n' +
-      '  2. A test that overrides a global (ResizeObserver, getComputedStyle, matchMedia, …)\n' +
+      'flakes in the full suite. Two rules:\n\n' +
+      '  1. A test that overrides a global (ResizeObserver, getComputedStyle, matchMedia, …)\n' +
       '     MUST save the original and restore it inside a teardown hook:\n\n' +
       '       const original = globalThis.ResizeObserver;\n' +
       '       globalThis.ResizeObserver = Stub;\n' +
       '       afterAll(() => { globalThis.ResizeObserver = original; });\n\n' +
-      '  3. scripts/preload.ts MUST call registerGlobalCleanup() from\n' +
+      '  2. scripts/preload.ts MUST call registerGlobalCleanup() from\n' +
       '     the @lostgradient/testing cleanup helper, which MUST register\n' +
       '     afterEach(cleanup) for @testing-library/svelte — the package-wide\n' +
       '     teardown that unmounts every render() across the whole suite.\n\n',
