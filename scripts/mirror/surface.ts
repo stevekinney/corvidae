@@ -108,8 +108,8 @@ export interface PublishedPackage {
    * order the workspace walk happened to find directories in.
    *
    * Taken from `planManifests`'s `intraTargetEdges`, narrowed to the published set: an edge to a
-   * private workspace in the same target is a real `workspace:*` edge but not a build order — a
-   * private workspace is never packed and ships its source, so there is no `dist/` to wait for.
+   * private workspace in the same target is a real `workspace:*` edge but is not an edge between
+   * published packages. Private build order is recorded separately on `PrivateWorkspace`.
    */
   dependsOn: string[];
 }
@@ -126,6 +126,10 @@ export interface PrivateWorkspace {
   /** Target-relative directory, the same one the manifest was written to. */
   directory: string;
   publicName: string;
+  /** Private workspaces in the same target whose build must precede this one's build. */
+  dependsOn: string[];
+  /** Whether the emitted manifest declares a `build` script. */
+  builds: boolean;
   /** Whether the emitted manifest declares a `typecheck` script. */
   typechecks: boolean;
   /** Whether the emitted source includes TypeScript, which is what makes a typecheck meaningful. */
@@ -289,7 +293,9 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
           workspace: workspace.workspace,
           directory: workspace.targetDirectory,
           publicName: publicNameFor(workspace.workspace, disposition),
-          typechecks: hasTypecheckScript(JSON.parse(serialized) as JsonObject),
+          dependsOn: [],
+          builds: hasManifestScript(JSON.parse(serialized) as JsonObject, 'build'),
+          typechecks: hasManifestScript(JSON.parse(serialized) as JsonObject, 'typecheck'),
           emitsTypeScript: false,
         });
         continue;
@@ -358,6 +364,12 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   for (const entry of published) {
     entry.dependsOn = (manifestPlan.intraTargetEdges.get(entry.workspace) ?? []).filter((name) =>
       publishedNames.has(name),
+    );
+  }
+  const privateNames = new Set(privateWorkspaces.map((entry) => entry.publicName));
+  for (const entry of privateWorkspaces) {
+    entry.dependsOn = (manifestPlan.intraTargetEdges.get(entry.workspace) ?? []).filter((name) =>
+      privateNames.has(name),
     );
   }
 
@@ -431,10 +443,10 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   };
 }
 
-/** Whether an emitted manifest declares the script `verifyTarget` runs over a private workspace. */
-function hasTypecheckScript(manifest: JsonObject): boolean {
+/** Whether an emitted manifest declares a script `verifyTarget` may run. */
+function hasManifestScript(manifest: JsonObject, name: string): boolean {
   const scripts = manifest['scripts'];
-  return isJsonObject(scripts) && typeof scripts['typecheck'] === 'string';
+  return isJsonObject(scripts) && typeof scripts[name] === 'string';
 }
 
 /**

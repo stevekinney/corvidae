@@ -30,6 +30,8 @@ const privateWorkspaces: PrivateWorkspace[] = [
     workspace: '@lostgradient/testing',
     directory: 'packages/testing',
     publicName: '@lostgradient/testing',
+    dependsOn: [],
+    builds: true,
     typechecks: true,
     emitsTypeScript: true,
   },

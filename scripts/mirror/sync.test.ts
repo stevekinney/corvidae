@@ -501,7 +501,10 @@ interface Harness {
 }
 
 /** Stand up the remote, seed it with the target, and build the corvidae tree beside it. */
-async function withHarness(body: (harness: Harness) => Promise<void>): Promise<void> {
+async function withHarness(
+  body: (harness: Harness) => Promise<void>,
+  targetFiles = targetFixture(),
+): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'corvidae-sync-'));
   try {
     const remote = join(root, 'remote.git');
@@ -511,7 +514,7 @@ async function withHarness(body: (harness: Harness) => Promise<void>): Promise<v
     const seed = join(root, 'seed');
     await mkdir(seed, { recursive: true });
     await git(seed, 'clone', '--quiet', remote, seed);
-    await writeTree(seed, targetFixture());
+    await writeTree(seed, targetFiles);
     await git(seed, 'add', '--all');
     await git(seed, 'commit', '--quiet', '--message', 'Target repository before any sync');
     await git(seed, 'push', '--quiet', 'origin', 'HEAD:main');
@@ -556,6 +559,24 @@ async function sync(harness: Harness, label: string): Promise<SyncResult> {
 const endToEndTimeout = 300_000;
 
 describe('the mirror sync against a fake remote', () => {
+  test(
+    'a failing target-owned private build aborts verification',
+    async () => {
+      const targetFiles = targetFixture();
+      targetFiles[`${privateWorkspaceDirectory}/package.json`] = {
+        name: privateWorkspaceName,
+        private: true,
+        scripts: { build: 'bun -e "process.exit(23)"', typecheck: 'tsc --noEmit' },
+      };
+      await withHarness(async (harness) => {
+        await expect(sync(harness, 'private-build-failure')).rejects.toThrow(
+          `running build for ${privateWorkspaceName}`,
+        );
+      }, targetFiles);
+    },
+    endToEndTimeout,
+  );
+
   test(
     'transforms, verifies, pushes, and then reports skip on an identical second run',
     async () => {
@@ -1404,6 +1425,8 @@ describe('the private-workspace check', () => {
           workspace: '@lostgradient/testing',
           directory: 'packages/testing',
           publicName: '@lostgradient/testing',
+          dependsOn: [],
+          builds: false,
           typechecks: false,
           emitsTypeScript: true,
         },
@@ -1418,6 +1441,8 @@ describe('the private-workspace check', () => {
           workspace: '@lostgradient/typescript',
           directory: 'internal/typescript',
           publicName: '@lostgradient/typescript',
+          dependsOn: [],
+          builds: false,
           typechecks: false,
           emitsTypeScript: false,
         },

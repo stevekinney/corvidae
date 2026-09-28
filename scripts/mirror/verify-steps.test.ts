@@ -30,6 +30,8 @@ const privateWorkspaces: PrivateWorkspace[] = [
     workspace: '@lostgradient/testing',
     directory: 'packages/testing',
     publicName: '@lostgradient/testing',
+    dependsOn: [],
+    builds: true,
     typechecks: true,
     emitsTypeScript: true,
   },
@@ -37,6 +39,8 @@ const privateWorkspaces: PrivateWorkspace[] = [
     workspace: '@lostgradient/typescript',
     directory: 'internal/typescript',
     publicName: '@lostgradient/typescript',
+    dependsOn: [],
+    builds: false,
     typechecks: false,
     emitsTypeScript: false,
   },
@@ -63,7 +67,7 @@ function workflowEnvironment(): VerifyEnvironment {
 }
 
 describe('buildVerifySteps', () => {
-  test('the ordered kinds match install, then per-published-package build/typecheck/pack/publint/attw, then a private typecheck, then the consumer smoke test', () => {
+  test('the ordered kinds include private builds before private typechecks and the consumer smoke test', () => {
     const steps = buildVerifySteps(
       { installCommand: ['bun', 'install', '--frozen-lockfile'], published, privateWorkspaces },
       localEnvironment(),
@@ -77,12 +81,64 @@ describe('buildVerifySteps', () => {
       'readme',
       'publint',
       'attw',
+      'build-private',
       'typecheck-private',
       'write-consumer-project',
       'consumer-install',
       'consumer-run',
       'consumer-run-node',
     ]);
+  });
+
+  test('only private workspaces with build scripts receive a build step', () => {
+    const steps = buildVerifySteps(
+      { installCommand: ['bun', 'install'], published: [], privateWorkspaces },
+      localEnvironment(),
+    );
+    expect(steps.filter((step) => step.kind === 'build-private')).toEqual([
+      {
+        kind: 'build-private',
+        description: 'build @lostgradient/testing',
+        cwd: '/clone/packages/testing',
+        command: ['bun', 'run', 'build'],
+        publicName: '@lostgradient/testing',
+      },
+    ]);
+  });
+
+  test('private dependencies build before their consumer regardless of discovery order', () => {
+    const consumer: PrivateWorkspace = {
+      workspace: '@lostgradient/bureau',
+      directory: 'packages/bureau',
+      publicName: '@lostgradient/bureau',
+      dependsOn: ['@lostgradient/memory', '@lostgradient/skills'],
+      builds: true,
+      typechecks: true,
+      emitsTypeScript: true,
+    };
+    const dependencies = ['memory', 'skills'].map((name): PrivateWorkspace => ({
+      workspace: `@lostgradient/${name}`,
+      directory: `packages/${name}`,
+      publicName: `@lostgradient/${name}`,
+      dependsOn: [],
+      builds: true,
+      typechecks: true,
+      emitsTypeScript: true,
+    }));
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install'],
+        published: [],
+        privateWorkspaces: [consumer, ...dependencies],
+      },
+      localEnvironment(),
+    );
+    expect(
+      steps.filter((step) => step.kind === 'build-private').map((step) => step.publicName),
+    ).toEqual(['@lostgradient/memory', '@lostgradient/skills', '@lostgradient/bureau']);
+    expect(steps.findIndex((step) => step.kind === 'typecheck-private')).toBeGreaterThan(
+      steps.findLastIndex((step) => step.kind === 'build-private'),
+    );
   });
 
   test('a package is built before the packages that depend on it, whatever order discovery found them in', () => {
