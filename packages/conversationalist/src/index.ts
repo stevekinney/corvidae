@@ -14,9 +14,11 @@ export type * from './adapters/openai/types';
 export { compactConversation } from './compaction/compact';
 export { stripToolResultDetails } from './compaction/stripping';
 export type {
+  CompactionAttempt,
   CompactionOptions,
   CompactionPreservePolicy,
   CompactionResult,
+  ConversationCompactionResult,
   Summarizer,
 } from './compaction/types';
 export {

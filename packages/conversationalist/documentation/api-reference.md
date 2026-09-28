@@ -97,8 +97,10 @@ This document describes the public API exposed by the `conversationalist` packag
 - `ConversationEventDetail`
 - `ConversationEventMap`
 - `ConversationEventType`
+- `CompactionAttempt`
 - `CompactionOptions`
 - `CompactionResult`
+- `ConversationCompactionResult`
 - `Summarizer`
 - `ConversationHistory`
 - `ConversationHistoryDraft`
