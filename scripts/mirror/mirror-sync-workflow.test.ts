@@ -13,8 +13,8 @@ import { mirrorTargets } from './target-definitions.ts';
  * there is no generator to test through. What these tests pin instead is exactly what COR-1195
  * requires and what a careless edit could quietly break: no second workflow file, no `push`
  * trigger, no `GITHUB_TOKEN` anywhere in `.github/workflows`, the Bun version matching corvidae's
- * own `packageManager` pin, the dispatch's target choices matching `mirrorTargets`, and
- * `MIRROR_APP_PRIVATE_KEY` as the only secret referenced.
+ * own `packageManager` pin, the dispatch's target choices matching `mirrorTargets`, and the App
+ * key isolated to the publish job.
  */
 
 const workflowsDirectory = join(import.meta.dir, '..', '..', '.github', 'workflows');
@@ -92,5 +92,29 @@ describe('mirror-sync.yaml', () => {
     expect(text).toContain('MIRROR_APP_PRIVATE_KEY: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}');
     expect(text).not.toContain('MIRROR_APP_PRIVATE_KEY_FILE');
     expect(text).not.toMatch(/>\s*.*private[-_]key/i);
+  });
+
+  test('keeps prepare and publish in separate jobs with the App key only in publish', async () => {
+    const text = await readWorkflow();
+    const prepareJob = text.match(/  prepare-pull-request:\n([\s\S]+?)\n\n  publish-pull-request:/);
+    const publishJob = text.match(/  publish-pull-request:\n([\s\S]+)$/);
+    expect(prepareJob?.[1]).toContain('--mode prepare');
+    expect(prepareJob?.[1]).not.toContain('MIRROR_APP_PRIVATE_KEY');
+    expect(publishJob?.[1]).toContain('needs: prepare-pull-request');
+    expect(publishJob?.[1]).toContain('--mode publish');
+    expect(publishJob?.[1]).toContain('MIRROR_APP_PRIVATE_KEY');
+  });
+
+  test('does not persist checkout credentials in any job', async () => {
+    const text = await readWorkflow();
+    const checkoutSteps = [...text.matchAll(/uses: actions\/checkout@v4/g)];
+    const disabledCredentials = [...text.matchAll(/persist-credentials:\s*false/g)];
+    expect(disabledCredentials).toHaveLength(checkoutSteps.length);
+  });
+
+  test('serializes a manual dispatch at workflow scope rather than per job', async () => {
+    const text = await readWorkflow();
+    expect(text).toMatch(/concurrency:\n\s+group: mirror-sync-\$\{\{ github\.event_name \}\}-/);
+    expect(text).not.toMatch(/^\s+concurrency:\n\s+group: mirror-sync-dispatch-/m);
   });
 });

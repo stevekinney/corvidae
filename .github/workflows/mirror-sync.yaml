@@ -2,15 +2,18 @@
 # one exception: scripts/mirror/ and this file. Do not add a second workflow file, and do not add
 # publishing, CI/CD or Git-hook automation anywhere else in this workspace.
 #
-# Two jobs, one `bun scripts/mirror/mirror-sync-action.ts` invocation each:
+# Three jobs, one `bun scripts/mirror/mirror-sync-action.ts` invocation each:
 #
 # - `drift-report` runs on the weekly schedule, once per target in a matrix. It performs the whole
 #   transform against a fresh clone of the real target and reports whether that target is behind,
 #   pushing nothing. It reads a public repository over HTTPS, so it needs no credential at all.
-# - `open-pull-request` runs only on a manual dispatch, for the one target the dispatch names. It
-#   commits the transform on a new branch and opens a pull request in the target through the
-#   mirror GitHub App's installation token — never a push to the target's own default branch, so
-#   the target's own emitted mirror-verify.yaml gates the exact diff before anything lands there.
+# - `prepare-pull-request` runs only on a manual dispatch, for the one target the dispatch names.
+#   It verifies the transform without carrying the App private key and uploads a bundle-plus-
+#   manifest artifact for a fresh runner to publish.
+# - `publish-pull-request` downloads and verifies that artifact, then opens a pull request in the
+#   target through the mirror GitHub App's installation token — never a push to the target's own
+#   default branch, so the target's own emitted mirror-verify.yaml gates the exact diff before
+#   anything lands there.
 #
 # Authentication is the App installation token only. GitHub's own default workflow credential is
 # never named here: this file's `permissions:` block scopes it down to what `actions/checkout`
@@ -43,13 +46,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mirror-sync-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.target || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   drift-report:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    concurrency:
-      group: mirror-sync-report-${{ matrix.target }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +61,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -72,15 +78,14 @@ jobs:
           WORK: ${{ runner.temp }}/mirror-sync-report
         run: bun scripts/mirror/mirror-sync-action.ts --mode report --target "$TARGET" --work "$WORK"
 
-  open-pull-request:
+  prepare-pull-request:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    concurrency:
-      group: mirror-sync-dispatch-${{ inputs.target }}
-      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -90,12 +95,53 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Open a pull request for ${{ inputs.target }}
+      - name: Prepare a verified artifact for ${{ inputs.target }}
         env:
-          MIRROR_APP_PRIVATE_KEY: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
           TARGET: ${{ inputs.target }}
           SNAPSHOT: ${{ inputs.snapshot }}
           CORVIDAE_COMMIT: ${{ github.sha }}
           WORK: ${{ runner.temp }}/mirror-sync-dispatch
           SCRATCH: ${{ runner.temp }}/mirror-sync-scratch
-        run: bun scripts/mirror/mirror-sync-action.ts --mode dispatch --target "$TARGET" --snapshot "$SNAPSHOT" --corvidae-commit "$CORVIDAE_COMMIT" --work "$WORK" --scratch "$SCRATCH"
+          ARTIFACT: ${{ runner.temp }}/mirror-sync-artifact
+        run: bun scripts/mirror/mirror-sync-action.ts --mode prepare --target "$TARGET" --snapshot "$SNAPSHOT" --corvidae-commit "$CORVIDAE_COMMIT" --work "$WORK" --scratch "$SCRATCH" --artifact "$ARTIFACT"
+
+      - name: Upload verified artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mirror-sync-${{ inputs.target }}-${{ github.sha }}
+          path: ${{ runner.temp }}/mirror-sync-artifact
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-pull-request:
+    if: github.event_name == 'workflow_dispatch'
+    needs: prepare-pull-request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download verified artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: mirror-sync-${{ inputs.target }}-${{ github.sha }}
+          path: ${{ runner.temp }}/mirror-sync-artifact
+
+      - name: Publish pull request for ${{ inputs.target }}
+        env:
+          MIRROR_APP_PRIVATE_KEY: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
+          TARGET: ${{ inputs.target }}
+          SNAPSHOT: ${{ inputs.snapshot }}
+          CORVIDAE_COMMIT: ${{ github.sha }}
+          ARTIFACT: ${{ runner.temp }}/mirror-sync-artifact
+        run: bun scripts/mirror/mirror-sync-action.ts --mode publish --target "$TARGET" --snapshot "$SNAPSHOT" --corvidae-commit "$CORVIDAE_COMMIT" --artifact "$ARTIFACT"

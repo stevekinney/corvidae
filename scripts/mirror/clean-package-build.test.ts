@@ -1,11 +1,13 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
 import { buildCleanPublishedPackage } from './clean-package-build.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import { requireGit } from './publication-history.ts';
+
+const sourceRoot = join(import.meta.dir, '../..');
 
 async function fixture(packScript = false) {
   const root = await mkdtemp(join(tmpdir(), 'clean-package-fixture-'));
@@ -20,6 +22,12 @@ async function fixture(packScript = false) {
   await Bun.write(
     join(historical, 'scripts/mirror/package-surface.json'),
     JSON.stringify({ ...surface, packages: entries }),
+  );
+  await Bun.write(
+    join(historical, 'scripts/mirror/verify-steps.ts'),
+    `export { buildVerifySteps } from ${JSON.stringify(
+      join(sourceRoot, 'scripts/mirror/verify-steps.ts'),
+    )};\n`,
   );
   await Bun.write(
     join(target, 'package.json'),
@@ -158,6 +166,55 @@ test('uses historical pack-script policy and returns its generated manifest from
   expect(
     observed.commands.some(({ command }) => command[2] === 'scripts/pack-for-publish.ts'),
   ).toBe(true);
+  expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
+});
+
+test('executes the verified historical build-step recipe', async () => {
+  await using input = await fixture();
+  const historicalRecipeDirectory = join(input.root, 'historical/scripts/mirror');
+  await mkdir(historicalRecipeDirectory, { recursive: true });
+  await Bun.write(
+    join(historicalRecipeDirectory, 'verify-steps.ts'),
+    `import { buildVerifySteps as currentBuildVerifySteps } from ${JSON.stringify(
+      join(sourceRoot, 'scripts/mirror/verify-steps.ts'),
+    )};
+export function buildVerifySteps(inputs, environment) {
+  return currentBuildVerifySteps(inputs, environment).map((step) =>
+    step.kind === 'build' ? { ...step, command: [...step.command, '--historical'] } : step,
+  );
+}
+`,
+  );
+  const observed = recorder();
+  await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
+  expect(observed.commands.filter(({ command }) => command[2] === 'build')).toHaveLength(2);
+  expect(
+    observed.commands
+      .filter(({ command }) => command[2] === 'build')
+      .every(({ command }) => command[3] === '--historical'),
+  ).toBe(true);
+});
+
+test.each([
+  ['missing', undefined],
+  ['incompatible', 'export const buildVerifySteps = 42;\n'],
+] as const)('fails closed when the historical recipe is %s', async (kind, recipe) => {
+  await using input = await fixture();
+  const recipePath = join(input.root, 'historical/scripts/mirror/verify-steps.ts');
+  if (recipe === undefined) await rm(recipePath);
+  else await Bun.write(recipePath, recipe);
+  const observed = recorder();
+  await expect(
+    buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
+  ).rejects.toThrow(kind === 'missing' ? 'recipe is missing' : 'recipe is incompatible');
+  expect(
+    observed.commands.some(
+      ({ command }) =>
+        command[2] === 'build' ||
+        command[1] === 'pm' ||
+        command[2] === 'scripts/pack-for-publish.ts',
+    ),
+  ).toBe(false);
   expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
 });
 

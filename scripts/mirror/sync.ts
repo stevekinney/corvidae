@@ -256,7 +256,7 @@ async function readHistory(directory: string): Promise<CommitRecord[]> {
   // An empty target has no HEAD to walk, which is a first sync rather than a failure.
   if (head.exitCode !== 0) return [];
   const format = `%H${unitSeparator}%s${unitSeparator}%(trailers:key=${provenanceTrailer},valueonly,separator=%x2C)${recordSeparator}`;
-  const log = await git(directory, 'log', `--format=${format}`);
+  const log = await git(directory, 'log', '--topo-order', `--format=${format}`);
   return log
     .split(recordSeparator)
     .map((record) => record.replace(/^\n/, ''))
@@ -289,11 +289,15 @@ export async function findForeignCommits(
   const history = await readHistory(directory);
   const newestMirrored = history.findIndex((commit) => commit.provenance.length > 0);
   if (newestMirrored === -1) return [];
-  const candidates = history.slice(0, newestMirrored);
+  const mirrorCommit = history[newestMirrored]!.sha;
+  const ancestry = await git(directory, 'rev-list', '--ancestry-path', `${mirrorCommit}..HEAD`);
+  const descendants = new Set(ancestry.trim().split('\n'));
+  const candidates = history.filter(({ sha }) => descendants.has(sha));
   if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
   const foreign: ForeignCommit[] = [];
   for (const { sha, subject } of candidates) {
-    if (!(await isTargetOwnedCommit(directory, sha, ownership))) foreign.push({ sha, subject });
+    if (!(await isTargetOwnedCommit(directory, sha, mirrorCommit, ownership)))
+      foreign.push({ sha, subject });
   }
   return foreign;
 }
@@ -347,20 +351,34 @@ function transformReaches(reach: TransformReach, path: string): boolean {
 async function isTargetOwnedCommit(
   directory: string,
   sha: string,
+  mirrorCommit: string,
+  ownership: ForeignCommitOwnership,
+): Promise<boolean> {
+  const parentRecord = await git(directory, 'rev-list', '--parents', '-n', '1', sha);
+  const parents = parentRecord.trim().split(/\s+/).slice(1);
+  let inspected = false;
+  for (const parent of parents) {
+    const ancestor = await tryGit(directory, 'merge-base', '--is-ancestor', mirrorCommit, parent);
+    if (ancestor.exitCode === 1) continue;
+    if (ancestor.exitCode !== 0)
+      throw new SyncError(`Cannot inspect mirror ancestry: ${ancestor.stderr}`);
+    inspected = true;
+    if (!(await isTargetOwnedDelta(directory, parent, sha, ownership))) return false;
+  }
+  return inspected;
+}
+
+/** Compare every ancestry edge after the mirror; combined merge diffs can omit imported changes. */
+async function isTargetOwnedDelta(
+  directory: string,
+  parent: string,
+  sha: string,
   { policy, target, targetOwnedFiles, transform }: ForeignCommitOwnership,
 ): Promise<boolean> {
   // `--no-renames`: a rename is judged as the deletion of its old path plus the addition of its
   // new one, so moving an emitted file out of the sync's reach is still a deletion the sync would
   // undo. `-z`: paths arrive unquoted, so one git would escape still matches the plan's keys.
-  const status = await git(
-    directory,
-    'show',
-    '--format=',
-    '--name-status',
-    '--no-renames',
-    '-z',
-    sha,
-  );
+  const status = await git(directory, 'diff', '--name-status', '--no-renames', '-z', parent, sha);
   const fields = status.split('\0');
   const transformOwnedKeys = new Set(policy.insideFiles.manifestKeys.map((entry) => entry.key));
   for (let index = 0; index + 1 < fields.length; index += 2) {
@@ -370,7 +388,7 @@ async function isTargetOwnedCommit(
     if (targetOwnedFiles?.has(path)) continue;
     if (!transformReaches(transform, path)) continue;
     if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
-    const before = await git(directory, 'show', `${sha}^:${path}`);
+    const before = await git(directory, 'show', `${parent}:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);
     for (const key of changedTopLevelKeys(before, after)) {
       if (transformOwnedKeys.has(key)) return false;
@@ -786,7 +804,7 @@ export async function verifyTarget({
   return { reports, smokeTest, privateTypechecks, installParity };
 }
 
-export type SyncDecision = 'skip' | 'pushed';
+export type SyncDecision = 'skip' | 'prepared' | 'pushed';
 
 export interface SyncOptions {
   corvidaeRoot: string;
@@ -817,6 +835,8 @@ export interface SyncOptions {
    * commit, exactly as it is on the direct-push path), the same stage and the same verification.
    */
   pullRequest?: PullRequestOptions | undefined;
+  /** Verify and commit locally for publication on a separate, credentialed runner. */
+  prepareBranch?: string | undefined;
 }
 
 export interface PullRequestOptions {
@@ -903,6 +923,8 @@ export async function assertVerificationSnapshot(options: {
  * notice.
  */
 export async function runSync(options: SyncOptions): Promise<SyncResult> {
+  if (options.prepareBranch !== undefined && options.pullRequest !== undefined)
+    throw new SyncError('Prepare and pull-request modes are mutually exclusive');
   const clone = await cloneTarget({
     remote: options.remote,
     directory: options.directory,
@@ -917,20 +939,19 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     }),
   );
 
-  // Read before the sync branch is created below, and only in pull-request mode: it is the base
-  // a pull request opens against, and the direct-push path never needs it because it pushes back
-  // to whatever branch is already checked out.
+  // Record the target branch before creating a local preparation or pull-request branch.
   let base: string | undefined;
   const baseCommit = await git(clone, 'rev-parse', 'HEAD');
   const baseCommitBeforeSync = baseCommit.trim();
-  if (options.pullRequest !== undefined) {
+  if (options.pullRequest !== undefined || options.prepareBranch !== undefined) {
     const currentBranch = await git(clone, 'rev-parse', '--abbrev-ref', 'HEAD');
     base = currentBranch.trim();
   }
   // Created after the guard and before the transform, so every hand commit already on the
   // target's default branch is an ancestor of the sync branch by construction, exactly as it
   // would be on the branch the direct-push path commits to.
-  if (options.pullRequest) await git(clone, 'checkout', '-b', options.pullRequest.branch);
+  const syncBranch = options.prepareBranch ?? options.pullRequest?.branch;
+  if (syncBranch !== undefined) await git(clone, 'checkout', '-b', syncBranch);
 
   const { plan } = await stageSurface({
     corvidaeRoot: options.corvidaeRoot,
@@ -992,6 +1013,21 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   );
   const head = await git(clone, 'rev-parse', 'HEAD');
   const commit = head.trim();
+
+  if (options.prepareBranch !== undefined) {
+    return {
+      decision: 'prepared',
+      target: options.target,
+      directory: clone,
+      changed,
+      commit,
+      firstPublish: plan.firstPublish,
+      seededFromPackageMap: plan.seededFromPackageMap,
+      verification,
+      baseBranch: base ?? '',
+      baseCommit: baseCommitBeforeSync,
+    };
+  }
 
   if (options.pullRequest) {
     const pullRequestOptions = options.pullRequest;

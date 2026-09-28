@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   readReleaseWorkflowBunVersion,
@@ -24,7 +25,31 @@ import {
   type PublishedRegistryPackage,
 } from './registry-manifest.ts';
 import type { PublishedPackage } from './surface.ts';
-import { buildVerifySteps } from './verify-steps.ts';
+import type { VerifyEnvironment, VerifyStep, VerifyStepsInputs } from './verify-steps.ts';
+
+type HistoricalBuildVerifySteps = (
+  inputs: VerifyStepsInputs,
+  environment: VerifyEnvironment,
+) => readonly VerifyStep[];
+
+async function historicalBuildVerifySteps(
+  publishedSourceRoot: string,
+): Promise<HistoricalBuildVerifySteps> {
+  const recipePath = join(publishedSourceRoot, 'scripts/mirror/verify-steps.ts');
+  if (!(await Bun.file(recipePath).exists()))
+    throw new Error(`Historical build-step recipe is missing: ${recipePath}`);
+  let module: { buildVerifySteps?: unknown };
+  try {
+    module = (await import(pathToFileURL(recipePath).href)) as { buildVerifySteps?: unknown };
+  } catch (error) {
+    throw new Error(`Historical build-step recipe could not be loaded: ${recipePath}`, {
+      cause: error,
+    });
+  }
+  if (typeof module.buildVerifySteps !== 'function')
+    throw new Error(`Historical build-step recipe is incompatible: ${recipePath}`);
+  return module.buildVerifySteps as HistoricalBuildVerifySteps;
+}
 
 export interface CleanPackageBuildOptions {
   targetRepositoryDirectory: string;
@@ -181,6 +206,7 @@ export async function buildCleanPublishedPackage({
     if (!requested)
       throw new Error(`${workspace}: historical surface and committed package identity disagree`);
     await mkdir(join(scratch, 'tarballs'));
+    const buildVerifySteps = await historicalBuildVerifySteps(publishedSourceRoot);
     const steps = buildVerifySteps(
       {
         installCommand: ['bun', 'install', '--frozen-lockfile', ...installArguments],

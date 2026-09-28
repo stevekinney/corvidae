@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pushVerifiedCommit } from './authenticated-push.ts';
+import { pushVerifiedBundle, pushVerifiedCommit } from './authenticated-push.ts';
 import { runCommand } from './packaging.ts';
 import { git, gitEnvironment } from './sync.ts';
 
@@ -107,6 +107,64 @@ test('refuses a different imported commit before requesting credentials', async 
   await expect(
     pushVerifiedCommit({
       directory: tmpdir(),
+      remote: 'https://github.com/stevekinney/weft.git',
+      commit: 'a'.repeat(40),
+      branch: 'verified',
+      environment: {},
+      credentialEnvironment: async () => {
+        requestedCredentials = true;
+        return {};
+      },
+      run: async (command) => {
+        commands.push([...command]);
+        return {
+          command: command.join(' '),
+          exitCode: 0,
+          stderr: '',
+          stdout: command.includes('rev-parse') ? 'b'.repeat(40) : '',
+        };
+      },
+    }),
+  ).rejects.toThrow('Imported push commit does not match');
+  expect(requestedCredentials).toBe(false);
+  expect(commands.some((command) => command.includes('push'))).toBe(false);
+});
+
+test('refuses an invalid publish branch before requesting credentials', async () => {
+  let requestedCredentials = false;
+  const commands: string[][] = [];
+  await expect(
+    pushVerifiedBundle({
+      bundle: join(tmpdir(), 'verified.bundle'),
+      remote: 'https://github.com/stevekinney/weft.git',
+      commit: 'a'.repeat(40),
+      branch: 'refs/heads/main',
+      environment: {},
+      credentialEnvironment: async () => {
+        requestedCredentials = true;
+        return {};
+      },
+      run: async (command) => {
+        commands.push([...command]);
+        return {
+          command: command.join(' '),
+          exitCode: command.includes('check-ref-format') ? 1 : 0,
+          stderr: 'invalid ref',
+          stdout: '',
+        };
+      },
+    }),
+  ).rejects.toThrow('check-ref-format');
+  expect(requestedCredentials).toBe(false);
+  expect(commands.some((command) => command.includes('push'))).toBe(false);
+});
+
+test('pushVerifiedBundle requests credentials only after the bundle identity matches', async () => {
+  let requestedCredentials = false;
+  const commands: string[][] = [];
+  await expect(
+    pushVerifiedBundle({
+      bundle: join(tmpdir(), 'verified.bundle'),
       remote: 'https://github.com/stevekinney/weft.git',
       commit: 'a'.repeat(40),
       branch: 'verified',

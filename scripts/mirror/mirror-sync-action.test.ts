@@ -187,19 +187,21 @@ describe('runMirrorSyncActionCommand argument handling', () => {
     expect(code).toBe(1);
   });
 
-  test('requires --target for dispatch mode', async () => {
+  test('requires --target for prepare mode', async () => {
     const code = await runMirrorSyncActionCommand([
       '--mode',
-      'dispatch',
+      'prepare',
       '--work',
       '/tmp/x',
       '--scratch',
       '/tmp/y',
+      '--artifact',
+      '/tmp/z',
     ]);
     expect(code).toBe(1);
   });
 
-  test('rejects malformed --snapshot input before dispatch setup', async () => {
+  test('rejects malformed --snapshot input before prepare setup', async () => {
     const messages: string[] = [];
     const originalWrite = process.stderr.write;
     const captureWrite: typeof process.stderr.write = (chunk) => {
@@ -211,7 +213,7 @@ describe('runMirrorSyncActionCommand argument handling', () => {
     try {
       const code = await runMirrorSyncActionCommand([
         '--mode',
-        'dispatch',
+        'prepare',
         '--target',
         'weft',
         '--snapshot',
@@ -220,6 +222,8 @@ describe('runMirrorSyncActionCommand argument handling', () => {
         '/tmp/mirror-sync-action-invalid-snapshot',
         '--scratch',
         '/tmp/mirror-sync-action-invalid-snapshot-scratch',
+        '--artifact',
+        '/tmp/mirror-sync-action-invalid-snapshot-artifact',
       ]);
       expect(code).toBe(1);
     } finally {

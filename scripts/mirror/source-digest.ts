@@ -1,12 +1,14 @@
 import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { targetDirectoryFor } from './layout-map.ts';
 import { packagePayloadAlgorithm, type PackagePayloadContract } from './package-payload.ts';
 import { canonicalManifest, objectRecord } from './registry-manifest.ts';
 import { publishedVersionRange, targetFor } from './target-definitions.ts';
 
 import { filesCoverPath, loadPackageSurface } from './package-surface.ts';
 import { additionalSourceRoots, isSourceFile, sourceTree, versionConstants } from './source.ts';
+import { planTypeScriptConfiguration } from './typescript-configuration.ts';
 
 /**
  * A corvidae-side fingerprint of one published workspace's shipped source, and the guard that
@@ -319,6 +321,12 @@ export async function publicationInputContract({
       }),
     };
   }
+  const targetDirectory = await targetDirectoryFor(workspace);
+  const typeScriptPlan = await planTypeScriptConfiguration({
+    corvidaeRoot,
+    target: targetFor(workspace),
+    workspaces: [{ corvidaeDirectory, targetDirectory }],
+  });
   const payload = {
     manifestFields,
     runtimeDependencies,
@@ -332,6 +340,11 @@ export async function publicationInputContract({
       manifestFields: resolved.manifestFields,
       build: { ...resolved.build, toolchain: resolveDependencies(resolved.build.toolchain) },
     },
+    typeScriptConfiguration: Object.fromEntries(
+      Object.entries(typeScriptPlan.files).toSorted(([left], [right]) =>
+        left < right ? -1 : left > right ? 1 : 0,
+      ),
+    ),
   };
   return {
     algorithm: publicationContractAlgorithm,

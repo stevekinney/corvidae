@@ -390,33 +390,51 @@ export function userTokenFromEnvironmentOrCli(
 }
 
 /**
- * The App installation credential, minted once per process and reused.
+ * The App installation credential, minted lazily and refreshed before expiry.
  *
- * One mint per run keeps the number of places a token exists to one, and an installation token
- * lives an hour, which outlasts any dry run.
+ * Verification can run longer than one installation token lifetime. The provider therefore keeps
+ * a token only while GitHub says it is still fresh and mints the next one at the first credentialed
+ * publish or API operation that needs it.
  */
 export function installationTokenFromApp(
   options: {
     fetchImplementation?: FetchImplementation;
     appId?: number;
     installationId?: number;
+    now?: () => Date;
+    refreshSkewMilliseconds?: number;
   } = {},
   environment: Record<string, string | undefined> = Bun.env,
 ): () => Promise<string> {
-  let pending: Promise<string> | undefined;
+  let cached: { token: string; expiresAt: number } | undefined;
+  let pending: Promise<{ token: string; expiresAt: number }> | undefined;
+  const now = options.now ?? (() => new Date());
+  const refreshSkewMilliseconds = options.refreshSkewMilliseconds ?? 5 * 60 * 1000;
+  const fresh = (token: { expiresAt: number }): boolean =>
+    token.expiresAt - now().getTime() > refreshSkewMilliseconds;
   return async () => {
+    if (cached !== undefined && fresh(cached)) return cached.token;
     pending ??= (async () => {
       const privateKey = await readAppPrivateKey(environment);
       const minted = await mintInstallationToken({
         privateKey,
         appId: options.appId ?? mirrorAppId,
         installationId: options.installationId ?? mirrorInstallationId,
+        now: now(),
         ...(options.fetchImplementation
           ? { fetchImplementation: options.fetchImplementation }
           : {}),
       });
-      return minted.token;
-    })();
-    return pending;
+      const expiresAt = Date.parse(minted.expiresAt);
+      if (!Number.isFinite(expiresAt)) {
+        throw new GitHubApiError('GitHub returned an installation token without a valid expiry');
+      }
+      cached = { token: minted.token, expiresAt };
+      return cached;
+    })().finally(() => {
+      pending = undefined;
+    });
+    const token = await pending;
+    return token.token;
   };
 }

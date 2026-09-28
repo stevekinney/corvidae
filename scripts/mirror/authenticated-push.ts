@@ -13,6 +13,24 @@ export interface AuthenticatedPushOptions {
   run?: CommandRunner;
 }
 
+export interface AuthenticatedBundlePushOptions {
+  bundle: string;
+  remote: string;
+  commit: string;
+  branch: string;
+  environment: Record<string, string | undefined>;
+  credentialEnvironment: () => Promise<Record<string, string | undefined>>;
+  run?: CommandRunner;
+}
+
+function remoteProtocol(remote: string): 'https' | 'file' {
+  if (isAbsolute(remote)) return 'file';
+  const protocol = new URL(remote).protocol.slice(0, -1);
+  if (protocol !== 'https')
+    throw new Error('Push requires HTTPS or an absolute local repository path');
+  return protocol;
+}
+
 function isolatedEnvironment(
   base: Record<string, string | undefined>,
   protocol: 'https' | 'file',
@@ -52,18 +70,14 @@ function isolatedEnvironment(
   };
 }
 
-/** Push only imported commit data; target-owned configuration never sees the credential. */
-export async function pushVerifiedCommit(options: AuthenticatedPushOptions): Promise<void> {
+/** Push only imported bundle data; target-owned configuration never sees the credential. */
+export async function pushVerifiedBundle(options: AuthenticatedBundlePushOptions): Promise<void> {
   if (!/^[a-f0-9]{40}$/.test(options.commit)) throw new Error('Push requires an exact commit SHA');
-  const protocol = isAbsolute(options.remote)
-    ? 'file'
-    : new URL(options.remote).protocol.slice(0, -1);
-  if (protocol !== 'file' && protocol !== 'https')
-    throw new Error('Push requires HTTPS or an absolute local repository path');
+  if (!isAbsolute(options.bundle)) throw new Error('Push requires an absolute bundle path');
+  const protocol = remoteProtocol(options.remote);
   const run = options.run ?? runCommand;
   const root = await mkdtemp(join(tmpdir(), 'mirror-push-'));
   const directory = join(root, 'repository.git');
-  const bundle = join(root, 'commit.bundle');
   const environment = isolatedEnvironment(options.environment, 'file');
   const command = async (
     cwd: string,
@@ -78,15 +92,14 @@ export async function pushVerifiedCommit(options: AuthenticatedPushOptions): Pro
     return result.stdout.trim();
   };
   try {
-    // No credential is requested until the bundle has been imported and its identity checked.
-    await command(options.directory, environment, ['bundle', 'create', bundle, 'HEAD']);
+    await command(root, environment, ['check-ref-format', `refs/heads/${options.branch}`]);
     await command(root, environment, ['init', '--bare', '--template=', directory]);
     await command(directory, environment, [
       'fetch',
       '--no-tags',
       '--no-write-fetch-head',
       '--no-auto-gc',
-      bundle,
+      options.bundle,
       'HEAD:refs/heads/verified',
     ]);
     const imported = await command(directory, environment, ['rev-parse', 'refs/heads/verified']);
@@ -102,6 +115,32 @@ export async function pushVerifiedCommit(options: AuthenticatedPushOptions): Pro
       options.remote,
       `${options.commit}:refs/heads/${options.branch}`,
     ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+/** Push only imported commit data; target-owned configuration never sees the credential. */
+export async function pushVerifiedCommit(options: AuthenticatedPushOptions): Promise<void> {
+  const run = options.run ?? runCommand;
+  const root = await mkdtemp(join(tmpdir(), 'mirror-push-source-'));
+  const bundle = join(root, 'commit.bundle');
+  const environment = isolatedEnvironment(options.environment, 'file');
+  const command = async (
+    cwd: string,
+    env: Record<string, string | undefined>,
+    arguments_: readonly string[],
+  ) => {
+    const result = await run(['git', ...arguments_], { cwd, env });
+    if (result.exitCode !== 0)
+      throw new Error(
+        `Isolated push Git command failed: ${arguments_[0]} (exit ${result.exitCode})`,
+      );
+  };
+  try {
+    // No credential is requested until the bundle has been imported and its identity checked.
+    await command(options.directory, environment, ['bundle', 'create', bundle, 'HEAD']);
+    await pushVerifiedBundle({ ...options, bundle, run });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

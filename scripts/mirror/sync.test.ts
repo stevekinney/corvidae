@@ -25,6 +25,7 @@ import {
   type PullRequestOptions,
   type SyncResult,
 } from './sync.ts';
+import { loadTargetOwnedPolicy } from './target-owned.ts';
 
 describe('gitEnvironment', () => {
   test('excludes App signing credentials while preserving push authentication', () => {
@@ -752,6 +753,34 @@ function fakePullRequest(branch: string): {
 
 describe('runSync in pull-request mode', () => {
   test(
+    'prepares a verified commit without credentials or remote writes',
+    async () => {
+      await withHarness(async (harness) => {
+        const before = await git(harness.remote, 'show-ref');
+        const result = await runSync({
+          corvidaeRoot: harness.corvidae,
+          target: 'agent-bureau',
+          remote: harness.remote,
+          directory: harness.runDirectory('prepared'),
+          scratchDirectory: join(harness.scratch, 'prepared'),
+          corvidaeCommit: 'a'.repeat(40),
+          prepareBranch: 'mirror-prepared',
+          pushEnvironment: async () => {
+            throw new Error('Preparation requested credentials');
+          },
+        });
+        expect(result.decision).toBe('prepared');
+        expect(result.baseBranch).toBe('main');
+        expect(result.commit).toMatch(/^[a-f0-9]{40}$/);
+        expect(result.verification.reports.length).toBeGreaterThan(0);
+        expect(result.pullRequest).toBeUndefined();
+        expect(await git(harness.remote, 'show-ref')).toBe(before);
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
     'commits on a new branch, leaves the default branch untouched, and opens a pull request',
     async () => {
       await withHarness(async (harness) => {
@@ -875,6 +904,116 @@ describe('runSync in pull-request mode', () => {
 });
 
 describe('the foreign-commit guard', () => {
+  test('rejects a transient source edit even when a later commit reverts its bytes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-transient-source-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      const path = 'packages/cryptography/src/index.ts';
+      await Bun.write(join(root, path), 'export const value = 0;\n');
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+      await Bun.write(join(root, path), 'export const value = 1;\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Foreign source edit');
+      const changedHead = await git(root, 'rev-parse', 'HEAD');
+      await git(root, 'revert', '--no-edit', 'HEAD');
+      const foreign = await findForeignCommits(root, {
+        policy: await loadTargetOwnedPolicy(),
+        target: 'agent-bureau',
+        transform: { files: new Set([path]), prefixes: [] },
+      });
+      expect(foreign.map(({ sha }) => sha)).toContain(changedHead.trim());
+      expect(foreign).toHaveLength(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('rejects source imported by a merge from an older side branch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-foreign-merge-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      const path = 'packages/cryptography/src/index.ts';
+      await Bun.write(join(root, path), 'export const value = 1;\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Initial target');
+      await git(root, 'checkout', '-b', 'older');
+      await Bun.write(join(root, path), 'export const value = 2;\n');
+      await git(root, 'add', '-A');
+      const older = await runCommand(['git', 'commit', '--quiet', '-m', 'Older foreign source'], {
+        cwd: root,
+        env: {
+          ...gitEnvironment(),
+          GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z',
+          GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z',
+        },
+      });
+      expect(older.exitCode).toBe(0);
+      await git(root, 'checkout', 'main');
+      await Bun.write(join(root, 'README.md'), 'Mirror baseline\n');
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+      await git(root, 'merge', '--no-ff', '--quiet', 'older', '-m', 'Merge older source');
+      const mergeHead = await git(root, 'rev-parse', 'HEAD');
+      const merge = mergeHead.trim();
+      const foreign = await findForeignCommits(root, {
+        policy: await loadTargetOwnedPolicy(),
+        target: 'agent-bureau',
+        transform: { files: new Set([path]), prefixes: [] },
+      });
+      expect(foreign.map(({ sha }) => sha)).toContain(merge);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test('accepts target metadata when a verified mirror is the second merge parent', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-owned-merge-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      const path = 'packages/cryptography/src/index.ts';
+      await Bun.write(join(root, path), 'export const value = 0;\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Initial target');
+      await git(root, 'checkout', '-b', 'mirror');
+      await Bun.write(join(root, path), 'export const value = 1;\n');
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+      await git(root, 'checkout', 'main');
+      await Bun.write(join(root, 'README.md'), 'Target release metadata\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Update readme');
+      await git(root, 'merge', '--no-ff', '--quiet', 'mirror', '-m', 'Merge verified mirror');
+      expect(
+        await findForeignCommits(root, {
+          policy: await loadTargetOwnedPolicy(),
+          target: 'agent-bureau',
+          transform: { files: new Set([path]), prefixes: [] },
+        }),
+      ).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   /**
    * COR-1192. After the first sync every release bump is a hand commit above a mirror-authored
    * one: the manifest's `version` is target-owned and the transform never writes it, so the

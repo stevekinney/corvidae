@@ -184,7 +184,7 @@
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "a16c45249cf3a2b925c6f23e1d4706f233353e843d24bb415af0d7e17ad648cb"
+          "digest": "3828a89df02fcbc2a276ff197305bb880e5a7680d9bd93f50aba15d831e69e02"
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",

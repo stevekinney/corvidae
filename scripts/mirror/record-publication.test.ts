@@ -650,6 +650,85 @@ test('publication inputs include emitted build scripts and resolved toolchain ve
   });
 });
 
+test('publication inputs include effective emitted TypeScript configuration', async () => {
+  for (const configuration of ['library', 'browser'] as const) {
+    await withPublication(async ({ current }) => {
+      await mkdir(join(current, 'internal/typescript'), { recursive: true });
+      await Bun.write(
+        join(current, 'packages/operative/tsconfig.json'),
+        json({
+          extends: `@lostgradient/typescript/${configuration}.json`,
+          compilerOptions: { declaration: true },
+        }),
+      );
+      await Bun.write(
+        join(current, 'internal/typescript/base.json'),
+        json({ compilerOptions: { strict: true } }),
+      );
+      await Bun.write(
+        join(current, 'internal/typescript/library.json'),
+        json({ extends: './base.json', compilerOptions: { declaration: true } }),
+      );
+      await Bun.write(
+        join(current, 'internal/typescript/browser.json'),
+        json({ extends: './base.json', compilerOptions: { lib: ['DOM'] } }),
+      );
+      await Bun.write(
+        join(current, 'packages/operative/examples/tsconfig.json'),
+        json({ compilerOptions: { strict: false } }),
+      );
+
+      const read = () =>
+        publicationInputContract({
+          corvidaeRoot: current,
+          corvidaeDirectory: 'packages/operative',
+          workspace,
+        });
+      const initial = await read();
+
+      await Bun.write(
+        join(current, 'packages/operative/tsconfig.json'),
+        json({
+          extends: `@lostgradient/typescript/${configuration}.json`,
+          compilerOptions: { declaration: false },
+        }),
+      );
+      const afterWorkspaceConfiguration = await read();
+      expect(afterWorkspaceConfiguration).not.toEqual(initial);
+
+      await Bun.write(
+        join(current, `internal/typescript/${configuration}.json`),
+        json({ extends: './base.json', compilerOptions: { declaration: false } }),
+      );
+      const afterSharedConfiguration = await read();
+      expect(afterSharedConfiguration).not.toEqual(afterWorkspaceConfiguration);
+
+      await Bun.write(
+        join(current, 'internal/typescript/base.json'),
+        json({ compilerOptions: { strict: false } }),
+      );
+      const afterBaseConfiguration = await read();
+      expect(afterBaseConfiguration).not.toEqual(afterSharedConfiguration);
+
+      await Bun.write(
+        join(current, 'packages/operative/examples/tsconfig.json'),
+        json({ compilerOptions: { strict: true } }),
+      );
+      expect(await read()).toEqual(afterBaseConfiguration);
+      await cp(join(current, 'packages/operative'), join(current, 'components/operative'), {
+        recursive: true,
+      });
+      expect(
+        await publicationInputContract({
+          corvidaeRoot: current,
+          corvidaeDirectory: 'components/operative',
+          workspace,
+        }),
+      ).toEqual(afterBaseConfiguration);
+    });
+  }
+});
+
 test('publication inputs bind workspace dependencies to their recorded published versions', async () => {
   await withPublication(async ({ current }) => {
     const manifestPath = join(current, 'packages/operative/package.json');
