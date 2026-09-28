@@ -576,7 +576,7 @@ describe('the mirror sync against a fake remote', () => {
         scripts: { build: 'bun -e "process.exit(23)"', typecheck: 'tsc --noEmit' },
       };
       await withHarness(async (harness) => {
-        await expect(sync(harness, 'private-build-failure')).rejects.toThrow(
+        expect(await throwingRejectionOf(sync(harness, 'private-build-failure'))).toThrow(
           `running build for ${privateWorkspaceName}`,
         );
       }, targetFiles);
