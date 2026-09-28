@@ -113,6 +113,27 @@ async function holdSweepAt(storage: GatedStorage, clock: { now: number }, held: 
 }
 
 describe('retention sweep disposal', () => {
+  it('registering a workflow on a disposed engine does not restart the retention sweep', () => {
+    // Disposal clears the sweep interval once; nothing clears one armed after it,
+    // so it would keep sweeping a disposed engine and hold the process open.
+    const engine = new Engine({
+      storage: new MemoryStorage(),
+      retention: { completed: '1s' },
+      retentionSweepInterval: '10ms',
+    });
+    engine[Symbol.dispose]();
+
+    engine.register(
+      workflow({ name: 'retention-sweep-disposal-late', retention: { completed: '1m' } }).execute(
+        async function* () {
+          return 'done';
+        },
+      ),
+    );
+
+    expect(getInternals(engine).retentionSweepInterval).toBeNull();
+  });
+
   it('a sweep still scanning when the engine is disposed purges nothing afterwards and reports no cleanup warning', async () => {
     const storage = new GatedStorage();
     const { clock, engine, warnings } = await createEngineWithCompletedRun(storage);
