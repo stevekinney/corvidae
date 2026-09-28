@@ -117,42 +117,22 @@
   }
 </script>
 
-{#if context.multiple}
-  <div
-    bind:this={elementRef}
-    role="checkbox"
-    aria-checked={isSelected}
-    aria-disabled={isDisabled || undefined}
-    tabindex={tabIndex}
-    class={classNames('cinder-choice-grid-item', className)}
-    data-cinder-selected={isSelected ? '' : undefined}
-    data-cinder-disabled={isDisabled || undefined}
-    data-cinder-state={feedbackState !== 'neutral' ? feedbackState : undefined}
-    data-cinder-size={size}
-    onclick={handleClick}
-    onkeydown={handleKeydown}
-  >
-    <span class="cinder-choice-grid-item__content">
-      {@render children()}
-    </span>
-  </div>
-{:else}
-  <div
-    bind:this={elementRef}
-    role="radio"
-    aria-checked={isSelected}
-    aria-disabled={isDisabled || undefined}
-    tabindex={tabIndex}
-    class={classNames('cinder-choice-grid-item', className)}
-    data-cinder-selected={isSelected ? '' : undefined}
-    data-cinder-disabled={isDisabled || undefined}
-    data-cinder-state={feedbackState !== 'neutral' ? feedbackState : undefined}
-    data-cinder-size={size}
-    onclick={handleClick}
-    onkeydown={handleKeydown}
-  >
-    <span class="cinder-choice-grid-item__content">
-      {@render children()}
-    </span>
-  </div>
-{/if}
+<!-- svelte-ignore a11y_no_noninteractive_tabindex (Both dynamic roles are interactive; keeping one element preserves focus when the selection mode changes.) -->
+<div
+  bind:this={elementRef}
+  role={context.multiple ? 'checkbox' : 'radio'}
+  aria-checked={isSelected}
+  aria-disabled={isDisabled || undefined}
+  tabindex={tabIndex}
+  class={classNames('cinder-choice-grid-item', className)}
+  data-cinder-selected={isSelected ? '' : undefined}
+  data-cinder-disabled={isDisabled || undefined}
+  data-cinder-state={feedbackState !== 'neutral' ? feedbackState : undefined}
+  data-cinder-size={size}
+  onclick={handleClick}
+  onkeydown={handleKeydown}
+>
+  <span class="cinder-choice-grid-item__content">
+    {@render children()}
+  </span>
+</div>

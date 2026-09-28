@@ -7,6 +7,7 @@ import {
   createWorkflowVerifyEnvironment,
   readLockedVersion,
   renderMirrorVerifyWorkflow,
+  shellWord,
 } from './mirror-verify-workflow.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
 import { buildVerifySteps } from './verify-steps.ts';
@@ -78,6 +79,32 @@ async function withFixture(
     await rm(root, { recursive: true, force: true });
   }
 }
+
+describe('shellWord', () => {
+  /** What bash hands the command for each word, which is the only oracle that matters. */
+  function throughBash(words: readonly string[]): string[] {
+    const line = `printf '%s\\n' ${words.map(shellWord).join(' ')}`;
+    const result = Bun.spawnSync(['bash', '-c', line]);
+    expect(result.exitCode).toBe(0);
+    return result.stdout.toString().replace(/\n$/, '').split('\n');
+  }
+
+  test('a plain word is left exactly as it is', () => {
+    expect(shellWord('--ignore-scripts')).toBe('--ignore-scripts');
+    expect(shellWord('@arethetypeswrong/cli@0.18.5')).toBe('@arethetypeswrong/cli@0.18.5');
+  });
+
+  test('a GitHub expression stays unquoted, since GitHub replaces it before the shell runs', () => {
+    expect(shellWord('${{ runner.temp }}/mirror-verify/tarballs')).toBe(
+      '${{ runner.temp }}/mirror-verify/tarballs',
+    );
+  });
+
+  test('spaces, quotes, operators and the empty string reach the command intact', () => {
+    const words = ["it's", 'a b', 'x; rm -rf y', '$HOME', '"quoted"', ''];
+    expect(throughBash(words)).toEqual(words);
+  });
+});
 
 describe('readLockedVersion', () => {
   test('reads a package’s locked version out of a bun.lock text lockfile', async () => {
@@ -248,7 +275,7 @@ describe('renderMirrorVerifyWorkflow', () => {
 
       for (const step of expectedSteps) {
         if (step.command.length === 0) continue;
-        expect(workflow).toContain(step.command.join(' '));
+        expect(workflow).toContain(step.command.map(shellWord).join(' '));
       }
       // And every command appears in the same order it was built in — searched with an advancing
       // cursor, since two steps (the published package's `typecheck` and the private workspace's)
@@ -257,9 +284,10 @@ describe('renderMirrorVerifyWorkflow', () => {
       const commandSteps = expectedSteps.filter((step) => step.command.length > 0);
       let cursor = 0;
       for (const step of commandSteps) {
-        const index = workflow.indexOf(step.command.join(' '), cursor);
-        expect(index, `${step.description}: "${step.command.join(' ')}"`).toBeGreaterThan(-1);
-        cursor = index + step.command.join(' ').length;
+        const line = step.command.map(shellWord).join(' ');
+        const index = workflow.indexOf(line, cursor);
+        expect(index, `${step.description}: "${line}"`).toBeGreaterThan(-1);
+        cursor = index + line.length;
       }
     });
   });
@@ -322,5 +350,65 @@ describe('renderMirrorVerifyWorkflow', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  /**
+   * COR-1198. The workflow is rendered at sync time, but it runs on every later pull request too,
+   * including a changesets Version Packages pull request that bumps each manifest's `version`.
+   * agent-bureau#636 failed `verify` because publint was pointed at `…-0.0.0.tgz` after the bump
+   * had packed `…-0.0.1.tgz`. Every step after the pack has to find the tarball whatever version the
+   * manifest carries when the workflow runs, so this bumps the version after rendering and runs the
+   * rendered pack-relocate lines through a real shell.
+   */
+  test('the rendered steps find each tarball after a later commit bumps the version', async () => {
+    await withFixture(async ({ targetDirectory, bunLockPath }) => {
+      const workflow = await renderMirrorVerifyWorkflow({
+        targetDirectory,
+        bunLockPath,
+        published,
+        privateWorkspaces,
+      });
+      const parsed = Bun.YAML.parse(workflow) as {
+        jobs: {
+          verify: { steps: { name?: string; run?: string; 'working-directory'?: string }[] };
+        };
+      };
+      const steps = parsed.jobs.verify.steps;
+      expect(workflow).not.toContain('lostgradient-cryptography-1.2.3.tgz');
+
+      const runner = await mkdtemp(join(tmpdir(), 'mirror-verify-runner-'));
+      try {
+        const packageDirectory = join(runner, 'clone/packages/cryptography');
+        const tarballs = join(runner, 'mirror-verify/tarballs');
+        await Bun.write(
+          join(packageDirectory, 'package.json'),
+          `${JSON.stringify({ name: '@lostgradient/cryptography', version: '1.2.4' })}\n`,
+        );
+        // What `bun pm pack --destination` writes for the bumped manifest.
+        await Bun.write(join(tarballs, 'lostgradient-cryptography-1.2.4.tgz'), 'tarball');
+
+        const relocations = steps.filter((step) => step.name?.startsWith('move ') && step.run);
+        expect(relocations.length).toBe(published.length);
+        for (const step of relocations) {
+          const script = (step.run ?? '').replaceAll('${{ runner.temp }}', runner);
+          const shell = Bun.spawnSync(['bash', '-euc', script], {
+            cwd: join(runner, 'clone', step['working-directory'] ?? '.'),
+          });
+          expect({
+            step: step.name,
+            exitCode: shell.exitCode,
+            stderr: shell.stderr.toString(),
+          }).toEqual({ step: step.name, exitCode: 0, stderr: '' });
+        }
+
+        const publint = steps.find((step) => step.name === 'publint @lostgradient/cryptography');
+        const publintLine = (publint?.run ?? '').replaceAll('${{ runner.temp }}', runner);
+        const tarball = /(\S+\.tgz)/.exec(publintLine)?.[1] ?? '';
+        expect(tarball.startsWith(runner)).toBe(true);
+        expect(await Bun.file(tarball).exists()).toBe(true);
+      } finally {
+        await rm(runner, { recursive: true, force: true });
+      }
+    });
   });
 });

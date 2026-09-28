@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { nulByteOffenders } from './source-text-encoding';
+import { nulByteOffenders, nulOffsets } from './source-text-encoding';
 
 const root = join(import.meta.dir, '..');
 
@@ -33,6 +33,12 @@ const root = join(import.meta.dir, '..');
  * NUL bytes from numbers rather than from string escapes.
  */
 describe('source text encoding', () => {
+  test('reports exact byte offsets including consecutive and boundary NULs', () => {
+    expect(nulOffsets(new Uint8Array([0, 0, 65, 195, 169, 0]))).toEqual([0, 1, 5]);
+    expect(nulOffsets(new TextEncoder().encode('\\u0000'))).toEqual([]);
+    expect(nulOffsets(new Uint8Array())).toEqual([]);
+  });
+
   test('no source file contains a raw NUL byte', async () => {
     const { files, offenders } = await nulByteOffenders(root);
     expect(files).toBeGreaterThan(0);

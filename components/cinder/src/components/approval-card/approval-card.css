@@ -94,11 +94,7 @@
   .cinder-approval-card__risk-icon {
     display: inline-flex;
     align-items: center;
-    padding: 0;
-    border: 0;
     border-radius: var(--cinder-radius-sm);
-    background: transparent;
-    color: inherit;
     font: inherit;
   }
 

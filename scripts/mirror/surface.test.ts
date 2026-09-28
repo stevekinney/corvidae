@@ -3,13 +3,8 @@ import { join } from 'node:path';
 
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import { layoutFor } from './layout-map.ts';
-import {
-  assertNothingDeferred,
-  discoverWorkspaces,
-  mirrorTargets,
-  targetFor,
-  type MirrorTarget,
-} from './manifests.ts';
+import { assertNothingDeferred, discoverWorkspaces } from './manifests.ts';
+import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
 import { isFirstPublish } from './registry-baseline.ts';
 import { nonSourceNames, nonSourcePrefixes } from './source.ts';
@@ -21,6 +16,7 @@ import {
   unresolvedSubpaths,
   type SurfacePlan,
 } from './surface.ts';
+import { mirrorTargets, targetFor, type MirrorTarget } from './target-definitions.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 import { configurationFiles, vendoredDirectory } from './typescript-configuration.ts';
 
@@ -151,21 +147,36 @@ describe('surface parity', () => {
    * does), so cinder now has none. Asserted per target rather than merged back into one list,
    * because a package appearing under the wrong target here is precisely the routing mistake the
    * member map exists to prevent, and a merged list would hide it.
+   *
+   * The expected set is derived from the committed `package-map.json` rather than written as a
+   * literal: COR-1198 published all four of agent-bureau's `runtime-closure-forced` packages
+   * (`@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`,
+   * `@lostgradient/tool-protocol`), so a literal list turned every one of those publishes into a
+   * test edit here — the same trap `weftRecordedVersion` in manifests.test.ts avoids for the same
+   * reason. `targetFor` is the hand-authored routing table (`membersOf`), independent of
+   * `isFirstPublish`/parity, so comparing its per-target grouping against what `committedPlans`
+   * actually produced still catches a workspace routed to, or emitted from, the wrong target.
    */
-  test('a package with no published predecessor is a first publish, not a failure', () => {
+  test('a package with no published predecessor is a first publish, not a failure', async () => {
+    const map = await loadPackageMap();
+    const expectedFirstPublishNames = (target: MirrorTarget): string[] =>
+      Object.entries(map.workspaces)
+        .filter(
+          ([workspace, entry]) =>
+            entry.disposition === 'publish-as' &&
+            entry.lastPublishedVersion === null &&
+            targetFor(workspace) === target,
+        )
+        .map(([, entry]) => (entry.disposition === 'publish-as' ? entry.name : ''))
+        .toSorted();
     const firstPublishNames = (target: MirrorTarget): string[] =>
       committedPlans[target].plan.parity
         .filter(isFirstPublish)
         .map((result) => result.publicName)
         .toSorted();
-    expect(firstPublishNames('cinder')).toEqual([]);
-    expect(firstPublishNames('agent-bureau')).toEqual([
-      '@lostgradient/cryptography',
-      '@lostgradient/embeddings',
-      '@lostgradient/lifecycle',
-      '@lostgradient/tool-protocol',
-    ]);
-    expect(firstPublishNames('weft')).toEqual([]);
+    for (const target of mirrorTargets) {
+      expect(firstPublishNames(target)).toEqual(expectedFirstPublishNames(target));
+    }
 
     for (const target of mirrorTargets) {
       for (const result of committedPlans[target].plan.parity.filter(isFirstPublish)) {
@@ -230,6 +241,65 @@ describe('target coverage', () => {
   test('a plan with nothing unresolved is publishable', () => {
     const { plan } = committedPlans.weft;
     expect(() => assertPublishable({ ...plan, coverage: [], parity: [] }, {})).not.toThrow();
+  });
+});
+
+/**
+ * COR-1274: the subpaths whose `types` condition is authored separately from a runtime module,
+ * per target. Pinned rather than counted so an entry that starts or stops qualifying is a visible
+ * change: weft's SQLite subpath is the one that shipped unimportable, and cinder's six are
+ * stylesheet stubs whose `export {}` declares nothing a `.css` file could fail to provide.
+ */
+const declarationSubpathsByTarget: Readonly<Record<MirrorTarget, readonly string[]>> = {
+  weft: ['@lostgradient/weft ./storage/sqlite'],
+  cinder: [
+    '@lostgradient/cinder ./styles',
+    '@lostgradient/cinder ./styles/all',
+    '@lostgradient/cinder ./styles/foundation',
+    '@lostgradient/cinder ./styles/json-highlight',
+    '@lostgradient/cinder ./styles/tokens',
+    '@lostgradient/cinder ./styles/utilities',
+  ],
+  'agent-bureau': [],
+};
+
+describe('declaration agreement', () => {
+  for (const target of mirrorTargets) {
+    test(`${target}: every separately authored declaration is delivered by its runtime modules`, () => {
+      const { plan } = committedPlans[target];
+      const examined = plan.declarations.flatMap((result) =>
+        result.examined.map((subpath) => `${result.publicName} ${subpath}`),
+      );
+      expect(examined.toSorted()).toEqual([...declarationSubpathsByTarget[target]].toSorted());
+      expect(plan.declarations.flatMap((result) => result.findings)).toEqual([]);
+      // One result per published package, so a package the check skipped would show up here.
+      expect(plan.declarations.map((result) => result.publicName)).toEqual(
+        plan.published.map((entry) => entry.publicName),
+      );
+    });
+  }
+
+  test('a declared value its runtime module lacks refuses the plan', () => {
+    const { plan } = committedPlans.weft;
+    const finding = {
+      publicName: '@lostgradient/weft',
+      subpath: './storage/sqlite',
+      declaration: 'src/storage/sqlite.ts',
+      runtime: 'src/storage/bun-sql.ts',
+      missing: ['SQLiteStorage'],
+    };
+    const refused = {
+      ...plan,
+      coverage: [],
+      parity: [],
+      declarations: [
+        { publicName: finding.publicName, examined: [finding.subpath], findings: [finding] },
+      ],
+    };
+    expect(() => assertPublishable(refused, {})).toThrow(SurfaceError);
+    expect(() => assertPublishable(refused, {})).toThrow(
+      '@lostgradient/weft ./storage/sqlite: src/storage/sqlite.ts declares SQLiteStorage, which src/storage/bun-sql.ts does not export',
+    );
   });
 });
 

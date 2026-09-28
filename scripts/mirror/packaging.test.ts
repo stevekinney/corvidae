@@ -13,6 +13,7 @@ import {
   nodeImportableSpecifierEntries,
   PackagingError,
   packWorkspace,
+  runCommand,
   runConsumerSmokeTest,
   smokeScript,
   type TarballReport,
@@ -34,6 +35,40 @@ async function realReadme(path: string): Promise<string> {
 }
 
 const corvidaeRoot = join(import.meta.dir, '..', '..');
+
+describe('runCommand credential isolation', () => {
+  test.each([false, true])(
+    'strips App credentials from child environments (explicit=%s)',
+    async (explicit) => {
+      const child = `console.log(JSON.stringify({key: 'MIRROR_APP_PRIVATE_KEY' in Bun.env, file: 'MIRROR_APP_PRIVATE_KEY_FILE' in Bun.env, path: !!Bun.env.PATH}))`;
+      const environment = {
+        ...Bun.env,
+        MIRROR_APP_PRIVATE_KEY: 'test-private-key',
+        MIRROR_APP_PRIVATE_KEY_FILE: '/test/private-key.pem',
+      };
+      const result = explicit
+        ? await runCommand([process.execPath, '-e', child], { cwd: corvidaeRoot, env: environment })
+        : await (async () => {
+            const script = `import {runCommand} from ${JSON.stringify(join(import.meta.dir, 'packaging.ts'))}; const result = await runCommand([process.execPath, '-e', ${JSON.stringify(child)}], {cwd: process.cwd()}); process.stdout.write(result.stdout); process.exit(result.exitCode);`;
+            const processResult = Bun.spawn([process.execPath, '-e', script], {
+              cwd: corvidaeRoot,
+              env: environment,
+              stdout: 'pipe',
+              stderr: 'pipe',
+            });
+            const [stdout, stderr, exitCode] = await Promise.all([
+              new Response(processResult.stdout).text(),
+              new Response(processResult.stderr).text(),
+              processResult.exited,
+            ]);
+            return { stdout, stderr, exitCode };
+          })();
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ key: false, file: false, path: true });
+      expect(environment.MIRROR_APP_PRIVATE_KEY).toBe('test-private-key');
+    },
+  );
+});
 
 /**
  * Packages built by hand rather than by the transform, so these assertions stay about the

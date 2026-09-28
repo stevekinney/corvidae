@@ -40,7 +40,7 @@ export function sourceFiles(root: string): string[] {
     .toSorted();
 }
 
-function nulOffsets(bytes: Uint8Array): number[] {
+export function nulOffsets(bytes: Uint8Array): number[] {
   const offsets: number[] = [];
   for (let index = bytes.indexOf(NUL); index !== -1; index = bytes.indexOf(NUL, index + 1)) {
     offsets.push(index);
