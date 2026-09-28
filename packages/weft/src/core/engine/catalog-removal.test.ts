@@ -1262,6 +1262,10 @@ describe('removeWorkflowRevision vs. a concurrent start() — cross-process race
     // in, so engine A (registered) and engine B (an empty registry) infer
     // structurally different phantom workflow registries even though both
     // are ordinary, fully-functional engines at runtime.
+    // Manual background tasks: the renewal/reclaim interval is bound to the
+    // registry `Engine.create` built, not the one installed below, so an
+    // automatic tick could claim a workflow under an engine id the test
+    // never controls. Nothing here needs the interval.
     const engine = (await Engine.create({
       storage,
       workflows,
@@ -1269,6 +1273,7 @@ describe('removeWorkflowRevision vs. a concurrent start() — cross-process race
       workflowClaimTtl: '1m',
       workflowClaimRenewInterval: '5s',
       recover: false,
+      backgroundTasks: 'manual',
     })) as unknown as Engine;
     getInternals(engine).workflowClaimRegistry = new WorkflowClaimRegistry({
       storage,

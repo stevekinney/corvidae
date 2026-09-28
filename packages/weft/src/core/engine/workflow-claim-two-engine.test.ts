@@ -99,6 +99,10 @@ async function createClaimEngine(
   engineId: string,
   workflows: ClaimWorkflows,
 ) {
+  // Manual background tasks: the renewal/reclaim interval is bound to the
+  // registry `Engine.create` built, not the one installed below, so an
+  // automatic tick could claim a workflow under an engine id the test
+  // never controls. Nothing here needs the interval.
   const engine = await Engine.create({
     storage,
     workflows,
@@ -106,6 +110,7 @@ async function createClaimEngine(
     workflowClaimTtl: '1m',
     workflowClaimRenewInterval: '5s',
     recover: false,
+    backgroundTasks: 'manual',
   });
   installClaimRegistry(engine, engineId, storage);
   return engine;
@@ -877,6 +882,7 @@ describe('WFT-134 review round 2: claim-generation release correctness', () => {
       workflowClaimTtl: '1m',
       workflowClaimRenewInterval: '5s',
       recover: false,
+      backgroundTasks: 'manual',
     });
     installClaimRegistry(engine, 'engine-a', storage);
     const registry = getInternals(engine).workflowClaimRegistry;
