@@ -153,11 +153,17 @@ export interface SessionHandle {
   cancel(): Promise<void>;
 
   /**
-   * Branch the session: copy conversation history through run `throughRun` (a
-   * sequence integer, 0-based) into a fresh session with a new id. The fork starts
-   * with `runs: []`. In-flight source work is NOT captured.
+   * Branch the session into a fresh session with a new id and `runs: []`.
+   * In-flight source work is NOT captured, and nothing is shared between the
+   * branches afterwards.
    *
-   * `throughRun` defaults to the index of the last run in `runs[]`.
+   * Without `throughRun`, the fork copies the session's latest stored
+   * `conversationHistory`. With `throughRun` (a 0-based run sequence), it
+   * copies the history reconstructed from that terminal run's immutable
+   * `RunRef.conversationBoundary` (COR-816), so no message from a later run
+   * reaches the fork.
+   * An invalid, negative, out-of-range, still-running, or boundary-less fork
+   * point rejects with `ForkThroughRunError` before anything is persisted.
    */
   fork(options?: { throughRun?: number }): Promise<SessionHandle>;
 
@@ -369,25 +375,71 @@ export class NoRunningRunError extends Error {
 }
 
 /**
- * Thrown when `fork({ throughRun: n })` is called with a `throughRun` value
- * that points before the last completed run, making true history truncation
- * impossible without per-run conversation snapshots. Callers must pass
- * `throughRun` equal to or after the last run index, or omit it entirely to
- * fork through the full history.
+ * Why `fork({ throughRun })` rejected its fork point (COR-816):
  *
- * Full per-run snapshot support (Phase D) will lift this restriction.
+ * - `'invalid'` — not an integer (fractional, `NaN`, or infinite).
+ * - `'negative'` — an integer below `0`.
+ * - `'out-of-range'` — no run with that sequence exists yet.
+ * - `'non-terminal'` — the run is still `'running'`, so it has no boundary.
+ * - `'unavailable'` — the run is terminal but its `RunRef.conversationBoundary`
+ *   is absent (a legacy ref, or a terminal commit that had no transcript to
+ *   record) or no longer reconstructs.
+ */
+export type ForkThroughRunErrorReason =
+  'invalid' | 'negative' | 'out-of-range' | 'non-terminal' | 'unavailable';
+
+function forkThroughRunMessage(
+  sessionId: string,
+  throughRun: number,
+  runCount: number,
+  reason: ForkThroughRunErrorReason,
+): string {
+  const prefix = `session.fork({ throughRun: ${throughRun} }) on session "${sessionId}"`;
+  switch (reason) {
+    case 'invalid':
+    case 'negative':
+      return `${prefix} requires a non-negative integer run sequence.`;
+    case 'out-of-range':
+      return `${prefix} is out of range: the session has ${runCount} run(s).`;
+    case 'non-terminal':
+      return `${prefix} targets a run that has not reached a terminal status.`;
+    case 'unavailable':
+      return `${prefix} targets a run with no recorded conversation boundary.`;
+  }
+}
+
+/**
+ * Thrown when `fork({ throughRun })` names a fork point that has no immutable
+ * conversation boundary to copy (COR-816). `reason` discriminates the cause;
+ * no forked session is persisted and no `session.fork` event is dispatched.
  */
 export class ForkThroughRunError extends Error {
   readonly code = 'ForkThroughRunError';
+  readonly reason: ForkThroughRunErrorReason;
+  readonly sessionId: string;
+  readonly throughRun: number;
+  /** How many runs the source session had when the fork was requested. */
+  readonly runCount: number;
 
-  constructor(throughRun: number, lastRunIndex: number) {
+  constructor(details: {
+    sessionId: string;
+    throughRun: number;
+    runCount: number;
+    reason: ForkThroughRunErrorReason;
+  }) {
     super(
-      `session.fork({ throughRun: ${throughRun} }) cannot branch before the last completed run ` +
-        `(index ${lastRunIndex}): per-run conversation snapshots are not yet available, so ` +
-        `forking at an earlier run would include messages from later runs. ` +
-        `Pass throughRun >= ${lastRunIndex} or omit it to fork through the full history.`,
+      forkThroughRunMessage(
+        details.sessionId,
+        details.throughRun,
+        details.runCount,
+        details.reason,
+      ),
     );
     this.name = 'ForkThroughRunError';
+    this.reason = details.reason;
+    this.sessionId = details.sessionId;
+    this.throughRun = details.throughRun;
+    this.runCount = details.runCount;
   }
 }
 

@@ -1,6 +1,6 @@
 export * from './agent-run';
 export { createAgentSession, loadAgentSession, saveAgentSession } from './agent-session';
-export type { AgentSession, RunRef } from './agent-session';
+export type { AgentSession, RunConversationBoundary, RunRef } from './agent-session';
 export * from './backpressure';
 export * from './cache/index';
 export {
