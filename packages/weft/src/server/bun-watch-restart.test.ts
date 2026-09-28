@@ -119,16 +119,26 @@ async function waitForWorkflowCompleted(
 describe('bun --watch drives durable-run recovery across a real restart (COR-243)', () => {
   const cleanupDirs: string[] = [];
   let subprocess: ReturnType<typeof Bun.spawn> | undefined;
+  let stdoutReaderTask: Promise<void> | undefined;
+  let stdoutReaderError: unknown;
+  let stoppingSubprocess = false;
 
   afterEach(async () => {
+    stoppingSubprocess = true;
     if (subprocess) {
       subprocess.kill();
       await subprocess.exited.catch(() => {});
       subprocess = undefined;
     }
+    await stdoutReaderTask;
+    stdoutReaderTask = undefined;
     for (const dir of cleanupDirs.splice(0)) {
       rmSync(dir, { force: true, recursive: true });
     }
+    const readerError = stdoutReaderError;
+    stdoutReaderError = undefined;
+    stoppingSubprocess = false;
+    if (readerError !== undefined) throw readerError;
   });
 
   it('recovers a workflow parked on ctx.waitForSignal after bun --watch reloads the module', async () => {
@@ -147,15 +157,21 @@ describe('bun --watch drives durable-run recovery across a real restart (COR-243
       stderr: 'inherit',
     });
     subprocess = watchProcess;
-    void (async () => {
+    stdoutReaderTask = (async () => {
       const decoder = new TextDecoder();
       const reader = watchProcess.stdout.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        stdoutText += decoder.decode(value);
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          stdoutText += decoder.decode(value);
+        }
+      } finally {
+        reader.releaseLock();
       }
-    })();
+    })().catch((error: unknown) => {
+      if (!stoppingSubprocess) stdoutReaderError = error;
+    });
 
     await waitForMarker(() => stdoutText, /CHECKPOINTED gen=1/, 10_000);
     const firstReady = await waitForMarker(() => stdoutText, /READY gen=1 url=(\S+)/, 10_000);
