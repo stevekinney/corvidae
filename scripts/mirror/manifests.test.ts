@@ -149,6 +149,12 @@ async function withTree(
     }[])
       entry.build.toolchain = {};
     await writeTree(root, {
+      'internal/typescript/base.json': { compilerOptions: { strict: true } },
+      'internal/typescript/library.json': { extends: './base.json' },
+      'internal/typescript/browser.json': {
+        extends: './base.json',
+        compilerOptions: { lib: ['DOM'] },
+      },
       'scripts/mirror/package-map.json': realPackageMap,
       'scripts/mirror/package-surface.json': surface,
     });

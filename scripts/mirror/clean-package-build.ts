@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { mirrorPlatformEnvironment } from './environment-configuration.ts';
 
 import {
   readReleaseWorkflowBunVersion,
@@ -64,13 +65,10 @@ export interface CleanPackageBuildOptions {
 
 /** Only platform settings reach target build tools; publisher credentials and injected Git config do not. */
 function buildEnvironment(bunExecutable: string): Record<string, string | undefined> {
-  const environment: Record<string, string | undefined> = {};
-  for (const key of ['HOME', 'TMPDIR', 'SYSTEMROOT', 'LANG', 'LC_ALL', 'TZ']) {
-    if (Bun.env[key] !== undefined) environment[key] = Bun.env[key];
-  }
+  const environment = mirrorPlatformEnvironment();
   return {
     ...environment,
-    PATH: `${dirname(bunExecutable)}:${Bun.env['PATH'] ?? ''}`,
+    PATH: `${dirname(bunExecutable)}:${environment['PATH'] ?? ''}`,
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_TERMINAL_PROMPT: '0',

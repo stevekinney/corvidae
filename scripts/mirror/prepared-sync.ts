@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
+import { mirrorPlatformEnvironment } from './environment-configuration.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import { git, provenanceTrailer, type SyncResult } from './sync.ts';
 import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
@@ -426,7 +427,7 @@ export async function verifyPreparedSyncArtifact(options: {
   await verifyBundleIdentity({
     bundlePath,
     manifest,
-    environment: options.environment ?? Bun.env,
+    environment: options.environment ?? mirrorPlatformEnvironment(),
     run: options.run ?? runCommand,
   });
   return { manifest, bundlePath };

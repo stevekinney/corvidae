@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
 import { buildCleanPublishedPackage } from './clean-package-build.ts';
+import { mirrorPlatformEnvironment } from './environment-configuration.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import { requireGit } from './publication-history.ts';
 
@@ -228,4 +229,20 @@ test('fails closed on a mismatched runtime or failed build and removes the scrat
     expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
     expect(observed.commands.some(({ command }) => command[1] === 'pm')).toBe(false);
   }
+});
+
+test('isolated mirror environments contain only platform settings', () => {
+  expect(
+    mirrorPlatformEnvironment({
+      HOME: '/test/home',
+      PATH: '/test/bin',
+      LANG: 'en_US.UTF-8',
+      MIRROR_APP_PRIVATE_KEY: 'test-key',
+      GH_TOKEN: 'test-token',
+      NODE_AUTH_TOKEN: 'test-npm',
+      GIT_CONFIG_COUNT: '1',
+      NODE_OPTIONS: '--require=untrusted',
+      BUN_OPTIONS: 'untrusted',
+    }),
+  ).toEqual({ HOME: '/test/home', PATH: '/test/bin', LANG: 'en_US.UTF-8' });
 });
