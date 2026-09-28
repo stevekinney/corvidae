@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import { generateKeyPairSync } from 'node:crypto';
 
-import { createGitHubApi, GitHubApiError, type GitHubApi } from './github-api.ts';
+import {
+  createGitHubApi,
+  GitHubApiError,
+  installationTokenFromApp,
+  type GitHubApi,
+} from './github-api.ts';
 import type { FetchImplementation } from './github-app.ts';
 import { ScratchGuardError } from './scratch-repository.ts';
 
@@ -153,6 +159,40 @@ describe('createPullRequest', () => {
   });
 });
 
+describe('dispatchWorkflow', () => {
+  test('dispatches through the App installation with the exact ref and inputs', async () => {
+    const { api, seen } = harness([{ status: 204 }]);
+    const dispatchWorkflow = api.dispatchWorkflow;
+    expect(dispatchWorkflow).toBeDefined();
+    await dispatchWorkflow!({
+      fullName: 'stevekinney/weft',
+      workflowFile: 'release.yaml',
+      ref: 'mirror-sync-deadbeef',
+      inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
+    });
+    expect(seen.at(0)).toMatchObject({
+      url: 'https://api.github.com/repos/stevekinney/weft/actions/workflows/release.yaml/dispatches',
+      method: 'POST',
+      authorization: 'Bearer installation-credential',
+      body: { ref: 'mirror-sync-deadbeef', inputs: { snapshot: 'true', expected_sha: 'deadbeef' } },
+    });
+  });
+
+  test('requires GitHub’s workflow dispatch response to be 204', async () => {
+    const { api } = harness([{ status: 202 }]);
+    const dispatchWorkflow = api.dispatchWorkflow;
+    expect(dispatchWorkflow).toBeDefined();
+    await expect(
+      dispatchWorkflow!({
+        fullName: 'stevekinney/weft',
+        workflowFile: 'release.yaml',
+        ref: 'main',
+        inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
+      }),
+    ).rejects.toThrow(/HTTP 202/);
+  });
+});
+
 describe('readInstallationCoverage', () => {
   test('reports the selection and every repository across pages', async () => {
     const { api, seen } = harness([
@@ -227,5 +267,79 @@ describe('pushEnvironment', () => {
     expect(Buffer.from(encoded, 'base64').toString('utf8')).toBe(
       'x-access-token:installation-credential',
     );
+  });
+});
+
+describe('installation token lifecycle', () => {
+  const { privateKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+  });
+  const environment = { MIRROR_APP_PRIVATE_KEY: privateKey };
+
+  test('mints lazily, shares concurrent requests, and refreshes before expiry', async () => {
+    let now = new Date('2026-09-28T00:00:00Z');
+    let minted = 0;
+    const token = installationTokenFromApp(
+      {
+        now: () => now,
+        fetchImplementation: async () => {
+          minted += 1;
+          const current = minted;
+          return {
+            status: 201,
+            text: async () =>
+              JSON.stringify({
+                token: `test-installation-${current}`,
+                expires_at: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+              }),
+          };
+        },
+      },
+      environment,
+    );
+    expect(minted).toBe(0);
+    expect(await Promise.all([token(), token(), token()])).toEqual([
+      'test-installation-1',
+      'test-installation-1',
+      'test-installation-1',
+    ]);
+    expect(minted).toBe(1);
+    now = new Date('2026-09-28T00:54:00Z');
+    expect(await token()).toBe('test-installation-1');
+    expect(minted).toBe(1);
+    now = new Date('2026-09-28T00:56:00Z');
+    expect(await Promise.all([token(), token()])).toEqual([
+      'test-installation-2',
+      'test-installation-2',
+    ]);
+    expect(minted).toBe(2);
+  });
+
+  test('does not cache failed exchanges or invalid expiry responses', async () => {
+    let minted = 0;
+    const token = installationTokenFromApp(
+      {
+        now: () => new Date('2026-09-28T00:00:00Z'),
+        fetchImplementation: async () => {
+          minted += 1;
+          if (minted === 1) return { status: 503, text: async () => 'Unavailable' };
+          return {
+            status: 201,
+            text: async () =>
+              JSON.stringify({
+                token: 'test-installation-recovered',
+                expires_at: minted === 2 ? 'invalid' : '2026-09-28T01:00:00Z',
+              }),
+          };
+        },
+      },
+      environment,
+    );
+    await expect(token()).rejects.toThrow('HTTP 503');
+    await expect(token()).rejects.toThrow('valid expiry');
+    expect(await token()).toBe('test-installation-recovered');
+    expect(minted).toBe(3);
   });
 });

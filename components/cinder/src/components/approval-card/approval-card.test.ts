@@ -252,13 +252,13 @@ describe('ApprovalCard', () => {
     const { container, getByRole } = render(ApprovalCard, { ...approvalCardProps() });
 
     expect(container.textContent).toContain('deploy-cloud');
-    expect(getByRole('button', { name: 'Medium risk' })).toBeTruthy();
+    expect(getByRole('img', { name: 'Medium risk' })).toBeTruthy();
     expect(getByRole('group', { name: 'Approval status' })).toBeTruthy();
     expect(getByRole('group', { name: 'Approval actions' })).toBeTruthy();
     expect(getByRole('button', { name: 'Approve' }).getAttribute('type')).toBe('button');
   });
 
-  test('renders the risk level as a named, focusable signal button per risk level', () => {
+  test('renders the risk level as a named, focusable signal image per risk level', () => {
     for (const risk of ['low', 'medium', 'high'] as const) {
       const { getByRole, unmount } = render(ApprovalCard, {
         ...approvalCardProps({ tool: { name: 'deploy-cloud', risk } }),
@@ -266,8 +266,8 @@ describe('ApprovalCard', () => {
 
       const expectedName =
         risk === 'low' ? 'Low risk' : risk === 'medium' ? 'Medium risk' : 'High risk';
-      const icon = getByRole('button', { name: expectedName });
-      expect(icon.getAttribute('type')).toBe('button');
+      const icon = getByRole('img', { name: expectedName });
+      expect(icon.getAttribute('tabindex')).toBe('0');
       expect(icon.getAttribute('data-cinder-risk')).toBe(risk);
       unmount();
     }

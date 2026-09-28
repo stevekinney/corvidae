@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(import.meta.dir, '..');
@@ -57,13 +58,20 @@ function nulOffsets(bytes: Uint8Array): number[] {
 }
 
 describe('source text encoding', () => {
+  test('reports exact byte offsets including consecutive and boundary NULs', () => {
+    expect(nulOffsets(new Uint8Array([0, 0, 65, 195, 169, 0]))).toEqual([0, 1, 5]);
+    expect(nulOffsets(new TextEncoder().encode('\\u0000'))).toEqual([]);
+    expect(nulOffsets(new Uint8Array())).toEqual([]);
+  });
+
   test('no source file contains a raw NUL byte', async () => {
     const files = await sourceFiles();
     expect(files.length).toBeGreaterThan(0);
 
     const offenders: string[] = [];
     for (const file of files) {
-      const bytes = new Uint8Array(await Bun.file(file).arrayBuffer());
+      // This is a serial local-file audit; avoid one asynchronous I/O queue round trip per file.
+      const bytes = readFileSync(file);
       const offsets = nulOffsets(bytes);
       if (offsets.length > 0) {
         offenders.push(

@@ -25,6 +25,12 @@ afterAll(async () => {
   harnessServer.stop(true);
 });
 
+test('installs a standards-mode HTML document', () => {
+  setupHappyDom();
+  expect(document.doctype?.name).toBe('html');
+  expect(document.compatMode).toBe('CSS1Compat');
+});
+
 test('keeps the installed MutationObserver replaceable', () => {
   setupHappyDom();
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'MutationObserver');

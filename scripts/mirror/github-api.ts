@@ -81,6 +81,13 @@ export interface CreatePullRequestInput {
   body: string;
 }
 
+export interface DispatchWorkflowInput {
+  fullName: string;
+  workflowFile: string;
+  ref: string;
+  inputs: Record<string, string>;
+}
+
 export interface GitHubApi {
   /** What the App installation can reach right now. */
   readInstallationCoverage(): Promise<InstallationCoverage>;
@@ -88,6 +95,7 @@ export interface GitHubApi {
   readRepository(fullName: string): Promise<RepositoryRecord | undefined>;
   createRepository(input: CreateRepositoryInput): Promise<RepositoryRecord>;
   createPullRequest(input: CreatePullRequestInput): Promise<PullRequestRecord>;
+  dispatchWorkflow?: (input: DispatchWorkflowInput) => Promise<void>;
   readCheckRuns(fullName: string, ref: string): Promise<readonly CheckRunRecord[]>;
   /** Every Actions workflow run whose head is exactly `headSha`, whatever its state. */
   readWorkflowRuns(fullName: string, headSha: string): Promise<readonly WorkflowRunRecord[]>;
@@ -275,6 +283,23 @@ export function createGitHubApi({
       };
     },
 
+    async dispatchWorkflow({
+      fullName,
+      workflowFile,
+      ref,
+      inputs,
+    }: DispatchWorkflowInput): Promise<void> {
+      const response = await request(
+        `/repos/${fullName}/actions/workflows/${workflowFile}/dispatches`,
+        {
+          method: 'POST',
+          token: await installationToken(),
+          body: { ref, inputs },
+        },
+      );
+      assertStatus(response, 204, `Dispatching ${workflowFile} for ${fullName}@${ref}`);
+    },
+
     async readCheckRuns(fullName: string, ref: string): Promise<readonly CheckRunRecord[]> {
       const response = await request(`/repos/${fullName}/commits/${ref}/check-runs?per_page=100`, {
         token: await installationToken(),
@@ -294,9 +319,9 @@ export function createGitHubApi({
       fullName: string,
       headSha: string,
     ): Promise<readonly WorkflowRunRecord[]> {
-      // The installation token, same as the check runs: the App holds no `actions` permission,
-      // and does not need one, because both listings are public reads on a public repository.
-      // Probed before this was written — the token answers 200 on a real repository's runs.
+      // The installation token, same as the check runs. Snapshot dispatch additionally requires
+      // the App installation to hold `actions: write` on each target; reads remain public, but the
+      // same installation credential keeps the snapshot request and its evidence on one identity.
       const response = await request(
         `/repos/${fullName}/actions/runs?head_sha=${headSha}&per_page=100`,
         { token: await installationToken() },
@@ -365,33 +390,51 @@ export function userTokenFromEnvironmentOrCli(
 }
 
 /**
- * The App installation credential, minted once per process and reused.
+ * The App installation credential, minted lazily and refreshed before expiry.
  *
- * One mint per run keeps the number of places a token exists to one, and an installation token
- * lives an hour, which outlasts any dry run.
+ * Verification can run longer than one installation token lifetime. The provider therefore keeps
+ * a token only while GitHub says it is still fresh and mints the next one at the first credentialed
+ * publish or API operation that needs it.
  */
 export function installationTokenFromApp(
   options: {
     fetchImplementation?: FetchImplementation;
     appId?: number;
     installationId?: number;
+    now?: () => Date;
+    refreshSkewMilliseconds?: number;
   } = {},
   environment: Record<string, string | undefined> = Bun.env,
 ): () => Promise<string> {
-  let pending: Promise<string> | undefined;
+  let cached: { token: string; expiresAt: number } | undefined;
+  let pending: Promise<{ token: string; expiresAt: number }> | undefined;
+  const now = options.now ?? (() => new Date());
+  const refreshSkewMilliseconds = options.refreshSkewMilliseconds ?? 5 * 60 * 1000;
+  const fresh = (token: { expiresAt: number }): boolean =>
+    token.expiresAt - now().getTime() > refreshSkewMilliseconds;
   return async () => {
+    if (cached !== undefined && fresh(cached)) return cached.token;
     pending ??= (async () => {
       const privateKey = await readAppPrivateKey(environment);
       const minted = await mintInstallationToken({
         privateKey,
         appId: options.appId ?? mirrorAppId,
         installationId: options.installationId ?? mirrorInstallationId,
+        now: now(),
         ...(options.fetchImplementation
           ? { fetchImplementation: options.fetchImplementation }
           : {}),
       });
-      return minted.token;
-    })();
-    return pending;
+      const expiresAt = Date.parse(minted.expiresAt);
+      if (!Number.isFinite(expiresAt)) {
+        throw new GitHubApiError('GitHub returned an installation token without a valid expiry');
+      }
+      cached = { token: minted.token, expiresAt };
+      return cached;
+    })().finally(() => {
+      pending = undefined;
+    });
+    const token = await pending;
+    return token.token;
   };
 }

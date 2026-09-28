@@ -8,7 +8,6 @@ import {
   commitExists,
   compareAgainstCommit,
   fetchGitHead,
-  recordSourceDigest,
   RegistryVerificationError,
   sourceComparisonIsClean,
 } from './record-source-digest.ts';
@@ -51,8 +50,8 @@ async function buildFixtureRepository(
   return shas;
 }
 
-/** A `CommandRunner` that answers `npm view <name>@<version> gitHead` with a fixed SHA (or nothing). */
-function stubNpmView(gitHead: string | undefined): CommandRunner {
+/** A `CommandRunner` that answers `bun info <name>@<version> gitHead` with a fixed SHA (or nothing). */
+function stubRegistryInfo(gitHead: string | undefined): CommandRunner {
   return async (command): Promise<CommandResult> => ({
     command: command.join(' '),
     exitCode: 0,
@@ -62,7 +61,15 @@ function stubNpmView(gitHead: string | undefined): CommandRunner {
 }
 
 describe('fetchGitHead', () => {
-  test('reads the trimmed gitHead npm view prints', async () => {
+  test('uses the repository Bun toolchain for registry metadata', async () => {
+    const commands: string[][] = [];
+    await fetchGitHead('conversationalist', '1.3.0', async (command) => {
+      commands.push([...command]);
+      return { command: command.join(' '), exitCode: 0, stdout: '', stderr: '' };
+    });
+    expect(commands).toEqual([['bun', 'info', 'conversationalist@1.3.0', 'gitHead']]);
+  });
+  test('reads the trimmed gitHead bun info prints', async () => {
     const runner: CommandRunner = async (command) => ({
       command: command.join(' '),
       exitCode: 0,
@@ -74,16 +81,16 @@ describe('fetchGitHead', () => {
     );
   });
 
-  test('returns undefined when npm prints nothing, rather than an empty string', async () => {
-    expect(await fetchGitHead('x', '1.0.0', stubNpmView(undefined))).toBeUndefined();
+  test('returns undefined when Bun prints nothing, rather than an empty string', async () => {
+    expect(await fetchGitHead('x', '1.0.0', stubRegistryInfo(undefined))).toBeUndefined();
   });
 
-  test('refuses a non-zero npm exit', async () => {
+  test('refuses a non-zero registry command exit', async () => {
     const runner: CommandRunner = async (command) => ({
       command: command.join(' '),
       exitCode: 1,
       stdout: '',
-      stderr: 'npm error 404',
+      stderr: 'registry error 404',
     });
     await expect(fetchGitHead('missing', '1.0.0', runner)).rejects.toThrow(
       RegistryVerificationError,
@@ -104,6 +111,33 @@ describe('git-history readers, against a real fixture repository', () => {
 });
 
 describe('compareAgainstCommit', () => {
+  test('reports removed published additional roots without counting target-owned files', async () => {
+    await withScratch(async (scratch) => {
+      const [sha] = await buildFixtureRepository(scratch, [
+        {
+          files: {
+            'packages/example/src/index.ts': 'export const x = 1;\n',
+            'packages/example/components.json': '{}\n',
+            'packages/example/README.md': 'Target documentation\n',
+            'packages/example/scripts/release.ts': 'export {};\n',
+          },
+          message: 'published additional source',
+        },
+      ]);
+      const comparison = await compareAgainstCommit(
+        [{ path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 1;\n') }],
+        {
+          workspace: '@lostgradient/cinder',
+          targetRepositoryDirectory: scratch,
+          targetDirectory: 'packages/example',
+          commit: sha!,
+        },
+      );
+      expect(comparison.extraInCommit).toEqual(['components.json']);
+      expect(sourceComparisonIsClean(comparison)).toBe(false);
+    });
+  });
+
   test('is clean when corvidae’s files match the commit exactly', async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
@@ -112,6 +146,7 @@ describe('compareAgainstCommit', () => {
       const comparison = await compareAgainstCommit(
         [{ path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 1;\n') }],
         {
+          workspace: '@example/source',
           targetRepositoryDirectory: scratch,
           targetDirectory: 'packages/example',
           commit: sha!,
@@ -131,7 +166,12 @@ describe('compareAgainstCommit', () => {
           { path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 1;\n') },
           { path: 'src/new-file.ts', bytes: new TextEncoder().encode('export const y = 2;\n') },
         ],
-        { targetRepositoryDirectory: scratch, targetDirectory: 'packages/example', commit: sha! },
+        {
+          workspace: '@example/source',
+          targetRepositoryDirectory: scratch,
+          targetDirectory: 'packages/example',
+          commit: sha!,
+        },
       );
       expect(comparison.missingInCommit).toEqual(['src/new-file.ts']);
       expect(sourceComparisonIsClean(comparison)).toBe(false);
@@ -151,7 +191,12 @@ describe('compareAgainstCommit', () => {
       ]);
       const comparison = await compareAgainstCommit(
         [{ path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 1;\n') }],
-        { targetRepositoryDirectory: scratch, targetDirectory: 'packages/example', commit: sha! },
+        {
+          workspace: '@example/source',
+          targetRepositoryDirectory: scratch,
+          targetDirectory: 'packages/example',
+          commit: sha!,
+        },
       );
       expect(comparison.extraInCommit).toEqual(['src/removed.ts']);
       expect(sourceComparisonIsClean(comparison)).toBe(false);
@@ -171,7 +216,12 @@ describe('compareAgainstCommit', () => {
       ]);
       const comparison = await compareAgainstCommit(
         [{ path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 1;\n') }],
-        { targetRepositoryDirectory: scratch, targetDirectory: 'packages/example', commit: sha! },
+        {
+          workspace: '@example/source',
+          targetRepositoryDirectory: scratch,
+          targetDirectory: 'packages/example',
+          commit: sha!,
+        },
       );
       expect(comparison.extraInCommit).toEqual([]);
     });
@@ -197,13 +247,19 @@ describe('compareAgainstCommit', () => {
       ]);
       const withoutExclusion = await compareAgainstCommit(
         [{ path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 1;\n') }],
-        { targetRepositoryDirectory: scratch, targetDirectory: 'packages/example', commit: sha! },
+        {
+          workspace: '@example/source',
+          targetRepositoryDirectory: scratch,
+          targetDirectory: 'packages/example',
+          commit: sha!,
+        },
       );
       expect(withoutExclusion.extraInCommit).toEqual(['src/version.ts']);
 
       const withExclusion = await compareAgainstCommit(
         [{ path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 1;\n') }],
         {
+          workspace: '@example/source',
           targetRepositoryDirectory: scratch,
           targetDirectory: 'packages/example',
           commit: sha!,
@@ -222,141 +278,14 @@ describe('compareAgainstCommit', () => {
       ]);
       const comparison = await compareAgainstCommit(
         [{ path: 'src/index.ts', bytes: new TextEncoder().encode('export const x = 2;\n') }],
-        { targetRepositoryDirectory: scratch, targetDirectory: 'packages/example', commit: sha! },
+        {
+          workspace: '@example/source',
+          targetRepositoryDirectory: scratch,
+          targetDirectory: 'packages/example',
+          commit: sha!,
+        },
       );
       expect(comparison.differing).toEqual(['src/index.ts']);
-    });
-  });
-});
-
-/**
- * `recordSourceDigest` end to end, against a real fixture git repository and a stubbed `npm view`
- * — never the network. `package-map.json`'s real `@lostgradient/operative` entry is the workspace
- * under test (`publish-as`, a real `lastPublishedVersion`), so only the registry lookup and the
- * target repository are fixtures; `collectDigestedFiles` reads this checkout's actual
- * `packages/operative/src` for real.
- */
-describe('recordSourceDigest', () => {
-  const corvidaeRoot = join(import.meta.dir, '..', '..');
-
-  test('records nothing but returns the digest when corvidae’s source matches the published commit exactly', async () => {
-    await withScratch(async (scratch) => {
-      const { readdir } = await import('node:fs/promises');
-      const files: Record<string, string> = {};
-      for (const entry of await readdir(join(corvidaeRoot, 'packages/operative/src'), {
-        withFileTypes: true,
-        recursive: true,
-      })) {
-        if (!entry.isFile()) continue;
-        const relative = join(entry.parentPath, entry.name).slice(
-          join(corvidaeRoot, 'packages/operative').length + 1,
-        );
-        files[`packages/operative/${relative}`] = await Bun.file(
-          join(entry.parentPath, entry.name),
-        ).text();
-      }
-      const [sha] = await buildFixtureRepository(scratch, [{ files, message: 'mirrors corvidae' }]);
-
-      const result = await recordSourceDigest({
-        corvidaeRoot,
-        workspace: '@lostgradient/operative',
-        targetRepositoryDirectory: scratch,
-        npmRunner: stubNpmView(sha),
-      });
-      expect(result.workspace).toBe('@lostgradient/operative');
-      expect(result.gitHead).toBe(sha!);
-      expect(result.digest).toMatch(/^[0-9a-f]{64}$/);
-    });
-  }, 30_000);
-
-  test('refuses when corvidae’s source differs from the published commit, naming the file', async () => {
-    await withScratch(async (scratch) => {
-      const [sha] = await buildFixtureRepository(scratch, [
-        {
-          files: { 'packages/operative/src/index.ts': 'export const stale = true;\n' },
-          message: 'stale',
-        },
-      ]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/operative',
-          targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(sha),
-        }),
-      ).rejects.toThrow(/does not match/);
-    });
-  });
-
-  test('refuses when the registry has no gitHead for the version', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/operative',
-          targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
-        }),
-      ).rejects.toThrow('no recorded gitHead');
-    });
-  });
-
-  test('refuses when the gitHead commit is not in the target repository’s history', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/operative',
-          targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView('0'.repeat(40)),
-        }),
-      ).rejects.toThrow(/is not in .* history/);
-    });
-  });
-
-  test('refuses a workspace with no entry in package-map.json', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          workspace: '@lostgradient/nonexistent',
-          targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
-        }),
-      ).rejects.toThrow('no entry in package-map.json');
-    });
-  });
-
-  test('refuses a workspace that is not publish-as', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          // Real map: `@lostgradient/weft-ui` is `private-workspace` as of COR-1196.
-          workspace: '@lostgradient/weft-ui',
-          targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
-        }),
-      ).rejects.toThrow(/disposition is "private-workspace"/);
-    });
-  });
-
-  test('refuses a publish-as workspace with no lastPublishedVersion', async () => {
-    await withScratch(async (scratch) => {
-      await buildFixtureRepository(scratch, [{ files: { 'x.txt': 'x\n' }, message: 'first' }]);
-      await expect(
-        recordSourceDigest({
-          corvidaeRoot,
-          // Real map: `@lostgradient/cryptography` carries `lastPublishedVersion: null`.
-          workspace: '@lostgradient/cryptography',
-          targetRepositoryDirectory: scratch,
-          npmRunner: stubNpmView(undefined),
-        }),
-      ).rejects.toThrow('lastPublishedVersion is null');
     });
   });
 });

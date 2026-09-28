@@ -25,6 +25,15 @@ const items = [
 // ---------------------------------------------------------------------------
 
 describe('ChoiceGrid roving keyboard focus', () => {
+  test('keeps the focused item when selection mode changes', async () => {
+    const view = render(Wrapper, { ariaLabel: 'Options', items });
+    view.getByRole('radio', { name: 'Option B' }).focus();
+    await view.rerender({ multiple: true });
+    expect(document.activeElement === view.getByRole('checkbox', { name: 'Option B' })).toBe(true);
+    await view.rerender({ multiple: false });
+    expect(document.activeElement === view.getByRole('radio', { name: 'Option B' })).toBe(true);
+  });
+
   test('ArrowRight moves focus to the next item', async () => {
     const { container } = render(Wrapper, {
       value: 'a',

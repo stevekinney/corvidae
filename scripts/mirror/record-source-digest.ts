@@ -1,67 +1,46 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative, sep } from 'node:path';
+import { join } from 'node:path';
 
+import { buildCleanPublishedPackage } from './clean-package-build.ts';
 import { serializeJson } from './json-formatting.ts';
-import { targetDirectoryFor } from './layout-map.ts';
 import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import {
+  historicalCollector,
+  verifyHistoricalCheckout,
+  type HistoricalCollector,
+} from './publication-history.ts';
+import { loadHistoricalPublicationRouting } from './publication-routing.ts';
+import {
+  committedWorkspaceVersions,
+  fetchPublishedPackage,
+  verifyRegistryManifest,
+} from './registry-manifest.ts';
+import {
   collectDigestedFiles,
   hashDigestedFiles,
-  isDigestExcluded,
+  publicationInputContract,
   type DigestedFile,
+  type PublishedSnapshot,
 } from './source-digest.ts';
-import { versionConstants } from './source.ts';
 
-/**
- * Records `package-map.json`'s `sourceDigest` for one published workspace, after verifying the
- * digest it is about to record against the *source* the registry says it published — not the
- * packed tarball.
- *
- * A digest recorded without that check would be exactly as trustworthy as no digest at all — it
- * would say "this is what got published" on nothing but corvidae's own say-so, which is the same
- * unverified claim `assertEdgeNotStale` (source-digest.ts) exists to refuse. The first version of
- * this module verified against the published tarball's `README.md`/`LICENSE` instead, which two
- * defects it turned out to have: a tarball never carries `src/`, so it could not see whether the
- * *code* matched, only two files the digest no longer even covers (COR-1196 round 11 dropped
- * README and LICENSE from the digest's scope); and a docs edit or a copyright-year bump could
- * refuse the verification for a package whose actual source had not moved. This version compares
- * corvidae's current digest scope against the *committed source* at the commit the registry says
- * `lastPublishedVersion` was actually published from — `npm view <name>@<version> gitHead` — read
- * out of a local clone of the workspace's own target repository.
- *
- *   bun scripts/mirror/record-source-digest.ts --workspace @lostgradient/operative --target-clone /path/to/clone
- *
- * Three ways this refuses before recording anything: the registry has no `gitHead` for that
- * version (published before npm recorded provenance, or published by hand outside CI); the commit
- * is not in the clone's history (a rewritten history, or a clone that has not fetched it); or the
- * commit exists but its source at the scoped paths does not match corvidae's current tree, named
- * file by file.
- */
-
+/** Record only a source and publication contract proven against historical provenance and npm. */
 export class RegistryVerificationError extends Error {}
 
-/**
- * The commit `<name>@<version>` was published from, read with the real `npm view` CLI rather than
- * a registry HTTP call — the coordinator's own verification (`npm view conversationalist@1.2.0
- * gitHead`) is the source of truth this mirrors, and `npm view` already carries whatever auth and
- * registry configuration the environment has. `undefined` when the field is absent (npm prints
- * nothing and exits 0), which covers a version published before npm recorded provenance in
- * `gitHead`, or one published by hand outside a CI job that sets it.
- */
+/** Read the publishing commit through Bun; an absent field returns undefined. */
 export async function fetchGitHead(
   name: string,
   version: string,
   runner: CommandRunner = runCommand,
 ): Promise<string | undefined> {
-  const result = await runner(['npm', 'view', `${name}@${version}`, 'gitHead'], {
+  const result = await runner(['bun', 'info', `${name}@${version}`, 'gitHead'], {
     cwd: process.cwd(),
   });
   if (result.exitCode !== 0) {
     throw new RegistryVerificationError(
-      `${name}@${version}: \`npm view\` exited ${result.exitCode}\n${result.stdout}${result.stderr}`,
+      `${name}@${version}: \`bun info\` exited ${result.exitCode}\n${result.stdout}${result.stderr}`,
     );
   }
   const gitHead = result.stdout.trim();
@@ -119,22 +98,6 @@ async function extractCommitDirectory(
   }
 }
 
-/** Every file under `root`, relative to it, in a stable order — a plain recursive directory walk. */
-async function walkDirectory(root: string): Promise<string[]> {
-  const entries = await readdir(root, { withFileTypes: true, recursive: true }).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return [];
-      throw error;
-    },
-  );
-  const files: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    files.push(relative(root, join(entry.parentPath, entry.name)).split(sep).join('/'));
-  }
-  return files.toSorted();
-}
-
 export interface SourceComparison {
   /** In corvidae's current digest scope, absent from the commit's tree at the same path. */
   missingInCommit: string[];
@@ -160,13 +123,8 @@ export function sourceComparisonIsClean(comparison: SourceComparison): boolean {
  *
  * Two directions, because either one alone would miss a real edge: reading corvidae's known files
  * out of the commit catches a file that changed or that corvidae added since the publish; walking
- * the commit's own `src/` tree and diffing it against corvidae's set catches the opposite — a file
- * the commit carries that corvidae has since removed, which the first direction would never look
- * for since it only asks about paths corvidae already knows. The `src/`-only walk (not
- * `additionalSourceRoots`, which can point outside `src/`) is deliberate: it is the one directory
- * this module can enumerate wholesale from a commit's tree without also reading every other
- * top-level file a target's own tooling might keep beside the package, most of which are that
- * target's own and not this comparison's business.
+ * the commit with the same digest collector catches removed source and declared publication
+ * roots. Both sides therefore apply the same README, surface, test and version exclusions.
  *
  * Both directions read from a single `extractCommitDirectory` extraction rather than one `git`
  * invocation per file, and compare raw bytes rather than decoded text — `extractCommitDirectory`'s
@@ -177,10 +135,12 @@ export function sourceComparisonIsClean(comparison: SourceComparison): boolean {
 export async function compareAgainstCommit(
   corvidaeFiles: readonly DigestedFile[],
   options: {
+    workspace: string;
     targetRepositoryDirectory: string;
     targetDirectory: string;
     commit: string;
     runner?: CommandRunner;
+    collector?: HistoricalCollector;
     /**
      * Workspace-relative paths that never count as "extra" on the commit side, even though
      * `corvidaeFiles` does not carry them. `recordSourceDigest` passes the workspace's
@@ -193,10 +153,12 @@ export async function compareAgainstCommit(
   },
 ): Promise<SourceComparison> {
   const {
+    workspace,
     targetRepositoryDirectory,
     targetDirectory,
     commit,
     runner = runCommand,
+    collector = collectDigestedFiles,
     excludedFromExtra = new Set<string>(),
   } = options;
   const missingInCommit: string[] = [];
@@ -226,13 +188,14 @@ export async function compareAgainstCommit(
       }
     }
 
-    const srcAtCommit = await walkDirectory(join(extractedRoot, 'src'));
-    const extraInCommit = srcAtCommit
-      .map((path) => `src/${path}`)
-      .filter(
-        (path) =>
-          !corvidaePaths.has(path) && !isDigestExcluded(path) && !excludedFromExtra.has(path),
-      );
+    const filesAtCommit = await collector({
+      corvidaeRoot: scratch,
+      corvidaeDirectory: targetDirectory,
+      workspace,
+    });
+    const extraInCommit = filesAtCommit
+      .map((file) => file.path)
+      .filter((path) => !corvidaePaths.has(path) && !excludedFromExtra.has(path));
 
     return {
       missingInCommit: missingInCommit.toSorted(),
@@ -246,12 +209,16 @@ export async function compareAgainstCommit(
 
 export interface RecordOptions {
   corvidaeRoot: string;
-  /** The workspace's corvidae name, as `package-map.json` keys it — not its public npm name. */
   workspace: string;
-  /** A local clone of the workspace's own target repository, already fetched to at least `commit`. */
   targetRepositoryDirectory: string;
-  npmRunner?: CommandRunner;
+  publishedSourceRoot: string;
+  mirrorCommit: string;
+  registryRunner?: CommandRunner;
   gitRunner?: CommandRunner;
+  fetcher?: typeof fetch;
+  packageMap?: PackageMap;
+  buildPublishedPackage?: typeof buildCleanPublishedPackage;
+  bunExecutable?: string;
 }
 
 export interface RecordResult {
@@ -259,85 +226,150 @@ export interface RecordResult {
   publicName: string;
   version: string;
   digest: string;
-  previouslyRecorded: string | undefined;
+  previouslyRecorded: PublishedSnapshot | undefined;
   gitHead: string;
+  snapshot: PublishedSnapshot;
 }
 
-/**
- * Compute a workspace's current source digest and verify it against the committed source the
- * registry says was published, without writing anything. `run` below is what writes; this is the
- * part worth calling directly from a test or a report, since it never touches `package-map.json`.
- */
 export async function recordSourceDigest({
   corvidaeRoot,
   workspace,
   targetRepositoryDirectory,
-  npmRunner = runCommand,
+  publishedSourceRoot,
+  mirrorCommit,
+  registryRunner = runCommand,
   gitRunner = runCommand,
+  fetcher = fetch,
+  packageMap,
+  buildPublishedPackage = buildCleanPublishedPackage,
+  bunExecutable,
 }: RecordOptions): Promise<RecordResult> {
-  const map = await loadPackageMap();
+  const map = packageMap ?? (await loadPackageMap());
   const entry = map.workspaces[workspace];
-  if (entry === undefined) {
-    throw new RegistryVerificationError(`${workspace}: no entry in package-map.json`);
-  }
-  if (entry.disposition !== 'publish-as') {
+  if (!entry) throw new RegistryVerificationError(`${workspace}: no entry in package-map.json`);
+  if (entry.disposition !== 'publish-as')
     throw new RegistryVerificationError(
-      `${workspace}: disposition is "${entry.disposition}", not "publish-as" — only a published workspace has a registry version to record a digest against`,
+      `${workspace}: disposition is "${entry.disposition}", not "publish-as"`,
     );
-  }
-  if (entry.lastPublishedVersion === null) {
+  if (entry.lastPublishedVersion === null)
+    throw new RegistryVerificationError(`${workspace}: lastPublishedVersion is null`);
+  const version = entry.lastPublishedVersion;
+  const gitHead = await fetchGitHead(entry.name, version, registryRunner);
+  if (!gitHead)
     throw new RegistryVerificationError(
-      `${workspace}: lastPublishedVersion is null — publish ${entry.name} at least once before recording a digest for it`,
+      `${workspace}: no recorded gitHead for ${entry.name}@${version}`,
     );
-  }
-
-  const gitHead = await fetchGitHead(entry.name, entry.lastPublishedVersion, npmRunner);
-  if (gitHead === undefined) {
+  if (
+    !/^[a-f0-9]{40}$/.test(gitHead) ||
+    !(await commitExists(targetRepositoryDirectory, gitHead, gitRunner))
+  )
     throw new RegistryVerificationError(
-      `${workspace}: ${entry.name}@${entry.lastPublishedVersion} has no recorded gitHead on the registry, so there is no commit to verify corvidae's source against. Recording a digest without that verification is exactly the unverified claim this command exists to prevent.`,
+      `${workspace}: ${gitHead} is not in ${targetRepositoryDirectory}'s history`,
     );
-  }
-  if (!(await commitExists(targetRepositoryDirectory, gitHead, gitRunner))) {
-    throw new RegistryVerificationError(
-      `${workspace}: ${entry.name}@${entry.lastPublishedVersion}'s gitHead ${gitHead} is not in ${targetRepositoryDirectory}'s history. Fetch it (a rewritten history or a stale clone would both explain this) before recording.`,
-    );
-  }
-
+  if (!publishedSourceRoot)
+    throw new RegistryVerificationError('A published source checkout is required');
   const corvidaeDirectory = await directoryFor(corvidaeRoot, workspace);
-  const targetDirectory = await targetDirectoryFor(workspace);
+  const historicalDirectory = await directoryFor(publishedSourceRoot, workspace);
+  const historicalRouting = await loadHistoricalPublicationRouting(
+    publishedSourceRoot,
+    workspace,
+    historicalDirectory,
+  );
+  const corvidaeCommit = await verifyHistoricalCheckout({
+    targetRoot: targetRepositoryDirectory,
+    gitHead,
+    mirrorCommit,
+    sourceRoot: publishedSourceRoot,
+    target: historicalRouting.target,
+    runner: gitRunner,
+  });
+  const collector = await historicalCollector(publishedSourceRoot, workspace);
+  const historicalFiles = await collector({
+    corvidaeRoot: publishedSourceRoot,
+    corvidaeDirectory: historicalDirectory,
+    workspace,
+  });
   const files = await collectDigestedFiles({ corvidaeRoot, corvidaeDirectory, workspace });
   const digest = hashDigestedFiles(files);
-
-  const versionConstantPath = versionConstants[workspace];
-  const comparison = await compareAgainstCommit(files, {
+  if (
+    hashDigestedFiles(historicalFiles) !== digest ||
+    JSON.stringify(historicalFiles.map((file) => file.path)) !==
+      JSON.stringify(files.map((file) => file.path))
+  )
+    throw new RegistryVerificationError(
+      `${workspace}: historical source paths or bytes do not match current source`,
+    );
+  const comparison = await compareAgainstCommit(historicalFiles, {
+    workspace,
     targetRepositoryDirectory,
-    targetDirectory,
+    targetDirectory: historicalRouting.targetDirectory,
     commit: gitHead,
     runner: gitRunner,
-    ...(versionConstantPath ? { excludedFromExtra: new Set([versionConstantPath]) } : {}),
+    collector,
   });
-  if (!sourceComparisonIsClean(comparison)) {
-    const lines = [
-      ...comparison.missingInCommit.map(
-        (path) => `  ${path}: corvidae carries it, the commit does not`,
-      ),
-      ...comparison.extraInCommit.map(
-        (path) => `  ${path}: the commit carries it, corvidae does not`,
-      ),
-      ...comparison.differing.map((path) => `  ${path}: content differs`),
-    ];
+  if (!sourceComparisonIsClean(comparison))
     throw new RegistryVerificationError(
-      `${workspace}: corvidae's current source does not match ${entry.name}@${entry.lastPublishedVersion}'s published commit (${gitHead}). Refusing to record a digest that claims a state the registry does not confirm; publish ${entry.name} from its own target first.\n${lines.join('\n')}`,
+      `${workspace}: historical source does not match published commit ${gitHead}: ${JSON.stringify(comparison)}`,
+    );
+  const inputContract = await publicationInputContract({
+    corvidaeRoot,
+    corvidaeDirectory,
+    workspace,
+  });
+  const historicalInputContract = await publicationInputContract({
+    corvidaeRoot: publishedSourceRoot,
+    corvidaeDirectory: historicalDirectory,
+    workspace,
+    publishedWorkspaceVersions: await committedWorkspaceVersions(
+      targetRepositoryDirectory,
+      gitHead,
+      gitRunner,
+    ),
+  });
+  if (inputContract.digest !== historicalInputContract.digest)
+    throw new RegistryVerificationError(
+      `${workspace}: historical publication inputs differ from current source; publish the changed package first`,
+    );
+  const registryPackage = await fetchPublishedPackage(entry.name, version, registryRunner, fetcher);
+  const cleanPackage = await buildPublishedPackage({
+    targetRepositoryDirectory,
+    gitHead,
+    publishedSourceRoot,
+    workspace,
+    publicName: entry.name,
+    targetDirectory: historicalRouting.targetDirectory,
+    ...(bunExecutable === undefined ? {} : { bunExecutable }),
+  });
+  const registryManifestContract = verifyRegistryManifest(
+    registryPackage.manifest,
+    cleanPackage.manifest,
+  );
+  if (
+    registryPackage.payload.digest !== cleanPackage.payload.digest ||
+    JSON.stringify(registryPackage.payload.files) !== JSON.stringify(cleanPackage.payload.files)
+  ) {
+    throw new RegistryVerificationError(
+      `${workspace}: registry payload differs from the clean build at ${gitHead}`,
     );
   }
-
+  const snapshot: PublishedSnapshot = {
+    schemaVersion: 1,
+    version,
+    gitHead,
+    corvidaeCommit,
+    source: { algorithm: 'sha256-files-v1', paths: files.map((file) => file.path), digest },
+    publicationInputContract: inputContract,
+    registryManifestContract,
+    registryPayloadContract: registryPackage.payload,
+  };
   return {
     workspace,
     publicName: entry.name,
-    version: entry.lastPublishedVersion,
+    version,
     digest,
-    previouslyRecorded: entry.sourceDigest,
+    previouslyRecorded: entry.publishedSnapshot,
     gitHead,
+    snapshot,
   };
 }
 
@@ -358,36 +390,42 @@ function readOption(argv: readonly string[], name: string): string {
   return value;
 }
 
-/** Write the recorded digest into `package-map.json`, preserving every other byte the file carries. */
-function withRecordedDigest(map: PackageMap, workspace: string, digest: string): PackageMap {
-  const entry = map.workspaces[workspace];
-  if (entry === undefined || entry.disposition !== 'publish-as') {
-    throw new RegistryVerificationError(`${workspace}: not a publish-as entry`);
-  }
-  return {
-    ...map,
-    workspaces: { ...map.workspaces, [workspace]: { ...entry, sourceDigest: digest } },
-  };
-}
-
 export async function run(argv: readonly string[]): Promise<number> {
   try {
     const workspace = readOption(argv, 'workspace');
     const targetRepositoryDirectory = readOption(argv, 'target-clone');
+    const publishedSourceRoot = readOption(argv, 'published-source-root');
+    const mirrorCommit = readOption(argv, 'mirror-commit');
+    const bunExecutable = argv.includes('--bun-executable')
+      ? readOption(argv, 'bun-executable')
+      : undefined;
     const corvidaeRoot = new URL('../../', import.meta.url).pathname;
-    const result = await recordSourceDigest({ corvidaeRoot, workspace, targetRepositoryDirectory });
-    const mapFile = new URL('./package-map.json', import.meta.url);
-    const current = JSON.parse(await Bun.file(mapFile).text()) as PackageMap;
-    const updated = withRecordedDigest(current, workspace, result.digest);
-    // Formatted the way the repository's prettier formats it, so recording a digest changes only
-    // the digest rather than reflowing every array in the file.
+    const map = await loadPackageMap();
+    const result = await recordSourceDigest({
+      corvidaeRoot,
+      workspace,
+      targetRepositoryDirectory,
+      publishedSourceRoot,
+      mirrorCommit,
+      packageMap: map,
+      ...(bunExecutable === undefined ? {} : { bunExecutable }),
+    });
+    const entry = map.workspaces[workspace];
+    if (!entry || entry.disposition !== 'publish-as')
+      throw new RegistryVerificationError('Published workspace disappeared');
+    const updated: PackageMap = {
+      ...map,
+      workspaces: {
+        ...map.workspaces,
+        [workspace]: { ...entry, publishedSnapshot: result.snapshot },
+      },
+    };
     await Bun.write(
-      mapFile,
+      new URL('./package-map.json', import.meta.url),
       await serializeJson(updated, corvidaeRoot, 'scripts/mirror/package-map.json'),
     );
     process.stdout.write(
-      `Recorded sourceDigest for ${workspace} (${result.publicName}@${result.version}, gitHead ${result.gitHead}): ${result.digest}\n` +
-        (result.previouslyRecorded ? `Previous digest was ${result.previouslyRecorded}\n` : ''),
+      `Recorded publishedSnapshot for ${result.publicName}@${result.version}, target ${result.gitHead}, source ${result.snapshot.corvidaeCommit}\n`,
     );
     return 0;
   } catch (error) {
@@ -396,4 +434,4 @@ export async function run(argv: readonly string[]): Promise<number> {
   }
 }
 
-if (import.meta.main) process.exit(await run(Bun.argv.slice(2)));
+if (import.meta.main) process.exitCode = await run(process.argv.slice(2));

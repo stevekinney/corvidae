@@ -2,10 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { committedPlans } from './committed-plans.ts';
 
-import { importableSpecifierEntries, tarballFilename } from './packaging.ts';
+import { importableSpecifierEntries, verifyTarballFilename } from './packaging.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
 import {
   buildVerifySteps,
+  relocateTarballScript,
   VerifyStepOrderError,
   type VerifyEnvironment,
   type VerifyStepKind,
@@ -72,6 +73,8 @@ describe('buildVerifySteps', () => {
       'build',
       'typecheck-published',
       'pack',
+      'pack-relocate',
+      'readme',
       'publint',
       'attw',
       'typecheck-private',
@@ -174,14 +177,14 @@ describe('buildVerifySteps', () => {
     expect(typechecked.map((step) => step.publicName)).toEqual(['@lostgradient/testing']);
   });
 
-  test('the tarball path is computed ahead of time from the public name and version, not left to be parsed later', () => {
+  test('the tarball path is computed ahead of time from the public name alone, so a later version bump cannot move it', () => {
     const steps = buildVerifySteps(
       { installCommand: ['bun', 'install'], published, privateWorkspaces: [] },
       localEnvironment(),
     );
     const publint = steps.find((step) => step.kind === 'publint');
     const attw = steps.find((step) => step.kind === 'attw');
-    const expected = `/scratch/tarballs/${tarballFilename('@lostgradient/cryptography', '1.2.3')}`;
+    const expected = `/scratch/tarballs/${verifyTarballFilename('@lostgradient/cryptography')}`;
     expect(publint?.tarball).toBe(expected);
     expect(attw?.tarball).toBe(expected);
     expect(publint?.command).toContain(expected);
@@ -327,7 +330,7 @@ describe('packedBy determines how a published package is packed (COR-1196)', () 
     ]);
     const publint = steps.find((step) => step.kind === 'publint');
     expect(publint?.tarball).toBe(
-      `/scratch/tarballs/${tarballFilename('@lostgradient/cryptography', '1.2.3')}`,
+      `/scratch/tarballs/${verifyTarballFilename('@lostgradient/cryptography')}`,
     );
   });
 
@@ -344,21 +347,22 @@ describe('packedBy determines how a published package is packed (COR-1196)', () 
     expect(pack?.command).toEqual(['bun', 'run', 'scripts/pack-for-publish.ts']);
     expect(pack?.cwd).toBe('/clone/packages/cryptography');
 
-    const tarballName = tarballFilename('@lostgradient/cryptography', '1.2.3');
+    const tarballName = verifyTarballFilename('@lostgradient/cryptography');
     const expectedTarball = `/scratch/tarballs/${tarballName}`;
     // Both relocate steps run from the package directory (where `pack-for-publish.ts` wrote the
-    // tarball), not from the scratch directory: `mv`'s source is a bare filename.
+    // tarball, and whose manifest carries the version the rename reads), with source `.`.
     const relocateSteps = steps.filter((step) => step.kind === 'pack-relocate');
     expect(relocateSteps).toHaveLength(2);
     for (const step of relocateSteps) expect(step.cwd).toBe('/clone/packages/cryptography');
     expect(relocateSteps[0]?.command).toEqual(['mkdir', '-p', '/scratch/tarballs']);
-    expect(relocateSteps[1]?.command).toEqual(['mv', tarballName, expectedTarball]);
-    // Every `pack-relocate` step's own argv is quote-free (no `&&`, no embedded spaces) since
-    // `mirror-verify-workflow.ts`'s `renderStep` re-serializes `command` as a naively space-joined
-    // shell line for the rendered workflow, not as real argv the way `Bun.spawn` runs it locally.
-    for (const step of relocateSteps) {
-      for (const token of step.command) expect(token).not.toMatch(/[\s&|;]/);
-    }
+    expect(relocateSteps[1]?.command).toEqual([
+      'bun',
+      '-e',
+      relocateTarballScript,
+      '.',
+      'lostgradient-cryptography',
+      expectedTarball,
+    ]);
 
     const publint = steps.find((step) => step.kind === 'publint');
     const attw = steps.find((step) => step.kind === 'attw');
@@ -402,12 +406,12 @@ describe('packedBy determines how a published package is packed (COR-1196)', () 
     );
     const pack = steps.find((step) => step.kind === 'pack');
     expect(pack?.cwd).toBe('packages/cryptography');
-    const tarballName = tarballFilename('@lostgradient/cryptography', '1.2.3');
+    const tarballName = verifyTarballFilename('@lostgradient/cryptography');
     const expectedTarball = `\${{ runner.temp }}/mirror-verify/tarballs/${tarballName}`;
     const relocateSteps = steps.filter((step) => step.kind === 'pack-relocate');
     expect(relocateSteps.map((step) => step.command)).toEqual([
       ['mkdir', '-p', '${{ runner.temp }}/mirror-verify/tarballs'],
-      ['mv', tarballName, expectedTarball],
+      ['bun', '-e', relocateTarballScript, '.', 'lostgradient-cryptography', expectedTarball],
     ]);
     const publint = steps.find((step) => step.kind === 'publint');
     expect(publint?.tarball).toBe(expectedTarball);
@@ -601,7 +605,7 @@ describe('the consumer manifest resolves intra-target siblings from this run (CO
       '@lostgradient/cryptography': dependencies['@lostgradient/cryptography'],
     });
     expect(dependencies['@lostgradient/cryptography']).toBe(
-      `file:/scratch/tarballs/${tarballFilename('@lostgradient/cryptography', '1.2.3')}`,
+      `file:/scratch/tarballs/${verifyTarballFilename('@lostgradient/cryptography')}`,
     );
   });
 

@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  dispatchSnapshotWorkflow,
   pullRequestBodyFor,
   pullRequestBranchFor,
   reportDrift,
   runMirrorSyncActionCommand,
+  snapshotDispatchFor,
   targetRemoteUrl,
   targetRepositoryFullName,
 } from './mirror-sync-action.ts';
@@ -23,8 +25,12 @@ describe('targetRepositoryFullName and targetRemoteUrl', () => {
 });
 
 describe('pullRequestBranchFor', () => {
-  test('names the branch after a short prefix of the corvidae commit', () => {
-    expect(pullRequestBranchFor('0123456789abcdef')).toBe('mirror-sync-0123456789ab');
+  test('gives retries of the same source commit distinct remote branches', () => {
+    const first = pullRequestBranchFor('0123456789abcdef');
+    const second = pullRequestBranchFor('0123456789abcdef');
+    expect(first).toStartWith('mirror-sync-0123456789ab-');
+    expect(second).toStartWith('mirror-sync-0123456789ab-');
+    expect(second).not.toBe(first);
   });
 });
 
@@ -39,6 +45,117 @@ describe('pullRequestBodyFor', () => {
     expect(body).toContain('Corvidae-Commit: abc123');
     expect(body).toContain('review threads on this diff are answered there');
     expect(body).toContain('1 changed path(s)');
+  });
+});
+
+describe('snapshotDispatchFor', () => {
+  test('uses each target workflow and the verified sync commit when changed', () => {
+    expect(
+      snapshotDispatchFor('weft', 'release.yaml', 'stevekinney/weft', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }),
+    ).toEqual({
+      fullName: 'stevekinney/weft',
+      workflowFile: 'release.yaml',
+      ref: 'mirror-sync-deadbeef',
+      inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
+    });
+    expect(
+      snapshotDispatchFor('cinder', 'release.yaml', 'stevekinney/cinder', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }).workflowFile,
+    ).toBe('release.yaml');
+    expect(
+      snapshotDispatchFor(
+        'agent-bureau',
+        'release.yml',
+        'stevekinney/agent-bureau',
+        'mirror-sync-deadbeef',
+        {
+          decision: 'pushed',
+          commit: 'deadbeef',
+          baseBranch: 'main',
+          baseCommit: 'base-sha',
+          pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+        },
+      ).workflowFile,
+    ).toBe('release.yml');
+  });
+
+  test('uses the actual default branch and commit when sync skips', () => {
+    expect(
+      snapshotDispatchFor(
+        'agent-bureau',
+        'release.yml',
+        'stevekinney/agent-bureau',
+        'mirror-sync-deadbeef',
+        {
+          decision: 'skip',
+          baseBranch: 'trunk',
+          baseCommit: 'verified-target-sha',
+        },
+      ),
+    ).toEqual({
+      fullName: 'stevekinney/agent-bureau',
+      workflowFile: 'release.yml',
+      ref: 'trunk',
+      inputs: { snapshot: 'true', expected_sha: 'verified-target-sha' },
+    });
+  });
+
+  test('requires the verified commit and propagates dispatch failures', async () => {
+    expect(() =>
+      snapshotDispatchFor('weft', 'release.yaml', 'stevekinney/weft', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+      }),
+    ).toThrow(/requires a source pull request/);
+    expect(() =>
+      snapshotDispatchFor('weft', 'release.yaml', 'stevekinney/weft', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }),
+    ).toThrow(/verified target commit/);
+
+    const api = {
+      dispatchWorkflow: async () => {
+        throw new Error('dispatch refused');
+      },
+    };
+    const directory = await mkdtemp(join(tmpdir(), 'snapshot-error-'));
+    try {
+      await Bun.write(join(directory, '.github/workflows/release.yaml'), 'name: release\n');
+      await expect(
+        dispatchSnapshotWorkflow(
+          api,
+          'weft',
+          'stevekinney/weft',
+          'mirror-sync-deadbeef',
+          {
+            decision: 'pushed',
+            commit: 'deadbeef',
+            baseBranch: 'main',
+            baseCommit: 'base-sha',
+            pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+          },
+          directory,
+        ),
+      ).rejects.toThrow('dispatch refused');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -70,16 +187,50 @@ describe('runMirrorSyncActionCommand argument handling', () => {
     expect(code).toBe(1);
   });
 
-  test('requires --target for dispatch mode', async () => {
+  test('requires --target for prepare mode', async () => {
     const code = await runMirrorSyncActionCommand([
       '--mode',
-      'dispatch',
+      'prepare',
       '--work',
       '/tmp/x',
       '--scratch',
       '/tmp/y',
+      '--artifact',
+      '/tmp/z',
     ]);
     expect(code).toBe(1);
+  });
+
+  test('rejects malformed --snapshot input before prepare setup', async () => {
+    const messages: string[] = [];
+    const originalWrite = process.stderr.write;
+    const captureWrite: typeof process.stderr.write = (chunk) => {
+      messages.push(typeof chunk === 'string' ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    };
+    process.stderr.write = captureWrite;
+
+    try {
+      const code = await runMirrorSyncActionCommand([
+        '--mode',
+        'prepare',
+        '--target',
+        'weft',
+        '--snapshot',
+        'maybe',
+        '--work',
+        '/tmp/mirror-sync-action-invalid-snapshot',
+        '--scratch',
+        '/tmp/mirror-sync-action-invalid-snapshot-scratch',
+        '--artifact',
+        '/tmp/mirror-sync-action-invalid-snapshot-artifact',
+      ]);
+      expect(code).toBe(1);
+    } finally {
+      process.stderr.write = originalWrite;
+    }
+
+    expect(messages.join('')).toContain('--snapshot must be "true" or "false"');
   });
 });
 
@@ -239,6 +390,12 @@ async function withHarness(
 
     const corvidae = join(root, 'corvidae');
     await writeTree(corvidae, corvidaeFixture());
+    for (const policyFile of ['package-map.json', 'package-surface.json']) {
+      await Bun.write(
+        join(corvidae, 'scripts/mirror', policyFile),
+        await Bun.file(join(import.meta.dir, policyFile)).text(),
+      );
+    }
 
     await body({ remote, corvidae, workRoot: join(root, 'work') });
   } finally {
@@ -295,4 +452,34 @@ describe('reportDrift', () => {
     },
     endToEndTimeout,
   );
+});
+
+test('snapshot dispatch discovers the release workflow filename from the staged clone', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'snapshot-workflow-'));
+  try {
+    await Bun.write(join(directory, '.github/workflows/release.yml'), 'name: release\n');
+    const calls: unknown[] = [];
+    await dispatchSnapshotWorkflow(
+      {
+        dispatchWorkflow: async (input) => {
+          calls.push(input);
+        },
+      },
+      'weft',
+      'stevekinney/weft',
+      'mirror-sync-branch',
+      { decision: 'skip', baseBranch: 'main', baseCommit: 'verified-target-sha' },
+      directory,
+    );
+    expect(calls).toEqual([
+      {
+        fullName: 'stevekinney/weft',
+        workflowFile: 'release.yml',
+        ref: 'main',
+        inputs: { snapshot: 'true', expected_sha: 'verified-target-sha' },
+      },
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
