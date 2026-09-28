@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+
 import {
   availableRecords,
   findRecord,
@@ -63,6 +65,15 @@ const trustEverything: SkillTrustPolicy = {
 const now = (): string => '2026-09-19T00:00:00.000Z';
 
 describe('discoverSkills', () => {
+  it('stamps a revision from the supplied runtime clock', async () => {
+    const runtime = createManualRuntimeServices({ origin: '2026-09-19T00:00:00.000Z' });
+    await runtime.advance(2_000);
+
+    const revision = await discoverSkills({ sources: [], runtime });
+
+    expect(revision.createdAt).toBe('2026-09-19T00:00:02.000Z');
+  });
+
   it('builds a catalog entry carrying provenance, trust, digest and compatibility', async () => {
     const root = await scratch();
     await writeSkill(root, 'code-review');

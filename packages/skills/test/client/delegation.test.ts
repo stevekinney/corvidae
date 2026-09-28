@@ -259,6 +259,22 @@ describe('an empty admitted catalog exposes no skill tools', () => {
     expect(toolbox?.loadSkillResource.name).toBe('load_skill_resource');
   });
 
+  it('returns a promise with the same deactivation success and failure responses', async () => {
+    const root = await scratch();
+    await writeSkill(root, 'available');
+    const client = await clientFor(root);
+    const toolbox = createSkillClientToolbox(client);
+    await client.activate('available');
+
+    const success = toolbox!.deactivateSkill.execute({ name: 'available' });
+    expect(success).toBeInstanceOf(Promise);
+    expect(await success).toEqual({ deactivated: true, name: 'available' });
+
+    const failure = toolbox!.deactivateSkill.execute({ name: 'available' });
+    expect(failure).toBeInstanceOf(Promise);
+    expect(await failure).toEqual({ error: 'Skill is not active', name: 'available' });
+  });
+
   it('refuses an unlisted name through the tool without naming what exists', async () => {
     const root = await scratch();
     await writeSkill(root, 'real-skill');
