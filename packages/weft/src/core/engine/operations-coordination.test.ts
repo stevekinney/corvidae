@@ -423,6 +423,49 @@ describe('partial-failure preservation worker-mode boundary', () => {
     expect(internals.signalWaitersByWorkflow.size).toBe(0);
   });
 
+  it('discards a scan failure once a replacement waiter has superseded this wait', async () => {
+    // A replay or reclaim can register a fresh waiter for the same workflow and
+    // signal while this invocation's post-registration scan is pending. The
+    // stale failure must not reach the replacement run.
+    const replacement = (): void => {};
+    let internals: EngineInternals;
+    let scanCount = 0;
+    const storage = {
+      async delete() {},
+      scan() {
+        scanCount += 1;
+        return (async function* () {
+          if (scanCount === 2) {
+            internals.signalWaiters.set('workflow-id:release', replacement);
+            throw new Error('simulated signal scan failure');
+          }
+        })();
+      },
+    };
+    internals = createSignalInternals(storage as never);
+    const failed = mock((_workflowId: string, _operation: unknown, _error: unknown) => {});
+
+    await processWaitSignalOperation(
+      internals,
+      'workflow-id',
+      {
+        type: 'wait-signal',
+        operationId: 'wait:superseded',
+        signalName: 'release',
+      },
+      {
+        completeOperation: () => {
+          throw new Error('should not complete');
+        },
+        failOperation: failed,
+      },
+    );
+
+    expect(scanCount).toBe(2);
+    expect(failed).not.toHaveBeenCalled();
+    expect(internals.signalWaiters.get('workflow-id:release')).toBe(replacement);
+  });
+
   it('exits wait-signal cleanly when cancellation happens while awaiting the waiter promise', async () => {
     const signalWaiters = new WaiterTrackingMap();
     const internals = {

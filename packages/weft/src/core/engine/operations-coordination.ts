@@ -156,6 +156,13 @@ export async function processWaitSignalOperation(
     }
   } catch (error) {
     if (pendingWaiterResolve !== undefined) {
+      const currentWaiter = internals.signalWaiters.get(waiterKey);
+      if (currentWaiter !== undefined && currentWaiter !== pendingWaiterResolve) {
+        // A replay or reclaim registered a replacement waiter while this scan
+        // was pending, so this invocation is superseded. Its failure belongs to
+        // no live run; feeding it by workflow id would fail the replacement.
+        return;
+      }
       releaseSignalWaiter(internals, workflowId, waiterKey, pendingWaiterResolve);
     }
     callbacks.failOperation(workflowId, operation, error);
