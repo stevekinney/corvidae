@@ -65,15 +65,8 @@ export async function commitExists(
  * Extract the exact target commit into `destination`, as two commands total
  * (`git archive`, then `tar -x`) rather than one subprocess per file.
  *
- * The first version of this comparison called `git show <commit>:<path>` once per corvidae file —
- * correct, but `operative` alone digests 381 files, and a real sync's `bun run test:self` timed
- * out a test built on it at bun's default 5-second per-test budget (198s CI total across a much
- * larger job's worth of contention wasn't the problem; ~380 sequential subprocess spawns for one
- * package was). Measured: `git archive` + `tar -x` for the same 321-file `operative@0.12.0` tree
- * takes under 100ms combined. `--format=tar` rather than piping `git archive`'s stdout directly
- * into `tar -x` is deliberate: `CommandRunner` is one argv array and a `cwd`, with no shell
- * pipeline between two spawns, so the archive is written to a file and extracted as a second,
- * independent step — still two subprocesses, not the hundreds this replaces.
+ * This avoids one `git show` spawn per source file. `CommandRunner` has no shell pipeline,
+ * so the archive is written to disk before the second command extracts it.
  */
 async function extractCommitTree(
   targetRepositoryDirectory: string,
