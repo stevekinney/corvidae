@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { buildCleanPublishedPackage } from './clean-package-build.ts';
 import { serializeJson } from './json-formatting.ts';
 import { targetDirectoryFor } from './layout-map.ts';
 import { discoverWorkspaces } from './manifests.ts';
@@ -22,9 +23,8 @@ import {
   type HistoricalCollector,
 } from './publication-history.ts';
 import {
-  committedPublicationManifest,
   committedWorkspaceVersions,
-  fetchPublishedManifest,
+  fetchPublishedPackage,
   verifyRegistryManifest,
 } from './registry-manifest.ts';
 
@@ -219,6 +219,8 @@ export interface RecordOptions {
   gitRunner?: CommandRunner;
   fetcher?: typeof fetch;
   packageMap?: PackageMap;
+  buildPublishedPackage?: typeof buildCleanPublishedPackage;
+  bunExecutable?: string;
 }
 
 export interface RecordResult {
@@ -241,6 +243,8 @@ export async function recordSourceDigest({
   gitRunner = runCommand,
   fetcher = fetch,
   packageMap,
+  buildPublishedPackage = buildCleanPublishedPackage,
+  bunExecutable,
 }: RecordOptions): Promise<RecordResult> {
   const map = packageMap ?? (await loadPackageMap());
   const entry = map.workspaces[workspace];
@@ -325,19 +329,28 @@ export async function recordSourceDigest({
     throw new RegistryVerificationError(
       `${workspace}: historical publication inputs differ from current source; publish the changed package first`,
     );
-  const targetManifest = await committedPublicationManifest(
+  const registryPackage = await fetchPublishedPackage(entry.name, version, registryRunner, fetcher);
+  const cleanPackage = await buildPublishedPackage({
     targetRepositoryDirectory,
     gitHead,
+    publishedSourceRoot,
+    workspace,
+    publicName: entry.name,
     targetDirectory,
-    gitRunner,
+    ...(bunExecutable === undefined ? {} : { bunExecutable }),
+  });
+  const registryManifestContract = verifyRegistryManifest(
+    registryPackage.manifest,
+    cleanPackage.manifest,
   );
-  const registryManifest = await fetchPublishedManifest(
-    entry.name,
-    version,
-    registryRunner,
-    fetcher,
-  );
-  const registryManifestContract = verifyRegistryManifest(registryManifest, targetManifest);
+  if (
+    registryPackage.payload.digest !== cleanPackage.payload.digest ||
+    JSON.stringify(registryPackage.payload.files) !== JSON.stringify(cleanPackage.payload.files)
+  ) {
+    throw new RegistryVerificationError(
+      `${workspace}: registry payload differs from the clean build at ${gitHead}`,
+    );
+  }
   const snapshot: PublishedSnapshot = {
     schemaVersion: 1,
     version,
@@ -346,6 +359,7 @@ export async function recordSourceDigest({
     source: { algorithm: 'sha256-files-v1', paths: files.map((file) => file.path), digest },
     publicationInputContract: inputContract,
     registryManifestContract,
+    registryPayloadContract: registryPackage.payload,
   };
   return {
     workspace,
@@ -381,6 +395,9 @@ export async function run(argv: readonly string[]): Promise<number> {
     const targetRepositoryDirectory = readOption(argv, 'target-clone');
     const publishedSourceRoot = readOption(argv, 'published-source-root');
     const mirrorCommit = readOption(argv, 'mirror-commit');
+    const bunExecutable = argv.includes('--bun-executable')
+      ? readOption(argv, 'bun-executable')
+      : undefined;
     const corvidaeRoot = new URL('../../', import.meta.url).pathname;
     const map = await loadPackageMap();
     const result = await recordSourceDigest({
@@ -390,6 +407,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       publishedSourceRoot,
       mirrorCommit,
       packageMap: map,
+      ...(bunExecutable === undefined ? {} : { bunExecutable }),
     });
     const entry = map.workspaces[workspace];
     if (!entry || entry.disposition !== 'publish-as')

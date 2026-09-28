@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { packagePayloadAlgorithm, type PackagePayloadContract } from './package-payload.ts';
 import { canonicalManifest, objectRecord } from './registry-manifest.ts';
 import { publishedVersionRange, targetFor } from './target-definitions.ts';
 
@@ -49,6 +50,7 @@ export interface PublishedSnapshot {
   source: { algorithm: 'sha256-files-v1'; paths: string[]; digest: string };
   publicationInputContract: PublicationInputContract;
   registryManifestContract: PublicationInputContract;
+  registryPayloadContract: PackagePayloadContract;
 }
 
 export interface DigestScope {
@@ -370,6 +372,15 @@ export function assertEdgeNotStale({
   }
   if (snapshot.schemaVersion !== publicationSnapshotSchemaVersion || snapshot.version !== version) {
     throw new StaleCrossTargetEdgeError(`${workspace}: publishedSnapshot version is unsupported`);
+  }
+  if (
+    snapshot.registryPayloadContract?.algorithm !== packagePayloadAlgorithm ||
+    !/^[a-f0-9]{64}$/.test(snapshot.registryPayloadContract.digest) ||
+    !Array.isArray(snapshot.registryPayloadContract.files)
+  ) {
+    throw new StaleCrossTargetEdgeError(
+      `${workspace}: publishedSnapshot has no verified registry payload contract`,
+    );
   }
   if (
     snapshot.source.digest !== currentDigest ||

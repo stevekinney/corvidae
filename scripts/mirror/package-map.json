@@ -189,6 +189,488 @@
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
           "digest": "94f79d0e76a867be9c148da35a92e74dc921efd4b5ccf5bcc100ca13592e1972"
+        },
+        "registryPayloadContract": {
+          "algorithm": "sha256-package-payload-v1",
+          "files": [
+            {
+              "path": "package/LICENSE",
+              "executable": false
+            },
+            {
+              "path": "package/README.md",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-BUW7BK6v.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-BUW7BK6v.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/composition-C7uo10Xk.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/composition-C7uo10Xk.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/composition/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/composition/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditional-section-CPBt6nET.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditional-section-CPBt6nET.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/context-CifiErVb.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/context-CifiErVb.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/context-blocks-D9u-kqxT.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/context-blocks-D9u-kqxT.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/context.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/context.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/context.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conversation-BjaKGaqc.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conversation-BjaKGaqc.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conversation/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conversation/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/deterministic-6TYiSGYj.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/deterministic-6TYiSGYj.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/deterministic-C6r1R87Y.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/deterministic-C6r1R87Y.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/environment-BB1Rk1oE.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/environment-BB1Rk1oE.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/export-DVC44Bwh.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/export-DVC44Bwh.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/export/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/export/index.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/export/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-ElgR1n5O.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-ElgR1n5O.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/history-BRxCP-fI.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/history-BRxCP-fI.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/history-BiDOwFh_.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/history-BiDOwFh_.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/history.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/history.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CkgBOVTL.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CkgBOVTL.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Dem02cso.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Dem02cso.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/markdown-B3HWpkrY.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/markdown-B3HWpkrY.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/markdown-BVfXsiSL.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/markdown-BVfXsiSL.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/markdown/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/markdown/index.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/markdown/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/message-BRwK40rw.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/message-BRwK40rw.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/message-Ciqz3JFN.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/message-Ciqz3JFN.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-B0UvTmAT.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-B0UvTmAT.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/plugins/pii-redaction.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/plugins/pii-redaction.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/plugins/pii-redaction.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/plugins/pii-redaction.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/projection.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/projection.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/projection.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/projection.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schemas.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schemas.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schemas.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schemas.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-DTLgAEix.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-DTLgAEix.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/sort/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/sort/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-interactions-DIRAjtuJ.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-interactions-DIRAjtuJ.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-results-DKQs9ZGX.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-results-DKQs9ZGX.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/transient-KEVKQhIx.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/transient-KEVKQhIx.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-Bok0vri9.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-Bok0vri9.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-D1KpSWX6.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-D1KpSWX6.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-DBT0XgWx.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-DBT0XgWx.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-DozVbBtf.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-DozVbBtf.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-Dvn_LrYC.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-Dvn_LrYC.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities-uPlPfmKD.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities-uPlPfmKD.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/message.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/message.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/versioning/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/versioning/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/package.json",
+              "executable": false
+            }
+          ],
+          "digest": "44f73d804a1185f986ea13a0eb9ad77898c4c9a9d5ab2247b8e1100ee12e42f0"
         }
       }
     },

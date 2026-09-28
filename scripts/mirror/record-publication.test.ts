@@ -3,9 +3,11 @@ import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadPackageMap } from './package-map.ts';
+import { readPackagePayload } from './package-payload.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import { requireGit } from './publication-history.ts';
 import { recordSourceDigest, type RecordOptions } from './record-source-digest.ts';
+import { committedPublicationManifest } from './registry-manifest.ts';
 import { publicationInputContract } from './source-digest.ts';
 
 const workspace = '@lostgradient/operative';
@@ -44,7 +46,11 @@ async function withPublication(
     sourceCommit: string;
     gitHead: string;
     registry: Record<string, unknown>;
-    setRegistry: (manifest: Record<string, unknown>, tamper?: boolean) => Promise<void>;
+    setRegistry: (
+      manifest: Record<string, unknown>,
+      tamper?: boolean,
+      files?: Record<string, string>,
+    ) => Promise<void>;
   }) => Promise<void>,
   historicalExtra = false,
 ): Promise<void> {
@@ -130,21 +136,41 @@ async function withPublication(
     const gitHead = await commit(target, 'Version packages');
     let tarball = new Uint8Array();
     let integrity = '';
-    const setRegistry = async (manifest: Record<string, unknown>, tamper = false) => {
-      await Bun.write(join(scratch, 'payload/package/package.json'), json(manifest));
+    const builtFiles = {
+      'dist/index.js': 'export const value = 1;\n',
+      'dist/index.d.ts': 'export declare const value = 1;\n',
+    };
+    const packFixture = async (
+      manifest: Record<string, unknown>,
+      files: Record<string, string>,
+      label: string,
+    ) => {
+      const directory = join(scratch, label);
+      await Bun.write(join(directory, 'package/package.json'), json(manifest));
+      for (const [path, bytes] of Object.entries(files)) {
+        await Bun.write(join(directory, 'package', path), bytes);
+      }
       const packed = await runCommand(
         [
           'tar',
           '-czf',
-          join(scratch, 'package.tgz'),
+          join(directory, 'package.tgz'),
           '-C',
-          join(scratch, 'payload'),
+          directory,
           'package/package.json',
+          ...Object.keys(files).map((path) => `package/${path}`),
         ],
         { cwd: scratch },
       );
       if (packed.exitCode !== 0) throw new Error(packed.stderr);
-      tarball = new Uint8Array(await Bun.file(join(scratch, 'package.tgz')).arrayBuffer());
+      return new Uint8Array(await Bun.file(join(directory, 'package.tgz')).arrayBuffer());
+    };
+    const setRegistry = async (
+      manifest: Record<string, unknown>,
+      tamper = false,
+      files: Record<string, string> = builtFiles,
+    ) => {
+      tarball = await packFixture(manifest, files, 'registry');
       integrity = `sha512-${new Bun.CryptoHasher('sha512').update(tarball).digest('base64')}`;
       if (tamper) tarball[0] = tarball[0]! ^ 1;
     };
@@ -167,6 +193,15 @@ async function withPublication(
       packageMap: map,
       registryRunner,
       fetcher,
+      buildPublishedPackage: async ({ gitHead: releaseCommit }) => {
+        const manifest = await committedPublicationManifest(
+          target,
+          releaseCommit,
+          'packages/operative',
+        );
+        const archive = await packFixture(manifest, builtFiles, 'clean-build');
+        return { manifest, payload: await readPackagePayload(archive) };
+      },
     };
     await body({
       options,
@@ -230,6 +265,19 @@ test('rejects tampered tarballs and mismatched registry manifests', async () => 
     await expect(recordSourceDigest(options)).rejects.toThrow('integrity mismatch');
     await setRegistry({ ...registry, files: ['src'] });
     await expect(recordSourceDigest(options)).rejects.toThrow('registry manifest differs');
+  });
+});
+
+test('rejects altered JavaScript and declarations despite matching manifest and valid registry integrity', async () => {
+  await withPublication(async ({ options, registry, setRegistry }) => {
+    for (const path of ['dist/index.js', 'dist/index.d.ts']) {
+      await setRegistry(registry, false, {
+        'dist/index.js': 'export const value = 1;\n',
+        'dist/index.d.ts': 'export declare const value = 1;\n',
+        [path]: 'altered published payload\n',
+      });
+      await expect(recordSourceDigest(options)).rejects.toThrow('registry payload differs');
+    }
   });
 });
 

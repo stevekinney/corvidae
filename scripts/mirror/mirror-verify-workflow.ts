@@ -87,7 +87,7 @@ export interface RenderMirrorVerifyWorkflowOptions {
 }
 
 /** The extra `bun install` arguments after `--frozen-lockfile`, parsed from the release workflow's own install line. */
-function installArgumentsFrom(installCommandText: string): string[] {
+export function installArgumentsFrom(installCommandText: string): string[] {
   const tokens = installCommandText.trim().split(/\s+/);
   return tokens.filter(
     (token, index) =>

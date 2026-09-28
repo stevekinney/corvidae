@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { packagePayloadAlgorithm } from './package-payload.ts';
 import { publicationContractAlgorithm, publicationSnapshotSchemaVersion } from './source-digest.ts';
 
 /**
@@ -45,6 +46,16 @@ const publishAsSchema = z.object({
       }),
       registryManifestContract: z.object({
         algorithm: z.literal(publicationContractAlgorithm),
+        digest: z.string().regex(/^[0-9a-f]{64}$/),
+      }),
+      registryPayloadContract: z.object({
+        algorithm: z.literal(packagePayloadAlgorithm),
+        files: z.array(
+          z.object({
+            path: z.string().min(1),
+            executable: z.boolean(),
+          }),
+        ),
         digest: z.string().regex(/^[0-9a-f]{64}$/),
       }),
     })

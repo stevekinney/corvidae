@@ -1,6 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { Parser } from 'tar';
+import { readPackagePayload, type PackagePayloadContract } from './package-payload.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import type { PublicationInputContract } from './source-digest.ts';
 
@@ -83,7 +82,7 @@ export function verifyRegistryManifest(
         JSON.stringify(canonicalManifest(target[key], key === 'exports' || key === 'imports')),
     );
     throw new Error(
-      `registry manifest differs from the committed publication manifest: ${keys.join(', ')}`,
+      `registry manifest differs from the clean publication manifest: ${keys.join(', ')}`,
     );
   }
   return {
@@ -146,13 +145,46 @@ export async function committedPublicationManifest(
   );
 }
 
-/** Verify SRI before extracting exactly one archive member to stdout. */
-export async function fetchPublishedManifest(
+export interface PublishedRegistryPackage {
+  manifest: Record<string, unknown>;
+  payload: PackagePayloadContract;
+}
+
+export async function readPublishedManifest(bytes: Uint8Array, name: string, version: string) {
+  const parser = new Parser({ strict: true });
+  let manifestBytes: Buffer | undefined;
+  parser.on('entry', (entry) => {
+    if (entry.path !== 'package/package.json') {
+      entry.resume();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    entry.on('data', (chunk: Buffer) => chunks.push(chunk));
+    entry.on('end', () => {
+      manifestBytes = Buffer.concat(chunks);
+    });
+    entry.resume();
+  });
+  await new Promise<void>((resolve, reject) => {
+    parser.once('error', reject);
+    parser.once('end', resolve);
+    parser.end(Buffer.from(bytes));
+  });
+  if (manifestBytes === undefined)
+    throw new Error(`${name}@${version}: tarball has no package/package.json`);
+  const manifest = objectRecord(JSON.parse(manifestBytes.toString('utf8')));
+  if (manifest['name'] !== name || manifest['version'] !== version)
+    throw new Error('Registry tarball package identity mismatch');
+  return manifest;
+}
+
+/** Verify registry SRI and parse the manifest and complete package payload without extraction. */
+export async function fetchPublishedPackage(
   name: string,
   version: string,
   runner: CommandRunner = runCommand,
   fetcher: typeof fetch = fetch,
-): Promise<Record<string, unknown>> {
+): Promise<PublishedRegistryPackage> {
   const info = await runner(['bun', 'info', `${name}@${version}`, '--json'], {
     cwd: process.cwd(),
   });
@@ -173,20 +205,9 @@ export async function fetchPublishedManifest(
   const actual = new Bun.CryptoHasher('sha512').update(bytes).digest('base64');
   if (`sha512-${actual}` !== dist['integrity'])
     throw new Error(`${name}@${version}: tarball integrity mismatch`);
-  const scratch = await mkdtemp(join(tmpdir(), 'corvidae-registry-manifest-'));
-  try {
-    const archive = join(scratch, 'package.tgz');
-    await Bun.write(archive, bytes);
-    const extract = await runCommand(['tar', '-xOf', archive, 'package/package.json'], {
-      cwd: scratch,
-    });
-    if (extract.exitCode !== 0)
-      throw new Error(`${name}@${version}: tarball has no package/package.json`);
-    const manifest = objectRecord(JSON.parse(extract.stdout));
-    if (manifest['name'] !== name || manifest['version'] !== version)
-      throw new Error('Registry tarball package identity mismatch');
-    return manifest;
-  } finally {
-    await rm(scratch, { recursive: true, force: true });
-  }
+  const [manifest, payload] = await Promise.all([
+    readPublishedManifest(bytes, name, version),
+    readPackagePayload(bytes),
+  ]);
+  return { manifest, payload };
 }

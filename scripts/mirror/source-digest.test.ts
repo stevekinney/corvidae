@@ -305,6 +305,11 @@ describe('assertEdgeNotStale', () => {
     source: { algorithm: 'sha256-files-v1', paths: ['src/index.ts'], digest: sourceDigest },
     publicationInputContract: { algorithm: 'sha256-json-v1', digest: publicationDigest },
     registryManifestContract: { algorithm: 'sha256-json-v1', digest: 'registry' },
+    registryPayloadContract: {
+      algorithm: 'sha256-package-payload-v1',
+      files: [],
+      digest: '0'.repeat(64),
+    },
   });
 
   test('rejects a different published version, path list, or publication input contract', () => {
@@ -332,6 +337,19 @@ describe('assertEdgeNotStale', () => {
         currentPublicationInputDigest: 'contract',
       }),
     ).not.toThrow();
+  });
+
+  test('refuses a snapshot that has no verified package payload', () => {
+    const unverified = snapshot('abc');
+    Reflect.deleteProperty(unverified, 'registryPayloadContract');
+    expect(() =>
+      assertEdgeNotStale({
+        ...base,
+        snapshot: unverified,
+        currentDigest: 'abc',
+        currentPublicationInputDigest: 'contract',
+      }),
+    ).toThrow('no verified registry payload contract');
   });
 
   test('refuses when the recorded digest no longer matches, naming both digests and the version', () => {
@@ -447,6 +465,11 @@ describe('the guard against the real workspaces', () => {
                 source: { algorithm: 'sha256-files-v1', paths: [], digest: sourceDigest },
                 publicationInputContract: { algorithm: 'sha256-json-v1', digest: '0'.repeat(64) },
                 registryManifestContract: { algorithm: 'sha256-json-v1', digest: '0'.repeat(64) },
+                registryPayloadContract: {
+                  algorithm: 'sha256-package-payload-v1',
+                  files: [],
+                  digest: '0'.repeat(64),
+                },
               }),
               source: {
                 ...(current?.source ?? { algorithm: 'sha256-files-v1', paths: [] }),

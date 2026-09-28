@@ -95,6 +95,11 @@ export async function packageMapWithCurrentDigests(): Promise<PackageMap> {
         },
         publicationInputContract: input,
         registryManifestContract: input,
+        registryPayloadContract: {
+          algorithm: 'sha256-package-payload-v1',
+          files: [],
+          digest: '0'.repeat(64),
+        },
       },
     };
   }
