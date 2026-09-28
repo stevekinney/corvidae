@@ -25,6 +25,8 @@ describe('promise assertion modifiers', () => {
     'expect(promise).rejects.not.toThrow(TypeError);',
     'expect(run(), label).rejects.toBeInstanceOf(Error);',
     'const rejection = expect(promise).rejects;',
+    "expect(promise)['resolves'].toBe(1);",
+    "import { expect as check } from 'bun:test';\ncheck(promise).rejects.toThrow();",
     'expect(\n  engine.start(\n    input,\n  ),\n)\n  .rejects.toThrow();',
   ])('rejects %s', (source) => {
     expect(inspect(source)).toHaveLength(1);
@@ -37,6 +39,8 @@ describe('promise assertion modifiers', () => {
     'const { promise, resolve } = Promise.withResolvers();',
     'handle.resolves;',
     'expect(value).toBe(outcome.rejects);',
+    "import { expect as check } from 'bun:test';\nexpect(await promise).toBe(check);",
+    "import { check } from './local';\ncheck(promise).resolves;",
   ])('accepts %s', (source) => {
     expect(inspect(source)).toEqual([]);
   });

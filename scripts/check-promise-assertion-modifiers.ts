@@ -82,22 +82,60 @@ function walk(node: ts.Node, visit: (node: ts.Node) => void): void {
   node.forEachChild((child) => walk(child, visit));
 }
 
+const MODIFIERS = new Set(['resolves', 'rejects']);
+
+/** Local names bound to `bun:test`'s `expect`, including `import { expect as check }`. */
+function expectNames(sourceFile: ts.SourceFile): Set<string> {
+  const names = new Set(['expect']);
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== 'bun:test'
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      if ((element.propertyName ?? element.name).text === 'expect') names.add(element.name.text);
+    }
+  }
+  return names;
+}
+
+/** The modifier a `.resolves`/`['resolves']`-style access names, if any. */
+function modifierOf(node: ts.Node): { object: ts.Expression; name: ts.Node } | undefined {
+  if (ts.isPropertyAccessExpression(node) && MODIFIERS.has(node.name.text)) {
+    return { object: node.expression, name: node.name };
+  }
+  if (
+    ts.isElementAccessExpression(node) &&
+    ts.isStringLiteralLike(node.argumentExpression) &&
+    MODIFIERS.has(node.argumentExpression.text)
+  ) {
+    return { object: node.expression, name: node.argumentExpression };
+  }
+  return undefined;
+}
+
 /** Every `expect(...).resolves` or `expect(...).rejects` access in a file. */
 export function findPromiseAssertionModifierViolations(
   sourceFile: ts.SourceFile,
 ): PromiseAssertionModifierViolation[] {
+  const names = expectNames(sourceFile);
   const violations: PromiseAssertionModifierViolation[] = [];
   walk(sourceFile, (node) => {
+    const modifier = modifierOf(node);
     if (
-      !ts.isPropertyAccessExpression(node) ||
-      (node.name.text !== 'resolves' && node.name.text !== 'rejects') ||
-      !ts.isCallExpression(node.expression) ||
-      !ts.isIdentifier(node.expression.expression) ||
-      node.expression.expression.text !== 'expect'
+      !modifier ||
+      !ts.isCallExpression(modifier.object) ||
+      !ts.isIdentifier(modifier.object.expression) ||
+      !names.has(modifier.object.expression.text)
     ) {
       return;
     }
-    const { line } = sourceFile.getLineAndCharacterOfPosition(node.name.getStart(sourceFile));
+    const { line } = sourceFile.getLineAndCharacterOfPosition(modifier.name.getStart(sourceFile));
     violations.push({ line: line + 1, text: node.getText(sourceFile) });
   });
   return violations;
