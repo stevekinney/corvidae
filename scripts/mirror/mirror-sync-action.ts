@@ -299,6 +299,8 @@ async function runPublish(argv: readonly string[]): Promise<number> {
   const corvidaeCommit = await corvidaeCommitFor(argv, corvidaeRoot);
   const { manifest, bundlePath } = await verifyPreparedSyncArtifact({
     artifactDirectory,
+    corvidaeRoot,
+    remote: targetRemoteUrl(target),
     expectedTarget: target,
     expectedCorvidaeCommit: corvidaeCommit,
     expectedSnapshot: snapshot,

@@ -6,6 +6,7 @@ import { mirrorPlatformEnvironment } from './environment-configuration.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import { git, provenanceTrailer, type SyncResult } from './sync.ts';
 import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
+import { verifyTrustedPreparedTree } from './trusted-prepared-tree.ts';
 
 export class PreparedSyncError extends Error {}
 
@@ -370,12 +371,16 @@ async function verifyBundleIdentity(options: {
       }
     }
     if (options.manifest.decision === 'prepared') {
-      const ancestry = await options.run(
-        ['git', 'merge-base', '--is-ancestor', options.manifest.baseCommit, imported],
-        { cwd: repository, env: environment },
-      );
-      if (ancestry.exitCode !== 0) {
-        throw new PreparedSyncError('Prepared bundle commit is not descended from the base commit');
+      const parentOutput = await runGit(repository, ['rev-list', '--parents', '-n', '1', imported]);
+      const parents = parentOutput.split(' ').filter((entry) => entry.length > 0);
+      if (
+        parents.length !== 2 ||
+        parents[0] !== imported ||
+        parents[1] !== options.manifest.baseCommit
+      ) {
+        throw new PreparedSyncError(
+          'Prepared bundle commit must have the base commit as its only parent',
+        );
       }
       const trailerValues = await runGit(repository, [
         'log',
@@ -395,6 +400,8 @@ async function verifyBundleIdentity(options: {
 
 export async function verifyPreparedSyncArtifact(options: {
   artifactDirectory: string;
+  corvidaeRoot: string;
+  remote: string;
   expectedTarget: MirrorTarget;
   expectedCorvidaeCommit: string;
   expectedSnapshot: boolean;
@@ -429,6 +436,11 @@ export async function verifyPreparedSyncArtifact(options: {
     manifest,
     environment: options.environment ?? mirrorPlatformEnvironment(),
     run: options.run ?? runCommand,
+  });
+  await verifyTrustedPreparedTree({
+    corvidaeRoot: options.corvidaeRoot,
+    manifest,
+    remote: options.remote,
   });
   return { manifest, bundlePath };
 }
