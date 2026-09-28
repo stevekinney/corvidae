@@ -260,10 +260,26 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
       !finiteNumber(targetMetric.value)
     )
       validationErrors.push('control metric');
+    else {
+      const passes =
+        workload.plan.target.comparator === 'gte'
+          ? targetMetric.value >= workload.plan.target.value
+          : workload.plan.target.comparator === 'lte'
+            ? targetMetric.value <= workload.plan.target.value
+            : targetMetric.value === workload.plan.target.value;
+      if (!passes) validationErrors.push('control comparator failed');
+    }
+    const controlErrors: string[] = [];
+    validateRaw(workload, controlErrors, control);
+    validationErrors.push(...controlErrors.map((error) => `control:${error}`));
   };
-  const validateRaw = (workload: WorkloadDefinition, validationErrors: string[]): void => {
-    const raw = workload.observed.raw;
-    const metric = (name: string): number | undefined => workload.observed.metrics[name]?.value;
+  const validateRaw = (
+    workload: WorkloadDefinition,
+    validationErrors: string[],
+    observation = workload.observed,
+  ): void => {
+    const raw = observation.raw;
+    const metric = (name: string): number | undefined => observation.metrics[name]?.value;
     switch (workload.fixtureId) {
       case 'throughput-and-queues': {
         const bytes = raw['bytes'];
@@ -278,7 +294,7 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
           queuePeak < 0 ||
           metric('throughput') !== bytes / (duration / 1_000) ||
           metric('queuePeak') !== queuePeak ||
-          workload.observed.durationMilliseconds !== duration
+          observation.durationMilliseconds !== duration
         )
           validationErrors.push('throughput raw evidence');
         break;
@@ -306,7 +322,7 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
           !finiteNumber(delta) ||
           after < before ||
           delta !== Math.max(0, after - before) / (1024 * 1024) ||
-          workload.observed.warmupCount !== workload.plan.warmupCount
+          observation.warmupCount !== workload.plan.warmupCount
         )
           validationErrors.push('memory raw evidence');
         break;
@@ -322,6 +338,21 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
       case 'cleanup-order':
       case 'teardown': {
         const cleanup = raw['cleanup'];
+        const expectedFacts = [
+          'authorityRevoked',
+          'controlCapacityReserved',
+          'userQueueCanceled',
+          'processGroupSignaled',
+          'parentExited',
+          'descendantObservedGone',
+          'handlesClosed',
+        ];
+        const expectedEvents = [
+          'authority-revoked',
+          'control-reserved-and-queue-canceled',
+          'process-group-signaled',
+          'handles-closed-and-descendant-observed',
+        ];
         const facts =
           isRecord(cleanup) && isRecord(cleanup['facts']) ? cleanup['facts'] : undefined;
         const allTrue = facts ? Object.values(facts).every((value) => value === true) : false;
@@ -334,7 +365,8 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
             cleanup['state'] !== 'unknown') ||
           typeof cleanup['quarantined'] !== 'boolean' ||
           !isRecord(cleanup['facts']) ||
-          Object.keys(cleanup['facts']).length !== 7 ||
+          JSON.stringify(Object.keys(cleanup['facts'])) !== JSON.stringify(expectedFacts) ||
+          JSON.stringify(raw['events']) !== JSON.stringify(expectedEvents) ||
           cleanup['state'] !== expectedState ||
           cleanup['quarantined'] !== !allTrue
         )
@@ -342,14 +374,15 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
         break;
       }
       case 'xterm-initialization':
-        if (raw['browser'] !== 'Chromium' || typeof raw['passed'] !== 'boolean')
+        if (raw['browser'] !== 'Chromium' || raw['passed'] !== true || metric('assertion') !== 1)
           validationErrors.push(`browser assertion evidence:${workload.fixtureId}`);
         break;
       case 'retained-projection-memory':
         if (
           raw['browser'] !== 'Chromium' ||
-          typeof raw['passed'] !== 'boolean' ||
-          typeof raw['retained'] !== 'boolean'
+          raw['passed'] !== true ||
+          raw['retained'] !== true ||
+          metric('assertion') !== 1
         )
           validationErrors.push(`browser assertion evidence:${workload.fixtureId}`);
         break;
@@ -366,7 +399,7 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
           raw['cdpState'] !== 'frozen' ||
           (raw['timer'] !== 'ran' && raw['timer'] !== 'suspended') ||
           raw['assertion'] !== (raw['timer'] === 'ran') ||
-          raw['duration'] !== workload.observed.durationMilliseconds ||
+          raw['duration'] !== observation.durationMilliseconds ||
           metric('liveness') !== (raw['timer'] === 'ran' ? 1 : 0)
         )
           validationErrors.push('hidden liveness evidence');

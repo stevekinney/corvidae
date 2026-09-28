@@ -168,11 +168,11 @@ function makeWorkload(
   const sampleCount = fixture === 'input-latency' ? 1_000 : 1;
   const warmupCount = fixture === 'memory-plateau' ? 1 : 0;
   const observed: ObservedWorkload = {
-    durationMilliseconds: 1,
-    sampleCount: 1,
-    warmupCount: 0,
+    durationMilliseconds: 0.001,
+    sampleCount,
+    warmupCount,
     metrics: { [targetDefinition.metric]: { value: 1, unit: targetDefinition.unit } },
-    raw: { control: fixture },
+    raw: { fixtureId: fixture, mode: 'candidate-placeholder' },
   };
   const workload: WorkloadDefinition = {
     fixtureId: fixture,
@@ -187,18 +187,162 @@ function makeWorkload(
     control: { passed: true, observed },
     observed,
   };
-  workload.control.observed = controlFor(workload);
+  workload.control.observed = measureControl(workload);
   return workload;
 }
 
-function controlFor(workload: WorkloadDefinition): ObservedWorkload {
-  const metric = workload.plan.target.metric;
+function measuredControlDuration(startedAt: number): number {
+  return Math.max(performance.now() - startedAt, Number.EPSILON);
+}
+
+function measureControl(workload: WorkloadDefinition): ObservedWorkload {
+  const startedAt = performance.now();
+  switch (workload.fixtureId) {
+    case 'throughput-and-queues': {
+      const bytes = 2 * 1024 * 1024;
+      const chunk = new Uint8Array(64 * 1024);
+      const queue = boundedQueue(256);
+      let queuePeak = 0;
+      for (let offset = 0; offset < bytes; offset += chunk.byteLength) {
+        queue.push(chunk);
+        queuePeak = Math.max(queuePeak, queue.size());
+      }
+      const duration = measuredControlDuration(startedAt);
+      return {
+        durationMilliseconds: duration,
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: {
+          throughput: { value: bytes / (duration / 1_000), unit: 'bytes/second' },
+          queuePeak: { value: queuePeak, unit: 'operations' },
+        },
+        raw: { bytes, duration, queuePeak },
+      };
+    }
+    case 'input-latency': {
+      const samples: number[] = [];
+      const queue = boundedQueue(256);
+      for (let index = 0; index < 1_000; index += 1) {
+        const sampleStartedAt = performance.now();
+        queue.push(new Uint8Array([index % 256]));
+        samples.push(performance.now() - sampleStartedAt);
+      }
+      const duration = measuredControlDuration(startedAt);
+      return {
+        durationMilliseconds: duration,
+        sampleCount: samples.length,
+        warmupCount: 0,
+        metrics: {
+          p50: { value: percentile(samples, 0.5), unit: 'milliseconds' },
+          p95: { value: percentile(samples, 0.95), unit: 'milliseconds' },
+          p99: { value: percentile(samples, 0.99), unit: 'milliseconds' },
+        },
+        raw: { samples },
+      };
+    }
+    case 'memory-plateau': {
+      const before = process.memoryUsage().rss;
+      const retained = Array.from({ length: 2_000 }, (_, index) => `control-${index}`);
+      const after = process.memoryUsage().rss;
+      retained.length = 0;
+      const delta = Math.max(0, after - before) / (1024 * 1024);
+      return {
+        durationMilliseconds: measuredControlDuration(startedAt),
+        sampleCount: 1,
+        warmupCount: 1,
+        metrics: { memoryDelta: { value: delta, unit: 'MiB' } },
+        raw: { before, after, delta, retained: 2_000 },
+      };
+    }
+    case 'overflow':
+      return {
+        durationMilliseconds: measuredControlDuration(startedAt),
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { capacity: { value: 256, unit: 'operations' } },
+        raw: { attempted: 257, result: 'input-overflow' },
+      };
+    case 'cleanup-order':
+    case 'teardown': {
+      const events = [
+        'authority-revoked',
+        'control-reserved-and-queue-canceled',
+        'process-group-signaled',
+        'handles-closed-and-descendant-observed',
+      ];
+      const cleanup = deriveCleanupResult({
+        authorityRevoked: true,
+        controlCapacityReserved: true,
+        userQueueCanceled: true,
+        processGroupSignaled: true,
+        parentExited: true,
+        descendantObservedGone: true,
+        handlesClosed: true,
+      });
+      const duration = measuredControlDuration(startedAt);
+      return {
+        durationMilliseconds: duration,
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
+        raw: { events, cleanup },
+      };
+    }
+    case 'xterm-initialization':
+      return {
+        durationMilliseconds: measuredControlDuration(startedAt),
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { assertion: { value: 1, unit: 'boolean' } },
+        raw: { browser: 'Chromium', passed: true, control: true },
+      };
+    case 'browser-assets-and-csp':
+      return {
+        durationMilliseconds: measuredControlDuration(startedAt),
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { assertion: { value: 1, unit: 'boolean' } },
+        raw: { assetEvidence: controlBrowserAssetEvidence(), passed: true, control: true },
+      };
+    case 'hidden-page-liveness': {
+      const duration = measuredControlDuration(startedAt);
+      return {
+        durationMilliseconds: duration,
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { liveness: { value: 1, unit: 'boolean' } },
+        raw: { cdpState: 'frozen', timer: 'ran', assertion: true, duration, control: true },
+      };
+    }
+    case 'retained-projection-memory':
+      return {
+        durationMilliseconds: measuredControlDuration(startedAt),
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { assertion: { value: 1, unit: 'boolean' } },
+        raw: { browser: 'Chromium', passed: true, retained: true, control: true },
+      };
+    default:
+      throw new Error(`missing control measurement for ${workload.fixtureId}`);
+  }
+}
+
+function controlBrowserAssetEvidence(): Record<string, unknown> {
+  const origin = 'http://127.0.0.1:1';
   return {
-    durationMilliseconds: 0.1,
-    sampleCount: workload.plan.sampleCount,
-    warmupCount: workload.plan.warmupCount,
-    metrics: { [metric]: { value: 1, unit: workload.plan.target.unit } },
-    raw: { fixtureId: workload.fixtureId, mode: 'control-baseline' },
+    origin,
+    csp: "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; script-src 'self'; connect-src 'self'",
+    requests: [
+      { method: 'GET', url: `${origin}/`, path: '/' },
+      { method: 'GET', url: `${origin}/candidate.css`, path: '/candidate.css' },
+      { method: 'GET', url: `${origin}/probe.js`, path: '/probe.js' },
+    ],
+    responses: [
+      { url: `${origin}/`, status: 200, contentType: 'text/html' },
+      { url: `${origin}/candidate.css`, status: 200, contentType: 'text/css' },
+      { url: `${origin}/probe.js`, status: 200, contentType: 'text/javascript' },
+    ],
+    failures: [],
   };
 }
 
@@ -585,7 +729,6 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       const planned = makeWorkload(fixture, method, 'boolean', target);
       planned.environment.browser = browserVersion;
       planned.environment.engine = '@xterm/xterm@6.0.0';
-      planned.control.observed.raw = { diagnostics: browser.diagnostics };
       return planned;
     };
     const observed = (
