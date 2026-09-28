@@ -366,14 +366,24 @@ test('root browser test caches restore their generated catalogs and follow provi
       join(directory, '.gitignore'),
       'node_modules/\n.turbo/\n.playwright/\nexecutions.txt\n',
     );
+    // The fixtures' own workspace owns their package dependencies, so the root does not: a
+    // workspace the root depends on is folded into every task's global hash.
     const manifestPath = join(directory, 'package.json');
     const manifest = await Bun.file(manifestPath).json();
     await Bun.write(
       manifestPath,
       JSON.stringify({
         ...manifest,
-        devDependencies: { '@fixture/library': 'workspace:*' },
+        workspaces: [...manifest.workspaces, 'scripts/browser-fixtures'],
         scripts: { 'test:browser-fixtures': 'bun scripts/generate.ts' },
+      }),
+    );
+    await Bun.write(
+      join(directory, 'scripts/browser-fixtures/package.json'),
+      JSON.stringify({
+        name: '@lostgradient/browser-fixtures',
+        private: true,
+        devDependencies: { '@fixture/library': 'workspace:*' },
       }),
     );
     const outputs = ['manifest.json', 'fixture-modules.ts'].map((file) =>
@@ -402,6 +412,83 @@ for (const output of ${JSON.stringify(outputs)}) await Bun.write(output, 'genera
     expect(await Bun.file(join(directory, 'executions.txt')).text()).toBe('2');
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+function taskHash(output: string, taskId: string): string {
+  const summary = JSON.parse(output) as { tasks: Array<{ taskId: string; hash: string }> };
+  const task = summary.tasks.find((candidate) => candidate.taskId === taskId);
+  if (task === undefined) throw new Error(`Turbo summary has no ${taskId}`);
+  return task.hash;
+}
+
+test('a change leaves the cache keys of packages it cannot affect untouched', async () => {
+  // Every task's key once included the whole repository three ways: `//#preflight` hashed every
+  // tracked file, `scripts/**` was a global dependency, and the root depended on workspaces,
+  // whose files turbo folds into the global hash. Any commit then re-ran every package's suite.
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-cache-isolation-keys-'));
+  try {
+    await createWorkspace(directory);
+    await Bun.write(join(directory, 'scripts/tool.ts'), 'export const tool = 1;\n');
+    await Bun.write(join(directory, 'README.md'), '# Fixture\n');
+    const command = [join(root, 'node_modules/.bin/turbo'), 'run', 'typecheck', '--dry=json'];
+    const baseKey = async () => taskHash(await run(directory, command), '@fixture/base#typecheck');
+    const before = await baseKey();
+
+    await Bun.write(
+      join(directory, 'applications/application/source.ts'),
+      'export const value = 2;\n',
+    );
+    expect(await baseKey()).toBe(before);
+    await Bun.write(join(directory, 'scripts/tool.ts'), 'export const tool = 2;\n');
+    expect(await baseKey()).toBe(before);
+    await Bun.write(join(directory, 'README.md'), '# Fixture, edited\n');
+    expect(await baseKey()).toBe(before);
+
+    // The same key still moves for the package's own source and its lockfile-level inputs.
+    await Bun.write(join(directory, 'packages/base/source.ts'), 'export const value = 3;\n');
+    expect(await baseKey()).not.toBe(before);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('the root package depends on no workspace but its compiler configuration', async () => {
+  // Turbo hashes the files of every workspace the root package depends on, transitively, into
+  // the global hash that every task key includes. A workspace the root depends on therefore
+  // invalidates every cached task in the repository whenever it changes. Tooling that needs a
+  // workspace belongs in a workspace of its own, as `scripts/browser-fixtures` is.
+  const manifest = await Bun.file(join(root, 'package.json')).json();
+  const workspaceDependencies = Object.entries({
+    ...manifest.dependencies,
+    ...manifest.devDependencies,
+  })
+    .filter(([, version]) => String(version).startsWith('workspace:'))
+    .map(([name]) => name);
+  expect(workspaceDependencies).toEqual(['@lostgradient/typescript']);
+});
+
+test('the preflight and global inputs name files, not the whole repository', async () => {
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  // Every task depends on `//#preflight`, so its inputs are part of every task key. It checks
+  // that the install matches the lockfile, so exactly the manifests and the lockfile belong in it.
+  const inputs: string[] = configuration.tasks['//#preflight']?.inputs ?? [];
+  const manifest = await Bun.file(join(root, 'package.json')).json();
+  const manifests = ['package.json', 'bun.lock'];
+  for (const pattern of manifest.workspaces as string[]) {
+    for await (const path of new Bun.Glob(`${pattern}/package.json`).scan(root))
+      manifests.push(path);
+  }
+  for (const path of manifests) {
+    expect(
+      inputs.some((input) => new Bun.Glob(input).match(path)),
+      path,
+    ).toBe(true);
+  }
+  for (const input of inputs) expect(input, input).toMatch(/(?:package\.json|bun\.lock)$/);
+  // A directory glob in `globalDependencies` invalidates every task when anything under it changes.
+  for (const dependency of configuration.globalDependencies as string[]) {
+    expect(dependency, dependency).not.toContain('*');
   }
 });
 

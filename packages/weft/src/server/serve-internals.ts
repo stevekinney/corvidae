@@ -306,6 +306,10 @@ export function buildServerContext(
       taskQueue,
       metricsCollector: serverMetricsCollector,
       workerDeploymentCatalog,
+      storage: options.engine.storage,
+      ...(options.workerStartOverrideSigningSecret === undefined
+        ? {}
+        : { workerStartOverrideSigningSecret: options.workerStartOverrideSigningSecret }),
       ...(options.operations === undefined ? {} : { additionalOperations: options.operations }),
     }),
     liveRestBindings: createLiveRestBindings(),

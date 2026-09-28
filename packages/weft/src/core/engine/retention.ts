@@ -48,6 +48,9 @@ export function ensureRetentionSweepInterval(
   internals: EngineInternals,
   callbacks: RetentionSweepCallbacks,
 ): void {
+  // Disposal clears the interval once; one armed afterwards (by a late
+  // `register()`) would sweep a disposed engine and hold the process open.
+  if (internals.disposed) return;
   if (internals.options.backgroundTaskMode === 'manual') {
     internals.nextRetentionSweepAt = null;
     return;

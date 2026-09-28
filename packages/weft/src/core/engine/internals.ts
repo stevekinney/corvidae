@@ -220,6 +220,8 @@ export interface EngineInternals {
   pendingExecutionStateOwnerId: string | null | undefined;
   pendingParentWorkflowId: string | undefined;
   pendingParentWorkflowExecutionToken: string | undefined;
+  pendingParentWorkerBinding:
+    import('../../worker/versioning-policy.ts').WorkflowWorkerBinding | undefined;
   workflowNestingDepths: Map<string, number>;
   workflowHeaders: Map<string, Map<string, string>>;
   workflowStateWriteChains: Map<string, Promise<void>>;
@@ -271,9 +273,10 @@ export interface EngineInternals {
   retentionSweepInterval: ReturnType<typeof setInterval> | null;
   retentionSweepInFlight: Promise<void> | null;
   /**
-   * Purge writes (a purge commit, or the retention scan's orphaned-index
-   * delete) issued and not yet settled. Async disposal settles these instead of
-   * the whole sweep; see `purge-write-tracking.ts`. Never cleared by disposal.
+   * Purge writes (a purge commit, the retention scan's orphaned-index delete,
+   * or a bulk operation's audit record) issued and not yet settled. Async
+   * disposal settles these instead of the whole sweep; see
+   * `purge-write-tracking.ts`. Never cleared by disposal.
    */
   inFlightPurgeWrites: Set<Promise<unknown>>;
   nextRetentionSweepAt: number | null;

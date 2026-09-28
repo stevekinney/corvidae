@@ -9,7 +9,8 @@
     "applications/*",
     "components/*",
     "packages/*",
-    "internal/*"
+    "internal/*",
+    "scripts/browser-fixtures"
   ],
   "catalog": {
     "@anthropic-ai/sdk": "^0.122.0",
@@ -131,7 +132,7 @@
     "lint": "bun run lint:root && turbo run lint && bun run lint:styles",
     "lint:fix": "turbo run lint:fix",
     "preflight": "bun install --frozen-lockfile",
-    "test": "bun run test:self && turbo run test test:browser-fixtures --concurrency=1",
+    "test": "turbo run test:self test test:browser-fixtures --concurrency=1",
     "test:self": "bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts",
     "test:terminal-browser": "bun scripts/terminal/browser-failure-regression.ts",
     "typecheck": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && tsc --noEmit && svelte-check --workspace scripts/browser-fixtures --tsconfig ./tsconfig.json --fail-on-warnings && turbo run typecheck",
@@ -147,11 +148,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
-    "@lostgradient/chat": "workspace:*",
-    "@lostgradient/cinder": "workspace:*",
-    "@lostgradient/editor": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
-    "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@playwright/test": "catalog:",
     "@shikijs/langs": "catalog:",
@@ -160,7 +157,6 @@
     "@types/pngjs": "catalog:",
     "ajv": "catalog:",
     "ajv-formats": "catalog:",
-    "conversationalist": "workspace:*",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
     "pixelmatch": "catalog:",

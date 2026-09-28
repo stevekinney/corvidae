@@ -133,6 +133,22 @@ export type SystemOperationTypes = {
     };
     readonly faults: never;
   };
+  'weft.worker.startoverrides.preview': {
+    readonly input: { readonly ttlMs?: number; readonly workflowId: string };
+    readonly output: {
+      readonly preview: {
+        readonly expiresAt: number;
+        readonly previousRoutingGeneration: number;
+        readonly scope: 'destructive:workflow-worker-version-binding';
+        readonly targetActivityContractsDigest: string;
+        readonly targetRoutingGeneration: number;
+        readonly targetWorkflowContractHash: string;
+        readonly token: string;
+        readonly workflowId: string;
+      };
+    };
+    readonly faults: 'InvalidParams';
+  };
   'weft.workers.drain': {
     readonly input: { readonly reason?: string; readonly workerId: string };
     readonly output:
