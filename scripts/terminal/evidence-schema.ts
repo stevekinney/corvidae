@@ -9,21 +9,31 @@ export type EvidenceCell = {
   workload?: WorkloadDefinition;
 };
 
-export type WorkloadDefinition = {
-  fixture: string;
+export type ObservedWorkload = {
   durationMilliseconds: number;
-  samples: number;
-  warmup: number;
-  hardware: string;
-  runtime: string;
-  browser?: string;
-  engine?: string;
-  method: string;
-  unit: string;
-  comparator: string;
-  target: string;
-  control: { passed: boolean; observation: string };
-  rawObservations: string[];
+  sampleCount: number;
+  warmupCount: number;
+  metrics: Record<string, { value: number; unit: string }>;
+  raw: Record<string, unknown>;
+};
+
+export type WorkloadDefinition = {
+  fixtureId: string;
+  environment: {
+    hardware: string;
+    runtime: string;
+    browser?: string;
+    engine?: string;
+  };
+  plan: {
+    durationMilliseconds: number;
+    sampleCount: number;
+    warmupCount: number;
+    method: string;
+    target: { metric: string; unit: string; comparator: 'gte' | 'lte' | 'eq'; value: number };
+  };
+  control: { passed: true; observed: ObservedWorkload };
+  observed: ObservedWorkload;
 };
 
 export type EvidenceReport = {
@@ -79,34 +89,60 @@ function isEvidenceCell(value: unknown): value is EvidenceCell {
 
 function isWorkloadDefinition(value: unknown): value is WorkloadDefinition {
   if (!isRecord(value)) return false;
-  const requiredStrings = [
-    'fixture',
-    'hardware',
-    'runtime',
-    'method',
-    'unit',
-    'comparator',
-    'target',
-  ];
+  const environment = value['environment'];
+  const plan = value['plan'];
+  const target = isRecord(plan) ? plan['target'] : undefined;
+  const observed = value['observed'];
+  const control = value['control'];
+  const validObserved = (candidate: unknown): candidate is ObservedWorkload => {
+    if (!isRecord(candidate)) return false;
+    const metrics = candidate['metrics'];
+    return (
+      typeof candidate['durationMilliseconds'] === 'number' &&
+      Number.isFinite(candidate['durationMilliseconds']) &&
+      candidate['durationMilliseconds'] > 0 &&
+      typeof candidate['sampleCount'] === 'number' &&
+      Number.isInteger(candidate['sampleCount']) &&
+      candidate['sampleCount'] > 0 &&
+      typeof candidate['warmupCount'] === 'number' &&
+      Number.isInteger(candidate['warmupCount']) &&
+      candidate['warmupCount'] >= 0 &&
+      isRecord(metrics) &&
+      Object.keys(metrics).length > 0 &&
+      Object.values(metrics).every(
+        (metric) =>
+          isRecord(metric) &&
+          typeof metric['value'] === 'number' &&
+          Number.isFinite(metric['value']) &&
+          typeof metric['unit'] === 'string' &&
+          metric['unit'].length > 0,
+      ) &&
+      isRecord(candidate['raw'])
+    );
+  };
   return (
-    requiredStrings.every((key) => typeof value[key] === 'string' && value[key].length > 0) &&
-    isRecord(value['control']) &&
-    value['control']['passed'] === true &&
-    typeof value['control']['observation'] === 'string' &&
-    value['control']['observation'].length > 0 &&
-    typeof value['durationMilliseconds'] === 'number' &&
-    Number.isFinite(value['durationMilliseconds']) &&
-    typeof value['samples'] === 'number' &&
-    Number.isInteger(value['samples']) &&
-    value['samples'] > 0 &&
-    typeof value['warmup'] === 'number' &&
-    Number.isInteger(value['warmup']) &&
-    value['warmup'] >= 0 &&
-    (value['browser'] === undefined || typeof value['browser'] === 'string') &&
-    (value['engine'] === undefined || typeof value['engine'] === 'string') &&
-    Array.isArray(value['rawObservations']) &&
-    value['rawObservations'].length > 0 &&
-    value['rawObservations'].every((item) => typeof item === 'string')
+    typeof value['fixtureId'] === 'string' &&
+    value['fixtureId'].length > 0 &&
+    isRecord(environment) &&
+    typeof environment['hardware'] === 'string' &&
+    typeof environment['runtime'] === 'string' &&
+    isRecord(plan) &&
+    typeof plan['durationMilliseconds'] === 'number' &&
+    Number.isFinite(plan['durationMilliseconds']) &&
+    typeof plan['sampleCount'] === 'number' &&
+    Number.isInteger(plan['sampleCount']) &&
+    typeof plan['warmupCount'] === 'number' &&
+    Number.isInteger(plan['warmupCount']) &&
+    typeof plan['method'] === 'string' &&
+    isRecord(target) &&
+    typeof target['metric'] === 'string' &&
+    typeof target['unit'] === 'string' &&
+    ['gte', 'lte', 'eq'].includes(String(target['comparator'])) &&
+    typeof target['value'] === 'number' &&
+    validObserved(observed) &&
+    isRecord(control) &&
+    control['passed'] === true &&
+    validObserved(control['observed'])
   );
 }
 
@@ -196,6 +232,39 @@ function validateCandidates(
   );
   if (!selected) errors.push('selected engine candidate');
   else if (!selected.passed) errors.push('selected engine failed');
+}
+
+function validateResourceCells(cells: unknown[], errors: string[]): void {
+  for (const item of cells) {
+    if (!isRecord(item) || !isWorkloadDefinition(item['workload'])) continue;
+    const workload = item['workload'];
+    const observed = workload.observed;
+    const plan = workload.plan;
+    const target = plan.target;
+    if (item['id'] !== workload.fixtureId) errors.push('workload fixture mismatch');
+    if (JSON.stringify(item['metrics']) !== JSON.stringify(observed.metrics))
+      errors.push('observed metrics mismatch');
+    if (observed.sampleCount !== plan.sampleCount) errors.push('observed sample count mismatch');
+    if (observed.warmupCount !== plan.warmupCount) errors.push('observed warmup count mismatch');
+    if (!Object.hasOwn(observed.metrics, target.metric)) errors.push('target metric missing');
+    else {
+      const metric = observed.metrics[target.metric];
+      if (!metric) {
+        errors.push('target metric missing');
+        continue;
+      }
+      if (metric.unit !== target.unit) errors.push('target unit mismatch');
+      const passes =
+        target.comparator === 'gte'
+          ? metric.value >= target.value
+          : target.comparator === 'lte'
+            ? metric.value <= target.value
+            : metric.value === target.value;
+      if (!passes) errors.push('target comparator failed');
+    }
+    if (workload.control.passed !== true || !workload.control.observed.raw)
+      errors.push('control observation');
+  }
 }
 
 export function validateEvidence(
@@ -327,6 +396,7 @@ export function validateEvidence(
       errors.push('version value');
   }
   if (typeof value['passed'] !== 'boolean') errors.push('passed type');
+  if (expectedKind === 'resource') validateResourceCells(cells, errors);
   if (
     expectedKind === 'runtime' &&
     cells.some(

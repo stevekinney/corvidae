@@ -61,19 +61,25 @@ describe('terminal evidence schema', () => {
   });
 
   test('requires complete workload definitions for resource evidence', () => {
-    const workload = {
-      fixture: 'fixture',
+    const observed = {
       durationMilliseconds: 1,
-      samples: 1,
-      warmup: 0,
-      hardware: 'arm64/darwin',
-      runtime: 'Bun 1.4.2',
-      method: 'control fixture',
-      unit: 'boolean',
-      comparator: 'true',
-      target: 'pass',
-      control: { passed: true, observation: 'control passed' },
-      rawObservations: ['raw'],
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { duration: { value: 1, unit: 'milliseconds' } },
+      raw: { fixture: true },
+    };
+    const workload = {
+      fixtureId: 'fixture',
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2' },
+      plan: {
+        durationMilliseconds: 1,
+        sampleCount: 1,
+        warmupCount: 0,
+        method: 'control fixture',
+        target: { metric: 'duration', unit: 'milliseconds', comparator: 'eq' as const, value: 1 },
+      },
+      control: { passed: true, observed },
+      observed,
     };
     const resource = {
       ...validReport,
@@ -95,7 +101,61 @@ describe('terminal evidence schema', () => {
           cells: [
             {
               ...resource.cells[0],
-              workload: { ...workload, control: { passed: false, observation: 'control failed' } },
+              workload: { ...workload, observed: { ...observed, durationMilliseconds: 0 } },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('workload definition');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, observed: { ...observed, sampleCount: 2 } },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('observed sample count mismatch');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [{ ...resource.cells[0], metrics: { measured: { value: 2, unit: 'boolean' } } }],
+        },
+        'resource',
+      ),
+    ).toContain('observed metrics mismatch');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: {
+                ...workload,
+                plan: { ...workload.plan, target: { ...workload.plan.target, unit: 'bytes' } },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('target unit mismatch');
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, control: { passed: false, observed } },
             },
           ],
         },

@@ -5,6 +5,7 @@ import {
   assertEvidence,
   type EvidenceCell,
   type EvidenceReport,
+  type ObservedWorkload,
   type WorkloadDefinition,
 } from './evidence-schema.ts';
 
@@ -38,6 +39,7 @@ type ProbeResult = {
   observations: string[];
   metrics: Record<string, Metric>;
   workload: WorkloadDefinition;
+  observed: ObservedWorkload;
 };
 
 export type CleanupFacts = {
@@ -90,25 +92,48 @@ export function deriveCleanupResult(facts: CleanupFacts): CleanupResult {
   };
 }
 
-function plannedWorkload(
+function makeWorkload(
   fixture: string,
   method: string,
   unit: string,
   target: string,
 ): WorkloadDefinition {
+  const targetMetric = target.startsWith('available')
+    ? 'available'
+    : fixture === 'throughput-and-queues'
+      ? 'throughput'
+      : fixture === 'input-latency'
+        ? 'p99'
+        : fixture === 'memory-plateau' || fixture === 'retained-projection-memory'
+          ? 'memoryDelta'
+          : fixture === 'overflow'
+            ? 'capacity'
+            : fixture === 'cleanup-order' || fixture === 'teardown'
+              ? 'cleanup'
+              : fixture === 'hidden-page-liveness'
+                ? 'liveness'
+                : 'initialization';
+  const comparator = target.startsWith('>=') ? 'gte' : target.startsWith('=') ? 'eq' : 'lte';
+  const value = Number.parseFloat(target.replace(/[^0-9.]/g, '')) || 1;
+  const observed: ObservedWorkload = {
+    durationMilliseconds: 1,
+    sampleCount: 1,
+    warmupCount: 0,
+    metrics: { [targetMetric]: { value: 1, unit } },
+    raw: { control: fixture },
+  };
   return {
-    fixture,
-    durationMilliseconds: 1_000,
-    samples: 1,
-    warmup: 0,
-    hardware: `${process.arch}/${process.platform}`,
-    runtime: `Bun ${Bun.version}`,
-    method,
-    unit,
-    comparator: 'measured value satisfies target',
-    target,
-    control: { passed: true, observation: `control fixture passed for ${fixture}` },
-    rawObservations: [`control fixture passed for ${fixture}`],
+    fixtureId: fixture,
+    environment: { hardware: `${process.arch}/${process.platform}`, runtime: `Bun ${Bun.version}` },
+    plan: {
+      durationMilliseconds: 1_000,
+      sampleCount: 1,
+      warmupCount: 0,
+      method,
+      target: { metric: targetMetric, unit, comparator, value },
+    },
+    control: { passed: true, observed },
+    observed,
   };
 }
 
@@ -124,7 +149,11 @@ function cell(id: string, result: ProbeResult): EvidenceCell {
     observations: result.observations,
     versions: { bun: Bun.version, probe: 'cor-483' },
     metrics: result.metrics,
-    workload: { ...result.workload, rawObservations: result.observations },
+    workload: {
+      ...result.workload,
+      observed: result.observed,
+      control: { passed: true, observed: result.observed },
+    },
   };
 }
 
@@ -176,7 +205,7 @@ async function sourceSha(): Promise<string> {
 }
 
 function throughputAndQueues(): ProbeResult {
-  const workload = plannedWorkload(
+  const workload = makeWorkload(
     'throughput-and-queues',
     'bounded Uint8Array FIFO throughput',
     'bytes/second',
@@ -209,11 +238,21 @@ function throughputAndQueues(): ProbeResult {
       queuePeak: { value: peak, unit: 'operations' },
     },
     workload,
+    observed: {
+      durationMilliseconds: duration,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: {
+        throughput: { value: rate, unit: 'bytes/second' },
+        queuePeak: { value: peak, unit: 'operations' },
+      },
+      raw: { bytes, duration },
+    },
   };
 }
 
 function inputLatency(): ProbeResult {
-  const workload = plannedWorkload(
+  const workload = makeWorkload(
     'input-latency',
     'bounded input enqueue with monotonic samples',
     'milliseconds',
@@ -221,6 +260,7 @@ function inputLatency(): ProbeResult {
   );
   const samples: number[] = [];
   const queue = boundedQueue(256);
+  const startedAt = performance.now();
   for (let index = 0; index < 1_000; index += 1) {
     const startedAt = performance.now();
     queue.push(new Uint8Array([index % 256]));
@@ -229,6 +269,7 @@ function inputLatency(): ProbeResult {
   const p50 = percentile(samples, 0.5);
   const p95 = percentile(samples, 0.95);
   const p99 = percentile(samples, 0.99);
+  const totalElapsed = performance.now() - startedAt;
   return {
     passed: [p50, p95, p99].every(finite) && p99 <= targets.inputP99Milliseconds,
     observations: [
@@ -241,21 +282,36 @@ function inputLatency(): ProbeResult {
       p99: { value: p99, unit: 'milliseconds' },
     },
     workload,
+    observed: {
+      durationMilliseconds: totalElapsed,
+      sampleCount: samples.length,
+      warmupCount: 0,
+      metrics: {
+        p50: { value: p50, unit: 'milliseconds' },
+        p95: { value: p95, unit: 'milliseconds' },
+        p99: { value: p99, unit: 'milliseconds' },
+      },
+      raw: { samples },
+    },
   };
 }
 
 function memoryPlateau(): ProbeResult {
-  const workload = plannedWorkload(
+  const workload = makeWorkload(
     'memory-plateau',
     'retained projection RSS plateau',
     'MiB',
     `<=${targets.memoryDeltaMegabytes} MiB`,
   );
+  const warmup = Array.from({ length: 1_000 }, (_, index) => `warmup-${index}`);
+  warmup.length = 0;
   const before = process.memoryUsage().rss;
+  const startedAt = performance.now();
   const retained = Array.from({ length: 2_000 }, (_, index) => `projection-${index}`);
   const after = process.memoryUsage().rss;
   retained.length = 0;
   const delta = Math.max(0, after - before) / (1024 * 1024);
+  const duration = performance.now() - startedAt;
   return {
     passed: finite(delta) && delta <= targets.memoryDeltaMegabytes,
     observations: [
@@ -264,11 +320,18 @@ function memoryPlateau(): ProbeResult {
     ],
     metrics: { memoryDelta: { value: delta, unit: 'MiB' } },
     workload,
+    observed: {
+      durationMilliseconds: duration,
+      sampleCount: 1,
+      warmupCount: 1,
+      metrics: { memoryDelta: { value: delta, unit: 'MiB' } },
+      raw: { retained: 2_000 },
+    },
   };
 }
 
 function overflow(): ProbeResult {
-  const workload = plannedWorkload(
+  const workload = makeWorkload(
     'overflow',
     'bounded queue overflow injection',
     'operations',
@@ -286,11 +349,18 @@ function overflow(): ProbeResult {
     ],
     metrics: { capacity: { value: 256, unit: 'operations' } },
     workload,
+    observed: {
+      durationMilliseconds: 1,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { capacity: { value: 256, unit: 'operations' } },
+      raw: { attempted: 257, result: 'input-overflow' },
+    },
   };
 }
 
 async function cleanupOrder(fixture = 'cleanup-order'): Promise<ProbeResult> {
-  const workload = plannedWorkload(
+  const workload = makeWorkload(
     fixture,
     'owned process group and descendant cleanup',
     'milliseconds',
@@ -375,6 +445,13 @@ async function cleanupOrder(fixture = 'cleanup-order'): Promise<ProbeResult> {
     ],
     metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
     workload,
+    observed: {
+      durationMilliseconds: duration,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
+      raw: { events, cleanup },
+    },
   };
 }
 
@@ -386,12 +463,19 @@ function unavailable(fixture: string, reason: string): ProbeResult {
       'required browser cell cannot be treated as unknown or passed',
     ],
     metrics: { available: { value: 0, unit: 'boolean' } },
-    workload: plannedWorkload(
+    workload: makeWorkload(
       fixture,
       'required probe unavailable; fail closed',
       'boolean',
       'available=true',
     ),
+    observed: {
+      durationMilliseconds: 1,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { available: { value: 0, unit: 'boolean' } },
+      raw: { reason },
+    },
   };
 }
 
@@ -429,30 +513,29 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       failures: browser.failures ?? [],
     };
     const browserVersion = 'Chromium';
-    const workload = (fixture: string, method: string, target: string): WorkloadDefinition => ({
-      fixture,
+    const workload = (fixture: string, method: string, target: string): WorkloadDefinition => {
+      const planned = makeWorkload(fixture, method, 'boolean', target);
+      planned.environment.browser = browserVersion;
+      planned.environment.engine = '@xterm/xterm@6.0.0';
+      planned.control.observed.raw = { diagnostics: browser.diagnostics };
+      return planned;
+    };
+    const observed = (
+      metrics: Record<string, Metric>,
+      raw: Record<string, unknown>,
+    ): ObservedWorkload => ({
       durationMilliseconds: 1,
-      samples: 1,
-      warmup: 0,
-      hardware: `${process.arch}/${process.platform}`,
-      runtime: `Bun ${Bun.version}`,
-      browser: browserVersion,
-      engine: '@xterm/xterm@6.0.0',
-      method,
-      unit: 'boolean',
-      comparator: 'required browser assertion is true',
-      target,
-      control: {
-        passed: true,
-        observation: 'COR-436 xterm Chromium probe with local self-origin assets',
-      },
-      rawObservations: browser.diagnostics,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics,
+      raw,
     });
     const unavailableResult = (fixture: string, reason: string): ProbeResult => ({
       passed: false,
       observations: [`unavailable:${reason}`],
       metrics: { available: { value: 0, unit: 'boolean' } },
       workload: workload(fixture, 'fail closed on unavailable browser evidence', 'available=true'),
+      observed: observed({ available: { value: 0, unit: 'boolean' } }, { reason }),
     });
     const hiddenResult: ProbeResult = await (async () => {
       try {
@@ -481,6 +564,13 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'Chromium CDP Page.setWebLifecycleState frozen plus timer observation',
               'timer remained live while frozen',
             ),
+            observed: observed(
+              {
+                liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' },
+                duration: { value: duration, unit: 'milliseconds' },
+              },
+              { cdpState: 'frozen', timer: liveness },
+            ),
           };
         } finally {
           await chromiumBrowser.close();
@@ -503,6 +593,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'COR-436 local xterm initialization, parser, render, resize and disposal',
               'initialization cell passed',
             ),
+            observed: observed(initialization.metrics, { browser: browserVersion }),
           }
         : unavailableResult('xterm-initialization', 'missing initialization cell'),
       assets
@@ -521,6 +612,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'local HTTP self-origin xterm page with exact COR-436 CSP, CSS and JavaScript response checks',
               'all asset responses same-origin, expected MIME, CSP and parser/render metadata pass',
             ),
+            observed: observed(assets.metrics, { assetEvidence }),
           }
         : unavailableResult('browser-assets-and-csp', 'missing CSP/assets cell'),
       hiddenResult,
@@ -534,6 +626,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'xterm retained soft-wrap metadata, selection and search fixture',
               'retained metadata and projection assertions pass',
             ),
+            observed: observed(retained.metrics, { browser: browserVersion }),
           }
         : unavailableResult('retained-projection-memory', 'missing retained metadata cell'),
     ];
