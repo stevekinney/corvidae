@@ -829,6 +829,43 @@ export interface SyncResult {
   baseCommit: string;
 }
 
+/** Refuse verification that changed the commit inputs after the transform was staged. */
+export async function assertVerificationSnapshot(options: {
+  expectedHead: string;
+  expectedIndexTree: string;
+  run: (arguments_: readonly string[]) => Promise<{
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+  }>;
+}): Promise<void> {
+  const { expectedHead, expectedIndexTree, run } = options;
+  const headResult = await run(['rev-parse', 'HEAD']);
+  if (headResult.exitCode !== 0)
+    throw new SyncError(`Could not read the target HEAD after verification: ${headResult.stderr}`);
+  const currentHead = headResult.stdout.trim();
+  if (currentHead !== expectedHead) {
+    throw new SyncError(
+      `The target HEAD changed during verification: expected ${expectedHead}, found ${currentHead}`,
+    );
+  }
+
+  const indexResult = await run(['write-tree']);
+  if (indexResult.exitCode !== 0)
+    throw new SyncError(`Could not read the staged tree after verification: ${indexResult.stderr}`);
+  const currentIndexTree = indexResult.stdout.trim();
+  if (currentIndexTree !== expectedIndexTree) {
+    throw new SyncError(
+      `The staged tree changed during verification: expected ${expectedIndexTree}, found ${currentIndexTree}`,
+    );
+  }
+
+  const workingTree = await run(['diff', '--quiet']);
+  if (workingTree.exitCode !== 0) {
+    throw new SyncError('The tracked working tree changed during verification');
+  }
+}
+
 /**
  * One complete sync: clone, transform, decide, verify, and push when there is something to push.
  *
@@ -886,6 +923,9 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
   // from the working tree by the staging step above, and only `--all` stages a removal. It was
   // incidental while the transform only ever wrote; it is load-bearing now.
   if (changed.length > 0) await git(clone, 'add', '--all');
+  const stagedTreeResult = await git(clone, 'write-tree');
+  const stagedIndexTree = stagedTreeResult.trim();
+  const stagedHead = baseCommitBeforeSync;
 
   const verification = await verifyTarget({
     toolsRoot: options.toolsRoot,
@@ -894,6 +934,11 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     privateWorkspaces: plan.privateWorkspaces,
     scratchDirectory: options.scratchDirectory,
     installArguments: options.installArguments,
+  });
+  await assertVerificationSnapshot({
+    expectedHead: stagedHead,
+    expectedIndexTree: stagedIndexTree,
+    run: (arguments_) => tryGit(clone, ...arguments_),
   });
 
   if (changed.length === 0) {

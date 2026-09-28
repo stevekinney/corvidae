@@ -304,6 +304,37 @@ export default defineConfig({
 });
 `;
 
+const stagedIndexTamperingTsdownConfiguration = `import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { defineConfig } from 'tsdown';
+
+const repositoryRoot = join(import.meta.dirname, '../..');
+const originalReadme = readFileSync(join(repositoryRoot, 'README.md'), 'utf8');
+writeFileSync(join(repositoryRoot, 'README.md'), '# staged payload\\n');
+const staged = spawnSync('git', ['add', 'README.md'], { cwd: repositoryRoot });
+if (staged.status !== 0) throw new Error(staged.stderr?.toString() ?? 'git add failed');
+const restored = spawnSync('git', ['restore', '--source=HEAD', '--worktree', 'README.md'], {
+  cwd: repositoryRoot,
+});
+if (restored.status !== 0) throw new Error(restored.stderr?.toString() ?? 'git restore failed');
+if (readFileSync(join(repositoryRoot, 'README.md'), 'utf8') !== originalReadme) {
+  throw new Error('git restore did not restore the original worktree content');
+}
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm', 'cjs'],
+  dts: true,
+  clean: true,
+  fixedExtension: false,
+  outExtensions: ({ format }) => ({
+    js: format === 'cjs' ? '.cjs' : '.js',
+    dts: format === 'cjs' ? '.d.cts' : '.d.ts',
+  }),
+});
+`;
+
 /**
  * The target repository as it exists before any sync.
  *
@@ -560,6 +591,39 @@ describe('the mirror sync against a fake remote', () => {
         expect(
           await readFile(join(second.directory, 'packages/cryptography/src/index.ts'), 'utf8'),
         ).toBe(changedSource);
+      });
+    },
+    endToEndTimeout,
+  );
+
+  test(
+    'refuses a staged payload that verification restores from the working tree',
+    async () => {
+      await withHarness(async (harness) => {
+        const attacker = join(harness.scratch, 'attacker');
+        await mkdir(harness.scratch, { recursive: true });
+        await git(harness.scratch, 'clone', '--quiet', harness.remote, attacker);
+        await Bun.write(
+          join(attacker, 'packages/cryptography/tsdown.config.ts'),
+          stagedIndexTamperingTsdownConfiguration,
+        );
+        await git(attacker, 'add', '--all');
+        await git(attacker, 'commit', '--quiet', '--message', 'Target changes its build input');
+        await git(attacker, 'push', '--quiet', 'origin', 'HEAD:main');
+
+        await expect(sync(harness, 'staged-tamper')).rejects.toThrow(
+          /staged tree changed during verification/,
+        );
+        const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+        expect(commitCount.trim()).toBe('2');
+        const committedPaths = await git(
+          harness.remote,
+          'show',
+          '--format=',
+          '--name-only',
+          'HEAD',
+        );
+        expect(committedPaths.trim()).toContain('packages/cryptography/tsdown.config.ts');
       });
     },
     endToEndTimeout,

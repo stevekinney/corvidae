@@ -349,6 +349,55 @@ test('explicit mirror boundary rejects copied provenance trailers and runtime ma
   }
 });
 
+test('rejects historical build inputs while allowing release metadata changes', async () => {
+  for (const field of ['scripts', 'devDependencies', 'packageManager']) {
+    await withPublication(async ({ options, target, registry, setRegistry }) => {
+      const path = join(target, 'packages/operative/package.json');
+      const change =
+        field === 'scripts'
+          ? { scripts: { build: 'bun run changed-build.ts' } }
+          : field === 'devDependencies'
+            ? { devDependencies: { builder: '^2.0.0' } }
+            : { packageManager: 'bun@9.9.9' };
+      await Bun.write(path, json({ ...registry, ...change }));
+      await setRegistry({ ...registry, ...change });
+      const changedCommit = await commit(target, `Change ${field}`, false);
+      const registryRunner = options.registryRunner!;
+      options.registryRunner = (command, settings) =>
+        command.includes('gitHead')
+          ? Promise.resolve({
+              command: command.join(' '),
+              exitCode: 0,
+              stderr: '',
+              stdout: changedCommit,
+            })
+          : registryRunner(command, settings);
+      await expect(recordSourceDigest(options)).rejects.toThrow(
+        `source-owned manifest field packages/operative/package.json:${field}`,
+      );
+    });
+  }
+
+  await withPublication(async ({ options, target, registry, setRegistry }) => {
+    const path = join(target, 'packages/operative/package.json');
+    await Bun.write(path, json({ ...registry, description: 'release metadata' }));
+    await setRegistry({ ...registry, description: 'release metadata' });
+    const changedCommit = await commit(target, 'Describe release', false);
+    const registryRunner = options.registryRunner!;
+    options.registryRunner = (command, settings) =>
+      command.includes('gitHead')
+        ? Promise.resolve({
+            command: command.join(' '),
+            exitCode: 0,
+            stderr: '',
+            stdout: changedCommit,
+          })
+        : registryRunner(command, settings);
+    const result = await recordSourceDigest(options);
+    expect(result.snapshot.gitHead).toBe(changedCommit);
+  });
+});
+
 test('publication inputs include emitted build scripts and resolved toolchain versions', async () => {
   await withPublication(async ({ current }) => {
     const surfacePath = join(current, 'scripts/mirror/package-surface.json');

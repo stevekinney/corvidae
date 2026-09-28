@@ -85,12 +85,15 @@ function sourceModuleFor(target: string, sourceRoot: string, packageRoot: string
 }
 
 /** The `types` condition that governs a runtime condition path, from the innermost outwards. */
-function governingDeclaration(condition: string, declarations: ReadonlyMap<string, string>) {
-  const segments = condition.split('.');
+function governingDeclaration(
+  condition: string,
+  declarations: ReadonlyMap<string, ReadonlySet<string>>,
+): readonly string[] | undefined {
+  const segments = condition.replace(/\[\d+\]/g, '').split('.');
   for (let depth = segments.length - 1; depth >= 0; depth -= 1) {
     const candidate = [...segments.slice(0, depth), 'types'].join('.');
     const declaration = declarations.get(candidate);
-    if (declaration !== undefined) return declaration;
+    if (declaration !== undefined) return [...declaration];
   }
   return undefined;
 }
@@ -107,13 +110,20 @@ function divergentPairs(
   packageRoot: string,
 ): [string, string][] {
   const flattened = flattenExportTarget(value);
-  const declarations = new Map<string, string>();
+  const declarations = new Map<string, Set<string>>();
   for (const [condition, target] of flattened) {
     if (!isDeclarationCondition(condition)) continue;
     const source = sourceModuleFor(target, sourceRoot, packageRoot);
-    if (source !== undefined) declarations.set(condition, source);
+    if (source !== undefined) {
+      const normalized = condition.replace(/\[\d+\]/g, '');
+      const alternatives = declarations.get(normalized) ?? new Set<string>();
+      alternatives.add(source);
+      declarations.set(normalized, alternatives);
+    }
   }
-  const everyDeclaration = [...new Set(declarations.values())];
+  const everyDeclaration = [
+    ...new Set([...declarations.values()].flatMap((sources) => [...sources])),
+  ];
   const pairs = new Map<string, [string, string]>();
   for (const [condition, target] of flattened) {
     if (isDeclarationCondition(condition)) continue;
@@ -126,7 +136,7 @@ function divergentPairs(
     // exactly how a Bun import comes to be checked against a declaration it never loads. With no
     // way to say which one, it has to satisfy all of them.
     const governing = governingDeclaration(condition, declarations);
-    for (const declaration of governing === undefined ? everyDeclaration : [governing]) {
+    for (const declaration of governing ?? everyDeclaration) {
       if (declaration !== runtime)
         pairs.set(`${declaration}\u0000${runtime}`, [declaration, runtime]);
     }

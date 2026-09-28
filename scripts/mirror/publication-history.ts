@@ -64,8 +64,6 @@ export async function verifyHistoricalCheckout(options: {
   const policy = await loadTargetOwnedPolicy(join(sourceRoot, 'scripts/mirror/target-owned.json'));
   const releaseManifestKeys = new Set([
     'version',
-    'scripts',
-    'devDependencies',
     'description',
     'keywords',
     'homepage',
@@ -76,7 +74,6 @@ export async function verifyHistoricalCheckout(options: {
     'contributors',
     'funding',
     'maintainers',
-    'packageManager',
   ]);
   const commits = await requireGit(
     targetRoot,

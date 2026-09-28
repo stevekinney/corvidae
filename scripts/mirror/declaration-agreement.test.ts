@@ -271,3 +271,46 @@ test('types fallback arrays retain declaration/runtime agreement checks', async 
   );
   expect(result.findings.map((finding) => finding.missing)).toEqual([['required'], ['alternate']]);
 });
+
+test('nested branch fallback arrays stay local to their runtime branch', async () => {
+  const exports: SurfaceExportsMap = {
+    '.': {
+      bun: {
+        types: ['./dist/bun.d.ts', './dist/bun-alt.d.ts'],
+        default: './dist/bun-runtime.js',
+      },
+      node: {
+        types: ['./dist/node.d.ts', './dist/node-alt.d.ts'],
+        default: './dist/node-runtime.js',
+      },
+    },
+  };
+  const files = {
+    'src/bun.ts': 'export const bun = 1; export const bunAlt = 1;\n',
+    'src/bun-alt.ts': 'export const bun = 1; export const bunAlt = 1;\n',
+    'src/node.ts': 'export const node = 1; export const nodeAlt = 1;\n',
+    'src/node-alt.ts': 'export const node = 1; export const nodeAlt = 1;\n',
+  };
+  const valid = await checkFixture(
+    {
+      ...files,
+      'src/bun-runtime.ts': 'export { bun, bunAlt } from "./bun.ts";\n',
+      'src/node-runtime.ts': 'export { node, nodeAlt } from "./node.ts";\n',
+    },
+    exports,
+  );
+  expect(valid.findings).toEqual([]);
+
+  const invalid = await checkFixture(
+    {
+      ...files,
+      'src/bun-runtime.ts': 'export { bun, bunAlt } from "./bun.ts";\n',
+      'src/node-runtime.ts': 'export { node } from "./node.ts";\n',
+    },
+    exports,
+  );
+  expect(invalid.findings.map(({ runtime, missing }) => [runtime, missing])).toEqual([
+    ['src/node-runtime.ts', ['nodeAlt']],
+    ['src/node-runtime.ts', ['nodeAlt']],
+  ]);
+});

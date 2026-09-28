@@ -54,6 +54,8 @@ interface Recorded {
   pullRequests: CreatePullRequestInput[];
   deleted: string[];
   coverageReads: number;
+  pushEnvironmentReads: number;
+  accountPushEnvironmentReads: number;
 }
 
 interface FakeOptions {
@@ -81,6 +83,8 @@ function fakeGitHub(options: FakeOptions = {}): { api: GitHubApi; calls: Recorde
     pullRequests: [],
     deleted: [],
     coverageReads: 0,
+    pushEnvironmentReads: 0,
+    accountPushEnvironmentReads: 0,
   };
   const api: GitHubApi = {
     async readInstallationCoverage() {
@@ -134,6 +138,7 @@ function fakeGitHub(options: FakeOptions = {}): { api: GitHubApi; calls: Recorde
       delete repositories[fullName];
     },
     async pushEnvironment() {
+      calls.pushEnvironmentReads += 1;
       return {
         GIT_CONFIG_COUNT: '1',
         GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
@@ -141,6 +146,7 @@ function fakeGitHub(options: FakeOptions = {}): { api: GitHubApi; calls: Recorde
       };
     },
     async accountPushEnvironment() {
+      calls.accountPushEnvironmentReads += 1;
       return {
         GIT_CONFIG_COUNT: '1',
         GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
@@ -339,14 +345,18 @@ interface RunnerHarness {
   environments: (Record<string, string | undefined> | undefined)[];
 }
 
-function fakeRunner(): RunnerHarness {
+function fakeRunner(writeTreeOutputs: readonly string[] = []): RunnerHarness {
   const commands: string[][] = [];
   const environments: (Record<string, string | undefined> | undefined)[] = [];
+  const remainingWriteTrees = [...writeTreeOutputs];
   const run: CommandRunner = async (command, options): Promise<CommandResult> => {
     commands.push([...command]);
     environments.push(options.env);
     const joined = command.join(' ');
     const base = { command: joined, stdout: '', stderr: '' };
+    if (joined.includes('write-tree')) {
+      return { ...base, exitCode: 0, stdout: `${remainingWriteTrees.shift() ?? ''}\n` };
+    }
     if (joined.includes('rev-parse')) return { ...base, exitCode: 0, stdout: 'a'.repeat(40) };
     if (joined.includes('status --porcelain')) {
       return { ...base, exitCode: 0, stdout: ' M packages/cryptography/src/index.ts\n' };
@@ -517,6 +527,8 @@ describe('runDryRun', () => {
       `git push https://github.com/${validName}.git ${'a'.repeat(40)}:refs/heads/main`,
     );
     expect(joined).toContain('git checkout -b mirror-dry-run-20260919');
+    expect(joined.filter((command) => command === 'git write-tree')).toHaveLength(2);
+    expect(joined).toContain('git diff --quiet');
     expect(joined).toContain(
       `git push https://github.com/${validName}.git ${'a'.repeat(40)}:refs/heads/mirror-dry-run-20260919`,
     );
@@ -583,6 +595,42 @@ describe('runDryRun', () => {
     ).toEqual(['Authorization: Basic account-token', 'Authorization: Basic app-token']);
     const clone = harness.commands.find((command) => command.includes('clone'));
     expect(clone?.join(' ')).not.toContain('Authorization');
+  });
+
+  test('rejects a changed staged tree before requesting App credentials or opening a pull request', async () => {
+    const { api, calls } = fakeGitHub();
+    const harness = fakeRunner(['stable-tree', 'tampered-tree']);
+    const probes = fakeProbe();
+    await withWorkDirectory(async (workDirectory) => {
+      await expect(
+        runDryRun({
+          api,
+          corvidaeRoot: workDirectory,
+          target: 'weft',
+          workDirectory: join(workDirectory, 'clone'),
+          scratchDirectory: join(workDirectory, 'scratch'),
+          corvidaeCommit: 'abc123',
+          scratchRepository: validName,
+          run: harness.run,
+          stage: fakeStage('1.0.0'),
+          verify: fakeVerify,
+          probe: probes.probe,
+        }),
+      ).rejects.toThrow('staged tree changed during verification');
+    });
+    expect(calls.accountPushEnvironmentReads).toBe(1);
+    expect(calls.pushEnvironmentReads).toBe(0);
+    expect(calls.pullRequests).toEqual([]);
+    expect(
+      harness.commands.some((command) =>
+        command.some((argument) => argument.includes(':refs/heads/mirror-dry-run-')),
+      ),
+    ).toBe(false);
+    expect(
+      harness.commands.some((command) =>
+        command.some((argument) => argument.startsWith('Mirror dry run for ')),
+      ),
+    ).toBe(false);
   });
 
   test('keeps the scratch repository when asked, so a human can look at the pull request', async () => {

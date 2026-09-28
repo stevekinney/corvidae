@@ -29,6 +29,7 @@ import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 
 import {
   assertNoForeignCommits,
+  assertVerificationSnapshot,
   credentialedGitEnvironment,
   gitEnvironment,
   provenanceTrailer,
@@ -359,6 +360,10 @@ export async function transformAndOpenPullRequest(options: {
     ...(options.installArguments ? { installArguments: options.installArguments } : {}),
   });
   await runGit(run, workDirectory, environment, 'add', '--all');
+  const stagedHeadResult = await runGit(run, workDirectory, environment, 'rev-parse', 'HEAD');
+  const stagedHead = stagedHeadResult.stdout.trim();
+  const stagedIndexTreeResult = await runGit(run, workDirectory, environment, 'write-tree');
+  const stagedIndexTree = stagedIndexTreeResult.stdout.trim();
   const status = await runGit(run, workDirectory, environment, 'status', '--porcelain');
   const changed = status.stdout.split('\n').filter((line) => line.length > 0);
   if (changed.length === 0) {
@@ -380,6 +385,12 @@ export async function transformAndOpenPullRequest(options: {
     // root, and the verification packs tarballs of its own.
     scratchDirectory: join(options.scratchDirectory, 'verify'),
     ...(options.installArguments ? { installArguments: options.installArguments } : {}),
+  });
+  await assertVerificationSnapshot({
+    expectedHead: stagedHead,
+    expectedIndexTree: stagedIndexTree,
+    run: (arguments_) =>
+      options.run(['git', ...arguments_], { cwd: workDirectory, env: environment }),
   });
   await runGit(
     run,
