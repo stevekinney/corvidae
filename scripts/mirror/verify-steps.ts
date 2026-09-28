@@ -382,19 +382,20 @@ export function buildVerifySteps(
     dependsOn: entry.dependsOn,
   }));
 
-  const orderedPrivate = orderByDependencies(inputs.privateWorkspaces, 'private');
-  for (const entry of orderedPrivate) {
-    if (entry.builds) {
-      steps.push({
-        kind: 'build-private',
-        description: `build ${entry.publicName}`,
-        cwd: env.resolveDirectory(entry.directory),
-        command: ['bun', 'run', 'build'],
-        publicName: entry.publicName,
-      });
-    }
+  const orderedPrivateBuilds = orderByDependencies(
+    inputs.privateWorkspaces.filter((entry) => entry.builds),
+    'private',
+  );
+  for (const entry of orderedPrivateBuilds) {
+    steps.push({
+      kind: 'build-private',
+      description: `build ${entry.publicName}`,
+      cwd: env.resolveDirectory(entry.directory),
+      command: ['bun', 'run', 'build'],
+      publicName: entry.publicName,
+    });
   }
-  for (const entry of orderedPrivate) {
+  for (const entry of inputs.privateWorkspaces) {
     if (!entry.emitsTypeScript) continue;
     steps.push({
       kind: 'typecheck-private',

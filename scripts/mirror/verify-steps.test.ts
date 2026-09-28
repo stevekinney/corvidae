@@ -141,6 +141,30 @@ describe('buildVerifySteps', () => {
     );
   });
 
+  test('a cycle among non-building private workspaces does not prevent other private builds', () => {
+    const sourceOnly: PrivateWorkspace[] = ['first', 'second'].map((name, index) => ({
+      workspace: `@lostgradient/${name}`,
+      directory: `packages/${name}`,
+      publicName: `@lostgradient/${name}`,
+      dependsOn: [`@lostgradient/${index === 0 ? 'second' : 'first'}`],
+      builds: false,
+      typechecks: true,
+      emitsTypeScript: true,
+    }));
+    const steps = buildVerifySteps(
+      {
+        installCommand: ['bun', 'install'],
+        published: [],
+        privateWorkspaces: [...sourceOnly, privateWorkspaces[0]!],
+      },
+      localEnvironment(),
+    );
+    expect(
+      steps.filter((step) => step.kind === 'build-private').map((step) => step.publicName),
+    ).toEqual(['@lostgradient/testing']);
+    expect(steps.filter((step) => step.kind === 'typecheck-private')).toHaveLength(3);
+  });
+
   test('a package is built before the packages that depend on it, whatever order discovery found them in', () => {
     // COR-1289: `armorer` comes first in discovery order and depends on `@lostgradient/cryptography`,
     // which comes second. A typecheck resolves an intra-target dependency through its `exports` →

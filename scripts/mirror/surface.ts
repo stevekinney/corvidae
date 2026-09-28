@@ -366,10 +366,18 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
       publishedNames.has(name),
     );
   }
-  const privateNames = new Set(privateWorkspaces.map((entry) => entry.publicName));
+  const privateBuildNames = new Set(
+    privateWorkspaces.filter((entry) => entry.builds).map((entry) => entry.publicName),
+  );
   for (const entry of privateWorkspaces) {
-    entry.dependsOn = (manifestPlan.intraTargetEdges.get(entry.workspace) ?? []).filter((name) =>
-      privateNames.has(name),
+    if (!entry.builds) continue;
+    const serialized = files[`${entry.directory}/package.json`];
+    if (typeof serialized !== 'string') {
+      throw new SurfaceError(`No emitted manifest for private build ${entry.publicName}`);
+    }
+    entry.dependsOn = privateBuildDependencies(
+      JSON.parse(serialized) as JsonObject,
+      privateBuildNames,
     );
   }
 
@@ -447,6 +455,27 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
 function hasManifestScript(manifest: JsonObject, name: string): boolean {
   const scripts = manifest['scripts'];
   return isJsonObject(scripts) && typeof scripts[name] === 'string';
+}
+
+/** Build-time workspace edges from the emitted manifest, including development dependencies. */
+export function privateBuildDependencies(
+  manifest: JsonObject,
+  privateBuildNames: ReadonlySet<string>,
+): string[] {
+  const dependencies = new Set<string>();
+  for (const field of [
+    'dependencies',
+    'devDependencies',
+    'peerDependencies',
+    'optionalDependencies',
+  ]) {
+    const entries = manifest[field];
+    if (!isJsonObject(entries)) continue;
+    for (const [name, range] of Object.entries(entries)) {
+      if (range === 'workspace:*' && privateBuildNames.has(name)) dependencies.add(name);
+    }
+  }
+  return [...dependencies].toSorted();
 }
 
 /**
