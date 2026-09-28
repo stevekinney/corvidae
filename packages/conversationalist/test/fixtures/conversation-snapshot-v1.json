@@ -28,9 +28,7 @@
           "id": "test-id-1",
           "status": "active",
           "metadata": {},
-          "ids": [
-            "test-id-2"
-          ],
+          "ids": ["test-id-2"],
           "messages": {
             "test-id-2": {
               "id": "test-id-2",
@@ -55,10 +53,7 @@
               "id": "test-id-1",
               "status": "active",
               "metadata": {},
-              "ids": [
-                "test-id-2",
-                "test-id-3"
-              ],
+              "ids": ["test-id-2", "test-id-3"],
               "messages": {
                 "test-id-2": {
                   "id": "test-id-2",
@@ -94,10 +89,7 @@
                   "id": "test-id-1",
                   "status": "active",
                   "metadata": {},
-                  "ids": [
-                    "test-id-2",
-                    "test-id-3"
-                  ],
+                  "ids": ["test-id-2", "test-id-3"],
                   "messages": {
                     "test-id-2": {
                       "id": "test-id-2",
@@ -133,10 +125,7 @@
                       "id": "test-id-1",
                       "status": "active",
                       "metadata": {},
-                      "ids": [
-                        "test-id-2",
-                        "test-id-3"
-                      ],
+                      "ids": ["test-id-2", "test-id-3"],
                       "messages": {
                         "test-id-2": {
                           "id": "test-id-2",
@@ -172,10 +161,7 @@
                           "id": "test-id-1",
                           "status": "active",
                           "metadata": {},
-                          "ids": [
-                            "test-id-2",
-                            "test-id-3"
-                          ],
+                          "ids": ["test-id-2", "test-id-3"],
                           "messages": {
                             "test-id-2": {
                               "id": "test-id-2",
@@ -209,11 +195,7 @@
                               "id": "test-id-1",
                               "status": "active",
                               "metadata": {},
-                              "ids": [
-                                "test-id-2",
-                                "test-id-3",
-                                "test-id-4"
-                              ],
+                              "ids": ["test-id-2", "test-id-3", "test-id-4"],
                               "messages": {
                                 "test-id-2": {
                                   "id": "test-id-2",
@@ -263,12 +245,7 @@
                                   "id": "test-id-1",
                                   "status": "active",
                                   "metadata": {},
-                                  "ids": [
-                                    "test-id-2",
-                                    "test-id-3",
-                                    "test-id-4",
-                                    "test-id-5"
-                                  ],
+                                  "ids": ["test-id-2", "test-id-3", "test-id-4", "test-id-5"],
                                   "messages": {
                                     "test-id-2": {
                                       "id": "test-id-2",
@@ -679,10 +656,7 @@
                                                   "id": "test-id-1",
                                                   "status": "active",
                                                   "metadata": {},
-                                                  "ids": [
-                                                    "test-id-6",
-                                                    "test-id-8"
-                                                  ],
+                                                  "ids": ["test-id-6", "test-id-8"],
                                                   "messages": {
                                                     "test-id-6": {
                                                       "id": "test-id-6",
@@ -779,20 +753,7 @@
       }
     ]
   },
-  "currentPath": [
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    1,
-    0,
-    0
-  ],
+  "currentPath": [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
   "createdAt": "2024-01-01T00:00:00.000Z",
   "lineage": {
     "retainedFloorNodeId": "test-id-1:0",
