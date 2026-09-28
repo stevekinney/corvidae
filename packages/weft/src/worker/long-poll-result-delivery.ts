@@ -102,7 +102,7 @@ interface ForbiddenResultResponse {
 export class LongPollResultDelivery {
   readonly #outbox: TaskResultOutbox<LongPollTaskResultBody>;
   #resultUrl: string;
-  readonly #headers: Record<string, string> | undefined;
+  #headers: Record<string, string> | undefined;
   readonly #retryBaseDelayMs: number;
   readonly #retryMaxDelayMs: number;
   readonly #pendingRetries = new Map<string, ReturnType<typeof setTimeout>>();
@@ -137,6 +137,11 @@ export class LongPollResultDelivery {
   /** Point future sends at the active session endpoint without discarding buffered results. */
   updateResultUrl(resultUrl: string): void {
     this.#resultUrl = resultUrl;
+  }
+
+  /** Point future sends at the active session credential without discarding buffered results. */
+  updateHeaders(headers: Record<string, string> | undefined): void {
+    this.#headers = headers;
   }
 
   /**

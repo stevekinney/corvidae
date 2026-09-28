@@ -11,6 +11,7 @@ import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import type { JsonRpcWebSocketSession } from '../json-rpc-websocket.ts';
 import type { OpenApiSecuritySchemeName } from '../openapi.ts';
+import type { Principal } from '../principal.ts';
 import type { createLiveOperationRegistry, createLiveRestBindings } from '../rest-bindings.ts';
 import type { TaskQueue } from '../task-queue.ts';
 import type { WorkflowEventFeed } from '../workflow-event-feed.ts';
@@ -30,11 +31,14 @@ export type TaskLedgerRecoveryGate = Readonly<{ ready: Promise<void> }>;
 
 export type LongPollWorkerSession = Readonly<{
   sessionId: string;
+  credential: string;
+  principal: Principal | undefined;
   queue: string;
   activities: readonly string[];
   concurrency: number;
   manifest: WorkerManifest;
   acceptedManifestDigest: string;
+  sessionGeneration: number;
   createdAt: number;
   lastHeartbeatAt: number;
 }>;

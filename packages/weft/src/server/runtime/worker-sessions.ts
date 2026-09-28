@@ -22,6 +22,10 @@ import {
   MAX_POLL_TIMEOUT,
   parseTaskResultBody,
 } from './task-polling.ts';
+import {
+  authorizeWorkerSessionAccess,
+  generateWorkerSessionCredential,
+} from './worker-session-access.ts';
 
 const WORKER_SESSIONS_PATH = '/v1/worker-sessions';
 const WORKER_SESSION_TASKS_RE = /^\/v1\/worker-sessions\/([^/]+)\/tasks$/;
@@ -185,14 +189,16 @@ async function registerWorkerSession(
       { status: 409 },
     );
   }
-  return acceptWorkerSession(context, registration);
+  return acceptWorkerSession(context, registration, principal);
 }
 
 async function acceptWorkerSession(
   context: ServerContext,
   registration: ValidatedWorkerSessionRegistration,
+  principal: Principal | undefined,
 ): Promise<Response> {
   const sessionId = crypto.randomUUID();
+  const credential = generateWorkerSessionCredential();
   const acceptedManifestDigest = await digestCanonicalWorkerManifest(registration.canonicalJson);
   const activities = deriveActivitiesFromManifest(registration.manifest);
   context.registry.recordDeploymentConsistency(
@@ -215,14 +221,18 @@ async function acceptWorkerSession(
     ...(registration.startedAt !== undefined ? { startedAt: registration.startedAt } : {}),
     capabilities: registration.manifest.capabilities as RemoteWorkerCapabilities,
   });
+  const sessionGeneration = context.registry.sessionIdentity(sessionId)?.sessionGeneration ?? 1;
   const now = Date.now();
   context.longPollWorkerSessions.set(sessionId, {
     sessionId,
+    credential,
+    principal,
     queue: registration.queue,
     activities,
     concurrency: registration.concurrency,
     manifest: registration.manifest,
     acceptedManifestDigest,
+    sessionGeneration,
     createdAt: now,
     lastHeartbeatAt: now,
   });
@@ -231,9 +241,10 @@ async function acceptWorkerSession(
     sessionId,
     workerId: sessionId,
     queue: registration.queue,
+    sessionToken: credential,
     acceptedManifestDigest,
     protocolVersion: registration.manifest.protocolVersion,
-    sessionGeneration: context.registry.sessionIdentity(sessionId)?.sessionGeneration ?? 1,
+    sessionGeneration,
   });
 }
 
@@ -247,12 +258,14 @@ async function handleWorkerSessionTaskRequest(
   const taskMatch = WORKER_SESSION_TASKS_RE.exec(url.pathname);
   if (taskMatch?.[1] === undefined || request.method !== 'GET') return null;
   const sessionId = decodeURIComponent(taskMatch[1]);
-  const session = context.longPollWorkerSessions.get(sessionId);
-  if (session === undefined)
-    return Response.json({ error: 'Unknown worker session' }, { status: 404 });
-  const authorizationResponse = authorizeWorkerPrincipal(principal);
-  if (authorizationResponse !== null) return authorizationResponse;
+  if (request.signal.aborted) return new Response(null, { status: 204 });
+  const access = authorizeWorkerSessionAccess(context, request, principal, sessionId, {
+    allowDraining: false,
+  });
+  if (!access.ok) return access.response;
+  const { session } = access;
   context.registry.heartbeat(sessionId);
+  context.longPollWorkerSessions.set(sessionId, { ...session, lastHeartbeatAt: Date.now() });
   const timeout = pollTimeoutFromUrl(url);
   const task = await context.taskQueue.poll(
     session.queue,
@@ -300,9 +313,15 @@ async function handleWorkerSessionResultRequest(
 ): Promise<Response | null> {
   const resultMatch = WORKER_SESSION_RESULTS_RE.exec(url.pathname);
   if (resultMatch?.[1] === undefined || request.method !== 'POST') return null;
-  const session = context.longPollWorkerSessions.get(decodeURIComponent(resultMatch[1]));
-  if (session === undefined)
-    return Response.json({ error: 'Unknown worker session' }, { status: 404 });
+  const access = authorizeWorkerSessionAccess(
+    context,
+    request,
+    principal,
+    decodeURIComponent(resultMatch[1]),
+    { allowDraining: true },
+  );
+  if (!access.ok) return access.response;
+  const { session } = access;
   const sessionUrl = new URL(request.url);
   sessionUrl.pathname = `/v1/tasks/${encodeURIComponent(session.queue)}/result`;
   return handleTaskResultRequest(
@@ -324,11 +343,11 @@ async function handleWorkerSessionHeartbeatRequest(
   const heartbeatMatch = WORKER_SESSION_HEARTBEAT_RE.exec(url.pathname);
   if (heartbeatMatch?.[1] === undefined || request.method !== 'POST') return null;
   const sessionId = decodeURIComponent(heartbeatMatch[1]);
-  const session = context.longPollWorkerSessions.get(sessionId);
-  if (session === undefined)
-    return Response.json({ error: 'Unknown worker session' }, { status: 404 });
-  const authorizationResponse = authorizeWorkerPrincipal(principal);
-  if (authorizationResponse !== null) return authorizationResponse;
+  const access = authorizeWorkerSessionAccess(context, request, principal, sessionId, {
+    allowDraining: true,
+  });
+  if (!access.ok) return access.response;
+  const { session } = access;
   context.registry.heartbeat(sessionId);
   const body = await parseTaskResultBody(request);
   if (body instanceof Response) return body;
@@ -361,9 +380,11 @@ function handleWorkerSessionUnregisterRequest(
 ): Response | null {
   const unregisterMatch = WORKER_SESSION_RE.exec(url.pathname);
   if (unregisterMatch?.[1] === undefined || request.method !== 'DELETE') return null;
-  const authorizationResponse = authorizeWorkerPrincipal(principal);
-  if (authorizationResponse !== null) return authorizationResponse;
   const sessionId = decodeURIComponent(unregisterMatch[1]);
+  const access = authorizeWorkerSessionAccess(context, request, principal, sessionId, {
+    allowDraining: true,
+  });
+  if (!access.ok) return access.response;
   context.longPollWorkerSessions.delete(sessionId);
   context.registry.unregister(sessionId);
   return Response.json({ ok: true });

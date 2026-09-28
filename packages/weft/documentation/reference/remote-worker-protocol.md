@@ -505,7 +505,7 @@ The reconnect check dispatches one `conformance.sleep` task with `holdForReassig
 
 ## HTTP long-poll transport
 
-`LongPollWorker` uses the same canonical worker manifest, queue identity, activity execution model, attempt fencing, and durable result acknowledgement as the WebSocket transport over plain HTTP. It does not use the WebSocket `register` frame. Instead, a worker explicitly registers a session, polls that accepted session for work, sends session heartbeats and activity heartbeats, posts results for durable acknowledgement, and unregisters the session on graceful stop. The opaque `sessionId` is a routing handle only; authentication still comes from the configured worker principal and must include `workers:write` when server authentication is enabled.
+`LongPollWorker` uses the same canonical worker manifest, queue identity, activity execution model, attempt fencing, and durable result acknowledgement as the WebSocket transport over plain HTTP. It does not use the WebSocket `register` frame. Instead, a worker explicitly registers a session, polls that accepted session for work, sends session heartbeats and activity heartbeats, posts results for durable acknowledgement, and unregisters the session on graceful stop. The opaque `sessionId` is a routing handle only; authentication still comes from the configured worker principal and must include `workers:write` when server authentication is enabled. Registration also returns a server-issued `sessionToken`; every continuation request must present it in the `Weft-Worker-Session-Token` header so leaking a session id alone cannot drive another worker's session.
 
 ### Register session
 
@@ -527,17 +527,18 @@ The `manifest` body is the same strict worker manifest the WebSocket transport s
 
 | Response | Meaning |
 | --- | --- |
-| `200` | Session accepted. Body includes `{ "ok": true, "sessionId": "...", "workerId": "...", "queue": "...", "acceptedManifestDigest": "...", "protocolVersion": 8 }`. |
+| `200` | Session accepted. Body includes `{ "ok": true, "sessionId": "...", "sessionToken": "...", "workerId": "...", "queue": "...", "acceptedManifestDigest": "...", "protocolVersion": 8 }`. |
 | `400` | Invalid JSON, malformed manifest, unsupported protocol version, invalid queue, or invalid concurrency. |
 | `403` | Authentication was present but did not include `workers:write`. |
 | `409` | The manifest conflicts with an existing deployment identity. |
 
-Readiness is false until this registration succeeds. A worker that cannot register retries registration; it does not poll anonymously and a session id never replaces authentication.
+Readiness is false until this registration succeeds. A worker that cannot register retries registration; it does not poll anonymously and a session id never replaces authentication. The session token is returned only in this registration response and is not exposed by diagnostics.
 
 ### Poll session
 
 ```text
 GET /api/v1/worker-sessions/:sessionId/tasks?timeout=<milliseconds>
+Weft-Worker-Session-Token: <sessionToken>
 ```
 
 `timeout` is optional; it defaults to `30000` milliseconds and is clamped to a maximum of `60000` milliseconds. Activity matching comes from the accepted manifest, not from query parameters.
@@ -546,8 +547,10 @@ GET /api/v1/worker-sessions/:sessionId/tasks?timeout=<milliseconds>
 | --- | --- |
 | `200` | A task was claimed and the response body is the task JSON. |
 | `204` | No matching task became available before the timeout, or the client disconnected before a claim. |
-| `403` | Authentication failed for `workers:write`. |
+| `403` | Authentication failed for `workers:write`, the session token did not match, or the authenticated principal no longer owns the session. |
 | `404` | The session is unknown or already unregistered. |
+| `409` | The session generation is stale, or the session is draining and cannot accept new tasks. |
+| `410` | The session lease expired before the poll. |
 
 Task response body:
 
@@ -574,6 +577,7 @@ Task response body:
 ```text
 POST /api/v1/worker-sessions/:sessionId/results
 Content-Type: application/json
+Weft-Worker-Session-Token: <sessionToken>
 ```
 
 ```json
@@ -592,7 +596,9 @@ Content-Type: application/json
 | --- | --- |
 | `200` | Result durably resolved. Body is `{ "ok": true, "disposition": "applied" \| "duplicate" \| "dead-lettered" }`. |
 | `400` | Invalid JSON, missing required fields, unsupported status, malformed attempt token, or malformed result payload. |
-| `403` | Correlated permanent rejection such as `"unknown-operation"`, `"stale-attempt"`, `"worker-mismatch"`, `"attempt-token-mismatch"`, `"queue-mismatch"`, `"revision-mismatch"`, or `"conflicting-content"`. |
+| `403` | Session authorization failed, or a correlated permanent rejection such as `"unknown-operation"`, `"stale-attempt"`, `"worker-mismatch"`, `"attempt-token-mismatch"`, `"queue-mismatch"`, `"revision-mismatch"`, or `"conflicting-content"`. |
+| `409` | The session generation is stale. |
+| `410` | The session lease expired before the result was accepted. |
 | `413` | The result body or serialized activity result exceeds `maxRequestBodyBytes` or `payloadSize.maxBytes`. |
 
 A result transport failure never turns a completed activity into a failed activity. `LongPollWorker` keeps the already-produced result in its `LongPollResultDelivery` buffer, retries it with the same `(operationId, attemptToken)` identity, and only drops it on an acknowledged disposition or a correlated permanent rejection.
@@ -604,6 +610,7 @@ Session heartbeat and activity heartbeat are separate from each other and from t
 ```text
 POST /api/v1/worker-sessions/:sessionId/heartbeat
 Content-Type: application/json
+Weft-Worker-Session-Token: <sessionToken>
 ```
 
 An empty body is a session heartbeat. A body with `operationId` and `attemptToken` is an activity heartbeat and may include `details`.
@@ -621,8 +628,10 @@ An empty body is a session heartbeat. A body with `operationId` and `attemptToke
 | --- | --- |
 | `200` | Heartbeat accepted. Activity heartbeat responses include `cancelled`, optional `reason`, and optional `leaseDeadline`. |
 | `400` | Invalid JSON or malformed heartbeat fields. |
-| `403` | Authentication failed or the attempt identity is fenced out. |
+| `403` | Session authorization failed or the attempt identity is fenced out. |
 | `404` | Session is unknown. |
+| `409` | The session generation is stale. |
+| `410` | The session lease expired before the heartbeat. |
 | `413` | `details` exceeds `payloadSize.maxBytes`. |
 
 Long-poll has no server-to-worker push channel, so cancellation is returned on the activity heartbeat response. `LongPollWorker` aborts the matching `AbortController`, keyed by `(operationId, attemptToken)`, and reports `status: "cancelled"` on the next result for that same attempt.
@@ -631,6 +640,7 @@ Long-poll has no server-to-worker push channel, so cancellation is returned on t
 
 ```text
 DELETE /api/v1/worker-sessions/:sessionId
+Weft-Worker-Session-Token: <sessionToken>
 ```
 
 A graceful `stop()` unregisters the session after aborting local work and suspending result retries. Unregister removes the worker from live routing so it accepts no new tasks; already-produced, unacknowledged results remain in the local delivery buffer and are retried on the next `start()` after a new registration.

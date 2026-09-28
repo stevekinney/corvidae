@@ -19,6 +19,9 @@ const SESSION_POLL_PATH_RE = /^\/api\/v1\/worker-sessions\/([^/]+)\/tasks$/;
 const SESSION_RESULT_PATH_RE = /^\/api\/v1\/worker-sessions\/([^/]+)\/results$/;
 const LONG_POLL_TEST_TIMEOUT_MS = 2_000;
 const DEFAULT_TEST_SESSION_ID = 'session-test';
+const DEFAULT_TEST_SESSION_TOKEN =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+const WORKER_SESSION_CREDENTIAL_HEADER = 'Weft-Worker-Session-Token';
 const TEST_WORKFLOW = 'test';
 
 type LongPollWorkerTestOptions =
@@ -47,7 +50,11 @@ function createLongPollWorkerForTesting(options: LongPollWorkerTestOptions): Lon
 
 function handleDefaultSessionLifecycleForTesting(request: Request, url: URL): Response | undefined {
   if (url.pathname === '/api/v1/worker-sessions' && request.method === 'POST') {
-    return Response.json({ ok: true, sessionId: DEFAULT_TEST_SESSION_ID });
+    return Response.json({
+      ok: true,
+      sessionId: DEFAULT_TEST_SESSION_ID,
+      sessionToken: DEFAULT_TEST_SESSION_TOKEN,
+    });
   }
   if (
     url.pathname === `/api/v1/worker-sessions/${DEFAULT_TEST_SESSION_ID}` &&
@@ -109,10 +116,15 @@ describe('LongPollWorker', () => {
 
         if (url.pathname === '/api/v1/worker-sessions' && request.method === 'POST') {
           registerBody = (await request.json()) as Record<string, unknown>;
-          return Response.json({ ok: true, sessionId: 'session-1' });
+          return Response.json({
+            ok: true,
+            sessionId: 'session-1',
+            sessionToken: 'token-session-1',
+          });
         }
 
         if (SESSION_POLL_PATH_RE.test(url.pathname) && request.method === 'GET') {
+          expect(request.headers.get(WORKER_SESSION_CREDENTIAL_HEADER)).toBe('token-session-1');
           return Response.json({
             operationId: 'op-session-1',
             workerId: 'session-1',
@@ -123,6 +135,7 @@ describe('LongPollWorker', () => {
         }
 
         if (SESSION_RESULT_PATH_RE.test(url.pathname) && request.method === 'POST') {
+          expect(request.headers.get(WORKER_SESSION_CREDENTIAL_HEADER)).toBe('token-session-1');
           taskCompleted.resolve(await request.json());
           return Response.json({ ok: true, disposition: 'applied' });
         }
@@ -971,7 +984,11 @@ describe('LongPollWorker', () => {
         if (url.pathname === '/api/v1/worker-sessions' && request.method === 'POST') {
           const body = (await request.json()) as { queue?: unknown };
           registeredQueue = body.queue;
-          return Response.json({ ok: true, sessionId: DEFAULT_TEST_SESSION_ID });
+          return Response.json({
+            ok: true,
+            sessionId: DEFAULT_TEST_SESSION_ID,
+            sessionToken: DEFAULT_TEST_SESSION_TOKEN,
+          });
         }
         const sessionLifecycleResponse = handleDefaultSessionLifecycleForTesting(request, url);
         if (sessionLifecycleResponse !== undefined) return sessionLifecycleResponse;

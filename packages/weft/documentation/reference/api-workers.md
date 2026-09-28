@@ -231,7 +231,7 @@ type RemoteActivityContext = {
 
 ### `LongPollWorker`
 
-HTTP long-poll fallback for environments without WebSocket support. Registers the same canonical worker manifest as the WebSocket transport, then polls `/api/v1/worker-sessions/:sessionId/tasks` and reports durable results through `/api/v1/worker-sessions/:sessionId/results`. Implements `Disposable`.
+HTTP long-poll fallback for environments without WebSocket support. Registers the same canonical worker manifest as the WebSocket transport, receives a server-issued session token, then polls `/api/v1/worker-sessions/:sessionId/tasks` and reports durable results through `/api/v1/worker-sessions/:sessionId/results` with `Weft-Worker-Session-Token` on every continuation request. Implements `Disposable`.
 
 ```ts partial
 class LongPollWorker implements Disposable {

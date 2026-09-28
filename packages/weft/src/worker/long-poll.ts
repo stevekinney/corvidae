@@ -44,7 +44,9 @@ export interface LongPollWorkerOptions {
   resultRetryMaxDelayMs?: number;
 }
 
-type SessionRegistrationResponse = { sessionId?: unknown };
+const WORKER_SESSION_CREDENTIAL_HEADER = 'Weft-Worker-Session-Token';
+
+type SessionRegistrationResponse = { sessionId?: unknown; sessionToken?: unknown };
 
 type PolledTask = {
   operationId: string;
@@ -89,6 +91,7 @@ export class LongPollWorker implements Disposable {
   #running: boolean;
   #ready: boolean;
   #sessionId: string | null;
+  #sessionToken: string | null;
   #inFlight: number;
   #abortController: AbortController;
   #composedInterceptor: ComposedInterceptor | null;
@@ -102,6 +105,7 @@ export class LongPollWorker implements Disposable {
     this.#running = false;
     this.#ready = false;
     this.#sessionId = null;
+    this.#sessionToken = null;
     this.#inFlight = 0;
     this.#abortController = new AbortController();
     this.#composedInterceptor = buildComposedInterceptor(options.interceptors);
@@ -200,6 +204,11 @@ export class LongPollWorker implements Disposable {
     return this.#sessionId;
   }
 
+  #sessionHeaders(): Record<string, string> | undefined {
+    if (this.#sessionToken === null) return this.#options.headers;
+    return { ...this.#options.headers, [WORKER_SESSION_CREDENTIAL_HEADER]: this.#sessionToken };
+  }
+
   #sessionRegistrationBody(): Record<string, unknown> {
     return {
       manifest: buildWorkerManifest({
@@ -226,13 +235,15 @@ export class LongPollWorker implements Disposable {
   }
 
   #configureDelivery(resultUrl: string): LongPollResultDelivery {
+    const headers = this.#sessionHeaders();
     if (this.#delivery !== null) {
       this.#delivery.updateResultUrl(resultUrl);
+      this.#delivery.updateHeaders(headers);
       return this.#delivery;
     }
     this.#delivery = new LongPollResultDelivery({
       resultUrl,
-      ...(this.#options.headers === undefined ? {} : { headers: this.#options.headers }),
+      ...(headers === undefined ? {} : { headers }),
       retryBaseDelayMs: this.#options.resultRetryBaseDelayMs ?? DEFAULT_RESULT_RETRY_BASE_DELAY_MS,
       retryMaxDelayMs: this.#options.resultRetryMaxDelayMs ?? DEFAULT_RESULT_RETRY_MAX_DELAY_MS,
     });
@@ -252,11 +263,17 @@ export class LongPollWorker implements Disposable {
         return false;
       }
       const body = (await response.json().catch(() => ({}))) as SessionRegistrationResponse;
-      if (typeof body.sessionId !== 'string' || body.sessionId.length === 0) {
+      if (
+        typeof body.sessionId !== 'string' ||
+        body.sessionId.length === 0 ||
+        typeof body.sessionToken !== 'string' ||
+        body.sessionToken.length === 0
+      ) {
         this.#ready = false;
         return false;
       }
       this.#sessionId = body.sessionId;
+      this.#sessionToken = body.sessionToken;
       const delivery = this.#configureDelivery(this.#buildResultUrl());
       this.#ready = true;
       delivery.flush();
@@ -270,12 +287,14 @@ export class LongPollWorker implements Disposable {
     const sessionId = this.#sessionId;
     if (sessionId === null) return;
     this.#sessionId = null;
+    const headers = this.#sessionHeaders();
+    this.#sessionToken = null;
     try {
       await fetch(
         `${this.#options.serverUrl}/api/v1/worker-sessions/${encodeURIComponent(sessionId)}`,
         {
           method: 'DELETE',
-          ...(this.#options.headers === undefined ? {} : { headers: this.#options.headers }),
+          ...(headers === undefined ? {} : { headers }),
         },
       );
     } catch {}
@@ -294,8 +313,9 @@ export class LongPollWorker implements Disposable {
   }
 
   async #pollOnce(pollUrl: string): Promise<void> {
+    const headers = this.#sessionHeaders();
     const response = await fetch(pollUrl, {
-      ...(this.#options.headers === undefined ? {} : { headers: this.#options.headers }),
+      ...(headers === undefined ? {} : { headers }),
       signal: this.#abortController.signal,
     });
     if (response.status === 204) return;
@@ -333,7 +353,7 @@ export class LongPollWorker implements Disposable {
     try {
       const response = await fetch(this.#buildHeartbeatUrl(), {
         method: 'POST',
-        headers: { ...this.#options.headers, 'Content-Type': 'application/json' },
+        headers: { ...this.#sessionHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           operationId: task.operationId,
           workerId: task.workerId,
