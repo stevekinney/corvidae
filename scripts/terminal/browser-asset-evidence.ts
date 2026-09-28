@@ -19,22 +19,29 @@ export function validateBrowserAssetEvidence(evidence: BrowserAssetEvidence): bo
   const origin = evidence.origin.replace(/\/$/, '');
   if (evidence.requests.length !== expected.size || evidence.responses.length !== expected.size)
     return false;
-  if (
-    evidence.requests.some(
-      (request) =>
-        request.method !== 'GET' ||
-        !request.url.startsWith(`${origin}/`) ||
-        !expected.has(request.path) ||
-        new URL(request.url).origin !== origin,
+  const requestCounts = new Map<string, number>();
+  for (const request of evidence.requests) {
+    if (
+      request.method !== 'GET' ||
+      !request.url.startsWith(`${origin}/`) ||
+      !expected.has(request.path) ||
+      new URL(request.url).origin !== origin ||
+      new URL(request.url).pathname !== request.path
     )
-  )
-    return false;
-  return evidence.responses.every((response) => {
-    const path = new URL(response.url).pathname;
-    return (
-      new URL(response.url).origin === origin &&
-      response.status === 200 &&
-      expected.get(path) === response.contentType.split(';', 1)[0]?.trim()
-    );
-  });
+      return false;
+    requestCounts.set(request.path, (requestCounts.get(request.path) ?? 0) + 1);
+  }
+  if ([...expected.keys()].some((path) => requestCounts.get(path) !== 1)) return false;
+  const responseCounts = new Map<string, number>();
+  return (
+    evidence.responses.every((response) => {
+      const path = new URL(response.url).pathname;
+      responseCounts.set(path, (responseCounts.get(path) ?? 0) + 1);
+      return (
+        new URL(response.url).origin === origin &&
+        response.status === 200 &&
+        expected.get(path) === response.contentType.split(';', 1)[0]?.trim()
+      );
+    }) && [...expected.keys()].every((path) => responseCounts.get(path) === 1)
+  );
 }

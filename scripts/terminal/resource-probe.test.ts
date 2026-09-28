@@ -105,6 +105,18 @@ describe('terminal resource probe primitives', () => {
         responses: [{ ...valid.responses[1]!, contentType: 'text/html' }],
       }),
     ).toBe(false);
+    expect(
+      validateBrowserAssetEvidence({
+        ...valid,
+        requests: [valid.requests[0]!, valid.requests[0]!, valid.requests[2]!],
+      }),
+    ).toBe(false);
+    expect(
+      validateBrowserAssetEvidence({
+        ...valid,
+        responses: [valid.responses[0]!, valid.responses[0]!, valid.responses[2]!],
+      }),
+    ).toBe(false);
     expect(validateBrowserAssetEvidence({ ...valid, csp: 'default-src *' })).toBe(false);
   });
 });

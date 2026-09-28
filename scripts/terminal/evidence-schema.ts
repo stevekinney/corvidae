@@ -331,7 +331,10 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
         if (
           raw['attempted'] !== 257 ||
           raw['result'] !== 'input-overflow' ||
-          metric('capacity') !== 256
+          metric('capacity') !== 256 ||
+          raw['finalQueueSize'] !== 256 ||
+          !finiteNumber(raw['duration']) ||
+          raw['duration'] !== observation.durationMilliseconds
         )
           validationErrors.push('overflow raw evidence');
         break;

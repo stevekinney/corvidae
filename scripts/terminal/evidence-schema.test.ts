@@ -347,6 +347,93 @@ describe('terminal evidence schema', () => {
     ).toContain('cleanup raw evidence');
   });
 
+  test('rejects fabricated overflow duration evidence', () => {
+    const observed = {
+      durationMilliseconds: 2,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { capacity: { value: 256, unit: 'operations' } },
+      raw: { attempted: 257, result: 'input-overflow', finalQueueSize: 256, duration: 2 },
+    };
+    const control = { ...observed, durationMilliseconds: 3, raw: { ...observed.raw, duration: 3 } };
+    const workload = {
+      fixtureId: 'overflow',
+      environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2' },
+      plan: {
+        durationMilliseconds: 1_000,
+        sampleCount: 1,
+        warmupCount: 0,
+        method: 'overflow',
+        target: { metric: 'capacity', unit: 'operations', comparator: 'eq' as const, value: 256 },
+      },
+      control: { passed: true as const, observed: control },
+      observed,
+    };
+    const report = {
+      ...validReport,
+      reportKind: 'resource' as const,
+      expectedCellIds: ['overflow'],
+      cells: [{ ...validReport.cells[0], id: 'overflow', metrics: observed.metrics, workload }],
+    };
+    expect(
+      validateEvidence(
+        {
+          ...report,
+          cells: [
+            {
+              ...report.cells[0],
+              workload: {
+                ...workload,
+                observed: { ...observed, raw: { ...observed.raw, duration: 1 } },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('overflow raw evidence');
+    expect(
+      validateEvidence(
+        {
+          ...report,
+          cells: [
+            {
+              ...report.cells[0],
+              workload: {
+                ...workload,
+                observed: { ...observed, raw: { ...observed.raw, finalQueueSize: 255 } },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('overflow raw evidence');
+    expect(
+      validateEvidence(
+        {
+          ...report,
+          cells: [
+            {
+              ...report.cells[0],
+              workload: {
+                ...workload,
+                control: {
+                  passed: true as const,
+                  observed: {
+                    ...control,
+                    raw: { attempted: 257, result: 'input-overflow', duration: 3 },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('control:overflow raw evidence');
+  });
+
   test('committed schema rejects hostile candidate structures before semantic checks', async () => {
     const committedSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
     const validator = new Ajv2020({ allErrors: true, strict: false });

@@ -253,14 +253,6 @@ function measureSimpleControl(fixture: string): ObservedWorkload {
         raw: { before, after, delta, retained: 2_000 },
       };
     }
-    case 'overflow':
-      return {
-        durationMilliseconds: measuredControlDuration(startedAt),
-        sampleCount: 1,
-        warmupCount: 0,
-        metrics: { capacity: { value: 256, unit: 'operations' } },
-        raw: { attempted: 257, result: 'input-overflow' },
-      };
     default:
       throw new Error(`missing simple control measurement for ${fixture}`);
   }
@@ -462,20 +454,37 @@ function memoryPlateau(): ProbeResult {
   };
 }
 
+export function runOverflowFixture(): { passed: boolean; observed: ObservedWorkload } {
+  const queue = boundedQueue(256);
+  const startedAt = performance.now();
+  let result: { ok: true } | { ok: false; code: 'input-overflow' } = { ok: true };
+  for (let index = 0; index < 257; index += 1) result = queue.push(new Uint8Array([index % 256]));
+  const duration = performance.now() - startedAt;
+  const passed = !result.ok && result.code === 'input-overflow' && queue.size() === 256;
+  return {
+    passed,
+    observed: {
+      durationMilliseconds: duration,
+      sampleCount: 1,
+      warmupCount: 0,
+      metrics: { capacity: { value: 256, unit: 'operations' } },
+      raw: { attempted: 257, result: 'input-overflow', finalQueueSize: queue.size(), duration },
+    },
+  };
+}
+
 function overflow(): ProbeResult {
+  const control = runOverflowFixture();
+  const candidate = runOverflowFixture();
   const workload = makeWorkload(
     'overflow',
     'bounded queue overflow injection',
     'operations',
     '257th operation returns input-overflow',
-    measureSimpleControl('overflow'),
+    control.observed,
   );
-  const queue = boundedQueue(256);
-  let result: { ok: true } | { ok: false; code: 'input-overflow' } = { ok: true };
-  for (let index = 0; index < 257; index += 1) result = queue.push(new Uint8Array([index % 256]));
-  const passed = !result.ok && result.code === 'input-overflow' && queue.size() === 256;
   return {
-    passed,
+    passed: candidate.passed,
     observations: [
       'fixture=257 operations into capacity=256;overflow=visible typed input-overflow',
       'comparator=the 257th operation is rejected and existing queue is preserved',
@@ -483,11 +492,7 @@ function overflow(): ProbeResult {
     metrics: { capacity: { value: 256, unit: 'operations' } },
     workload,
     observed: {
-      durationMilliseconds: 1,
-      sampleCount: 1,
-      warmupCount: 0,
-      metrics: { capacity: { value: 256, unit: 'operations' } },
-      raw: { attempted: 257, result: 'input-overflow' },
+      ...candidate.observed,
     },
   };
 }
