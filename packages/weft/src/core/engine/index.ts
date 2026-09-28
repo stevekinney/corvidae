@@ -2353,9 +2353,13 @@ export class Engine<
     return getInternals(this).signalWaiters.size;
   }
   /**
-   * Resolve once `workflowId` has a registered signal waiter — immediately if
-   * it already has one. Settled by `registerSignalWaiter` (signals.ts) or by
-   * engine disposal (disposal.ts).
+   * Resolve once `workflowId` is waiting on a signal — immediately if it
+   * already is. A workflow waits either through a registered signal waiter
+   * (worker mode, race branches, or an inline run that must stay resident) or,
+   * in inline mode, by parking on a top-level `waitForSignal` without one.
+   * Settled by `notifySignalWaitReadyForTesting` (signals.ts), which
+   * `registerSignalWaiter` and `parkInlineWorkflowAfterCheckpoint`
+   * (inline-parking.ts) both call, or by engine disposal (disposal.ts).
    *
    * Unlike {@link ENGINE_WAIT_FOR_SLEEP_RESOLVER_FOR_TESTING}, this installs
    * no timer. Reaching a signal wait in worker mode means booting a real
@@ -2368,7 +2372,12 @@ export class Engine<
    */
   async [ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId: string): Promise<void> {
     const internals = getInternals(this);
-    if (internals.signalWaitersByWorkflow.has(workflowId)) return;
+    if (
+      internals.signalWaitersByWorkflow.has(workflowId) ||
+      internals.parkedInlineWorkflows.has(workflowId)
+    ) {
+      return;
+    }
 
     const { promise, resolve } = Promise.withResolvers<void>();
     let waiters = internals.signalWaiterReadyWaitersForTesting?.get(workflowId);
