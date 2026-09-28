@@ -27,6 +27,7 @@ function queue(overrides: Partial<TaskQueueHealth> = {}): TaskQueueHealth {
 function worker(overrides: Partial<WorkerSummary> = {}): WorkerSummary {
   return {
     id: 'wkr_1',
+    transport: 'websocket',
     queue: 'default',
     activities: ['Workflow.activity'],
     concurrency: 4,
