@@ -24,6 +24,30 @@ export type {
   AuditTrail,
   AuditTrailOptions,
 } from './audit-trail';
+export { CHILD_AGENT_RUN_WORKFLOW_TYPE } from './child-topology';
+export type {
+  BureauChildAuthorityRequest,
+  BureauChildCancelOutcome,
+  BureauChildCancelRequest,
+  BureauChildDelegationOptions,
+  BureauChildDispatchOutcome,
+  BureauChildDispatchRejection,
+  BureauChildDispatchRequest,
+  BureauChildGrantSummary,
+  BureauChildReference,
+  BureauChildSignalOutcome,
+  BureauChildSignalRequest,
+  BureauChildWaitOutcome,
+  BureauChildren,
+} from './child-topology';
+export type {
+  BureauChildOutcome,
+  BureauChildParentCancellation,
+  BureauChildRecord,
+  BureauChildStatus,
+  BureauChildTerminalStatus,
+  BureauChildWorkflowIdentity,
+} from './child-topology-store';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 export {
   BureauError,
@@ -204,6 +228,7 @@ export {
 export type {
   AbortingRun,
   Bureau,
+  BureauChildrenOptions,
   BureauEventType,
   BureauOptions,
   BureauRecoveryReport,

@@ -23,6 +23,7 @@ export type {
 } from './child-run';
 export {
   DEFAULT_CHILD_SIGNAL_BUFFER_LIMIT,
+  createChildSignalChannel,
   defineChildSignals,
   readParentSignals,
 } from './child-signals';
@@ -30,6 +31,7 @@ export type {
   ChildEventEmission,
   ChildEventOutcome,
   ChildSignalAcknowledgement,
+  ChildSignalChannel,
   ChildSignalCloseReason,
   ChildSignalContract,
   ChildSignalCorrelation,
@@ -40,10 +42,30 @@ export type {
   ChildSignalRejection,
   ChildSignalRejectionCode,
   ChildSignalSchemas,
+  CreateChildSignalChannelOptions,
   ParentSignalEndpoint,
 } from './child-signals';
 export * from './conditions/index';
 export * from './context/index';
+export {
+  DELEGATION_GRANT_VERSION,
+  attenuateDelegationBudget,
+  attenuateDelegationCapabilities,
+  digestDelegationArtifact,
+  isDelegationGrant,
+  revokeDelegationGrant,
+  signDelegationGrant,
+  verifyDelegationGrant,
+} from './delegation-grant';
+export type {
+  DelegationBudget,
+  DelegationCapabilities,
+  DelegationDisclosurePolicy,
+  DelegationGrant,
+  DelegationGrantVerification,
+  DelegationGrantVerificationCode,
+  UnsignedDelegationGrant,
+} from './delegation-grant';
 
 export * from './cost-budget-monitor';
 export * from './cost-estimation';

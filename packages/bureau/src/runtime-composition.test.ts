@@ -5096,9 +5096,9 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
 
     try {
       const catalogOptions = fakeRunOptions();
-      const resolverCalls: Array<{ agentName: string; input: unknown }> = [];
-      runtime.setCatalogAgentRunOptionsResolver(async (agentName, input) => {
-        resolverCalls.push({ agentName, input });
+      const resolverCalls: Array<{ agentName: string; input: unknown; runId: string }> = [];
+      runtime.setCatalogAgentRunOptionsResolver(async (agentName, input, _context, runId) => {
+        resolverCalls.push({ agentName, input, runId });
         return { status: 'resolved', options: catalogOptions, definitionRevision: 1 };
       });
 
@@ -5120,7 +5120,11 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
         status: 'available',
         services: { options: catalogOptions, toolbox: catalogOptions.toolbox },
       });
-      expect(resolverCalls).toEqual([{ agentName: 'echo', input: 'hello' }]);
+      // COR-772: the recovered run's own id travels with the call, so the
+      // resolver can restore run-scoped context the record does not carry.
+      expect(resolverCalls).toEqual([
+        { agentName: 'echo', input: 'hello', runId: 'catalog-run-1' },
+      ]);
       expect(await runtime.isCatalogRecoveredRun('catalog-run-1')).toBe(true);
       expect(await runtime.isCatalogRecoveredRun('some-other-run')).toBe(false);
     } finally {
@@ -5530,6 +5534,65 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
     }
+  });
+
+  it('claimCatalogRunRecoveryRecord writes a record only where none exists (COR-772)', async () => {
+    const runtime = await createRuntimeComposition({
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      await runtime.persistCatalogRunRecoveryRecord('catalog-run-owned', {
+        agentName: 'worker',
+        definitionRevision: 1,
+        input: 'alice’s work',
+        principal: 'alice',
+      });
+
+      expect(
+        await runtime.claimCatalogRunRecoveryRecord('catalog-run-owned', {
+          agentName: 'worker',
+          definitionRevision: 1,
+          input: 'mallory’s work',
+          principal: 'mallory',
+        }),
+      ).toBe(false);
+      expect(
+        await runtime.claimCatalogRunRecoveryRecord('catalog-run-fresh', {
+          agentName: 'worker',
+          definitionRevision: 2,
+          input: 'fresh work',
+        }),
+      ).toBe(true);
+
+      expect(await runtime.classifyCatalogRecoveredRun('catalog-run-owned')).toEqual({
+        isCatalogRun: true,
+        attribution: { agentName: 'worker', principal: 'alice' },
+      });
+      expect(await runtime.classifyCatalogRecoveredRun('catalog-run-fresh')).toEqual({
+        isCatalogRun: true,
+        attribution: { agentName: 'worker' },
+      });
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('claimCatalogRunRecoveryRecord has nothing to claim against with no durable storage', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+    });
+
+    expect(
+      await runtime.claimCatalogRunRecoveryRecord('no-storage-run', {
+        agentName: 'echo',
+        definitionRevision: 1,
+        input: 'hello',
+      }),
+    ).toBe(true);
+    expect(await runtime.isCatalogRecoveredRun('no-storage-run')).toBe(false);
   });
 
   it('persistCatalogRunRecoveryRecord is a no-op with no durable storage configured', async () => {

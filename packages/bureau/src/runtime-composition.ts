@@ -96,6 +96,7 @@ import {
   KEYS,
   resolveStorage,
   type Storage,
+  storageConditionalBatch,
   type StorageConfiguration,
   type TextValueStore,
   textValueStore,
@@ -836,6 +837,12 @@ export type CatalogAgentRunOptionsResolver = (
   agentName: string,
   input: AgentInput,
   context: AgentRunContext,
+  /**
+   * COR-772 — the recovered workflow's run identifier, so a resolver can
+   * restore run-scoped context the recovery record does not carry (a
+   * recovered child's parent-signal port and correlation).
+   */
+  runId: string,
 ) => Promise<CatalogAgentRunOptionsResolution>;
 
 type RecoveredScheduleMarker =
@@ -1516,6 +1523,17 @@ export interface RuntimeComposition {
     runId: string,
     record: Omit<CatalogRunRecoveryRecord, 'schemaVersion'>,
   ): Promise<void>;
+  /**
+   * COR-772 — {@link persistCatalogRunRecoveryRecord}, but create-if-absent:
+   * `false`, writing nothing, when a record already exists for `runId`. A
+   * child run's identifier is chosen by its caller rather than minted here,
+   * so its record must never replace the one another run already holds.
+   * `true` with no durable storage, where there is nothing to claim.
+   */
+  claimCatalogRunRecoveryRecord(
+    runId: string,
+    record: Omit<CatalogRunRecoveryRecord, 'schemaVersion'>,
+  ): Promise<boolean>;
   /**
    * Whether `runId` has a persisted catalog-run recovery record — used by
    * `createBureau`'s boot-recovery classification to route a catalog run to
@@ -2828,6 +2846,20 @@ export async function createRuntimeComposition(
     await durableStorage.put(catalogRunRecoveryKey(runId), encode(fullRecord));
   }
 
+  async function claimCatalogRunRecoveryRecord(
+    runId: string,
+    record: Omit<CatalogRunRecoveryRecord, 'schemaVersion'>,
+  ): Promise<boolean> {
+    if (!durableStorage) return true;
+    const key = catalogRunRecoveryKey(runId);
+    const fullRecord: CatalogRunRecoveryRecord = { schemaVersion: 1, ...record };
+    return storageConditionalBatch(
+      durableStorage,
+      [{ key, expectedValue: null }],
+      [{ type: 'put', key, value: encode(fullRecord) }],
+    );
+  }
+
   type CatalogRunRecoveryLoad =
     | { status: 'found'; record: CatalogRunRecoveryRecord }
     | { status: 'missing' }
@@ -2967,14 +2999,19 @@ export async function createRuntimeComposition(
         reason: `run ${runId}: no catalog agent recovery resolver is configured`,
       };
     }
-    const resolution = await catalogAgentRunOptionsResolver(record.agentName, record.input, {
-      agentName: record.agentName,
-      // AB-241 review finding: without this, a recovered catalog agent's
-      // re-invoked `OPERATIVE_RESOLVE_RUN_OPTIONS` rebuilt `RunOptions` with
-      // no `principal` at all, so a resumed run silently lost attribution
-      // across a restart.
-      ...(record.principal !== undefined ? { principal: record.principal } : {}),
-    });
+    const resolution = await catalogAgentRunOptionsResolver(
+      record.agentName,
+      record.input,
+      {
+        agentName: record.agentName,
+        // AB-241 review finding: without this, a recovered catalog agent's
+        // re-invoked `OPERATIVE_RESOLVE_RUN_OPTIONS` rebuilt `RunOptions` with
+        // no `principal` at all, so a resumed run silently lost attribution
+        // across a restart.
+        ...(record.principal !== undefined ? { principal: record.principal } : {}),
+      },
+      runId,
+    );
     if (resolution.status === 'missing-agent') {
       return {
         status: 'unavailable',
@@ -3577,6 +3614,7 @@ export async function createRuntimeComposition(
       catalogAgentRunOptionsResolver = resolver;
     },
     persistCatalogRunRecoveryRecord,
+    claimCatalogRunRecoveryRecord,
     isCatalogRecoveredRun,
     classifyCatalogRecoveredRun,
     clearCatalogRunRecoveryCache,

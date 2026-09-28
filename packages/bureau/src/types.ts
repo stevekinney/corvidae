@@ -12,6 +12,7 @@ import type {
   AgentRunEventRegistry,
   AgentSession,
   CacheOptions,
+  ChildSignalContract,
   CreateRunEngineOptions,
   DurableEventEnvelope,
   DurableEventGap,
@@ -74,6 +75,7 @@ import type {
 } from './agent-catalog';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
+import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
 import type {
   DurableEventHistoryPageOptions,
   DurableEventHistorySubscribeOptions,
@@ -308,6 +310,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `provider` below (a bureau may use either, both, or neither surface).
    */
   agents: D;
+  /**
+   * COR-772 — configuration for {@link Bureau.children}, Bureau's durable
+   * parent-child topology. Omit it and children still dispatch, persist, and
+   * recover; this only adds typed signals and delegation grants.
+   */
+  children?: BureauChildrenOptions<D>;
   /**
    * AB-64/AB-250 — deployment/Bureau model-policy invariants and the
    * per-principal user configuration `Bureau.planSelection`/a run's
@@ -979,6 +987,24 @@ export interface BureauRecoveryReport {
   readonly perRunFailures: readonly { readonly runId: string; readonly reason: string }[];
 }
 
+/** {@link BureauOptions.children}. */
+export interface BureauChildrenOptions<D extends AgentDefinitions = AgentDefinitions> {
+  /**
+   * The COR-814 signal contract each child agent accepts, keyed by agent
+   * name. A child whose agent has a contract gets a typed channel on every
+   * dispatch, and again after a restart, so `bureau.children.signal` can
+   * reach it by its stable identifier. Contracts are code, not data, so
+   * they are configured here rather than persisted.
+   */
+  readonly signals?: { readonly [TName in AgentNames<D>]?: ChildSignalContract };
+  /**
+   * COR-336 delegation grants. When configured, every child dispatch issues
+   * a signed grant and reserves budget against its parent's; recovery
+   * re-verifies each recovered child's grant before reattaching it.
+   */
+  readonly delegation?: BureauChildDelegationOptions;
+}
+
 /**
  * Per-call options accepted by {@link Bureau.run} — session/tracing/
  * attribution concerns that are properties of the CALL, not the agent (AB-15).
@@ -1110,6 +1136,20 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
     input: AgentInput,
     options?: BureauRunOptions,
   ): AgentRunForName<D, TName>;
+
+  /**
+   * COR-772 — Bureau's durable parent-child topology: dispatch a catalog
+   * agent as the child of a run this bureau knows (a `createRun` run, a
+   * durable `bureau.run` run, or another child), then list, get, wait on,
+   * signal, and cancel it by its stable identifier — including after a
+   * process restart. Every operation names the owning parent; naming an
+   * unrelated parent reads as `not-found`. A child never shares its
+   * parent's abort signal: cancelling a parent through `abortRun`,
+   * `cancelDurableRun`, its own `bureau.run` handle, or `children.cancel`
+   * applies each child's recorded `parentCancellation` policy instead. See
+   * `child-topology.ts`.
+   */
+  readonly children: BureauChildren<AgentNames<D>>;
 
   /**
    * @deprecated Use {@link Bureau.run} with a catalog `RunnableAgent` instead
