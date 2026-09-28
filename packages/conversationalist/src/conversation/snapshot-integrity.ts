@@ -19,14 +19,39 @@ function stableStringify(value: unknown): string {
   return `{${entries.map(([key, nested]) => `${JSON.stringify(key)}:${stableStringify(nested)}`).join(',')}}`;
 }
 
-export function snapshotDigest(snapshot: Omit<ConversationSnapshot, 'integrity'>): string {
-  const serialized = stableStringify(snapshot);
-  let hash = 0xcbf29ce484222325n;
-  for (let index = 0; index < serialized.length; index += 1) {
-    hash ^= BigInt(serialized.charCodeAt(index));
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+/**
+ * 64-bit FNV-1a over UTF-16 code units, as 16 lowercase hex digits.
+ *
+ * The state is four 16-bit limbs (`h0` least significant) rather than a
+ * `BigInt`: every step completion snapshots the whole conversation, so this
+ * loop runs over the full serialized snapshot once per step, and per-character
+ * `BigInt` multiplication made long runs quadratic with a large constant. The
+ * FNV prime is `2^40 + 0x1b3`, so multiplying by it is `h * 0x1b3` plus `h`
+ * shifted up two limbs and 8 bits (`* 0x100` into limb 2). Every intermediate
+ * stays below 2^31, so `>>> 16` carries are exact. Output is bit-identical to
+ * the `BigInt` form, which keeps persisted `fnv1a-64` digests valid.
+ */
+export function fnv1a64(text: string): string {
+  let h0 = 0x2325;
+  let h1 = 0x8422;
+  let h2 = 0x9ce4;
+  let h3 = 0xcbf2;
+  for (let index = 0; index < text.length; index += 1) {
+    h0 ^= text.charCodeAt(index);
+    const t0 = h0 * 0x1b3;
+    const t1 = h1 * 0x1b3 + (t0 >>> 16);
+    const t2 = h2 * 0x1b3 + h0 * 0x100 + (t1 >>> 16);
+    const t3 = h3 * 0x1b3 + h1 * 0x100 + (t2 >>> 16);
+    h0 = t0 & 0xffff;
+    h1 = t1 & 0xffff;
+    h2 = t2 & 0xffff;
+    h3 = t3 & 0xffff;
   }
-  return hash.toString(16).padStart(16, '0');
+  return [h3, h2, h1, h0].map((limb) => limb.toString(16).padStart(4, '0')).join('');
+}
+
+export function snapshotDigest(snapshot: Omit<ConversationSnapshot, 'integrity'>): string {
+  return fnv1a64(stableStringify(snapshot));
 }
 
 export function finalizeSnapshot(
