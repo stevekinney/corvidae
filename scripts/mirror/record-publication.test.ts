@@ -108,6 +108,16 @@ async function withPublication(
       type: 'module',
     };
     await Bun.write(
+      join(target, 'packages/operative/src/index.ts'),
+      'export const value = "old-default";\n',
+    );
+    await Bun.write(
+      join(target, 'packages/operative/package.json'),
+      json({ ...registry, version: '0.12.1' }),
+    );
+    await commit(target, 'Target default before mirror');
+    await Bun.write(join(target, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
+    await Bun.write(
       join(target, 'packages/operative/package.json'),
       json({ ...registry, version: '0.12.0' }),
     );
@@ -396,6 +406,173 @@ test('rejects historical build inputs while allowing release metadata changes', 
     const result = await recordSourceDigest(options);
     expect(result.snapshot.gitHead).toBe(changedCommit);
   });
+});
+
+test('accepts a verified mirror commit merged into the old default branch', async () => {
+  await withPublication(async ({ options, target, registry }) => {
+    const mirrored = await requireGit(target, ['rev-parse', 'HEAD~1']);
+    const oldDefault = await requireGit(target, ['rev-parse', `${mirrored}^`]);
+    await requireGit(target, ['checkout', '-b', 'merge-default', oldDefault]);
+    await Bun.write(join(target, 'CHANGELOG.md'), '# Release notes\n');
+    await commit(target, 'Target release notes');
+    await requireGit(target, ['merge', '--no-ff', '--no-edit', mirrored]);
+    const mergeCommit = await requireGit(target, ['rev-parse', 'HEAD']);
+    const parents = await requireGit(target, ['show', '-s', '--format=%P', mergeCommit]);
+    expect(parents.split(' ').filter(Boolean)).toHaveLength(2);
+    await Bun.write(
+      join(target, 'packages/operative/package.json'),
+      json({ ...registry, version: '0.12.1' }),
+    );
+    const mergedRelease = await commit(target, 'Version packages after mirror merge');
+    const registryRunner = options.registryRunner!;
+    options.registryRunner = (command, settings) =>
+      command.includes('gitHead')
+        ? Promise.resolve({
+            command: command.join(' '),
+            exitCode: 0,
+            stderr: '',
+            stdout: mergedRelease,
+          })
+        : registryRunner(command, settings);
+
+    const result = await recordSourceDigest(options);
+    expect(result.snapshot.gitHead).toBe(mergedRelease);
+  });
+});
+
+test('rejects source, build-input, transient, and manifest merge-side changes', async () => {
+  const cases: {
+    name: string;
+    mutateAfterMerge?: (target: string) => Promise<void>;
+    mutateSideBranch?: (target: string) => Promise<void>;
+    mutateOldDefault?: (target: string) => Promise<void>;
+    expected: string;
+  }[] = [
+    {
+      name: 'merge resolution source change',
+      mutateAfterMerge: async (target: string) => {
+        await Bun.write(
+          join(target, 'packages/operative/src/index.ts'),
+          'export const value = "resolved-maliciously";\n',
+        );
+      },
+      expected: 'non-target-owned path packages/operative/src/index.ts',
+    },
+    {
+      name: 'side branch build input',
+      mutateSideBranch: async (target: string) => {
+        const manifest = JSON.parse(
+          await Bun.file(join(target, 'packages/operative/package.json')).text(),
+        );
+        await Bun.write(
+          join(target, 'packages/operative/package.json'),
+          json({ ...manifest, scripts: { build: 'bun run bad.ts' } }),
+        );
+      },
+      expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    },
+    {
+      name: 'old default side branch build input',
+      mutateOldDefault: async (target: string) => {
+        const manifest = JSON.parse(
+          await Bun.file(join(target, 'packages/operative/package.json')).text(),
+        );
+        await Bun.write(
+          join(target, 'packages/operative/package.json'),
+          json({ ...manifest, scripts: { build: 'bun run old-default-bad.ts' } }),
+        );
+      },
+      expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    },
+    {
+      name: 'transient source change reverted on a descendant branch',
+      mutateSideBranch: async (target: string) => {
+        await Bun.write(
+          join(target, 'packages/operative/src/index.ts'),
+          'export const value = "transient";\n',
+        );
+        await commit(target, 'Transient source change');
+        await Bun.write(
+          join(target, 'packages/operative/src/index.ts'),
+          'export const value = 1;\n',
+        );
+      },
+      expected: 'non-target-owned path packages/operative/src/index.ts',
+    },
+    {
+      name: 'manifest field add and delete',
+      mutateSideBranch: async (target: string) => {
+        const manifest = JSON.parse(
+          await Bun.file(join(target, 'packages/operative/package.json')).text(),
+        );
+        await Bun.write(
+          join(target, 'packages/operative/package.json'),
+          json({ ...manifest, imports: { '#bad': './bad.ts' } }),
+        );
+        await commit(target, 'Add source-owned manifest field');
+        await Bun.write(join(target, 'packages/operative/package.json'), json(manifest));
+      },
+      expected: 'source-owned manifest field packages/operative/package.json:imports',
+    },
+  ];
+
+  for (const testCase of cases) {
+    await withPublication(async ({ options, target, registry }) => {
+      const slug = testCase.name.replaceAll(' ', '-');
+      const mirrored = await requireGit(target, ['rev-parse', 'HEAD~1']);
+      const oldDefault = await requireGit(target, ['rev-parse', `${mirrored}^`]);
+      let mergedCommit: string | undefined;
+      if (testCase.mutateOldDefault) {
+        await requireGit(target, ['checkout', '-b', `malicious-${slug}`, oldDefault]);
+        await testCase.mutateOldDefault(target);
+        await commit(target, `Complete ${testCase.name}`);
+        await requireGit(target, ['checkout', '-B', `merge-${slug}`, `malicious-${slug}`]);
+        await requireGit(target, ['merge', '--no-ff', '--no-commit', '-X', 'ours', mirrored]);
+        await commit(target, `Complete ${testCase.name} merge`);
+        mergedCommit = await requireGit(target, ['rev-parse', 'HEAD']);
+      } else if (testCase.mutateSideBranch) {
+        await requireGit(target, ['checkout', '-b', `malicious-${slug}`, mirrored]);
+        await testCase.mutateSideBranch(target);
+        await commit(target, `Complete ${testCase.name}`);
+        await requireGit(target, ['checkout', '-B', `merge-${slug}`, oldDefault]);
+        await Bun.write(join(target, 'CHANGELOG.md'), '# Release notes\n');
+        await commit(target, 'Target release notes');
+        await requireGit(target, ['merge', '--no-ff', '--no-edit', `malicious-${slug}`]);
+      } else {
+        await requireGit(target, ['checkout', '-b', `merge-${slug}`, oldDefault]);
+        await Bun.write(join(target, 'CHANGELOG.md'), '# Release notes\n');
+        await commit(target, 'Target release notes');
+        if (testCase.mutateAfterMerge) {
+          await requireGit(target, ['merge', '--no-ff', '--no-commit', mirrored]);
+          await testCase.mutateAfterMerge(target);
+          await commit(target, `Complete ${testCase.name} merge`);
+          mergedCommit = await requireGit(target, ['rev-parse', 'HEAD']);
+        } else {
+          await requireGit(target, ['merge', '--no-ff', '--no-edit', mirrored]);
+        }
+      }
+      if (testCase.mutateAfterMerge) {
+        const parents = await requireGit(target, ['show', '-s', '--format=%P', mergedCommit!]);
+        expect(parents.split(' ').filter(Boolean)).toHaveLength(2);
+      }
+      await Bun.write(
+        join(target, 'packages/operative/package.json'),
+        json({ ...registry, version: '0.12.1' }),
+      );
+      const release = await commit(target, `Release after ${testCase.name}`);
+      const registryRunner = options.registryRunner!;
+      options.registryRunner = (command, settings) =>
+        command.includes('gitHead')
+          ? Promise.resolve({
+              command: command.join(' '),
+              exitCode: 0,
+              stderr: '',
+              stdout: release,
+            })
+          : registryRunner(command, settings);
+      await expect(recordSourceDigest(options)).rejects.toThrow(testCase.expected);
+    });
+  }
 });
 
 test('publication inputs include emitted build scripts and resolved toolchain versions', async () => {

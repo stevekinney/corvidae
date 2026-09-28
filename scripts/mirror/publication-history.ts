@@ -16,6 +16,22 @@ export async function requireGit(
   return result.stdout.trim();
 }
 
+async function isAncestor(
+  directory: string,
+  ancestor: string,
+  descendant: string,
+  runner: CommandRunner,
+): Promise<boolean> {
+  const result = await runner(['git', 'merge-base', '--is-ancestor', ancestor, descendant], {
+    cwd: directory,
+  });
+  if (result.exitCode > 1)
+    throw new Error(
+      `git merge-base --is-ancestor ${ancestor} ${descendant} failed in ${directory}: ${result.stderr}`,
+    );
+  return result.exitCode === 0;
+}
+
 /** Validate provenance before importing executable historical policy. */
 export async function verifyHistoricalCheckout(options: {
   targetRoot: string;
@@ -77,33 +93,43 @@ export async function verifyHistoricalCheckout(options: {
   ]);
   const commits = await requireGit(
     targetRoot,
-    ['rev-list', '--reverse', '--first-parent', `${mirrored}..${gitHead}`],
+    ['rev-list', '--reverse', '--ancestry-path', `${mirrored}..${gitHead}`],
     runner,
   );
   for (const commit of commits.split('\n').filter(Boolean)) {
-    const paths = await requireGit(
-      targetRoot,
-      ['diff', '--name-only', '-z', `${commit}^`, commit],
-      runner,
-    );
-    for (const path of paths.split('\0').filter(Boolean)) {
-      if (path === 'package.json' || path.endsWith('/package.json')) {
-        const before = await readGitJson(targetRoot, `${commit}^`, path, runner);
-        const after = await readGitJson(targetRoot, commit, path, runner);
-        for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-          if (releaseManifestKeys.has(key)) continue;
-          if (
-            JSON.stringify(
-              canonicalManifest(before[key], key === 'exports' || key === 'imports'),
-            ) !==
-            JSON.stringify(canonicalManifest(after[key], key === 'exports' || key === 'imports'))
-          )
-            throw new Error(
-              `Intervening commit ${commit} changes source-owned manifest field ${path}:${key}`,
-            );
+    const parentList = await requireGit(targetRoot, ['show', '-s', '--format=%P', commit], runner);
+    const parents = parentList.split(' ').filter(Boolean);
+    const certifiedParents = [];
+    for (const parent of parents) {
+      if (await isAncestor(targetRoot, mirrored, parent, runner)) certifiedParents.push(parent);
+    }
+    if (certifiedParents.length === 0)
+      throw new Error(`Intervening commit ${commit} has no certified parent after ${mirrored}`);
+    for (const parent of certifiedParents) {
+      const paths = await requireGit(
+        targetRoot,
+        ['diff', '--name-only', '-z', parent, commit],
+        runner,
+      );
+      for (const path of paths.split('\0').filter(Boolean)) {
+        if (path === 'package.json' || path.endsWith('/package.json')) {
+          const before = await readGitJson(targetRoot, parent, path, runner);
+          const after = await readGitJson(targetRoot, commit, path, runner);
+          for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+            if (releaseManifestKeys.has(key)) continue;
+            if (
+              JSON.stringify(
+                canonicalManifest(before[key], key === 'exports' || key === 'imports'),
+              ) !==
+              JSON.stringify(canonicalManifest(after[key], key === 'exports' || key === 'imports'))
+            )
+              throw new Error(
+                `Intervening commit ${commit} changes source-owned manifest field ${path}:${key}`,
+              );
+          }
+        } else if (!findTargetOwner(policy, path, target)) {
+          throw new Error(`Intervening commit ${commit} changes non-target-owned path ${path}`);
         }
-      } else if (!findTargetOwner(policy, path, target)) {
-        throw new Error(`Intervening commit ${commit} changes non-target-owned path ${path}`);
       }
     }
   }
