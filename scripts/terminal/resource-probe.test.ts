@@ -96,13 +96,13 @@ describe('terminal resource probe primitives', () => {
     expect(
       validateBrowserAssetEvidence({
         ...valid,
-        responses: [{ ...valid.responses[1], status: 404 }],
+        responses: [{ ...valid.responses[1]!, status: 404 }],
       }),
     ).toBe(false);
     expect(
       validateBrowserAssetEvidence({
         ...valid,
-        responses: [{ ...valid.responses[1], contentType: 'text/html' }],
+        responses: [{ ...valid.responses[1]!, contentType: 'text/html' }],
       }),
     ).toBe(false);
     expect(validateBrowserAssetEvidence({ ...valid, csp: 'default-src *' })).toBe(false);

@@ -335,7 +335,8 @@ async function runBrowserProbe(candidate: Candidate, directory: string): Promise
       .map((request) => {
         const match = /^request:([^:]+):(https?:\/\/.*)$/.exec(request);
         if (!match) return { method: '', url: '', path: '' };
-        const [, method, url] = match;
+        const method = match[1] ?? '';
+        const url = match[2] ?? '';
         return { method, url, path: new URL(url).pathname };
       });
     const assetEvidence: BrowserAssetEvidence = {
@@ -477,11 +478,11 @@ export async function probeCandidate(
     passed: browser.status === 'ready' && cells.every((item) => item.passed),
     status: browser.status,
     diagnostics: browser.diagnostics,
-    origin: browser.origin,
-    csp: browser.csp,
-    requests: browser.requests,
-    responses: browser.responses,
-    failures: browser.failures,
+    origin: browser.origin ?? '',
+    csp: browser.csp ?? '',
+    requests: browser.requests ?? [],
+    responses: browser.responses ?? [],
+    failures: browser.failures ?? [],
   };
 }
 

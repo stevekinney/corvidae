@@ -417,7 +417,8 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       .map((request) => {
         const match = /^request:([^:]+):(https?:\/\/.*)$/.exec(request);
         if (!match) return { method: '', url: '', path: '' };
-        const [, method, url] = match;
+        const method = match[1] ?? '';
+        const url = match[2] ?? '';
         return { method, url, path: new URL(url).pathname };
       });
     const assetEvidence = {
