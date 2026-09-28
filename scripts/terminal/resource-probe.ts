@@ -40,7 +40,6 @@ type ProbeResult = {
   metrics: Record<string, Metric>;
   workload: WorkloadDefinition;
   observed: ObservedWorkload;
-  controlObserved?: ObservedWorkload;
 };
 
 export type CleanupFacts = {
@@ -98,6 +97,7 @@ function makeWorkload(
   method: string,
   unit: string,
   target: string,
+  controlObserved: ObservedWorkload,
 ): WorkloadDefinition {
   const targetDefinitions: Record<
     string,
@@ -184,10 +184,9 @@ function makeWorkload(
       method,
       target: targetDefinition,
     },
-    control: { passed: true, observed },
+    control: { passed: true, observed: controlObserved },
     observed,
   };
-  workload.control.observed = measureControl(workload);
   return workload;
 }
 
@@ -195,9 +194,9 @@ function measuredControlDuration(startedAt: number): number {
   return Math.max(performance.now() - startedAt, Number.EPSILON);
 }
 
-function measureControl(workload: WorkloadDefinition): ObservedWorkload {
+function measureSimpleControl(fixture: string): ObservedWorkload {
   const startedAt = performance.now();
-  switch (workload.fixtureId) {
+  switch (fixture) {
     case 'throughput-and-queues': {
       const bytes = 2 * 1024 * 1024;
       const chunk = new Uint8Array(64 * 1024);
@@ -262,88 +261,9 @@ function measureControl(workload: WorkloadDefinition): ObservedWorkload {
         metrics: { capacity: { value: 256, unit: 'operations' } },
         raw: { attempted: 257, result: 'input-overflow' },
       };
-    case 'cleanup-order':
-    case 'teardown': {
-      const events = [
-        'authority-revoked',
-        'control-reserved-and-queue-canceled',
-        'process-group-signaled',
-        'handles-closed-and-descendant-observed',
-      ];
-      const cleanup = deriveCleanupResult({
-        authorityRevoked: true,
-        controlCapacityReserved: true,
-        userQueueCanceled: true,
-        processGroupSignaled: true,
-        parentExited: true,
-        descendantObservedGone: true,
-        handlesClosed: true,
-      });
-      const duration = measuredControlDuration(startedAt);
-      return {
-        durationMilliseconds: duration,
-        sampleCount: 1,
-        warmupCount: 0,
-        metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
-        raw: { events, cleanup },
-      };
-    }
-    case 'xterm-initialization':
-      return {
-        durationMilliseconds: measuredControlDuration(startedAt),
-        sampleCount: 1,
-        warmupCount: 0,
-        metrics: { assertion: { value: 1, unit: 'boolean' } },
-        raw: { browser: 'Chromium', passed: true, control: true },
-      };
-    case 'browser-assets-and-csp':
-      return {
-        durationMilliseconds: measuredControlDuration(startedAt),
-        sampleCount: 1,
-        warmupCount: 0,
-        metrics: { assertion: { value: 1, unit: 'boolean' } },
-        raw: { assetEvidence: controlBrowserAssetEvidence(), passed: true, control: true },
-      };
-    case 'hidden-page-liveness': {
-      const duration = measuredControlDuration(startedAt);
-      return {
-        durationMilliseconds: duration,
-        sampleCount: 1,
-        warmupCount: 0,
-        metrics: { liveness: { value: 1, unit: 'boolean' } },
-        raw: { cdpState: 'frozen', timer: 'ran', assertion: true, duration, control: true },
-      };
-    }
-    case 'retained-projection-memory':
-      return {
-        durationMilliseconds: measuredControlDuration(startedAt),
-        sampleCount: 1,
-        warmupCount: 0,
-        metrics: { assertion: { value: 1, unit: 'boolean' } },
-        raw: { browser: 'Chromium', passed: true, retained: true, control: true },
-      };
     default:
-      throw new Error(`missing control measurement for ${workload.fixtureId}`);
+      throw new Error(`missing simple control measurement for ${fixture}`);
   }
-}
-
-function controlBrowserAssetEvidence(): Record<string, unknown> {
-  const origin = 'http://127.0.0.1:1';
-  return {
-    origin,
-    csp: "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; script-src 'self'; connect-src 'self'",
-    requests: [
-      { method: 'GET', url: `${origin}/`, path: '/' },
-      { method: 'GET', url: `${origin}/candidate.css`, path: '/candidate.css' },
-      { method: 'GET', url: `${origin}/probe.js`, path: '/probe.js' },
-    ],
-    responses: [
-      { url: `${origin}/`, status: 200, contentType: 'text/html' },
-      { url: `${origin}/candidate.css`, status: 200, contentType: 'text/css' },
-      { url: `${origin}/probe.js`, status: 200, contentType: 'text/javascript' },
-    ],
-    failures: [],
-  };
 }
 
 function percentile(values: number[], fraction: number): number {
@@ -352,7 +272,6 @@ function percentile(values: number[], fraction: number): number {
 }
 
 function cell(id: string, result: ProbeResult): EvidenceCell {
-  const controlObserved = result.controlObserved ?? result.workload.control.observed;
   return {
     id,
     passed: result.passed,
@@ -362,7 +281,7 @@ function cell(id: string, result: ProbeResult): EvidenceCell {
     workload: {
       ...result.workload,
       observed: result.observed,
-      control: { passed: true, observed: controlObserved },
+      control: { passed: true, observed: result.workload.control.observed },
     },
   };
 }
@@ -420,6 +339,7 @@ function throughputAndQueues(): ProbeResult {
     'bounded Uint8Array FIFO throughput',
     'bytes/second',
     `>=${targets.throughputBytesPerSecond} bytes/second`,
+    measureSimpleControl('throughput-and-queues'),
   );
   const bytes = 2 * 1024 * 1024;
   const chunk = new Uint8Array(64 * 1024);
@@ -467,6 +387,7 @@ function inputLatency(): ProbeResult {
     'bounded input enqueue with monotonic samples',
     'milliseconds',
     `p99<=${targets.inputP99Milliseconds} milliseconds`,
+    measureSimpleControl('input-latency'),
   );
   const samples: number[] = [];
   const queue = boundedQueue(256);
@@ -512,6 +433,7 @@ function memoryPlateau(): ProbeResult {
     'retained projection RSS plateau',
     'MiB',
     `<=${targets.memoryDeltaMegabytes} MiB`,
+    measureSimpleControl('memory-plateau'),
   );
   const warmup = Array.from({ length: 1_000 }, (_, index) => `warmup-${index}`);
   warmup.length = 0;
@@ -546,6 +468,7 @@ function overflow(): ProbeResult {
     'bounded queue overflow injection',
     'operations',
     '257th operation returns input-overflow',
+    measureSimpleControl('overflow'),
   );
   const queue = boundedQueue(256);
   let result: { ok: true } | { ok: false; code: 'input-overflow' } = { ok: true };
@@ -569,13 +492,7 @@ function overflow(): ProbeResult {
   };
 }
 
-async function cleanupOrder(fixture = 'cleanup-order'): Promise<ProbeResult> {
-  const workload = makeWorkload(
-    fixture,
-    'owned process group and descendant cleanup',
-    'milliseconds',
-    `<=${targets.cleanupMilliseconds} milliseconds`,
-  );
+async function runCleanupMeasurement(): Promise<Omit<ProbeResult, 'workload'>> {
   const events: string[] = [];
   const startedAt = performance.now();
   const queue = createCleanupQueue(4, 1);
@@ -654,18 +571,31 @@ async function cleanupOrder(fixture = 'cleanup-order'): Promise<ProbeResult> {
       `target<=${targets.cleanupMilliseconds}ms;comparator=less-than-or-equal`,
     ],
     metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
-    workload,
     observed: {
       durationMilliseconds: duration,
       sampleCount: 1,
       warmupCount: 0,
       metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
-      raw: { events, cleanup },
+      raw: { events, cleanup, processGroup: group, descendant },
     },
   };
 }
 
+async function cleanupOrder(fixture = 'cleanup-order'): Promise<ProbeResult> {
+  const control = await runCleanupMeasurement();
+  const candidate = await runCleanupMeasurement();
+  const workload = makeWorkload(
+    fixture,
+    'owned process group and descendant cleanup',
+    'milliseconds',
+    `<=${targets.cleanupMilliseconds} milliseconds`,
+    control.observed,
+  );
+  return { ...candidate, workload };
+}
+
 function unavailable(fixture: string, reason: string): ProbeResult {
+  const startedAt = performance.now();
   return {
     passed: false,
     observations: [
@@ -678,6 +608,13 @@ function unavailable(fixture: string, reason: string): ProbeResult {
       'required probe unavailable; fail closed',
       'boolean',
       'available=true',
+      {
+        durationMilliseconds: Math.max(performance.now() - startedAt, Number.EPSILON),
+        sampleCount: 1,
+        warmupCount: 0,
+        metrics: { available: { value: 0, unit: 'boolean' } },
+        raw: { unavailable: true, reason },
+      },
     ),
     observed: {
       durationMilliseconds: 1,
@@ -691,16 +628,28 @@ function unavailable(fixture: string, reason: string): ProbeResult {
 
 async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, ProbeResult]> {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-terminal-resource-'));
+  let candidateDirectory: string | undefined;
   try {
     await Bun.write(
       join(directory, 'package.json'),
       JSON.stringify({ name: 'terminal-resource-probe', private: true, type: 'module' }),
     );
     const { probeCandidate, validateBrowserAssetEvidence } = await import('./engine-probe.ts');
+    const controlStartedAt = performance.now();
+    const controlBrowser = await probeCandidate(
+      { name: '@xterm/xterm', version: '6.0.0', preferred: false },
+      directory,
+    );
+    const controlDuration = performance.now() - controlStartedAt;
+    candidateDirectory = await mkdtemp(join(tmpdir(), 'corvidae-terminal-resource-candidate-'));
+    await Bun.write(
+      join(candidateDirectory, 'package.json'),
+      JSON.stringify({ name: 'terminal-resource-probe-candidate', private: true, type: 'module' }),
+    );
     const browserStartedAt = performance.now();
     const browser = await probeCandidate(
       { name: '@xterm/xterm', version: '6.0.0', preferred: false },
-      directory,
+      candidateDirectory,
     );
     const browserDuration = performance.now() - browserStartedAt;
     const initialization = browser.cells.find(
@@ -708,25 +657,34 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
     );
     const assets = browser.cells.find((item) => item.id === 'chromium-csp-and-assets');
     const retained = browser.cells.find((item) => item.id === 'soft-wrap-selection-search');
-    const assetRequests = (browser.requests ?? [])
-      .filter((request) => request.startsWith('request:'))
-      .map((request) => {
-        const match = /^request:([^:]+):(https?:\/\/.*)$/.exec(request);
-        if (!match) return { method: '', url: '', path: '' };
-        const method = match[1] ?? '';
-        const url = match[2] ?? '';
-        return { method, url, path: new URL(url).pathname };
-      });
-    const assetEvidence = {
-      origin: browser.origin ?? '',
-      csp: browser.csp ?? '',
-      requests: assetRequests,
-      responses: browser.responses ?? [],
-      failures: browser.failures ?? [],
+    const assetEvidenceFor = (probe: typeof browser) => {
+      const assetRequests = (probe.requests ?? [])
+        .filter((request) => request.startsWith('request:'))
+        .map((request) => {
+          const match = /^request:([^:]+):(https?:\/\/.*)$/.exec(request);
+          if (!match) return { method: '', url: '', path: '' };
+          const method = match[1] ?? '';
+          const url = match[2] ?? '';
+          return { method, url, path: new URL(url).pathname };
+        });
+      return {
+        origin: probe.origin ?? '',
+        csp: probe.csp ?? '',
+        requests: assetRequests,
+        responses: probe.responses ?? [],
+        failures: probe.failures ?? [],
+      };
     };
+    const assetEvidence = assetEvidenceFor(browser);
+    const controlAssetEvidence = assetEvidenceFor(controlBrowser);
     const browserVersion = 'Chromium';
-    const workload = (fixture: string, method: string, target: string): WorkloadDefinition => {
-      const planned = makeWorkload(fixture, method, 'boolean', target);
+    const workload = (
+      fixture: string,
+      method: string,
+      target: string,
+      controlObserved: ObservedWorkload,
+    ): WorkloadDefinition => {
+      const planned = makeWorkload(fixture, method, 'boolean', target, controlObserved);
       planned.environment.browser = browserVersion;
       planned.environment.engine = '@xterm/xterm@6.0.0';
       return planned;
@@ -742,14 +700,45 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       metrics,
       raw,
     });
+    const browserControl = (fixture: string): ObservedWorkload => {
+      const browserCell = controlBrowser.cells.find(
+        (item) =>
+          item.id ===
+          (
+            {
+              'xterm-initialization': 'initialization-cancellation-disposal',
+              'browser-assets-and-csp': 'chromium-csp-and-assets',
+              'retained-projection-memory': 'soft-wrap-selection-search',
+            } as Record<string, string>
+          )[fixture],
+      );
+      const metrics = { assertion: { value: browserCell?.passed ? 1 : 0, unit: 'boolean' } };
+      const raw =
+        fixture === 'browser-assets-and-csp'
+          ? { assetEvidence: controlAssetEvidence, passed: browserCell?.passed === true }
+          : {
+              browser: browserVersion,
+              origin: controlBrowser.origin ?? '',
+              passed: browserCell?.passed === true,
+              retained:
+                fixture === 'retained-projection-memory' ? browserCell?.passed === true : undefined,
+            };
+      return observed(metrics, raw, controlDuration);
+    };
     const unavailableResult = (fixture: string, reason: string): ProbeResult => ({
       passed: false,
       observations: [`unavailable:${reason}`],
       metrics: { available: { value: 0, unit: 'boolean' } },
-      workload: workload(fixture, 'fail closed on unavailable browser evidence', 'available=true'),
+      workload: workload(
+        fixture,
+        'fail closed on unavailable browser evidence',
+        'available=true',
+        browserControl(fixture),
+      ),
       observed: observed({ available: { value: 0, unit: 'boolean' } }, { reason }),
     });
-    const hiddenResult: ProbeResult = await (async () => {
+    let hiddenControlObserved: ObservedWorkload | undefined;
+    const runHiddenPageLiveness = async (): Promise<ProbeResult> => {
       try {
         const { chromium } = await import('@playwright/test');
         const chromiumBrowser = await chromium.launch({ headless: true });
@@ -775,6 +764,12 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'hidden-page-liveness',
               'Chromium CDP Page.setWebLifecycleState frozen plus timer observation',
               'timer remained live while frozen',
+              hiddenControlObserved ??
+                observed(
+                  { liveness: { value: 1, unit: 'boolean' } },
+                  { cdpState: 'frozen', timer: 'ran', assertion: true, duration: 1 },
+                  controlDuration,
+                ),
             ),
             observed: observed(
               {
@@ -794,7 +789,10 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
           error instanceof Error ? error.message : String(error),
         );
       }
-    })();
+    };
+    const hiddenControl = await runHiddenPageLiveness();
+    hiddenControlObserved = hiddenControl.observed;
+    const hiddenResult = await runHiddenPageLiveness();
     return [
       initialization
         ? {
@@ -805,9 +803,11 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'xterm-initialization',
               'COR-436 local xterm initialization, parser, render, resize and disposal',
               'initialization cell passed',
+              browserControl('xterm-initialization'),
             ),
             observed: observed(initialization.metrics, {
               browser: browserVersion,
+              origin: browser.origin ?? '',
               passed: initialization.passed,
             }),
           }
@@ -827,6 +827,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'browser-assets-and-csp',
               'local HTTP self-origin xterm page with exact COR-436 CSP, CSS and JavaScript response checks',
               'all asset responses same-origin, expected MIME, CSP and parser/render metadata pass',
+              browserControl('browser-assets-and-csp'),
             ),
             observed: observed(assets.metrics, { assetEvidence, passed: assets.passed }),
           }
@@ -841,9 +842,11 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'retained-projection-memory',
               'xterm retained soft-wrap metadata, selection and search fixture',
               'retained metadata and projection assertions pass',
+              browserControl('retained-projection-memory'),
             ),
             observed: observed(retained.metrics, {
               browser: browserVersion,
+              origin: browser.origin ?? '',
               passed: retained.passed,
               retained: retained.passed,
             }),
@@ -860,6 +863,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
     ];
   } finally {
     await rm(directory, { recursive: true, force: true });
+    if (candidateDirectory) await rm(candidateDirectory, { recursive: true, force: true });
   }
 }
 
