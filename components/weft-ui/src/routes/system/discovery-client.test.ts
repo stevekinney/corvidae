@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import {
   DiscoveryFetchError,
   discoveryOrigin,
@@ -44,7 +45,9 @@ describe('fetchDiscoveryDocument', () => {
     scripted = new ScriptedFetch();
     scripted.enqueueStatus(503, 'Service Unavailable');
 
-    expect(fetchDiscoveryDocument(fakeClient(), 'mcp')).rejects.toThrow(DiscoveryFetchError);
+    expect(await throwingRejectionOf(fetchDiscoveryDocument(fakeClient(), 'mcp'))).toThrow(
+      DiscoveryFetchError,
+    );
 
     scripted.enqueueStatus(503, 'Service Unavailable');
     try {
@@ -80,6 +83,8 @@ describe('fetchRawMetricsText', () => {
   test('throws DiscoveryFetchError on a non-2xx response', async () => {
     scripted = new ScriptedFetch();
     scripted.enqueueStatus(500, 'Internal Server Error');
-    expect(fetchRawMetricsText(fakeClient())).rejects.toThrow(DiscoveryFetchError);
+    expect(await throwingRejectionOf(fetchRawMetricsText(fakeClient()))).toThrow(
+      DiscoveryFetchError,
+    );
   });
 });

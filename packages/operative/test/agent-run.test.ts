@@ -25,6 +25,7 @@ import { AbortAgentRunError, MaximumStepsExceededError } from '../src/errors';
 import { TOOL_CALL_POLICY } from '../src/liveness';
 import type { RunnableAgent } from '../src/runnable-agent';
 import { createBarrierRegistry, createMockGenerate, waitForCondition } from '../src/test/index';
+import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type {
   CleanupAcknowledgement,
   ClosedOptions,
@@ -187,7 +188,7 @@ describe('AgentRun.unwrap() and output()', () => {
   it('unwraps plain text for an untyped successful run', async () => {
     const run = makeRun([textResponse('plain text')]);
 
-    await expect(run.unwrap()).resolves.toBe('plain text');
+    expect(await run.unwrap()).toBe('plain text');
   });
 
   it('unwraps schema-backed output when output is configured', async () => {
@@ -202,8 +203,8 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun<{ answer: string }, true>(activeRun, { hasOutput: true });
 
-    await expect(run.unwrap()).resolves.toEqual({ answer: 'validated' });
-    await expect(run.output()).resolves.toEqual({ answer: 'validated' });
+    expect(await run.unwrap()).toEqual({ answer: 'validated' });
+    expect(await run.output()).toEqual({ answer: 'validated' });
   });
 
   it('preserves a validated undefined output', async () => {
@@ -218,8 +219,8 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun<undefined, true>(activeRun, { hasOutput: true });
 
-    await expect(run.unwrap()).resolves.toBeUndefined();
-    await expect(run.output()).resolves.toBeUndefined();
+    expect(await run.unwrap()).toBeUndefined();
+    expect(await run.output()).toBeUndefined();
   });
 
   it('omits output() from direct handles when no output schema is configured', () => {
@@ -246,7 +247,7 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun<{ answer: string }, true>(activeRun, { hasOutput: true });
 
-    await expect(run.unwrap()).rejects.toThrow('Agent run has no validated output');
+    expect(await throwingRejectionOf(run.unwrap())).toThrow('Agent run has no validated output');
   });
 
   it('throws the terminal run error when unwrap() is called on a failed run', async () => {
@@ -261,7 +262,7 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun(activeRun);
 
-    await expect(run.unwrap()).rejects.toBe(failure);
+    expect(await rejectionOf(run.unwrap())).toBe(failure);
   });
 
   it('throws a synthesized failure when unwrap() is called on an unsuccessful run without an Error', async () => {
@@ -274,7 +275,9 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun(activeRun);
 
-    await expect(run.unwrap()).rejects.toThrow('Agent run did not finish successfully: aborted');
+    expect(await throwingRejectionOf(run.unwrap())).toThrow(
+      'Agent run did not finish successfully: aborted',
+    );
   });
 
   it('throws a synthesized failure when output() is called on an unsuccessful run without an Error', async () => {
@@ -287,7 +290,7 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun<{ answer: string }, true>(activeRun, { hasOutput: true });
 
-    await expect(run.output()).rejects.toThrow(
+    expect(await throwingRejectionOf(run.output())).toThrow(
       'Agent run did not finish successfully: budget-exceeded',
     );
   });
@@ -304,7 +307,7 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun(activeRun);
 
-    await expect(run.unwrap()).rejects.toBe(validationError);
+    expect(await rejectionOf(run.unwrap())).toBe(validationError);
   });
 
   it('throws a synthesized schema failure when unwrap() sees failed validation without an Error', async () => {
@@ -318,7 +321,9 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun(activeRun);
 
-    await expect(run.unwrap()).rejects.toThrow('Agent run output failed schema validation');
+    expect(await throwingRejectionOf(run.unwrap())).toThrow(
+      'Agent run output failed schema validation',
+    );
   });
 
   it('throws the schema validation error when output() has no validated output', async () => {
@@ -333,7 +338,7 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun<{ answer: string }, true>(activeRun, { hasOutput: true });
 
-    await expect(run.output()).rejects.toBe(validationError);
+    expect(await rejectionOf(run.output())).toBe(validationError);
   });
 
   it('throws a synthesized missing-output error when output() has no schema error', async () => {
@@ -347,7 +352,7 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun<{ answer: string }, true>(activeRun, { hasOutput: true });
 
-    await expect(run.output()).rejects.toThrow('Agent run has no validated output');
+    expect(await throwingRejectionOf(run.output())).toThrow('Agent run has no validated output');
   });
 
   it('throws the maximum-steps policy error when output() is called on a capped run', async () => {
@@ -363,7 +368,7 @@ describe('AgentRun.unwrap() and output()', () => {
     });
     const run = createAgentRun<{ answer: string }, true>(activeRun, { hasOutput: true });
 
-    await expect(run.output()).rejects.toBe(maximumStepsError);
+    expect(await rejectionOf(run.output())).toBe(maximumStepsError);
   });
 });
 
@@ -380,7 +385,7 @@ describe('createDiagnosticAgentRun()', () => {
 
     expect('unwrap' in run).toBe(false);
     expect('output' in run).toBe(false);
-    await expect(run.result()).resolves.toMatchObject({ content: 'diagnostic result' });
+    expect(await run.result()).toMatchObject({ content: 'diagnostic result' });
   });
 
   it('forwards a supplied childRegistry option to children()/abortChild(), same as createAgentRun', async () => {
@@ -666,7 +671,7 @@ describe('AgentRun[Symbol.asyncIterator]()', () => {
 
     observer?.error('stream failed');
 
-    await expect(next).rejects.toThrow('stream failed');
+    expect(await throwingRejectionOf(next)).toThrow('stream failed');
   });
 
   it('surfaces buffered observable errors on the next pull', async () => {
@@ -684,7 +689,7 @@ describe('AgentRun[Symbol.asyncIterator]()', () => {
     const run = createAgentRun(activeRun);
     const iterator = run[Symbol.asyncIterator]();
 
-    await expect(iterator.next()).rejects.toThrow('buffered failure');
+    expect(await throwingRejectionOf(iterator.next())).toThrow('buffered failure');
   });
 
   it('resolves a waiting iterator when the observable completes', async () => {

@@ -149,7 +149,7 @@ describe('createSkillMemoryHooks', () => {
       const { prepareStep } = createSkillMemoryHooks({ memory: failingMemory });
 
       // Should not throw
-      expect(prepareStep(createStepContext({ step: 0 }))).resolves.toBeUndefined();
+      expect(await prepareStep(createStepContext({ step: 0 }))).toBeUndefined();
     });
 
     it('does not recall when conversation has no user messages', async () => {
@@ -223,7 +223,7 @@ describe('createSkillMemoryHooks', () => {
       const { onStep } = createSkillMemoryHooks({ memory: failingMemory });
 
       // Should not throw
-      expect(onStep(createStepResult({ final: true }))).resolves.toBeUndefined();
+      expect(await onStep(createStepResult({ final: true }))).toBeUndefined();
     });
 
     it('does not store when content is empty', async () => {

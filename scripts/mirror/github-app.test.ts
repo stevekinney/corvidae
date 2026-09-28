@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   GitHubAppError,
   mintAppJwt,
@@ -88,22 +89,22 @@ describe('mintInstallationToken', () => {
 
   test('reports the status and GitHub’s own body when the exchange fails', async () => {
     const { fetchImplementation } = fakeFetch(403, { message: 'Bad credentials' });
-    await expect(
-      mintInstallationToken({
-        privateKey,
-        appId: 4_997_180,
-        installationId: 162_905_409,
-        fetchImplementation,
-      }),
-    ).rejects.toThrow(/HTTP 403.*Bad credentials/s);
+    expect(
+      await throwingRejectionOf(
+        mintInstallationToken({
+          privateKey,
+          appId: 4_997_180,
+          installationId: 162_905_409,
+          fetchImplementation,
+        }),
+      ),
+    ).toThrow(/HTTP 403.*Bad credentials/s);
   });
 });
 
 describe('readAppPrivateKey', () => {
   test('prefers the inline PEM a workflow secret supplies', async () => {
-    await expect(readAppPrivateKey({ MIRROR_APP_PRIVATE_KEY: privateKey })).resolves.toBe(
-      privateKey,
-    );
+    expect(await readAppPrivateKey({ MIRROR_APP_PRIVATE_KEY: privateKey })).toBe(privateKey);
   });
 
   test('reads the PEM from the file a local run names', async () => {
@@ -111,18 +112,18 @@ describe('readAppPrivateKey', () => {
     try {
       const path = join(directory, 'key.pem');
       await Bun.write(path, privateKey);
-      await expect(readAppPrivateKey({ MIRROR_APP_PRIVATE_KEY_FILE: path })).resolves.toBe(
-        privateKey,
-      );
+      expect(await readAppPrivateKey({ MIRROR_APP_PRIVATE_KEY_FILE: path })).toBe(privateKey);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
 
   test('refuses when neither is set, and when the named file is absent', async () => {
-    await expect(readAppPrivateKey({})).rejects.toThrow(GitHubAppError);
-    await expect(
-      readAppPrivateKey({ MIRROR_APP_PRIVATE_KEY_FILE: '/nowhere/mirror-key.pem' }),
-    ).rejects.toThrow(/does not exist/);
+    expect(await throwingRejectionOf(readAppPrivateKey({}))).toThrow(GitHubAppError);
+    expect(
+      await throwingRejectionOf(
+        readAppPrivateKey({ MIRROR_APP_PRIVATE_KEY_FILE: '/nowhere/mirror-key.pem' }),
+      ),
+    ).toThrow(/does not exist/);
   });
 });

@@ -18,6 +18,7 @@ import {
   createStepwiseBlockingGenerate,
   spyEngine,
 } from '../../src/test/index';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateFunction } from '../../src/types';
 
 function createNextToolbox() {
@@ -553,15 +554,17 @@ describe('durable scheduler preemption (suspend/resume)', () => {
     scheduler.start();
 
     try {
-      await expect(
-        scheduler.submit({
-          id: 'durable-factory-fails',
-          priority: 'background',
-          createRun: () => {
-            throw new Error('durable factory failed');
-          },
-        }),
-      ).rejects.toThrow('durable factory failed');
+      expect(
+        await throwingRejectionOf(
+          scheduler.submit({
+            id: 'durable-factory-fails',
+            priority: 'background',
+            createRun: () => {
+              throw new Error('durable factory failed');
+            },
+          }),
+        ),
+      ).toThrow('durable factory failed');
     } finally {
       await scheduler.stop();
     }

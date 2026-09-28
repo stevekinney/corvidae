@@ -28,6 +28,7 @@ import { createModelCatalog } from '../src/providers/model-catalog';
 import type { ProviderName } from '../src/providers/types';
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '../src/runnable-agent';
 import { waitForCondition } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { ConversationHistory, GenerateFunction, GenerateResponse } from '../src/types';
 
 // ---------------------------------------------------------------------------
@@ -114,7 +115,7 @@ describe('createAgent', () => {
     });
 
     const run = agent.run('test');
-    await expect(run.unwrap()).rejects.toThrow(MaximumStepsExceededError);
+    expect(await throwingRejectionOf(run.unwrap())).toThrow(MaximumStepsExceededError);
   });
 
   it('run() returns an AgentRun handle (not a Promise)', () => {

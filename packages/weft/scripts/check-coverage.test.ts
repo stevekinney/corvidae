@@ -251,12 +251,12 @@ describe('parseLcov', () => {
     }));
     using stderrWriteSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    await expect(
-      checkCoverage({
+    expect(
+      await checkCoverage({
         listCoverageTestFiles: listCoverageTestFilesStub,
         runCoverageShard: runCoverageShardStub,
       }),
-    ).resolves.toBe(false);
+    ).toBe(false);
     expect(listCoverageTestFilesStub).toHaveBeenCalledTimes(1);
     expect(runCoverageShardStub).toHaveBeenCalledTimes(1);
     expect(runCoverageShardStub).toHaveBeenCalledWith({
@@ -283,8 +283,8 @@ describe('parseLcov', () => {
     }));
     using stderrWriteSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    await expect(
-      runCoverageShard(
+    expect(
+      await runCoverageShard(
         {
           name: 'synthetic',
           coverageDirectory: 'coverage/synthetic',
@@ -292,7 +292,7 @@ describe('parseLcov', () => {
         },
         { spawnCoverageProcess },
       ),
-    ).resolves.toEqual({
+    ).toEqual({
       exitCode: 7,
       lcovPath: 'coverage/synthetic/lcov.info',
     });
@@ -391,8 +391,8 @@ describe('runCoverageShard failure diagnostics', () => {
     });
     using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(
-      runCoverageShard(
+    expect(
+      await runCoverageShard(
         {
           name: 'synthetic',
           coverageDirectory: 'coverage/synthetic',
@@ -400,7 +400,7 @@ describe('runCoverageShard failure diagnostics', () => {
         },
         { spawnCoverageProcess },
       ),
-    ).resolves.toEqual({
+    ).toEqual({
       exitCode: 1,
       lcovPath: 'coverage/synthetic/lcov.info',
     });
@@ -419,8 +419,8 @@ describe('runCoverageShard failure diagnostics', () => {
     }));
     using stderrWriteSpy = spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    await expect(
-      runCoverageShard(
+    expect(
+      await runCoverageShard(
         {
           name: 'synthetic',
           coverageDirectory: 'coverage/synthetic',
@@ -428,7 +428,7 @@ describe('runCoverageShard failure diagnostics', () => {
         },
         { spawnCoverageProcess },
       ),
-    ).resolves.toEqual({
+    ).toEqual({
       exitCode: 143,
       lcovPath: 'coverage/synthetic/lcov.info',
     });
@@ -563,12 +563,12 @@ describe('checkCoverage failure diagnostics', () => {
     }));
     using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(
-      checkCoverage({
+    expect(
+      await checkCoverage({
         listCoverageTestFiles: listOneTestFile,
         runCoverageShard: runCoverageShardStub,
       }),
-    ).resolves.toBe(false);
+    ).toBe(false);
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining('exiting non-zero at stage "missing report"'),
@@ -582,12 +582,12 @@ describe('checkCoverage failure diagnostics', () => {
         const runCoverageShardStub = mock(async () => ({ exitCode: 0, lcovPath }));
         using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
-        await expect(
-          checkCoverage({
+        expect(
+          await checkCoverage({
             listCoverageTestFiles: listOneTestFile,
             runCoverageShard: runCoverageShardStub,
           }),
-        ).resolves.toBe(false);
+        ).toBe(false);
 
         expect(consoleErrorSpy).toHaveBeenCalledWith(
           expect.stringContaining('exiting non-zero at stage "empty report"'),
@@ -611,12 +611,12 @@ describe('checkCoverage failure diagnostics', () => {
         const runCoverageShardStub = mock(async () => ({ exitCode: 0, lcovPath }));
         using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
 
-        await expect(
-          checkCoverage({
+        expect(
+          await checkCoverage({
             listCoverageTestFiles: listOneTestFile,
             runCoverageShard: runCoverageShardStub,
           }),
-        ).resolves.toBe(false);
+        ).toBe(false);
 
         expect(consoleErrorSpy).toHaveBeenCalledWith(
           expect.stringContaining('exiting non-zero at stage "parse failure"'),
@@ -642,12 +642,12 @@ describe('checkCoverage failure diagnostics', () => {
         using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
         using consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {});
 
-        await expect(
-          checkCoverage({
+        expect(
+          await checkCoverage({
             listCoverageTestFiles: listOneTestFile,
             runCoverageShard: runCoverageShardStub,
           }),
-        ).resolves.toBe(false);
+        ).toBe(false);
 
         expect(consoleErrorSpy).toHaveBeenCalledWith(
           expect.stringContaining('exiting non-zero at stage "coverage gap"'),
@@ -667,12 +667,12 @@ describe('checkCoverage failure diagnostics', () => {
         using consoleErrorSpy = spyOn(console, 'error').mockImplementation(() => {});
         using consoleLogSpy = spyOn(console, 'log').mockImplementation(() => {});
 
-        await expect(
-          checkCoverage({
+        expect(
+          await checkCoverage({
             listCoverageTestFiles: listOneTestFile,
             runCoverageShard: runCoverageShardStub,
           }),
-        ).resolves.toBe(true);
+        ).toBe(true);
 
         expect(consoleErrorSpy).not.toHaveBeenCalled();
         expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Lines:'));
@@ -944,7 +944,7 @@ describe('assertNoAllowanceKeyIsCoverageIgnored', () => {
     // aside, no tsconfig option makes a query-string specifier resolvable, upstream's
     // laxer settings just never surface the check.
     // @ts-expect-error -- Bun-only `?query` cache-busting import; not a resolvable TS specifier.
-    await expect(import('./check-coverage.ts?live-guard')).resolves.toBeDefined();
+    expect(await import('./check-coverage.ts?live-guard')).toBeDefined();
   });
 });
 

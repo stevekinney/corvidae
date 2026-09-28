@@ -4,6 +4,7 @@ import { createConversationHistory } from 'conversationalist';
 
 import { createChatTransport } from '../../src/views/chat-transport.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import type {
   ApplicationRendererRpc,
   ChatStreamEndMessage,
@@ -129,9 +130,11 @@ describe('the chat transport', () => {
       createRunId: () => 'run-1',
     });
 
-    await expect(
-      transport({ conversation: createConversationHistory({ id: 'test' }) }),
-    ).rejects.toThrow('ANTHROPIC_API_KEY is not configured');
+    expect(
+      await throwingRejectionOf(
+        transport({ conversation: createConversationHistory({ id: 'test' }) }),
+      ),
+    ).toThrow('ANTHROPIC_API_KEY is not configured');
     // A refused run must not leave a listener behind; the next turn would then
     // deliver its frames to a queue nothing reads.
     expect(bridge.subscriberCount()).toBe(0);
@@ -191,10 +194,12 @@ describe('the chat transport', () => {
     // is never coming.
     bridge.emitEnd({ runId: 'run-1', reason: 'failed' });
 
-    await expect(
-      (async () => {
-        for await (const _event of events) void _event;
-      })(),
-    ).rejects.toThrow('could not complete this turn');
+    expect(
+      await throwingRejectionOf(
+        (async () => {
+          for await (const _event of events) void _event;
+        })(),
+      ),
+    ).toThrow('could not complete this turn');
   });
 });

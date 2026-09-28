@@ -10,6 +10,7 @@ import {
   createWeftMemoryRecordStorage,
   DEFAULT_MEMORY_KEY_PREFIX,
 } from '../src/create-weft-memory-record-storage';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from '../src/types';
 
 /**
@@ -138,21 +139,23 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
       // Direct storage callers bypass createMemory, so the backend itself must
       // enforce the non-empty-namespace contract.
       await Promise.resolve(
-        expect(storage.get('a', { namespace: '' })).rejects.toThrow(
+        expect(await throwingRejectionOf(storage.get('a', { namespace: '' }))).toThrow(
           /namespace must be a non-empty string/,
         ),
       );
       await Promise.resolve(
-        expect(storage.count({ namespace: '' })).rejects.toThrow(
+        expect(await throwingRejectionOf(storage.count({ namespace: '' }))).toThrow(
           /namespace must be a non-empty string/,
         ),
       );
       await Promise.resolve(
         expect(
-          storage.putOnce!(
-            makeRecord('a', { namespace: '', metadata: { dedupeKey: 'dedupe-key' } }),
+          await throwingRejectionOf(
+            storage.putOnce!(
+              makeRecord('a', { namespace: '', metadata: { dedupeKey: 'dedupe-key' } }),
+            ),
           ),
-        ).rejects.toThrow(/namespace must be a non-empty string/),
+        ).toThrow(/namespace must be a non-empty string/),
       );
     });
   });
@@ -221,8 +224,10 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
 
       await Promise.resolve(
         expect(
-          storage.put(makeRecord('replacement', { metadata: { dedupeKey: 'shared-key' } })),
-        ).rejects.toThrow(/already belongs to memory record "original"/),
+          await throwingRejectionOf(
+            storage.put(makeRecord('replacement', { metadata: { dedupeKey: 'shared-key' } })),
+          ),
+        ).toThrow(/already belongs to memory record "original"/),
       );
 
       const dedupeOwner = await storage.getByDedupeKey!(SCOPE, 'shared-key');
@@ -239,8 +244,10 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
 
       await Promise.resolve(
         expect(
-          storage.update('other', SCOPE, { metadata: { dedupeKey: 'shared-key' } }),
-        ).rejects.toThrow(/already belongs to memory record "original"/),
+          await throwingRejectionOf(
+            storage.update('other', SCOPE, { metadata: { dedupeKey: 'shared-key' } }),
+          ),
+        ).toThrow(/already belongs to memory record "original"/),
       );
 
       const sharedDedupeOwner = await storage.getByDedupeKey!(SCOPE, 'shared-key');
@@ -292,7 +299,7 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
       const key = await onlyKey();
       await underlying.put(key, new TextEncoder().encode('{ not json'));
 
-      await Promise.resolve(expect(storage.get('a', SCOPE)).rejects.toThrow());
+      await Promise.resolve(expect(await throwingRejectionOf(storage.get('a', SCOPE))).toThrow());
     });
 
     it('throws when a stored record is structurally invalid (wrong status)', async () => {
@@ -303,7 +310,7 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
         new TextEncoder().encode(JSON.stringify({ id: 'a', status: 'bogus' })),
       );
 
-      await Promise.resolve(expect(storage.get('a', SCOPE)).rejects.toThrow());
+      await Promise.resolve(expect(await throwingRejectionOf(storage.get('a', SCOPE))).toThrow());
     });
 
     it('throws when a stored vector entry is non-finite', async () => {
@@ -329,7 +336,7 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
         ),
       );
 
-      await Promise.resolve(expect(storage.get('a', SCOPE)).rejects.toThrow());
+      await Promise.resolve(expect(await throwingRejectionOf(storage.get('a', SCOPE))).toThrow());
     });
   });
 

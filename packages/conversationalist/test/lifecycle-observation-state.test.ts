@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { Conversation } from '../src/history';
 import { appendUserMessage, createConversationHistory } from '../src/index';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 describe('lifecycle state and revisions', () => {
   it('exposes a cached framework-neutral snapshot and stable subscriptions', () => {
@@ -92,7 +93,7 @@ describe('lifecycle state and revisions', () => {
     const disposal = conversation.dispose();
     release();
 
-    expect(compaction).rejects.toMatchObject({ code: 'error:operation-cancelled' });
+    expect(await rejectionOf(compaction)).toMatchObject({ code: 'error:operation-cancelled' });
     await disposal;
     expect(conversation.lifecycle).toBe('disposed');
     expect(conversation.inFlightOperationCount).toBe(0);
@@ -192,7 +193,7 @@ describe('lifecycle state and revisions', () => {
     conversation.appendAssistantMessage('newer state');
     release();
 
-    expect(compaction).rejects.toMatchObject({ code: 'error:revision-conflict' });
+    expect(await rejectionOf(compaction)).toMatchObject({ code: 'error:revision-conflict' });
     expect(conversation.current.ids).toHaveLength(9);
     expect(staleEvents).toEqual(['compaction.stale-discarded']);
   });

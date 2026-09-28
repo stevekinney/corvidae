@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import {
   appendAssistantMessage,
@@ -107,9 +108,11 @@ describe('chat session controller', () => {
       },
     });
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'hi' }, [])).rejects.toThrow(
-        'broken stream',
-      ),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
+        ),
+      ).toThrow('broken stream'),
     );
     expect(Object.values(conversation.messages).map((message) => message.content)).toEqual(['hi']);
     expect(Object.values(conversation.messages)[0]?.metadata['_deliveryStatus']).toBe('failed');
@@ -137,8 +140,10 @@ describe('chat session controller', () => {
     });
     await Promise.resolve(
       expect(
-        controller.adapter.sendMessage({ role: 'user', content: 'write' }, []),
-      ).rejects.toThrow('interrupted'),
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'write' }, []),
+        ),
+      ).toThrow('interrupted'),
     );
     await controller.adapter.retryMessage?.(conversation.ids[0]!);
     expect(

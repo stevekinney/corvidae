@@ -20,7 +20,7 @@ describe('schema-form validation', () => {
       required: ['name', 'count'],
     };
 
-    expect(validateSchemaValue(schema, { name: 'Ada', count: 1 })).resolves.toEqual({
+    expect(await validateSchemaValue(schema, { name: 'Ada', count: 1 })).toEqual({
       valid: true,
       value: { name: 'Ada', count: 1 },
       issues: [],
@@ -45,7 +45,7 @@ describe('schema-form validation', () => {
 
   test('selects draft-07 and 2019-09 validators from $schema', async () => {
     expect(
-      validateSchemaValue(
+      await validateSchemaValue(
         {
           $schema: 'https://json-schema.org/draft/2020-12/schema',
           type: 'object',
@@ -54,10 +54,10 @@ describe('schema-form validation', () => {
         },
         { mode: 'safe' },
       ),
-    ).resolves.toEqual({ valid: true, value: { mode: 'safe' }, issues: [] });
+    ).toEqual({ valid: true, value: { mode: 'safe' }, issues: [] });
 
     expect(
-      validateSchemaValue(
+      await validateSchemaValue(
         {
           $schema: 'http://json-schema.org/draft-07/schema#',
           type: 'object',
@@ -66,10 +66,10 @@ describe('schema-form validation', () => {
         },
         { name: 'Ada' },
       ),
-    ).resolves.toEqual({ valid: true, value: { name: 'Ada' }, issues: [] });
+    ).toEqual({ valid: true, value: { name: 'Ada' }, issues: [] });
 
     expect(
-      validateSchemaValue(
+      await validateSchemaValue(
         {
           $schema: 'https://json-schema.org/draft/2019-09/schema',
           type: 'object',
@@ -78,7 +78,7 @@ describe('schema-form validation', () => {
         },
         { count: 1 },
       ),
-    ).resolves.toEqual({ valid: true, value: { count: 1 }, issues: [] });
+    ).toEqual({ valid: true, value: { count: 1 }, issues: [] });
   });
 
   test('maps JSON Schema required errors to the missing field path', async () => {
@@ -167,7 +167,7 @@ describe('schema-form validation', () => {
     schema['properties'] = { name: { type: 'string' } };
     schema['required'] = ['name'];
 
-    expect(validateSchemaValue(schema, { name: 'Ada' })).resolves.toEqual({
+    expect(await validateSchemaValue(schema, { name: 'Ada' })).toEqual({
       valid: true,
       value: { name: 'Ada' },
       issues: [],
@@ -203,7 +203,7 @@ describe('schema-form validation', () => {
     // Fixing the SAME object reference and revalidating succeeds — the
     // failed compile attempt was not cached against it.
     schema['properties'] = { a: { type: 'number' } };
-    await expect(validateSchemaValue(schema, { a: 1 })).resolves.toEqual({
+    expect(await validateSchemaValue(schema, { a: 1 })).toEqual({
       valid: true,
       value: { a: 1 },
       issues: [],

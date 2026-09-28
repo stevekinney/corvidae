@@ -68,10 +68,10 @@ describe('NoConditionalBatchStorage — documented stub behavior', () => {
   it('get always resolves null, put/delete/batch are no-ops, and scan yields nothing', async () => {
     const storage = new NoConditionalBatchStorage();
 
-    await expect(storage.get()).resolves.toBeNull();
-    await expect(storage.put()).resolves.toBeUndefined();
-    await expect(storage.delete()).resolves.toBeUndefined();
-    await expect(storage.batch()).resolves.toBeUndefined();
+    expect(await storage.get()).toBeNull();
+    expect(await storage.put()).toBeUndefined();
+    expect(await storage.delete()).toBeUndefined();
+    expect(await storage.batch()).toBeUndefined();
 
     const scanned: unknown[] = [];
     for await (const entry of storage.scan()) scanned.push(entry);

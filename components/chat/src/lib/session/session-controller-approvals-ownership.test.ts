@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import {
   appendAssistantMessage,
@@ -55,8 +56,11 @@ describe('chat session controller', () => {
 
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-      ).resolves.toBe('resolved'),
+        await controller.adapter.resolveToolApproval?.('call', {
+          decision: 'approve',
+          remember: false,
+        }),
+      ).toBe('resolved'),
     );
     expect(continuations).toBe(1);
   });
@@ -101,8 +105,11 @@ describe('chat session controller', () => {
 
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
-      ).resolves.toBe('resolved'),
+        await controller.adapter.resolveToolApproval?.('call', {
+          decision: 'deny',
+          remember: false,
+        }),
+      ).toBe('resolved'),
     );
     expect(continuations).toBe(1);
   });
@@ -240,7 +247,7 @@ describe('chat session controller', () => {
     controller.dispose();
     resolveApproval({ callId: 'call', outcome: 'success', content: 'allowed' });
 
-    await Promise.resolve(expect(approval).rejects.toThrow('disposed'));
+    await Promise.resolve(expect(await throwingRejectionOf(approval)).toThrow('disposed'));
     expect(conversation).toBe(original);
   });
 

@@ -16,6 +16,7 @@ export * from './style-markers.ts';
 export * from './svelte-plugin.ts';
 export * from './visual-fixtures.ts';
 
+export { rejectionOf, throwingRejectionOf } from './helpers/promise-outcome.ts';
 export { requiredInstance, requiredValue } from './helpers/required-value.ts';
 
 export { setupHappyDom } from './helpers/happy-dom.ts';

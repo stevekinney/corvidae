@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { type CorpusEntry } from './corpus.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
@@ -122,18 +123,20 @@ describe('CIN-488 through CIN-493 follow-up guards', () => {
       ],
     };
     expect(
-      buildTokensBaseCss(
-        resolver,
-        new Map([
-          ['base.json', base],
-          ['light.json', {}],
-          ['dark.json', {}],
-          ['default.json', { token: { $value: 2 } }],
-          ['reduced.json', {}],
-          ['forced.json', {}],
-        ]),
+      await throwingRejectionOf(
+        buildTokensBaseCss(
+          resolver,
+          new Map([
+            ['base.json', base],
+            ['light.json', {}],
+            ['dark.json', {}],
+            ['default.json', { token: { $value: 2 } }],
+            ['reduced.json', {}],
+            ['forced.json', {}],
+          ]),
+        ),
       ),
-    ).rejects.toThrow(/motion\.default must not declare token overrides/);
+    ).toThrow(/motion\.default must not declare token overrides/);
   });
 
   test('rejects group metadata in motion.default documents', async () => {
@@ -168,18 +171,20 @@ describe('CIN-488 through CIN-493 follow-up guards', () => {
       ],
     };
     expect(
-      buildTokensBaseCss(
-        resolver,
-        new Map([
-          ['base.json', base],
-          ['light.json', {}],
-          ['dark.json', {}],
-          ['default.json', { $type: 'fontWeight' }],
-          ['reduced.json', {}],
-          ['forced.json', {}],
-        ]),
+      await throwingRejectionOf(
+        buildTokensBaseCss(
+          resolver,
+          new Map([
+            ['base.json', base],
+            ['light.json', {}],
+            ['dark.json', {}],
+            ['default.json', { $type: 'fontWeight' }],
+            ['reduced.json', {}],
+            ['forced.json', {}],
+          ]),
+        ),
       ),
-    ).rejects.toThrow(/motion\.default must not declare.*group metadata/);
+    ).toThrow(/motion\.default must not declare.*group metadata/);
   });
 
   test('root motion aliases resolve from the unthemed system scope', async () => {

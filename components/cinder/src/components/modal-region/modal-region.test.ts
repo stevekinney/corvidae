@@ -41,7 +41,7 @@ describe('ModalRegion', () => {
     expect(api).toBeDefined();
     unmount();
 
-    await Promise.resolve(expect(api!.confirm({ title: 'Confirm action' })).resolves.toBe(false));
+    await Promise.resolve(expect(await api!.confirm({ title: 'Confirm action' })).toBe(false));
   });
 
   test('exposes dedicated title and scoped custom-content controls', () => {

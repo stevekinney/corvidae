@@ -138,9 +138,9 @@ for (const backend of storageBackends) {
         registerScenarioHandlers(engine, scenario);
 
         const workflowId = fixture.finalState.id;
-        expect(engine.get(workflowId)).resolves.toEqual(fixture.finalState);
-        expect(engine.getTimeline(workflowId)).resolves.toEqual(fixture.timeline);
-        expect(engine.getEvents(workflowId)).resolves.toEqual(fixture.events);
+        expect(await engine.get(workflowId)).toEqual(fixture.finalState);
+        expect(await engine.getTimeline(workflowId)).toEqual(fixture.timeline);
+        expect(await engine.getEvents(workflowId)).toEqual(fixture.events);
 
         const recoveredHandles = await engine.recoverAll();
         expect(recoveredHandles).toHaveLength(0);

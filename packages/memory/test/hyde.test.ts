@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { createMemory } from '../src/create-memory';
 import { createHyDEGenerator, withHyDE } from '../src/hyde';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Memory } from '../src/types';
 
 const DIMENSION = 64;
@@ -167,7 +168,7 @@ describe('withHyDE', () => {
     const hydeMemory = withHyDE(innerMemory, { generateHypothetical });
 
     await Promise.resolve(
-      expect(hydeMemory.recall('test query')).rejects.toThrow('LLM unavailable'),
+      expect(await throwingRejectionOf(hydeMemory.recall('test query'))).toThrow('LLM unavailable'),
     );
   });
 });

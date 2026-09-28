@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
@@ -116,8 +117,13 @@ describe('chat session controller', () => {
     await controller.adapter.sendMessage({ role: 'user', content: 'write' }, []);
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-      ).rejects.toThrow('must return'),
+        await throwingRejectionOf(
+          controller.adapter.resolveToolApproval?.('call', {
+            decision: 'approve',
+            remember: false,
+          }),
+        ),
+      ).toThrow('must return'),
     );
   });
 
@@ -168,9 +174,11 @@ describe('chat session controller', () => {
       events([{ type: 'text', text: 'hello', wireVersion: 1, sequence: 0 }]),
     );
     await Promise.resolve(
-      expect(unterminated.adapter.sendMessage({ role: 'user', content: 'hi' }, [])).rejects.toThrow(
-        'Invalid chat stream event: stream ended without a terminal frame',
-      ),
+      expect(
+        await throwingRejectionOf(
+          unterminated.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
+        ),
+      ).toThrow('Invalid chat stream event: stream ended without a terminal frame'),
     );
 
     // A frame after the terminal frame.
@@ -182,8 +190,10 @@ describe('chat session controller', () => {
     );
     await Promise.resolve(
       expect(
-        afterTerminal.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
-      ).rejects.toThrow('Invalid chat stream event: frame arrived after the terminal frame'),
+        await throwingRejectionOf(
+          afterTerminal.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
+        ),
+      ).toThrow('Invalid chat stream event: frame arrived after the terminal frame'),
     );
 
     // A bare frame following a versioned one.
@@ -194,9 +204,9 @@ describe('chat session controller', () => {
       ]),
     );
     await Promise.resolve(
-      expect(mixed.adapter.sendMessage({ role: 'user', content: 'hi' }, [])).rejects.toThrow(
-        'Invalid chat stream event',
-      ),
+      expect(
+        await throwingRejectionOf(mixed.adapter.sendMessage({ role: 'user', content: 'hi' }, [])),
+      ).toThrow('Invalid chat stream event'),
     );
   });
 });

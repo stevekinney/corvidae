@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
 import {
   commitExists,
@@ -93,7 +94,7 @@ describe('fetchGitHead', () => {
       stdout: '',
       stderr: 'registry error 404',
     });
-    await expect(fetchGitHead('missing', '1.0.0', runner)).rejects.toThrow(
+    expect(await throwingRejectionOf(fetchGitHead('missing', '1.0.0', runner))).toThrow(
       RegistryVerificationError,
     );
   });

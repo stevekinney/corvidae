@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
 import { runCommand } from './packaging.ts';
@@ -122,25 +123,31 @@ describe('direct push credentials', () => {
       };
     };
 
-    await expect(directPushEnvironment('/tmp/mirror.git', provider)).resolves.toEqual({});
+    expect(await directPushEnvironment('/tmp/mirror.git', provider)).toEqual({});
     expect(requests).toBe(0);
-    await expect(
-      directPushEnvironment('https://github.com/stevekinney/mirror.git', provider),
-    ).resolves.toEqual({
+    expect(
+      await directPushEnvironment('https://github.com/stevekinney/mirror.git', provider),
+    ).toEqual({
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
       GIT_CONFIG_VALUE_0: 'Authorization: Basic trusted-token',
     });
     expect(requests).toBe(1);
-    await expect(
-      directPushEnvironment('https://gitlab.com/stevekinney/mirror.git', provider),
-    ).rejects.toThrow('only supports GitHub HTTPS remotes');
-    await expect(
-      directPushEnvironment('https://user:password@github.com/stevekinney/mirror.git', provider),
-    ).rejects.toThrow('without URL credentials');
-    await expect(
-      directPushEnvironment('https://github.com:8443/stevekinney/mirror.git', provider),
-    ).rejects.toThrow('only supports GitHub HTTPS remotes');
+    expect(
+      await throwingRejectionOf(
+        directPushEnvironment('https://gitlab.com/stevekinney/mirror.git', provider),
+      ),
+    ).toThrow('only supports GitHub HTTPS remotes');
+    expect(
+      await throwingRejectionOf(
+        directPushEnvironment('https://user:password@github.com/stevekinney/mirror.git', provider),
+      ),
+    ).toThrow('without URL credentials');
+    expect(
+      await throwingRejectionOf(
+        directPushEnvironment('https://github.com:8443/stevekinney/mirror.git', provider),
+      ),
+    ).toThrow('only supports GitHub HTTPS remotes');
     expect(requests).toBe(1);
   });
 
@@ -725,7 +732,7 @@ describe('the mirror sync against a fake remote', () => {
         await git(attacker, 'commit', '--quiet', '--message', 'Target changes its build input');
         await git(attacker, 'push', '--quiet', 'origin', 'HEAD:main');
 
-        await expect(sync(harness, 'staged-tamper')).rejects.toThrow(
+        expect(await throwingRejectionOf(sync(harness, 'staged-tamper'))).toThrow(
           /staged tree changed during verification/,
         );
         const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');

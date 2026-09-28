@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   dispatchSnapshotWorkflow,
   pullRequestBodyFor,
@@ -137,22 +138,24 @@ describe('snapshotDispatchFor', () => {
     const directory = await mkdtemp(join(tmpdir(), 'snapshot-error-'));
     try {
       await Bun.write(join(directory, '.github/workflows/release.yaml'), 'name: release\n');
-      await expect(
-        dispatchSnapshotWorkflow(
-          api,
-          'weft',
-          'stevekinney/weft',
-          'mirror-sync-deadbeef',
-          {
-            decision: 'pushed',
-            commit: 'deadbeef',
-            baseBranch: 'main',
-            baseCommit: 'base-sha',
-            pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
-          },
-          directory,
+      expect(
+        await throwingRejectionOf(
+          dispatchSnapshotWorkflow(
+            api,
+            'weft',
+            'stevekinney/weft',
+            'mirror-sync-deadbeef',
+            {
+              decision: 'pushed',
+              commit: 'deadbeef',
+              baseBranch: 'main',
+              baseCommit: 'base-sha',
+              pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+            },
+            directory,
+          ),
         ),
-      ).rejects.toThrow('dispatch refused');
+      ).toThrow('dispatch refused');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

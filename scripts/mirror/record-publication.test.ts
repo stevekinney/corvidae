@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { readPackagePayload } from './package-payload.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
@@ -252,7 +253,9 @@ async function withPublication(
 
 test('historical declared roots cannot disappear behind the current collector', async () => {
   await withPublication(async ({ options }) => {
-    await expect(recordSourceDigest(options)).rejects.toThrow('historical source paths or bytes');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+      'historical source paths or bytes',
+    );
   }, true);
 });
 
@@ -299,26 +302,30 @@ test('rejects changed historical input, source bytes, dirty checkout, and wrong 
       path,
       json({ ...JSON.parse(initial), imports: { '#worker': './src/worker.ts' } }),
     );
-    await expect(recordSourceDigest(options)).rejects.toThrow(
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
       'historical publication inputs differ',
     );
     await Bun.write(path, initial);
     await Bun.write(join(current, 'packages/operative/src/index.ts'), 'export const value = 2;\n');
-    await expect(recordSourceDigest(options)).rejects.toThrow('historical source paths or bytes');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+      'historical source paths or bytes',
+    );
     await Bun.write(join(current, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
     await Bun.write(join(historical, 'unexpected'), 'dirty');
-    await expect(recordSourceDigest(options)).rejects.toThrow('must be clean');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('must be clean');
     await commit(historical, 'different source revision');
-    await expect(recordSourceDigest(options)).rejects.toThrow('HEAD must equal');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('HEAD must equal');
   });
 });
 
 test('rejects tampered tarballs and mismatched registry manifests', async () => {
   await withPublication(async ({ options, registry, setRegistry }) => {
     await setRegistry(registry, true);
-    await expect(recordSourceDigest(options)).rejects.toThrow('integrity mismatch');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('integrity mismatch');
     await setRegistry({ ...registry, files: ['src'] });
-    await expect(recordSourceDigest(options)).rejects.toThrow('registry manifest differs');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+      'registry manifest differs',
+    );
   });
 });
 
@@ -330,7 +337,9 @@ test('rejects altered JavaScript and declarations despite matching manifest and 
         'dist/index.d.ts': 'export declare const value = 1;\n',
         [path]: 'altered published payload\n',
       });
-      await expect(recordSourceDigest(options)).rejects.toThrow('registry payload differs');
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+        'registry payload differs',
+      );
     }
   });
 });
@@ -352,7 +361,7 @@ test('rejects source changes between the mirror and release commits', async () =
             stdout: changedCommit,
           })
         : registryRunner(command, settings);
-    await expect(recordSourceDigest(options)).rejects.toThrow('non-target-owned path');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('non-target-owned path');
   });
 });
 
@@ -364,38 +373,49 @@ test('rejects missing registry commits and invalid publication-map entries', asy
       stderr: '',
       stdout: '',
     });
-    await expect(recordSourceDigest({ ...options, registryRunner })).rejects.toThrow(
+    expect(await throwingRejectionOf(recordSourceDigest({ ...options, registryRunner }))).toThrow(
       'no recorded gitHead',
     );
-    await expect(
-      recordSourceDigest({
-        ...options,
-        registryRunner: async (command) => ({
-          command: command.join(' '),
-          exitCode: 0,
-          stderr: '',
-          stdout: '0'.repeat(40),
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({
+          ...options,
+          registryRunner: async (command) => ({
+            command: command.join(' '),
+            exitCode: 0,
+            stderr: '',
+            stdout: '0'.repeat(40),
+          }),
         }),
-      }),
-    ).rejects.toThrow(/is not in .* history/);
-    await expect(
-      recordSourceDigest({ ...options, workspace: '@lostgradient/nonexistent' }),
-    ).rejects.toThrow('no entry');
-    await expect(
-      recordSourceDigest({ ...options, workspace: '@lostgradient/weft-ui' }),
-    ).rejects.toThrow('not "publish-as"');
+      ),
+    ).toThrow(/is not in .* history/);
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({ ...options, workspace: '@lostgradient/nonexistent' }),
+      ),
+    ).toThrow('no entry');
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({ ...options, workspace: '@lostgradient/weft-ui' }),
+      ),
+    ).toThrow('not "publish-as"');
     const map = options.packageMap!;
     const entry = map.workspaces[workspace];
     if (entry?.disposition !== 'publish-as') throw new Error('Fixture package must publish');
-    await expect(
-      recordSourceDigest({
-        ...options,
-        packageMap: {
-          ...map,
-          workspaces: { ...map.workspaces, [workspace]: { ...entry, lastPublishedVersion: null } },
-        },
-      }),
-    ).rejects.toThrow('lastPublishedVersion is null');
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({
+          ...options,
+          packageMap: {
+            ...map,
+            workspaces: {
+              ...map.workspaces,
+              [workspace]: { ...entry, lastPublishedVersion: null },
+            },
+          },
+        }),
+      ),
+    ).toThrow('lastPublishedVersion is null');
   });
 });
 
@@ -454,7 +474,7 @@ test('explicit mirror boundary rejects copied provenance trailers and runtime ma
               stdout: changedCommit,
             })
           : registryRunner(command, settings);
-      await expect(recordSourceDigest(options)).rejects.toThrow(
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
         `source-owned manifest field packages/operative/package.json:${field}`,
       );
     });
@@ -484,7 +504,7 @@ for (const field of ['scripts', 'devDependencies', 'packageManager']) {
               stdout: changedCommit,
             })
           : registryRunner(command, settings);
-      await expect(recordSourceDigest(options)).rejects.toThrow(
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
         `source-owned manifest field packages/operative/package.json:${field}`,
       );
     });
@@ -671,7 +691,7 @@ for (const testCase of mergeSideChangeCases) {
               stdout: release,
             })
           : registryRunner(command, settings);
-      await expect(recordSourceDigest(options)).rejects.toThrow(testCase.expected);
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(testCase.expected);
     });
   });
 }
@@ -920,26 +940,30 @@ test('publication inputs use historical routing for workspace dependency ranges'
 test('publication inputs fail closed when historical routing facts are missing', async () => {
   await withPublication(async ({ historical }) => {
     await rm(join(historical, 'scripts/mirror/layout-map.json'));
-    await expect(
-      publicationInputContract({
-        corvidaeRoot: historical,
-        corvidaeDirectory: 'packages/operative',
-        workspace,
-      }),
-    ).rejects.toThrow('historical layout is missing');
+    expect(
+      await throwingRejectionOf(
+        publicationInputContract({
+          corvidaeRoot: historical,
+          corvidaeDirectory: 'packages/operative',
+          workspace,
+        }),
+      ),
+    ).toThrow('historical layout is missing');
   });
 });
 
 test('publication inputs fail closed when historical routing modules are missing', async () => {
   await withPublication(async ({ historical }) => {
     await rm(join(historical, 'scripts/mirror/target-definitions.ts'));
-    await expect(
-      publicationInputContract({
-        corvidaeRoot: historical,
-        corvidaeDirectory: 'packages/operative',
-        workspace,
-      }),
-    ).rejects.toThrow('historical target routing is missing');
+    expect(
+      await throwingRejectionOf(
+        publicationInputContract({
+          corvidaeRoot: historical,
+          corvidaeDirectory: 'packages/operative',
+          workspace,
+        }),
+      ),
+    ).toThrow('historical target routing is missing');
   });
 });
 
@@ -966,7 +990,7 @@ test('publication inputs bind workspace dependencies to their recorded published
     expect(after).not.toEqual(before);
     map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = null;
     await Bun.write(mapPath, json(map));
-    await expect(read()).rejects.toThrow('no recorded published version');
+    expect(await throwingRejectionOf(read())).toThrow('no recorded published version');
     expect(
       await publicationInputContract({
         corvidaeRoot: current,

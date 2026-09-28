@@ -228,9 +228,9 @@ async function expectReplayToMatchFixture(fixtureFile: string): Promise<void> {
   const { engine, workflowId } = await runScenarioFromFixture(fixture);
 
   try {
-    expect(engine.get(workflowId)).resolves.toEqual(fixture.finalState);
-    expect(engine.getEvents(workflowId)).resolves.toEqual(fixture.events);
-    expect(engine.getTimeline(workflowId)).resolves.toEqual(fixture.timeline);
+    expect(await engine.get(workflowId)).toEqual(fixture.finalState);
+    expect(await engine.getEvents(workflowId)).toEqual(fixture.events);
+    expect(await engine.getTimeline(workflowId)).toEqual(fixture.timeline);
     expect(storageAsBase64Record(sortedStorageEntries(engine.storage))).toEqual(fixture.storage);
 
     if (fixture.replayMetadata !== undefined) {
@@ -238,7 +238,7 @@ async function expectReplayToMatchFixture(fixtureFile: string): Promise<void> {
       // state; an empty array would let this assertion block pass vacuously.
       expect(fixture.replayMetadata.additionalTerminalStates.length).toBeGreaterThan(0);
       for (const additionalState of fixture.replayMetadata.additionalTerminalStates) {
-        expect(engine.get(additionalState.id)).resolves.toEqual(additionalState);
+        expect(await engine.get(additionalState.id)).toEqual(additionalState);
       }
     }
   } finally {
@@ -277,9 +277,9 @@ describe('storage format compatibility', () => {
       engine = new Engine({ storage });
       const workflowId = fixture.finalState.id;
 
-      expect(engine.getEvents(workflowId)).resolves.toEqual(fixture.events);
-      expect(engine.getTimeline(workflowId)).resolves.toEqual(fixture.timeline);
-      expect(engine.get(workflowId)).resolves.toEqual(fixture.finalState);
+      expect(await engine.getEvents(workflowId)).toEqual(fixture.events);
+      expect(await engine.getTimeline(workflowId)).toEqual(fixture.timeline);
+      expect(await engine.get(workflowId)).toEqual(fixture.finalState);
 
       // Multi-terminal scenarios (for example, fork) persist additional
       // terminal workflows beyond finalState. Without this assertion the suite
@@ -288,7 +288,7 @@ describe('storage format compatibility', () => {
       if (fixture.replayMetadata !== undefined) {
         expect(fixture.replayMetadata.additionalTerminalStates.length).toBeGreaterThan(0);
         for (const additionalState of fixture.replayMetadata.additionalTerminalStates) {
-          expect(engine.get(additionalState.id)).resolves.toEqual(additionalState);
+          expect(await engine.get(additionalState.id)).toEqual(additionalState);
         }
       }
     });

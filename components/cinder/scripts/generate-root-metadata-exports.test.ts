@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { buildManifest } from './generate-manifest.ts';
 import {
   checkRootMetadataExports,
@@ -34,9 +35,9 @@ describe('root metadata export generation', () => {
       components: [first, { ...second, id: first.id }],
     };
     await Promise.resolve(
-      expect(generateRootMetadataExports(duplicateManifest, undefined, false)).rejects.toThrow(
-        /Metadata export .* collides/,
-      ),
+      expect(
+        await throwingRejectionOf(generateRootMetadataExports(duplicateManifest, undefined, false)),
+      ).toThrow(/Metadata export .* collides/),
     );
   });
 

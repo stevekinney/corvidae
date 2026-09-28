@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
@@ -58,16 +59,20 @@ describe('chat session controller', () => {
       hooks: { onError: (error) => errors.push(error) },
     });
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'run' }, [])).rejects.toThrow(
-        'continuation limit',
-      ),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'run' }, []),
+        ),
+      ).toThrow('continuation limit'),
     );
     expect(errors).toHaveLength(1);
     controller.dispose();
     await Promise.resolve(
       expect(
-        controller.adapter.sendMessage({ role: 'user', content: 'again' }, []),
-      ).rejects.toThrow('disposed'),
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'again' }, []),
+        ),
+      ).toThrow('disposed'),
     );
   });
 
@@ -151,8 +156,10 @@ describe('chat session controller', () => {
     const originalId = conversation.ids[0]!;
     await Promise.resolve(
       expect(
-        controller.adapter.editMessage?.({ messageId: originalId, content: 'edited' }),
-      ).rejects.toThrow('failed edit'),
+        await throwingRejectionOf(
+          controller.adapter.editMessage?.({ messageId: originalId, content: 'edited' }),
+        ),
+      ).toThrow('failed edit'),
     );
     const replacementId = conversation.ids[0]!;
     await controller.adapter.retryMessage?.(replacementId);

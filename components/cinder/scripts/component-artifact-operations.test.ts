@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { formatGenerated } from './component-artifact-operations.ts';
 import { assertPrettierResolvesToRoot } from './lib/prettier-resolution.ts';
 
@@ -58,8 +59,8 @@ describe('formatGenerated prettier resolution', () => {
   test('surfaces a formatting failure naming the file and the resolved prettier', async () => {
     const attempt = formatGenerated('export const = ;', '/generated/broken.ts');
 
-    await expect(attempt).rejects.toThrow(/failed to format \/generated\/broken\.ts/);
-    await expect(attempt).rejects.toThrow(
+    expect(await throwingRejectionOf(attempt)).toThrow(/failed to format \/generated\/broken\.ts/);
+    expect(await throwingRejectionOf(attempt)).toThrow(
       /prettier \d+\.\d+\.\d+ \(file:.*\/node_modules\/prettier\//,
     );
     // The underlying error's own message is in the string, not only in `cause`,

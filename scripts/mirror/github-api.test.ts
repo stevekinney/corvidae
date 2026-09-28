@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { generateKeyPairSync } from 'node:crypto';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   createGitHubApi,
   GitHubApiError,
@@ -86,13 +87,11 @@ describe('readRepository', () => {
 
   test('reports an absent repository as undefined and any other status as a failure', async () => {
     const absent = harness([{ status: 404, body: { message: 'Not Found' } }]);
-    await expect(absent.api.readRepository('stevekinney/mirror-dryrun-20260919')).resolves.toBe(
-      undefined,
-    );
+    expect(await absent.api.readRepository('stevekinney/mirror-dryrun-20260919')).toBe(undefined);
     const broken = harness([{ status: 500, body: { message: 'Server Error' } }]);
-    await expect(broken.api.readRepository('stevekinney/mirror-dryrun-20260919')).rejects.toThrow(
-      GitHubApiError,
-    );
+    expect(
+      await throwingRejectionOf(broken.api.readRepository('stevekinney/mirror-dryrun-20260919')),
+    ).toThrow(GitHubApiError);
   });
 
   test('treats a missing description as null rather than as the sentinel', async () => {
@@ -182,14 +181,16 @@ describe('dispatchWorkflow', () => {
     const { api } = harness([{ status: 202 }]);
     const dispatchWorkflow = api.dispatchWorkflow;
     expect(dispatchWorkflow).toBeDefined();
-    await expect(
-      dispatchWorkflow!({
-        fullName: 'stevekinney/weft',
-        workflowFile: 'release.yaml',
-        ref: 'main',
-        inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
-      }),
-    ).rejects.toThrow(/HTTP 202/);
+    expect(
+      await throwingRejectionOf(
+        dispatchWorkflow!({
+          fullName: 'stevekinney/weft',
+          workflowFile: 'release.yaml',
+          ref: 'main',
+          inputs: { snapshot: 'true', expected_sha: 'deadbeef' },
+        }),
+      ),
+    ).toThrow(/HTTP 202/);
   });
 });
 
@@ -240,19 +241,21 @@ describe('deleteRepository', () => {
     // The driver's guard is the primary one, but this function is what issues the request, so it
     // carries the name check itself: no edit to a caller can aim it at a real repository.
     const { api, seen } = harness([{ status: 204 }]);
-    await expect(api.deleteRepository('stevekinney/weft')).rejects.toThrow(ScratchGuardError);
-    await expect(api.deleteRepository('')).rejects.toThrow(ScratchGuardError);
-    await expect(api.deleteRepository('stevekinney/mirror-dryrun-20260919 ')).rejects.toThrow(
+    expect(await throwingRejectionOf(api.deleteRepository('stevekinney/weft'))).toThrow(
       ScratchGuardError,
     );
+    expect(await throwingRejectionOf(api.deleteRepository(''))).toThrow(ScratchGuardError);
+    expect(
+      await throwingRejectionOf(api.deleteRepository('stevekinney/mirror-dryrun-20260919 ')),
+    ).toThrow(ScratchGuardError);
     expect(seen).toEqual([]);
   });
 
   test('fails loudly when GitHub refuses the delete', async () => {
     const { api } = harness([{ status: 403, body: { message: 'Must have admin rights' } }]);
-    await expect(api.deleteRepository('stevekinney/mirror-dryrun-20260919')).rejects.toThrow(
-      /HTTP 403/,
-    );
+    expect(
+      await throwingRejectionOf(api.deleteRepository('stevekinney/mirror-dryrun-20260919')),
+    ).toThrow(/HTTP 403/);
   });
 });
 
@@ -337,8 +340,8 @@ describe('installation token lifecycle', () => {
       },
       environment,
     );
-    await expect(token()).rejects.toThrow('HTTP 503');
-    await expect(token()).rejects.toThrow('valid expiry');
+    expect(await throwingRejectionOf(token())).toThrow('HTTP 503');
+    expect(await throwingRejectionOf(token())).toThrow('valid expiry');
     expect(await token()).toBe('test-installation-recovered');
     expect(minted).toBe(3);
   });

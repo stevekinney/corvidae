@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { mapWithConcurrency } from './map-with-concurrency';
+import { throwingRejectionOf } from './promise-outcome.test-support.ts';
 
 /** A promise the test settles by hand, so completion order is chosen rather than raced. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -44,7 +45,7 @@ describe('mapWithConcurrency', () => {
       await Bun.sleep(1);
       return item;
     });
-    await expect(mapped).rejects.toThrow('item 1 failed');
+    expect(await throwingRejectionOf(mapped)).toThrow('item 1 failed');
     await Bun.sleep(10);
     expect(started).toEqual([0, 1]);
   });
@@ -60,9 +61,9 @@ describe('mapWithConcurrency', () => {
 
   test('refuses a limit that could never make progress', async () => {
     for (const limit of [0, -1, 1.5, Number.NaN]) {
-      await expect(mapWithConcurrency([1], limit, async (item) => item)).rejects.toThrow(
-        RangeError,
-      );
+      expect(
+        await throwingRejectionOf(mapWithConcurrency([1], limit, async (item) => item)),
+      ).toThrow(RangeError);
     }
   });
 });

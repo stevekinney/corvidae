@@ -51,6 +51,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@sveltejs/vite-plugin-svelte": "catalog:",
         "@types/bun": "catalog:",
@@ -325,6 +326,7 @@
         "unist-util-visit": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "@types/diff-match-patch": "catalog:",
