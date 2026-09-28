@@ -68,6 +68,7 @@ export type VerifyStepKind =
   | 'publint'
   | 'attw'
   | 'typecheck-private'
+  | 'build-private'
   | 'write-consumer-project'
   | 'consumer-install'
   | 'consumer-run'
@@ -155,30 +156,32 @@ function attwCommand(env: VerifyEnvironment, tarball: string): readonly string[]
 export class VerifyStepOrderError extends Error {}
 
 /**
- * The published packages, reordered so every package follows the packages it depends on.
+ * Published or private workspaces, reordered so each follows its dependencies in that group.
  *
  * Kahn's algorithm, taking every package whose dependencies are already satisfied in each round and
  * keeping them in the caller's discovery order within the round. Stability matters: discovery order
  * is what the step list used before COR-1289 and what every target with no intra-target edges still
  * gets, so a target that never had the defect sees no change at all.
  */
-function orderByDependencies(published: readonly PublishedPackage[]): readonly PublishedPackage[] {
-  const byPublicName = new Map(published.map((entry) => [entry.publicName, entry]));
-  for (const entry of published) {
+function orderByDependencies<Entry extends { publicName: string; dependsOn: readonly string[] }>(
+  entries: readonly Entry[],
+  group: 'published' | 'private' = 'published',
+): readonly Entry[] {
+  const byPublicName = new Map(entries.map((entry) => [entry.publicName, entry]));
+  for (const entry of entries) {
     for (const dependency of entry.dependsOn) {
       if (byPublicName.has(dependency)) continue;
-      // `surface.ts` narrows `dependsOn` to the published set before it ever reaches here, so a
-      // stranger means the two halves disagree about what this target publishes — a defect to
-      // surface, not one to route around by ignoring the edge and ordering as if it were absent.
+      // `surface.ts` narrows `dependsOn` to this group before it reaches here. An unknown edge
+      // means planning and verification disagree, so do not silently ignore it.
       throw new VerifyStepOrderError(
-        `${entry.publicName} depends on ${dependency}, which this target does not publish; dependsOn is expected to name only published packages of the same target`,
+        `${entry.publicName} depends on ${dependency}, which is not in this target's ${group} workspaces; dependsOn must name only ${group} workspaces of the same target`,
       );
     }
   }
 
-  const ordered: PublishedPackage[] = [];
+  const ordered: Entry[] = [];
   const built = new Set<string>();
-  let remaining = [...published];
+  let remaining = [...entries];
   while (remaining.length > 0) {
     const ready = remaining.filter((entry) =>
       entry.dependsOn.every((dependency) => built.has(dependency)),
@@ -188,7 +191,7 @@ function orderByDependencies(published: readonly PublishedPackage[]): readonly P
         entry.dependsOn.map((dependency) => `  ${entry.publicName} -> ${dependency}`),
       );
       throw new VerifyStepOrderError(
-        `These published packages depend on each other in a cycle, so no build order satisfies them: ${remaining
+        `These ${group} ${group === 'published' ? 'packages' : 'workspaces'} depend on each other in a cycle, so no build order satisfies them: ${remaining
           .map((entry) => entry.publicName)
           .join(', ')}\n${edges.join('\n')}`,
       );
@@ -203,7 +206,7 @@ function orderByDependencies(published: readonly PublishedPackage[]): readonly P
 /**
  * The ordered verification steps for one target: install, then every published package's build,
  * then every one's typecheck, then per package pack and packaging checks, then per checkable
- * private workspace typecheck, then the consumer smoke test. Mirrors `verifyTarget`'s own comment
+ * private workspace build and typecheck where declared, then the consumer smoke test. Mirrors `verifyTarget`'s own comment
  * on why the order is what it is: the root install first because everything after it depends on a
  * satisfied `node_modules`, then one package at a time rather than a root fan-out, because this
  * list verifies exactly what the plan emits and nothing the target's own root scripts might
@@ -379,6 +382,19 @@ export function buildVerifySteps(
     dependsOn: entry.dependsOn,
   }));
 
+  const orderedPrivateBuilds = orderByDependencies(
+    inputs.privateWorkspaces.filter((entry) => entry.builds),
+    'private',
+  );
+  for (const entry of orderedPrivateBuilds) {
+    steps.push({
+      kind: 'build-private',
+      description: `build ${entry.publicName}`,
+      cwd: env.resolveDirectory(entry.directory),
+      command: ['bun', 'run', 'build'],
+      publicName: entry.publicName,
+    });
+  }
   for (const entry of inputs.privateWorkspaces) {
     if (!entry.emitsTypeScript) continue;
     steps.push({

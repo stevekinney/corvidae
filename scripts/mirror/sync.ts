@@ -765,6 +765,10 @@ export async function verifyTarget({
         if (step.publicName) privateTypechecks.push(step.publicName);
         break;
       }
+      case 'build-private': {
+        assertSucceeded(result, `running build for ${step.publicName}`);
+        break;
+      }
       case 'consumer-install': {
         assertSucceeded(result, 'installing the packed tarballs into the consumer project');
         break;

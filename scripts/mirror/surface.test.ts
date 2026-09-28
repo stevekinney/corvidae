@@ -11,14 +11,30 @@ import { nonSourceNames, nonSourcePrefixes } from './source.ts';
 import {
   assertPublishable,
   isExpectedPackRewrite,
+  privateBuildDependencies,
   SurfaceError,
   unresolvedFindings,
   unresolvedSubpaths,
   type SurfacePlan,
 } from './surface.ts';
+
 import { mirrorTargets, targetFor, type MirrorTarget } from './target-definitions.ts';
 import { assertWritablePaths, loadTargetOwnedPolicy } from './target-owned.ts';
 import { configurationFiles, vendoredDirectory } from './typescript-configuration.ts';
+
+test('private build dependencies include development edges only to other private builders', () => {
+  const manifest = {
+    dependencies: { '@lostgradient/memory': 'workspace:*' },
+    devDependencies: {
+      '@lostgradient/skills': 'workspace:*',
+      '@lostgradient/typescript': 'workspace:*',
+    },
+    peerDependencies: { '@lostgradient/bureau': 'workspace:*' },
+  };
+  expect(
+    privateBuildDependencies(manifest, new Set(['@lostgradient/memory', '@lostgradient/skills'])),
+  ).toEqual(['@lostgradient/memory', '@lostgradient/skills']);
+});
 
 /**
  * The acceptance gates, run against the committed tree rather than a fixture, because what they
