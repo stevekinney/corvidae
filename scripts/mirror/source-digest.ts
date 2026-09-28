@@ -5,6 +5,7 @@ import { packagePayloadAlgorithm, type PackagePayloadContract } from './package-
 import { canonicalManifest, objectRecord } from './registry-manifest.ts';
 import { publishedVersionRange } from './target-definitions.ts';
 
+import { fileReadConcurrency, mapWithConcurrency } from '../map-with-concurrency.ts';
 import { filesCoverPath, loadPackageSurface } from './package-surface.ts';
 import { loadHistoricalPublicationRouting } from './publication-routing.ts';
 import { additionalSourceRoots, isSourceFile, sourceTree, versionConstants } from './source.ts';
@@ -166,17 +167,19 @@ export async function collectDigestedFiles({
   policy,
 }: DigestScope): Promise<DigestedFile[]> {
   const workspaceRoot = join(corvidaeRoot, corvidaeDirectory);
-  const files: DigestedFile[] = [];
   const excludedPath = policy ? policy.versionConstant : versionConstants[workspace];
   const selectedSourceTree = policy?.sourceTree ?? sourceTree;
 
   const sourceRoot = join(workspaceRoot, selectedSourceTree);
-  for (const path of await collectSourceFiles(sourceRoot, policy?.isSourceFile ?? isSourceFile)) {
-    const relativePath = `${selectedSourceTree}/${path}`;
-    if (relativePath === excludedPath) continue;
-    const bytes = new Uint8Array(await Bun.file(join(sourceRoot, path)).arrayBuffer());
-    files.push({ path: relativePath, bytes });
-  }
+  const sourcePaths = await collectSourceFiles(sourceRoot, policy?.isSourceFile ?? isSourceFile);
+  const files: DigestedFile[] = await mapWithConcurrency(
+    sourcePaths.filter((path) => `${selectedSourceTree}/${path}` !== excludedPath),
+    fileReadConcurrency,
+    async (path) => ({
+      path: `${selectedSourceTree}/${path}`,
+      bytes: new Uint8Array(await Bun.file(join(sourceRoot, path)).arrayBuffer()),
+    }),
+  );
 
   const additionalPaths =
     policy?.additionalPaths ??

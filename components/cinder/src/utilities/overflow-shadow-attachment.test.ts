@@ -5,6 +5,7 @@ import {
   FakeMutationObserver,
   FakeResizeObserver,
   flushAnimationFrames,
+  restoreGlobal,
   setScrollMeasurements,
   setupAttachmentTests,
 } from './attachments-test-support.ts';
@@ -80,12 +81,16 @@ describe('overflowShadow', () => {
   test('clears the attribute and exits when ResizeObserver is unavailable', () => {
     const node = document.createElement('div');
     node.setAttribute('data-cinder-overflows-inline', '');
-    Object.defineProperty(globalThis, 'ResizeObserver', { value: undefined });
+    const resizeObserverDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+    Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: undefined });
+    try {
+      const cleanup = overflowShadow('inline')(node);
 
-    const cleanup = overflowShadow('inline')(node);
-
-    expect(cleanup).toBeUndefined();
-    expect(node.hasAttribute('data-cinder-overflows-inline')).toBe(false);
+      expect(cleanup).toBeUndefined();
+      expect(node.hasAttribute('data-cinder-overflows-inline')).toBe(false);
+    } finally {
+      restoreGlobal('ResizeObserver', resizeObserverDescriptor);
+    }
   });
 
   test('teardown disconnects observers', () => {
@@ -109,22 +114,40 @@ describe('overflowShadow', () => {
   test('falls back to timeout scheduling when animation frames are unavailable', async () => {
     const node = document.createElement('div');
     setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 100 });
-    Object.defineProperty(globalThis, 'requestAnimationFrame', { value: undefined });
-    Object.defineProperty(globalThis, 'cancelAnimationFrame', { value: undefined });
+    const requestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'requestAnimationFrame',
+    );
+    const cancelAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'cancelAnimationFrame',
+    );
+    Object.defineProperty(globalThis, 'requestAnimationFrame', {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const cleanup = overflowShadow('block')(node);
+      setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160 });
+      FakeResizeObserver.instances[0]?.trigger();
 
-    const cleanup = overflowShadow('block')(node);
-    setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160 });
-    FakeResizeObserver.instances[0]?.trigger();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(node.hasAttribute('data-cinder-overflows-block')).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(node.hasAttribute('data-cinder-overflows-block')).toBe(true);
-
-    // Schedule another pending fallback timer, then tear down WHILE it is
-    // still pending — this is what exercises the fallback's own
-    // `cancelAnimationFrame` substitute (`window.clearTimeout`), which the
-    // await above already let run to completion once.
-    setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 100 });
-    FakeResizeObserver.instances[0]?.trigger();
-    cleanup?.();
+      // Schedule another pending fallback timer, then tear down WHILE it is
+      // still pending — this is what exercises the fallback's own
+      // `cancelAnimationFrame` substitute (`window.clearTimeout`), which the
+      // await above already let run to completion once.
+      setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 100 });
+      FakeResizeObserver.instances[0]?.trigger();
+      cleanup?.();
+    } finally {
+      restoreGlobal('requestAnimationFrame', requestAnimationFrameDescriptor);
+      restoreGlobal('cancelAnimationFrame', cancelAnimationFrameDescriptor);
+    }
   });
 });

@@ -10,7 +10,12 @@
  * it does not validate bindings, actions, event attachment, lifecycle order,
  * or DOM mutation during hydration.
  */
-import { renderSvelteOnServer } from '@lostgradient/testing';
+import { prepareSvelteServerSource, renderSvelteOnServer } from '@lostgradient/testing';
+
+/** Export conditions for the server build, where `esm-env`'s `BROWSER` is false. */
+const serverConditions = ['svelte'] as const;
+/** Export conditions for the client build, where `esm-env`'s `BROWSER` is true. */
+const clientConditions = ['browser', 'svelte'] as const;
 
 /** Result of a build-flag hydration-safety check. */
 export type HydrationSafetyResult = {
@@ -70,18 +75,36 @@ function renderWithConditions(
 }
 
 /**
+ * Do the expensive part of a check during test setup: verify the build-flag
+ * discriminator and compile `componentPath` under both condition sets, all at
+ * once. Call it with a top-level `await` so the builds run while the test file
+ * loads rather than inside a per-test timeout — their duration tracks host
+ * load, not the property under test.
+ */
+export async function prepareBuildFlagHydrationSafety(componentPath: string): Promise<void> {
+  await Promise.all([
+    assertDiscriminatorWorks(),
+    prepareSvelteServerSource(componentPath, { conditions: serverConditions }),
+    prepareSvelteServerSource(componentPath, { conditions: clientConditions }),
+  ]);
+}
+
+/**
  * Render `componentPath` once with `BROWSER=false` and once with `BROWSER=true`.
  * If the outputs differ, the component's initial markup depends on the
  * `esm-env` build flag and is unsafe for hydration until that branch is gated
- * on post-hydration state.
+ * on post-hydration state. Anything not prepared with
+ * {@link prepareBuildFlagHydrationSafety} is compiled here instead.
  */
 export async function checkBuildFlagHydrationSafety(
   componentPath: string,
   props: Record<string, unknown> = {},
 ): Promise<HydrationSafetyResult> {
   await assertDiscriminatorWorks();
-  const serverHtml = await renderWithConditions(componentPath, ['svelte'], props);
-  const clientHtml = await renderWithConditions(componentPath, ['browser', 'svelte'], props);
+  const [serverHtml, clientHtml] = await Promise.all([
+    renderWithConditions(componentPath, serverConditions, props),
+    renderWithConditions(componentPath, clientConditions, props),
+  ]);
   return { buildFlagInvariant: serverHtml === clientHtml, serverHtml, clientHtml };
 }
 
@@ -89,8 +112,10 @@ export async function checkBuildFlagHydrationSafety(
 let discriminatorVerified: Promise<void> | null = null;
 function assertDiscriminatorWorks(): Promise<void> {
   discriminatorVerified ??= (async () => {
-    const off = await buildDiscriminatorProbe(['svelte']);
-    const on = await buildDiscriminatorProbe(['browser', 'svelte']);
+    const [off, on] = await Promise.all([
+      buildDiscriminatorProbe(serverConditions),
+      buildDiscriminatorProbe(clientConditions),
+    ]);
     if (off === on) {
       throw new Error(
         'hydration-safety: the BROWSER build-flag discriminator is not working — the ' +

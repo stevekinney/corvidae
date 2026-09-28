@@ -10,7 +10,7 @@ import { requireGit } from './publication-history.ts';
 
 const sourceRoot = join(import.meta.dir, '../..');
 
-async function fixture(packScript = false, devDependencyCycle = false) {
+async function fixture(packScript = false, devDependencyCycle = false, binary = false) {
   const root = await mkdtemp(join(tmpdir(), 'clean-package-fixture-'));
   const target = join(root, 'target');
   const historical = join(root, 'historical');
@@ -45,6 +45,7 @@ async function fixture(packScript = false, devDependencyCycle = false) {
       version: '1.2.3',
       files: ['dist'],
       exports: { '.': './dist/index.js' },
+      ...(index === 1 && binary ? { bin: { example: './dist/index.js' } } : {}),
       scripts: { build: 'bun build.ts' },
       ...(index === 0 && devDependencyCycle
         ? { devDependencies: { [names[1]!]: 'workspace:*' } }
@@ -106,6 +107,25 @@ try {
     },
   };
 }
+
+test('packs executable declarations with the npm publish file-mode semantics', async () => {
+  await using input = await fixture(false, false, true);
+  const observed = recorder();
+  const result = await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
+  expect(
+    observed.commands.some(
+      ({ command }) =>
+        command[0] === 'npm' &&
+        command[1] === 'pack' &&
+        command.includes('--ignore-scripts') &&
+        command.includes('--pack-destination'),
+    ),
+  ).toBe(true);
+  expect(result.payload.files.find(({ path }) => path === 'package/dist/index.js')).toEqual({
+    path: 'package/dist/index.js',
+    executable: false,
+  });
+});
 
 function recorder(failure?: 'version' | 'build') {
   const commands: {
@@ -185,6 +205,11 @@ test('uses historical pack-script policy and returns its generated manifest from
   expect(
     observed.commands.some(({ command }) => command[2] === 'scripts/pack-for-publish.ts'),
   ).toBe(true);
+  expect(
+    observed.commands.some(
+      ({ command, cwd }) => command[0] === 'npm' && basename(cwd) === 'a-consumer',
+    ),
+  ).toBe(false);
   expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
 });
 

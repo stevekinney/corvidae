@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, mock, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import type {
   WorkflowEvent,
@@ -121,10 +122,9 @@ describe('EventsTab', () => {
 
     await fireEvent.click(getByRole('button', { name: 'Clear step filter' }));
 
-    await waitFor(() => {
-      expect(queryByText('step: 2')).toBeNull();
-      expect(getByText('Checkpoint · step 1')).not.toBeNull();
-    });
+    flushSync();
+    expect(queryByText('step: 2')?.outerHTML ?? null).toBeNull();
+    expect(getByText('Checkpoint · step 1')).not.toBeNull();
     expect(getByText('2 events')).not.toBeNull();
   });
 

@@ -230,11 +230,17 @@ describe('parseLcov', () => {
   it('preserves strict uncovered-line checks when a top-off is assembled', () => {
     expect(() =>
       parseLcov(
-        ['SF:src/worker/registry/summary.ts', 'FNF:0', 'FNH:0', 'DA:129,1', 'end_of_record'].join(
-          '\n',
-        ),
+        [
+          'SF:scripts/generate-operation-client.ts',
+          'FNF:0',
+          'FNH:0',
+          'DA:312,1',
+          'end_of_record',
+        ].join('\n'),
       ),
-    ).toThrow('Coverage allowance for src/worker/registry/summary.ts:129 points at a covered line');
+    ).toThrow(
+      'Coverage allowance for scripts/generate-operation-client.ts:312 points at a covered line',
+    );
   });
 
   it('returns false immediately when a coverage shard exits non-zero', async () => {

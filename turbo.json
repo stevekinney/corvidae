@@ -18,7 +18,8 @@
     },
     "typecheck": {
       "outputs": [],
-      "dependsOn": ["transit"]
+      "dependsOn": ["transit"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
     },
     "test": {
       "outputs": [],
@@ -33,7 +34,13 @@
       "cache": false
     },
     "//#preflight": {
-      "cache": false
+      "cache": false,
+      "inputs": [
+        "package.json",
+        "bun.lock",
+        "{applications,components,packages,internal}/*/package.json",
+        "scripts/browser-fixtures/package.json"
+      ]
     },
     "transit": {
       "dependsOn": ["//#preflight", "^transit"]
@@ -71,8 +78,13 @@
       "persistent": true,
       "cache": false
     },
+    "//#test:self": {
+      "dependsOn": ["//#preflight"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "outputs": []
+    },
     "//#test:browser-fixtures": {
-      "dependsOn": ["^transit"],
+      "dependsOn": ["//#preflight", "@lostgradient/browser-fixtures#transit"],
       "env": ["CODEX_CI", "TMPDIR"],
       "outputs": [
         "scripts/browser-fixtures/.playwright/manifest.json",
@@ -167,7 +179,6 @@
     ".prettierrc.json",
     ".prettierignore",
     ".stylelintrc.json",
-    "tsconfig.json",
-    "scripts/**"
+    "tsconfig.json"
   ]
 }

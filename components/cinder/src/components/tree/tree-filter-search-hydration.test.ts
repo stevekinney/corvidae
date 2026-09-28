@@ -1,7 +1,11 @@
 /// <reference lib="dom" />
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { checkBuildFlagHydrationSafety } from '../../test/hydration-safety.ts';
+import { flushSync } from 'svelte';
+import {
+  checkBuildFlagHydrationSafety,
+  prepareBuildFlagHydrationSafety,
+} from '../../test/hydration-safety.ts';
 import {
   flushTreeFilterStatus,
   treeItem,
@@ -16,6 +20,7 @@ const treeFilterHydrationSource = new URL(
   '../../test/fixtures/tree-filter-hydration-fixture.svelte',
   import.meta.url,
 ).pathname;
+await prepareBuildFlagHydrationSafety(treeFilterHydrationSource);
 afterEach(() => cleanup());
 
 describe('Tree — filter/search', () => {
@@ -45,11 +50,10 @@ describe('Tree — filter/search', () => {
 
     search.focus();
     await fireEvent.keyDown(search, { key: 'Escape' });
-    await waitFor(() => {
-      expect(search.value).toBe('');
-      expect(visibleTreeItemLabels(container)).toEqual(['Alpha', 'Beta']);
-      expect(document.activeElement).toBe(search);
-    });
+    flushSync();
+    expect(search.value).toBe('');
+    expect(visibleTreeItemLabels(container)).toEqual(['Alpha', 'Beta']);
+    expect(document.activeElement).toBe(search);
   });
 
   test('announces debounced result counts and marks the tree busy while pending', async () => {

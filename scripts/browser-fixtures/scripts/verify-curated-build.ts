@@ -1,6 +1,6 @@
+import { buildBrowser } from '@lostgradient/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { buildBrowser } from '../../build-browser.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 
 const fixtureDirectory = resolve(import.meta.dirname, '../fixtures/curated-highlighter');

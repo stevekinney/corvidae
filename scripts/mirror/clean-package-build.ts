@@ -223,7 +223,7 @@ export async function buildCleanPublishedPackage({
       let originalManifest: Buffer | undefined;
       try {
         if (step.kind === 'pack' && entry?.entry.build.packedBy === 'files') {
-          // The release resolves workspace versions from manifests; Bun pack can read stale lockfile versions.
+          // The release resolves workspace versions from manifests; a local pack can read stale lockfile versions.
           originalManifest = await readFile(manifestPath);
           const normalized = await committedPublicationManifest(
             checkout,
@@ -233,11 +233,22 @@ export async function buildCleanPublishedPackage({
           );
           await writeFile(manifestPath, `${JSON.stringify(normalized, null, 2)}\n`);
         }
-        await execute(
-          step.command[0] === 'bun' ? [executable, ...step.command.slice(1)] : step.command,
-          step.cwd,
-          step.description,
-        );
+        // `files` packages publish with npm. Bun marks bin targets executable in its tarball,
+        // while npm preserves their ordinary modes, so Bun's pack is not registry payload proof.
+        const command =
+          step.kind === 'pack' && entry?.entry.build.packedBy === 'files'
+            ? [
+                'npm',
+                'pack',
+                '--ignore-scripts',
+                '--pack-destination',
+                join(scratch, 'tarballs'),
+                '--silent',
+              ]
+            : step.command[0] === 'bun'
+              ? [executable, ...step.command.slice(1)]
+              : step.command;
+        await execute(command, step.cwd, step.description);
       } finally {
         // Later pack scripts require a clean Git checkout when binding gitHead into their staged manifest.
         if (originalManifest !== undefined) await writeFile(manifestPath, originalManifest);

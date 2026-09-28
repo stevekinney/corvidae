@@ -9,6 +9,7 @@ import WorkerDetailView from './worker-detail-view.svelte';
 function worker(overrides: Partial<WorkerSummary> = {}): WorkerSummary {
   return {
     id: 'wkr_1',
+    transport: 'websocket',
     queue: 'default',
     activities: ['Workflow.activity'],
     concurrency: 4,

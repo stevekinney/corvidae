@@ -77,6 +77,7 @@ type Manifest = {
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   catalog?: Record<string, string>;
+  workspaces?: string[];
   publishConfig?: unknown;
   main?: string;
   module?: string;
@@ -128,13 +129,14 @@ describe('internal workspace architecture', () => {
       'bun run format:check',
       'bun run audit',
     ]);
-    expect(scripts['test']?.split(' && ').filter((stage) => stage === 'bun run test:self')).toEqual(
-      ['bun run test:self'],
-    );
+    // One turbo run, so the root self-tests and browser fixtures are cached like every package.
+    expect(scripts['test']).toBe('turbo run test:self test test:browser-fixtures --concurrency=1');
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
-    expect(scripts['test:self']).toBe('bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts');
+    expect(scripts['test:self']).toBe(
+      'bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
+    );
     expect(scripts['audit']).toBe('bun audit --audit-level=high');
   });
 
@@ -249,9 +251,10 @@ describe('internal workspace architecture', () => {
     const rootManifest = await readManifest('.');
     expect(lock.workspaces['']?.name, 'Root workspace identity').toBe(rootManifest.name);
     const expectedPaths = [''];
-    for await (const path of new Bun.Glob(
-      '{applications,components,packages,internal}/*/package.json',
-    ).scan(root)) {
+    const manifestPaths = (rootManifest.workspaces ?? []).flatMap((pattern) =>
+      Array.from(new Bun.Glob(`${pattern}/package.json`).scanSync(root)),
+    );
+    for (const path of manifestPaths) {
       const directory = dirname(path);
       expectedPaths.push(directory);
       const manifest = await readManifest(directory);
@@ -464,7 +467,9 @@ describe('internal workspace architecture', () => {
     const application = await readManifest('applications/desktop');
     // Electrobun owns the desktop build; Vite only builds the renderer, and
     // both are gated on the devkit projection that `prepare:devkit` performs.
-    expect(application.scripts?.['prepare:devkit']).toContain('electrobun prepare');
+    expect(application.scripts?.['prepare:devkit']).toBe(
+      'HUTCH_NO_UPDATE_CHECK=1 electrobun prepare',
+    );
     expect(application.scripts?.['build:renderer']).toContain('vite build');
     expect(application.scripts?.['build']).toContain('electrobun build');
     expect(application.scripts?.['dev']).toContain('electrobun dev');
