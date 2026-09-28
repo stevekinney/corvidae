@@ -558,12 +558,12 @@ async function main(): Promise<void> {
     inputLatency(),
     memoryPlateau(),
     overflow(),
-    await cleanupOrder('teardown'),
+    await cleanupOrder(),
     browser[0],
     browser[1],
     browser[2],
     browser[3],
-    await cleanupOrder(),
+    await cleanupOrder('teardown'),
   ];
   const cells = expectedCellIds.map((id, index) => {
     const result = results[index];
