@@ -113,11 +113,10 @@ async function publishedPackages(
     const candidate = workspaces.find((item) => item.name === entry.publicName)!;
     entry.dependsOn = [
       ...new Set(
-        ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies'].flatMap(
-          (field) =>
-            Object.keys(objectRecord(candidate.manifest[field] ?? {})).filter(
-              (name) => names.has(name) && name !== entry.publicName,
-            ),
+        ['dependencies', 'optionalDependencies', 'peerDependencies'].flatMap((field) =>
+          Object.keys(objectRecord(candidate.manifest[field] ?? {})).filter(
+            (name) => names.has(name) && name !== entry.publicName,
+          ),
         ),
       ),
     ];

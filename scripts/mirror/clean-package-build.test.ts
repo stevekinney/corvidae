@@ -10,7 +10,7 @@ import { requireGit } from './publication-history.ts';
 
 const sourceRoot = join(import.meta.dir, '../..');
 
-async function fixture(packScript = false) {
+async function fixture(packScript = false, devDependencyCycle = false) {
   const root = await mkdtemp(join(tmpdir(), 'clean-package-fixture-'));
   const target = join(root, 'target');
   const historical = join(root, 'historical');
@@ -46,6 +46,9 @@ async function fixture(packScript = false) {
       files: ['dist'],
       exports: { '.': './dist/index.js' },
       scripts: { build: 'bun build.ts' },
+      ...(index === 0 && devDependencyCycle
+        ? { devDependencies: { [names[1]!]: 'workspace:*' } }
+        : {}),
       ...(index === 1 ? { dependencies: { [names[0]!]: 'workspace:*' } } : {}),
     };
     await Bun.write(
@@ -156,6 +159,21 @@ test('builds dependencies first, preserves release install arguments, and packs 
     );
   }
   expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
+});
+
+test('ignores dev-only dependency cycles while preserving runtime build order', async () => {
+  await using input = await fixture(false, true);
+  const observed = recorder();
+  const result = await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
+  expect(
+    observed.commands
+      .filter(({ command }) => command[2] === 'build')
+      .map(({ cwd }) => basename(cwd)),
+  ).toEqual(['z-foundation', 'a-consumer']);
+  expect(result.payload.files.map(({ path }) => path)).toEqual([
+    'package/dist/index.js',
+    'package/package.json',
+  ]);
 });
 
 test('uses historical pack-script policy and returns its generated manifest from a clean checkout', async () => {
