@@ -75,7 +75,7 @@ export async function commitExists(
  * pipeline between two spawns, so the archive is written to a file and extracted as a second,
  * independent step — still two subprocesses, not the hundreds this replaces.
  */
-async function extractCommitDirectory(
+async function extractCommitTree(
   targetRepositoryDirectory: string,
   commit: string,
   destination: string,
@@ -112,19 +112,44 @@ export interface SourceComparison {
 
 type EmittedFiles = Record<string, string | Uint8Array>;
 
-async function historicalEmittedFiles(
+export async function historicalEmittedFiles(
   publishedSourceRoot: string,
-  target: HistoricalPublicationRouting['target'],
+  workspace: string,
+  corvidaeDirectory: string,
+  routing: HistoricalPublicationRouting,
   targetCommitDirectory: string,
 ): Promise<EmittedFiles> {
-  const source = join(publishedSourceRoot, 'scripts/mirror/surface.ts');
-  const module = (await import(pathToFileURL(source).href)) as typeof import('./surface.ts');
-  const plan = await module.planSurface({
+  const mirror = join(publishedSourceRoot, 'scripts/mirror');
+  const sourceModule = (await import(
+    pathToFileURL(join(mirror, 'source.ts')).href
+  )) as typeof import('./source.ts');
+  const configurationModule = (await import(
+    pathToFileURL(join(mirror, 'typescript-configuration.ts')).href
+  )) as typeof import('./typescript-configuration.ts');
+  const surfaceModule = (await import(
+    pathToFileURL(join(mirror, 'package-surface.ts')).href
+  )) as typeof import('./package-surface.ts');
+  const surface = await surfaceModule.loadPackageSurface();
+  const entry = surface.packages[workspace];
+  if (!entry)
+    throw new RegistryVerificationError(`${workspace}: historical package surface is missing`);
+  const emitted = [
+    { workspace, corvidaeDirectory, targetDirectory: routing.targetDirectory, entry },
+  ];
+  const source = await sourceModule.planSource(publishedSourceRoot, emitted, targetCommitDirectory);
+  const configuration = await configurationModule.planTypeScriptConfiguration({
     corvidaeRoot: publishedSourceRoot,
-    target,
+    target: routing.target,
+    configurationTarget: routing.configurationTarget,
+    configurationDirectory: routing.configurationDirectory,
+    workspaces: emitted,
     targetDirectory: targetCommitDirectory,
   });
-  return plan.files;
+  sourceModule.assertSingleOwner([
+    { owner: 'historical source', paths: Object.keys(source.files) },
+    { owner: 'historical TypeScript configuration', paths: Object.keys(configuration.files) },
+  ]);
+  return { ...source.files, ...configuration.files };
 }
 
 /** Whether a comparison found nothing worth refusing on. */
@@ -169,6 +194,7 @@ export async function compareAgainstCommit(
      * it is the one already-accounted-for difference between corvidae's tree and what shipped.
      */
     excludedFromExtra?: ReadonlySet<string>;
+    /** Returns emitted files keyed by target-relative paths in the extracted commit tree. */
     expectedEmittedFiles?: (targetCommitDirectory: string) => Promise<EmittedFiles>;
   },
 ): Promise<SourceComparison> {
@@ -184,11 +210,12 @@ export async function compareAgainstCommit(
   } = options;
   const missingInCommit: string[] = [];
   const differing: string[] = [];
+  const encoder = new TextEncoder();
   const corvidaePaths = new Set(corvidaeFiles.map((file) => file.path));
 
   const scratch = await mkdtemp(join(tmpdir(), 'corvidae-commit-extract-'));
   try {
-    await extractCommitDirectory(targetRepositoryDirectory, commit, scratch, runner);
+    await extractCommitTree(targetRepositoryDirectory, commit, scratch, runner);
     const extractedRoot = join(scratch, targetDirectory);
     const emittedFiles = await expectedEmittedFiles?.(scratch);
 
@@ -207,7 +234,7 @@ export async function compareAgainstCommit(
         emitted === undefined
           ? file.bytes
           : typeof emitted === 'string'
-            ? new TextEncoder().encode(emitted)
+            ? encoder.encode(emitted)
             : emitted;
       if (Buffer.compare(Buffer.from(expected), Buffer.from(committed)) !== 0) {
         differing.push(file.path);
@@ -246,7 +273,9 @@ export interface RecordOptions {
   buildPublishedPackage?: typeof buildCleanPublishedPackage;
   buildHistoricalSurface?: (
     publishedSourceRoot: string,
-    target: HistoricalPublicationRouting['target'],
+    workspace: string,
+    corvidaeDirectory: string,
+    routing: HistoricalPublicationRouting,
     targetCommitDirectory: string,
   ) => Promise<EmittedFiles>;
   bunExecutable?: string;
@@ -339,7 +368,13 @@ export async function recordSourceDigest({
     runner: gitRunner,
     collector,
     expectedEmittedFiles: (targetCommitDirectory) =>
-      buildHistoricalSurface(publishedSourceRoot, historicalRouting.target, targetCommitDirectory),
+      buildHistoricalSurface(
+        publishedSourceRoot,
+        workspace,
+        historicalDirectory,
+        historicalRouting,
+        targetCommitDirectory,
+      ),
   });
   if (!sourceComparisonIsClean(comparison))
     throw new RegistryVerificationError(

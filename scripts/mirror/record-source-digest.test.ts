@@ -8,6 +8,7 @@ import {
   commitExists,
   compareAgainstCommit,
   fetchGitHead,
+  historicalEmittedFiles,
   RegistryVerificationError,
   sourceComparisonIsClean,
 } from './record-source-digest.ts';
@@ -111,6 +112,55 @@ describe('git-history readers, against a real fixture repository', () => {
 });
 
 describe('compareAgainstCommit', () => {
+  test('historical byte planning does not require the full dependency snapshot gate', async () => {
+    await withScratch(async (scratch) => {
+      const mirror = join(scratch, 'scripts/mirror');
+      await Bun.write(
+        join(mirror, 'source.ts'),
+        `export function assertSingleOwner() {}
+        export async function planSource(root, workspaces, targetDirectory) {
+          if (root !== ${JSON.stringify(scratch)} || targetDirectory !== '/target') throw new Error('wrong source routing');
+          if (workspaces[0].entry?.build.requiredInputs[0] !== 'scripts/build.ts') throw new Error('missing historical surface');
+          return { files: { 'packages/example/src/index.ts': 'historical source\\n' } };
+        }`,
+      );
+      await Bun.write(
+        join(mirror, 'typescript-configuration.ts'),
+        `export async function planTypeScriptConfiguration(options) {
+          if (options.configurationTarget !== 'cinder' || options.configurationDirectory !== 'internal/typescript') throw new Error('wrong configuration routing');
+          return { files: { 'packages/example/src/tsconfig.json': '{"extends":"../../typescript/library.json"}\\n' } };
+        }`,
+      );
+      await Bun.write(
+        join(mirror, 'package-surface.ts'),
+        `export async function loadPackageSurface() {
+          return { packages: { '@lostgradient/example': { build: { requiredInputs: ['scripts/build.ts'] } } } };
+        }`,
+      );
+      await Bun.write(
+        join(mirror, 'surface.ts'),
+        `export async function planSurface() { throw new Error('unrelated dependency snapshot missing'); }`,
+      );
+      const files = await historicalEmittedFiles(
+        scratch,
+        '@lostgradient/example',
+        'packages/example',
+        {
+          targetFor: () => 'weft',
+          target: 'weft',
+          targetDirectory: 'packages/example',
+          configurationTarget: 'cinder',
+          configurationDirectory: 'internal/typescript',
+        },
+        '/target',
+      );
+      expect(files).toEqual({
+        'packages/example/src/index.ts': 'historical source\n',
+        'packages/example/src/tsconfig.json': '{"extends":"../../typescript/library.json"}\n',
+      });
+    });
+  });
+
   test('compares emitted TypeScript configuration bytes and rejects a changed target', async () => {
     await withScratch(async (scratch) => {
       const path = 'src/cli/__fixtures__/codegen/typecheck/tsconfig.json';
