@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { committedPlans } from './committed-plans.ts';
-import type { MirrorTarget } from './manifests.ts';
 import { planSource } from './source.ts';
+import type { MirrorTarget } from './target-definitions.ts';
 import {
   assertNoSourceEscapes,
   findSourceEscapes,

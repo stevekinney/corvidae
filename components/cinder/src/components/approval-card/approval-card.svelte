@@ -215,14 +215,16 @@
         <div class="cinder-approval-card__badges" role="group" aria-label="Approval status">
           <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
           <Tooltip text={riskLabel} describe={false}>
-            <button
-              type="button"
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
+            <span
               class="cinder-approval-card__risk-icon"
+              role="img"
+              tabindex="0"
               aria-label={riskLabel}
               data-cinder-risk={tool.risk}
             >
               <RiskIcon size={16} strokeWidth={2.25} aria-hidden="true" />
-            </button>
+            </span>
           </Tooltip>
           {#if expirationText}
             <Badge variant="warning" size="sm">

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import { renderSvelteOnServer, requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
@@ -18,6 +18,17 @@ afterEach(() => {
 });
 
 describe('JsonEditor', () => {
+  test.each([false, true])(
+    'preserves native autofocus=%s in server-rendered markup',
+    async (autofocus) => {
+      const html = await renderSvelteOnServer(
+        new URL('./json-editor.svelte', import.meta.url).pathname,
+        { id: 'server-autofocus', label: 'Payload', value: '{}', autofocus },
+      );
+      expect(/<textarea\b[^>]*\sautofocus(?:[\s=>])/.test(html)).toBe(autofocus);
+    },
+  );
+
   test('the error live region is mounted before any error is set (CIN-315: FormFieldFrame defaults to errorMountedOnDemand=false)', () => {
     const { container } = render(JsonEditor, {
       id: 'no-error-yet-json',

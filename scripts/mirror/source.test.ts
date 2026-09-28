@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
-import { type MirrorTarget } from './manifests.ts';
 import {
   additionalSourceRoots,
   applyVersionConstants,
@@ -17,6 +16,7 @@ import {
   versionConstants,
 } from './source.ts';
 import { planSurface } from './surface.ts';
+import { type MirrorTarget } from './target-definitions.ts';
 import { loadTargetOwnedPolicy, writeTransformOutput } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
@@ -594,6 +594,12 @@ describe('a remapped workspace on disk', () => {
         'components/editor/scripts/preload.ts': 'export {};\n',
       },
       async (root) => {
+        for (const policyFile of ['package-map.json', 'package-surface.json']) {
+          await Bun.write(
+            join(root, 'scripts/mirror', policyFile),
+            await Bun.file(join(import.meta.dir, policyFile)).text(),
+          );
+        }
         const plan = await planSurface({ corvidaeRoot: root, target: 'cinder' });
         await withTree({}, async (directory) => {
           const policy = await loadTargetOwnedPolicy();

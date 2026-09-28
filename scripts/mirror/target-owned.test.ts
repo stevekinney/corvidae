@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { committedPlans } from './committed-plans.ts';
-import { mirrorTargets } from './manifests.ts';
+import { mirrorTargets } from './target-definitions.ts';
 import {
   assertNoEmissionsIntoRetired,
   assertRetirementsCoherent,
@@ -763,15 +763,10 @@ describe('retiring a directory the target still carries', () => {
       'packages/operative/tsconfig.test.json',
       'packages/skills/tsconfig.test.json',
     ]);
-    // COR-1196: the target's stale packages/components/scripts/generate-component-examples.ts
-    // is *not* retired, even though it fails the target's own tsconfig.check.json once a sync
-    // overwrites src/manifest.meta.ts with corvidae's copy (TS2305 on
-    // allowedExampleExclusionReasons, which corvidae's current manifest.meta.ts no longer
-    // exports). packages/chat/scripts/generate-component-artifacts.ts and
-    // packages/editor/scripts/generate-component-artifacts.ts — both target-owned, neither with
-    // a corvidae source — import types from it across the package boundary; retiring it turns
-    // one red tsc line into two broken active `components:check` gates. Left in place and red:
-    // an owner ruling on chat and editor's own generators, not a mirror-transform fix.
+    // COR-1196: retain the target-owned example generator because Chat and Editor's
+    // artifact generators import its types. Its exclusion policy belongs in the target's
+    // scripts/example-exclusion-reasons.ts, so replacing mirrored manifest.meta.ts does
+    // not remove a build-time dependency.
     //
     // The two tokens test files ARE retired (COR-1196): the target's monolithic
     // generate-artifacts.test.ts and generate.test.ts have no corvidae equivalent under either

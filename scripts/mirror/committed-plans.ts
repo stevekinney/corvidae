@@ -1,9 +1,14 @@
 import { join } from 'node:path';
 
-import { discoverWorkspaces, type MirrorTarget } from './manifests.ts';
+import { discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
-import { computeSourceDigest } from './source-digest.ts';
+import {
+  collectDigestedFiles,
+  hashDigestedFiles,
+  publicationInputContract,
+} from './source-digest.ts';
 import { planSurface, type SurfacePlan } from './surface.ts';
+import { type MirrorTarget } from './target-definitions.ts';
 import { findSourceEscapes, type SourceEscape } from './target-resolvability.ts';
 
 /**
@@ -48,19 +53,9 @@ export interface CommittedPlan {
 }
 
 /**
- * `package-map.json`, with every `publish-as` entry's `sourceDigest` overlaid to corvidae's
- * current digest for it, computed once and shared by every target's `build()` below.
- *
- * This fixture already rests on treating the committed tree as ground truth: `the committed
- * workspaces` in `source.test.ts` asserts every byte `planSource` emits for a real workspace is
- * the byte corvidae itself wrote. Overlaying "corvidae's current source is what would be recorded
- * as published" is the same assumption applied to `assertEdgeNotStale` (source-digest.ts) instead
- * of to emission — it is what lets `surface.test.ts`, `target-resolvability.test.ts` and
- * `source.test.ts` keep testing what they were built to test (source emission, TypeScript
- * configuration, coverage) without every one of them also incidentally exercising the digest
- * guard's refusal. That refusal is tested directly, against the real, unoverlaid map, in
- * `source-digest.test.ts` — which is where a reader should look to see today's cross-target edges
- * actually fail, since this fixture is built specifically so they do not.
+ * Synthetic publication snapshots let emission tests exercise the complete workspace graph.
+ * These fixtures do not claim a registry publication. Guard regressions independently verify
+ * missing snapshots and changed source or publication inputs against explicit negative cases.
  */
 export async function packageMapWithCurrentDigests(): Promise<PackageMap> {
   const map = await loadPackageMap();
@@ -76,12 +71,37 @@ export async function packageMapWithCurrentDigests(): Promise<PackageMap> {
       overlaid[name] = entry;
       continue;
     }
-    const sourceDigest = await computeSourceDigest({
+    const sourceFiles = await collectDigestedFiles({
       corvidaeRoot,
       corvidaeDirectory: workspace.directory,
       workspace: workspace.name,
     });
-    overlaid[name] = { ...entry, sourceDigest };
+    const input = await publicationInputContract({
+      corvidaeRoot,
+      corvidaeDirectory: workspace.directory,
+      workspace: workspace.name,
+    });
+    overlaid[name] = {
+      ...entry,
+      publishedSnapshot: {
+        schemaVersion: 1,
+        version: entry.lastPublishedVersion ?? '0.0.0',
+        gitHead: '0'.repeat(40),
+        corvidaeCommit: '0'.repeat(40),
+        source: {
+          algorithm: 'sha256-files-v1',
+          paths: sourceFiles.map((file) => file.path),
+          digest: hashDigestedFiles(sourceFiles),
+        },
+        publicationInputContract: input,
+        registryManifestContract: input,
+        registryPayloadContract: {
+          algorithm: 'sha256-package-payload-v1',
+          files: [],
+          digest: '0'.repeat(64),
+        },
+      },
+    };
   }
   return { ...map, workspaces: overlaid };
 }
