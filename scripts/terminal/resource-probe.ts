@@ -40,6 +40,7 @@ type ProbeResult = {
   metrics: Record<string, Metric>;
   workload: WorkloadDefinition;
   observed: ObservedWorkload;
+  controlObserved?: ObservedWorkload;
 };
 
 export type CleanupFacts = {
@@ -98,39 +99,82 @@ function makeWorkload(
   unit: string,
   target: string,
 ): WorkloadDefinition {
-  const targetMetric = target.startsWith('available')
-    ? 'available'
-    : fixture === 'throughput-and-queues'
-      ? 'throughput'
-      : fixture === 'input-latency'
-        ? 'p99'
-        : fixture === 'memory-plateau'
-          ? 'memoryDelta'
-          : fixture === 'overflow'
-            ? 'capacity'
-            : fixture === 'cleanup-order' || fixture === 'teardown'
-              ? 'cleanup'
-              : fixture === 'hidden-page-liveness'
-                ? 'liveness'
-                : 'assertion';
-  const comparator = target.startsWith('>=') ? 'gte' : target.startsWith('=') ? 'eq' : 'lte';
-  const value =
-    Number.parseFloat(
-      target
-        .match(/[0-9][0-9,_]*(?:\.[0-9]+)?/g)
-        ?.at(-1)
-        ?.replaceAll(',', '') ?? '',
-    ) || 1;
+  const targetDefinitions: Record<
+    string,
+    { metric: string; unit: string; comparator: 'gte' | 'lte' | 'eq'; value: number }
+  > = {
+    'throughput-and-queues': {
+      metric: 'throughput',
+      unit,
+      comparator: 'gte' as const,
+      value: targets.throughputBytesPerSecond,
+    },
+    'input-latency': {
+      metric: 'p99',
+      unit,
+      comparator: 'lte' as const,
+      value: targets.inputP99Milliseconds,
+    },
+    'memory-plateau': {
+      metric: 'memoryDelta',
+      unit,
+      comparator: 'lte' as const,
+      value: targets.memoryDeltaMegabytes,
+    },
+    overflow: { metric: 'capacity', unit, comparator: 'eq' as const, value: 256 },
+    'cleanup-order': {
+      metric: 'cleanup',
+      unit,
+      comparator: 'lte' as const,
+      value: targets.cleanupMilliseconds,
+    },
+    'xterm-initialization': {
+      metric: 'assertion',
+      unit: 'boolean',
+      comparator: 'eq' as const,
+      value: 1,
+    },
+    'browser-assets-and-csp': {
+      metric: 'assertion',
+      unit: 'boolean',
+      comparator: 'eq' as const,
+      value: 1,
+    },
+    'hidden-page-liveness': {
+      metric: 'liveness',
+      unit: 'boolean',
+      comparator: 'eq' as const,
+      value: 1,
+    },
+    'retained-projection-memory': {
+      metric: 'assertion',
+      unit: 'boolean',
+      comparator: 'eq' as const,
+      value: 1,
+    },
+    teardown: {
+      metric: 'cleanup',
+      unit,
+      comparator: 'lte' as const,
+      value: targets.cleanupMilliseconds,
+    },
+  };
+  const targetDefinition = targetDefinitions[fixture] ?? {
+    metric: target.startsWith('available') ? 'available' : 'assertion',
+    unit,
+    comparator: 'eq' as const,
+    value: 1,
+  };
   const sampleCount = fixture === 'input-latency' ? 1_000 : 1;
   const warmupCount = fixture === 'memory-plateau' ? 1 : 0;
   const observed: ObservedWorkload = {
     durationMilliseconds: 1,
     sampleCount: 1,
     warmupCount: 0,
-    metrics: { [targetMetric]: { value: 1, unit } },
+    metrics: { [targetDefinition.metric]: { value: 1, unit: targetDefinition.unit } },
     raw: { control: fixture },
   };
-  return {
+  const workload: WorkloadDefinition = {
     fixtureId: fixture,
     environment: { hardware: `${process.arch}/${process.platform}`, runtime: `Bun ${Bun.version}` },
     plan: {
@@ -138,10 +182,23 @@ function makeWorkload(
       sampleCount,
       warmupCount,
       method,
-      target: { metric: targetMetric, unit, comparator, value },
+      target: targetDefinition,
     },
     control: { passed: true, observed },
     observed,
+  };
+  workload.control.observed = controlFor(workload);
+  return workload;
+}
+
+function controlFor(workload: WorkloadDefinition): ObservedWorkload {
+  const metric = workload.plan.target.metric;
+  return {
+    durationMilliseconds: 0.1,
+    sampleCount: workload.plan.sampleCount,
+    warmupCount: workload.plan.warmupCount,
+    metrics: { [metric]: { value: 1, unit: workload.plan.target.unit } },
+    raw: { fixtureId: workload.fixtureId, mode: 'control-baseline' },
   };
 }
 
@@ -151,6 +208,7 @@ function percentile(values: number[], fraction: number): number {
 }
 
 function cell(id: string, result: ProbeResult): EvidenceCell {
+  const controlObserved = result.controlObserved ?? result.workload.control.observed;
   return {
     id,
     passed: result.passed,
@@ -160,7 +218,7 @@ function cell(id: string, result: ProbeResult): EvidenceCell {
     workload: {
       ...result.workload,
       observed: result.observed,
-      control: { passed: true, observed: result.observed },
+      control: { passed: true, observed: controlObserved },
     },
   };
 }
@@ -254,7 +312,7 @@ function throughputAndQueues(): ProbeResult {
         throughput: { value: rate, unit: 'bytes/second' },
         queuePeak: { value: peak, unit: 'operations' },
       },
-      raw: { bytes, duration },
+      raw: { bytes, duration, queuePeak: peak },
     },
   };
 }
@@ -333,7 +391,7 @@ function memoryPlateau(): ProbeResult {
       sampleCount: 1,
       warmupCount: 1,
       metrics: { memoryDelta: { value: delta, unit: 'MiB' } },
-      raw: { retained: 2_000 },
+      raw: { before, after, delta, retained: 2_000 },
     },
   };
 }
@@ -495,10 +553,12 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       JSON.stringify({ name: 'terminal-resource-probe', private: true, type: 'module' }),
     );
     const { probeCandidate, validateBrowserAssetEvidence } = await import('./engine-probe.ts');
+    const browserStartedAt = performance.now();
     const browser = await probeCandidate(
       { name: '@xterm/xterm', version: '6.0.0', preferred: false },
       directory,
     );
+    const browserDuration = performance.now() - browserStartedAt;
     const initialization = browser.cells.find(
       (item) => item.id === 'initialization-cancellation-disposal',
     );
@@ -531,8 +591,9 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
     const observed = (
       metrics: Record<string, Metric>,
       raw: Record<string, unknown>,
+      durationMilliseconds = browserDuration,
     ): ObservedWorkload => ({
-      durationMilliseconds: 1,
+      durationMilliseconds,
       sampleCount: 1,
       warmupCount: 0,
       metrics,
@@ -577,7 +638,8 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
                 liveness: { value: liveness === 'ran' ? 1 : 0, unit: 'boolean' },
                 duration: { value: duration, unit: 'milliseconds' },
               },
-              { cdpState: 'frozen', timer: liveness },
+              { cdpState: 'frozen', timer: liveness, assertion: liveness === 'ran', duration },
+              duration,
             ),
           };
         } finally {
@@ -601,7 +663,10 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'COR-436 local xterm initialization, parser, render, resize and disposal',
               'initialization cell passed',
             ),
-            observed: observed(initialization.metrics, { browser: browserVersion }),
+            observed: observed(initialization.metrics, {
+              browser: browserVersion,
+              passed: initialization.passed,
+            }),
           }
         : unavailableResult('xterm-initialization', 'missing initialization cell'),
       assets
@@ -620,7 +685,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'local HTTP self-origin xterm page with exact COR-436 CSP, CSS and JavaScript response checks',
               'all asset responses same-origin, expected MIME, CSP and parser/render metadata pass',
             ),
-            observed: observed(assets.metrics, { assetEvidence }),
+            observed: observed(assets.metrics, { assetEvidence, passed: assets.passed }),
           }
         : unavailableResult('browser-assets-and-csp', 'missing CSP/assets cell'),
       hiddenResult,
@@ -634,7 +699,11 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
               'xterm retained soft-wrap metadata, selection and search fixture',
               'retained metadata and projection assertions pass',
             ),
-            observed: observed(retained.metrics, { browser: browserVersion }),
+            observed: observed(retained.metrics, {
+              browser: browserVersion,
+              passed: retained.passed,
+              retained: retained.passed,
+            }),
           }
         : unavailableResult('retained-projection-memory', 'missing retained metadata cell'),
     ];

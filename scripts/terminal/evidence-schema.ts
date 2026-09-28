@@ -1,3 +1,4 @@
+import { validateBrowserAssetEvidence } from './browser-asset-evidence.ts';
 import schema from './evidence.schema.json';
 
 export type EvidenceCell = {
@@ -235,6 +236,145 @@ function validateCandidates(
 }
 
 function validateResourceCells(cells: unknown[], errors: string[]): void {
+  const sameObservation = (left: ObservedWorkload, right: ObservedWorkload): boolean =>
+    JSON.stringify(left) === JSON.stringify(right);
+  const percentile = (values: number[], fraction: number): number => {
+    const ordered = values.toSorted((a, b) => a - b);
+    return ordered[Math.min(ordered.length - 1, Math.ceil(ordered.length * fraction) - 1)] ?? NaN;
+  };
+  const finiteNumber = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value);
+  const validControl = (workload: WorkloadDefinition, validationErrors: string[]): void => {
+    const control = workload.control.observed;
+    if (sameObservation(control, workload.observed))
+      validationErrors.push('control observation identical');
+    if (
+      control.sampleCount !== workload.plan.sampleCount ||
+      control.warmupCount !== workload.plan.warmupCount
+    )
+      validationErrors.push('control sample plan mismatch');
+    const targetMetric = control.metrics[workload.plan.target.metric];
+    if (
+      !targetMetric ||
+      targetMetric.unit !== workload.plan.target.unit ||
+      !finiteNumber(targetMetric.value)
+    )
+      validationErrors.push('control metric');
+  };
+  const validateRaw = (workload: WorkloadDefinition, validationErrors: string[]): void => {
+    const raw = workload.observed.raw;
+    const metric = (name: string): number | undefined => workload.observed.metrics[name]?.value;
+    switch (workload.fixtureId) {
+      case 'throughput-and-queues': {
+        const bytes = raw['bytes'];
+        const duration = raw['duration'];
+        const queuePeak = raw['queuePeak'];
+        if (
+          !finiteNumber(bytes) ||
+          bytes <= 0 ||
+          !finiteNumber(duration) ||
+          duration <= 0 ||
+          !finiteNumber(queuePeak) ||
+          queuePeak < 0 ||
+          metric('throughput') !== bytes / (duration / 1_000) ||
+          metric('queuePeak') !== queuePeak ||
+          workload.observed.durationMilliseconds !== duration
+        )
+          validationErrors.push('throughput raw evidence');
+        break;
+      }
+      case 'input-latency': {
+        const samples = raw['samples'];
+        if (
+          !Array.isArray(samples) ||
+          samples.length !== workload.plan.sampleCount ||
+          samples.some((value) => !finiteNumber(value) || value < 0) ||
+          metric('p50') !== percentile(samples, 0.5) ||
+          metric('p95') !== percentile(samples, 0.95) ||
+          metric('p99') !== percentile(samples, 0.99)
+        )
+          validationErrors.push('latency raw evidence');
+        break;
+      }
+      case 'memory-plateau': {
+        const before = raw['before'];
+        const after = raw['after'];
+        const delta = raw['delta'];
+        if (
+          !finiteNumber(before) ||
+          !finiteNumber(after) ||
+          !finiteNumber(delta) ||
+          after < before ||
+          delta !== Math.max(0, after - before) / (1024 * 1024) ||
+          workload.observed.warmupCount !== workload.plan.warmupCount
+        )
+          validationErrors.push('memory raw evidence');
+        break;
+      }
+      case 'overflow':
+        if (
+          raw['attempted'] !== 257 ||
+          raw['result'] !== 'input-overflow' ||
+          metric('capacity') !== 256
+        )
+          validationErrors.push('overflow raw evidence');
+        break;
+      case 'cleanup-order':
+      case 'teardown': {
+        const cleanup = raw['cleanup'];
+        const facts =
+          isRecord(cleanup) && isRecord(cleanup['facts']) ? cleanup['facts'] : undefined;
+        const allTrue = facts ? Object.values(facts).every((value) => value === true) : false;
+        const unknown = facts ? facts['descendantObservedGone'] === undefined : false;
+        const expectedState = unknown ? 'unknown' : allTrue ? 'complete' : 'incomplete';
+        if (
+          !isRecord(cleanup) ||
+          (cleanup['state'] !== 'complete' &&
+            cleanup['state'] !== 'incomplete' &&
+            cleanup['state'] !== 'unknown') ||
+          typeof cleanup['quarantined'] !== 'boolean' ||
+          !isRecord(cleanup['facts']) ||
+          Object.keys(cleanup['facts']).length !== 7 ||
+          cleanup['state'] !== expectedState ||
+          cleanup['quarantined'] !== !allTrue
+        )
+          validationErrors.push('cleanup raw evidence');
+        break;
+      }
+      case 'xterm-initialization':
+        if (raw['browser'] !== 'Chromium' || typeof raw['passed'] !== 'boolean')
+          validationErrors.push(`browser assertion evidence:${workload.fixtureId}`);
+        break;
+      case 'retained-projection-memory':
+        if (
+          raw['browser'] !== 'Chromium' ||
+          typeof raw['passed'] !== 'boolean' ||
+          typeof raw['retained'] !== 'boolean'
+        )
+          validationErrors.push(`browser assertion evidence:${workload.fixtureId}`);
+        break;
+      case 'browser-assets-and-csp':
+        if (
+          !isRecord(raw['assetEvidence']) ||
+          !validateBrowserAssetEvidence(raw['assetEvidence'] as never) ||
+          raw['passed'] !== true
+        )
+          validationErrors.push('browser asset evidence');
+        break;
+      case 'hidden-page-liveness':
+        if (
+          raw['cdpState'] !== 'frozen' ||
+          (raw['timer'] !== 'ran' && raw['timer'] !== 'suspended') ||
+          raw['assertion'] !== (raw['timer'] === 'ran') ||
+          raw['duration'] !== workload.observed.durationMilliseconds ||
+          metric('liveness') !== (raw['timer'] === 'ran' ? 1 : 0)
+        )
+          validationErrors.push('hidden liveness evidence');
+        break;
+      default:
+        break;
+    }
+  };
   for (const item of cells) {
     if (!isRecord(item) || !isWorkloadDefinition(item['workload'])) continue;
     const workload = item['workload'];
@@ -264,6 +404,8 @@ function validateResourceCells(cells: unknown[], errors: string[]): void {
     }
     if (!workload.control.passed || !workload.control.observed.raw)
       errors.push('control observation');
+    else validControl(workload, errors);
+    validateRaw(workload, errors);
   }
 }
 

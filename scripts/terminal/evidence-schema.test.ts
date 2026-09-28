@@ -68,6 +68,11 @@ describe('terminal evidence schema', () => {
       metrics: { duration: { value: 1, unit: 'milliseconds' } },
       raw: { fixture: true },
     };
+    const controlObserved = {
+      ...observed,
+      durationMilliseconds: 0.5,
+      raw: { fixture: 'control' },
+    };
     const workload = {
       fixtureId: 'fixture',
       environment: { hardware: 'arm64/darwin', runtime: 'Bun 1.4.2' },
@@ -78,7 +83,7 @@ describe('terminal evidence schema', () => {
         method: 'control fixture',
         target: { metric: 'duration', unit: 'milliseconds', comparator: 'eq' as const, value: 1 },
       },
-      control: { passed: true, observed },
+      control: { passed: true, observed: controlObserved },
       observed,
     };
     const resource = {
@@ -88,6 +93,20 @@ describe('terminal evidence schema', () => {
       cells: [{ ...validReport.cells[0], id: 'fixture', workload }],
     };
     expect(validateEvidence(resource, 'resource')).toEqual([]);
+    expect(
+      validateEvidence(
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, control: { passed: true, observed } },
+            },
+          ],
+        },
+        'resource',
+      ),
+    ).toContain('control observation identical');
     expect(
       validateEvidence(
         { ...resource, cells: [{ ...resource.cells[0], workload: undefined }] },
