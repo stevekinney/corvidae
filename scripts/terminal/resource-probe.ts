@@ -104,7 +104,7 @@ function makeWorkload(
       ? 'throughput'
       : fixture === 'input-latency'
         ? 'p99'
-        : fixture === 'memory-plateau' || fixture === 'retained-projection-memory'
+        : fixture === 'memory-plateau'
           ? 'memoryDelta'
           : fixture === 'overflow'
             ? 'capacity'
@@ -112,9 +112,11 @@ function makeWorkload(
               ? 'cleanup'
               : fixture === 'hidden-page-liveness'
                 ? 'liveness'
-                : 'initialization';
+                : 'assertion';
   const comparator = target.startsWith('>=') ? 'gte' : target.startsWith('=') ? 'eq' : 'lte';
   const value = Number.parseFloat(target.replace(/[^0-9.]/g, '')) || 1;
+  const sampleCount = fixture === 'input-latency' ? 1_000 : 1;
+  const warmupCount = fixture === 'memory-plateau' ? 1 : 0;
   const observed: ObservedWorkload = {
     durationMilliseconds: 1,
     sampleCount: 1,
@@ -127,8 +129,8 @@ function makeWorkload(
     environment: { hardware: `${process.arch}/${process.platform}`, runtime: `Bun ${Bun.version}` },
     plan: {
       durationMilliseconds: 1_000,
-      sampleCount: 1,
-      warmupCount: 0,
+      sampleCount,
+      warmupCount,
       method,
       target: { metric: targetMetric, unit, comparator, value },
     },
