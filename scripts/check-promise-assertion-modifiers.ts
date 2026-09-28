@@ -141,6 +141,15 @@ export function findPromiseAssertionModifierViolations(
   return violations;
 }
 
+/**
+ * Cheap text prefilter before parsing. It matches the bare modifier names, not
+ * `.resolves`, so the computed form `expect(promise)['resolves']` still reaches
+ * the AST check.
+ */
+export function mayContainPromiseAssertionModifier(source: string): boolean {
+  return source.includes('resolves') || source.includes('rejects');
+}
+
 export function collectScannedFiles(directory: string, paths: string[]): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
@@ -173,7 +182,7 @@ async function scan(): Promise<string[]> {
     const relativePath = relative(root, path);
     if (EXEMPT_FILES.has(relativePath)) continue;
     const source = await Bun.file(path).text();
-    if (!source.includes('.resolves') && !source.includes('.rejects')) continue;
+    if (!mayContainPromiseAssertionModifier(source)) continue;
     const sourceFile = ts.createSourceFile(
       path,
       source,

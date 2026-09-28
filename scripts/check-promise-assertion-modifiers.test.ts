@@ -8,6 +8,7 @@ import {
   collectScannedFiles,
   findDriftedCopies,
   findPromiseAssertionModifierViolations,
+  mayContainPromiseAssertionModifier,
   PROMISE_OUTCOME_COPIES,
 } from './check-promise-assertion-modifiers';
 
@@ -43,6 +44,15 @@ describe('promise assertion modifiers', () => {
     "import { check } from './local';\ncheck(promise).resolves;",
   ])('accepts %s', (source) => {
     expect(inspect(source)).toEqual([]);
+  });
+
+  test.each([
+    'expect(promise).resolves.toBe(1);',
+    "expect(promise)['rejects'].toThrow();",
+    'expect(promise)[`resolves`].toBe(1);',
+  ])('the text prefilter lets %s reach the AST check', (source) => {
+    expect(mayContainPromiseAssertionModifier(source)).toBe(true);
+    expect(inspect(source)).toHaveLength(1);
   });
 
   test('reports the line of the modifier in a multi-line chain', () => {
