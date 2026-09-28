@@ -430,6 +430,49 @@ describe('Engine', () => {
     }
   });
 
+  it('reports test-only signal readiness when an inline workflow parks on a top-level signal wait', async () => {
+    const workflowId = 'wait-for-parked-signal-readiness';
+    const workflowStarted = Promise.withResolvers<void>();
+    const allowWait = Promise.withResolvers<void>();
+    useFakeTimers();
+    const engine = new Engine();
+    engine.register(
+      workflow({ name: 'wait-for-parked-signal-readiness' }).execute(async function* (ctx) {
+        workflowStarted.resolve();
+        await allowWait.promise;
+        // No accessors or update handlers, so inline mode parks this wait
+        // instead of registering a signal waiter.
+        return yield* ctx.waitForSignal('go');
+      }),
+    );
+
+    try {
+      await engine.start('wait-for-parked-signal-readiness', null, { id: workflowId });
+      await workflowStarted.promise;
+
+      let barrierSettled = false;
+      const barrier = engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId).then(() => {
+        barrierSettled = true;
+      });
+      await flushMicrotasks();
+      expect(barrierSettled).toBe(false);
+
+      allowWait.resolve();
+      await barrier;
+      expect(engine[ENGINE_PARKED_WORKFLOW_COUNT_FOR_TESTING]()).toBe(1);
+      expect(engine[ENGINE_SIGNAL_WAITER_COUNT_FOR_TESTING]()).toBe(0);
+
+      // Already parked: resolves at once, with no timer of its own.
+      const timerCountBefore = jest.getTimerCount();
+      await engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](workflowId);
+      expect(jest.getTimerCount()).toBe(timerCountBefore);
+    } finally {
+      allowWait.resolve();
+      await engine[Symbol.asyncDispose]();
+      restoreRealTimers();
+    }
+  });
+
   it('settles a pending test-only signal readiness wait when the engine is disposed', async () => {
     const workflowId = 'wait-for-signal-readiness-disposed';
     const workflowStarted = Promise.withResolvers<void>();
