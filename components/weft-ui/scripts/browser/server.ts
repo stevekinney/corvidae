@@ -1,7 +1,7 @@
+import { buildBrowser } from '@lostgradient/testing';
 import { existsSync, unwatchFile, watch, watchFile, type Stats } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildBrowser } from '@lostgradient/testing';
 import { environmentConfiguration } from './environment-configuration.ts';
 
 import { DEV_API_KEY } from './dev-credentials.ts';
