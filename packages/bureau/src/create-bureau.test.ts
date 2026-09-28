@@ -4555,19 +4555,27 @@ describe('createBureau', () => {
       // default step cap, exercising the exact seam that diverged.
     });
 
-    const run = await bureau.createRun({ message: 'Never settles' });
-    await waitForRunCompletion(bureau, run.id);
+    try {
+      const run = await bureau.createRun({ message: 'Never settles' });
+      await waitForRunCompletion(bureau, run.id);
 
-    const detail = bureau.getRun(run.id);
-    expect(detail?.finishReason).toBe('maximum-steps');
-    expect(detail?.steps).toBe(DEFAULT_MAXIMUM_STEPS);
+      const detail = bureau.getRun(run.id);
+      expect(detail?.finishReason).toBe('maximum-steps');
+      expect(detail?.steps).toBe(DEFAULT_MAXIMUM_STEPS);
+      // `run.started`/`step.started` carry the live Conversation controller;
+      // serializing it put the controller's internals (and its bound methods)
+      // into every event and made each getRun() grow with the conversation.
+      expect(JSON.stringify(detail?.events)).not.toContain('[Function');
 
-    const session = await bureau.getSession(run.sessionId);
-    expect(session?.metadata['lastRunStatus']).toBe('error');
-    expect(session?.metadata['lastFinishReason']).toBe('maximum-steps');
-    expect(session?.metadata['lastError']).toContain(
-      `Agent run exceeded maximumSteps (${DEFAULT_MAXIMUM_STEPS}).`,
-    );
+      const session = await bureau.getSession(run.sessionId);
+      expect(session?.metadata['lastRunStatus']).toBe('error');
+      expect(session?.metadata['lastFinishReason']).toBe('maximum-steps');
+      expect(session?.metadata['lastError']).toContain(
+        `Agent run exceeded maximumSteps (${DEFAULT_MAXIMUM_STEPS}).`,
+      );
+    } finally {
+      await bureau.dispose();
+    }
   });
 
   it('configures a scheduler for routed multi-provider runtimes', async () => {
