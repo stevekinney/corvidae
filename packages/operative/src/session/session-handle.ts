@@ -14,6 +14,7 @@ import {
   SessionSleepEvent,
   SessionUpdateEvent,
 } from '../events';
+import { createFreshAttemptSession } from '../fresh-attempt/start-fresh-attempt';
 import type { Subscription } from '../liveness';
 import type { CleanupAcknowledgement, ClosedOptions } from '../types';
 import { conversationThroughRun } from './run-conversation-boundary';
@@ -317,6 +318,18 @@ export function createSessionHandle(
       emitter.dispatchEvent(new SessionForkEvent(sessionId, newSessionId, options?.throughRun));
 
       return createSessionHandle(newSessionId, context);
+    },
+
+    async startFreshAttempt({ artifact, instructions }): Promise<SessionHandle> {
+      const freshSession = await createFreshAttemptSession({
+        artifact,
+        instructions,
+        agentName,
+        runtime,
+        resolveSource: context.resolveFreshAttemptSource ?? (() => undefined),
+      });
+      await store.save(freshSession);
+      return createSessionHandle(freshSession.id, context);
     },
 
     async sleep(duration: number | string, options?: { signal?: AbortSignal }): Promise<void> {

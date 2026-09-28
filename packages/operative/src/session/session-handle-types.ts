@@ -5,6 +5,8 @@ import type { AgentSession } from '../agent-session';
 import type { CheckpointStore } from '../durable/checkpoint-store';
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
 import type { OperativeEventMap } from '../events';
+import type { FreshAttemptHandoffArtifact } from '../fresh-attempt/handoff-artifact';
+import type { FreshAttemptSourceResolver } from '../fresh-attempt/validate';
 import type { LivenessSnapshot, Subscription } from '../liveness';
 import type { CleanupAcknowledgement, ClosedOptions, RunOptions, RunResult } from '../types';
 import type { SessionStore } from './types';
@@ -166,6 +168,25 @@ export interface SessionHandle {
    * point rejects with `ForkThroughRunError` before anything is persisted.
    */
   fork(options?: { throughRun?: number }): Promise<SessionHandle>;
+
+  /**
+   * Start a fresh attempt (COR-1354): a new session, with a new id, that does
+   * NOT inherit this session's transcript. The artifact is validated first —
+   * schema, digest, retention, authorization, and every publish-time check —
+   * and any rejection throws a `FreshAttemptArtifactError` before an id is
+   * minted or anything is persisted. The new session starts with `runs: []`
+   * and a history of exactly two messages: `instructions` as a system message
+   * and one rendering of the artifact's fields and allowlisted sources. No
+   * message of this session is copied, by id or by content.
+   *
+   * The artifact's source run is resolved through
+   * {@link SessionHandleContext.resolveFreshAttemptSource}; without one,
+   * every artifact is rejected as unauthorized.
+   */
+  startFreshAttempt(options: {
+    artifact: FreshAttemptHandoffArtifact;
+    instructions: string;
+  }): Promise<SessionHandle>;
 
   /**
    * Process-local delay for host coordination. This always uses a local timer;
@@ -332,6 +353,12 @@ export interface SessionHandleContext {
    * `@lostgradient/operative` root API.
    */
   runtime?: RuntimeServices | undefined;
+  /**
+   * Resolves the producing run's sealed epoch and permitted publishers for a
+   * fresh-attempt artifact (COR-1354). Omitted, `startFreshAttempt()` fails
+   * closed: every artifact is rejected as unauthorized.
+   */
+  resolveFreshAttemptSource?: FreshAttemptSourceResolver | undefined;
 }
 
 /** Raised synchronously when a session run has no configured execution options. */
