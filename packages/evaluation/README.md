@@ -165,6 +165,39 @@ bun run --cwd packages/evaluation history compare <baselineRecordId> <candidateR
 
 `list` prints one JSON line per record; `show` and `compare` print one JSON document. Diagnostics go to stderr. It exits `0` on success, `64` on a usage error or an unknown record, and `65` on a corrupt record. `--store` defaults to `packages/evaluation/.cache/evaluation-history.sqlite`, which the repository ignores, and a store file that does not exist reads as an empty history without being created.
 
+## Goal-controller adapter
+
+A goal controller judges each finished attempt through `createGoalEvaluatorAdapter`, which returns a verdict in the validator vocabulary of COR-638 (managed goal and validation semantics). This package never imports a goal-controller type: the adapter is the whole interface.
+
+```ts
+import { createEvaluator, createGoalEvaluatorAdapter } from '@lostgradient/evaluation';
+
+const evaluator = createEvaluator({ configuration, dataset, scorers, generate });
+const evaluateAttempt = createGoalEvaluatorAdapter({
+  configuration: {
+    loadEvaluator: () => evaluator, // called once per verdict
+    caseId: 'france', // the dataset case that states the goal
+    retryableOnFailure: true, // required; there is no default retry
+    nonRetryableCriteria: ['no-web-search'], // hard criteria whose failure is final
+  },
+  history,
+});
+
+const verdict = await evaluateAttempt(runResult, { signal });
+```
+
+Each call runs the case through `runTrials` with a subject that replays the attempt's `RunResult`, so the attempt is judged exactly `repetitions` times and never retried. The verdict's `kind` is exactly COR-638's `ValidatorOutcome` kind union, and an error's `kind` is exactly its `ValidatorErrorKind`; `src/goal-adapter.test-d.ts` holds both equalities at compile time.
+
+| Verdict | When |
+| --- | --- |
+| `pass`, `fail` | The trial aggregate passed or failed. A `fail` is `retryable` only when `retryableOnFailure` is true and no hard criterion in `nonRetryableCriteria` failed. |
+| `indeterminate` | The trials disagreed past the variance policy. |
+| `error` | Any trial hit an evaluator infrastructure failure (`execute`, `timeout`, or `output`, from its typed reason), or the evaluation's record could not be appended (`execute`, `history-unwritable`). Never a pass or a fail. |
+| `unavailable` | The evaluator never started: `loadEvaluator` rejected (`load`), or the configuration names a case or non-retryable criterion the evaluator lacks (`contract`). |
+| `canceled` | `signal` aborted. The trial in flight finishes, later trials never score the attempt, and nothing is recorded. |
+
+Every `pass`, `fail`, and `indeterminate` verdict, and every `error` from a trial, names the `evaluation-run` record it appended in `evidenceReference`, so `history.read(verdict.evidenceReference)` returns that evidence. `feedback` is exactly `toGeneratorProjection(aggregate).feedback`, built from trial counts alone, so no expected answer, reference material, held-out case id, criterion weight, or judge identity can reach the next attempt. Error messages are built from typed reasons and names; the raw failure is on `error.cause`, for reviewers only.
+
 ## Commands
 
 ```bash

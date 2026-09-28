@@ -36,6 +36,7 @@ describe('@lostgradient/evaluation', () => {
       'contaminationCheckSchema',
       'createEvaluationHistory',
       'createEvaluator',
+      'createGoalEvaluatorAdapter',
       'evaluationDatasetSchema',
       'evaluationRunRecordSchema',
       'evaluatorConfigurationSchema',

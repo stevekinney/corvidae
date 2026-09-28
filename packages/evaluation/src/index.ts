@@ -58,6 +58,17 @@ export type {
 } from './disagreement';
 export { createEvaluator } from './evaluator';
 export type { CreateEvaluatorOptions, Evaluator } from './evaluator';
+export { createGoalEvaluatorAdapter } from './goal-adapter';
+export type {
+  CreateGoalEvaluatorAdapterOptions,
+  GoalEvaluationOptions,
+  GoalEvaluatorAdapter,
+  GoalEvaluatorConfiguration,
+  GoalEvaluatorError,
+  GoalEvaluatorErrorCode,
+  GoalEvaluatorErrorKind,
+  GoalEvaluatorVerdict,
+} from './goal-adapter';
 export {
   CorruptHistoricalRecordError,
   EVALUATION_HISTORY_SCHEMA_VERSION,
@@ -117,6 +128,7 @@ export type {
   TrialAggregate,
   TrialContext,
   TrialRecord,
+  TrialSubject,
 } from './trials';
 export { WILSON_Z_95, variancePolicySchema, wilsonInterval } from './variance';
 export type { ScoreStatistics, TrialStatistics, VariancePolicy, WilsonInterval } from './variance';

@@ -25,7 +25,6 @@ import {
   type CostEstimate,
   createDefaultRuntimeServices,
   type FinishReason,
-  type RunnableAgent,
   type RunResultBase,
   type RuntimeServices,
   type TokenUsage,
@@ -59,14 +58,24 @@ export interface TrialContext {
   readonly seed: number;
 }
 
+/**
+ * What a trial needs from its subject: one `run()` whose terminal result it
+ * awaits. An operative `RunnableAgent` is one; so is a replay of a run that
+ * already finished, which is how a goal attempt's result is re-judged.
+ */
+export interface TrialSubject {
+  run(input: string): { result(): Promise<RunResultBase> };
+}
+
 export interface RunTrialsOptions {
   readonly evaluator: Evaluator;
   readonly caseId: string;
   /**
-   * The operative agent (built with `createAgent`) whose `run()` a trial
-   * calls. It receives the trial's seed so it can seed its own runtime.
+   * The subject, usually an operative agent built with `createAgent`, whose
+   * `run()` a trial calls. It receives the trial's seed so it can seed its
+   * own runtime.
    */
-  readonly subject: (trial: TrialContext) => RunnableAgent<unknown, boolean>;
+  readonly subject: (trial: TrialContext) => TrialSubject;
   /** Draws each trial's seed. Defaults to the real-globals runtime services. */
   readonly runtime?: Pick<RuntimeServices, 'random'> | undefined;
   /** Seeds recorded by an earlier aggregate, one per repetition, replayed instead of drawn. */
