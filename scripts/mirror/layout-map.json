@@ -115,6 +115,12 @@
       "issue": "COR-1221",
       "reason": "Excluded from the mirror by the repository owner, 2026-09-21 (`package-map.json` carries the `exclude` ruling), so no placement is needed and the plan never consults this entry. The application was the SvelteKit `chat-room` when that ruling was made and is now an Electrobun desktop application; the rename removes the specific name collision with cinder's `labs/chat-room` (`@cinder/chat-room-lab`) but not the reason for the ruling, which is that a public library mirror has not been ruled on as a home for a private desktop application whose toolchain is a Hutch-managed devkit projected outside version control. It stays `deferred` rather than being given a directory so that if the exclusion is ever lifted, the placement has to be ruled on before anything is emitted."
     },
+    "@lostgradient/evaluation": {
+      "disposition": "deferred",
+      "corvidaeDirectory": "packages/evaluation",
+      "issue": "COR-1348",
+      "reason": "Excluded from the mirror in `package-map.json`, so no placement is needed. New in this repository and never published, and no workspace the mirror emits depends on it. `deferred` rather than a directory, matching every other excluded workspace here, so the sync refuses rather than guessing if the exclusion is lifted."
+    },
     "@lostgradient/telephone": {
       "disposition": "deferred",
       "corvidaeDirectory": "packages/telephone",

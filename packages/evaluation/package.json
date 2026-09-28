@@ -1,0 +1,29 @@
+{
+  "name": "@lostgradient/evaluation",
+  "private": true,
+  "description": "Versioned evaluator configurations, typed rubrics, calibrated model judges, and hard per-criterion gates for completed operative runs.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov"
+  },
+  "dependencies": {
+    "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
+    "armorer": "workspace:*",
+    "conversationalist": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

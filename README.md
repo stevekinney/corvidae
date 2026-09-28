@@ -29,7 +29,7 @@ Run the cross-component browser suite with `bun run test:browser`, or use `bun r
 
 ## Workspace boundaries
 
-Browser component libraries live in `components/`: Cinder, Chat, Editor, and Weft UI. Other libraries live in `packages/`: the agent runtimes, Weft execution engine, Markdown processing, and shared test infrastructure. Repository configuration lives in `internal/`, including the `@lostgradient/typescript` presets. Every workspace uses the `@lostgradient/*` namespace.
+Browser component libraries live in `components/`: Cinder, Chat, Editor, and Weft UI. Other libraries live in `packages/`: the agent runtimes, the [evaluator](./packages/evaluation/README.md) that scores completed runs against versioned rubrics, Weft execution engine, Markdown processing, and shared test infrastructure. Repository configuration lives in `internal/`, including the `@lostgradient/typescript` presets. Every workspace uses the `@lostgradient/*` namespace.
 
 Chat-room is the application under `applications/`. The `weft` package owns its `weft` and `weft-mcp` source executables. Weft UI owns its browser integration host under `components/weft-ui/scripts/browser`. Tests spanning Cinder, Chat, and Editor live under `scripts/browser-fixtures`; they need a real browser page, but have no application or package identity. Both test hosts compile Svelte and serve their assets with Bun. Chat-room is the only workspace that uses Vite.
 

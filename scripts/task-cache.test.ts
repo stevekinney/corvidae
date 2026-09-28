@@ -532,6 +532,20 @@ test('every cacheable turbo task reaches the install preflight', async () => {
   expect(uncovered).toEqual([]);
 });
 
+test('the evaluation coverage gate runs in the root coverage graph and caches its report', async () => {
+  // Turbo has no generic `test:coverage` task, so a workspace's coverage script
+  // runs under `bun run coverage` only when `turbo.json` names it. Dropping this
+  // entry would silently remove `@lostgradient/evaluation`'s 100 percent line and
+  // function threshold from `bun run validate` without failing anything.
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const manifest = await Bun.file(join(root, 'packages/evaluation/package.json')).json();
+  expect(manifest.scripts?.['test:coverage']).toContain('--coverage');
+  expect(configuration.tasks['@lostgradient/evaluation#test:coverage']).toEqual({
+    dependsOn: ['transit'],
+    outputs: ['coverage/**'],
+  });
+});
+
 test('the root package defines the preflight script the turbo task runs', async () => {
   // Turbo treats a task whose script is missing as a silent no-op, so deleting
   // or renaming this script would disable the gate above without failing.
