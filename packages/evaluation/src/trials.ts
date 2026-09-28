@@ -193,7 +193,11 @@ async function runTrial(
   return recordEvaluation(context, await options.evaluator.evaluateCase(options.caseId, result));
 }
 
-function aggregateStatistics(
+/**
+ * Verdict and per-criterion statistics over `trials`. The history pools every
+ * case's trials of one evaluation run through this same rule.
+ */
+export function aggregateStatistics(
   evaluator: Evaluator,
   trials: readonly TrialRecord[],
 ): AggregateStatistics {

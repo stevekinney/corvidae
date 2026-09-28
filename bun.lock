@@ -296,6 +296,7 @@
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/operative": "workspace:*",
+        "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
         "zod": "catalog:",

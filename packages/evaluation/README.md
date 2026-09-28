@@ -2,7 +2,7 @@
 
 Scores completed [Operative](../operative/README.md) runs against a versioned evaluator configuration: typed multi-criterion rubrics, hard per-criterion gates, calibration examples for a model judge, and a digest that identifies the configuration exactly. On top of that it runs each case its declared number of times, reports distributions and uncertainty rather than one score, surfaces disagreement and infrastructure failure explicitly, and refuses to treat an unchecked held-out dataset, an uncalibrated judge, or a drifted judge revision as gate-eligible. It implements the evaluator configuration, result-class, inspection-surface, and held-out, repeated-trial, variance, drift, and calibration sections of the calibrated evaluator contract (COR-896).
 
-`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. History storage and release gates build on it in later slices.
+`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command; release gates build on both in later slices.
 
 ## Configuration
 
@@ -121,11 +121,56 @@ Every dataset has an `id`, a `version`, and an `owner`, and every case declares 
 - `toGeneratorProjection(evaluation)` is what may go back to the evaluated system: the verdict, the feedback text, and the names of failing hard criteria. The feedback has a held-out case's id, the expected answer, every reference material text, and every calibration response removed, because a model judge may quote them.
 - `toGeneratorProjection(aggregate)` gives the outcome, a feedback line built only from trial counts, and the names of hard criteria that failed in any trial. It never contains a case id, a held-out status, or an expected answer.
 
+## History
+
+```ts
+import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
+import { createEvaluationHistory, toEvaluationRunRecord } from '@lostgradient/evaluation';
+
+const store = textValueStore(new BunSQLiteStorage('.cache/evaluation-history.sqlite'));
+const history = createEvaluationHistory(store);
+
+const { digest } = await history.append(
+  toEvaluationRunRecord({
+    id: 'capitals-2026-09-28',
+    recordedAt: new Date().toISOString(),
+    evaluator,
+    aggregates, // one runTrials aggregate per case
+    latencyMilliseconds,
+  }),
+);
+```
+
+`createEvaluationHistory(store)` takes a weft `ConditionalTextValueStore` (`textValueStore` over `BunSQLiteStorage` for the local file, or over `MemoryStorage` in tests) and returns exactly `{ append, read, list }`. There is no update and no delete: historical results are never rewritten, and rolling an evaluator back means citing an earlier record.
+
+- `append(record)` commits with a compare-and-swap that requires the id to be absent. A second record with the same id rejects with `HistoricalRecordExistsError`, and the first stays byte-identical.
+- `read(id)` resolves the verified `{ digest, record }`, or `undefined` for an unknown id.
+- `list()` resolves every verified record, oldest first.
+
+Each stored row is the canonical JSON of `{ digest, record }`, where `digest` is the SHA-256 of the record's own canonical JSON. `read` and `list` reject with `CorruptHistoricalRecordError` when a row is not valid UTF-8, does not parse, is not in canonical form, does not match the record schema, is stored under another id, or does not match its digest, so changing any one byte of a row makes it unreadable rather than silently different.
+
+`toEvaluationRunRecord` builds an `evaluation-run` record (schema version 1) from `runTrials` aggregates: the evaluator identity, dataset id and version, code revision, repetitions, variance policy, outcome counts, verdict and per-criterion statistics pooled over every trial, the summed cost (`null` when any trial has no cost estimate), the latency, and each case with its own statistics and per-trial seeds, verdicts, finish reasons, usage, cost, criterion scores, and typed error reasons. It rejects an aggregate from another evaluator, a case outside the evaluator's dataset, and a case aggregated twice.
+
+A record never holds anything that could leak a held-out case. A held-out case is recorded by its ordinal in the dataset version, never by its id, and the schema rejects a held-out case that carries one. No expected answer, run content, feedback, judge rationale, or error message is stored, because each may quote one.
+
+`compareEvaluationRuns(baseline, candidate)` reports, per criterion, the pass-fraction and mean-score deltas (`candidate - baseline`), plus the pooled verdict pass fraction, cost, and latency. A metric either run lacks has a `null` delta, never `0`.
+
+The `history` command inspects the history and never writes to it:
+
+```bash
+bun run --cwd packages/evaluation history list [--store <path>]
+bun run --cwd packages/evaluation history show <recordId> [--store <path>]
+bun run --cwd packages/evaluation history compare <baselineRecordId> <candidateRecordId> [--store <path>]
+```
+
+`list` prints one JSON line per record; `show` and `compare` print one JSON document. Diagnostics go to stderr. It exits `0` on success, `64` on a usage error or an unknown record, and `65` on a corrupt record. `--store` defaults to `packages/evaluation/.cache/evaluation-history.sqlite`, which the repository ignores, and a store file that does not exist reads as an empty history without being created.
+
 ## Commands
 
 ```bash
 bunx turbo run lint typecheck test --filter=@lostgradient/evaluation
 bun run --filter=@lostgradient/evaluation test:coverage
+bun run --cwd packages/evaluation history list
 ```
 
-`test:coverage` fails below 100 percent line or function coverage of this workspace's `src/`.
+`test:coverage` fails below 100 percent line or function coverage of this workspace's `src/` and `scripts/`.

@@ -58,6 +58,28 @@ export type {
 } from './disagreement';
 export { createEvaluator } from './evaluator';
 export type { CreateEvaluatorOptions, Evaluator } from './evaluator';
+export {
+  CorruptHistoricalRecordError,
+  EVALUATION_HISTORY_SCHEMA_VERSION,
+  HistoricalRecordExistsError,
+  compareEvaluationRuns,
+  createEvaluationHistory,
+  evaluationRunRecordSchema,
+  parseEvaluationRunRecord,
+  toEvaluationRunRecord,
+} from './history';
+export type {
+  ComparedRun,
+  CriterionDelta,
+  EvaluationHistory,
+  EvaluationRunCase,
+  EvaluationRunComparison,
+  EvaluationRunRecord,
+  EvaluationRunRecordOptions,
+  EvaluationRunTrial,
+  HistoricalRecord,
+  MetricDelta,
+} from './history';
 export { canonicalJson, evaluatorIdentity } from './identity';
 export type { EvaluatorIdentity } from './identity';
 export { JUDGE_RESPONSE_FORMAT, judgeResponseSchema, renderJudgePrompt } from './judge';
