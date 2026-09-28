@@ -467,7 +467,9 @@ describe('internal workspace architecture', () => {
     const application = await readManifest('applications/desktop');
     // Electrobun owns the desktop build; Vite only builds the renderer, and
     // both are gated on the devkit projection that `prepare:devkit` performs.
-    expect(application.scripts?.['prepare:devkit']).toContain('electrobun prepare');
+    expect(application.scripts?.['prepare:devkit']).toBe(
+      'HUTCH_NO_UPDATE_CHECK=1 electrobun prepare',
+    );
     expect(application.scripts?.['build:renderer']).toContain('vite build');
     expect(application.scripts?.['build']).toContain('electrobun build');
     expect(application.scripts?.['dev']).toContain('electrobun dev');
