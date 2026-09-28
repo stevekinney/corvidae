@@ -461,8 +461,8 @@ test('explicit mirror boundary rejects copied provenance trailers and runtime ma
   }
 });
 
-test('rejects historical build inputs while allowing release metadata changes', async () => {
-  for (const field of ['scripts', 'devDependencies', 'packageManager']) {
+for (const field of ['scripts', 'devDependencies', 'packageManager']) {
+  test(`rejects a historical build input change: ${field}`, async () => {
     await withPublication(async ({ options, target, registry, setRegistry }) => {
       const path = join(target, 'packages/operative/package.json');
       const change =
@@ -488,8 +488,10 @@ test('rejects historical build inputs while allowing release metadata changes', 
         `source-owned manifest field packages/operative/package.json:${field}`,
       );
     });
-  }
+  });
+}
 
+test('allows a release metadata change beside historical build inputs', async () => {
   await withPublication(async ({ options, target, registry, setRegistry }) => {
     const path = join(target, 'packages/operative/package.json');
     await Bun.write(path, json({ ...registry, description: 'release metadata' }));
@@ -542,83 +544,80 @@ test('accepts a verified mirror commit merged into the old default branch', asyn
   });
 });
 
-test('rejects source, build-input, transient, and manifest merge-side changes', async () => {
-  const cases: {
-    name: string;
-    mutateAfterMerge?: (target: string) => Promise<void>;
-    mutateSideBranch?: (target: string) => Promise<void>;
-    mutateOldDefault?: (target: string) => Promise<void>;
-    expected: string;
-  }[] = [
-    {
-      name: 'merge resolution source change',
-      mutateAfterMerge: async (target: string) => {
-        await Bun.write(
-          join(target, 'packages/operative/src/index.ts'),
-          'export const value = "resolved-maliciously";\n',
-        );
-      },
-      expected: 'non-target-owned path packages/operative/src/index.ts',
+const mergeSideChangeCases: {
+  name: string;
+  mutateAfterMerge?: (target: string) => Promise<void>;
+  mutateSideBranch?: (target: string) => Promise<void>;
+  mutateOldDefault?: (target: string) => Promise<void>;
+  expected: string;
+}[] = [
+  {
+    name: 'merge resolution source change',
+    mutateAfterMerge: async (target: string) => {
+      await Bun.write(
+        join(target, 'packages/operative/src/index.ts'),
+        'export const value = "resolved-maliciously";\n',
+      );
     },
-    {
-      name: 'side branch build input',
-      mutateSideBranch: async (target: string) => {
-        const manifest = JSON.parse(
-          await Bun.file(join(target, 'packages/operative/package.json')).text(),
-        );
-        await Bun.write(
-          join(target, 'packages/operative/package.json'),
-          json({ ...manifest, scripts: { build: 'bun run bad.ts' } }),
-        );
-      },
-      expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    expected: 'non-target-owned path packages/operative/src/index.ts',
+  },
+  {
+    name: 'side branch build input',
+    mutateSideBranch: async (target: string) => {
+      const manifest = JSON.parse(
+        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+      );
+      await Bun.write(
+        join(target, 'packages/operative/package.json'),
+        json({ ...manifest, scripts: { build: 'bun run bad.ts' } }),
+      );
     },
-    {
-      name: 'old default side branch build input',
-      mutateOldDefault: async (target: string) => {
-        const manifest = JSON.parse(
-          await Bun.file(join(target, 'packages/operative/package.json')).text(),
-        );
-        await Bun.write(
-          join(target, 'packages/operative/package.json'),
-          json({ ...manifest, scripts: { build: 'bun run old-default-bad.ts' } }),
-        );
-      },
-      expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    expected: 'source-owned manifest field packages/operative/package.json:scripts',
+  },
+  {
+    name: 'old default side branch build input',
+    mutateOldDefault: async (target: string) => {
+      const manifest = JSON.parse(
+        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+      );
+      await Bun.write(
+        join(target, 'packages/operative/package.json'),
+        json({ ...manifest, scripts: { build: 'bun run old-default-bad.ts' } }),
+      );
     },
-    {
-      name: 'transient source change reverted on a descendant branch',
-      mutateSideBranch: async (target: string) => {
-        await Bun.write(
-          join(target, 'packages/operative/src/index.ts'),
-          'export const value = "transient";\n',
-        );
-        await commit(target, 'Transient source change');
-        await Bun.write(
-          join(target, 'packages/operative/src/index.ts'),
-          'export const value = 1;\n',
-        );
-      },
-      expected: 'non-target-owned path packages/operative/src/index.ts',
+    expected: 'source-owned manifest field packages/operative/package.json:scripts',
+  },
+  {
+    name: 'transient source change reverted on a descendant branch',
+    mutateSideBranch: async (target: string) => {
+      await Bun.write(
+        join(target, 'packages/operative/src/index.ts'),
+        'export const value = "transient";\n',
+      );
+      await commit(target, 'Transient source change');
+      await Bun.write(join(target, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
     },
-    {
-      name: 'manifest field add and delete',
-      mutateSideBranch: async (target: string) => {
-        const manifest = JSON.parse(
-          await Bun.file(join(target, 'packages/operative/package.json')).text(),
-        );
-        await Bun.write(
-          join(target, 'packages/operative/package.json'),
-          json({ ...manifest, imports: { '#bad': './bad.ts' } }),
-        );
-        await commit(target, 'Add source-owned manifest field');
-        await Bun.write(join(target, 'packages/operative/package.json'), json(manifest));
-      },
-      expected: 'source-owned manifest field packages/operative/package.json:imports',
+    expected: 'non-target-owned path packages/operative/src/index.ts',
+  },
+  {
+    name: 'manifest field add and delete',
+    mutateSideBranch: async (target: string) => {
+      const manifest = JSON.parse(
+        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+      );
+      await Bun.write(
+        join(target, 'packages/operative/package.json'),
+        json({ ...manifest, imports: { '#bad': './bad.ts' } }),
+      );
+      await commit(target, 'Add source-owned manifest field');
+      await Bun.write(join(target, 'packages/operative/package.json'), json(manifest));
     },
-  ];
+    expected: 'source-owned manifest field packages/operative/package.json:imports',
+  },
+];
 
-  for (const testCase of cases) {
+for (const testCase of mergeSideChangeCases) {
+  test(`rejects a merge-side change: ${testCase.name}`, async () => {
     await withPublication(async ({ options, target, registry }) => {
       const slug = testCase.name.replaceAll(' ', '-');
       const mirrored = await requireGit(target, ['rev-parse', 'HEAD~1']);
@@ -674,8 +673,8 @@ test('rejects source, build-input, transient, and manifest merge-side changes', 
           : registryRunner(command, settings);
       await expect(recordSourceDigest(options)).rejects.toThrow(testCase.expected);
     });
-  }
-});
+  });
+}
 
 test('publication inputs include emitted build scripts and resolved toolchain versions', async () => {
   await withPublication(async ({ current }) => {
