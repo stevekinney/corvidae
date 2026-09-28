@@ -1,12 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createScriptedGenerate, type RunResultBase } from '@lostgradient/operative';
+import {
+  createAgent,
+  createManualRuntimeServices,
+  createScriptedGenerate,
+  type RunResultBase,
+} from '@lostgradient/operative';
 
 import type { CriterionScorers } from './criteria';
 import {
   CALIBRATION_RESPONSE,
   datasetInput,
   EXPECTED_ANSWER,
+  HELD_OUT_CASE_ID,
   judgeReply,
   modelConfigurationInput,
   runResult,
@@ -14,6 +20,7 @@ import {
 } from './evaluation.test-support';
 import { createEvaluator } from './evaluator';
 import { toGeneratorProjection, toReviewerProjection } from './projections';
+import { runTrials, type TrialAggregate } from './trials';
 import type { CaseEvaluation } from './verdict';
 
 const LEAKY_FEEDBACK = `The answer should be "${EXPECTED_ANSWER}". Remember: ${STYLE_GUIDE_TEXT} Unlike "${CALIBRATION_RESPONSE}"`;
@@ -28,7 +35,7 @@ function scorers(assertion = true): CriterionScorers {
 
 async function evaluate(
   result: RunResultBase,
-  options: { assertion?: boolean; reply?: string } = {},
+  options: { assertion?: boolean; reply?: string; caseId?: string } = {},
 ): Promise<CaseEvaluation> {
   const evaluator = await createEvaluator({
     configuration: modelConfigurationInput(),
@@ -44,7 +51,7 @@ async function evaluate(
       },
     ]),
   });
-  return evaluator.evaluateCase('case-france', result);
+  return evaluator.evaluateCase(options.caseId ?? 'case-france', result);
 }
 
 describe('toGeneratorProjection', () => {
@@ -78,6 +85,18 @@ describe('toGeneratorProjection', () => {
     );
   });
 
+  test('redacts a held-out case id the judge quotes, and leaves a public one alone', async () => {
+    const heldOut = await evaluate(runResult(), {
+      reply: judgeReply({ feedback: `Compare with ${HELD_OUT_CASE_ID}.` }),
+    });
+    expect(toGeneratorProjection(heldOut).feedback).toBe('Compare with [redacted].');
+    const publicCase = await evaluate(runResult(), {
+      caseId: 'case-japan',
+      reply: judgeReply({ feedback: 'Compare with case-japan.' }),
+    });
+    expect(toGeneratorProjection(publicCase).feedback).toBe('Compare with case-japan.');
+  });
+
   test('explains an agent failure without scoring details', async () => {
     const projection = toGeneratorProjection(
       await evaluate(runResult({ finishReason: 'maximum-steps' })),
@@ -104,6 +123,110 @@ describe('toGeneratorProjection', () => {
   });
 });
 
+describe('toGeneratorProjection of a trial aggregate', () => {
+  const QUOTING_FEEDBACK = `Case ${HELD_OUT_CASE_ID} (held-out) expects "${EXPECTED_ANSWER}".`;
+
+  async function aggregate(options: {
+    holds?: readonly boolean[];
+    replies?: readonly string[];
+    configuration?: Record<string, unknown>;
+  }): Promise<TrialAggregate> {
+    const replies =
+      options.replies ?? [1, 2, 3].map(() => judgeReply({ feedback: QUOTING_FEEDBACK }));
+    let assertionCalls = 0;
+    const evaluator = await createEvaluator({
+      configuration: options.configuration ?? modelConfigurationInput(),
+      dataset: datasetInput(),
+      scorers: {
+        ...scorers(),
+        assertions: { 'names-the-capital': () => options.holds?.[assertionCalls++] ?? true },
+      },
+      generate: createScriptedGenerate(
+        replies.map((content) => ({
+          kind: 'respond' as const,
+          response: { content, toolCalls: [] },
+        })),
+      ),
+    });
+    const agentGenerate = createScriptedGenerate(
+      replies.map(() => ({
+        kind: 'respond' as const,
+        response: { content: 'Paris, on the Seine.', toolCalls: [] },
+      })),
+    );
+    return runTrials({
+      evaluator,
+      caseId: HELD_OUT_CASE_ID,
+      subject: () => createAgent({ name: 'geographer', generate: agentGenerate }),
+      runtime: createManualRuntimeServices(),
+    });
+  }
+
+  test('never contains a held-out case id, its held-out status, or its expected answer', async () => {
+    const reviewed = await aggregate({ holds: [true, false, false] });
+    expect(reviewed.outcome).toBe('disagreement');
+    // The aggregate itself is reviewer material and keeps all three.
+    const reviewerJson = JSON.stringify(reviewed);
+    expect(reviewerJson).toContain(HELD_OUT_CASE_ID);
+    expect(reviewerJson).toContain(EXPECTED_ANSWER);
+    expect(reviewerJson).toContain('held-out');
+
+    const projection = toGeneratorProjection(reviewed);
+    const serialized = JSON.stringify(projection);
+    const { cases } = datasetInput();
+    for (const heldOut of cases.filter((entry) => entry.visibility === 'held-out')) {
+      expect(serialized).not.toContain(heldOut.id);
+      expect(serialized).not.toContain(heldOut.expected);
+    }
+    expect(serialized).not.toContain('held-out');
+    expect(serialized).not.toContain(STYLE_GUIDE_TEXT);
+    expect(Object.keys(projection).toSorted()).toEqual([
+      'failedHardCriteria',
+      'feedback',
+      'outcome',
+      'projection',
+    ]);
+    expect(projection).toEqual({
+      projection: 'generator',
+      outcome: 'disagreement',
+      feedback:
+        'The evaluator’s trials disagreed: 1 of 3 passed. This is neither a pass nor a fail.',
+      failedHardCriteria: ['names-the-capital'],
+    });
+    expect(projection).not.toHaveProperty('pass');
+  });
+
+  test('reports how many trials passed for a pass or a fail', async () => {
+    expect(toGeneratorProjection(await aggregate({}))).toEqual({
+      projection: 'generator',
+      outcome: 'pass',
+      feedback: '3 of 3 trials passed.',
+      failedHardCriteria: [],
+    });
+    expect(toGeneratorProjection(await aggregate({ holds: [false, false, false] }))).toEqual({
+      projection: 'generator',
+      outcome: 'fail',
+      feedback: '0 of 3 trials passed.',
+      failedHardCriteria: ['names-the-capital'],
+    });
+  });
+
+  test('reports an indeterminate aggregate without its errors or any verdict', async () => {
+    const projection = toGeneratorProjection(
+      await aggregate({
+        holds: [false, true, true],
+        replies: [judgeReply(), `not json: ${EXPECTED_ANSWER}`, judgeReply()],
+      }),
+    );
+    expect(projection).toEqual({
+      projection: 'generator',
+      outcome: 'indeterminate',
+      feedback: 'The evaluator could not score every trial. This is not a verdict on the run.',
+      failedHardCriteria: [],
+    });
+  });
+});
+
 describe('toReviewerProjection', () => {
   test('exposes every inspectable fact of a scored case as plain JSON', async () => {
     const result = runResult({ toolCalls: [{ name: 'lookup', arguments: { country: 'France' } }] });
@@ -120,6 +243,7 @@ describe('toReviewerProjection', () => {
       id: 'case-france',
       input: 'What is the capital of France?',
       expected: EXPECTED_ANSWER,
+      visibility: 'held-out',
     });
     expect(projection.feedback).toBe(LEAKY_FEEDBACK);
     expect(projection.rubric?.criteria.map((criterion) => criterion.name)).toHaveLength(5);

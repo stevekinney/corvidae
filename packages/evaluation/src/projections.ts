@@ -11,9 +11,14 @@
  * - {@link toGeneratorProjection} is for the generator (the evaluated system,
  *   or any prompt fed back to it as retry context). It carries only the
  *   verdict, the feedback text, and the names of failing hard criteria. The
- *   feedback is scrubbed of the expected answer, every reference material
- *   text, and every calibration example response, because a model judge's
- *   feedback may quote them verbatim.
+ *   feedback is scrubbed of a held-out case's id, the expected answer,
+ *   every reference material text, and every calibration example response,
+ *   because a model judge's feedback may quote them verbatim.
+ *
+ * A {@link TrialAggregate} is itself reviewer material: it keeps the case id,
+ * every trial's unredacted feedback, and the typed errors. Its generator
+ * projection is built from counts and criterion names alone, so no case id,
+ * held-out status, or expected answer can reach the generator through it.
  */
 import type {
   CostEstimate,
@@ -24,14 +29,24 @@ import type {
 } from '@lostgradient/operative';
 
 import type { EvaluatorConfiguration } from './configuration';
-import type { EvaluationCase } from './dataset';
+import type { EvaluationCase } from './datasets';
+import type { AggregateOutcome } from './disagreement';
 import type { EvaluatorIdentity } from './identity';
 import type { RubricResult } from './rubric';
+import type { TrialAggregate } from './trials';
 import type { CaseEvaluation, CaseVerdict, InfrastructureFailureReason } from './verdict';
 
 export interface GeneratorProjection {
   readonly projection: 'generator';
   readonly verdict: CaseVerdict;
+  readonly feedback: string;
+  readonly failedHardCriteria: readonly string[];
+}
+
+/** The generator's view of repeated trials: an outcome, never a collapsed pass boolean. */
+export interface AggregateGeneratorProjection {
+  readonly projection: 'generator';
+  readonly outcome: AggregateOutcome;
   readonly feedback: string;
   readonly failedHardCriteria: readonly string[];
 }
@@ -97,6 +112,9 @@ function describeError(error: unknown): ErrorDescription {
 function protectedTexts(evaluation: CaseEvaluation): string[] {
   const { configuration, evaluationCase } = evaluation;
   return [
+    // A public case's id is already known to the generator, and a short one
+    // would redact unrelated words; only a held-out id is a secret.
+    ...(evaluationCase.visibility === 'held-out' ? [evaluationCase.id] : []),
     evaluationCase.expected,
     ...configuration.referenceMaterial.entries.map((entry) => entry.text),
     ...configuration.examples.map((example) => example.response),
@@ -109,7 +127,56 @@ function redact(text: string, secrets: readonly string[]): string {
   return secrets.reduce((redacted, secret) => redacted.split(secret).join(REDACTED), text);
 }
 
-export function toGeneratorProjection(evaluation: CaseEvaluation): GeneratorProjection {
+/** Names of every criterion whose hard gate failed in any scored trial, in configuration order. */
+function failedHardCriteriaAcross(aggregate: TrialAggregate): string[] {
+  const failed = new Set(
+    aggregate.trials.flatMap((trial) =>
+      trial.criteria
+        .filter((criterion) => criterion.hardGate === 'failed')
+        .map((criterion) => criterion.name),
+    ),
+  );
+  return aggregate.statistics.criteria
+    .map((criterion) => criterion.name)
+    .filter((name) => failed.has(name));
+}
+
+function toAggregateGeneratorProjection(aggregate: TrialAggregate): AggregateGeneratorProjection {
+  const { passes, trials } = aggregate.statistics.verdicts;
+  const projection = { projection: 'generator', outcome: aggregate.outcome } as const;
+  switch (aggregate.outcome) {
+    case 'pass':
+    case 'fail':
+      return {
+        ...projection,
+        feedback: `${passes} of ${trials} trials passed.`,
+        failedHardCriteria: failedHardCriteriaAcross(aggregate),
+      };
+    case 'disagreement':
+      return {
+        ...projection,
+        feedback: `The evaluator’s trials disagreed: ${passes} of ${trials} passed. This is neither a pass nor a fail.`,
+        failedHardCriteria: failedHardCriteriaAcross(aggregate),
+      };
+    case 'indeterminate':
+      return {
+        ...projection,
+        feedback: 'The evaluator could not score every trial. This is not a verdict on the run.',
+        failedHardCriteria: [],
+      };
+  }
+}
+
+export function toGeneratorProjection(evaluation: CaseEvaluation): GeneratorProjection;
+export function toGeneratorProjection(aggregate: TrialAggregate): AggregateGeneratorProjection;
+export function toGeneratorProjection(
+  subject: CaseEvaluation | TrialAggregate,
+): GeneratorProjection | AggregateGeneratorProjection {
+  if ('outcome' in subject) return toAggregateGeneratorProjection(subject);
+  return toCaseGeneratorProjection(subject);
+}
+
+function toCaseGeneratorProjection(evaluation: CaseEvaluation): GeneratorProjection {
   switch (evaluation.verdict) {
     case 'pass':
     case 'fail':

@@ -34,7 +34,7 @@ import {
   calibrationSeparationIssues,
   type EvaluationDataset,
   parseEvaluationDataset,
-} from './dataset';
+} from './datasets';
 import { type EvaluatorIdentity, evaluatorIdentity } from './identity';
 import { type JudgeVerdict, runModelJudge } from './judge';
 import { applyRubric, type CriterionScore, type RubricResult } from './rubric';

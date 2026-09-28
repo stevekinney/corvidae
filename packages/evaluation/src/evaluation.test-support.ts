@@ -87,6 +87,12 @@ export function modelConfigurationInput(): Record<string, unknown> {
       perGateRun: { costUsd: 5, latencyMilliseconds: 600_000 },
     },
     repetitions: 3,
+    variancePolicy: {
+      name: 'two-of-three',
+      version: '1',
+      minimumPassFraction: 0.6,
+      maximumIntervalWidth: 0.75,
+    },
     resultSchemaVersion: 1,
     codeRevision: 'a7679370f3e1a3b850299d13c9e768541a601722',
   };
@@ -100,18 +106,45 @@ export function deterministicConfigurationInput(): Record<string, unknown> {
   );
   input['judge'] = { kind: 'deterministic', name: 'fixture-checks' };
   input['repetitions'] = 1;
+  delete input['variancePolicy'];
   return input;
 }
 
+export const DATASET_OWNER = 'evaluation-datasets-team';
+/** The held-out case of {@link datasetInput}; its id and answer must never reach the generator. */
+export const HELD_OUT_CASE_ID = 'case-france';
+
+export interface DatasetCaseInput {
+  id: string;
+  input: string;
+  expected: string;
+  visibility: 'held-out' | 'public';
+}
+
+/** A dataset with one held-out case (France) and one public case (Japan). */
 export function datasetInput(): {
+  id: string;
   version: string;
-  cases: { id: string; input: string; expected: string }[];
+  owner: string;
+  cases: DatasetCaseInput[];
 } {
   return {
+    id: 'capitals',
     version: 'capitals-2026-09',
+    owner: DATASET_OWNER,
     cases: [
-      { id: 'case-france', input: 'What is the capital of France?', expected: EXPECTED_ANSWER },
-      { id: 'case-japan', input: 'What is the capital of Japan?', expected: 'Tokyo' },
+      {
+        id: HELD_OUT_CASE_ID,
+        input: 'What is the capital of France?',
+        expected: EXPECTED_ANSWER,
+        visibility: 'held-out',
+      },
+      {
+        id: 'case-japan',
+        input: 'What is the capital of Japan?',
+        expected: 'Tokyo',
+        visibility: 'public',
+      },
     ],
   };
 }

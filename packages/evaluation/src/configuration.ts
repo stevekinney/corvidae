@@ -9,9 +9,18 @@
  * and `revision` (the human half of {@link EvaluatorIdentity}) and the
  * `passThreshold` its weighted total must reach, because that threshold
  * changes what a verdict means and so belongs under the digest too.
+ *
+ * A stochastic (model or heuristic) judge also declares a `variancePolicy`
+ * and at least two `repetitions`: a single trial from a stochastic judge is
+ * never sufficient evidence, so the schema makes that structural. Whenever a
+ * policy is declared, its `maximumIntervalWidth` must be reachable at the
+ * declared `repetitions`, because a policy no trial count can satisfy would
+ * turn every unanimous result into an undecidable one.
  */
 import type { Effort } from '@lostgradient/operative';
 import { z } from 'zod';
+
+import { narrowestIntervalWidth, variancePolicySchema } from './variance';
 
 /** One problem found while validating a configuration or dataset. */
 export interface ConfigurationIssue {
@@ -42,8 +51,10 @@ const EFFORTS_ARE_EXHAUSTIVE: Exclude<Effort, (typeof EFFORTS)[number]> extends 
   : never = true;
 void EFFORTS_ARE_EXHAUSTIVE;
 
-const identifier = z.string().min(1);
-const unitInterval = z.number().min(0).max(1);
+export const identifier = z.string().min(1);
+export const unitInterval = z.number().min(0).max(1);
+/** A commit hash naming the evaluated system's revision. */
+export const codeRevisionSchema = z.string().regex(/^[0-9a-f]{7,64}$/, 'Expected a commit hash');
 
 const criterionFields = {
   name: identifier,
@@ -120,6 +131,46 @@ export function reportDuplicates(
   }
 }
 
+/** Reports a stochastic judge without a variance policy or a second trial, and an unreachable policy. */
+function reportTrialPolicyIssues(
+  configuration: {
+    readonly judge: { readonly kind: string };
+    readonly repetitions: number;
+    readonly variancePolicy?: { readonly maximumIntervalWidth: number } | undefined;
+  },
+  context: z.RefinementCtx,
+): void {
+  const { judge, repetitions, variancePolicy } = configuration;
+  // Zod runs this refinement even when `repetitions` failed its own check;
+  // that failure is already reported, so only a valid trial count is judged here.
+  const validRepetitions = Number.isInteger(repetitions) && repetitions >= 1;
+  if (judge.kind !== 'deterministic') {
+    if (variancePolicy === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['variancePolicy'],
+        message: `A ${judge.kind} judge is stochastic and requires a variance policy; there is no default`,
+      });
+    }
+    if (validRepetitions && repetitions < 2) {
+      context.addIssue({
+        code: 'custom',
+        path: ['repetitions'],
+        message: `A single trial from a ${judge.kind} judge is never sufficient evidence; declare at least 2 repetitions`,
+      });
+    }
+  }
+  if (variancePolicy === undefined || !validRepetitions) return;
+  const narrowest = narrowestIntervalWidth(repetitions);
+  if (narrowest > variancePolicy.maximumIntervalWidth) {
+    context.addIssue({
+      code: 'custom',
+      path: ['variancePolicy', 'maximumIntervalWidth'],
+      message: `No result of ${repetitions} trials can meet a maximum interval width of ${variancePolicy.maximumIntervalWidth}: even a unanimous one spans ${narrowest.toFixed(4)}`,
+    });
+  }
+}
+
 export const evaluatorConfigurationSchema = z
   .strictObject({
     name: identifier,
@@ -137,12 +188,16 @@ export const evaluatorConfigurationSchema = z
     environment: z.strictObject({ name: identifier, revision: identifier }),
     budgets: z.strictObject({ perEvaluation: budgetSchema, perGateRun: budgetSchema }),
     // Every judge declares its trial count; there is no default. A stochastic
-    // (model or heuristic) judge with `0` or no repetitions is rejected here.
+    // (model or heuristic) judge with `0` or no repetitions is rejected here,
+    // and one with a single repetition is rejected below.
     repetitions: z.number().int().min(1),
+    // Required for a stochastic judge (below); optional for a deterministic one.
+    variancePolicy: variancePolicySchema.optional(),
     resultSchemaVersion: z.number().int().positive(),
-    codeRevision: z.string().regex(/^[0-9a-f]{7,64}$/, 'Expected a commit hash'),
+    codeRevision: codeRevisionSchema,
   })
   .superRefine((configuration, context) => {
+    reportTrialPolicyIssues(configuration, context);
     reportDuplicates(
       configuration.criteria.map((criterion) => criterion.name),
       (index) => ['criteria', index, 'name'],

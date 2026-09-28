@@ -21,7 +21,7 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import type { CriterionConfiguration, EvaluatorConfiguration } from './configuration';
-import type { EvaluationCase } from './dataset';
+import type { EvaluationCase } from './datasets';
 import { EvaluatorInfrastructureError } from './verdict';
 
 /** The judge's scores, keyed by criterion name, and its feedback for the evaluated system. */

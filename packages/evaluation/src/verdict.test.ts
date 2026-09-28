@@ -55,4 +55,37 @@ describe('EvaluatorInfrastructureError', () => {
     expect(error.criterion).toBeUndefined();
     expect(INFRASTRUCTURE_FAILURE_REASONS).toContain(error.reason);
   });
+
+  test('names every infrastructure failure reason, including a trial whose run rejected', () => {
+    expect(INFRASTRUCTURE_FAILURE_REASONS).toEqual([
+      'judge-error',
+      'judge-malformed-output',
+      'scorer-error',
+      'scorer-malformed-output',
+      'latency-budget-exceeded',
+      'subject-error',
+    ]);
+  });
+
+  test('serializes to its name, reason, message, and criterion, never its cause', () => {
+    const error = new EvaluatorInfrastructureError({
+      reason: 'judge-error',
+      message: 'The model judge threw',
+      criterion: 'helpful-tone',
+      cause: new Error('secret provider detail'),
+    });
+    expect(JSON.parse(JSON.stringify(error))).toEqual({
+      name: 'EvaluatorInfrastructureError',
+      reason: 'judge-error',
+      message: 'The model judge threw',
+      criterion: 'helpful-tone',
+    });
+    const untied = new EvaluatorInfrastructureError({
+      reason: 'subject-error',
+      message: 'Run rejected',
+    });
+    expect(JSON.stringify(untied)).toBe(
+      '{"name":"EvaluatorInfrastructureError","reason":"subject-error","message":"Run rejected"}',
+    );
+  });
 });

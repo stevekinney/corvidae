@@ -63,15 +63,89 @@ describe('evaluatorConfigurationSchema', () => {
   ] as const)('rejects a %s judge whose repetitions is 0 or absent', (_kind, judge) => {
     const input = deterministicConfigurationInput();
     input['judge'] = judge;
+    input['variancePolicy'] = modelConfigurationInput()['variancePolicy'];
     input['repetitions'] = 0;
     expect(issuePaths(input)).toEqual(['repetitions']);
     delete input['repetitions'];
     expect(issuePaths(input)).toEqual(['repetitions']);
   });
 
-  test('accepts a deterministic judge with repetitions: 1', () => {
+  test.each([
+    ['model', { kind: 'model', name: 'j', model: 'm', effort: 'low', tools: [] }],
+    ['heuristic', { kind: 'heuristic', name: 'j' }],
+  ] as const)('rejects a %s judge without a variance policy', (_kind, judge) => {
+    const input = deterministicConfigurationInput();
+    input['judge'] = judge;
+    input['repetitions'] = 3;
+    expect(issuePaths(input)).toEqual(['variancePolicy']);
+  });
+
+  test.each([
+    ['model', { kind: 'model', name: 'j', model: 'm', effort: 'low', tools: [] }],
+    ['heuristic', { kind: 'heuristic', name: 'j' }],
+  ] as const)('rejects a %s judge with a single trial', (_kind, judge) => {
+    const input = modelConfigurationInput();
+    input['criteria'] = (input['criteria'] as { kind: string }[]).filter(
+      (criterion) => criterion.kind !== 'model-judge',
+    );
+    input['judge'] = judge;
+    input['repetitions'] = 1;
+    input['variancePolicy'] = {
+      name: 'lenient',
+      version: '1',
+      minimumPassFraction: 0.5,
+      maximumIntervalWidth: 1,
+    };
+    const parsed = evaluatorConfigurationSchema.safeParse(input);
+    expect(parsed.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['repetitions']);
+    expect(parsed.error?.issues[0]?.message).toContain('never sufficient evidence');
+  });
+
+  test('rejects a variance policy that the declared repetitions can never satisfy', () => {
+    const input = modelConfigurationInput();
+    // Three unanimous trials still leave a 95 percent interval about 0.56 wide.
+    input['variancePolicy'] = {
+      name: 'tight',
+      version: '1',
+      minimumPassFraction: 0.9,
+      maximumIntervalWidth: 0.5,
+    };
+    const parsed = evaluatorConfigurationSchema.safeParse(input);
+    expect(parsed.error?.issues.map((issue) => issue.path.join('.'))).toEqual([
+      'variancePolicy.maximumIntervalWidth',
+    ]);
+    expect(parsed.error?.issues[0]?.message).toContain('3 trials');
+    input['repetitions'] = 5;
+    expect(issuePaths(input)).toEqual([]);
+  });
+
+  test('applies a variance policy declared for a deterministic judge', () => {
+    const input = deterministicConfigurationInput();
+    input['variancePolicy'] = {
+      name: 'tight',
+      version: '1',
+      minimumPassFraction: 1,
+      maximumIntervalWidth: 0.5,
+    };
+    expect(issuePaths(input)).toEqual(['variancePolicy.maximumIntervalWidth']);
+    input['variancePolicy'] = { ...(input['variancePolicy'] as object), maximumIntervalWidth: 1 };
+    expect(issuePaths(input)).toEqual([]);
+  });
+
+  test('rejects a malformed variance policy', () => {
+    const input = modelConfigurationInput();
+    input['variancePolicy'] = {
+      name: 'unversioned',
+      minimumPassFraction: 0.6,
+      maximumIntervalWidth: 0.75,
+    };
+    expect(issuePaths(input)).toEqual(['variancePolicy.version']);
+  });
+
+  test('accepts a deterministic judge with repetitions: 1 and no variance policy', () => {
     const input = deterministicConfigurationInput();
     expect(input['repetitions']).toBe(1);
+    expect(input).not.toHaveProperty('variancePolicy');
     expect(issuePaths(input)).toEqual([]);
   });
 

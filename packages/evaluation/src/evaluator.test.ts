@@ -93,7 +93,7 @@ describe('createEvaluator', () => {
     expect(
       await rejection({
         configuration: deterministicConfigurationInput(),
-        dataset: { version: 'capitals-2026-09', cases: [] },
+        dataset: { ...datasetInput(), cases: [] },
         scorers: scorers().bound,
       }),
     ).toEqual(['cases']);

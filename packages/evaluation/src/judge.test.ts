@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { createScriptedGenerate, type GenerateResponse } from '@lostgradient/operative';
 
 import { parseEvaluatorConfiguration } from './configuration';
-import { parseEvaluationDataset } from './dataset';
+import { parseEvaluationDataset } from './datasets';
 import {
   CALIBRATION_RESPONSE,
   datasetInput,

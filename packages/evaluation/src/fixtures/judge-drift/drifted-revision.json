@@ -1,0 +1,28 @@
+{
+  "description": "Scripted outputs of a candidate judge revision (prompt version judge-prompt-4) for each calibration-set item, in item order. It has drifted toward rewarding any short reply: three of five scores fall outside the set's 0.2 tolerance, so agreement is 0.4 against a required 0.8.",
+  "promptVersion": "judge-prompt-4",
+  "replies": [
+    {
+      "criteria": [
+        { "name": "helpful-tone", "score": 0.95, "rationale": "Courteous and complete." }
+      ],
+      "feedback": "Clear and friendly."
+    },
+    {
+      "criteria": [{ "name": "helpful-tone", "score": 0.9, "rationale": "Admirably concise." }],
+      "feedback": "Nicely brief."
+    },
+    {
+      "criteria": [{ "name": "helpful-tone", "score": 0.9, "rationale": "Friendly." }],
+      "feedback": "Good."
+    },
+    {
+      "criteria": [{ "name": "helpful-tone", "score": 0.7, "rationale": "Short and direct." }],
+      "feedback": "Efficient."
+    },
+    {
+      "criteria": [{ "name": "helpful-tone", "score": 0.95, "rationale": "Warm." }],
+      "feedback": "Pleasant."
+    }
+  ]
+}

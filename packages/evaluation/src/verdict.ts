@@ -12,12 +12,14 @@
  *   carries a typed {@link EvaluatorInfrastructureError}; it is never scored
  *   as a failing case and never retried into a pass.
  *
- * Aggregate-level `disagreement` belongs to the repeated-trial slice.
+ * Repeated trials aggregate these verdicts in `trials.ts`, where a trial
+ * whose run itself rejected (`subject-error`) is an infrastructure failure
+ * too, and where `disagreement` and `indeterminate` live.
  */
 import type { FinishReason, RunResultBase } from '@lostgradient/operative';
 
 import type { EvaluatorConfiguration } from './configuration';
-import type { EvaluationCase } from './dataset';
+import type { EvaluationCase } from './datasets';
 import type { EvaluatorIdentity } from './identity';
 import type { RubricResult } from './rubric';
 
@@ -57,6 +59,9 @@ export const INFRASTRUCTURE_FAILURE_REASONS = [
   'scorer-error',
   'scorer-malformed-output',
   'latency-budget-exceeded',
+  // A trial's run rejected instead of resolving with a finish reason: the
+  // harness failed, so there is no result to score.
+  'subject-error',
 ] as const;
 
 export type InfrastructureFailureReason = (typeof INFRASTRUCTURE_FAILURE_REASONS)[number];
@@ -79,6 +84,21 @@ export class EvaluatorInfrastructureError extends Error {
     super(options.message, { cause: options.cause });
     this.reason = options.reason;
     this.criterion = options.criterion;
+  }
+
+  /** The typed facts of the failure, for a report. The cause stays out: it may carry anything. */
+  toJSON(): {
+    readonly name: string;
+    readonly reason: InfrastructureFailureReason;
+    readonly message: string;
+    readonly criterion?: string;
+  } {
+    return {
+      name: this.name,
+      reason: this.reason,
+      message: this.message,
+      ...(this.criterion === undefined ? {} : { criterion: this.criterion }),
+    };
   }
 }
 

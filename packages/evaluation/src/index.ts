@@ -1,4 +1,10 @@
 export {
+  calibrationRecordSchema,
+  isGateEligibleJudge,
+  parseCalibrationRecord,
+} from './calibration';
+export type { CalibrationRecord, GateEligibleJudgeOptions } from './calibration';
+export {
   EvaluatorConfigurationError,
   evaluatorConfigurationSchema,
   parseEvaluatorConfiguration,
@@ -23,16 +29,57 @@ export type {
   PolicyEvidence,
   PolicyScorer,
 } from './criteria';
-export { evaluationDatasetSchema, parseEvaluationDataset } from './dataset';
-export type { EvaluationCase, EvaluationDataset } from './dataset';
+export {
+  CASE_VISIBILITIES,
+  DatasetOwnershipError,
+  contaminationCheckSchema,
+  evaluationDatasetSchema,
+  isGateEligibleDataset,
+  parseContaminationCheck,
+  parseEvaluationDataset,
+  promoteCaseToPublic,
+} from './datasets';
+export type {
+  CaseVisibility,
+  ContaminationCheck,
+  EvaluationCase,
+  EvaluationDataset,
+  GateEligibleDatasetOptions,
+  PromoteCaseOptions,
+} from './datasets';
+export { DISAGREEMENT_REASONS, reconcileJudges } from './disagreement';
+export type {
+  AggregateOutcome,
+  Disagreement,
+  DisagreementReason,
+  JudgeReconciliation,
+  JudgedCase,
+  TrialVerdict,
+} from './disagreement';
 export { createEvaluator } from './evaluator';
 export type { CreateEvaluatorOptions, Evaluator } from './evaluator';
 export { canonicalJson, evaluatorIdentity } from './identity';
 export type { EvaluatorIdentity } from './identity';
 export { JUDGE_RESPONSE_FORMAT, judgeResponseSchema, renderJudgePrompt } from './judge';
 export type { JudgePrompt } from './judge';
+export {
+  calibrationSetSchema,
+  checkJudgeDrift,
+  judgeRevisionOf,
+  parseCalibrationSet,
+} from './judge-drift';
+export type {
+  CalibrationItem,
+  CalibrationSet,
+  DriftComparison,
+  JudgeDriftCheck,
+  JudgeDriftOutcome,
+  JudgeRevision,
+  JudgeUnderTest,
+} from './judge-drift';
 export { toGeneratorProjection, toReviewerProjection } from './projections';
 export type {
+  AggregateGeneratorProjection,
   ErrorDescription,
   GeneratorProjection,
   ReviewerProjection,
@@ -40,6 +87,17 @@ export type {
 } from './projections';
 export { applyRubric } from './rubric';
 export type { CriterionResult, CriterionScore, HardGateOutcome, RubricResult } from './rubric';
+export { runTrials } from './trials';
+export type {
+  AggregateStatistics,
+  CriterionStatistics,
+  RunTrialsOptions,
+  TrialAggregate,
+  TrialContext,
+  TrialRecord,
+} from './trials';
+export { WILSON_Z_95, variancePolicySchema, wilsonInterval } from './variance';
+export type { ScoreStatistics, TrialStatistics, VariancePolicy, WilsonInterval } from './variance';
 export {
   AGENT_FAILURE_REASONS,
   EVALUATION_RESULT_SCHEMA_VERSION,

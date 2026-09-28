@@ -1,0 +1,18 @@
+{
+  "description": "Ten trial scores for one criterion whose pass threshold is 0.75. The expected values were computed outside this package with Python's fractions and decimal modules at 50 significant digits, using z = 1.9599639845400542355 for the 95 percent Wilson score interval, then rounded to 17 significant digits.",
+  "threshold": 0.75,
+  "scores": [0.92, 0.85, 0.4, 1, 0.75, 0.6, 0.95, 0.8, 0.55, 0.7],
+  "expected": {
+    "trials": 10,
+    "passes": 6,
+    "passFraction": 0.6,
+    "meanScore": 0.752,
+    "sampleVariance": 0.036817777777777778,
+    "standardDeviation": 0.19187959187411719,
+    "wilsonInterval": {
+      "lower": 0.31267376973365827,
+      "upper": 0.83181967029376388,
+      "width": 0.51914590056010561
+    }
+  }
+}

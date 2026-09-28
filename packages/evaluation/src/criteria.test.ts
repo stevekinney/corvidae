@@ -10,7 +10,7 @@ import {
   type ScoringContext,
   toolCallNames,
 } from './criteria';
-import { parseEvaluationDataset } from './dataset';
+import { parseEvaluationDataset } from './datasets';
 import {
   datasetInput,
   deterministicConfigurationInput,

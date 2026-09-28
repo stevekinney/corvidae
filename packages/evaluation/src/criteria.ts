@@ -26,7 +26,7 @@ import type {
   EvaluatorConfiguration,
   ReferenceMaterialEntry,
 } from './configuration';
-import type { EvaluationCase } from './dataset';
+import type { EvaluationCase } from './datasets';
 import type { JudgeVerdict } from './judge';
 import type { CriterionScore } from './rubric';
 import { EvaluatorInfrastructureError } from './verdict';

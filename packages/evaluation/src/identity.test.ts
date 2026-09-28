@@ -43,6 +43,9 @@ const FIELD_CHANGES: Record<string, (input: Record<string, unknown>) => void> = 
     budgets['perGateRun'] = { ...budgets['perGateRun'], costUsd: 6 };
   },
   repetitions: (input) => (input['repetitions'] = 5),
+  variancePolicy: (input) => {
+    (input['variancePolicy'] as Record<string, unknown>)['version'] = '2';
+  },
   resultSchemaVersion: (input) => (input['resultSchemaVersion'] = 2),
   codeRevision: (input) => (input['codeRevision'] = '41257994'),
 };
