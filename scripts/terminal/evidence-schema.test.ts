@@ -72,7 +72,7 @@ describe('terminal evidence schema', () => {
       unit: 'boolean',
       comparator: 'true',
       target: 'pass',
-      control: 'control passed',
+      control: { passed: true, observation: 'control passed' },
       rawObservations: ['raw'],
     };
     const resource = {
@@ -90,7 +90,15 @@ describe('terminal evidence schema', () => {
     ).toContain('workload definition');
     expect(
       validateEvidence(
-        { ...resource, cells: [{ ...resource.cells[0], workload: { ...workload, control: '' } }] },
+        {
+          ...resource,
+          cells: [
+            {
+              ...resource.cells[0],
+              workload: { ...workload, control: { passed: false, observation: 'control failed' } },
+            },
+          ],
+        },
         'resource',
       ),
     ).toContain('workload definition');

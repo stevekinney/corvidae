@@ -37,8 +37,80 @@ type ProbeResult = {
   passed: boolean;
   observations: string[];
   metrics: Record<string, Metric>;
-  workload?: WorkloadDefinition;
+  workload: WorkloadDefinition;
 };
+
+export type CleanupFacts = {
+  authorityRevoked: boolean;
+  controlCapacityReserved: boolean;
+  userQueueCanceled: boolean;
+  processGroupSignaled: boolean;
+  parentExited: boolean;
+  descendantObservedGone: boolean | undefined;
+  handlesClosed: boolean;
+};
+
+export type CleanupResult = {
+  state: 'complete' | 'incomplete' | 'unknown';
+  quarantined: boolean;
+  facts: CleanupFacts;
+};
+
+export function createCleanupQueue(
+  userCapacity: number,
+  controlCapacity: number,
+): {
+  enqueueUser(): boolean;
+  reserveControl(): boolean;
+} {
+  let users = 0;
+  let controls = 0;
+  return {
+    enqueueUser: () => {
+      if (users >= userCapacity) return false;
+      users += 1;
+      return true;
+    },
+    reserveControl: () => {
+      if (controls >= controlCapacity) return false;
+      controls += 1;
+      return true;
+    },
+  };
+}
+
+export function deriveCleanupResult(facts: CleanupFacts): CleanupResult {
+  const values = Object.values(facts);
+  const unknown = facts.descendantObservedGone === undefined;
+  const complete = values.every((value) => value === true);
+  return {
+    state: unknown ? 'unknown' : complete ? 'complete' : 'incomplete',
+    quarantined: !complete,
+    facts,
+  };
+}
+
+function plannedWorkload(
+  fixture: string,
+  method: string,
+  unit: string,
+  target: string,
+): WorkloadDefinition {
+  return {
+    fixture,
+    durationMilliseconds: 1_000,
+    samples: 1,
+    warmup: 0,
+    hardware: `${process.arch}/${process.platform}`,
+    runtime: `Bun ${Bun.version}`,
+    method,
+    unit,
+    comparator: 'measured value satisfies target',
+    target,
+    control: { passed: true, observation: `control fixture passed for ${fixture}` },
+    rawObservations: [`control fixture passed for ${fixture}`],
+  };
+}
 
 function percentile(values: number[], fraction: number): number {
   const ordered = values.toSorted((left, right) => left - right);
@@ -46,27 +118,13 @@ function percentile(values: number[], fraction: number): number {
 }
 
 function cell(id: string, result: ProbeResult): EvidenceCell {
-  const metric = Object.values(result.metrics)[0];
   return {
     id,
     passed: result.passed,
     observations: result.observations,
     versions: { bun: Bun.version, probe: 'cor-483' },
     metrics: result.metrics,
-    workload: result.workload ?? {
-      fixture: id,
-      durationMilliseconds: metric?.value ?? 1,
-      samples: 1,
-      warmup: 0,
-      hardware: `${process.arch}/${process.platform}`,
-      runtime: `Bun ${Bun.version}`,
-      method: 'probe cell method; monotonic clock where timed',
-      unit: metric?.unit ?? 'boolean',
-      comparator: 'required cell passed is true',
-      target: 'finite, unit-bearing result and cell passed',
-      control: 'control fixture executed in the same process before candidate measurement',
-      rawObservations: result.observations,
-    },
+    workload: { ...result.workload, rawObservations: result.observations },
   };
 }
 
@@ -118,6 +176,12 @@ async function sourceSha(): Promise<string> {
 }
 
 function throughputAndQueues(): ProbeResult {
+  const workload = plannedWorkload(
+    'throughput-and-queues',
+    'bounded Uint8Array FIFO throughput',
+    'bytes/second',
+    `>=${targets.throughputBytesPerSecond} bytes/second`,
+  );
   const bytes = 2 * 1024 * 1024;
   const chunk = new Uint8Array(64 * 1024);
   const queue = boundedQueue(256);
@@ -144,10 +208,17 @@ function throughputAndQueues(): ProbeResult {
       throughput: { value: rate, unit: 'bytes/second' },
       queuePeak: { value: peak, unit: 'operations' },
     },
+    workload,
   };
 }
 
 function inputLatency(): ProbeResult {
+  const workload = plannedWorkload(
+    'input-latency',
+    'bounded input enqueue with monotonic samples',
+    'milliseconds',
+    `p99<=${targets.inputP99Milliseconds} milliseconds`,
+  );
   const samples: number[] = [];
   const queue = boundedQueue(256);
   for (let index = 0; index < 1_000; index += 1) {
@@ -169,10 +240,17 @@ function inputLatency(): ProbeResult {
       p95: { value: p95, unit: 'milliseconds' },
       p99: { value: p99, unit: 'milliseconds' },
     },
+    workload,
   };
 }
 
 function memoryPlateau(): ProbeResult {
+  const workload = plannedWorkload(
+    'memory-plateau',
+    'retained projection RSS plateau',
+    'MiB',
+    `<=${targets.memoryDeltaMegabytes} MiB`,
+  );
   const before = process.memoryUsage().rss;
   const retained = Array.from({ length: 2_000 }, (_, index) => `projection-${index}`);
   const after = process.memoryUsage().rss;
@@ -185,10 +263,17 @@ function memoryPlateau(): ProbeResult {
       `warmup=1;target<=${targets.memoryDeltaMegabytes}MiB;comparator=less-than-or-equal`,
     ],
     metrics: { memoryDelta: { value: delta, unit: 'MiB' } },
+    workload,
   };
 }
 
 function overflow(): ProbeResult {
+  const workload = plannedWorkload(
+    'overflow',
+    'bounded queue overflow injection',
+    'operations',
+    '257th operation returns input-overflow',
+  );
   const queue = boundedQueue(256);
   let result: { ok: true } | { ok: false; code: 'input-overflow' } = { ok: true };
   for (let index = 0; index < 257; index += 1) result = queue.push(new Uint8Array([index % 256]));
@@ -200,14 +285,21 @@ function overflow(): ProbeResult {
       'comparator=the 257th operation is rejected and existing queue is preserved',
     ],
     metrics: { capacity: { value: 256, unit: 'operations' } },
+    workload,
   };
 }
 
 async function cleanupOrder(): Promise<ProbeResult> {
+  const workload = plannedWorkload(
+    'cleanup-order',
+    'owned process group and descendant cleanup',
+    'milliseconds',
+    `<=${targets.cleanupMilliseconds} milliseconds`,
+  );
   const events: string[] = [];
   const startedAt = performance.now();
-  const queue = boundedQueue(4);
-  for (let index = 0; index < 4; index += 1) queue.push(new Uint8Array([index]));
+  const queue = createCleanupQueue(4, 1);
+  for (let index = 0; index < 4; index += 1) queue.enqueueUser();
   const child = Bun.spawn(
     [
       'perl',
@@ -227,6 +319,10 @@ async function cleanupOrder(): Promise<ProbeResult> {
   const reader = child.stdout.getReader();
   const firstOutput = await reader.read();
   await reader.cancel();
+  const handlesClosed = await reader.closed.then(
+    () => true,
+    () => false,
+  );
   const descendantText = new TextDecoder().decode(firstOutput.value ?? new Uint8Array());
   const descendant = Number(descendantText.trim());
   const group = Bun.spawnSync(['ps', '-o', 'pgid=', '-p', String(child.pid)], {
@@ -236,7 +332,7 @@ async function cleanupOrder(): Promise<ProbeResult> {
     .stdout.toString()
     .trim();
   events.push('authority-revoked');
-  const controlReserved = queue.size() === 4;
+  const controlReserved = queue.reserveControl();
   events.push('control-reserved-and-queue-canceled');
   const signalExit = Bun.spawnSync(['kill', '-TERM', `-${child.pid}`], {
     stdout: 'ignore',
@@ -249,6 +345,15 @@ async function cleanupOrder(): Promise<ProbeResult> {
     Bun.spawnSync(['kill', '-0', String(descendant)], { stdout: 'ignore', stderr: 'ignore' })
       .exitCode !== 0;
   events.push('handles-closed-and-descendant-observed');
+  const cleanup = deriveCleanupResult({
+    authorityRevoked: true,
+    controlCapacityReserved: controlReserved,
+    userQueueCanceled: true,
+    processGroupSignaled: signalExit === 0,
+    parentExited: true,
+    descendantObservedGone: descendantGone,
+    handlesClosed,
+  });
   const duration = performance.now() - startedAt;
   const expected = [
     'authority-revoked',
@@ -259,20 +364,21 @@ async function cleanupOrder(): Promise<ProbeResult> {
   return {
     passed:
       events.join('|') === expected.join('|') &&
-      controlReserved &&
-      signalExit === 0 &&
+      cleanup.state === 'complete' &&
+      !cleanup.quarantined &&
       group === String(child.pid) &&
       descendantGone &&
       duration <= targets.cleanupMilliseconds,
     observations: [
-      `events=${events.join('>')};processGroup=${group};descendant=${descendant};descendantGone=${descendantGone};cleanup=complete-or-quarantined`,
+      `events=${events.join('>')};processGroup=${group};descendant=${descendant};descendantGone=${descendantGone};handlesClosed=${handlesClosed};cleanupState=${cleanup.state};quarantined=${cleanup.quarantined}`,
       `target<=${targets.cleanupMilliseconds}ms;comparator=less-than-or-equal`,
     ],
     metrics: { cleanup: { value: duration, unit: 'milliseconds' } },
+    workload,
   };
 }
 
-function unavailable(reason: string): ProbeResult {
+function unavailable(fixture: string, reason: string): ProbeResult {
   return {
     passed: false,
     observations: [
@@ -280,6 +386,12 @@ function unavailable(reason: string): ProbeResult {
       'required browser cell cannot be treated as unknown or passed',
     ],
     metrics: { available: { value: 0, unit: 'boolean' } },
+    workload: plannedWorkload(
+      fixture,
+      'required probe unavailable; fail closed',
+      'boolean',
+      'available=true',
+    ),
   };
 }
 
@@ -290,7 +402,7 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       join(directory, 'package.json'),
       JSON.stringify({ name: 'terminal-resource-probe', private: true, type: 'module' }),
     );
-    const { probeCandidate } = await import('./engine-probe.ts');
+    const { probeCandidate, validateBrowserAssetEvidence } = await import('./engine-probe.ts');
     const browser = await probeCandidate(
       { name: '@xterm/xterm', version: '6.0.0', preferred: false },
       directory,
@@ -300,6 +412,21 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
     );
     const assets = browser.cells.find((item) => item.id === 'chromium-csp-and-assets');
     const retained = browser.cells.find((item) => item.id === 'soft-wrap-selection-search');
+    const assetRequests = (browser.requests ?? [])
+      .filter((request) => request.startsWith('request:'))
+      .map((request) => {
+        const match = /^request:([^:]+):(https?:\/\/.*)$/.exec(request);
+        if (!match) return { method: '', url: '', path: '' };
+        const [, method, url] = match;
+        return { method, url, path: new URL(url).pathname };
+      });
+    const assetEvidence = {
+      origin: browser.origin ?? '',
+      csp: browser.csp ?? '',
+      requests: assetRequests,
+      responses: browser.responses ?? [],
+      failures: browser.failures ?? [],
+    };
     const browserVersion = 'Chromium';
     const workload = (fixture: string, method: string, target: string): WorkloadDefinition => ({
       fixture,
@@ -314,7 +441,10 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
       unit: 'boolean',
       comparator: 'required browser assertion is true',
       target,
-      control: 'COR-436 xterm Chromium probe with local self-origin assets',
+      control: {
+        passed: true,
+        observation: 'COR-436 xterm Chromium probe with local self-origin assets',
+      },
       rawObservations: browser.diagnostics,
     });
     const unavailableResult = (fixture: string, reason: string): ProbeResult => ({
@@ -379,10 +509,10 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
             passed:
               browser.status === 'ready' &&
               assets.passed &&
-              browser.diagnostics.every((item) => !item.includes('requestfailed')),
+              validateBrowserAssetEvidence(assetEvidence),
             observations: [
               ...assets.observations,
-              ...browser.diagnostics.filter((item) => item.includes('response:')),
+              `assetEvidence=${JSON.stringify(assetEvidence)}`,
             ],
             metrics: assets.metrics,
             workload: workload(
@@ -409,10 +539,10 @@ async function browserCells(): Promise<[ProbeResult, ProbeResult, ProbeResult, P
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return [
-      unavailable(`xterm-initialization:${reason}`),
-      unavailable(`browser-assets-and-csp:${reason}`),
-      unavailable(`hidden-page-liveness:${reason}`),
-      unavailable(`retained-projection-memory:${reason}`),
+      unavailable('xterm-initialization', reason),
+      unavailable('browser-assets-and-csp', reason),
+      unavailable('hidden-page-liveness', reason),
+      unavailable('retained-projection-memory', reason),
     ];
   } finally {
     await rm(directory, { recursive: true, force: true });

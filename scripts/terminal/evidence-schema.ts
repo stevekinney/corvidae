@@ -22,7 +22,7 @@ export type WorkloadDefinition = {
   unit: string;
   comparator: string;
   target: string;
-  control: string;
+  control: { passed: boolean; observation: string };
   rawObservations: string[];
 };
 
@@ -87,10 +87,13 @@ function isWorkloadDefinition(value: unknown): value is WorkloadDefinition {
     'unit',
     'comparator',
     'target',
-    'control',
   ];
   return (
     requiredStrings.every((key) => typeof value[key] === 'string' && value[key].length > 0) &&
+    isRecord(value['control']) &&
+    value['control']['passed'] === true &&
+    typeof value['control']['observation'] === 'string' &&
+    value['control']['observation'].length > 0 &&
     typeof value['durationMilliseconds'] === 'number' &&
     Number.isFinite(value['durationMilliseconds']) &&
     typeof value['samples'] === 'number' &&

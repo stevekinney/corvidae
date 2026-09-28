@@ -63,7 +63,15 @@
         "unit": { "type": "string", "minLength": 1 },
         "comparator": { "type": "string", "minLength": 1 },
         "target": { "type": "string", "minLength": 1 },
-        "control": { "type": "string", "minLength": 1 },
+        "control": {
+          "type": "object",
+          "required": ["passed", "observation"],
+          "properties": {
+            "passed": { "const": true },
+            "observation": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
         "rawObservations": { "type": "array", "minItems": 1, "items": { "type": "string" } }
       },
       "additionalProperties": false
