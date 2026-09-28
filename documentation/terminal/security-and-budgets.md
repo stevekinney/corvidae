@@ -39,7 +39,7 @@ Changing a default requires a fresh resource report with the same workload and a
 
 ## Measurement protocol
 
-Before collecting any metric, freeze and record the fixture ID, duration, sample count, warmup count, hardware and OS, Bun/runtime version, browser and engine versions, method, unit, comparator, and target. The report must contain every required cell exactly once. Missing, absent, `NaN`, infinite, unitless, or non-numeric required cells fail closed. Unknown required cleanup is a failure, not an acceptable observation.
+Before collecting any metric, freeze and record a typed `fixtureId`, `environment`, and `plan` containing the deadline, sample/warmup counts, method, and typed target. The report then records a passed structured `control.observed` result and an `observed` result containing actual monotonic duration, sample/warmup counts, typed metrics, and structured raw data. The cell identifier must equal `fixtureId`, and observed metrics must deep-equal the cell metrics. The report must contain every required cell exactly once. Missing, absent, `NaN`, infinite, unitless, or non-numeric required cells fail closed. Unknown required cleanup is a failure, not an acceptable observation.
 
 The required workload covers throughput; input latency p50, p95, and p99; memory plateau; input/output queue peaks; overflow; cleanup; xterm initialization; browser JavaScript, CSS, and WebAssembly transfer; hidden-page liveness; retained projection and accessibility-snapshot memory; and teardown. Measurements are explicit probe output, not default unit-test timing gates.
 

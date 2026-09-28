@@ -114,7 +114,13 @@ function makeWorkload(
                 ? 'liveness'
                 : 'assertion';
   const comparator = target.startsWith('>=') ? 'gte' : target.startsWith('=') ? 'eq' : 'lte';
-  const value = Number.parseFloat(target.replace(/[^0-9.]/g, '')) || 1;
+  const value =
+    Number.parseFloat(
+      target
+        .match(/[0-9][0-9,_]*(?:\.[0-9]+)?/g)
+        ?.at(-1)
+        ?.replaceAll(',', '') ?? '',
+    ) || 1;
   const sampleCount = fixture === 'input-latency' ? 1_000 : 1;
   const warmupCount = fixture === 'memory-plateau' ? 1 : 0;
   const observed: ObservedWorkload = {
