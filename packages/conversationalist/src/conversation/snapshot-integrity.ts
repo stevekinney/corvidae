@@ -1,15 +1,20 @@
+/**
+ * Integrity and envelope primitives shared by every snapshot format version.
+ *
+ * Format-specific tree encoding and decoding live in `snapshot-v1.ts` and
+ * `snapshot-v2.ts`; `snapshot-format.ts` dispatches between them.
+ */
 import { createSerializationError } from '../errors';
-import { conversationSchema } from '../schemas';
 import {
-  type ConversationNodeSnapshot,
-  type ConversationSnapshot,
+  type ConversationSnapshotIntegrity,
+  type ConversationSnapshotLineage,
   CURRENT_SCHEMA_VERSION,
 } from '../types';
 import { deepFreeze } from '../utilities/type-helpers';
 
-export const CURRENT_SNAPSHOT_FORMAT_VERSION = 1 as const;
+export const CURRENT_SNAPSHOT_FORMAT_VERSION = 2 as const;
 
-function stableStringify(value: unknown): string {
+export function stableStringify(value: unknown): string {
   if (value === undefined) return 'null';
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -50,96 +55,112 @@ export function fnv1a64(text: string): string {
   return [h3, h2, h1, h0].map((limb) => limb.toString(16).padStart(4, '0')).join('');
 }
 
-export function snapshotDigest(snapshot: Omit<ConversationSnapshot, 'integrity'>): string {
-  return fnv1a64(stableStringify(snapshot));
+/** The `fnv1a-64` digest of a snapshot without its `integrity` field. */
+export function snapshotDigest(unsigned: object): string {
+  return fnv1a64(stableStringify(unsigned));
 }
 
-export function finalizeSnapshot(
-  snapshot: Omit<ConversationSnapshot, 'integrity'>,
-): ConversationSnapshot {
+export function finalizeSnapshot<T extends object>(
+  unsigned: T,
+): Readonly<T & { integrity: ConversationSnapshotIntegrity }> {
   return deepFreeze({
-    ...snapshot,
-    integrity: { algorithm: 'fnv1a-64' as const, digest: snapshotDigest(snapshot) },
+    ...unsigned,
+    integrity: { algorithm: 'fnv1a-64' as const, digest: snapshotDigest(unsigned) },
   });
 }
 
-export function validateSnapshot(value: unknown): ConversationSnapshot {
-  const envelope = asRecord(value, 'envelope');
-  const snapshotFormatVersion = readNumber(envelope, 'snapshotFormatVersion', 'envelope');
-  if (snapshotFormatVersion !== CURRENT_SNAPSHOT_FORMAT_VERSION) {
-    throw createSerializationError(
-      `failed to restore snapshot: unsupported snapshot format version ${String(snapshotFormatVersion)}`,
-    );
-  }
-  const conversationSchemaVersion = readNumber(envelope, 'conversationSchemaVersion', 'envelope');
+export function snapshotError(detail: string): Error {
+  return createSerializationError(`failed to restore snapshot: ${detail}`);
+}
+
+/** Envelope fields every snapshot format version carries, validated. */
+export interface SnapshotEnvelope {
+  readonly record: Record<string, unknown>;
+  readonly snapshotFormatVersion: number;
+  readonly conversationSchemaVersion: number;
+  readonly controllerRevision: number;
+  readonly conversationId: string;
+  readonly currentBranchId: string;
+  readonly createdAt: string;
+  readonly currentPath: readonly number[];
+  readonly lineage: ConversationSnapshotLineage;
+  readonly integrity: ConversationSnapshotIntegrity;
+}
+
+export function readSnapshotFormatVersion(value: unknown): number {
+  return readNumber(asRecord(value, 'envelope'), 'snapshotFormatVersion', 'envelope');
+}
+
+export function unsupportedSnapshotFormatVersion(version: number): Error {
+  return snapshotError(`unsupported snapshot format version ${String(version)}`);
+}
+
+export function readSnapshotEnvelope(value: unknown): SnapshotEnvelope {
+  const record = asRecord(value, 'envelope');
+  const snapshotFormatVersion = readNumber(record, 'snapshotFormatVersion', 'envelope');
+  const conversationSchemaVersion = readNumber(record, 'conversationSchemaVersion', 'envelope');
   if (conversationSchemaVersion !== CURRENT_SCHEMA_VERSION) {
-    throw createSerializationError(
-      `failed to restore snapshot: unsupported conversation schema version ${String(conversationSchemaVersion)}`,
+    throw snapshotError(
+      `unsupported conversation schema version ${String(conversationSchemaVersion)}`,
     );
   }
-  const controllerRevision = readRevision(envelope, 'controllerRevision', 'controller');
-  const conversationId = readString(envelope, 'conversationId', 'envelope');
-  const currentBranchId = readString(envelope, 'currentBranchId', 'envelope');
-  const createdAt = readString(envelope, 'createdAt', 'envelope');
+  const controllerRevision = readRevision(record, 'controllerRevision', 'controller');
+  const conversationId = readString(record, 'conversationId', 'envelope');
+  const currentBranchId = readString(record, 'currentBranchId', 'envelope');
+  const createdAt = readString(record, 'createdAt', 'envelope');
   if (!Number.isFinite(Date.parse(createdAt))) {
-    throw createSerializationError('failed to restore snapshot: invalid envelope identity');
+    throw snapshotError('invalid envelope identity');
   }
-  const currentPath = readPath(envelope);
-  const lineage = readLineage(envelope);
-  const integrity = readIntegrity(envelope);
-  const seenIds = new Set<string>();
-  const root = readNode(
-    envelope['root'],
-    conversationSchemaVersion,
-    controllerRevision,
-    null,
-    seenIds,
-  );
-  if (lineage.retainedFloorNodeId !== root.id) {
-    throw createSerializationError('failed to restore snapshot: retained floor identity mismatch');
-  }
-  for (const removedNodeId of lineage.removedNodeIds) {
-    if (seenIds.has(removedNodeId)) {
-      throw createSerializationError(
-        `failed to restore snapshot: removed node ${removedNodeId} is still retained`,
-      );
-    }
-  }
-  const currentNode = resolvePath(root, currentPath);
-  if (currentNode.id !== currentBranchId || currentNode.conversation.id !== conversationId) {
-    throw createSerializationError('failed to restore snapshot: current identity mismatch');
-  }
-  const snapshot: ConversationSnapshot = {
-    snapshotFormatVersion: CURRENT_SNAPSHOT_FORMAT_VERSION,
+  return {
+    record,
+    snapshotFormatVersion,
     conversationSchemaVersion,
     controllerRevision,
     conversationId,
     currentBranchId,
-    root,
-    currentPath,
     createdAt,
-    lineage,
-    integrity,
+    currentPath: readPath(record),
+    lineage: readLineage(record),
+    integrity: readIntegrity(record),
   };
-  const { integrity: unsignedIntegrity, ...unsigned } = snapshot;
-  if (unsignedIntegrity.digest !== snapshotDigest(unsigned)) {
-    throw createSerializationError('failed to restore snapshot: integrity digest mismatch');
-  }
-  return snapshot;
 }
 
-function asRecord(value: unknown, label: string): Record<string, unknown> {
+/** Verifies `integrity` against the envelope as received, minus the `integrity` field itself. */
+export function assertSnapshotDigest(envelope: SnapshotEnvelope): void {
+  const { integrity: _integrity, ...unsigned } = envelope.record;
+  if (envelope.integrity.digest !== snapshotDigest(unsigned)) {
+    throw snapshotError('integrity digest mismatch');
+  }
+}
+
+/** Retained-floor and removed-node lineage checks every format applies once its tree is read. */
+export function assertLineageMatchesTree(
+  lineage: ConversationSnapshotLineage,
+  rootId: string,
+  retainedNodeIds: ReadonlySet<string>,
+): void {
+  if (lineage.retainedFloorNodeId !== rootId) {
+    throw snapshotError('retained floor identity mismatch');
+  }
+  for (const removedNodeId of lineage.removedNodeIds) {
+    if (retainedNodeIds.has(removedNodeId)) {
+      throw snapshotError(`removed node ${removedNodeId} is still retained`);
+    }
+  }
+}
+
+export function asRecord(value: unknown, label: string): Record<string, unknown> {
   if (!isRecord(value)) {
     throw createSerializationError(`failed to restore snapshot: invalid ${label}`);
   }
   return value;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function readString(record: Record<string, unknown>, key: string, label: string): string {
+export function readString(record: Record<string, unknown>, key: string, label: string): string {
   const value = record[key];
   if (typeof value !== 'string') {
     throw createSerializationError(`failed to restore snapshot: invalid ${label}`);
@@ -147,7 +168,7 @@ function readString(record: Record<string, unknown>, key: string, label: string)
   return value;
 }
 
-function readNumber(record: Record<string, unknown>, key: string, label: string): number {
+export function readNumber(record: Record<string, unknown>, key: string, label: string): number {
   const value = record[key];
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
     throw createSerializationError(`failed to restore snapshot: invalid ${label}`);
@@ -155,7 +176,7 @@ function readNumber(record: Record<string, unknown>, key: string, label: string)
   return value;
 }
 
-function readRevision(record: Record<string, unknown>, key: string, label: string): number {
+export function readRevision(record: Record<string, unknown>, key: string, label: string): number {
   const revision = readNumber(record, key, label);
   if (revision < 0) {
     throw createSerializationError(`failed to restore snapshot: invalid ${label} revision`);
@@ -163,7 +184,7 @@ function readRevision(record: Record<string, unknown>, key: string, label: strin
   return revision;
 }
 
-function readPath(record: Record<string, unknown>): readonly number[] {
+export function readPath(record: Record<string, unknown>): readonly number[] {
   const value = record['currentPath'];
   if (!Array.isArray(value) || value.some((part) => !Number.isSafeInteger(part) || part < 0)) {
     throw createSerializationError('failed to restore snapshot: invalid current path');
@@ -171,7 +192,7 @@ function readPath(record: Record<string, unknown>): readonly number[] {
   return value;
 }
 
-function readLineage(record: Record<string, unknown>): ConversationSnapshot['lineage'] {
+function readLineage(record: Record<string, unknown>): ConversationSnapshotLineage {
   const lineage = asRecord(record['lineage'], 'lineage evidence');
   const retainedFloorNodeId = readString(lineage, 'retainedFloorNodeId', 'lineage evidence');
   const removedNodeIds = lineage['removedNodeIds'];
@@ -211,7 +232,7 @@ function optionalRevision(record: Record<string, unknown>, key: string): number 
   return value;
 }
 
-function readIntegrity(record: Record<string, unknown>): ConversationSnapshot['integrity'] {
+function readIntegrity(record: Record<string, unknown>): ConversationSnapshotIntegrity {
   const integrity = asRecord(record['integrity'], 'integrity evidence');
   if (integrity['algorithm'] !== 'fnv1a-64') {
     throw createSerializationError('failed to restore snapshot: invalid integrity evidence');
@@ -221,66 +242,4 @@ function readIntegrity(record: Record<string, unknown>): ConversationSnapshot['i
     throw createSerializationError('failed to restore snapshot: invalid integrity digest');
   }
   return { algorithm: 'fnv1a-64', digest };
-}
-
-function readNode(
-  value: unknown,
-  schemaVersion: number,
-  controllerRevision: number,
-  expectedParentId: string | null,
-  seenIds: Set<string>,
-): ConversationNodeSnapshot {
-  const node = asRecord(value, 'node');
-  const id = readString(node, 'id', 'node');
-  const revision = readRevision(node, 'revision', 'node');
-  if (seenIds.has(id)) {
-    throw createSerializationError(`failed to restore snapshot: duplicate node id ${id}`);
-  }
-  if (revision > controllerRevision) {
-    throw createSerializationError(`failed to restore snapshot: invalid node revision ${id}`);
-  }
-  const parentId = node['parentId'];
-  if (parentId !== null && typeof parentId !== 'string') {
-    throw createSerializationError('failed to restore snapshot: invalid node');
-  }
-  if (parentId !== expectedParentId) {
-    throw createSerializationError(`failed to restore snapshot: inconsistent parent for ${id}`);
-  }
-  const parsedConversation = conversationSchema.safeParse(node['conversation']);
-  if (!parsedConversation.success || parsedConversation.data.schemaVersion !== schemaVersion) {
-    throw createSerializationError(
-      'failed to restore snapshot: node conversation schema version mismatch',
-    );
-  }
-  const children = node['children'];
-  if (!Array.isArray(children)) {
-    throw createSerializationError('failed to restore snapshot: invalid node');
-  }
-  seenIds.add(id);
-  return {
-    id,
-    revision,
-    parentId,
-    conversation: parsedConversation.data,
-    children: children.map((child) =>
-      readNode(child, schemaVersion, controllerRevision, id, seenIds),
-    ),
-  };
-}
-
-function resolvePath(
-  root: ConversationNodeSnapshot,
-  path: readonly number[],
-): ConversationNodeSnapshot {
-  let current = root;
-  for (const index of path) {
-    const child = current.children[index];
-    if (!child) {
-      throw createSerializationError(
-        `failed to restore snapshot: current path index ${index} is out of range`,
-      );
-    }
-    current = child;
-  }
-  return current;
 }

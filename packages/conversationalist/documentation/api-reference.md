@@ -21,6 +21,7 @@ This document describes the public API exposed by the `conversationalist` packag
 - `collapseSystemMessages`
 - `createConversationHistory`
 - `createConversationHistoryUnsafe`
+- `currentConversationFromSnapshot`
 - `deserializeConversationHistory`
 - `getFirstSystemMessage`
 - `getMessageAtPosition`
@@ -38,6 +39,7 @@ This document describes the public API exposed by the `conversationalist` packag
 - `materializeToolResultAsync`
 - `materializeToolResults`
 - `materializeToolResultsAsync`
+- `migrateConversationSnapshotV1`
 - `pipeConversationHistory`
 - `prependSystemMessage`
 - `redactMessageAtPosition`
@@ -102,9 +104,14 @@ This document describes the public API exposed by the `conversationalist` packag
 - `Summarizer`
 - `ConversationHistory`
 - `ConversationHistoryDraft`
+- `ConversationHistoryHeader`
 - `ConversationNodeSnapshot`
+- `ConversationNodeSnapshotV1`
 - `ConversationProvider`
 - `ConversationSnapshot`
+- `ConversationSnapshotIntegrity`
+- `ConversationSnapshotLineage`
+- `ConversationSnapshotV1`
 - `ConversationStatus`
 - `ConversationalistErrorCode`
 - `ImageContent`
