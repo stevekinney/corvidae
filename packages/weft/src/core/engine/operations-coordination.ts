@@ -155,18 +155,40 @@ export async function processWaitSignalOperation(
       }
     }
   } catch (error) {
-    if (pendingWaiterResolve !== undefined) {
-      const currentWaiter = internals.signalWaiters.get(waiterKey);
-      if (currentWaiter !== undefined && currentWaiter !== pendingWaiterResolve) {
-        // A replay or reclaim registered a replacement waiter while this scan
-        // was pending, so this invocation is superseded. Its failure belongs to
-        // no live run; feeding it by workflow id would fail the replacement.
-        return;
-      }
-      releaseSignalWaiter(internals, workflowId, waiterKey, pendingWaiterResolve);
-    }
-    callbacks.failOperation(workflowId, operation, error);
+    failWaitSignalOperation(
+      internals,
+      { workflowId, waiterKey, operation, pendingWaiterResolve },
+      error,
+      callbacks,
+    );
   }
+}
+
+/**
+ * Fail a wait-signal operation whose buffered-signal scan threw, releasing the
+ * waiter it registered. If a replay or reclaim has since registered a
+ * replacement waiter for the same key, this invocation is superseded: its
+ * failure belongs to no live run, and feeding it by workflow id would fail the
+ * replacement, so it is dropped.
+ */
+function failWaitSignalOperation(
+  internals: EngineInternals,
+  wait: {
+    workflowId: string;
+    waiterKey: string;
+    operation: WaitSignalOperation;
+    pendingWaiterResolve: (() => void) | undefined;
+  },
+  error: unknown,
+  callbacks: Pick<CoordinationOperationCallbacks, 'failOperation'>,
+): void {
+  const { workflowId, waiterKey, operation, pendingWaiterResolve } = wait;
+  if (pendingWaiterResolve !== undefined) {
+    const currentWaiter = internals.signalWaiters.get(waiterKey);
+    if (currentWaiter !== undefined && currentWaiter !== pendingWaiterResolve) return;
+    releaseSignalWaiter(internals, workflowId, waiterKey, pendingWaiterResolve);
+  }
+  callbacks.failOperation(workflowId, operation, error);
 }
 
 export async function processParallelOperation(
