@@ -905,7 +905,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
           'Filesystem/network edge cases unreachable through the public --from/--server path: an OS-level rename failure (and its best-effort temp-file cleanup), a parent path that exists but is not a directory, resolveConnection() rethrowing something other than ConnectionConfigurationError, AbortSignal.timeout() producing anything but a TimeoutError, composeRegistryUrl() throwing on a URL resolveConnection() already validated, and emitRegistryDeclaration() throwing something other than CodegenEmitError. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): confirmed each of these six branches still exists at the new coordinates; only the line numbers moved.',
         functions: 1,
         lines: new Set([
-          76, 77, 78, 79, 80, 169, 170, 219, 264, 265, 289, 320, 321, 322, 324, 325, 326, 327,
+          81, 82, 83, 84, 85, 174, 175, 224, 269, 270, 294, 325, 326, 327, 329, 330, 331, 332,
         ]),
         requireUncoveredLines: true,
       },

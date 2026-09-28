@@ -34,6 +34,16 @@ import {
 import { MAX_BUFFERED_TASK_RESULTS, TaskResultOutbox } from './task-result-outbox.ts';
 import type { RemoteWorkerActivityFunction } from './workflow-activity-binding.ts';
 
+export {
+  defineWorker,
+  implementWorkflow,
+  remoteActivity,
+  type ActivityImplementation,
+  type DefinedWorker,
+  type RemoteActivityDeclaration,
+  type WorkerImplementation,
+  type WorkflowActivityImplementations,
+} from './authoring.ts';
 export type { RemoteWorkerOptions } from './options.ts';
 export { isOutboxFull, MAX_BUFFERED_TASK_RESULTS } from './task-result-outbox.ts';
 
@@ -728,11 +738,12 @@ export class RemoteWorker implements Disposable {
         (details) => this.#sendActivityHeartbeat(task, details),
       );
 
+      const value = normalizeWorkerJsonValue(result);
       this.#sendTaskResult({
         type: 'taskResult',
         operationId: task.operationId,
         status: 'completed',
-        value: normalizeWorkerJsonValue(result),
+        value,
         attemptToken: task.attemptToken,
       });
     } catch (error) {

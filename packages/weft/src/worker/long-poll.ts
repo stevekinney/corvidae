@@ -469,7 +469,7 @@ export class LongPollWorker implements Disposable {
         ...(task.workerId === undefined ? {} : { workerId: task.workerId }),
         attemptToken: task.attemptToken,
         status: 'completed',
-        value: result,
+        value: normalizeWorkerJsonValue(result),
       });
     } catch (error) {
       const cancelled = taskAbortController.signal.aborted;

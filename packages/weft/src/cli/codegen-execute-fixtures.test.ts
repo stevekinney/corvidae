@@ -138,6 +138,23 @@ describe('executeCodegen end-to-end', () => {
     expect(await Bun.file(outEarly).text()).toBe(await Bun.file(outLate).text());
   });
 
+  it('emits a worker target without importing executable workflow modules', async () => {
+    const dir = makeTempDir();
+    const out = join(dir, 'weft-worker.generated.ts');
+    const result = await executeCodegen({
+      from: REGISTRY_FIXTURE,
+      out,
+      target: 'worker',
+      timeoutMs: 30_000,
+    });
+
+    expect(result.exitCode).toBe(0);
+    const written = await Bun.file(out).text();
+    expect(written).toContain('defineGeneratedWorker');
+    expect(written).toContain("from '@lostgradient/weft'");
+    expect(written).not.toContain("from './");
+  });
+
   it('fails with a clear diagnostic on registry version mismatch and writes no output', async () => {
     const dir = makeTempDir();
     const bad = join(dir, 'bad.json');
