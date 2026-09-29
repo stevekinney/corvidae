@@ -6,7 +6,7 @@ import type {
   RuntimeServices,
   Subscription,
 } from '@lostgradient/lifecycle';
-import type { CreateMemoryOptions, Memory } from '@lostgradient/memory';
+import type { GovernedMemory, MemoryCapability } from '@lostgradient/memory';
 import type {
   AgentInput,
   AgentRunEventRegistry,
@@ -289,6 +289,21 @@ export interface PersistenceOptions {
 
 // ── Bureau (headless, no HTTP) ──────────────────────────────────────
 
+/**
+ * COR-41 — how Bureau derives each run's memory authority. The chain is Bureau
+ * (a `service:bureau` link holding `runCapabilities`), then the request's
+ * persisted principal, then the run. A request authority that names explicit
+ * `memory:*` capabilities can only narrow `runCapabilities`; one that names
+ * none receives them unchanged. A run with no persisted request authority gets
+ * no memory hooks at all.
+ */
+export interface BureauMemoryAuthorityOptions {
+  /** Defaults to `['memory:search', 'memory:write']`; `[]` disables memory for every run. */
+  readonly runCapabilities?: readonly MemoryCapability[];
+  /** Recorded on every memory operation. Defaults to `'conversation-memory'`. */
+  readonly purpose?: string;
+}
+
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
@@ -471,7 +486,21 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * durable engine is composed.
    */
   checkpointRetention?: CheckpointRetentionOption;
-  memory?: CreateMemoryOptions | Memory;
+  /**
+   * COR-41 — governed memory for the Bureau's recall and persistence hooks.
+   * Recall goes through mandatory recall admission (trust minimums, detector
+   * scan, evidence labeling) and final assistant content is admitted as
+   * untrusted conversation memory, both under the run's memory authority
+   * (see {@link BureauOptions.memoryAuthority}). The host constructs the
+   * instance (`createGovernedMemory` from `@lostgradient/memory`) so it owns
+   * the storage, ledger, and policy.
+   */
+  memory?: GovernedMemory;
+  /**
+   * COR-41 — the memory authority Bureau delegates to each run it composes
+   * memory hooks for. See {@link BureauMemoryAuthorityOptions}.
+   */
+  memoryAuthority?: BureauMemoryAuthorityOptions;
   cache?: CacheConfiguration;
   /**
    * AB-40 — guardrail tripwires. When omitted (the default), bureau wires an
@@ -1078,7 +1107,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly runEventFeeds: AgentRunEventRegistry;
   readonly store: Store;
-  readonly memory: Memory | undefined;
+  readonly memory: GovernedMemory | undefined;
   readonly scheduler: Scheduler | undefined;
   readonly ready: boolean;
   /**

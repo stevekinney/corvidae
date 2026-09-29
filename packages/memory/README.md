@@ -20,6 +20,7 @@ Declare `"@lostgradient/memory": "workspace:*"` in the consuming workspace's dep
 - [Ingestion](#ingestion)
 - [Retrieval Helpers](#retrieval-helpers)
 - [Identity](#identity)
+- [Governed Memory](#governed-memory)
 - [Testing](#testing)
 - [Development](#development)
 
@@ -31,6 +32,7 @@ Declare `"@lostgradient/memory": "workspace:*"` in the consuming workspace's dep
 - Supports deduplication, conflict detection, namespace isolation, and external text-search providers.
 - Adds ingestion, chunking, file synchronization, reflection, run capture, and consolidation helpers.
 - Provides memory tools and identity tools for use through `armorer` and `operative`.
+- Governs memory for Bureau and other shared deployments: principal-aware authority, write and recall admission, promotion, revocation, retention, legal hold, and receipted deletion (see [Governed Memory](#governed-memory)).
 
 ## How It Works
 
@@ -249,6 +251,8 @@ type CachedEmbedder = Embedder & {
   cache: ReadonlyMap<string, EmbeddingVector>;
   clearCache(): void;
   clearNamespace(namespace: string): void;
+  // Evicts entries by the SHA-256 digest of the text they embedded.
+  evictContent(contentDigests: readonly string[]): number;
 };
 ```
 
@@ -371,8 +375,12 @@ interface MemoryRecordStorage {
     id: string,
     scope: MemoryRecordScope,
     patch: { content?: string; vector?: Float32Array; metadata?: Record<string, unknown> },
+    options?: { expectedVersion?: number },
   ): Promise<MemoryRecord | undefined>;
   delete(id: string, scope: MemoryRecordScope): Promise<boolean>;
+  deleteMany?(
+    references: readonly { id: string; scope: MemoryRecordScope; expectedVersion?: number }[],
+  ): Promise<number>;
   deleteNamespace(scope: MemoryRecordScope): Promise<number>;
 }
 
@@ -403,6 +411,8 @@ interface MemoryVectorSearchResult {
 type MemoryRecordPutOnceResult =
   { record: MemoryRecord; inserted: true } | { record: MemoryRecord; inserted: false };
 ```
+
+`deleteMany()` removes every referenced record in one transaction. `expectedVersion`, on `update()` or on a `deleteMany()` reference, turns the write into a compare-and-swap: if the live record is no longer at that version, nothing is written and the call rejects with `MemoryRecordVersionConflictError`. Governed memory requires both, and the shared contract harness checks them.
 
 ### `createWeftMemoryRecordStorage(storage, options?)`
 
@@ -584,13 +594,16 @@ function createMemoryStoreTool(memory: Memory): Tool;
 // input: { content: string; tags?: string[]; importance?: number; evergreen?: boolean }
 ```
 
-### `createMemoryRecallTool(memory)`
+### `createMemoryRecallTool(memory, options?)`
 
-Tool name: `memory_recall`. Retrieves relevant memories for a query string.
+Tool name: `memory_recall`. Retrieves relevant memories for a query string. The namespace is pinned by the host through `options.namespace` (defaulting to the memory's configured namespace); the model supplies only the query and limit, so it cannot widen the scope it searches.
 
 ```typescript
-function createMemoryRecallTool(memory: Memory): Tool;
-// input: { query: string; limit?: number; namespace?: string }
+function createMemoryRecallTool(
+  memory: Memory,
+  options?: { namespace?: string; guardrail?: MemoryGuardrailOptions },
+): Tool;
+// input: { query: string; limit?: number }
 ```
 
 ### `createMemoryForgetTool(memory)`
@@ -1196,6 +1209,67 @@ const toolbox = createToolbox([
   identityTools.personaList,
 ]);
 ```
+
+## Governed Memory
+
+`createMemory()` is the standalone, ungoverned surface: whoever holds a `Memory` can do anything with it. `createGovernedMemory()` is the surface for shared or governed memory (COR-41), where every operation carries a persisted authority and no conversation, Agent, tool, or background task can reach memory outside it.
+
+```typescript
+import { MemoryStorage } from '@lostgradient/weft';
+import {
+  createGovernedMemory,
+  createMemoryAuthority,
+  createMemoryGovernanceLedger,
+  createMemoryGovernancePolicy,
+  createWeftMemoryRecordStorage,
+} from '@lostgradient/memory';
+
+const storage = new MemoryStorage(); // any Weft Storage; records and ledger may share it
+const memory = createGovernedMemory({
+  storage: createWeftMemoryRecordStorage(storage),
+  ledger: createMemoryGovernanceLedger(storage),
+  embedder,
+  policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
+  propagation: { 'external-processors': vendorPropagator },
+});
+
+const authority = createMemoryAuthority({
+  principal: { kind: 'user', id: 'user-a' },
+  tenantId: 'tenant-a',
+  ownerId: 'owner-a',
+  purpose: 'conversation-memory',
+  capabilities: ['memory:search', 'memory:write'],
+  policyRevision: 'authorization:1',
+  projection: 'bureau',
+});
+
+await memory.write(authority, 'The user prefers aisle seats.', {
+  collection: 'session-1',
+  source: 'conversation',
+});
+const bundle = await memory.recallForModel(authority, 'seat preference', {
+  collection: 'session-1',
+});
+// bundle.rendered is a labeled <memory-evidence> envelope ready for injection.
+```
+
+**Authority.** A `MemoryAuthority` names the acting principal or service identity, tenant, resource owner, purpose, capabilities (`memory:list|get|search|write|promote|share|export|quarantine|revoke|delete`, plus `memory:inspect`, `memory:legal-hold`, `memory:retention`, and the platform-level `memory:policy`), delegation chain, and authorization policy revision. `attenuateMemoryAuthority()` derives a child authority that can only narrow, in capabilities and in principal kind: a user, agent, run, or tool can never delegate to a `service` or `governance` principal, and a service never to governance. Governance and service privilege come from the whole chain (`holdsGovernanceAuthority()`, `holdsServiceAuthority()`), never from the actor's declared kind. `memoryAuthorityFromToolRequestContext()` maps an armorer request authority, carrying over only explicit `memory:*` capabilities. Every record, receipt, and ledger event persists this attribution together with the governance policy revision in force.
+
+**One predicate.** `decideMemoryAccess(authority, operation, resource)` is the single resource predicate and redaction decision for every projection (Bureau, Agent, child, tool, A2A, MCP, audit, administrative). The projection is recorded but never consulted. Namespaces and record ids are selectors inside the authority's own owner partition (`collectionNamespace()` percent-encodes both parts), never credentials: a guessed id or namespace reads exactly like a missing record. Governance metadata is stripped from results unless the caller holds `memory:inspect`.
+
+**Admission.** Every write is admitted: the source and its trust are classified from the authority (an agent, run, or tool can only write untrusted sources), content is validated, quotas apply, and the policy's detectors (the default is `createMemoryPoisoningDetector()`) quarantine or reject poisoning. A detector that throws counts as a detection. The writer sees only `admitted`, `quarantined`, `rejected`, or `duplicate`; which detector fired is a protected diagnostic in the ledger.
+
+**Recall admission.** `recallForModel()` is the only recall path meant for a model. It ranks first and admits in rank order (so withheld records never shrink the result), withholds records below the policy's trust minimum for their class (procedures and identity need `verified` trust by default), quarantines anything a recall detector trips on, and renders admitted records as JSON-escaped evidence that cannot close its envelope or claim authority.
+
+**Sharing.** Writes are private. `promote()` is a separately authorized (`memory:promote`), re-verified transition that creates a shared canonical projection linked to its source; revoking or deleting the source reaches it, and its promoter or a governance principal can revoke it. That holds when the two run at the same time: a promotion or derived write stores its record hidden (`pendingDerivation` in the envelope, which every read, search, export, recall, and transition treats as missing, privileged or not), checks its sources again once the record is stored and linked, and only then activates it. It withdraws the record instead (the promotion reports `not-found` or `rejected`, the write `invalid-source`) when a source is gone, has left `active`, or has been claimed by a deletion. A durable pending entry in the ledger precedes the record, so a withdrawal that fails or a process that dies leaves a record nobody can see, which the next `processDeletionPropagation()` withdraws or activates by the same rule; a withdrawn record under legal hold stays hidden until a pass after its release. Revocation stamps the source before it reads what derives from it, and re-reads until nothing new appears, so whichever operation runs second sees the other. Revocation and quarantine stamp the whole lineage every time they run, so running one again finishes one that failed partway; only a run that changed no record reports `unchanged`. `share()` grants one other owner `get` on one record.
+
+**Forgetting.** `forget()` distinguishes `active-context-eviction`, `retrieval-demotion`, `consolidation`, `supersession`, `quarantine`, `source-deletion`, `projection-deletion`, `index-invalidation`, `retention-expiry`, and `export-revocation`. `write()` accepts `derivedFrom` to register identity views, managed-asset canonical records, summaries, and projections with lineage; a derived record is never more trusted than its least trusted source.
+
+**Deletion.** A deletion follows COR-806's plan and persists a receipt before anything is removed. Before planning, it claims its record and everything the record's lineage reaches (the envelope's `deletionRequestedAt`), reading the lineage again after each round of claims until a read finds nothing new. A claimed record can no longer back a promotion or derived write, so anything derived from it while the deletion was starting is either in the plan or withdrawn by the operation that wrote it. Source evidence, canonical projections, identity views, and the managed-asset canonical record delete in one `deleteMany` transaction; indexes, caches, summaries, managed-asset bytes, durable snapshots, exports, and external processors settle in the bounded-async lane against a per-tenant bound (24 hours by default). Each target reports `completed`, `pending`, `exempt`, `failed`, or `unknown`; a target still pending at its deadline fails, and a target with no propagator stays pending (declare `'not-retained'` in `propagation` for a target the deployment does not keep). The receipt carries the content digests of every deleted record, so the built-in `caches` handler evicts them from an embedder with `evictContent()` (such as `withEmbeddingCache()`); any other cache needs a propagator. Deleting one projection keeps the lineage of records derived from it, so deleting its source later still reaches them. The ledger records a write's scope, its lineage, and (for a derived record) its pending entry before the record itself, so no failure leaves a record that retention, revocation, deletion, or the propagation pass cannot reach. `processDeletionPropagation()` resolves derived records a failed or interrupted derivation left hidden, advances open receipts, resumes an interrupted deletion after a restart, and re-queues a held deletion whose hold was released before its re-queue was recorded. A pending entry whose record was never stored is kept, since nothing tells it from one about to be stored, until the retention sweep's audit pruning retires it.
+
+**Legal hold and retention.** Only a principal holding `memory:legal-hold` through a chain of `governance` principals can place or release a hold. A held record's deletion reports every target `exempt` and re-queues automatically on release. Holds are checked again before the synchronous lane and before each bounded-async target, and record deletions are conditioned on the versions that check read, so a hold placed while a deletion is in flight (or before an interrupted one resumes) exempts every target not yet settled; on release, the rest of the plan runs. Every envelope transition (holds, revocation, quarantine, supersession, demotion, sharing) merges onto the record as stored now through a compare-and-swap, so concurrent transitions never undo one another. Export manifests change the same way: export revocation and a deletion's scrub each merge onto the manifest as stored now, so a revocation is never lost and a scrubbed record never returns to the manifest. An export reads its records again once its manifest is stored and scrubs (and leaves out of the export) any record a deletion removed or claimed meanwhile; a deletion claims before its synchronous lane and scrubs after it, so every deletion running alongside an export either is seen by it or finds its manifest. `sweepRetention()` applies per-class retention (episodic 90 days; semantic and procedural 90 days after supersession; working memory with its run via `expireWorkingMemory()`; identity subject-deletable; resource source-linked), supports `dryRun` and previewing a candidate `policy` (a candidate outside a dry run is rejected, so only an activated revision deletes), and prunes audit history older than the one-year minimum. The policy is instance-wide, so `activatePolicy()` and `rollbackPolicy()` need `memory:policy` through a chain of `governance` principals: a host grants it to its platform governance, never to one tenant's. They change future decisions only; nothing revoked or deleted comes back.
+
+**Tools.** `createGovernedMemoryTools(memory, { collection })` returns `memory_recall`, `memory_store`, and `memory_forget` tools that run under each call's persisted request authority, pin the collection, and tell the model nothing about why a call was refused.
 
 ## Testing
 

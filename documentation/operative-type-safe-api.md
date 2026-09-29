@@ -183,7 +183,7 @@ A source change produces a successor epoch with its own id and a `supersedes` li
 
 The Bureau durable options that affect the Operative contract include `workflowVersion`, `durableOwnership`, `durableGuardrails`, persistence, and the durable storage configuration. `workflowVersion` is passed to both the workflow stamp and recovery comparison when a durable engine is composed.
 
-`BureauOptions.memory?: CreateMemoryOptions | Memory` accepts either construction options or an already-constructed `Memory` instance; `isMemoryInstance` decides which branch it holds, calling `createMemory()` only for the options branch. The resolved instance is exposed on `Bureau.memory` (`Memory | undefined`).
+`BureauOptions.memory?: GovernedMemory` takes a host-constructed governed memory (COR-41); Bureau never constructs memory storage itself. Each run's recall and persistence hooks act under a memory authority `createRunMemoryAuthority` derives from the run's persisted request authority, delegated from Bureau (`BureauOptions.memoryAuthority.runCapabilities`, default `memory:search` and `memory:write`) through the request principal to the run; a run with no persisted request authority gets no memory hooks. Recall goes through the governed memory's mandatory recall admission and enters the conversation as a labeled evidence envelope; persisted assistant content is admitted as untrusted conversation memory. The instance is exposed on `Bureau.memory` (`GovernedMemory | undefined`).
 
 ## Reserved for memory
 

@@ -44,7 +44,7 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 
 ## How It Works
 
-`createBureau(options)` is async because composing the runtime may involve resolving a Weft storage backend, building a durable engine, and loading a session store. The returned `Bureau` object wraps an `@lostgradient/operative` `Store` (the live run/action registry), an optional `Memory`, an optional `Scheduler`, and the resolved runtime composition (generate function, toolbox, session store, durable engine).
+`createBureau(options)` is async because composing the runtime may involve resolving a Weft storage backend, building a durable engine, and loading a session store. The returned `Bureau` object wraps an `@lostgradient/operative` `Store` (the live run/action registry), an optional `GovernedMemory`, an optional `Scheduler`, and the resolved runtime composition (generate function, toolbox, session store, durable engine).
 
 `createRun(request)` (**deprecated**, not yet removed—see AB-242's decision record and the removal issue it names, AB-352) loads or creates a session, appends the request message to its conversation, builds an `ActiveRun` via `operative`'s `createActiveRun`, and registers it with the store. If a durable engine is composed, the run is routed through it instead of the in-memory loop, so it can crash and resume from its last completed step. Terminal run events (`run.completed`, `run.aborted`) persist the session's status with a bounded retry.
 
@@ -124,7 +124,8 @@ Every field except `agents` is optional.
 | `store` | `Store` | Supply your own `@lostgradient/operative` `Store` instead of letting `bureau` create one. |
 | `persistence` / `storage` | `PersistenceOptions \| StorageConfiguration \| ConditionalTextValueStore` | Configure session and key-value persistence. `storage` is shorthand for the common case; `persistence` is the full options-object form. |
 | `durableExecution` | `boolean` | Override the default (on for persistent `storage`, off for `memory`) for Weft-backed crash-and-resume execution. |
-| `memory` | `CreateMemoryOptions \| Memory` | Attach recall/persistence hooks backed by the `memory` package. |
+| `memory` | `GovernedMemory` | COR-41—attach governed recall and persistence hooks. Recall runs through the governed memory's mandatory recall admission and is injected as a labeled `<memory-evidence>` system message; final assistant content is admitted as untrusted `conversation` memory (scanned, quota-checked, quarantined when poisoned). Both run under the run's memory authority, and a run without a persisted request authority gets no memory hooks. |
+| `memoryAuthority` | `BureauMemoryAuthorityOptions` | COR-41—`runCapabilities` (default `['memory:search', 'memory:write']`) Bureau delegates to each run through the request principal; explicit `memory:*` capabilities on a request can only narrow them. `purpose` defaults to `'conversation-memory'`. See `createRunMemoryAuthority`. |
 | `cache` | `CacheConfiguration` | Wrap the resolved generate function with response caching. |
 | `guardrails` **(deprecated)** | `GuardrailsOptions` | Attach `operative` guardrail detectors to every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
 | `identity` | `IdentityConfiguration` | Configure identity resolution for memory and session ownership. |

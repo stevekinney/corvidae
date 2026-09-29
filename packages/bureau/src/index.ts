@@ -136,7 +136,13 @@ export type {
   OnlineEvalSampler,
   OnlineEvalSamplerOptions,
 } from './online-evals';
-export { createMemoryPersistHook, createRuntimeComposition } from './runtime-composition';
+export {
+  DEFAULT_RUN_MEMORY_CAPABILITIES,
+  createMemoryPersistHook,
+  createMemoryRecallHook,
+  createRunMemoryAuthority,
+  createRuntimeComposition,
+} from './runtime-composition';
 export type { BureauToolbox, DurableComposition, RuntimeComposition } from './runtime-composition';
 export {
   serializeActionDetail,
@@ -230,6 +236,7 @@ export type {
   Bureau,
   BureauChildrenOptions,
   BureauEventType,
+  BureauMemoryAuthorityOptions,
   BureauOptions,
   BureauRecoveryReport,
   BureauRunOptions,
