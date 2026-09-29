@@ -15,10 +15,10 @@
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/tool-protocol": "workspace:*",
     "zod": "catalog:",
-    "js-yaml": "catalog:",
-    "@anthropic-ai/sdk": "catalog:"
+    "js-yaml": "catalog:"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "catalog:",
     "@google/genai": "catalog:",
     "@types/bun": "catalog:",
     "openai": "catalog:",

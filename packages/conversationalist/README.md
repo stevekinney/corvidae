@@ -803,7 +803,7 @@ const restored = await Conversation.fromProvider('openai', { messages: openAIMes
 
 Anthropic Messages API format adapter.
 
-The adapter imports SDK types from `@anthropic-ai/sdk`, declared as a catalog-backed development dependency. Its conversion functions operate on message data and do not construct an SDK client.
+The neutral adapter has no runtime or type dependency on `@anthropic-ai/sdk`. The SDK-specific conversion is available from the separate `conversationalist/adapters/anthropic/sdk` entry point for consumers that install the optional peer.
 
 ```typescript
 import {
@@ -822,6 +822,12 @@ const updated = appendAnthropicMessages(history, payload);
 ```
 
 **Key exports:** `toAnthropicMessages`, `fromAnthropicMessages`, `appendAnthropicMessages`, `anthropicConversationAdapter`. Type exports: `AnthropicConversation`, `AnthropicMessage`, `AnthropicContentBlock`, `AnthropicTextBlock`, `AnthropicToolUseBlock`, `AnthropicToolResultBlock`, `AnthropicImageBlock`, `AnthropicImageSource`, `AnthropicBase64ImageSource`, `AnthropicUrlImageSource`.
+
+```typescript
+import { toAnthropicMessagesForSdk } from 'conversationalist/adapters/anthropic/sdk';
+
+const sdkPayload = toAnthropicMessagesForSdk(history);
+```
 
 ### Gemini conversion
 
