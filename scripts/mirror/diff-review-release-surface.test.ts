@@ -33,6 +33,14 @@ function readManifest(path: string): Record<string, unknown> {
 }
 
 describe('DR-9 diff-review release surface', () => {
+  test('packs the fixtures re-exported by diff-review-state declarations', () => {
+    const manifest = readManifest(editorManifestPath);
+    const files = manifest['files'] as string[];
+    expect(files).toContain('dist');
+    expect(files).not.toContain('!dist/**/fixtures.*');
+    expect(files).toContain('!dist/session/fixtures.*');
+  });
+
   test('the editor manifest exports every new and existing diff-review public path', () => {
     const manifest = readManifest(editorManifestPath);
     const exports = manifest['exports'] as Record<string, unknown>;
