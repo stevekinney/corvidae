@@ -85,13 +85,13 @@ export const CORPUS_ALIASES: Record<string, Classification> = {
   },
 };
 
-/** Corpus documents whose entries can alias a tier. */
+/** Package-relative corpus documents whose entries can alias a tier. */
 export const CORPUS_DOCUMENTS = [
-  'components/cinder/src/tokens/themes/light.tokens.json',
-  'components/cinder/src/tokens/themes/dark.tokens.json',
-  'components/cinder/src/tokens/sets/components.tokens.json',
-  'components/cinder/src/tokens/sets/colors.tokens.json',
-  'components/cinder/src/tokens/sets/semantic.tokens.json',
+  'src/tokens/themes/light.tokens.json',
+  'src/tokens/themes/dark.tokens.json',
+  'src/tokens/sets/components.tokens.json',
+  'src/tokens/sets/colors.tokens.json',
+  'src/tokens/sets/semantic.tokens.json',
 ];
 
 export const CORPUS_TIER =

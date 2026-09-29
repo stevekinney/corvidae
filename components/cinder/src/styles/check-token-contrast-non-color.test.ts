@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const tokenDocumentationPath = join(import.meta.dirname, '..', '..', 'documentation', 'tokens.md');
 const sourcePath = (...candidates: string[]) => {
   const path = candidates.map((candidate) => join(repositoryRoot, candidate)).find(existsSync);
   if (path === undefined)
@@ -20,10 +21,7 @@ describe('non-color component tokens', () => {
       ),
       'utf8',
     );
-    const tokenDocumentation = readFileSync(
-      sourcePath('components/cinder/documentation/tokens.md', 'docs/tokens.md'),
-      'utf8',
-    );
+    const tokenDocumentation = readFileSync(tokenDocumentationPath, 'utf8');
 
     expect(chatCss).toContain('--cinder-chat-font-size: 1rem');
     expect(chatCss).toContain('--_cinder-chat-text-base: clamp(');
@@ -50,10 +48,7 @@ describe('non-color component tokens', () => {
       ),
       'utf8',
     );
-    const tokenDocumentation = readFileSync(
-      sourcePath('components/cinder/documentation/tokens.md', 'docs/tokens.md'),
-      'utf8',
-    );
+    const tokenDocumentation = readFileSync(tokenDocumentationPath, 'utf8');
     const tokenBaseCss = readFileSync(
       sourcePath(
         'components/cinder/src/styles/tokens-base.css',
