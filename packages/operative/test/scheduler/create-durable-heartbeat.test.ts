@@ -80,6 +80,8 @@ function createRecordingScheduler(result: RunResult | null = createRunResult()) 
       idle: true,
     }),
     cancel: () => false,
+    locateTask: () => ({ status: 'not-found' }),
+    awaitTask: async () => result,
     start: () => {},
     stop: async () => {},
     addEventListener: () => {},

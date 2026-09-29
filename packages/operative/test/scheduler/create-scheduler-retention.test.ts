@@ -210,7 +210,12 @@ describe('createScheduler retention', () => {
     });
 
     it('reports in-progress for a task requeued after preemption', async () => {
-      const { scheduler } = createTrackedScheduler();
+      // Real runtime: the requeued task waits out idleDelay before redispatch.
+      const scheduler = createScheduler({
+        generate: createMockGenerate([textResponse('default')]),
+        toolbox: createTestToolbox([]),
+        idleDelay: 1,
+      });
       const gate = createGate();
       let calls = 0;
       const background = makeTask({
