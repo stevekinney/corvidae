@@ -1,0 +1,17 @@
+/**
+ * Type-level regression test: a real `openai` SDK `OpenAI` instance must
+ * satisfy the structural {@link OpenAIClient} and {@link OpenAIStreamingClient}
+ * interfaces with no cast at either construction site.
+ */
+import type { OpenAI } from 'openai';
+
+import type { OpenAIClient, OpenAIStreamingClient } from './types.ts';
+
+/** Fails to compile unless `T` resolves to exactly `true`. */
+type Assert<T extends true> = T;
+
+export type OpenAISatisfiesClient = Assert<OpenAI extends OpenAIClient ? true : false>;
+
+export type OpenAISatisfiesStreamingClient = Assert<
+  OpenAI extends OpenAIStreamingClient ? true : false
+>;

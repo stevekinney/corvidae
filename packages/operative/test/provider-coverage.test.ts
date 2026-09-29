@@ -360,6 +360,38 @@ describe('OpenAI provider coverage', () => {
     expect(await rejectionOf(failingGenerate(makeContext()))).toMatchObject({ provider: 'openai' });
   });
 
+  it('rejects a custom tool call with a defined ProviderError', async () => {
+    const client = createMockOpenAIClient([
+      {
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                { id: 'call_custom_01', type: 'custom', custom: { name: 'tool', input: 'x' } },
+              ],
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+      },
+    ]);
+    const generate = createOpenAIProvider({ model: 'gpt-4o', client });
+
+    const error = await rejectionOf(generate(makeContext()));
+
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({
+      provider: 'openai',
+      message:
+        '[provider:openai] OpenAI returned a custom tool call (id "call_custom_01"); only function tool calls are supported',
+      retryable: false,
+    });
+    const cause = (error as ProviderError).cause;
+    expect(cause).toBeInstanceOf(Error);
+    expect(cause).not.toBeInstanceOf(TypeError);
+  });
+
   it("falls back to the run's context.responseFormat when no construction-time responseFormat is set", async () => {
     const client = createMockOpenAIClient([openAITextResponse]);
     const generate = createOpenAIProvider({ model: 'gpt-4o', client });
