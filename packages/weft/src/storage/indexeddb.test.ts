@@ -486,7 +486,7 @@ describe('IndexedDBStorage paged scans', () => {
       };
       const expected = (count: number, reverse = false): string[] => {
         const all = Array.from({ length: count }, (_, index) => pagedKey(index));
-        return reverse ? all.reverse() : all;
+        return reverse ? all.toReversed() : all;
       };
 
       for (const count of [PAGE * 2 + 7, PAGE * 2, PAGE, PAGE - 1, 1]) {
@@ -577,7 +577,7 @@ describe('IndexedDBStorage paged scans', () => {
           const others = Array.from({ length: total - 1 }, (_, index) => pagedKey(index));
           await seedKeys(storage, ['p:', ...others]);
           expect(await collectKeys(storage, 'p:', { reverse: true })).toEqual([
-            ...[...others].reverse(),
+            ...others.toReversed(),
             'p:',
           ]);
         }
@@ -589,7 +589,7 @@ describe('IndexedDBStorage paged scans', () => {
           const others = Array.from({ length: total - 1 }, (_, index) => pagedKey(index));
           await seedKeys(storage, ['', ...others]);
           expect(await collectKeys(storage, '', { reverse: true })).toEqual([
-            ...[...others].reverse(),
+            ...others.toReversed(),
             '',
           ]);
           expect(await collectKeys(storage, '')).toEqual(['', ...others]);
@@ -621,9 +621,11 @@ describe('IndexedDBStorage paged scans', () => {
         it('yields a buffered key deleted before it is yielded', async () => {
           const storage = await seedCount(PAGE * 2);
           const iterator = reader.read(storage, 'p:')[Symbol.asyncIterator]();
-          expect((await iterator.next()).value).toBe(pagedKey(0));
+          const first = await iterator.next();
+          expect(first.value).toBe(pagedKey(0));
           await storage.delete(pagedKey(1));
-          expect((await iterator.next()).value).toBe(pagedKey(1));
+          const second = await iterator.next();
+          expect(second.value).toBe(pagedKey(1));
         });
 
         it('does not yield a key in a later page deleted before that page is read', async () => {
