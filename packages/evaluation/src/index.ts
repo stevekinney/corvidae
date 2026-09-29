@@ -139,6 +139,58 @@ export type {
   JudgeRevision,
   JudgeUnderTest,
 } from './judge-drift';
+export {
+  MEMORY_LIFECYCLE_REPLAY_EXIT_CODES,
+  replayScenarioArtifact,
+  scenarioRunArtifactSchema,
+} from './memory-lifecycle/artifact';
+export type { ArtifactReplayOutcome, ScenarioRunArtifact } from './memory-lifecycle/artifact';
+export {
+  MEMORY_BASELINES,
+  SIMPLER_BASELINES,
+  STRUCTURED_COMPONENTS,
+} from './memory-lifecycle/baselines/adapter';
+export type {
+  MemoryBaselineAdapter,
+  MemoryBaselineName,
+  StructuredComponent,
+} from './memory-lifecycle/baselines/adapter';
+export { createBaselineAdapter } from './memory-lifecycle/baselines/index';
+export { EXTERNAL_SCORE_POLICY, benchmarkAdoptions } from './memory-lifecycle/benchmarks';
+export type { BenchmarkAdoption } from './memory-lifecycle/benchmarks';
+export { MEMORY_LIFECYCLE_LANES, memoryLifecycleEnvelope } from './memory-lifecycle/envelope';
+export type { ComputeEnvelope, MemoryLifecycleLane } from './memory-lifecycle/envelope';
+export { memoryLifecycleEvaluator, modelJudgingIssues } from './memory-lifecycle/memory-evaluator';
+export { measureScenarioRun } from './memory-lifecycle/metrics';
+export type { ScenarioMetrics } from './memory-lifecycle/metrics';
+export { bestSimplerBaseline, decideMemoryLifecycleRelease } from './memory-lifecycle/release';
+export type { MemoryLifecycleRelease } from './memory-lifecycle/release';
+export { buildMemoryLifecycleReport } from './memory-lifecycle/report';
+export type { MemoryLifecycleReport } from './memory-lifecycle/report';
+export { renderMemoryLifecycleReport } from './memory-lifecycle/report-markdown';
+export {
+  BENCHMARK_SOURCES,
+  LIFECYCLE_STAGES,
+  MEMORY_WORKLOADS,
+  SCENARIO_CONDITIONS,
+  memoryScenarioSuiteSchema,
+} from './memory-lifecycle/scenarios';
+export type {
+  MemoryScenario,
+  MemoryScenarioSuite,
+  ScenarioEvidence,
+} from './memory-lifecycle/scenarios';
+export {
+  memoryLifecycleSuite,
+  parseMemoryScenarioSuite,
+  toMemoryLifecycleDataset,
+} from './memory-lifecycle/suite';
+export { runMemoryLifecycleSuite } from './memory-lifecycle/suite-run';
+export type {
+  BaselineRun,
+  ComponentAblation,
+  MemoryLifecycleSuiteRun,
+} from './memory-lifecycle/suite-run';
 export { OverrideRejectedError, assessOverride, recordOverride } from './override';
 export type { AssessOverrideOptions, OverrideRejection, RecordOverrideOptions } from './override';
 export { toGeneratorProjection, toReviewerProjection } from './projections';

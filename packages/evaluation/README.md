@@ -2,11 +2,11 @@
 
 Scores completed [Operative](../operative/README.md) runs against a versioned evaluator configuration: typed multi-criterion rubrics, hard per-criterion gates, calibration examples for a model judge, and a digest that identifies the configuration exactly. On top of that it runs each case its declared number of times, reports distributions and uncertainty rather than one score, surfaces disagreement and infrastructure failure explicitly, and refuses to treat an unchecked held-out dataset, an uncalibrated judge, or a drifted judge revision as gate-eligible. It implements the evaluator configuration, result-class, inspection-surface, and held-out, repeated-trial, variance, drift, and calibration sections of the calibrated evaluator contract (COR-896).
 
-`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, `replay` recomputes any stored decision from its recorded evidence without calling a model, and `promotion-signal` turns a passing decision into attributed evidence that binds exactly what was evaluated.
+`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, `replay` recomputes any stored decision from its recorded evidence without calling a model, and `promotion-signal` turns a passing decision into attributed evidence that binds exactly what was evaluated. The memory-lifecycle suite, run with the `memory-lifecycle` command, uses all of these to compare memory architectures by the actions they lead to (see [Memory lifecycle evaluation](#memory-lifecycle-evaluation)).
 
 ## Workspace usage
 
-Declare `"@lostgradient/evaluation": "workspace:*"` in the consuming workspace's dependencies and install from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/evaluation`; the consumer compiles it. Its dependencies include `@lostgradient/operative`, for run results and the judge's `GenerateFunction`, and `@lostgradient/weft`, for history storage.
+Declare `"@lostgradient/evaluation": "workspace:*"` in the consuming workspace's dependencies and install from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/evaluation`; the consumer compiles it. Its dependencies include `@lostgradient/operative`, for run results and the judge's `GenerateFunction`, `@lostgradient/weft`, for history storage, and `@lostgradient/memory`, whose stores the memory-lifecycle baselines wrap.
 
 ## Quick start
 
@@ -313,7 +313,7 @@ A decision is the most severe of its findings, and each finding names its `reaso
 | `insufficientEvidence` | `dataset-not-contamination-checked` | `insufficient-evidence` | The dataset owner recorded no contamination check for this dataset version at the evaluated `codeRevision`. |
 | `insufficientEvidence` | `unresolved-disagreement` | `insufficient-evidence` | A case's trials split past the variance policy. |
 | `insufficientEvidence` | `criterion-not-comparable` | `insufficient-evidence` | A threshold's criterion and metric is missing from the baseline or the run. |
-| `regressions` | (none) | `regression`, unless every entry has an `overriddenBy` | A criterion's pass fraction or mean score fell by more than its `maximumDecrease`. Each entry records `baseline`, `candidate`, `delta`, `severity`, and the override that cleared it, if any. |
+| `regressions` | (none) | `regression`, unless every entry has an `overriddenBy` | A criterion's pass fraction or mean score fell by more than its `maximumDecrease`, or rose by less than its `minimumIncrease`. Each entry records the threshold's bound, `baseline`, `candidate`, `delta`, `severity`, and the override that cleared it, if any. |
 
 Only a `pass` is evidence for a release, and only while it is fresh: a promotion signal (below) is the attributed, expiring form of that evidence. Regressions are measured only against a baseline that is present, unexpired, and comparable, so a missing or expired baseline means no regression was looked for at all. When a run has findings in more than one list, `decision` reports only the most severe, so a run with both an infrastructure failure and a regression decides `infrastructure-failure`. Read `findings`, not just `decision`, before acting on one.
 
@@ -327,14 +327,14 @@ A gate file, `gates/<gateId>.json` with a gate id of 1 to 64 letters, digits, un
 | `dataset` | The `{ id, version }` the evaluator must score. |
 | `baseline` | Required, no default: `{ kind: 'latest-passing-decision' }` (the newest decision of this gate that passed without an override, or that the override authority accepted as a permanent baseline change) or `{ kind: 'evaluation-run', path }` (a committed `evaluation-run` record). |
 | `sampleSize` | Required, no default: the minimum trial count for a stochastic judge, or held-out case count for a deterministic one. |
-| `regressionThresholds` | At least one, per criterion and metric (`passFraction` or `meanScore`): the largest tolerated decrease from the baseline and its `severity`, `hard` or `overridable`. |
+| `regressionThresholds` | At least one, per criterion and metric (`passFraction` or `meanScore`): exactly one bound, either `maximumDecrease` (the largest tolerated decrease from the baseline, in `[0, 1]`) or `minimumIncrease` (a predeclared improvement the run must show over the baseline, in `(0, 1]`), and its `severity`, `hard` or `overridable`. |
 | `budgets` | `{ costUsd, latencyMilliseconds }` ceilings for the gate run. A run that reports no cost is checked for latency only. |
 | `overrideAuthority` | The principal who may override a blocking result. |
 | `expiry` | `maximumRevisionDistance` (commits, counted with `git rev-list --count`) and/or `maximumAgeMs`: how far a baseline may trail the run. At least one is required. |
 
 Every gate run that gets past its configuration appends exactly one `gate-decision` record (`gateDecisionRecordSchema`, `GATE_RECORD_SCHEMA_VERSION` 1) holding its inputs (the gate definition, evaluator identity and module, dataset digest, eligibility, per-trial evidence, baseline, and the overrides it weighed), its metrics and distributions (the embedded `evaluation-run` record), its findings, the decision (`GATE_DECISIONS`), the actor, and the repository revision it ran at (`sourceRevision`, from `git rev-parse HEAD`). The history's SHA-256 digest covers all of it. `sourceRevision` is where the gate, its evaluator module, and the code under evaluation actually were; the configuration's `codeRevision` is what the evaluator declares it evaluated, and the fixture pins that to a fixed commit so its committed baseline stays comparable.
 
-`gates/fixture-regression.json` is an offline fixture gate: `src/fixtures/release-gate/` scripts the capitals agent and the model judge with `createScriptedGenerate` and commits the baseline run it is compared with.
+`gates/fixture-regression.json` is an offline fixture gate: `src/fixtures/release-gate/` scripts the capitals agent and the model judge with `createScriptedGenerate` and commits the baseline run it is compared with. `gates/memory-lifecycle.json` is the memory-lifecycle release gate (see [Memory lifecycle evaluation](#memory-lifecycle-evaluation)).
 
 ### Running a gate from code
 
@@ -443,6 +443,77 @@ Each call runs the case through `runTrials` with a subject that replays the atte
 
 Every `pass`, `fail`, and `indeterminate` verdict, and every `error` from a trial, names the `evaluation-run` record it appended in `evidenceReference`, so `history.read(verdict.evidenceReference)` returns that evidence. `feedback` is exactly `toGeneratorProjection(aggregate).feedback`, built from trial counts alone, so no expected answer, reference material, held-out case id, criterion weight, or judge identity can reach the next attempt. Error messages are built from typed reasons and names; the raw failure is on `error.cause`, for reviewers only.
 
+## Memory lifecycle evaluation
+
+The memory-lifecycle suite (COR-755) measures whether a memory architecture makes an agent's final action better, not whether it retrieves text. It runs one versioned scenario set against four memory baselines under one compute envelope, checks each run's final action against a deterministic environment, and feeds a release gate. It lives in `src/memory-lifecycle/` and uses this package's own evaluator, `scoreTrials`, history, release gate, and replay: it adds no runner and no agent loop, and it changes nothing in `@lostgradient/memory`.
+
+```bash
+bun run --cwd packages/evaluation memory-lifecycle run [--lane deterministic|stochastic] [--seed <label>] [--artifacts-dir <path>] [--report <path.md>] [--suite <path>]
+bun run --cwd packages/evaluation memory-lifecycle replay <artifact.json> [--suite <path>]
+bun run --cwd packages/evaluation memory-lifecycle baseline [--write]
+bun run --cwd packages/evaluation release-gate --gate memory-lifecycle
+bun run --cwd packages/evaluation replay --gate memory-lifecycle --latest
+```
+
+### Scenarios
+
+`src/memory-lifecycle/suite.json` is the committed suite (`memory-lifecycle`, version `memory-lifecycle-2026-09`), validated by `memoryScenarioSuiteSchema`. Each scenario is a timeline of observations, owner deletion requests, and process restarts, followed by one named action task (`ship-order`, `book-flight`, `call-customer`, and so on) that ends in an environment action. Observations carry their principal (`owner`, a support `operator`, a `co-user` of the same agent, or `other-tenant`), source, kind (`fact`, `procedure`, `asset`, or a `derived-view` of an asset), modality, and a ground-truth label (`relevant`, `distractor`, or `poison`). The scenarios cover every lifecycle stage (writing, state maintenance, retrieval, downstream use, governance, final action) and every condition the suite reports on:
+
+| Condition | Scenarios |
+| --- | --- |
+| temporal change | `ship-after-moves`, `allergy-after-restart` |
+| contradiction | `seat-preference-contradiction` |
+| long delay | `ship-after-moves`, `router-reset-procedure`, `account-tier-long-delay` |
+| procedural reuse | `router-reset-procedure`, `poisoned-procedure-page`, `unverified-forum-procedure` |
+| multimodal evidence | `deleted-license-photo`, `receipt-photo-expense` |
+| recovery | `allergy-after-restart`, `deletion-survives-restart` |
+| deletion | `forgotten-phone`, `deleted-license-photo`, `deletion-survives-restart` |
+| privacy | `shared-agent-phone`, `cross-tenant-address` |
+| poisoning | `pasted-email-injection`, `poisoned-procedure-page` |
+
+Every scenario becomes one held-out case whose input is its task prompt; the prompt names the action, the slot it needs, and what to look up, and never the answer.
+
+### Baselines and the compute envelope
+
+| Baseline | What it is |
+| --- | --- |
+| `no-memory` | Retains nothing. |
+| `raw-log-search` | Appends every observation to a durable log and answers with BM25 over the owner's own entries, newest first among equals. Authorized, but with no admission, state, or lineage. |
+| `flat-hybrid` | The current `createMemory` store as one agent deploys it: durable Weft storage, hybrid vector and BM25 recall, and one namespace per tenant's agent. `createMemory` has no principal concept, so a co-user of the same agent shares it. |
+| `lifecycle` | The proposed architecture: COR-41's `createGovernedMemory` with the default governance policy (poisoning detection at admission and recall, verified trust for procedures, owner partitions, receipted deletion), plus three structured components: a `state-projector` (a new statement of a slot supersedes the current one unless its source ranks lower), `procedure-memory` (procedures in the procedural class), and `resource-derivation` (derived views stored as canonical projections of their asset). |
+
+When the lifecycle architecture runs, `runMemoryLifecycleSuite` also ablates each of its structured components: it runs the architecture again without that one component (`createBaselineAdapter('lifecycle', { components })`), over the scenarios of the component's target conditions only, under the same seeds. An ablation is named for what it removes, such as `lifecycle-without-procedure-memory`, in its evaluator environment, its evaluation-run record id, and its artifact ids, so it never shares an identity with the full architecture. `unverified-forum-procedure` is the scenario that isolates `procedure-memory`: its only reset procedure is a forum post the customer fetched, which trips no poisoning rule and so passes COR-41's admission, and only the procedural class's verified-trust floor keeps it from the model.
+
+Every baseline in a lane runs under that lane's one `ComputeEnvelope` (`memoryLifecycleEnvelope(lane)`): the same model and effort, prompt revision, three tools (`memory_recall`, `environment_action`, `environment_unknown`), embedder, recall limit, context-token budget, step ceiling, cost ceiling, and wall-clock ceiling. Its digest is on every artifact. Each scenario's trials get the same seeds under every baseline.
+
+The model is the reference policy (`createReferencePolicy`), a fixture that recalls once, keeps the recalled records whose first sentence states the needed slot, trusts an operator record over the customer's own words and those over a tool result or document, takes the newest among equals, and acts or reports unknown. The `deterministic` lane runs it once per scenario. The `stochastic` lane runs a sampled variant that, with probability 0.2 per decision, takes a random stating record instead, five times per scenario under a declared variance policy, from seeds the run records. Any `GenerateFunction` can stand in for the model through `runMemoryLifecycleSuite({ model })`; a live model's run replays from its recorded replies.
+
+### Metrics, checks, and judging
+
+`measureScenarioRun` computes every metric from the scenario's ground truth, the harness trace (what the baseline reported while the timeline ran), and the run's recorded trajectory, never from the agent's account: evidence admission precision and recall, stale-state rate, transition faithfulness, retrieval sufficiency, context cost, downstream task success, tool and environment correctness, authorization and privacy violations, poison exposure, deletion completion and receipts, unsupported operations, and unknown outcomes. Latency is measured wall-clock time, reported per baseline with breaches of the envelope's ceiling, and never gated. A metric with nothing to measure in a scenario is `null`.
+
+The evaluator is deterministic (`judge: { kind: 'deterministic' }`): action success is the environment's final state, and every other criterion is a check over the metrics. No criterion asks a model. `modelJudgingIssues` states the rule a future model-judge criterion must follow: never a hard gate, never cited by a release threshold, never outweighing the deterministic checks; the release gate's eligibility rules already require its exact revision to be calibrated and drift-checked.
+
+### Artifacts and replay
+
+Every trial, an ablation's included, writes one artifact (`memory-lifecycle-run`, schema version 1) named `<lane>.<baseline>.<scenario>.<trial>`, where an ablation's name stands in for its baseline's. It records the structured components the baseline ran; an evidence, transition, retrieval-plan, effective-context, provider, tool, environment, and outcome revision, each the SHA-256 of its section; and a digest over everything but the measured wall-clock time. `memory-lifecycle replay <artifact.json>` rebuilds the baseline with the components the artifact names from the scenario's timeline under the recorded seed, runs the agent with the recorded model replies in place of the model, re-scores it, and compares digests: exit `0` match, `4` mismatch (stdout names every differing field), `3` when the suite, scenario, baseline revision, or envelope it names is not the one at hand, `65` for a corrupt artifact, `64` for a usage error.
+
+### Report and release decision
+
+`memory-lifecycle run` prints one `memory-lifecycle-report` document (and, with `--report`, its Markdown rendering). Beyond the metrics per baseline, it identifies the best simpler baseline (the highest action success; ties go to the simpler one), shows which memory workloads, conditions, and named action tasks the lifecycle architecture benefits compared with it, and decides each structured component's promotion by ablation: a component is promoted only when, on the scenarios of its target conditions, the lifecycle architecture beats both raw-log search and its own ablation without that component, no worse than either on every one of the component's measures and strictly better than each on at least one. Beating raw-log search alone is not enough, because the rest of the architecture (COR-41's poisoning quarantine and owner partitions) can win there without the component; a component whose removal changes nothing is flagged as not promoted, and so is one with no ablation or with trials there that were not all scored. Not promoted is the default. Each component row lists its measures for the architecture, the ablation, and raw-log search, and the ablation's artifacts. Promotion is decided per lane, from that lane's trials alone: a component can earn it under the sampled model and not under the reference policy, or the other way around. Every failing baseline trial is listed with the artifact that replays it.
+
+The release policy is `gates/memory-lifecycle.json`: no regression (`maximumDecrease: 0`, `hard`) on `authorization`, `deletion`, `poisoning`, `state-maintenance`, or `cost-ceiling`, and a predeclared `minimumIncrease` of 0.1 in `action-success` pass fraction over the best simpler baseline. `memory-lifecycle run` applies it with `decideGate` to the lifecycle architecture and the best simpler baseline of the same run, and exits with the release gate's codes. `release-gate --gate memory-lifecycle` applies it to a fresh deterministic run of the lifecycle architecture against the committed record of the best simpler baseline, `src/memory-lifecycle/best-simpler-baseline-run.json`, appends the decision to the history, and `replay` recomputes it. `memory-lifecycle baseline` checks that committed record against a fresh run (exit `1` when stale), and `--write` regenerates it.
+
+### External benchmarks
+
+MemoryArena, WorldMemArena, MemoryAgentBench, HaluMem, and LongMemEval-V2 are sources of scenario ideas and reporting dimensions only. Each scenario names the ideas it adopted in its `sources`, and `benchmarkAdoptions(suite)` lists them with the metrics each benchmark's framing motivated. No external score, leaderboard number, or dataset is part of the suite, and none is a threshold: every threshold is a delta between the suite's own baselines on its own scenarios.
+
+### Limits
+
+- The offline lanes measure memory architectures under a fixed reference policy, not a model's skill. A live model plugs in as `model`, but nothing here calls a provider.
+- The suite's deployment keeps no bounded-async copies (indexes, caches, exports, external processors), so the lifecycle baseline declares each `not-retained` and its receipts settle at once.
+- The `lexical-hash` embedder is a deterministic bag-of-words stand-in shared by the two baselines that embed; it measures lexical, not semantic, similarity.
+
 ## What this package does not do
 
 These limits are part of the contract. Code that needs more than this has to build it and own it.
@@ -486,6 +557,19 @@ Every name below is exported from `@lostgradient/evaluation`, grouped by the sou
 | `override.ts` | `recordOverride`, `assessOverride`, `OverrideRejectedError` | `RecordOverrideOptions`, `AssessOverrideOptions`, `OverrideRejection` |
 | `replay.ts` | `replayGateDecision`, `REPLAY_EXIT_CODES` | `ReplayOptions`, `ReplaySelector`, `ReplayOutcome`, `ReplayDifference` |
 | `promotion.ts` | `issuePromotionSignal`, `verifyPromotionSignal`, `latestGateDecision`, `promotionSignalDigest`, `promotionSignalSchema`, `promotionSignalRecordSchema`, `PROMOTION_SIGNAL_SCHEMA_VERSION`, `PROMOTION_SIGNAL_MAXIMUM_LIFETIME_MS`, `PROMOTION_SIGNAL_EXIT_CODES` | `IssuePromotionSignalOptions`, `PromotionContext`, `PromotionBindings`, `PromotionSignal`, `PromotionSignalRecord`, `PromotionIssueOutcome`, `PromotionVerification`, `PromotionEvidenceReason`, `PromotionResult`, `StaleBinding` |
+| `memory-lifecycle/scenarios.ts` | `memoryScenarioSuiteSchema`, `LIFECYCLE_STAGES`, `SCENARIO_CONDITIONS`, `MEMORY_WORKLOADS`, `BENCHMARK_SOURCES` | `MemoryScenario`, `MemoryScenarioSuite`, `ScenarioEvidence` |
+| `memory-lifecycle/suite.ts` | `memoryLifecycleSuite`, `parseMemoryScenarioSuite`, `toMemoryLifecycleDataset` | none |
+| `memory-lifecycle/baselines/adapter.ts` | `MEMORY_BASELINES`, `SIMPLER_BASELINES`, `STRUCTURED_COMPONENTS` | `MemoryBaselineAdapter`, `MemoryBaselineName`, `StructuredComponent` |
+| `memory-lifecycle/baselines/index.ts` | `createBaselineAdapter` | none |
+| `memory-lifecycle/envelope.ts` | `MEMORY_LIFECYCLE_LANES`, `memoryLifecycleEnvelope` | `ComputeEnvelope`, `MemoryLifecycleLane` |
+| `memory-lifecycle/memory-evaluator.ts` | `memoryLifecycleEvaluator`, `modelJudgingIssues` | none |
+| `memory-lifecycle/metrics.ts` | `measureScenarioRun` | `ScenarioMetrics` |
+| `memory-lifecycle/suite-run.ts` | `runMemoryLifecycleSuite` | `BaselineRun`, `ComponentAblation`, `MemoryLifecycleSuiteRun` |
+| `memory-lifecycle/release.ts` | `bestSimplerBaseline`, `decideMemoryLifecycleRelease` | `MemoryLifecycleRelease` |
+| `memory-lifecycle/report.ts` | `buildMemoryLifecycleReport` | `MemoryLifecycleReport` |
+| `memory-lifecycle/report-markdown.ts` | `renderMemoryLifecycleReport` | none |
+| `memory-lifecycle/artifact.ts` | `replayScenarioArtifact`, `scenarioRunArtifactSchema`, `MEMORY_LIFECYCLE_REPLAY_EXIT_CODES` | `ArtifactReplayOutcome`, `ScenarioRunArtifact` |
+| `memory-lifecycle/benchmarks.ts` | `benchmarkAdoptions`, `EXTERNAL_SCORE_POLICY` | `BenchmarkAdoption` |
 | `goal-adapter.ts` | `createGoalEvaluatorAdapter` | `CreateGoalEvaluatorAdapterOptions`, `GoalEvaluatorConfiguration`, `GoalEvaluatorAdapter`, `GoalEvaluationOptions`, `GoalEvaluatorVerdict`, `GoalEvaluatorError`, `GoalEvaluatorErrorKind`, `GoalEvaluatorErrorCode` |
 
 `src/index.test.ts` pins the runtime export list, so a new value export fails that test until it is added there and here.
@@ -500,6 +584,11 @@ bun run --cwd packages/evaluation release-gate --gate fixture-regression
 bun run --cwd packages/evaluation replay --gate fixture-regression --latest
 bun run --cwd packages/evaluation promotion-signal issue --gate fixture-regression
 bun run --cwd packages/evaluation promotion-signal verify <signalId>
+bun run --cwd packages/evaluation memory-lifecycle run --lane deterministic
+bun run --cwd packages/evaluation memory-lifecycle run --lane stochastic
+bun run --cwd packages/evaluation memory-lifecycle replay <artifact.json>
+bun run --cwd packages/evaluation memory-lifecycle baseline
+bun run --cwd packages/evaluation release-gate --gate memory-lifecycle
 ```
 
 `test:coverage` fails below 100 percent line or function coverage of this workspace's `src/` and `scripts/`.

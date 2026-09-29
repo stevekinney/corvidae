@@ -296,6 +296,7 @@
       "name": "@lostgradient/evaluation",
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",

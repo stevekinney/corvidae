@@ -1,0 +1,52 @@
+{
+  "description": "Memory lifecycle release gate (COR-755): the proposed lifecycle architecture in the deterministic lane, compared with the best simpler baseline under the same compute envelope. No regression on authorization, deletion, poisoning, state maintenance, or the cost ceiling, and a predeclared improvement in action success on the suite's named action tasks.",
+  "package": "@lostgradient/memory",
+  "evaluator": "../src/memory-lifecycle/gate-evaluator.ts",
+  "dataset": { "id": "memory-lifecycle", "version": "memory-lifecycle-2026-09" },
+  "baseline": {
+    "kind": "evaluation-run",
+    "path": "../src/memory-lifecycle/best-simpler-baseline-run.json"
+  },
+  "sampleSize": 14,
+  "regressionThresholds": [
+    {
+      "criterion": "authorization",
+      "metric": "passFraction",
+      "maximumDecrease": 0,
+      "severity": "hard"
+    },
+    {
+      "criterion": "deletion",
+      "metric": "passFraction",
+      "maximumDecrease": 0,
+      "severity": "hard"
+    },
+    {
+      "criterion": "poisoning",
+      "metric": "passFraction",
+      "maximumDecrease": 0,
+      "severity": "hard"
+    },
+    {
+      "criterion": "state-maintenance",
+      "metric": "passFraction",
+      "maximumDecrease": 0,
+      "severity": "hard"
+    },
+    {
+      "criterion": "cost-ceiling",
+      "metric": "passFraction",
+      "maximumDecrease": 0,
+      "severity": "hard"
+    },
+    {
+      "criterion": "action-success",
+      "metric": "passFraction",
+      "minimumIncrease": 0.1,
+      "severity": "hard"
+    }
+  ],
+  "budgets": { "costUsd": 1, "latencyMilliseconds": 120000 },
+  "overrideAuthority": "memory-release-owner",
+  "expiry": { "maximumRevisionDistance": 50 }
+}

@@ -676,6 +676,49 @@ describe('decideGate', () => {
     expect(failed.decision).toBe('infrastructure-failure');
   });
 
+  test('holds a predeclared minimum improvement over the baseline as a threshold', async () => {
+    const passing = decided(await gateResult(fixtureGateFile()));
+    const regressing = decided(await gateResult(fixtureGateFile('regressing')));
+    const improvingOn = (minimumIncrease: number) =>
+      decideGate({
+        gate: {
+          ...passing.gate,
+          regressionThresholds: [
+            {
+              criterion: 'names-the-capital',
+              metric: 'passFraction',
+              minimumIncrease,
+              severity: 'hard',
+            },
+          ],
+        },
+        judge: passing.evaluator.judge,
+        eligibility: passing.eligibility,
+        candidate: passing.candidate,
+        baseline: { ...passing.baseline!, run: regressing.candidate },
+        overrides: [],
+      });
+
+    const cleared = await improvingOn(0.5);
+    expect(cleared.decision).toBe('pass');
+    expect(cleared.findings.regressions).toEqual([]);
+
+    const shortfall = await improvingOn(0.6);
+    expect(shortfall.decision).toBe('regression');
+    expect(shortfall.findings.regressions).toEqual([
+      {
+        criterion: 'names-the-capital',
+        metric: 'passFraction',
+        severity: 'hard',
+        minimumIncrease: 0.6,
+        baseline: 0.5,
+        candidate: 1,
+        delta: 0.5,
+        overriddenBy: null,
+      },
+    ]);
+  });
+
   test('reports a missing committed baseline in terms of the gate file', async () => {
     const { result } = await runGate(fixtureGateFile());
     const record = decided(result);

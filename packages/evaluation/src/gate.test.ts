@@ -3,10 +3,12 @@ import { describe, expect, test } from 'bun:test';
 import fixtureGate from '../gates/fixture-regression.json';
 import { EvaluatorConfigurationError } from './configuration';
 import {
+  describeThresholdBound,
   gateDecisionRecordSchema,
   gateIdSchema,
   gateOverrideRecordSchema,
   parseGateDefinition,
+  thresholdFloor,
 } from './gate';
 
 function gateInput(): Record<string, unknown> {
@@ -92,6 +94,53 @@ describe('parseGateDefinition', () => {
       'regressionThresholds.2',
     ]);
     expect(issuePaths({ ...input, regressionThresholds: [] })).toEqual(['regressionThresholds']);
+  });
+
+  test('accepts a predeclared minimum improvement in place of a tolerated decrease', () => {
+    const input = gateInput();
+    const gate = parseGateDefinition({
+      ...input,
+      regressionThresholds: [
+        {
+          criterion: 'names-the-capital',
+          metric: 'passFraction',
+          minimumIncrease: 0.2,
+          severity: 'hard',
+        },
+      ],
+    });
+    expect(gate.regressionThresholds).toEqual([
+      {
+        criterion: 'names-the-capital',
+        metric: 'passFraction',
+        minimumIncrease: 0.2,
+        severity: 'hard',
+      },
+    ]);
+  });
+
+  test('rejects a threshold that declares both bounds, neither, or an improvement that is not positive', () => {
+    const input = gateInput();
+    const bound = { criterion: 'names-the-capital', metric: 'passFraction', severity: 'hard' };
+    const rejected = (threshold: Record<string, unknown>) =>
+      issuePaths({ ...input, regressionThresholds: [threshold] });
+    expect(rejected({ ...bound, maximumDecrease: 0.1, minimumIncrease: 0.2 })).toEqual([
+      'regressionThresholds.0',
+    ]);
+    expect(rejected(bound)).toEqual(['regressionThresholds.0']);
+    expect(rejected({ ...bound, minimumIncrease: 0 })).toEqual([
+      'regressionThresholds.0.minimumIncrease',
+    ]);
+    expect(rejected({ ...bound, minimumIncrease: 1.5 })).toEqual([
+      'regressionThresholds.0.minimumIncrease',
+    ]);
+  });
+
+  test('reads either bound as the smallest tolerated change, and describes the one it has', () => {
+    expect(thresholdFloor({ maximumDecrease: 0.1 })).toBe(-0.1);
+    expect(thresholdFloor({ minimumIncrease: 0.2 })).toBe(0.2);
+    expect(describeThresholdBound({ maximumDecrease: 0.1 })).toBe('at most -0.1');
+    expect(describeThresholdBound({ minimumIncrease: 0.2 })).toBe('at least +0.2');
   });
 
   test('rejects unknown fields, an unknown severity, and a non-positive sample size', () => {

@@ -279,6 +279,30 @@ describe('runReleaseGateCommand', () => {
     );
   });
 
+  test('names the predeclared improvement a run fell short of', async () => {
+    const gates = await gatesDirectory({
+      [FIXTURE_GATE_ID]: fixtureGateFile('passing', {
+        regressionThresholds: [
+          {
+            criterion: 'names-the-capital',
+            metric: 'passFraction',
+            minimumIncrease: 0.5,
+            severity: 'overridable',
+          },
+        ],
+      }),
+    });
+    const result = await runInProcess(['--gates-dir', gates, '--store', storePath]);
+    const report = expectReport(result, 1, 'regression');
+    expect(report.gates[0]).toMatchObject({
+      findings: { regressions: [{ criterion: 'names-the-capital', minimumIncrease: 0.5 }] },
+    });
+    expect(result.stderr).toContain(
+      '  regression: names-the-capital passFraction 1 -> 1 (overridable, at least +0.5)',
+    );
+    expect(result.stderr).not.toContain('undefined');
+  });
+
   const overridableCapital = capitalThresholdAt('overridable');
   const hardCapital = capitalThresholdAt('hard');
 

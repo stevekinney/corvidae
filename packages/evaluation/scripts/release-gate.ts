@@ -31,6 +31,7 @@ import {
   textValueStore,
 } from '@lostgradient/weft';
 
+import { describeThresholdBound } from '../src/gate';
 import { createEvaluationHistory } from '../src/history';
 import {
   type GateReport,
@@ -181,7 +182,7 @@ function describeGate(gate: GateReport): string[] {
     const cleared =
       regression.overriddenBy === null ? '' : `, overridden by ${regression.overriddenBy}`;
     lines.push(
-      `  regression: ${regression.criterion} ${regression.metric} ${regression.baseline} -> ${regression.candidate} (${regression.severity}, at most -${regression.maximumDecrease}${cleared})`,
+      `  regression: ${regression.criterion} ${regression.metric} ${regression.baseline} -> ${regression.candidate} (${regression.severity}, ${describeThresholdBound(regression)}${cleared})`,
     );
   }
   for (const rejected of gate.rejectedOverrides) {

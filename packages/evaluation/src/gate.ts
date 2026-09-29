@@ -13,8 +13,9 @@
  *   configuration, never "compare against nothing".
  * - `sampleSize`: the minimum trial count for a stochastic judge, or the
  *   minimum held-out case count for a deterministic one. No default.
- * - `regressionThresholds`: per criterion and metric, the largest tolerated
- *   decrease from the baseline and whether a breach is `hard` or
+ * - `regressionThresholds`: per criterion and metric, the change from the
+ *   baseline the gate tolerates, as the largest tolerated decrease or a
+ *   predeclared minimum improvement, and whether a breach is `hard` or
  *   `overridable`.
  * - `budgets`: the cost and latency ceilings of the gate run itself.
  * - `overrideAuthority`: the principal who may override a blocking result.
@@ -77,13 +78,39 @@ const baselineSelectorSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('evaluation-run'), path: z.string().min(1) }),
 ]);
 
-const regressionThresholdSchema = z.strictObject({
-  criterion: identifier,
-  metric: z.enum(REGRESSION_METRICS),
+/** A predeclared improvement: the smallest increase over the baseline a run must show, in `(0, 1]`. */
+const minimumIncreaseSchema = z.number().gt(0).max(1);
+
+/**
+ * The change from the baseline a threshold tolerates, as exactly one bound:
+ * at most `maximumDecrease` lower, or at least `minimumIncrease` higher.
+ */
+const thresholdBounds = {
   /** The largest tolerated decrease from the baseline, in `[0, 1]`. */
-  maximumDecrease: unitInterval,
-  severity: z.enum(REGRESSION_SEVERITIES),
-});
+  maximumDecrease: unitInterval.optional(),
+  minimumIncrease: minimumIncreaseSchema.optional(),
+};
+
+function reportBoundIssues(
+  threshold: { maximumDecrease?: number | undefined; minimumIncrease?: number | undefined },
+  context: z.RefinementCtx,
+): void {
+  if ((threshold.maximumDecrease === undefined) === (threshold.minimumIncrease === undefined)) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Declare exactly one of maximumDecrease or minimumIncrease',
+    });
+  }
+}
+
+const regressionThresholdSchema = z
+  .strictObject({
+    criterion: identifier,
+    metric: z.enum(REGRESSION_METRICS),
+    ...thresholdBounds,
+    severity: z.enum(REGRESSION_SEVERITIES),
+  })
+  .superRefine(reportBoundIssues);
 
 export const gateDefinitionSchema = z
   .strictObject({
@@ -123,6 +150,25 @@ export const gateDefinitionSchema = z
 export type GateDefinition = z.output<typeof gateDefinitionSchema>;
 export type BaselineSelector = GateDefinition['baseline'];
 export type RegressionThreshold = GateDefinition['regressionThresholds'][number];
+
+/** A threshold's one bound, as the threshold and every regression that breaches it carry it. */
+export type ThresholdBound = Pick<RegressionThreshold, 'maximumDecrease' | 'minimumIncrease'>;
+
+/**
+ * The smallest change from the baseline `bound` tolerates: the improvement
+ * itself for a minimum improvement, and the decrease below zero for a
+ * tolerated decrease. Deciding and describing a bound both read it from here.
+ */
+export function thresholdFloor(bound: ThresholdBound): number {
+  return bound.minimumIncrease ?? -bound.maximumDecrease!;
+}
+
+/** `bound` as an operator reads it: `at least +0.1` or `at most -0.1`. */
+export function describeThresholdBound(bound: ThresholdBound): string {
+  return bound.minimumIncrease === undefined
+    ? `at most -${bound.maximumDecrease}`
+    : `at least +${bound.minimumIncrease}`;
+}
 
 /** Parses a gate definition, throwing {@link EvaluatorConfigurationError} on any issue. */
 export function parseGateDefinition(input: unknown): GateDefinition {
@@ -271,17 +317,20 @@ const INSUFFICIENT_EVIDENCE_FINDINGS = [
   'criterion-not-comparable',
 ] as const;
 
-const regressionSchema = z.strictObject({
-  criterion: identifier,
-  metric: z.enum(REGRESSION_METRICS),
-  severity: z.enum(REGRESSION_SEVERITIES),
-  maximumDecrease: unitInterval,
-  baseline: unitInterval,
-  candidate: unitInterval,
-  delta: z.number(),
-  /** The valid override that clears this regression; always `null` for a hard one. */
-  overriddenBy: historicalRecordIdSchema.nullable(),
-});
+const regressionSchema = z
+  .strictObject({
+    criterion: identifier,
+    metric: z.enum(REGRESSION_METRICS),
+    severity: z.enum(REGRESSION_SEVERITIES),
+    /** The breached threshold's bound. */
+    ...thresholdBounds,
+    baseline: unitInterval,
+    candidate: unitInterval,
+    delta: z.number(),
+    /** The valid override that clears this regression; always `null` for a hard one. */
+    overriddenBy: historicalRecordIdSchema.nullable(),
+  })
+  .superRefine(reportBoundIssues);
 
 export type Regression = z.output<typeof regressionSchema>;
 

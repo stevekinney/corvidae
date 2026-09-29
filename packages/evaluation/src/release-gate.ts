@@ -78,6 +78,7 @@ import {
   type RecordedBaseline,
   type Regression,
   runProjectionSchema,
+  thresholdFloor,
   type TrialEvidence,
 } from './gate';
 import {
@@ -708,7 +709,7 @@ function thresholdFindings(
   const regressions: Regression[] = [];
   const incomparable: Finding<'insufficientEvidence'>[] = [];
   for (const threshold of gate.regressionThresholds) {
-    const { criterion, metric, maximumDecrease, severity } = threshold;
+    const { criterion, metric } = threshold;
     const measured = comparison.criteria.find((entry) => entry.name === criterion)?.[metric];
     if (measured?.delta === null || measured === undefined) {
       incomparable.push({
@@ -717,12 +718,9 @@ function thresholdFindings(
       });
       continue;
     }
-    if (measured.delta < -(maximumDecrease + THRESHOLD_TOLERANCE)) {
+    if (measured.delta < thresholdFloor(threshold) - THRESHOLD_TOLERANCE) {
       regressions.push({
-        criterion,
-        metric,
-        severity,
-        maximumDecrease,
+        ...threshold,
         baseline: measured.baseline!,
         candidate: measured.candidate!,
         delta: measured.delta,
