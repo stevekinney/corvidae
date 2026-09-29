@@ -9,7 +9,7 @@ import {
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
@@ -453,6 +453,35 @@ describe('durable agentRun workflow', () => {
       const conversation = Conversation.from(checkpoint.conversation!);
       expect(conversation.getMessages().length).toBeGreaterThan(0);
     } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('restores the conversation once per process, then reuses it across steps', async () => {
+    const { engine, checkpointStore } = await buildEngine(new MemoryStorage(), false);
+    const services = makeServices(async ({ step }) => {
+      if (step < 5) {
+        return { content: `step ${step}`, toolCalls: [{ name: 'next', arguments: {} }] };
+      }
+      return { content: 'final', toolCalls: [] };
+    });
+    const from = spyOn(Conversation, 'from');
+
+    try {
+      const result = await runToCompletion(engine, { runId: 'run-reuse', prompt: 'Go' }, services);
+      // Every step restoring the full snapshot made a durable run's cost grow
+      // with the cube of its length; only the first step has nothing to reuse.
+      expect(from).toHaveBeenCalledTimes(1);
+      from.mockRestore();
+
+      expect(result.steps).toBe(6);
+      const checkpoint = await checkpointStore.loadCheckpoint('run-reuse');
+      const messages = Conversation.from(checkpoint.conversation!).getMessages();
+      expect(messages[0]?.content).toBe('Go');
+      expect(messages.at(-1)?.content).toBe('final');
+      expect(messages.filter((message) => message.role === 'tool-result')).toHaveLength(5);
+    } finally {
+      from.mockRestore();
       engine[Symbol.dispose]();
     }
   });
