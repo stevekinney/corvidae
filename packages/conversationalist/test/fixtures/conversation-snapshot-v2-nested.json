@@ -1,0 +1,90 @@
+{
+  "snapshotFormatVersion": 2,
+  "conversationSchemaVersion": 5,
+  "controllerRevision": 2,
+  "conversationId": "conversation-id",
+  "currentBranchId": "conversation-id:2",
+  "messages": [
+    {
+      "id": "message-1",
+      "role": "user",
+      "content": "hello",
+      "position": 0,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "metadata": {},
+      "hidden": false
+    },
+    {
+      "id": "message-2",
+      "role": "assistant",
+      "content": "world",
+      "position": 1,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "metadata": {},
+      "hidden": false
+    }
+  ],
+  "currentPath": [0, 0],
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "lineage": {
+    "retainedFloorNodeId": "conversation-id:0",
+    "removedNodeIds": []
+  },
+  "integrity": {
+    "algorithm": "fnv1a-64",
+    "digest": "fd15f78c0e03824e"
+  },
+  "root": {
+    "id": "conversation-id:0",
+    "revision": 0,
+    "parentId": null,
+    "conversation": {
+      "schemaVersion": 5,
+      "id": "conversation-id",
+      "status": "active",
+      "metadata": {},
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    "retainedMessageCount": 0,
+    "appendedMessageIds": [],
+    "messageReferences": {},
+    "children": [
+      {
+        "id": "conversation-id:1",
+        "revision": 1,
+        "parentId": "conversation-id:0",
+        "conversation": {
+          "schemaVersion": 5,
+          "id": "conversation-id",
+          "status": "active",
+          "metadata": {},
+          "createdAt": "2024-01-01T00:00:00.000Z",
+          "updatedAt": "2024-01-01T00:00:00.000Z"
+        },
+        "retainedMessageCount": 0,
+        "appendedMessageIds": ["message-1"],
+        "messageReferences": { "message-1": 0 },
+        "children": [
+          {
+            "id": "conversation-id:2",
+            "revision": 2,
+            "parentId": "conversation-id:1",
+            "conversation": {
+              "schemaVersion": 5,
+              "id": "conversation-id",
+              "status": "active",
+              "metadata": {},
+              "createdAt": "2024-01-01T00:00:00.000Z",
+              "updatedAt": "2024-01-01T00:00:00.000Z"
+            },
+            "retainedMessageCount": 1,
+            "appendedMessageIds": ["message-2"],
+            "messageReferences": { "message-2": 1 },
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

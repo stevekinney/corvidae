@@ -29,6 +29,7 @@ export interface TrustedPreparedTreeOptions {
   corvidaeRoot: string;
   manifest: TrustedPreparedManifest;
   remote: string;
+  expectedBaseBranch?: string;
 }
 
 function fail(message: string): never {
@@ -96,34 +97,44 @@ async function assertTrustedSource(options: {
   }
 }
 
-async function assertRemoteDefaultBase(options: {
+async function assertRemoteBase(options: {
   clone: string;
   manifest: TrustedPreparedManifest;
+  expectedBaseBranch?: string;
 }): Promise<void> {
   await git(options.clone, 'check-ref-format', `refs/heads/${options.manifest.baseBranch}`);
-  const defaultReferenceOutput = await git(
-    options.clone,
-    'symbolic-ref',
-    '--short',
-    'refs/remotes/origin/HEAD',
-  );
-  const defaultReference = defaultReferenceOutput.trim();
-  const defaultBranch = stripOrigin(defaultReference);
-  assertEqual(
-    defaultBranch,
-    options.manifest.baseBranch,
-    'Prepared artifact base branch is not the target remote default branch',
-  );
-  const defaultHeadOutput = await git(
+  if (options.expectedBaseBranch === undefined) {
+    const defaultReferenceOutput = await git(
+      options.clone,
+      'symbolic-ref',
+      '--short',
+      'refs/remotes/origin/HEAD',
+    );
+    const defaultBranch = stripOrigin(defaultReferenceOutput.trim());
+    assertEqual(
+      defaultBranch,
+      options.manifest.baseBranch,
+      'Prepared artifact base branch is not the target remote default branch',
+    );
+  } else {
+    assertEqual(
+      options.expectedBaseBranch,
+      options.manifest.baseBranch,
+      'Prepared artifact base branch does not match the workflow input',
+    );
+  }
+  const baseHeadOutput = await git(
     options.clone,
     'rev-parse',
-    `refs/remotes/origin/${defaultBranch}`,
+    `refs/remotes/origin/${options.manifest.baseBranch}`,
   );
-  const defaultHead = defaultHeadOutput.trim();
+  const baseHead = baseHeadOutput.trim();
   assertEqual(
-    defaultHead,
+    baseHead,
     options.manifest.baseCommit,
-    'Prepared artifact base commit is not the target remote default HEAD',
+    options.expectedBaseBranch === undefined
+      ? 'Prepared artifact base commit is not the target remote default HEAD'
+      : 'Prepared artifact base commit is not the requested target branch HEAD',
   );
   const checkedOutHeadOutput = await git(options.clone, 'rev-parse', 'HEAD');
   const checkedOutHead = checkedOutHeadOutput.trim();
@@ -164,13 +175,18 @@ export async function verifyTrustedPreparedTree({
   corvidaeRoot,
   manifest,
   remote,
+  expectedBaseBranch,
 }: TrustedPreparedTreeOptions): Promise<void> {
   await assertTrustedSource({ corvidaeRoot, expectedCommit: manifest.corvidaeCommit });
   const root = await mkdtemp(join(tmpdir(), 'mirror-trusted-prepared-tree-'));
   const clone = join(root, 'target');
   try {
-    await cloneTarget({ remote, directory: clone });
-    await assertRemoteDefaultBase({ clone, manifest });
+    await cloneTarget({ remote, directory: clone, branch: expectedBaseBranch });
+    await assertRemoteBase({
+      clone,
+      manifest,
+      ...(expectedBaseBranch === undefined ? {} : { expectedBaseBranch }),
+    });
     await assertNoTrackedSpecialEntries(clone);
     await assertNoForeignCommits(
       clone,

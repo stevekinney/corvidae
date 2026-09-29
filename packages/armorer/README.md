@@ -1345,7 +1345,7 @@ The coding toolbox is a first-party, read-only tool set for inspecting a codebas
 
 ```typescript
 import { createToolbox } from 'armorer';
-import { createCodingTools } from 'armorer';
+import { createCodingTools } from 'armorer/coding';
 
 const { readFile, grep, glob, jail } = createCodingTools({ root: process.cwd() });
 const toolbox = createToolbox([readFile, grep, glob]);

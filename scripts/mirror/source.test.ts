@@ -84,6 +84,18 @@ describe('weft-ui’s bun:test preload ships with its source', () => {
 });
 
 describe('the documents a workspace declares', () => {
+  test('Cinder emits the documents its source tests read and the linked seam audit', () => {
+    const emitted = new Set(Object.keys(committedPlans.cinder.plan.files));
+    for (const path of [
+      'documentation/tokens.md',
+      'documentation/focus-ring-policy.md',
+      'documentation/theming.md',
+      'documentation/css-audit/translucent-border-seams.md',
+    ]) {
+      expect(emitted.has(`packages/components/${path}`)).toBe(true);
+    }
+  });
+
   /**
    * The declared set has to be closed under links, which is a fourth kind of edge and the third
    * one no gate here sees.
@@ -182,15 +194,15 @@ describe('the files that check cinder’s emitted source', () => {
     (cluster) => cluster.paths,
   );
 
-  test('every declared path is emitted, all thirty-one of them', () => {
+  test('every declared path is emitted, all thirty-five of them', () => {
     const { plan } = committedPlans.cinder;
     const missing = declared.filter(
       (path) => plan.files[`packages/components/${path}`] === undefined,
     );
     expect(missing).toEqual([]);
-    // 23 before COR-1196's `generate-artifacts.ts`/`docs.ts` closure (7 files) and
-    // `scripts/preload.ts` (1 file) declarations.
-    expect(declared.length).toBe(31);
+    // 23 before COR-1196's token-generator closure (7 files), preload (1 file),
+    // and the four documents read by emitted token tests or linked from them.
+    expect(declared.length).toBe(35);
   });
 
   test('the generator family goes as a set, since its entry point imports the rest', () => {
@@ -724,6 +736,22 @@ describe('applyVersionConstants', () => {
     expect(rewritten).toEqual(['packages/weft/src/version.ts']);
     expect(decoder.decode(files['packages/weft/src/version.ts'])).toBe(
       "/**\n * Current Weft package version.\n */\nexport const VERSION = '0.26.0';\n",
+    );
+  });
+
+  test('rejects an unsafe manifest version before writing executable source', () => {
+    const files = { 'packages/weft/src/version.ts': encoder.encode(documented) };
+    expect(() =>
+      applyVersionConstants(files, [{ ...published[0]!, version: "0.27.1';\nsideEffect();//" }]),
+    ).toThrow(SourceEmissionError);
+    expect(decoder.decode(files['packages/weft/src/version.ts'])).toBe(documented);
+  });
+
+  test('allows a SemVer prerelease with build metadata in the generated source literal', () => {
+    const files = { 'packages/weft/src/version.ts': encoder.encode(documented) };
+    applyVersionConstants(files, [{ ...published[0]!, version: '0.27.2-next.3+build.1' }]);
+    expect(decoder.decode(files['packages/weft/src/version.ts'])).toEndWith(
+      "export const VERSION = '0.27.2-next.3+build.1';\n",
     );
   });
 

@@ -149,17 +149,19 @@ describe('review helpers', () => {
       timeoutResult = result;
     };
     const failWorkflow = mock(async () => {});
+    const internals = {
+      options: { getNow: () => 2_500 },
+      pendingWebhooks: new Set(),
+      pendingAtomicWorkflowCommitSideEffects: new Map(),
+      pendingOperationAtomicWorkflowCommitSideEffects: new Map(),
+      reviewCoordinator: { checkEscalations: mock(() => null) },
+      reviewWaiters: new Map([[waiterKey, () => {}]]),
+      reviewWaitersByWorkflow: new Map([[review.workflowId, new Set([waiterKey])]]),
+      storage,
+    };
 
     const timedOut = await handleReviewEscalationTimer(
-      {
-        options: { getNow: () => 2_500 },
-        pendingWebhooks: new Set(),
-        pendingAtomicWorkflowCommitSideEffects: new Map(),
-        reviewCoordinator: { checkEscalations: mock(() => null) },
-        reviewWaiters: new Map([[waiterKey, () => {}]]),
-        reviewWaitersByWorkflow: new Map([[review.workflowId, new Set([waiterKey])]]),
-        storage,
-      } as never,
+      internals as never,
       review.workflowId,
       review.reviewId,
       waiterKey,
@@ -168,11 +170,17 @@ describe('review helpers', () => {
       resolve,
       { id: `review-timeout:${review.reviewId}`, workflowId: review.workflowId },
       { dispatchEvent: () => true, failWorkflow },
+      'run-1',
     );
 
     expect(timedOut).toBe(true);
     expect(failWorkflow).toHaveBeenCalled();
     expect(timeoutResult?.ok).toBe(false);
+    expect(internals.pendingAtomicWorkflowCommitSideEffects.has(review.workflowId)).toBe(false);
+    expect(
+      internals.pendingOperationAtomicWorkflowCommitSideEffects.get(review.workflowId)?.get('run-1')
+        ?.operations,
+    ).toContainEqual({ type: 'delete', key: KEYS.review(review.workflowId, review.reviewId) });
     if (timeoutResult?.ok === false) {
       expect(timeoutResult.error).toBeInstanceOf(ReviewTimeoutError);
     }

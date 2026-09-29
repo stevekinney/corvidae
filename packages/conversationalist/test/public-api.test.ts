@@ -103,6 +103,14 @@ describe('root public API', () => {
     expect(source).toContain("import('./adapters/gemini')");
   });
 
+  it('keeps the Anthropic SDK conversion behind its provider-specific entry point', async () => {
+    const root = await import('../src/index');
+    const sdk = await import('../src/adapters/anthropic/sdk');
+
+    expect('toAnthropicMessagesForSdk' in root).toBe(false);
+    expect(sdk.toAnthropicMessagesForSdk).toBeFunction();
+  });
+
   it('rejects a payload whose shape does not match the selected provider', async () => {
     const payload = { contents: [] };
 

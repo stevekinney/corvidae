@@ -16,7 +16,7 @@ Pure helper functions transform `ConversationHistory` values without side effect
 
 Public conversation values are deeply frozen when they enter the runtime. `current`, `getSnapshot()`, history paths, events, forks, and serialized trees therefore expose the same cached object until a committed transition replaces it, without exposing a mutable alias. Validation, freezing, and snapshot serialization remain separate boundaries so callers can measure their costs independently.
 
-`Conversation.snapshot()` returns snapshot format version 2: an integrity-protected envelope containing the conversation schema version, monotonic controller revision, tree and branch identities, strict current path, creation time, fork/prune lineage, and a table holding each distinct message once. Every history node stores its conversation relative to its parent—the parent's ids it keeps, the ids it appends, and references to the messages that changed—so a snapshot grows with the conversation's distinct messages rather than with every node's full transcript. `Conversation.from()` accepts version 2 and version 1, verifies the digest and every identity/path/revision/delta invariant, and rejects unsupported or partial data with `error:serialization`. Version 1 is the migration floor: it is restored only through the explicit, version-pinned `migrateConversationSnapshotV1()`, which validates the v1 digest before re-encoding the same tree as version 2. `currentConversationFromSnapshot()` returns just the current branch's validated conversation without restoring a `Conversation`.
+`Conversation.snapshot()` returns snapshot format version 2: an integrity-protected envelope containing the conversation schema version, monotonic controller revision, tree and branch identities, strict current path, creation time, fork/prune lineage, and a table holding each distinct message once. Every history node stores its conversation relative to its parent—the parent's ids it keeps, the ids it appends, and references to the messages that changed—so a snapshot grows with the conversation's distinct messages rather than with every node's full transcript. Nodes are a flat, pre-ordered list that names each node's parent, so a snapshot's nesting depth stays constant however long the history grows, which keeps it within depth-limited codecs such as msgpack. `Conversation.from()` accepts version 2 and version 1, verifies the digest and every identity/path/revision/delta invariant, and rejects unsupported or partial data with `error:serialization`. Version 1 is the migration floor: it is restored only through the explicit, version-pinned `migrateConversationSnapshotV1()`, which validates the v1 digest before re-encoding the same tree as version 2. `currentConversationFromSnapshot()` returns just the current branch's validated conversation without restoring a `Conversation`.
 
 ## Project role
 
@@ -803,7 +803,7 @@ const restored = await Conversation.fromProvider('openai', { messages: openAIMes
 
 Anthropic Messages API format adapter.
 
-The adapter imports SDK types from `@anthropic-ai/sdk`, declared as a catalog-backed development dependency. Its conversion functions operate on message data and do not construct an SDK client.
+The neutral adapter has no runtime or type dependency on `@anthropic-ai/sdk`. The SDK-specific conversion is available from the separate `conversationalist/adapters/anthropic/sdk` entry point for consumers that install the optional peer.
 
 ```typescript
 import {
@@ -822,6 +822,12 @@ const updated = appendAnthropicMessages(history, payload);
 ```
 
 **Key exports:** `toAnthropicMessages`, `fromAnthropicMessages`, `appendAnthropicMessages`, `anthropicConversationAdapter`. Type exports: `AnthropicConversation`, `AnthropicMessage`, `AnthropicContentBlock`, `AnthropicTextBlock`, `AnthropicToolUseBlock`, `AnthropicToolResultBlock`, `AnthropicImageBlock`, `AnthropicImageSource`, `AnthropicBase64ImageSource`, `AnthropicUrlImageSource`.
+
+```typescript
+import { toAnthropicMessagesForSdk } from 'conversationalist/adapters/anthropic/sdk';
+
+const sdkPayload = toAnthropicMessagesForSdk(history);
+```
 
 ### Gemini conversion
 

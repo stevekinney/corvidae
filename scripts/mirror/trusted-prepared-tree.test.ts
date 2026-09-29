@@ -201,6 +201,7 @@ function syncResult(options: {
   baseCommit: string;
   changed: readonly string[];
   commit?: string;
+  baseBranch?: string;
 }): SyncResult {
   return {
     decision: options.decision,
@@ -211,14 +212,18 @@ function syncResult(options: {
     firstPublish: [],
     seededFromPackageMap: [],
     verification,
-    baseBranch: 'main',
+    baseBranch: options.baseBranch ?? 'main',
     baseCommit: options.baseCommit,
   };
 }
 
-async function prepareArtifact(harness: Harness, sourceText = source): Promise<string> {
+async function prepareArtifact(
+  harness: Harness,
+  sourceText = source,
+  baseBranch = 'main',
+): Promise<string> {
   const clone = join(harness.root, `prepared-${crypto.randomUUID()}`);
-  await git(harness.root, 'clone', '--quiet', harness.remote, clone);
+  await git(harness.root, 'clone', '--quiet', '--branch', baseBranch, harness.remote, clone);
   await stageSurface({ corvidaeRoot: harness.corvidae, target, directory: clone });
   if (sourceText !== source) {
     await Bun.write(join(clone, 'packages/cryptography/src/index.ts'), sourceText);
@@ -242,6 +247,7 @@ async function prepareArtifact(harness: Harness, sourceText = source): Promise<s
       decision: 'prepared',
       directory: clone,
       baseCommit: harness.baseCommit,
+      baseBranch,
       changed,
       commit,
     }),
@@ -276,7 +282,11 @@ async function skipArtifact(harness: Harness): Promise<string> {
   return artifactDirectory;
 }
 
-async function verifyArtifact(harness: Harness, artifactDirectory: string): Promise<void> {
+async function verifyArtifact(
+  harness: Harness,
+  artifactDirectory: string,
+  expectedBaseBranch?: string,
+): Promise<void> {
   await verifyPreparedSyncArtifact({
     artifactDirectory,
     corvidaeRoot: harness.corvidae,
@@ -284,10 +294,33 @@ async function verifyArtifact(harness: Harness, artifactDirectory: string): Prom
     expectedTarget: target,
     expectedCorvidaeCommit: harness.corvidaeCommit,
     expectedSnapshot: false,
+    ...(expectedBaseBranch === undefined ? {} : { expectedBaseBranch }),
   });
 }
 
 describe('trusted prepared tree reconstruction', () => {
+  test('accepts an explicitly requested target branch and rejects it as an implicit default', async () => {
+    const harness = await trustedHarness();
+    try {
+      const branch = 'steve/cinder-mirror-conversion';
+      await git(harness.remote, 'branch', branch, 'main');
+      const artifactDirectory = await prepareArtifact(harness, source, branch);
+      await verifyArtifact(harness, artifactDirectory, branch);
+      expect(await throwingRejectionOf(verifyArtifact(harness, artifactDirectory))).toThrow(
+        /default branch/,
+      );
+      const updater = join(harness.root, 'branch-updater');
+      await git(harness.root, 'clone', '--quiet', '--branch', branch, harness.remote, updater);
+      await Bun.write(join(updater, 'README.md'), '# moved requested branch\n');
+      await commitAll(updater, 'Move requested branch');
+      await git(updater, 'push', '--quiet', 'origin', `HEAD:${branch}`);
+      expect(await throwingRejectionOf(verifyArtifact(harness, artifactDirectory, branch))).toThrow(
+        /requested target branch HEAD/,
+      );
+    } finally {
+      await rm(harness.root, { recursive: true, force: true });
+    }
+  });
   test('accepts a real prepared artifact and does not run target lifecycle scripts', async () => {
     const marker = join(tmpdir(), `mirror-lifecycle-${crypto.randomUUID()}`);
     const harness = await trustedHarness(marker);

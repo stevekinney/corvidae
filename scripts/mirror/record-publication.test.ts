@@ -92,7 +92,11 @@ async function withPublication(
     const surface = await Bun.file(join(sourceRoot, 'scripts/mirror/package-surface.json')).json();
     if (historicalExtra) surface.packages[workspace].files.push('runtime.wasm');
     await Bun.write(join(historical, 'scripts/mirror/package-surface.json'), json(surface));
-    const map = await loadPackageMap();
+    const map = structuredClone(await loadPackageMap());
+    const operative = map.workspaces[workspace];
+    if (!operative || operative.disposition !== 'publish-as')
+      throw new Error('Operative publication fixture requires a published workspace');
+    operative.lastPublishedVersion = '0.12.1';
     await Bun.write(join(historical, 'scripts/mirror/package-map.json'), json(map));
     await Bun.write(
       join(historical, 'scripts/mirror/target-owned.json'),
