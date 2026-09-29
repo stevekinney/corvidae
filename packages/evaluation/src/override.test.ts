@@ -3,6 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { rejectionOf } from '@lostgradient/testing';
+
 import {
   fixtureConfiguration,
   fixtureRegressionEvaluator,
@@ -133,8 +135,8 @@ describe('recordOverride', () => {
       gate: parseGateDefinition(OVERRIDABLE),
       override: override(decision, changes),
     });
-    await expect(attempt).rejects.toBeInstanceOf(OverrideRejectedError);
-    await expect(attempt).rejects.toMatchObject({ reason });
+    expect(await rejectionOf(attempt)).toBeInstanceOf(OverrideRejectedError);
+    expect(await rejectionOf(attempt)).toMatchObject({ reason });
     const records = await history.list();
     expect(records.map(({ record }) => record.kind)).toEqual(['gate-decision']);
   });
@@ -142,13 +144,15 @@ describe('recordOverride', () => {
   test('rejects an override by the principal who ran the decision', async () => {
     const { history } = memoryHistory();
     const decision = await run(history, OVERRIDABLE, { actor: OVERRIDE_AUTHORITY });
-    await expect(
-      recordOverride({
-        history,
-        gate: parseGateDefinition(OVERRIDABLE),
-        override: override(decision),
-      }),
-    ).rejects.toMatchObject({ reason: 'decision-actor' });
+    expect(
+      await rejectionOf(
+        recordOverride({
+          history,
+          gate: parseGateDefinition(OVERRIDABLE),
+          override: override(decision),
+        }),
+      ),
+    ).toMatchObject({ reason: 'decision-actor' });
   });
 
   test('rejects an override of a record that is not a gate decision', async () => {
@@ -159,32 +163,36 @@ describe('recordOverride', () => {
       gate: parseGateDefinition(OVERRIDABLE),
       override: override(decision),
     });
-    await expect(
-      recordOverride({
-        history,
-        gate: parseGateDefinition(OVERRIDABLE),
-        override: override(decision, {
-          id: 'override-of-override',
-          gateDecisionId: first.record.id,
+    expect(
+      await rejectionOf(
+        recordOverride({
+          history,
+          gate: parseGateDefinition(OVERRIDABLE),
+          override: override(decision, {
+            id: 'override-of-override',
+            gateDecisionId: first.record.id,
+          }),
         }),
-      }),
-    ).rejects.toMatchObject({ reason: 'unknown-decision' });
+      ),
+    ).toMatchObject({ reason: 'unknown-decision' });
   });
 
   test('rejects any override of a decision whose regressions are all hard', async () => {
     const { history } = memoryHistory();
     const decision = await run(history, HARD);
     for (const permanentBaselineChange of [false, true]) {
-      await expect(
-        recordOverride({
-          history,
-          gate: parseGateDefinition(HARD),
-          override: override(decision, {
-            permanentBaselineChange,
-            ...(permanentBaselineChange ? { expiresAt: undefined } : {}),
+      expect(
+        await rejectionOf(
+          recordOverride({
+            history,
+            gate: parseGateDefinition(HARD),
+            override: override(decision, {
+              permanentBaselineChange,
+              ...(permanentBaselineChange ? { expiresAt: undefined } : {}),
+            }),
           }),
-        }),
-      ).rejects.toMatchObject({ reason: 'hard-regression' });
+        ),
+      ).toMatchObject({ reason: 'hard-regression' });
     }
   });
 
@@ -198,16 +206,18 @@ describe('recordOverride', () => {
       [passed, true],
       [failed, true],
     ] as const) {
-      await expect(
-        recordOverride({
-          history,
-          gate,
-          override: override(decision, {
-            permanentBaselineChange,
-            ...(permanentBaselineChange ? { expiresAt: undefined } : {}),
+      expect(
+        await rejectionOf(
+          recordOverride({
+            history,
+            gate,
+            override: override(decision, {
+              permanentBaselineChange,
+              ...(permanentBaselineChange ? { expiresAt: undefined } : {}),
+            }),
           }),
-        }),
-      ).rejects.toMatchObject({ reason: 'nothing-to-override' });
+        ),
+      ).toMatchObject({ reason: 'nothing-to-override' });
     }
   });
 });

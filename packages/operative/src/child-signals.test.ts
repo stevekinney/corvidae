@@ -31,6 +31,7 @@ import { createAgent } from './create-agent';
 import { createSubagentTool } from './create-subagent-tool';
 import type { AgentRunContext, RunnableAgent } from './runnable-agent';
 import { createMockGenerate } from './test/index';
+import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { GenerateResponse, RunResult } from './types';
 
 // ---------------------------------------------------------------------------
@@ -1202,7 +1203,7 @@ describe('child signals — deterministic close', () => {
       signals: contract,
     });
     rejecting.fail(new Error('boom'));
-    await expect(rejected.result()).rejects.toThrow('boom');
+    expect(await throwingRejectionOf(rejected.result())).toThrow('boom');
     expect(rejected.signals.closeReason).toBe('failed');
 
     let capturedPort: ChildSignalPort<TestContract> | undefined;
@@ -1336,7 +1337,7 @@ describe('child signals — deterministic close', () => {
     const rejecting = makeControllableAgent();
     const rejected = dispatch(rejecting.agent);
     rejecting.fail(new Error('boom'));
-    await expect(rejected.result()).rejects.toThrow('boom');
+    expect(await throwingRejectionOf(rejected.result())).toThrow('boom');
     expect(rejected.signals.closeReason).toBe('failed');
     expect(abortListenersOn(rejecting.contexts[0])).toBe(0);
 

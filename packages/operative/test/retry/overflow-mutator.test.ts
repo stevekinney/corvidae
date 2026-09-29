@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, type ConversationEvent, type Message } from 'conversationalist';
 
 import { createOverflowMutator } from '../../src/retry/overflow-mutator';
+import { rejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext } from '../../src/types';
 
 const overflow = new Error('context_length_exceeded');
@@ -160,7 +161,7 @@ describe('createOverflowMutator', () => {
     const context = makeContext(['msg1', 'msg2', 'msg3']);
     const before = JSON.stringify(context.conversation.current);
 
-    await expect(mutator(context, overflow, 1)).rejects.toBe(overflow);
+    expect(await rejectionOf(mutator(context, overflow, 1))).toBe(overflow);
     expect(summarized).toBe(false);
     expect(JSON.stringify(context.conversation.current)).toBe(before);
   });
@@ -186,7 +187,7 @@ describe('createOverflowMutator', () => {
     context.conversation.cancelStreamingMessage(streamId);
     const again = new Error('context_length_exceeded again');
 
-    await expect(mutator(context, again, 2)).rejects.toBe(again);
+    expect(await rejectionOf(mutator(context, again, 2))).toBe(again);
     expect(commits).toHaveLength(1);
     expect(summaries).toBe(summariesAfterFirst);
   });
@@ -220,7 +221,7 @@ describe('createOverflowMutator', () => {
     context.conversation.updateStreamingMessage(streamId, 'partial output');
     const before = JSON.stringify(context.conversation.current);
 
-    await expect(mutator(context, overflow, 1)).rejects.toBe(overflow);
+    expect(await rejectionOf(mutator(context, overflow, 1))).toBe(overflow);
     expect(summarized).toBe(false);
     expect(JSON.stringify(context.conversation.current)).toBe(before);
   });
@@ -277,7 +278,7 @@ describe('createOverflowMutator', () => {
 
     // That compaction was this boundary's: a repeated overflow is rethrown.
     const again = new Error('context_length_exceeded again');
-    await expect(mutator(context, again, 2)).rejects.toBe(again);
+    expect(await rejectionOf(mutator(context, again, 2))).toBe(again);
     expect(commits).toHaveLength(1);
   });
 
@@ -312,7 +313,7 @@ describe('createOverflowMutator', () => {
 
     // That compaction was this boundary's: a repeated overflow is rethrown.
     const again = new Error('context_length_exceeded again');
-    await expect(mutator(context, again, 2, conversation.current)).rejects.toBe(again);
+    expect(await rejectionOf(mutator(context, again, 2, conversation.current))).toBe(again);
     expect(summaries).toBe(0);
     expect(commits).toHaveLength(0);
   });

@@ -8,6 +8,7 @@ import {
   createManualRuntimeServices,
   createScriptedGenerate,
 } from '@lostgradient/operative';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 
 import committedBaseline from './fixtures/release-gate/baseline-run.json';
 import {
@@ -615,9 +616,13 @@ describe('runReleaseGate configuration errors', () => {
   test('propagates a failure of the history itself', async () => {
     const failure = new Error('disk full');
     const { history } = memoryHistory();
-    await expect(
-      runGate(fixtureGateFile(), { history: { ...history, list: () => Promise.reject(failure) } }),
-    ).rejects.toBe(failure);
+    expect(
+      await rejectionOf(
+        runGate(fixtureGateFile(), {
+          history: { ...history, list: () => Promise.reject(failure) },
+        }),
+      ),
+    ).toBe(failure);
   });
 });
 
@@ -630,9 +635,13 @@ describe('loadGateEvaluator', () => {
   });
 
   test('rejects a module without a default export that builds an evaluator', async () => {
-    await expect(
-      loadGateEvaluator(join(import.meta.dir, 'fixtures', 'release-gate', 'fixture-regression.ts')),
-    ).rejects.toThrow('has no default export that builds an evaluator');
+    expect(
+      await throwingRejectionOf(
+        loadGateEvaluator(
+          join(import.meta.dir, 'fixtures', 'release-gate', 'fixture-regression.ts'),
+        ),
+      ),
+    ).toThrow('has no default export that builds an evaluator');
   });
 });
 

@@ -9,6 +9,7 @@ import {
   type RunResultBase,
   type ScriptedGenerateStep,
 } from '@lostgradient/operative';
+import { throwingRejectionOf } from '@lostgradient/testing';
 
 import type { CriterionScorers } from './criteria';
 import {
@@ -449,14 +450,16 @@ describe('runTrials', () => {
     const agent = scriptedAgent(1);
     const run = spyOn(agent, 'run');
     const evaluator = await modelEvaluator([]);
-    await expect(
-      runTrials({
-        evaluator,
-        caseId: 'case-mars',
-        subject: () => agent,
-        runtime: createManualRuntimeServices(),
-      }),
-    ).rejects.toThrow('Unknown evaluation case "case-mars"');
+    expect(
+      await throwingRejectionOf(
+        runTrials({
+          evaluator,
+          caseId: 'case-mars',
+          subject: () => agent,
+          runtime: createManualRuntimeServices(),
+        }),
+      ),
+    ).toThrow('Unknown evaluation case "case-mars"');
     expect(run).toHaveBeenCalledTimes(0);
   });
 
@@ -469,15 +472,17 @@ describe('runTrials', () => {
   ])('rejects %s before running any trial', async (_label, seeds) => {
     const agent = scriptedAgent(3);
     const run = spyOn(agent, 'run');
-    await expect(
-      runTrials({
-        evaluator: await modelEvaluator([]),
-        caseId: CASE_ID,
-        subject: () => agent,
-        runtime: createManualRuntimeServices(),
-        seeds,
-      }),
-    ).rejects.toThrow(RangeError);
+    expect(
+      await throwingRejectionOf(
+        runTrials({
+          evaluator: await modelEvaluator([]),
+          caseId: CASE_ID,
+          subject: () => agent,
+          runtime: createManualRuntimeServices(),
+          seeds,
+        }),
+      ),
+    ).toThrow(RangeError);
     expect(run).toHaveBeenCalledTimes(0);
   });
 

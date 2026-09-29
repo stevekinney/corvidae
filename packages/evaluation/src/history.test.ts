@@ -7,6 +7,7 @@ import {
   type RunResultBase,
   type ScriptedGenerateStep,
 } from '@lostgradient/operative';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import { EvaluatorConfigurationError } from './configuration';
@@ -156,7 +157,7 @@ describe('createEvaluationHistory', () => {
   test('refuses to append a record of a kind the history does not keep', async () => {
     const { store, history } = memoryHistory();
     const unknownKind = { ...baselineRecord(), kind: 'dashboard-snapshot' };
-    await expect(history.append(unknownKind as never)).rejects.toBeInstanceOf(
+    expect(await rejectionOf(history.append(unknownKind as never))).toBeInstanceOf(
       EvaluatorConfigurationError,
     );
     expect(await store.list('')).toEqual([]);
@@ -175,8 +176,8 @@ describe('createEvaluationHistory', () => {
 
     const rewrite = { ...candidateRecord(), id: BASELINE_RUN_ID };
     const rejection = history.append(rewrite);
-    await expect(rejection).rejects.toBeInstanceOf(HistoricalRecordExistsError);
-    await expect(rejection).rejects.toMatchObject({ id: BASELINE_RUN_ID });
+    expect(await rejectionOf(rejection)).toBeInstanceOf(HistoricalRecordExistsError);
+    expect(await rejectionOf(rejection)).toMatchObject({ id: BASELINE_RUN_ID });
 
     expect(await store.get(key)).toBe(storedBefore);
     expect(await history.read(BASELINE_RUN_ID)).toEqual(first);
@@ -200,7 +201,7 @@ describe('createEvaluationHistory', () => {
     ['an unknown field', { note: 'extra' }],
   ])('refuses to append a record with %s', async (_label, change) => {
     const { store, history } = memoryHistory();
-    await expect(history.append({ ...baselineRecord(), ...change })).rejects.toBeInstanceOf(
+    expect(await rejectionOf(history.append({ ...baselineRecord(), ...change }))).toBeInstanceOf(
       EvaluatorConfigurationError,
     );
     expect(await store.list('')).toEqual([]);
@@ -211,12 +212,12 @@ describe('createEvaluationHistory', () => {
     const leaking = baselineRecord();
     const [heldOut, publicCase] = leaking.cases;
     const withHeldOutId = { ...leaking, cases: [{ ...heldOut!, caseId: HELD_OUT_CASE_ID }] };
-    await expect(history.append(withHeldOutId)).rejects.toThrow(
+    expect(await throwingRejectionOf(history.append(withHeldOutId))).toThrow(
       /A held-out case is recorded by ordinal, never by id/,
     );
     const { caseId: _caseId, ...anonymousPublic } = publicCase!;
     const withoutPublicId = { ...leaking, cases: [anonymousPublic] };
-    await expect(history.append(withoutPublicId)).rejects.toThrow(
+    expect(await throwingRejectionOf(history.append(withoutPublicId))).toThrow(
       /A public case is recorded with its id/,
     );
   });
@@ -231,7 +232,7 @@ describe('createEvaluationHistory', () => {
       const changed = original.slice();
       changed[index] = changed[index]! ^ 0x01;
       await storage.put(key, changed);
-      await expect(history.read(BASELINE_RUN_ID)).rejects.toBeInstanceOf(
+      expect(await rejectionOf(history.read(BASELINE_RUN_ID))).toBeInstanceOf(
         CorruptHistoricalRecordError,
       );
     }
@@ -249,22 +250,22 @@ describe('createEvaluationHistory', () => {
     await storage.put(key, changed);
 
     const rejection = history.read(BASELINE_RUN_ID);
-    await expect(rejection).rejects.toBeInstanceOf(CorruptHistoricalRecordError);
-    await expect(rejection).rejects.toMatchObject({ id: BASELINE_RUN_ID });
+    expect(await rejectionOf(rejection)).toBeInstanceOf(CorruptHistoricalRecordError);
+    expect(await rejectionOf(rejection)).toMatchObject({ id: BASELINE_RUN_ID });
   });
 
   test('propagates a storage failure that is not corruption', async () => {
     const { store } = memoryHistory();
     const failure = new Error('disk unavailable');
     const history = createEvaluationHistory({ ...store, get: () => Promise.reject(failure) });
-    await expect(history.read(BASELINE_RUN_ID)).rejects.toBe(failure);
+    expect(await rejectionOf(history.read(BASELINE_RUN_ID))).toBe(failure);
   });
 
   test('rejects a stored record that is valid JSON but not in canonical form', async () => {
     const { store, history } = memoryHistory();
     const appended = await history.append(baselineRecord());
     await store.set(await onlyKey(store), JSON.stringify(appended, null, 2));
-    await expect(history.read(BASELINE_RUN_ID)).rejects.toThrow(/canonical/);
+    expect(await throwingRejectionOf(history.read(BASELINE_RUN_ID))).toThrow(/canonical/);
   });
 
   test('rejects a canonical record whose digest matches but whose shape is not a record', async () => {
@@ -274,7 +275,7 @@ describe('createEvaluationHistory', () => {
       `${RECORD_KEY_PREFIX}${BASELINE_RUN_ID}`,
       canonicalJson({ digest: await sha256Hex(canonicalJson(record)), record }),
     );
-    await expect(history.read(BASELINE_RUN_ID)).rejects.toThrow(/schema/);
+    expect(await throwingRejectionOf(history.read(BASELINE_RUN_ID))).toThrow(/schema/);
   });
 
   test('rejects a record copied under another record’s id', async () => {
@@ -282,7 +283,9 @@ describe('createEvaluationHistory', () => {
     await history.append(baselineRecord());
     const text = await store.get(await onlyKey(store));
     await store.set(`${RECORD_KEY_PREFIX}${CANDIDATE_RUN_ID}`, text!);
-    await expect(history.read(CANDIDATE_RUN_ID)).rejects.toThrow(/names "run-baseline"/);
+    expect(await throwingRejectionOf(history.read(CANDIDATE_RUN_ID))).toThrow(
+      /names "run-baseline"/,
+    );
   });
 
   test('lists every verified record, oldest first', async () => {
@@ -304,8 +307,8 @@ describe('createEvaluationHistory', () => {
     await history.append(candidateRecord());
     await store.set(`${RECORD_KEY_PREFIX}${CANDIDATE_RUN_ID}`, '{}');
     const rejection = history.list();
-    await expect(rejection).rejects.toBeInstanceOf(CorruptHistoricalRecordError);
-    await expect(rejection).rejects.toMatchObject({ id: CANDIDATE_RUN_ID });
+    expect(await rejectionOf(rejection)).toBeInstanceOf(CorruptHistoricalRecordError);
+    expect(await rejectionOf(rejection)).toMatchObject({ id: CANDIDATE_RUN_ID });
   });
 
   test('lists an empty history as an empty array', async () => {

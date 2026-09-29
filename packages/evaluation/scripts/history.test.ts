@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
 
 import type { EvaluationRunRecord } from '../src/evaluation-run';
@@ -416,6 +417,6 @@ describe('runHistoryCommand', () => {
   });
 
   test('propagates a failure that is neither a usage error nor corruption', async () => {
-    await expect(runInProcess('list', '--store', directory)).rejects.toThrow();
+    expect(await throwingRejectionOf(runInProcess('list', '--store', directory))).toThrow();
   });
 });

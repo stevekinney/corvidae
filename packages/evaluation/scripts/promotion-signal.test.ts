@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
 
 import { fixtureConfiguration } from '../src/fixtures/release-gate/fixture-regression';
@@ -534,7 +535,9 @@ describe('runPromotionSignalCommand', () => {
   });
 
   test('propagates a failure that is neither a usage error nor corruption', async () => {
-    await expect(runInProcess(['verify', 'signal-1', '--store', directory])).rejects.toThrow();
+    expect(
+      await throwingRejectionOf(runInProcess(['verify', 'signal-1', '--store', directory])),
+    ).toThrow();
   });
 });
 

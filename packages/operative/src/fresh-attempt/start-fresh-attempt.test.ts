@@ -8,6 +8,7 @@ import {
   createInstantGenerate,
   createTestRunOptions,
 } from '../session/session-handle-test-support';
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   SecretBearingFreshAttemptArtifactError,
   StaleFreshAttemptArtifactError,
@@ -208,7 +209,7 @@ describe('SessionHandle.startFreshAttempt()', () => {
 
     const pending = handle.startFreshAttempt({ artifact, instructions: INSTRUCTIONS });
 
-    await expect(pending).rejects.toBeInstanceOf(SecretBearingFreshAttemptArtifactError);
+    expect(await rejectionOf(pending)).toBeInstanceOf(SecretBearingFreshAttemptArtifactError);
     expect(save).not.toHaveBeenCalled();
     expect(mint.mock.calls.filter(([kind]) => kind === 'session')).toEqual([]);
   });
@@ -220,9 +221,9 @@ describe('SessionHandle.startFreshAttempt()', () => {
     const artifact = await createFixtureArtifact();
     runtime.setTime(FIXTURE_NOW + FRESH_ATTEMPT_ARTIFACT_RETENTION_MS);
 
-    await expect(
-      handle.startFreshAttempt({ artifact, instructions: INSTRUCTIONS }),
-    ).rejects.toBeInstanceOf(StaleFreshAttemptArtifactError);
+    expect(
+      await rejectionOf(handle.startFreshAttempt({ artifact, instructions: INSTRUCTIONS })),
+    ).toBeInstanceOf(StaleFreshAttemptArtifactError);
   });
 
   it('rejects an artifact dated after the session runtime clock before minting anything', async () => {
@@ -250,12 +251,14 @@ describe('SessionHandle.startFreshAttempt()', () => {
   it('fails closed when the handle has no fresh-attempt source resolver', async () => {
     const { handle } = createSourceFixture();
 
-    await expect(
-      handle.startFreshAttempt({
-        artifact: await createFixtureArtifact(),
-        instructions: INSTRUCTIONS,
-      }),
-    ).rejects.toBeInstanceOf(UnauthorizedFreshAttemptArtifactError);
+    expect(
+      await rejectionOf(
+        handle.startFreshAttempt({
+          artifact: await createFixtureArtifact(),
+          instructions: INSTRUCTIONS,
+        }),
+      ),
+    ).toBeInstanceOf(UnauthorizedFreshAttemptArtifactError);
   });
 
   it('returns a handle that can run the fresh conversation', async () => {

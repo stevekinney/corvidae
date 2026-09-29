@@ -35,6 +35,7 @@ import { z } from 'zod';
 
 import { BureauError, createBureau } from './create-bureau';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
+import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
 
 let databaseCounter = 0;
@@ -460,15 +461,17 @@ describe('bureau.children over an ephemeral bureau', () => {
   });
 
   it('rejects an empty delegation secret at construction', async () => {
-    await expect(
-      createBureau({ agents: {}, children: { delegation: { secret: '' } } }),
-    ).rejects.toBeInstanceOf(BureauError);
-    await expect(
-      createBureau({
-        agents: {},
-        children: { delegation: { secret: 's', defaultTimeToLiveMilliseconds: 0 } },
-      }),
-    ).rejects.toThrow('defaultTimeToLiveMilliseconds');
+    expect(
+      await rejectionOf(createBureau({ agents: {}, children: { delegation: { secret: '' } } })),
+    ).toBeInstanceOf(BureauError);
+    expect(
+      await throwingRejectionOf(
+        createBureau({
+          agents: {},
+          children: { delegation: { secret: 's', defaultTimeToLiveMilliseconds: 0 } },
+        }),
+      ),
+    ).toThrow('defaultTimeToLiveMilliseconds');
   });
 });
 

@@ -19,6 +19,7 @@ import {
   type ConversationEvent,
   type Summarizer,
 } from '../src/index';
+import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 type Gate = { readonly opened: Promise<void>; readonly release: () => void };
 
@@ -183,7 +184,7 @@ describe('revisioned compaction commits', () => {
       throw new Error('summarizer unavailable');
     });
 
-    expect(failing).rejects.toThrow('summarizer unavailable');
+    expect(await throwingRejectionOf(failing)).toThrow('summarizer unavailable');
     await failing.catch(() => undefined);
     expectStateUnchanged(conversation, before);
     expect(hasPublishedSummary(conversation)).toBe(false);
@@ -211,7 +212,7 @@ describe('revisioned compaction commits', () => {
     controller.abort('caller stopped');
     gate.release();
 
-    expect(compacting).rejects.toMatchObject({ code: 'error:operation-cancelled' });
+    expect(await rejectionOf(compacting)).toMatchObject({ code: 'error:operation-cancelled' });
     await compacting.catch(() => undefined);
     expectStateUnchanged(conversation, before);
     expect(hasPublishedSummary(conversation)).toBe(false);
@@ -234,7 +235,7 @@ describe('revisioned compaction commits', () => {
     const disposal = conversation.dispose();
     gate.release();
 
-    expect(compacting).rejects.toMatchObject({ code: 'error:operation-cancelled' });
+    expect(await rejectionOf(compacting)).toMatchObject({ code: 'error:operation-cancelled' });
     await disposal;
     expect(conversation.current).toBe(before.current);
     expect(JSON.stringify(conversation.current)).toBe(before.serialized);

@@ -29,6 +29,7 @@ import {
   type ChildTopologyStore,
   createChildTopologyStore,
 } from './child-topology-store';
+import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { BureauDiagnostic, CancelDurableRunOutcome } from './types';
 
 // ---------------------------------------------------------------------------
@@ -523,14 +524,16 @@ describe('children.dispatch', () => {
   ])('rejects %s as a bad request', async (_label, patch) => {
     const fixture = createFixture();
 
-    await expect(
-      fixture.topology.children.dispatch({
-        parentRunId: 'parent-1',
-        agentName: 'worker',
-        input: 'x',
-        ...(patch as object),
-      }),
-    ).rejects.toThrow(/BAD_REQUEST|bad input/);
+    expect(
+      await throwingRejectionOf(
+        fixture.topology.children.dispatch({
+          parentRunId: 'parent-1',
+          agentName: 'worker',
+          input: 'x',
+          ...(patch as object),
+        }),
+      ),
+    ).toThrow(/BAD_REQUEST|bad input/);
   });
 });
 
@@ -729,11 +732,15 @@ describe('children.list / get / wait authorization', () => {
     expect(await list('parent-1')).toEqual([child]);
     expect(await list('parent-1', { principal: 'mallory' })).toEqual([]);
     expect(await list('parent-2')).toEqual([]);
-    await expect(list('')).rejects.toThrow('BAD_REQUEST');
-    await expect(get({ parentRunId: 'parent-1', childRunId: '' })).rejects.toThrow('BAD_REQUEST');
-    await expect(
-      get({ parentRunId: 'parent-1', childRunId: 'child-a', principal: '' }),
-    ).rejects.toThrow('BAD_REQUEST');
+    expect(await throwingRejectionOf(list(''))).toThrow('BAD_REQUEST');
+    expect(await throwingRejectionOf(get({ parentRunId: 'parent-1', childRunId: '' }))).toThrow(
+      'BAD_REQUEST',
+    );
+    expect(
+      await throwingRejectionOf(
+        get({ parentRunId: 'parent-1', childRunId: 'child-a', principal: '' }),
+      ),
+    ).toThrow('BAD_REQUEST');
   });
 
   it('answers wait for an unknown, settled, unobserved, or abandoned wait', async () => {
@@ -847,9 +854,11 @@ describe('children.signal', () => {
     ).toMatchObject({
       outcome: 'child-terminal',
     });
-    await expect(
-      signal({ parentRunId: 'parent-1', childRunId: 'child-a', name: '' }),
-    ).rejects.toThrow('BAD_REQUEST');
+    expect(
+      await throwingRejectionOf(
+        signal({ parentRunId: 'parent-1', childRunId: 'child-a', name: '' }),
+      ),
+    ).toThrow('BAD_REQUEST');
   });
 });
 
@@ -1933,14 +1942,16 @@ describe('delegation grants', () => {
   ])('rejects %s as a bad request', async (_label, authority) => {
     const fixture = createFixture({ delegation });
 
-    await expect(
-      fixture.topology.children.dispatch({
-        parentRunId: 'parent-1',
-        agentName: 'worker',
-        input: 'x',
-        authority: authority as never,
-      }),
-    ).rejects.toThrow('BAD_REQUEST');
+    expect(
+      await throwingRejectionOf(
+        fixture.topology.children.dispatch({
+          parentRunId: 'parent-1',
+          agentName: 'worker',
+          input: 'x',
+          authority: authority as never,
+        }),
+      ),
+    ).toThrow('BAD_REQUEST');
   });
 
   it('rolls a reservation back when its ledger write fails', async () => {
@@ -1964,13 +1975,15 @@ describe('delegation grants', () => {
     });
 
     failLedger = true;
-    await expect(
-      fixture.topology.children.dispatch({
-        parentRunId: 'child-a',
-        agentName: 'worker',
-        input: 'x',
-      }),
-    ).rejects.toThrow('ledger offline');
+    expect(
+      await throwingRejectionOf(
+        fixture.topology.children.dispatch({
+          parentRunId: 'child-a',
+          agentName: 'worker',
+          input: 'x',
+        }),
+      ),
+    ).toThrow('ledger offline');
     failLedger = false;
     expect(
       await fixture.topology.children.dispatch({
@@ -2050,7 +2063,7 @@ describe('delegation grants', () => {
       });
 
     failList = true;
-    await expect(nested('first')).rejects.toThrow('ledger unreadable');
+    expect(await throwingRejectionOf(nested('first'))).toThrow('ledger unreadable');
     failList = false;
     const second = await nested('second');
     expect(second.outcome).toBe('started');

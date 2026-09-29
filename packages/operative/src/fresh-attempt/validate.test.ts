@@ -145,7 +145,7 @@ describe('validateFreshAttemptArtifact', () => {
     expect(error).toBeInstanceOf(InvalidFreshAttemptArtifactError);
     expect(error.kind).toBe('contract');
     expect(error.diagnostics).toEqual([{ path: 'digest.algorithm', rule: 'invalid_value' }]);
-    await expect(validateFreshAttemptArtifact(artifact, context())).resolves.toBeDefined();
+    expect(await validateFreshAttemptArtifact(artifact, context())).toBeDefined();
   });
 
   it('rejects a single mutated field under an unchanged digest as corrupt', async () => {
@@ -237,7 +237,7 @@ describe('staleness and retention', () => {
     const artifact = await createFixtureArtifact();
     const now = Date.parse(artifact.timestamp) + FRESH_ATTEMPT_ARTIFACT_RETENTION_MS;
 
-    await expect(validateFreshAttemptArtifact(artifact, context({ now }))).resolves.toBeDefined();
+    expect(await validateFreshAttemptArtifact(artifact, context({ now }))).toBeDefined();
   });
 
   it('rejects an artifact past its retention window as stale', async () => {
@@ -254,9 +254,7 @@ describe('staleness and retention', () => {
   it('does not apply retention when checking an artifact for publication', async () => {
     const artifact = await createFixtureArtifact({ timestamp: '2020-01-01T00:00:00.000Z' });
 
-    await expect(
-      validateFreshAttemptArtifactForPublication(artifact, context()),
-    ).resolves.toBeDefined();
+    expect(await validateFreshAttemptArtifactForPublication(artifact, context())).toBeDefined();
   });
 
   it('rejects a timestamp after now as stale however far the clock moves', async () => {
@@ -288,9 +286,7 @@ describe('staleness and retention', () => {
     const artifact = await createFixtureArtifact();
     const earliest = Date.parse(artifact.timestamp) - FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS;
 
-    await expect(
-      validateFreshAttemptArtifact(artifact, context({ now: earliest })),
-    ).resolves.toBeDefined();
+    expect(await validateFreshAttemptArtifact(artifact, context({ now: earliest }))).toBeDefined();
     const error = await rejectionOf(
       validateFreshAttemptArtifact(artifact, context({ now: earliest - 1 })),
     );
@@ -506,7 +502,7 @@ describe('secret-bearing', () => {
         completedWork: ['Added token counting to the compactor and fixed the authorization check.'],
       });
 
-      await expect(validateFreshAttemptArtifact(artifact, context())).resolves.toBeDefined();
+      expect(await validateFreshAttemptArtifact(artifact, context())).toBeDefined();
     });
   });
 
@@ -553,9 +549,12 @@ describe('secret-bearing', () => {
         createFixtureEpoch([protectedSource({ digest: undefined })]),
       );
 
-      await expect(
-        validateFreshAttemptArtifact(artifact, context({ resolveSource: resolverFor(source) })),
-      ).resolves.toBeDefined();
+      expect(
+        await validateFreshAttemptArtifact(
+          artifact,
+          context({ resolveSource: resolverFor(source) }),
+        ),
+      ).toBeDefined();
     });
   });
 
@@ -578,7 +577,7 @@ describe('secret-bearing', () => {
         validatedFacts: [`Baseline digest ${'0123456789abcdef'.repeat(4)} is unchanged.`],
       });
 
-      await expect(validateFreshAttemptArtifact(artifact, context())).resolves.toBeDefined();
+      expect(await validateFreshAttemptArtifact(artifact, context())).toBeDefined();
     });
   });
 });

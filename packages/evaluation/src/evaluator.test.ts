@@ -5,6 +5,7 @@ import {
   createScriptedGenerate,
   type RunResultBase,
 } from '@lostgradient/operative';
+import { throwingRejectionOf } from '@lostgradient/testing';
 
 import { EvaluatorConfigurationError, parseEvaluatorConfiguration } from './configuration';
 import type { CriterionScorers } from './criteria';
@@ -140,7 +141,7 @@ describe('createEvaluator', () => {
       dataset: datasetInput(),
       scorers: scorers().bound,
     });
-    await expect(evaluator.evaluateCase('case-peru', runResult())).rejects.toThrow(
+    expect(await throwingRejectionOf(evaluator.evaluateCase('case-peru', runResult()))).toThrow(
       'Unknown evaluation case "case-peru"',
     );
   });

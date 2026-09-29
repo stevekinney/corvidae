@@ -19,6 +19,7 @@ import {
   DELEGATION_LEDGER_KEY_PREFIX,
   type DelegationLedgerEntry,
 } from './child-topology-store';
+import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 function createKv() {
   return textValueStore(new MemoryStorage());
@@ -179,9 +180,9 @@ describe('createChildTopologyStore — child records', () => {
     const record = childRecord();
     await store.register(record);
 
-    await expect(store.update(record, { ...record, childRunId: 'child-2' })).rejects.toThrow(
-      'cannot change a child record',
-    );
+    expect(
+      await throwingRejectionOf(store.update(record, { ...record, childRunId: 'child-2' })),
+    ).toThrow('cannot change a child record');
   });
 
   it('skips unreadable records everywhere and reports each key', async () => {

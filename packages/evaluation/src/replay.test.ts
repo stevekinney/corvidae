@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { GenerateFunction } from '@lostgradient/operative';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 
 import {
   fixtureConfiguration,
@@ -337,21 +338,25 @@ describe('replayGateDecision', () => {
   test('propagates a failure that is neither a missing, corrupt, nor unresolvable record', async () => {
     const failure = new Error('disk unreadable');
     const { history } = memoryHistory();
-    await expect(
-      replayGateDecision(
-        { recordId: 'any' },
-        { history: { ...history, read: () => Promise.reject(failure) } },
+    expect(
+      await rejectionOf(
+        replayGateDecision(
+          { recordId: 'any' },
+          { history: { ...history, read: () => Promise.reject(failure) } },
+        ),
       ),
-    ).rejects.toBe(failure);
+    ).toBe(failure);
 
     const { record, digest } = await decide(history, 'passing');
     const broken = { ...record, evidence: null } as unknown as GateDecisionRecord;
-    await expect(
-      replayGateDecision(
-        { recordId: record.id },
-        { history: { ...history, read: () => Promise.resolve({ digest, record: broken }) } },
+    expect(
+      await throwingRejectionOf(
+        replayGateDecision(
+          { recordId: record.id },
+          { history: { ...history, read: () => Promise.resolve({ digest, record: broken }) } },
+        ),
       ),
-    ).rejects.toThrow(TypeError);
+    ).toThrow(TypeError);
   });
 });
 
