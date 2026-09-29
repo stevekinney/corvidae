@@ -265,7 +265,7 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'scripts/benchmarks/environment-configuration.ts',
       ],
       reason:
-        '`src/storage/bun-sql-benchmark.test.ts` imports the first, which imports the second. The other 21 files under `scripts/benchmarks/` are the benchmark suites themselves, which nothing emitted imports. Neither path is under `packages/weft/scripts/husky/`, which `target-owned.json` reserves to the target.',
+        '`src/storage/bun-sql-workload.test-support.ts` imports the first, which imports the second. The other 24 files under `scripts/benchmarks/` are the benchmark suites themselves, which nothing emitted imports. Neither path is under `packages/weft/scripts/husky/`, which `target-owned.json` reserves to the target.',
     },
     {
       paths: [
