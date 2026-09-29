@@ -59,7 +59,7 @@ function captureState(conversation: Conversation) {
     current: conversation.current,
     serialized: JSON.stringify(conversation.current),
     revision: conversation.revision,
-    tree: JSON.stringify(conversation.snapshot().root),
+    tree: JSON.stringify(conversation.snapshot().nodes),
     storeRevision: conversation.getSnapshot().revision,
   };
 }
@@ -71,7 +71,7 @@ function expectStateUnchanged(
   expect(conversation.current).toBe(before.current);
   expect(JSON.stringify(conversation.current)).toBe(before.serialized);
   expect(conversation.revision).toBe(before.revision);
-  expect(JSON.stringify(conversation.snapshot().root)).toBe(before.tree);
+  expect(JSON.stringify(conversation.snapshot().nodes)).toBe(before.tree);
   expect(conversation.getSnapshot().revision).toBe(before.storeRevision);
 }
 
