@@ -395,6 +395,16 @@ export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFi
   '@lostgradient/cinder': [
     {
       paths: [
+        'documentation/tokens.md',
+        'documentation/focus-ring-policy.md',
+        'documentation/theming.md',
+        'documentation/css-audit/translucent-border-seams.md',
+      ],
+      reason:
+        '`src/styles/tokens-doc-drift.test.ts` reads the token, focus-ring and theming documents by path, while the token document links to the seam audit. The target has no documentation directory, so the source tests need these documents emitted with the token corpus and their relative link closed.',
+    },
+    {
+      paths: [
         'scripts/check-component-examples.test.ts',
         'scripts/check-component-examples.ts',
         'scripts/check-placeholder-docs.test.ts',
