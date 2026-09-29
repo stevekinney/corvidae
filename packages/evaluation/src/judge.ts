@@ -14,6 +14,11 @@
  * a throw is `judge-error`, and a reply that requests tool calls, is not
  * JSON, fails the result schema, or scores a criterion it was not asked
  * about is `judge-malformed-output`.
+ *
+ * A release gate records each judge call as a {@link RecordedJudgeOutput}:
+ * the reply text and the tools it asked for, or the fact that it threw.
+ * {@link readRecordedJudgeOutput} reads one back through the same checks a
+ * live reply goes through, so a replayed decision never calls a provider.
  */
 import type { GenerateFunction, GenerateResponse, RunResultBase } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
@@ -29,6 +34,16 @@ export interface JudgeVerdict {
   readonly scores: ReadonlyMap<string, { readonly score: number; readonly rationale: string }>;
   readonly feedback: string;
 }
+
+/** One judge call as a release gate records it. */
+export type RecordedJudgeOutput =
+  | {
+      readonly kind: 'reply';
+      readonly content: string;
+      /** The names of any tools the reply asked to call. A verdict never asks for one. */
+      readonly requestedTools: readonly string[];
+    }
+  | { readonly kind: 'error' };
 
 export interface JudgePrompt {
   readonly system: string;
@@ -59,6 +74,18 @@ export const JUDGE_RESPONSE_FORMAT: {
 
 function isModelJudged(criterion: CriterionConfiguration): boolean {
   return criterion.kind === 'model-judge';
+}
+
+function modelJudgedNames(configuration: EvaluatorConfiguration): string[] {
+  return configuration.criteria.filter(isModelJudged).map((criterion) => criterion.name);
+}
+
+function judgeThrew(judgeName: string, cause?: unknown): EvaluatorInfrastructureError {
+  return new EvaluatorInfrastructureError({
+    reason: 'judge-error',
+    message: `Model judge "${judgeName}" threw`,
+    cause,
+  });
 }
 
 function renderRubric(configuration: EvaluatorConfiguration): string {
@@ -207,15 +234,25 @@ export async function runModelJudge(options: RunModelJudgeOptions): Promise<Judg
       responseFormat: JUDGE_RESPONSE_FORMAT,
     });
   } catch (cause) {
-    throw new EvaluatorInfrastructureError({
-      reason: 'judge-error',
-      message: `Model judge "${judgeName}" threw`,
-      cause,
-    });
+    throw judgeThrew(judgeName, cause);
   }
+  return parseJudgeResponse(response, judgeName, modelJudgedNames(configuration));
+}
+
+/**
+ * Reads a recorded judge call exactly as {@link runModelJudge} reads a live
+ * one: a recorded throw is `judge-error`, and a recorded reply goes through
+ * {@link parseJudgeResponse}.
+ */
+export function readRecordedJudgeOutput(
+  output: RecordedJudgeOutput,
+  configuration: EvaluatorConfiguration,
+): JudgeVerdict {
+  const judgeName = configuration.judge.name;
+  if (output.kind === 'error') throw judgeThrew(judgeName);
   return parseJudgeResponse(
-    response,
+    { content: output.content, toolCalls: output.requestedTools.map((name) => ({ name })) },
     judgeName,
-    configuration.criteria.filter(isModelJudged).map((criterion) => criterion.name),
+    modelJudgedNames(configuration),
   );
 }

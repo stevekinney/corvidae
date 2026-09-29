@@ -82,6 +82,25 @@ export interface RunTrialsOptions {
   readonly seeds?: readonly number[] | undefined;
 }
 
+/**
+ * The executor's core: how a case's trials are scored once each trial's run
+ * result is in hand. {@link runTrials} produces each result by running an
+ * operative agent; a release-gate replay produces it from recorded evidence.
+ */
+export interface ScoreTrialsOptions {
+  readonly evaluator: Evaluator;
+  readonly caseId: string;
+  /**
+   * The completed run for trial `context` of the case whose input is
+   * `input`. A throw or rejection is that trial's `subject-error`.
+   */
+  readonly runResult: (context: TrialContext, input: string) => Promise<RunResultBase>;
+  /** Draws each trial's seed. Defaults to the real-globals runtime services. */
+  readonly runtime?: Pick<RuntimeServices, 'random'> | undefined;
+  /** Seeds recorded by an earlier aggregate, one per repetition, replayed instead of drawn. */
+  readonly seeds?: readonly number[] | undefined;
+}
+
 /** What one trial recorded. Plain data, so an aggregate serializes deterministically. */
 export interface TrialRecord {
   readonly trial: number;
@@ -139,7 +158,7 @@ export type TrialAggregate =
       readonly errors: readonly EvaluatorInfrastructureError[];
     });
 
-function resolveSeeds(options: RunTrialsOptions, repetitions: number): readonly number[] {
+function resolveSeeds(options: ScoreTrialsOptions, repetitions: number): readonly number[] {
   const { seeds } = options;
   if (seeds === undefined) {
     const random = (options.runtime ?? createDefaultRuntimeServices()).random;
@@ -184,13 +203,13 @@ function recordEvaluation(context: TrialContext, evaluation: CaseEvaluation): Tr
 }
 
 async function runTrial(
-  options: RunTrialsOptions,
+  options: ScoreTrialsOptions,
   context: TrialContext,
   input: string,
 ): Promise<TrialRecord> {
   let result: RunResultBase;
   try {
-    result = await options.subject(context).run(input).result();
+    result = await options.runResult(context, input);
   } catch (cause) {
     const error = new EvaluatorInfrastructureError({
       reason: 'subject-error',
@@ -228,7 +247,20 @@ export function aggregateStatistics(
 }
 
 /** Runs one case `repetitions` times and aggregates the trials into one reviewer-level report. */
-export async function runTrials(options: RunTrialsOptions): Promise<TrialAggregate> {
+export function runTrials(options: RunTrialsOptions): Promise<TrialAggregate> {
+  const { subject, ...rest } = options;
+  return scoreTrials({
+    ...rest,
+    runResult: (context, input) => subject(context).run(input).result(),
+  });
+}
+
+/**
+ * Scores one case's `repetitions` trials, in order and without retry, taking
+ * each trial's run from `runResult`, and aggregates them exactly as
+ * {@link runTrials} does.
+ */
+export async function scoreTrials(options: ScoreTrialsOptions): Promise<TrialAggregate> {
   const { evaluator, caseId } = options;
   const { configuration, identity } = evaluator;
   const evaluationCase = evaluator.dataset.cases.find((entry) => entry.id === caseId);

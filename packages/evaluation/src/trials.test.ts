@@ -20,7 +20,7 @@ import {
 } from './evaluation.test-support';
 import { createEvaluator, type Evaluator } from './evaluator';
 import tenTrialScores from './fixtures/variance/ten-trial-scores.json';
-import { runTrials, type TrialAggregate, type TrialContext } from './trials';
+import { runTrials, scoreTrials, type TrialAggregate, type TrialContext } from './trials';
 import { EvaluatorInfrastructureError } from './verdict';
 
 const CASE_ID = 'case-france';
@@ -492,5 +492,50 @@ describe('runTrials', () => {
       expect(seed).toBeGreaterThanOrEqual(0);
       expect(seed).toBeLessThan(0x1_0000_0000);
     }
+  });
+});
+
+describe('scoreTrials', () => {
+  test('scores the run each trial’s producer returns, with the case input, under the given seeds', async () => {
+    const produced: [TrialContext, string][] = [];
+    const aggregate = await scoreTrials({
+      evaluator: await modelEvaluator([judgeReply(), judgeReply(), judgeReply()]),
+      caseId: CASE_ID,
+      runResult: (context, input) => {
+        produced.push([context, input]);
+        return Promise.resolve(runResult());
+      },
+      seeds: [7, 8, 9],
+    });
+
+    expect(produced).toEqual([
+      [{ trial: 1, seed: 7 }, CASE_INPUT],
+      [{ trial: 2, seed: 8 }, CASE_INPUT],
+      [{ trial: 3, seed: 9 }, CASE_INPUT],
+    ]);
+    expect(aggregate.outcome).toBe('pass');
+    expect(aggregate.trials.map((trial) => trial.seed)).toEqual([7, 8, 9]);
+  });
+
+  test('types a producer that rejects or throws as that trial’s subject error', async () => {
+    let calls = 0;
+    const aggregate = await scoreTrials({
+      evaluator: await modelEvaluator([judgeReply()]),
+      caseId: CASE_ID,
+      runResult: () => {
+        calls += 1;
+        if (calls === 1) throw new Error('no recorded run');
+        if (calls === 2) return Promise.reject(new Error('no recorded run'));
+        return Promise.resolve(runResult());
+      },
+      runtime: createManualRuntimeServices(),
+    });
+
+    expect(aggregate.outcome).toBe('indeterminate');
+    expect(aggregate.trials.map((trial) => trial.error?.reason)).toEqual([
+      'subject-error',
+      'subject-error',
+      undefined,
+    ]);
   });
 });

@@ -122,6 +122,18 @@ describe('createEvaluator', () => {
     ).toEqual(['criteria.0', 'criteria.1', 'criteria.3', 'judge']);
   });
 
+  test('rejects both a generate function and recorded judge outputs for the same judge', async () => {
+    expect(
+      await rejection({
+        configuration: modelConfigurationInput(),
+        dataset: datasetInput(),
+        scorers: scorers().bound,
+        generate: createScriptedGenerate([]),
+        recordedJudgeOutput: () => undefined,
+      }),
+    ).toEqual(['judge']);
+  });
+
   test('refuses to evaluate a case the dataset does not contain', async () => {
     const evaluator = await createEvaluator({
       configuration: deterministicConfigurationInput(),
@@ -397,5 +409,59 @@ describe('evaluateCase', () => {
     const evaluation = await evaluate({ configuration: modelConfigurationInput(), generate });
     expect(evaluation.verdict).toBe('pass');
     expect(generate.callCount).toBe(1);
+  });
+});
+
+describe('evaluateCase with recorded judge outputs', () => {
+  test('scores model-judge criteria from the recorded reply, calling no provider', async () => {
+    const recorded = mock(() => ({
+      kind: 'reply' as const,
+      content: judgeReply({ score: 0.5, feedback: 'Recorded feedback.' }),
+      requestedTools: [],
+    }));
+    const evaluation = await evaluate({
+      configuration: modelConfigurationInput(),
+      recordedJudgeOutput: recorded,
+    });
+
+    expect(recorded).toHaveBeenCalledTimes(1);
+    const [[evidence]] = recorded.mock.calls as unknown as [[{ evaluationCase: { id: string } }]];
+    expect(evidence.evaluationCase.id).toBe('case-france');
+    expect(evaluation.verdict).toBe('pass');
+    if (evaluation.verdict !== 'pass') return;
+    expect(evaluation.feedback).toBe('Recorded feedback.');
+    expect(
+      evaluation.rubric.criteria.map((criterion) => [criterion.name, criterion.score]),
+    ).toContainEqual(['helpful-tone', 0.5]);
+  });
+
+  test('reads a recorded judge error as the judge-error it was', async () => {
+    const evaluation = await evaluate({
+      configuration: modelConfigurationInput(),
+      recordedJudgeOutput: () => ({ kind: 'error' }),
+    });
+    expect(infrastructureError(evaluation).reason).toBe('judge-error');
+  });
+
+  test('reads a recorded reply that asked for tools as malformed judge output', async () => {
+    const evaluation = await evaluate({
+      configuration: modelConfigurationInput(),
+      recordedJudgeOutput: () => ({
+        kind: 'reply',
+        content: judgeReply(),
+        requestedTools: ['web_search'],
+      }),
+    });
+    expect(infrastructureError(evaluation).reason).toBe('judge-malformed-output');
+  });
+
+  test('is an infrastructure failure when no judge output was recorded for the case', async () => {
+    const evaluation = await evaluate({
+      configuration: modelConfigurationInput(),
+      recordedJudgeOutput: () => undefined,
+    });
+    const error = infrastructureError(evaluation);
+    expect(error.reason).toBe('judge-error');
+    expect(error.message).toContain('No judge output was recorded');
   });
 });

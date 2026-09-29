@@ -2,7 +2,7 @@
 
 Scores completed [Operative](../operative/README.md) runs against a versioned evaluator configuration: typed multi-criterion rubrics, hard per-criterion gates, calibration examples for a model judge, and a digest that identifies the configuration exactly. On top of that it runs each case its declared number of times, reports distributions and uncertainty rather than one score, surfaces disagreement and infrastructure failure explicitly, and refuses to treat an unchecked held-out dataset, an uncalibrated judge, or a drifted judge revision as gate-eligible. It implements the evaluator configuration, result-class, inspection-surface, and held-out, repeated-trial, variance, drift, and calibration sections of the calibrated evaluator contract (COR-896).
 
-`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command; release gates build on both in later slices.
+`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, and `replay` recomputes any stored decision from its recorded evidence without calling a model.
 
 ## Configuration
 
@@ -141,17 +141,17 @@ const { digest } = await history.append(
 );
 ```
 
-`createEvaluationHistory(store)` takes a weft `ConditionalTextValueStore` (`textValueStore` over `BunSQLiteStorage` for the local file, or over `MemoryStorage` in tests) and returns exactly `{ append, read, list }`. There is no update and no delete: historical results are never rewritten, and rolling an evaluator back means citing an earlier record.
+`createEvaluationHistory(store)` takes a weft `ConditionalTextValueStore` (`textValueStore` over `BunSQLiteStorage` for the local file, or over `MemoryStorage` in tests) and returns exactly `{ append, read, list }`. It keeps three kinds of record, told apart by `kind`: `evaluation-run`, and the `gate-decision` and `gate-override` records the release gate writes (below). There is no update and no delete: historical results are never rewritten, and rolling an evaluator back means citing an earlier record.
 
 - `append(record)` commits with a compare-and-swap that requires the id to be absent. A second record with the same id rejects with `HistoricalRecordExistsError`, and the first stays byte-identical.
 - `read(id)` resolves the verified `{ digest, record }`, or `undefined` for an unknown id.
 - `list()` resolves every verified record, oldest first.
 
-Each stored row is the canonical JSON of `{ digest, record }`, where `digest` is the SHA-256 of the record's own canonical JSON. `read` and `list` reject with `CorruptHistoricalRecordError` when a row is not valid UTF-8, does not parse, is not in canonical form, does not match the record schema, is stored under another id, or does not match its digest, so changing any one byte of a row makes it unreadable rather than silently different.
+Each stored row is the canonical JSON of `{ digest, record }`, where `digest` is the SHA-256 of the record's own canonical JSON. `read` and `list` reject with `CorruptHistoricalRecordError` when a row is not valid UTF-8, does not parse, is not in canonical form, matches no record schema, is stored under another id, or does not match its digest, so changing any one byte of a row makes it unreadable rather than silently different.
 
 `toEvaluationRunRecord` builds an `evaluation-run` record (schema version 1) from `runTrials` aggregates: the evaluator identity, dataset id and version, code revision, repetitions, variance policy, outcome counts, verdict and per-criterion statistics pooled over every trial, the summed cost (`null` when any trial has no cost estimate), the latency, and each case with its own statistics and per-trial seeds, verdicts, finish reasons, usage, cost, criterion scores, and typed error reasons. It rejects an aggregate from another evaluator, a case outside the evaluator's dataset, and a case aggregated twice.
 
-A record never holds anything that could leak a held-out case. A held-out case is recorded by its ordinal in the dataset version, never by its id, and the schema rejects a held-out case that carries one. No expected answer, run content, feedback, judge rationale, or error message is stored, because each may quote one.
+An `evaluation-run` record never holds anything that could leak a held-out case. A held-out case is recorded by its ordinal in the dataset version, never by its id, and the schema rejects a held-out case that carries one. No expected answer, run content, feedback, judge rationale, or error message is stored, because each may quote one. A `gate-decision` record is the gate's audit record, so it also keeps reviewer-projection evidence (each trial's run content and tool trajectory, and its judge's raw reply) for replay; it still places cases by ordinal, and nothing in it is ever returned to the generator.
 
 `compareEvaluationRuns(baseline, candidate)` reports, per criterion, the pass-fraction and mean-score deltas (`candidate - baseline`), plus the pooled verdict pass fraction, cost, and latency. A metric either run lacks has a `null` delta, never `0`.
 
@@ -163,7 +163,73 @@ bun run --cwd packages/evaluation history show <recordId> [--store <path>]
 bun run --cwd packages/evaluation history compare <baselineRecordId> <candidateRecordId> [--store <path>]
 ```
 
-`list` prints one JSON line per record; `show` and `compare` print one JSON document. Diagnostics go to stderr. It exits `0` on success, `64` on a usage error or an unknown record, and `65` on a corrupt record. `--store` defaults to `packages/evaluation/.cache/evaluation-history.sqlite`, which the repository ignores, and a store file that does not exist reads as an empty history without being created.
+`list` prints one JSON line per record of any kind; `show` and `compare` print one JSON document, and `compare` takes two evaluation runs. Diagnostics go to stderr. It exits `0` on success, `64` on a usage error, an unknown record, or a `compare` of anything but two evaluation runs, and `65` on a corrupt record. `--store` defaults to `packages/evaluation/.cache/evaluation-history.sqlite`, which the repository ignores, and a store file that does not exist reads as an empty history without being created.
+
+## Release gate
+
+This repository has no hosted CI, so a release gate is a local command with a stable exit code and one machine-readable report. Nothing runs it automatically and nothing blocks a merge on it; a person or agent runs it and reads `$?`.
+
+```bash
+# Machine form: stdout is exactly one JSON document and $? is authoritative.
+bun run --cwd packages/evaluation release-gate --gate <gateId>
+# Human form: runs every gate in packages/evaluation/gates/ (bun prefixes each stdout line).
+bun run --filter=@lostgradient/evaluation release-gate
+```
+
+Options: `--gate <gateId>` runs only `gates/<gateId>.json`; `--gates-dir <path>` reads gates from another directory; `--store <path>` picks the history file (default `packages/evaluation/.cache/evaluation-history.sqlite`); `--actor <principal>` names who ran the gate (default: the current user).
+
+| Exit | Decision | Meaning |
+| --- | --- | --- |
+| `0` | `pass` | Every threshold held against an unexpired, comparable baseline at the declared sample size, with no unresolved infrastructure failure. |
+| `1` | `regression` | A threshold was breached, and it was `hard` or no valid, unexpired override cleared it. |
+| `2` | `infrastructure-failure` | The evaluator could not score a trial, the gate run exceeded its cost or latency budget, or the gate machinery itself failed. |
+| `3` | `insufficient-evidence` | Too few trials (or held-out cases, for a deterministic judge), a missing, expired, or incomparable baseline, an uncalibrated or drift-unchecked model judge, a dataset without a contamination check, an unresolved disagreement, or a threshold metric one run lacks. |
+| `64` | `configuration-error` | An invalid gate file (a missing `baseline` or `sampleSize`, say), an evaluator module that cannot be built, or a usage error. Nothing is appended. |
+
+Several gates exit with the most severe code: `64` > `2` > `3` > `1` > `0`. The report is `{ kind: 'release-gate-report', schemaVersion: 1, recordId, decision, exitCode, gates }`, with one entry per gate carrying its record id and digest, baseline, sample, cost, latency, findings, applied override ids, rejected overrides, and per-criterion comparison. Human diagnostics go to stderr.
+
+A gate file, validated by `gateDefinitionSchema`, names:
+
+| Field | Meaning |
+| --- | --- |
+| `evaluator` | The evaluator module, relative to the gate file. Its default export builds a `GateEvaluatorDefinition`: configuration, dataset, scorers, model judge, the operative agent a trial runs, and the recorded contamination checks, calibration records, and drift checks. Rolling back an evaluator means pointing this at the prior approved module. |
+| `dataset` | The `{ id, version }` the evaluator must score. |
+| `baseline` | Required, no default: `{ kind: 'latest-passing-decision' }` (the newest decision of this gate that passed without an override, or that the override authority accepted as a permanent baseline change) or `{ kind: 'evaluation-run', path }` (a committed `evaluation-run` record). |
+| `sampleSize` | Required, no default: the minimum trial count for a stochastic judge, or held-out case count for a deterministic one. |
+| `regressionThresholds` | Per criterion and metric (`passFraction` or `meanScore`), the largest tolerated decrease from the baseline and its `severity`, `hard` or `overridable`. |
+| `budgets` | `{ costUsd, latencyMilliseconds }` ceilings for the gate run. A run that reports no cost is checked for latency only. |
+| `overrideAuthority` | The principal who may override a blocking result. |
+| `expiry` | `maximumRevisionDistance` (commits, counted with `git rev-list --count`) and/or `maximumAgeMs`: how far a baseline may trail the run. |
+
+Every gate run that gets past its configuration appends exactly one `gate-decision` record holding its inputs (the gate definition, evaluator identity and module, dataset digest, eligibility, per-trial evidence, baseline, and the overrides it weighed), its metrics and distributions (the embedded `evaluation-run` record), its findings, the decision, and the actor. The history's SHA-256 digest covers all of it.
+
+`gates/fixture-regression.json` is an offline fixture gate: `src/fixtures/release-gate/` scripts the capitals agent and the model judge with `createScriptedGenerate` and commits the baseline run it is compared with.
+
+### Overrides
+
+`recordOverride({ history, gate, override })` appends a `gate-override` record `{ gateDecisionId, actor, reason, expiresAt, permanentBaselineChange, evidence }` and never touches the decision. It rejects, with `OverrideRejectedError`, an override by anyone but the gate's `overrideAuthority`, by the principal who ran the decision, of a decision that does not exist, and of a decision it cannot answer: an expiring override needs at least one `overridable` regression, and a permanent baseline change needs a decision that neither passed without an override, failed on infrastructure, nor has any `hard` regression. `expiresAt` is mandatory unless `permanentBaselineChange` is set.
+
+The gate re-checks every override it reads, because validity also depends on the gate definition and the time. An expiring override clears a later regression of the same criterion and metric that is no worse than an `overridable` regression it answered, under the same evaluator digest, until `expiresAt`; the report lists it in `overrideIds`. No override ever clears a `hard` regression, nor one that was `hard` in the decision it answered, even after the gate demotes that threshold. Each override the gate cannot use is reported with its reason. A decision that passed only because an expiring override cleared a regression never becomes the `latest-passing-decision` baseline, so the regression returns once the override expires. A permanent baseline change instead makes the overridden decision's evidence the gate's `latest-passing-decision` baseline.
+
+## Replay
+
+```bash
+bun run --cwd packages/evaluation replay <gateDecisionRecordId>
+bun run --cwd packages/evaluation replay --gate <gateId> --latest
+bun run --filter=@lostgradient/evaluation replay -- --gate <gateId> --latest
+```
+
+`replay` reloads the evaluator module a decision names, only for its configuration, dataset, and scorers, and re-scores every trial through the same executor under its recorded seed and recorded run. Deterministic criteria re-execute on the stored reviewer-projection run; model-judge criteria read the recorded judge reply; no agent runs and no `GenerateFunction` is called. The baseline, eligibility, and overrides come from the record, so later history never changes a replay. It never writes.
+
+| Exit | Result | Meaning |
+| --- | --- | --- |
+| `0` | `match` | The recomputed decision and digest equal the stored ones. |
+| `4` | `mismatch` | They differ: stdout lists every differing field and stderr names the first. |
+| `3` | `unresolvable` | The recorded evaluator configuration digest or dataset version (and digest) cannot be resolved from the module. |
+| `64` | `unknown-record` or `usage-error` | No such gate decision, or bad arguments. |
+| `65` | `corrupt-record` | The stored record fails verification, or its evidence cannot fit its own evaluator. |
+
+Replay covers evaluation decisions only; a lifecycle fault is replayed with operative's `replayReproductionArtifact`.
 
 ## Goal-controller adapter
 
@@ -204,6 +270,8 @@ Every `pass`, `fail`, and `indeterminate` verdict, and every `error` from a tria
 bunx turbo run lint typecheck test --filter=@lostgradient/evaluation
 bun run --filter=@lostgradient/evaluation test:coverage
 bun run --cwd packages/evaluation history list
+bun run --cwd packages/evaluation release-gate --gate fixture-regression
+bun run --cwd packages/evaluation replay --gate fixture-regression --latest
 ```
 
 `test:coverage` fails below 100 percent line or function coverage of this workspace's `src/` and `scripts/`.

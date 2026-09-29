@@ -1,9 +1,16 @@
 export {
   calibrationRecordSchema,
+  driftCheckRecordSchema,
   isGateEligibleJudge,
+  judgeEligibility,
   parseCalibrationRecord,
 } from './calibration';
-export type { CalibrationRecord, GateEligibleJudgeOptions } from './calibration';
+export type {
+  CalibrationRecord,
+  DriftCheckRecord,
+  GateEligibleJudgeOptions,
+  JudgeEligibility,
+} from './calibration';
 export {
   EvaluatorConfigurationError,
   evaluatorConfigurationSchema,
@@ -56,8 +63,34 @@ export type {
   JudgedCase,
   TrialVerdict,
 } from './disagreement';
+export {
+  EVALUATION_HISTORY_SCHEMA_VERSION,
+  evaluationRunRecordSchema,
+  parseEvaluationRunRecord,
+} from './evaluation-run';
+export type { EvaluationRunCase, EvaluationRunRecord, EvaluationRunTrial } from './evaluation-run';
 export { createEvaluator } from './evaluator';
 export type { CreateEvaluatorOptions, Evaluator } from './evaluator';
+export {
+  GATE_DECISIONS,
+  GATE_RECORD_SCHEMA_VERSION,
+  gateDecisionRecordSchema,
+  gateDefinitionSchema,
+  gateOverrideRecordSchema,
+  parseGateDefinition,
+} from './gate';
+export type {
+  GateDecision,
+  GateDecisionRecord,
+  GateDefinition,
+  GateEligibility,
+  GateFindings,
+  GateOverrideRecord,
+  RecordedBaseline,
+  Regression,
+  RegressionMetric,
+  RegressionSeverity,
+} from './gate';
 export { createGoalEvaluatorAdapter } from './goal-adapter';
 export type {
   CreateGoalEvaluatorAdapterOptions,
@@ -71,30 +104,26 @@ export type {
 } from './goal-adapter';
 export {
   CorruptHistoricalRecordError,
-  EVALUATION_HISTORY_SCHEMA_VERSION,
   HistoricalRecordExistsError,
   compareEvaluationRuns,
   createEvaluationHistory,
-  evaluationRunRecordSchema,
-  parseEvaluationRunRecord,
+  recordDigest,
   toEvaluationRunRecord,
 } from './history';
 export type {
   ComparedRun,
   CriterionDelta,
   EvaluationHistory,
-  EvaluationRunCase,
   EvaluationRunComparison,
-  EvaluationRunRecord,
   EvaluationRunRecordOptions,
-  EvaluationRunTrial,
   HistoricalRecord,
+  HistoryRecord,
   MetricDelta,
 } from './history';
 export { canonicalJson, evaluatorIdentity } from './identity';
 export type { EvaluatorIdentity } from './identity';
 export { JUDGE_RESPONSE_FORMAT, judgeResponseSchema, renderJudgePrompt } from './judge';
-export type { JudgePrompt } from './judge';
+export type { JudgePrompt, RecordedJudgeOutput } from './judge';
 export {
   calibrationSetSchema,
   checkJudgeDrift,
@@ -110,6 +139,8 @@ export type {
   JudgeRevision,
   JudgeUnderTest,
 } from './judge-drift';
+export { OverrideRejectedError, assessOverride, recordOverride } from './override';
+export type { AssessOverrideOptions, OverrideRejection, RecordOverrideOptions } from './override';
 export { toGeneratorProjection, toReviewerProjection } from './projections';
 export type {
   AggregateGeneratorProjection,
@@ -118,13 +149,34 @@ export type {
   ReviewerProjection,
   TrajectoryStep,
 } from './projections';
+export {
+  RELEASE_GATE_EXIT_CODES,
+  decideGate,
+  loadGateEvaluator,
+  runReleaseGate,
+  toReleaseGateReport,
+} from './release-gate';
+export type {
+  GateDecisionInputs,
+  GateDecisionOutputs,
+  GateEvaluatorDefinition,
+  GateEvaluatorLoader,
+  GateOutcome,
+  GateReport,
+  GateRunResult,
+  ReleaseGateReport,
+  RunReleaseGateOptions,
+} from './release-gate';
+export { REPLAY_EXIT_CODES, replayGateDecision } from './replay';
+export type { ReplayDifference, ReplayOptions, ReplayOutcome, ReplaySelector } from './replay';
 export { applyRubric } from './rubric';
 export type { CriterionResult, CriterionScore, HardGateOutcome, RubricResult } from './rubric';
-export { runTrials } from './trials';
+export { runTrials, scoreTrials } from './trials';
 export type {
   AggregateStatistics,
   CriterionStatistics,
   RunTrialsOptions,
+  ScoreTrialsOptions,
   TrialAggregate,
   TrialContext,
   TrialRecord,

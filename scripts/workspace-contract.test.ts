@@ -361,6 +361,10 @@ describe('internal workspace architecture', () => {
         expect(manifest.scripts?.[command], `${library}: ${command}`).toBeString();
       }
       for (const command of Object.keys(manifest.scripts ?? {})) {
+        // COR-1351: evaluation's `release-gate` is the local evaluation gate COR-896
+        // names. It decides whether evidence clears a gate; it builds, packs,
+        // publishes, and releases nothing.
+        if (library === 'evaluation' && command === 'release-gate') continue;
         expect(command).not.toMatch(/build|pack|publish|release|prepare|postinstall/);
       }
       expect(manifest.publishConfig).toBeUndefined();

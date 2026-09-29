@@ -6,6 +6,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { CriterionScorers } from './criteria';
+import type { EvaluationRunRecord } from './evaluation-run';
 import {
   datasetInput,
   deterministicConfigurationInput,
@@ -13,7 +14,7 @@ import {
   runResult,
 } from './evaluation.test-support';
 import { createEvaluator, type Evaluator } from './evaluator';
-import { type EvaluationRunRecord, toEvaluationRunRecord } from './history';
+import { toEvaluationRunRecord } from './history';
 import { runTrials, type TrialAggregate } from './trials';
 
 /**

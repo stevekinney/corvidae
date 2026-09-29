@@ -4,7 +4,9 @@ import { createScriptedGenerate } from '@lostgradient/operative';
 
 import {
   calibrationRecordSchema,
+  driftCheckRecordSchema,
   isGateEligibleJudge,
+  judgeEligibility,
   parseCalibrationRecord,
 } from './calibration';
 import { EvaluatorConfigurationError, parseEvaluatorConfiguration } from './configuration';
@@ -149,5 +151,42 @@ describe('isGateEligibleJudge', () => {
         calibrationRecords: [calibrationRecord(stable)],
       }),
     ).toBe(false);
+  });
+});
+
+describe('judgeEligibility', () => {
+  test('reports calibration and drift checking separately for one revision', async () => {
+    const stable = await digestOf(stableRevision);
+    const passed = { judgeRevision: stable, outcome: 'passed' as const };
+    const calibrated = [calibrationRecord(stable)];
+
+    expect(
+      judgeEligibility({ judgeRevision: stable, driftChecks: [passed], calibrationRecords: [] }),
+    ).toEqual({ calibrated: false, driftChecked: true });
+    expect(
+      judgeEligibility({ judgeRevision: stable, driftChecks: [], calibrationRecords: calibrated }),
+    ).toEqual({ calibrated: true, driftChecked: false });
+    expect(
+      judgeEligibility({
+        judgeRevision: stable,
+        driftChecks: [passed],
+        calibrationRecords: calibrated,
+      }),
+    ).toEqual({ calibrated: true, driftChecked: true });
+  });
+
+  test('accepts a drift check recorded as its revision and outcome alone', async () => {
+    const stable = await digestOf(stableRevision);
+    const full = await driftCheck(stableRevision);
+    expect(driftCheckRecordSchema.parse(full)).toEqual({
+      judgeRevision: stable,
+      outcome: 'passed',
+    });
+    expect(() =>
+      driftCheckRecordSchema.parse({ judgeRevision: 'abc', outcome: 'passed' }),
+    ).toThrow();
+    expect(() =>
+      driftCheckRecordSchema.parse({ judgeRevision: stable, outcome: 'unknown' }),
+    ).toThrow();
   });
 });

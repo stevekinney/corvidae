@@ -1,9 +1,11 @@
 /**
  * Append-only evaluation history (COR-896, "audit record"). Every evaluation
- * run is kept as one immutable `evaluation-run` record in a weft
- * `TextValueStore`: `BunSQLiteStorage` for the local file the `history`
- * command reads, `MemoryStorage` in tests. The store is the durable audit
- * record itself, so a local command never needs a running bureau.
+ * run, release-gate decision, and gate override is kept as one immutable
+ * record (`evaluation-run`, `gate-decision`, or `gate-override`) in a weft
+ * `TextValueStore`: `BunSQLiteStorage` for the local file the `history`,
+ * `release-gate`, and `replay` commands share, `MemoryStorage` in tests. The
+ * store is the durable audit record itself, so a local command never needs a
+ * running bureau.
  *
  * Records are never rewritten. {@link createEvaluationHistory} exposes only
  * `append`, `read`, and `list`; `append` commits with a compare-and-swap that
@@ -16,215 +18,80 @@
  * `{ digest, record }`, where `digest` is the SHA-256 of the record's own
  * canonical JSON. Canonical JSON has exactly one spelling per value, so
  * `read` can hold a row to it byte for byte: a row that is not valid UTF-8,
- * does not parse, is not canonical, does not match the record schema, is
+ * does not parse, is not canonical, does not match a record schema, is
  * stored under another id, or does not match its digest is rejected with
  * {@link CorruptHistoricalRecordError}. Changing any single byte of a row
  * therefore always makes it unreadable rather than silently different.
  *
- * A record is built from `runTrials` aggregates by
+ * An `evaluation-run` record is built from `runTrials` aggregates by
  * {@link toEvaluationRunRecord}, which keeps the evidence a later comparison
- * or gate needs and drops everything that could leak a held-out case: a
- * held-out case is recorded by its ordinal in the dataset version, never by
- * its id, and no expected answer, run content, feedback, judge rationale, or
- * error message (any of which may quote one) is stored. The schema enforces
- * the id rule, so no record can carry a held-out id however it was built.
+ * or gate needs and drops everything that could leak a held-out case (see
+ * `evaluation-run.ts`). Gate records are defined in `gate.ts`.
  */
 import { sha256Hex } from '@lostgradient/cryptography';
-import type { TokenUsage } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { EvaluatorConfigurationError, toConfigurationIssues } from './configuration';
+import type { CaseVisibility } from './datasets';
+import type { AggregateOutcome } from './disagreement';
 import {
-  codeRevisionSchema,
-  EvaluatorConfigurationError,
-  identifier,
-  toConfigurationIssues,
-  unitInterval,
-} from './configuration';
-import { CASE_VISIBILITIES, type CaseVisibility } from './datasets';
-import { type AggregateOutcome, DISAGREEMENT_REASONS } from './disagreement';
+  digestSchema,
+  EVALUATION_HISTORY_SCHEMA_VERSION,
+  type EvaluationRunCase,
+  type EvaluationRunRecord,
+  evaluationRunRecordSchema,
+  type EvaluationRunTrial,
+  parseEvaluationRunRecord,
+  toRecordedUsage,
+} from './evaluation-run';
 import type { Evaluator } from './evaluator';
+import {
+  type GateDecisionRecord,
+  gateDecisionRecordSchema,
+  type GateOverrideRecord,
+  gateOverrideRecordSchema,
+} from './gate';
 import { canonicalJson, type EvaluatorIdentity } from './identity';
-import type { HardGateOutcome } from './rubric';
 import {
   type AggregateStatistics,
   aggregateStatistics,
   type TrialAggregate,
   type TrialRecord,
 } from './trials';
-import { variancePolicySchema } from './variance';
-import { AGENT_FAILURE_REASONS, type CaseVerdict, INFRASTRUCTURE_FAILURE_REASONS } from './verdict';
-
-/** The version of the {@link EvaluationRunRecord} shape this package writes. */
-export const EVALUATION_HISTORY_SCHEMA_VERSION = 1;
 
 const RECORD_KEY_PREFIX = 'evaluation-history/records/';
 
-const CASE_VERDICTS = [
-  'pass',
-  'fail',
-  'agent-failed',
-  'infrastructure-failure',
-] as const satisfies readonly CaseVerdict[];
-const HARD_GATE_OUTCOMES = [
-  'passed',
-  'failed',
-  'not-applicable',
-] as const satisfies readonly HardGateOutcome[];
-const AGGREGATE_OUTCOMES = [
-  'pass',
-  'fail',
-  'disagreement',
-  'indeterminate',
-] as const satisfies readonly AggregateOutcome[];
+/** Every kind of record the history keeps, told apart by `kind`. */
+const historyRecordSchema = z.discriminatedUnion('kind', [
+  evaluationRunRecordSchema,
+  gateDecisionRecordSchema,
+  gateOverrideRecordSchema,
+]);
 
-const count = z.number().int().min(0);
-const nonNegative = z.number().min(0);
-const digestSchema = z.string().regex(/^[0-9a-f]{64}$/, 'Expected a SHA-256 digest');
-
-/** A record id is a plain identifier, so it is always a safe storage key and command argument. */
-const historicalRecordIdSchema = z
-  .string()
-  .regex(
-    /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/,
-    'Expected 1 to 128 letters, digits, dots, underscores, or hyphens, starting with a letter or digit',
-  );
-
-const trialStatisticsFields = {
-  trials: count,
-  passes: count,
-  passFraction: unitInterval.nullable(),
-  wilsonInterval: z
-    .strictObject({ lower: unitInterval, upper: unitInterval, width: unitInterval })
-    .nullable(),
-};
-
-const statisticsSchema = z.strictObject({
-  verdicts: z.strictObject(trialStatisticsFields),
-  criteria: z.array(
-    z.strictObject({
-      name: identifier,
-      ...trialStatisticsFields,
-      meanScore: unitInterval.nullable(),
-      sampleVariance: nonNegative.nullable(),
-      standardDeviation: nonNegative.nullable(),
-    }),
-  ),
-});
-
-const trialSchema = z.strictObject({
-  trial: z.number().int().positive(),
-  seed: z.number().int().min(0).max(0xffff_ffff),
-  verdict: z.enum(CASE_VERDICTS),
-  finishReason: z.enum(['stop-condition', ...AGENT_FAILURE_REASONS]).optional(),
-  usage: z
-    .strictObject({
-      prompt: nonNegative,
-      completion: nonNegative,
-      total: nonNegative,
-      cacheCreationTokens: nonNegative.optional(),
-      cacheReadTokens: nonNegative.optional(),
-    })
-    .optional(),
-  costUsd: nonNegative.optional(),
-  /** Scores only: a judge's rationale may quote the expected answer. */
-  scores: z.array(
-    z.strictObject({
-      name: identifier,
-      score: unitInterval,
-      hardGate: z.enum(HARD_GATE_OUTCOMES),
-    }),
-  ),
-  weightedTotal: unitInterval.optional(),
-  /** The typed reason only: an error's message may name the case. */
-  error: z
-    .strictObject({
-      reason: z.enum(INFRASTRUCTURE_FAILURE_REASONS),
-      criterion: identifier.optional(),
-    })
-    .optional(),
-});
-
-const caseSchema = z
-  .strictObject({
-    /** The case's 1-based position in the dataset version. */
-    ordinal: z.number().int().positive(),
-    visibility: z.enum(CASE_VISIBILITIES),
-    /** Present exactly when the case is public. */
-    caseId: identifier.optional(),
-    outcome: z.enum(AGGREGATE_OUTCOMES),
-    disagreementReasons: z.array(z.enum(DISAGREEMENT_REASONS)).optional(),
-    statistics: statisticsSchema,
-    trials: z.array(trialSchema).min(1),
-  })
-  .superRefine((entry, context) => {
-    if (entry.visibility === 'held-out' && entry.caseId !== undefined) {
-      context.addIssue({
-        code: 'custom',
-        path: ['caseId'],
-        message: 'A held-out case is recorded by ordinal, never by id',
-      });
-    }
-    if (entry.visibility === 'public' && entry.caseId === undefined) {
-      context.addIssue({
-        code: 'custom',
-        path: ['caseId'],
-        message: 'A public case is recorded with its id',
-      });
-    }
-  });
-
-export const evaluationRunRecordSchema = z.strictObject({
-  kind: z.literal('evaluation-run'),
-  schemaVersion: z.literal(EVALUATION_HISTORY_SCHEMA_VERSION),
-  id: historicalRecordIdSchema,
-  recordedAt: z.iso.datetime({ offset: true }),
-  evaluator: z.strictObject({
-    name: identifier,
-    revision: z.number().int().positive(),
-    digest: digestSchema,
-  }),
-  resultSchemaVersion: z.number().int().positive(),
-  dataset: z.strictObject({ id: identifier, version: identifier }),
-  codeRevision: codeRevisionSchema,
-  repetitions: z.number().int().min(1),
-  variancePolicy: variancePolicySchema.nullable(),
-  /** How many cases ended in each aggregate outcome. */
-  outcomes: z.strictObject({
-    pass: count,
-    fail: count,
-    disagreement: count,
-    indeterminate: count,
-  }),
-  /** Verdict and per-criterion statistics pooled over every trial of every case. */
-  statistics: statisticsSchema,
-  /** The summed cost estimate of every trial; `null` when any trial has none. */
-  costUsd: nonNegative.nullable(),
-  latencyMilliseconds: nonNegative,
-  /** In dataset order. */
-  cases: z.array(caseSchema).min(1),
-});
-
-export type EvaluationRunRecord = z.output<typeof evaluationRunRecordSchema>;
-export type EvaluationRunCase = EvaluationRunRecord['cases'][number];
-export type EvaluationRunTrial = EvaluationRunCase['trials'][number];
+export type HistoryRecord = EvaluationRunRecord | GateDecisionRecord | GateOverrideRecord;
 
 const historicalRecordSchema = z.strictObject({
   digest: digestSchema,
-  record: evaluationRunRecordSchema,
+  record: historyRecordSchema,
 });
 
 /** A stored record and the SHA-256 of its canonical JSON. */
-export interface HistoricalRecord {
+export interface HistoricalRecord<R extends HistoryRecord = HistoryRecord> {
   readonly digest: string;
-  readonly record: EvaluationRunRecord;
+  readonly record: R;
 }
 
-/** Parses an evaluation-run record, throwing {@link EvaluatorConfigurationError} on any issue. */
-export function parseEvaluationRunRecord(input: unknown): EvaluationRunRecord {
-  const parsed = evaluationRunRecordSchema.safeParse(input);
+/** Parses any record the history keeps, throwing {@link EvaluatorConfigurationError} on any issue. */
+function parseHistoryRecord(input: HistoryRecord): HistoryRecord {
+  const parsed = historyRecordSchema.safeParse(input);
   if (!parsed.success) throw new EvaluatorConfigurationError(toConfigurationIssues(parsed.error));
   return parsed.data;
+}
+
+/** The SHA-256 of a record's canonical JSON: the digest the history stores it under. */
+export function recordDigest(record: HistoryRecord): Promise<string> {
+  return sha256Hex(canonicalJson(record));
 }
 
 /** A record with this id is already in the history, which is append-only. */
@@ -251,15 +118,11 @@ export class CorruptHistoricalRecordError extends Error {
 
 export interface EvaluationHistory {
   /** Stores a new record. Rejects with {@link HistoricalRecordExistsError} when the id is taken. */
-  append(record: EvaluationRunRecord): Promise<HistoricalRecord>;
+  append<R extends HistoryRecord>(record: R): Promise<HistoricalRecord<R>>;
   /** The verified record, or `undefined` when no record has this id. */
   read(id: string): Promise<HistoricalRecord | undefined>;
   /** Every verified record, oldest first. Rejects if any record is corrupt. */
   list(): Promise<HistoricalRecord[]>;
-}
-
-function digestOf(record: EvaluationRunRecord): Promise<string> {
-  return sha256Hex(canonicalJson(record));
 }
 
 async function verify(id: string, text: string): Promise<HistoricalRecord> {
@@ -278,14 +141,14 @@ async function verify(id: string, text: string): Promise<HistoricalRecord> {
   if (!envelope.success) {
     throw new CorruptHistoricalRecordError(
       id,
-      `does not match the evaluation-run record schema: ${z.prettifyError(envelope.error)}`,
+      `does not match any history record schema: ${z.prettifyError(envelope.error)}`,
     );
   }
   const { digest, record } = envelope.data;
   if (record.id !== id) {
     throw new CorruptHistoricalRecordError(id, `names "${record.id}" but is stored under "${id}"`);
   }
-  if ((await digestOf(record)) !== digest) {
+  if ((await recordDigest(record)) !== digest) {
     throw new CorruptHistoricalRecordError(id, 'does not match its digest');
   }
   return envelope.data;
@@ -316,9 +179,10 @@ export function createEvaluationHistory(store: ConditionalTextValueStore): Evalu
     return text === null ? undefined : verify(id, text);
   }
 
-  async function append(input: EvaluationRunRecord): Promise<HistoricalRecord> {
-    const record = parseEvaluationRunRecord(input);
-    const historical: HistoricalRecord = { digest: await digestOf(record), record };
+  async function append<R extends HistoryRecord>(input: R): Promise<HistoricalRecord<R>> {
+    // Parsing returns the same kind of record it was given.
+    const record = parseHistoryRecord(input) as R;
+    const historical: HistoricalRecord<R> = { digest: await recordDigest(record), record };
     const key = `${RECORD_KEY_PREFIX}${record.id}`;
     const committed = await store.conditionalBatch(
       [{ key, expectedValue: null }],
@@ -353,17 +217,6 @@ export interface EvaluationRunRecordOptions {
   readonly latencyMilliseconds: number;
 }
 
-function toUsage(usage: TokenUsage): NonNullable<EvaluationRunTrial['usage']> {
-  const { cacheCreationTokens, cacheReadTokens } = usage;
-  return {
-    prompt: usage.prompt,
-    completion: usage.completion,
-    total: usage.total,
-    ...(cacheCreationTokens === undefined ? {} : { cacheCreationTokens }),
-    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
-  };
-}
-
 function toRunTrial(trial: TrialRecord): EvaluationRunTrial {
   const { finishReason, usage, costEstimate, weightedTotal, error } = trial;
   return {
@@ -371,7 +224,7 @@ function toRunTrial(trial: TrialRecord): EvaluationRunTrial {
     seed: trial.seed,
     verdict: trial.verdict,
     ...(finishReason === undefined ? {} : { finishReason }),
-    ...(usage === undefined ? {} : { usage: toUsage(usage) }),
+    ...(usage === undefined ? {} : { usage: toRecordedUsage(usage) }),
     ...(costEstimate === undefined ? {} : { costUsd: costEstimate.totalCost }),
     scores: trial.criteria.map(({ name, score, hardGate }) => ({ name, score, hardGate })),
     ...(weightedTotal === undefined ? {} : { weightedTotal }),
@@ -459,7 +312,7 @@ function placeAggregates(
  * Builds the `evaluation-run` record for one run of `evaluator` over the
  * cases in `aggregates`. Throws a `RangeError` for an aggregate from another
  * evaluator, a case outside the evaluator's dataset, or a case aggregated
- * twice, and {@link EvaluatorConfigurationError} for an invalid id,
+ * twice, and `EvaluatorConfigurationError` for an invalid id,
  * timestamp, or latency.
  */
 export function toEvaluationRunRecord(options: EvaluationRunRecordOptions): EvaluationRunRecord {
@@ -542,7 +395,7 @@ function metricDelta(
   };
 }
 
-function comparedRun({ digest, record }: HistoricalRecord): ComparedRun {
+function comparedRun({ digest, record }: HistoricalRecord<EvaluationRunRecord>): ComparedRun {
   return {
     id: record.id,
     digest,
@@ -559,8 +412,8 @@ function comparedRun({ digest, record }: HistoricalRecord): ComparedRun {
  * lacks has a `null` delta, never `0`.
  */
 export function compareEvaluationRuns(
-  baseline: HistoricalRecord,
-  candidate: HistoricalRecord,
+  baseline: HistoricalRecord<EvaluationRunRecord>,
+  candidate: HistoricalRecord<EvaluationRunRecord>,
 ): EvaluationRunComparison {
   const before = new Map(baseline.record.statistics.criteria.map((entry) => [entry.name, entry]));
   const after = new Map(candidate.record.statistics.criteria.map((entry) => [entry.name, entry]));

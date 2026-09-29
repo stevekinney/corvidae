@@ -6,13 +6,16 @@ import { join } from 'node:path';
 
 import { BunSQLiteStorage, textValueStore } from '@lostgradient/weft';
 
+import type { EvaluationRunRecord } from '../src/evaluation-run';
 import baselineFixture from '../src/fixtures/history/baseline-run.json';
 import candidateFixture from '../src/fixtures/history/candidate-run.json';
+import { createEvaluationHistory, type HistoricalRecord } from '../src/history';
+import { runReleaseGate } from '../src/release-gate';
 import {
-  createEvaluationHistory,
-  type EvaluationRunRecord,
-  type HistoricalRecord,
-} from '../src/history';
+  COMMITTED_GATES_DIRECTORY,
+  FIXTURE_GATE_ID,
+  GATE_ACTOR,
+} from '../src/release-gate.test-support';
 import { DEFAULT_HISTORY_STORE, runHistoryCommand } from './history';
 
 const PACKAGE_DIRECTORY = join(import.meta.dir, '..');
@@ -281,6 +284,76 @@ describe('runHistoryCommand', () => {
     const compared = await runInProcess('compare', BASELINE.id, CANDIDATE.id, '--store', storePath);
     expect(compared.exitCode).toBe(65);
     expect(compared.stderr).toContain(`Historical record "${BASELINE.id}"`);
+  });
+
+  test('lists gate decisions and overrides beside runs, and compares only evaluation runs', async () => {
+    const [baseline] = await seed(BASELINE);
+    const store = textValueStore(new BunSQLiteStorage(storePath));
+    let decisionId: string;
+    try {
+      const history = createEvaluationHistory(store);
+      const result = await runReleaseGate({
+        gatesDirectory: COMMITTED_GATES_DIRECTORY,
+        gateId: FIXTURE_GATE_ID,
+        history,
+        actor: GATE_ACTOR,
+        now: () => Date.parse('2026-09-28T14:00:00.000Z'),
+      });
+      decisionId = result.decision === 'configuration-error' ? '' : result.historical.record.id;
+      await history.append({
+        kind: 'gate-override',
+        schemaVersion: 1,
+        id: 'override-permanent',
+        recordedAt: '2026-09-28T15:00:00.000Z',
+        gateId: FIXTURE_GATE_ID,
+        gateDecisionId: decisionId,
+        actor: 'release-manager',
+        reason: 'Rebaseline.',
+        permanentBaselineChange: true,
+        evidence: ['https://example.test/review/7'],
+      });
+    } finally {
+      await store.close();
+    }
+
+    const listed = await runInProcess('list', '--store', storePath);
+    expect(listed.exitCode).toBe(0);
+    const summaries = listed.stdout
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(summaries).toEqual([
+      expect.objectContaining({
+        id: BASELINE.id,
+        kind: 'evaluation-run',
+        digest: baseline!.digest,
+      }),
+      expect.objectContaining({
+        id: decisionId,
+        kind: 'gate-decision',
+        gateId: FIXTURE_GATE_ID,
+        decision: 'pass',
+        actor: GATE_ACTOR,
+        dataset: { id: 'capitals', version: 'capitals-2026-09' },
+      }),
+      expect.objectContaining({
+        id: 'override-permanent',
+        kind: 'gate-override',
+        gateDecisionId: decisionId,
+        expiresAt: null,
+        permanentBaselineChange: true,
+      }),
+    ]);
+
+    for (const args of [
+      [decisionId, BASELINE.id],
+      [BASELINE.id, 'override-permanent'],
+    ]) {
+      const compared = await runInProcess('compare', ...args, '--store', storePath);
+      expect(compared.exitCode).toBe(64);
+      expect(compared.stdout).toBe('');
+      expect(compared.stderr).toContain('record; compare takes two evaluation runs');
+    }
   });
 
   test('propagates a failure that is neither a usage error nor corruption', async () => {

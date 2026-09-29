@@ -43,24 +43,49 @@ export function parseCalibrationRecord(input: unknown): CalibrationRecord {
   return parsed.data;
 }
 
+/**
+ * What eligibility reads from a {@link JudgeDriftCheck}: the revision it
+ * checked and its outcome. A full drift check parses to this, and a gate can
+ * cite a drift check recorded earlier by these two facts alone.
+ */
+export const driftCheckRecordSchema = z.object({
+  judgeRevision: z.string().regex(/^[0-9a-f]{64}$/, 'Expected a judge revision digest'),
+  outcome: z.enum(['passed', 'drifted', 'indeterminate']),
+});
+
+export type DriftCheckRecord = Pick<JudgeDriftCheck, 'judgeRevision' | 'outcome'>;
+
 export interface GateEligibleJudgeOptions {
   /** The `JudgeRevision.digest` that would back the gate. */
   readonly judgeRevision: string;
-  readonly driftChecks: readonly JudgeDriftCheck[];
-  readonly calibrationRecords: readonly CalibrationRecord[];
+  readonly driftChecks: readonly DriftCheckRecord[];
+  readonly calibrationRecords: readonly Pick<CalibrationRecord, 'judgeRevision'>[];
 }
 
-/**
- * True only when this exact revision has a calibration record, at least one
- * passing drift check, and no drift check that found drift. An
- * indeterminate drift check is neither evidence for nor against it.
- */
-export function isGateEligibleJudge(options: GateEligibleJudgeOptions): boolean {
+/** The two facts gate eligibility needs about one judge revision. */
+export interface JudgeEligibility {
+  /** A human calibration record exists for this exact revision. */
+  readonly calibrated: boolean;
+  /**
+   * At least one drift check of this exact revision passed and none found
+   * drift. An indeterminate drift check is neither evidence for nor against it.
+   */
+  readonly driftChecked: boolean;
+}
+
+export function judgeEligibility(options: GateEligibleJudgeOptions): JudgeEligibility {
   const { judgeRevision } = options;
   const checks = options.driftChecks.filter((check) => check.judgeRevision === judgeRevision);
-  return (
-    checks.some((check) => check.outcome === 'passed') &&
-    !checks.some((check) => check.outcome === 'drifted') &&
-    options.calibrationRecords.some((record) => record.judgeRevision === judgeRevision)
-  );
+  return {
+    calibrated: options.calibrationRecords.some((record) => record.judgeRevision === judgeRevision),
+    driftChecked:
+      checks.some((check) => check.outcome === 'passed') &&
+      !checks.some((check) => check.outcome === 'drifted'),
+  };
+}
+
+/** True only when this exact revision is both calibrated and drift-checked. */
+export function isGateEligibleJudge(options: GateEligibleJudgeOptions): boolean {
+  const { calibrated, driftChecked } = judgeEligibility(options);
+  return calibrated && driftChecked;
 }

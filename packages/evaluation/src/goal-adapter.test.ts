@@ -10,6 +10,7 @@ import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { EvaluatorConfigurationError } from './configuration';
 import type { CriterionScorers } from './criteria';
 import type { AggregateOutcome } from './disagreement';
+import type { EvaluationRunRecord } from './evaluation-run';
 import {
   datasetInput,
   deterministicConfigurationInput,
@@ -26,7 +27,7 @@ import {
   type GoalEvaluatorConfiguration,
   type GoalEvaluatorVerdict,
 } from './goal-adapter';
-import { createEvaluationHistory, type EvaluationHistory } from './history';
+import { createEvaluationHistory, type EvaluationHistory, type HistoricalRecord } from './history';
 import { EvaluatorInfrastructureError } from './verdict';
 
 /** Every fixture's evaluator runs this many trials per attempt. */
@@ -36,6 +37,14 @@ type VerdictKind = GoalEvaluatorVerdict['kind'];
 
 function memoryHistory(): EvaluationHistory {
   return createEvaluationHistory(textValueStore(new MemoryStorage()));
+}
+
+/** The adapter appends only `evaluation-run` records, so any other stored record fails the test. */
+function evaluationRun(stored: HistoricalRecord | undefined): EvaluationRunRecord {
+  if (stored?.record.kind !== 'evaluation-run') {
+    throw new Error(`Expected a stored evaluation-run record, found ${stored?.record.kind}`);
+  }
+  return stored.record;
 }
 
 function manualRuntime() {
@@ -227,7 +236,7 @@ describe('createGoalEvaluatorAdapter', () => {
       expect(scored).toBe(result);
     }
     const [stored] = await history.list();
-    const [trials] = stored!.record.cases.map((entry) => entry.trials);
+    const [trials] = evaluationRun(stored).cases.map((entry) => entry.trials);
     expect(trials?.map((trial) => [trial.verdict, trial.error?.reason])).toEqual([
       ['infrastructure-failure', 'scorer-error'],
       ['infrastructure-failure', 'scorer-error'],
@@ -260,11 +269,11 @@ describe('createGoalEvaluatorAdapter', () => {
       }
 
       const stored = await history.read(verdict.evidenceReference);
+      const record = evaluationRun(stored);
 
-      expect(stored?.record.kind).toBe('evaluation-run');
-      expect(stored?.record.id).toBe(verdict.evidenceReference);
-      expect(stored?.record.repetitions).toBe(REPETITIONS);
-      expect(stored?.record.cases.map((entry) => entry.outcome)).toEqual([RECORDED_OUTCOMES[kind]]);
+      expect(record.id).toBe(verdict.evidenceReference);
+      expect(record.repetitions).toBe(REPETITIONS);
+      expect(record.cases.map((entry) => entry.outcome)).toEqual([RECORDED_OUTCOMES[kind]]);
       expect(await history.list()).toEqual([stored!]);
     },
   );
@@ -277,7 +286,7 @@ describe('createGoalEvaluatorAdapter', () => {
     expect(verdict).toMatchObject({ kind: 'pass', evidenceReference: expectedId });
     const stored = await history.read(expectedId);
     expect(stored?.record.recordedAt).toBe(runtime.clock.nowISO());
-    expect(stored?.record.latencyMilliseconds).toBe(0);
+    expect(evaluationRun(stored).latencyMilliseconds).toBe(0);
   });
 
   test('uses the real runtime services when none are injected', async () => {

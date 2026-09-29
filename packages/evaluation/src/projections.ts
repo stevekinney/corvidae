@@ -15,6 +15,11 @@
  *   every reference material text, and every calibration example response,
  *   because a model judge's feedback may quote them verbatim.
  *
+ * {@link toReviewerRunProjection} is the run part of the reviewer projection
+ * on its own. A release gate records it for every trial as the evidence a
+ * replay re-scores, and {@link fromReviewerRunProjection} rebuilds a run from
+ * it that projects back to exactly the same JSON.
+ *
  * A {@link TrialAggregate} is itself reviewer material: it keeps the case id,
  * every trial's unredacted feedback, and the typed errors. Its generator
  * projection is built from counts and criterion names alone, so no case id,
@@ -25,8 +30,10 @@ import type {
   FinishReason,
   JSONValue,
   RunResultBase,
+  StepResult,
   TokenUsage,
 } from '@lostgradient/operative';
+import { Conversation } from 'conversationalist';
 
 import type { EvaluatorConfiguration } from './configuration';
 import type { EvaluationCase } from './datasets';
@@ -221,7 +228,8 @@ function projectTrajectory(result: RunResultBase): TrajectoryStep[] {
   }));
 }
 
-function projectRun(result: RunResultBase): ReviewerProjection['run'] {
+/** The run facts of the reviewer projection: plain JSON a gate can record and a replay can rebuild from. */
+export function toReviewerRunProjection(result: RunResultBase): ReviewerProjection['run'] {
   const { schemaValidation } = result;
   return {
     finishReason: result.finishReason,
@@ -267,7 +275,63 @@ export function toReviewerProjection(evaluation: CaseEvaluation): ReviewerProjec
     evaluator: evaluation.evaluator,
     configuration: evaluation.configuration,
     case: evaluation.evaluationCase,
-    run: projectRun(evaluation.run),
+    run: toReviewerRunProjection(evaluation.run),
     ...verdictFacts(evaluation),
+  };
+}
+
+function rebuildError(description: ErrorDescription): Error {
+  const error = new Error(description.message);
+  error.name = description.name;
+  return error;
+}
+
+/**
+ * A run rebuilt from its reviewer projection, for scorers to re-score. It
+ * carries exactly what the projection kept: the finish reason, the final
+ * content, usage, cost, terminal error, schema validation, and every step's
+ * content, tool calls, and tool results. Its conversation is empty, because
+ * the projection never keeps one.
+ */
+export function fromReviewerRunProjection(run: ReviewerProjection['run']): RunResultBase {
+  const conversation = new Conversation();
+  const steps = run.trajectory.map((step, index): StepResult => ({
+    step: step.step,
+    conversation,
+    content: step.content,
+    toolCalls: step.toolCalls.map(({ id, name, arguments: input }) => ({
+      id,
+      name,
+      arguments: input,
+    })),
+    results: step.results.map(({ toolCallId, toolName, outcome, content }) => ({
+      callId: toolCallId,
+      toolCallId,
+      toolName,
+      outcome: outcome as StepResult['results'][number]['outcome'],
+      content,
+      result: content,
+    })),
+    final: index === run.trajectory.length - 1,
+  }));
+  const { error, costEstimate, schemaValidation } = run;
+  return {
+    conversation,
+    steps,
+    content: run.content,
+    usage: { ...run.usage },
+    finishReason: run.finishReason,
+    ...(error === undefined ? {} : { error: rebuildError(error) }),
+    ...(costEstimate === undefined ? {} : { costEstimate }),
+    ...(schemaValidation === undefined
+      ? {}
+      : {
+          schemaValidation: {
+            success: schemaValidation.success,
+            ...(schemaValidation.error === undefined
+              ? {}
+              : { error: rebuildError(schemaValidation.error) }),
+          },
+        }),
   };
 }

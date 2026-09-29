@@ -10,6 +10,8 @@
     "history": "bun scripts/history.ts",
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "release-gate": "bun scripts/release-gate.ts",
+    "replay": "bun scripts/replay.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov"

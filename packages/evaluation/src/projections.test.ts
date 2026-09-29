@@ -8,6 +8,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { CriterionScorers } from './criteria';
+import { toolCallNames } from './criteria';
 import {
   CALIBRATION_RESPONSE,
   datasetInput,
@@ -19,7 +20,12 @@ import {
   STYLE_GUIDE_TEXT,
 } from './evaluation.test-support';
 import { createEvaluator } from './evaluator';
-import { toGeneratorProjection, toReviewerProjection } from './projections';
+import {
+  fromReviewerRunProjection,
+  toGeneratorProjection,
+  toReviewerProjection,
+  toReviewerRunProjection,
+} from './projections';
 import { runTrials, type TrialAggregate } from './trials';
 import type { CaseEvaluation } from './verdict';
 
@@ -306,5 +312,52 @@ describe('toReviewerProjection', () => {
     const result: RunResultBase = { ...runResult(), schemaValidation: { success: true } };
     const projection = toReviewerProjection(await evaluate(result));
     expect(projection.run.schemaValidation).toEqual({ success: true });
+  });
+});
+
+describe('fromReviewerRunProjection', () => {
+  test('rebuilds a run whose reviewer projection is the one it was rebuilt from', () => {
+    const result: RunResultBase = {
+      ...runResult({
+        content: 'Paris.',
+        finishReason: 'error',
+        error: new TypeError('provider exploded'),
+        toolCalls: [{ name: 'lookup', arguments: { country: 'France' } }, { name: 'atlas' }],
+      }),
+      costEstimate: {
+        promptCost: 0.01,
+        completionCost: 0.02,
+        cacheWriteCost: 0,
+        cacheReadCost: 0,
+        totalCost: 0.03,
+        model: 'claude-sonnet-4-5',
+        usage: { prompt: 12, completion: 8, total: 20 },
+      },
+      schemaValidation: { success: false, error: 'not an object' },
+    };
+    const projected = toReviewerRunProjection(result);
+
+    const rebuilt = fromReviewerRunProjection(JSON.parse(JSON.stringify(projected)));
+
+    expect(toReviewerRunProjection(rebuilt)).toEqual(projected);
+    expect(rebuilt.content).toBe('Paris.');
+    expect(toolCallNames(rebuilt)).toEqual(['lookup', 'atlas']);
+    expect(rebuilt.steps.map((step) => step.final)).toEqual([false, false, true]);
+    expect(rebuilt.error).toBeInstanceOf(Error);
+    expect(rebuilt.error).toMatchObject({ name: 'TypeError', message: 'provider exploded' });
+  });
+
+  test('rebuilds a plain finished run without an error, a cost, or a schema validation', () => {
+    const projected = toReviewerRunProjection(runResult());
+    const rebuilt = fromReviewerRunProjection(projected);
+    expect(rebuilt).not.toHaveProperty('error');
+    expect(rebuilt).not.toHaveProperty('costEstimate');
+    expect(rebuilt).not.toHaveProperty('schemaValidation');
+    expect(toReviewerRunProjection(rebuilt)).toEqual(projected);
+    expect(
+      toReviewerRunProjection(
+        fromReviewerRunProjection({ ...projected, schemaValidation: { success: true } }),
+      ).schemaValidation,
+    ).toEqual({ success: true });
   });
 });

@@ -6,9 +6,12 @@
  *   bun run --cwd packages/evaluation history compare <baselineId> <candidateId> [--store <path>]
  *
  * Output on stdout is JSON: one line per record for `list`, one document for
- * `show` and `compare`. Diagnostics go to stderr, and the exit code is the
- * authoritative result: 0 success, 64 a usage error or an unknown record, 65
- * a corrupt record. The command never writes a record, and a store file that
+ * `show` and `compare`. `list` shows every kind of record the history keeps
+ * (evaluation runs, gate decisions, and gate overrides); `compare` takes two
+ * evaluation runs. Diagnostics go to stderr, and the exit code is the
+ * authoritative result: 0 success, 64 a usage error, an unknown record, or a
+ * comparison of something other than two evaluation runs, 65 a corrupt
+ * record. The command never writes a record, and a store file that
  * does not exist yet reads as an empty history rather than being created.
  */
 import { existsSync } from 'node:fs';
@@ -22,6 +25,7 @@ import {
   textValueStore,
 } from '@lostgradient/weft';
 
+import type { EvaluationRunRecord } from '../src/evaluation-run';
 import {
   compareEvaluationRuns,
   CorruptHistoricalRecordError,
@@ -54,7 +58,8 @@ Commands:
 Options:
   --store <path>   The SQLite history file (default: packages/evaluation/.cache/evaluation-history.sqlite).
 
-Exit codes: 0 success, 64 usage error or unknown record, 65 corrupt record.
+Exit codes: 0 success, 64 usage error, unknown record, or a record that is not an
+evaluation run given to compare, 65 corrupt record.
 `;
 
 interface Writable {
@@ -104,17 +109,43 @@ function openStore(path: string): ConditionalTextValueStore {
 
 /** The one-line summary `list` prints for a record. */
 function summarize({ digest, record }: HistoricalRecord): Record<string, unknown> {
-  return {
-    id: record.id,
-    kind: record.kind,
-    recordedAt: record.recordedAt,
-    digest,
-    evaluator: record.evaluator,
-    dataset: record.dataset,
-    codeRevision: record.codeRevision,
-    outcomes: record.outcomes,
-    passFraction: record.statistics.verdicts.passFraction,
-  };
+  const common = { id: record.id, kind: record.kind, recordedAt: record.recordedAt, digest };
+  switch (record.kind) {
+    case 'evaluation-run':
+      return {
+        ...common,
+        evaluator: record.evaluator,
+        dataset: record.dataset,
+        codeRevision: record.codeRevision,
+        outcomes: record.outcomes,
+        passFraction: record.statistics.verdicts.passFraction,
+      };
+    case 'gate-decision':
+      return {
+        ...common,
+        gateId: record.gateId,
+        decision: record.decision,
+        actor: record.actor,
+        evaluator: record.candidate.evaluator,
+        dataset: record.candidate.dataset,
+        codeRevision: record.candidate.codeRevision,
+      };
+    case 'gate-override':
+      return {
+        ...common,
+        gateId: record.gateId,
+        gateDecisionId: record.gateDecisionId,
+        actor: record.actor,
+        expiresAt: record.expiresAt ?? null,
+        permanentBaselineChange: record.permanentBaselineChange,
+      };
+  }
+}
+
+function isEvaluationRun(
+  historical: HistoricalRecord,
+): historical is HistoricalRecord<EvaluationRunRecord> {
+  return historical.record.kind === 'evaluation-run';
 }
 
 async function execute(
@@ -124,6 +155,12 @@ async function execute(
 ): Promise<number> {
   const unknown = (id: string): number => {
     output.stderr.write(`No historical record "${id}" in ${invocation.store}\n`);
+    return EXIT_USAGE;
+  };
+  const notARun = ({ record }: HistoricalRecord): number => {
+    output.stderr.write(
+      `Historical record "${record.id}" is a ${record.kind} record; compare takes two evaluation runs\n`,
+    );
     return EXIT_USAGE;
   };
   switch (invocation.command) {
@@ -143,6 +180,8 @@ async function execute(
       if (baseline === undefined) return unknown(invocation.baselineId);
       const candidate = await history.read(invocation.candidateId);
       if (candidate === undefined) return unknown(invocation.candidateId);
+      if (!isEvaluationRun(baseline)) return notARun(baseline);
+      if (!isEvaluationRun(candidate)) return notARun(candidate);
       output.stdout.write(
         `${JSON.stringify(compareEvaluationRuns(baseline, candidate), null, 2)}\n`,
       );

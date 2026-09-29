@@ -10,6 +10,7 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import { EvaluatorConfigurationError } from './configuration';
+import type { EvaluationRunRecord } from './evaluation-run';
 import {
   datasetInput,
   EXPECTED_ANSWER,
@@ -24,7 +25,6 @@ import {
   compareEvaluationRuns,
   CorruptHistoricalRecordError,
   createEvaluationHistory,
-  type EvaluationRunRecord,
   type HistoricalRecord,
   HistoricalRecordExistsError,
   toEvaluationRunRecord,
@@ -84,6 +84,42 @@ describe('createEvaluationHistory', () => {
     expect(await store.list('')).toEqual([`${RECORD_KEY_PREFIX}${BASELINE_RUN_ID}`]);
     expect(await store.get(`${RECORD_KEY_PREFIX}${BASELINE_RUN_ID}`)).toBe(canonicalJson(appended));
     expect(await history.read(BASELINE_RUN_ID)).toEqual(appended);
+  });
+
+  test('keeps gate-override records beside evaluation runs, verified the same way', async () => {
+    const { history } = memoryHistory();
+    const override = {
+      kind: 'gate-override' as const,
+      schemaVersion: 1 as const,
+      id: 'override-1',
+      recordedAt: '2026-09-28T12:30:00.000Z',
+      gateId: 'fixture-regression',
+      gateDecisionId: 'fixture-regression.decision-1',
+      actor: 'release-manager',
+      reason: 'Accepting the tone change for the October release.',
+      expiresAt: '2026-10-28T12:00:00.000Z',
+      permanentBaselineChange: false,
+      evidence: ['https://example.test/review/42'],
+    };
+
+    const run = await history.append(baselineRecord());
+    const appended = await history.append(override);
+
+    expect(appended).toEqual({
+      digest: await sha256Hex(canonicalJson(override)),
+      record: override,
+    });
+    expect(await history.read('override-1')).toEqual(appended);
+    expect(await history.list()).toEqual([run, appended]);
+  });
+
+  test('refuses to append a record of a kind the history does not keep', async () => {
+    const { store, history } = memoryHistory();
+    const unknownKind = { ...baselineRecord(), kind: 'dashboard-snapshot' };
+    await expect(history.append(unknownKind as never)).rejects.toBeInstanceOf(
+      EvaluatorConfigurationError,
+    );
+    expect(await store.list('')).toEqual([]);
   });
 
   test('reads an unknown id as undefined', async () => {
@@ -424,7 +460,9 @@ describe('toEvaluationRunRecord', () => {
 });
 
 describe('compareEvaluationRuns', () => {
-  async function stored(record: EvaluationRunRecord): Promise<HistoricalRecord> {
+  async function stored(
+    record: EvaluationRunRecord,
+  ): Promise<HistoricalRecord<EvaluationRunRecord>> {
     return { digest: await sha256Hex(canonicalJson(record)), record };
   }
 

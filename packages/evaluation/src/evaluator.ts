@@ -29,14 +29,24 @@ import {
   EvaluatorConfigurationError,
   parseEvaluatorConfiguration,
 } from './configuration';
-import { bindCriteria, type CriterionScorers, type ScoringContext } from './criteria';
+import {
+  bindCriteria,
+  type CriterionEvidence,
+  type CriterionScorers,
+  type ScoringContext,
+} from './criteria';
 import {
   calibrationSeparationIssues,
   type EvaluationDataset,
   parseEvaluationDataset,
 } from './datasets';
 import { type EvaluatorIdentity, evaluatorIdentity } from './identity';
-import { type JudgeVerdict, runModelJudge } from './judge';
+import {
+  type JudgeVerdict,
+  readRecordedJudgeOutput,
+  type RecordedJudgeOutput,
+  runModelJudge,
+} from './judge';
 import { applyRubric, type CriterionScore, type RubricResult } from './rubric';
 import {
   type CaseEvaluation,
@@ -58,6 +68,14 @@ export interface CreateEvaluatorOptions {
    * `judge.effort`; this package never constructs a provider.
    */
   readonly generate?: GenerateFunction | undefined;
+  /**
+   * The model judge's recorded output for one case, read in place of a live
+   * call: a release-gate replay scores model-judge criteria this way and
+   * never calls a provider. Mutually exclusive with `generate`. `undefined`
+   * means nothing was recorded for this case, which is a `judge-error`.
+   */
+  readonly recordedJudgeOutput?:
+    ((evidence: CriterionEvidence) => RecordedJudgeOutput | undefined) | undefined;
   /** Timers for the latency budget. Defaults to the real-clock runtime services. */
   readonly timers?: Pick<RuntimeTimers, 'setTimeout' | 'clearTimeout'> | undefined;
 }
@@ -109,7 +127,7 @@ async function withinLatencyBudget<T>(
 export async function createEvaluator(options: CreateEvaluatorOptions): Promise<Evaluator> {
   const configuration = parseEvaluatorConfiguration(options.configuration);
   const dataset = parseEvaluationDataset(options.dataset);
-  const { generate } = options;
+  const { generate, recordedJudgeOutput } = options;
   const { bindings, issues: bindingIssues } = bindCriteria(configuration, options.scorers ?? {});
   const issues: ConfigurationIssue[] = [
     ...calibrationSeparationIssues(configuration, dataset),
@@ -121,8 +139,14 @@ export async function createEvaluator(options: CreateEvaluatorOptions): Promise<
       message: `This package emits result schema version ${EVALUATION_RESULT_SCHEMA_VERSION}, not ${configuration.resultSchemaVersion}`,
     });
   }
-  if (
+  if (generate !== undefined && recordedJudgeOutput !== undefined) {
+    issues.push({
+      path: ['judge'],
+      message: 'Pass a generate function or recorded judge outputs, not both',
+    });
+  } else if (
     generate === undefined &&
+    recordedJudgeOutput === undefined &&
     configuration.criteria.some((criterion) => criterion.kind === 'model-judge')
   ) {
     issues.push({
@@ -136,6 +160,28 @@ export async function createEvaluator(options: CreateEvaluatorOptions): Promise<
   const cases = new Map(dataset.cases.map((entry) => [entry.id, entry]));
   const timers = options.timers ?? createDefaultRuntimeServices().timers;
   const budget = configuration.budgets.perEvaluation.latencyMilliseconds;
+
+  /** The case's judge, called at most once: live through `generate`, or read from its recording. */
+  function judgeFor(
+    evidence: CriterionEvidence,
+    once: (verdict: () => Promise<JudgeVerdict>) => Promise<JudgeVerdict>,
+  ): ScoringContext['judge'] {
+    if (generate !== undefined) {
+      return () => once(() => runModelJudge({ generate, configuration, ...evidence }));
+    }
+    if (recordedJudgeOutput === undefined) return undefined;
+    return () =>
+      once(async () => {
+        const output = recordedJudgeOutput(evidence);
+        if (output === undefined) {
+          throw new EvaluatorInfrastructureError({
+            reason: 'judge-error',
+            message: `No judge output was recorded for model judge "${configuration.judge.name}"`,
+          });
+        }
+        return readRecordedJudgeOutput(output, configuration);
+      });
+  }
 
   async function evaluateCase(caseId: string, result: RunResultBase): Promise<CaseEvaluation> {
     const evaluationCase = cases.get(caseId);
@@ -156,10 +202,7 @@ export async function createEvaluator(options: CreateEvaluatorOptions): Promise<
     let judged: Promise<JudgeVerdict> | undefined;
     const context: ScoringContext = {
       evidence,
-      judge:
-        generate === undefined
-          ? undefined
-          : () => (judged ??= runModelJudge({ generate, configuration, ...evidence })),
+      judge: judgeFor(evidence, (verdict) => (judged ??= verdict())),
     };
     try {
       const scores = await withinLatencyBudget(budget, timers, controller, async () => {
