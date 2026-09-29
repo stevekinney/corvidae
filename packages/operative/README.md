@@ -1,6 +1,6 @@
 # Operative
 
-`@lostgradient/operative` is the provider-agnostic agent runtime for Agent Bureau. It owns the loop that assembles context, calls a generate function, executes tools, records steps, handles stop conditions, emits events, manages sessions, and coordinates advanced runtime behavior.
+`@lostgradient/operative` is Corvidae's provider-agnostic agent runtime. It owns the loop that assembles context, calls a generate function, executes tools, records steps, handles stop conditions, emits events, manages sessions, and coordinates advanced runtime behavior.
 
 ## Workspace usage
 
@@ -13,7 +13,9 @@ Declare `"@lostgradient/operative": "workspace:*"` in the consuming workspace's 
 - Accepts caller-provided generate functions and includes Anthropic, OpenAI, and Gemini provider factories.
 - Provides sessions, session stores, durable run support, scheduler primitives, and heartbeat utilities.
 - Adds hooks for generation, tool execution, context assembly, validation, run lifecycle, and error handling.
-- Provides guardrails, retry mutators, cache middleware, context compaction, streaming, backpressure, budgets, handoffs, subagents, and supervisors.
+- Provides guardrails, retry mutators, cache middleware, context compaction, streaming, backpressure, budgets, handoffs, and subagents. Supervisors and agent discovery live in `@lostgradient/bureau`.
+- Dispatches child runs with typed, parent-mediated signals and provides the signed delegation-grant helpers Bureau's durable parent-child topology uses.
+- Lets a retry or reset start from a typed, validated handoff artifact instead of a failed transcript, and names the three ways an attempt gets its conversation: continue, fork from a baseline, or fresh from an artifact.
 
 ## How It Works
 
@@ -394,6 +396,7 @@ Like `createAgent`, a plain `ConversationHistory` passed here is SNAPSHOTTED on 
 | `hooks` | `HookRegistry<OperativeHookMap>` | The run's hook plan. The ONLY hook surface — COR-1268 removed the seven parallel array fields (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `validateResponse`, `validateToolResult`, `selectTools`), because two surfaces meant ordering depended on which one a caller reached for and everything built on registration identity was blind to the arrays. |
 | `sessionId` | `string` | The session this run belongs to, when it belongs to one. Read only to stamp the run's hook-plan observations. |
 | `childCorrelation` | `HookObservationCorrelation` | Set by `dispatchChildRun` when this run is somebody's child, so its hook observations name the parent-child pair. Correlation data, never a hook surface. |
+| `parentSignals` | `ChildSignalPort` | Set (through `AgentRunContext.parentSignals`) when this run's parent dispatched it with a signal contract. Every tool call receives it as `ToolContext.executionContext.parentSignals`; read it with `readParentSignals`. In-memory only. |
 | `signal` | `AbortSignal` | External cancellation signal. |
 | `runId` | `string` | Stable run identity, used to stamp curated `tool.*` bubble events. Optional for a run with no `steering` (only supplied when the run has one, e.g. session-owned runs)—**required whenever `steering` is set** (AB-236): `RunOptions` is a discriminated pair on `runId`/`steering`, not two independently-optional fields, so a steering-enabled `RunOptions` literal with no `runId` is a compile error, not a silently-dropped `steering.applied` event. |
 | `steering` | `SteeringGate` | AB-67 runtime steering: `{ sessionId, getDesiredState(), awaitResume(), getAppliedFloor?() }`, consulted at the entry of every step. `paused: true` blocks the step until `awaitResume()` resolves or `signal` fires. `sessionId` (AB-221) stamps `steering.applied`'s `sessionId` field. `getAppliedFloor?()` (AB-199)—optional, the highest `configVersion` the gate has already observed applied by ANY run on the session—seeds a brand-new run's cross-run dedupe cursor (`executeLoop`/the durable driver call it once, at run start only) so a `configVersion` a prior run already applied is not re-fired as `steering.applied`; a gate that omits it seeds every fresh run at 0, unchanged from before AB-199. Optional—omit for unsteered runs; setting it requires `runId` (see above). |
@@ -692,6 +695,315 @@ sessions.events.addEventListener('session.outbox-appended', () => {
   drain().catch((error: unknown) => console.error('outbox drain failed:', error));
 });
 ```
+
+### Forking a session through a completed run (COR-816)
+
+`SessionHandle.fork(options?)` creates a new session with a new id and an empty run list. With `throughRun` (a 0-based run sequence), its conversation is rebuilt from that terminal run's immutable `RunRef.conversationBoundary`, so no message from a later run reaches the fork. Tool calls stay paired with their results. Without `throughRun`, the fork copies the session's latest stored history. Nothing is shared between the two sessions afterwards, and a `SessionForkEvent` (`session.fork`, with `sourceSessionId`, `forkedSessionId`, and `throughRun`) fires once the fork is persisted. Each terminal `RunRef` records its boundary once, as a `RunConversationBoundary` delta-encoded against an earlier run's boundary, and never rewrites it.
+
+```typescript
+import {
+  createSessionHandle,
+  createSessionStore,
+  ForkThroughRunError,
+  type GenerateFunction,
+  stopWhen,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
+
+const generate: GenerateFunction = async ({ conversation }) => ({
+  content: `reply to message ${conversation.getMessages().length}`,
+  toolCalls: [],
+});
+
+const store = createSessionStore(textValueStore(new MemoryStorage()));
+const session = createSessionHandle('support-thread', {
+  store,
+  agentName: 'assistant',
+  // Session runs do not default `stopWhen` the way `createAgent` does.
+  runOptions: { generate, toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() },
+});
+
+await session.run('First question').result(); // run 0
+await session.run('Second question').result(); // run 1
+
+const branch = await session.fork({ throughRun: 0 });
+const forked = await branch.getSession();
+// forked.id is new, forked.runs is [], and the history holds run 0's
+// question and reply only.
+
+let reason: string | undefined;
+try {
+  await session.fork({ throughRun: 5 });
+} catch (error) {
+  if (error instanceof ForkThroughRunError) reason = error.reason; // 'out-of-range'
+}
+```
+
+`test/multi-agent-lifecycle-guide.test.ts` runs this example and asserts each commented result.
+
+An unusable fork point rejects with `ForkThroughRunError` before anything is persisted or any event fires. Its `reason` (`ForkThroughRunErrorReason`) is `'invalid'` (not an integer), `'negative'`, `'out-of-range'` (no run with that sequence yet), `'non-terminal'` (the run is still running), or `'unavailable'` (the run is terminal but has no reconstructable boundary—a legacy `RunRef`, or a terminal commit with no transcript to record). The error also carries `sessionId`, `throughRun`, and `runCount`.
+
+A fork is a branch of history, not a child run: it has no parent relationship, signal channel, or cancellation link, and it does not replay tool calls or clone an in-flight provider request. A fresh attempt, context compaction, subagent summaries, and same-session handoffs are separate mechanisms with different histories; [Fresh attempts and conversation policies](#fresh-attempts-and-conversation-policies-cor-1354) compares them.
+
+### Fresh attempts and conversation policies (COR-1354)
+
+A retry or reset that must not inherit a failed attempt's transcript starts from a typed, validated handoff artifact instead. The artifact carries the minimum state the next attempt needs (objective, constraints, completed work, validated facts, known failures, open questions, the next action, and references to evidence) and has no field that can hold a message or a transcript. Operative keeps this apart from every other way an attempt can get its context:
+
+| Mechanism | API | Session | What the next run starts from |
+| --- | --- | --- | --- |
+| Continue | `SessionHandle.run()` | Same | The stored history, appended to in place. |
+| Fork from baseline | `SessionHandle.fork(options?)` | New id, `runs: []` | A verbatim copy of the stored history or, with `{ throughRun }`, of that terminal run's recorded boundary. An unusable fork point rejects with `ForkThroughRunError` (`reason`: `invalid`, `negative`, `out-of-range`, `non-terminal`, or `unavailable`) before anything is saved. |
+| Fresh from artifact | `SessionHandle.startFreshAttempt({ artifact, instructions })` | New id, `runs: []` | Exactly two messages: `instructions` as a system message and one rendering of the validated artifact as a user message. No message of the source session is copied, by id or by content. |
+| Same-session handoff | `createHandoffTool()` | Same | Unchanged. The tool returns a marker, and the caller decides which agent continues the same conversation (see Handoffs under [Multi-Agent Patterns](#multi-agent-patterns)). |
+| Subagent summary | `createSubagentTool()` | The child's own | The parent keeps its own history plus the tool result, by default a capped summary of the child's `content`. |
+| Compaction | `createContextCompactor()` | Same | The same conversation, with older messages replaced in place by a summary system message and the most recent `retainRecentMessages` visible non-system messages kept. Kept messages are re-appended under new identifiers and hidden messages are dropped; conversationalist's [What compaction keeps](../conversationalist/README.md#what-compaction-keeps) lists the current limits. |
+
+#### Choosing a policy
+
+`ConversationPolicy` names the first three rows as values, so a controller can decide which one an attempt gets:
+
+```typescript
+type ConversationPolicy =
+  | { kind: 'continue' }
+  | { kind: 'fork-from-baseline'; throughRun?: number }
+  | { kind: 'fresh-from-artifact'; artifact: FreshAttemptHandoffArtifact };
+```
+
+`applyConversationPolicy(session, { policy, instructions })` resolves the `SessionHandle` an attempt should run in: `session` itself for `continue` (also the result when `policy` is omitted), `session.fork()` for `fork-from-baseline`, and `session.startFreshAttempt()` for `fresh-from-artifact`. Only `fresh-from-artifact` reads `instructions`; a continued or forked conversation already carries its own.
+
+```typescript
+const attempt = await applyConversationPolicy(session, {
+  policy: { kind: 'fresh-from-artifact', artifact },
+  instructions: 'You are the implementer. Follow AGENTS.md.',
+});
+await attempt.run('Continue from the handoff.').result();
+```
+
+Nothing calls it for you. `SessionHandle.run()`, `createAgent().run()`, and `createActiveRun()` take no policy and always continue the conversation they are given.
+
+#### A reset from start to finish
+
+The host owns three things Operative does not keep: the producing run's sealed context epoch, the actors allowed to publish for that run, and the artifact's text. This example runs a first attempt, records its epoch, publishes a handoff, and starts a fresh attempt from it. It runs offline with a stub `generate`:
+
+```typescript
+import {
+  applyConversationPolicy,
+  createContextEpochSealer,
+  createFreshAttemptArtifactStore,
+  createSessionHandle,
+  createSessionStore,
+  finalizeFreshAttemptHandoffArtifact,
+  SecretBearingFreshAttemptArtifactError,
+  StaleFreshAttemptArtifactError,
+  type FreshAttemptHandoffArtifactDraft,
+  type FreshAttemptSourceRecord,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
+
+const generate: GenerateFunction = async () => ({
+  content: 'The revision-realm test still times out under load.',
+  toolCalls: [],
+});
+
+// The producing run seals its effective context. The epoch is the only
+// record of which sources a fresh attempt may name as carry-forward context.
+const sealer = createContextEpochSealer({ agentName: 'implementer' });
+
+// Operative does not keep epochs or publisher lists for you: the host does.
+const sources = new Map<string, FreshAttemptSourceRecord>();
+
+const session = createSessionHandle('session-1', {
+  store: createSessionStore(textValueStore(new MemoryStorage())),
+  agentName: 'implementer',
+  runOptions: { generate, toolbox: createToolbox([]), maximumSteps: 1, contextEpoch: sealer },
+  resolveFreshAttemptSource: (source) => sources.get(source.runId),
+});
+
+// 1. The first attempt runs and fails.
+await session.run('Fix the flaky revision-realm test.').result();
+const [failedRun] = (await session.getSession()).runs;
+sources.set(failedRun!.runId, { epoch: sealer.current()!, permittedActors: ['operator:steve'] });
+
+// 2. The host summarizes the failed attempt. Operative never writes an artifact for you.
+const now = new Date().toISOString();
+const draft = {
+  artifactId: 'revision-realm-handoff',
+  revision: 1,
+  objective: 'Make revision-realm-execution.test.ts pass under host load.',
+  successRevision: 'COR-1333#acceptance-1',
+  constraints: ['Never raise a test timeout.'],
+  completedWork: ['Replaced the first signal poll with an event wait.'],
+  validatedFacts: ['The old file fails 7 of 9 runs with an injected 700 ms boot delay.'],
+  evidenceReferences: [{ kind: 'commit', id: '55a9f8d2' }],
+  knownFailures: [
+    { kind: 'tool', summary: 'bun test timed out waiting for a realm.', occurredAt: now },
+  ],
+  unresolvedQuestions: ['Does the child-process sibling need the same change?'],
+  nextRequestedAction: 'Convert the remaining polls to observed events.',
+  allowedCarryForwardContext: ['agent-instructions', 'toolbox'],
+  producer: { agentName: 'implementer', runId: failedRun!.runId, sessionId: session.id },
+  sourceRunOrAttempt: {
+    sessionId: session.id,
+    runId: failedRun!.runId,
+    sequence: failedRun!.sequence,
+  },
+  timestamp: now,
+  lineage: { sourceRevision: 1 },
+  provenance: { producedAt: now, producingActor: 'operator:steve' },
+} satisfies FreshAttemptHandoffArtifactDraft;
+const artifact = await finalizeFreshAttemptHandoffArtifact(draft);
+
+// 3. Publish it. Every publish-time check runs before anything is written.
+const artifacts = createFreshAttemptArtifactStore(textValueStore(new MemoryStorage()), {
+  resolveSource: (source) => sources.get(source.runId),
+  clock: { now: () => Date.now() },
+});
+await artifacts.update(artifact.artifactId, () => artifact);
+
+// Publishing revision 1 again loses the compare-and-write: republish as revision 2 instead.
+await artifacts
+  .update(artifact.artifactId, () => artifact)
+  .catch((error: unknown) => {
+    if (!(error instanceof StaleFreshAttemptArtifactError)) throw error;
+    console.log(error.diagnostics); // [ { path: 'revision', rule: 'revision-conflict' } ]
+  });
+
+// 4. Start the fresh attempt from the latest published revision.
+const fresh = await session.startFreshAttempt({
+  artifact: (await artifacts.load(artifact.artifactId))!,
+  instructions: 'You are the implementer. Follow AGENTS.md.',
+});
+const { runs, conversationHistory, metadata } = await fresh.getSession();
+console.log(fresh.id === session.id); // false
+console.log(runs.length); // 0
+console.log(conversationHistory.ids.map((id) => conversationHistory.messages[id]?.role)); // ['system', 'user']
+console.log(metadata['freshAttempt']);
+// { artifactId: 'revision-realm-handoff', revision: 1, digest: '<sha-256 hex>',
+//   sourceSessionId: 'session-1', sourceRunId: 'session-1:0' }
+
+// A credential typed into an ordinary field is rejected before anything is minted.
+const leaky = await finalizeFreshAttemptHandoffArtifact({
+  ...draft,
+  artifactId: 'leaky-handoff',
+  objective: 'Retry with password: swordfish',
+});
+try {
+  await session.startFreshAttempt({ artifact: leaky, instructions: 'You are the implementer.' });
+} catch (error) {
+  if (!(error instanceof SecretBearingFreshAttemptArtifactError)) throw error;
+  console.log(error.outcome, error.kind, error.diagnostics);
+  // secret-bearing policy [ { path: 'objective', rule: 'sensitive-key-pattern' } ]
+}
+
+// The same reset, chosen by value.
+const attempt = await applyConversationPolicy(session, {
+  policy: { kind: 'fresh-from-artifact', artifact },
+  instructions: 'You are the implementer. Follow AGENTS.md.',
+});
+await attempt.run('Continue from the handoff.').result();
+```
+
+The expected output is in the comments. The fresh session's user message renders every artifact field under its own name; for each allowlisted source it renders only what the epoch recorded (`sourceId`, trust, redaction, revision, and digest), never the source's content. Its metadata records `freshAttemptArtifactId` and `freshAttemptArtifactRevision`. The handle `startFreshAttempt` returns shares the source handle's context, so its runs use the same `runOptions` and resolver.
+
+#### The handoff artifact
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `schemaVersion` | `1` | Stamped by `finalizeFreshAttemptHandoffArtifact`. Its own counter (`FRESH_ATTEMPT_ARTIFACT_SCHEMA_VERSION`), independent of any conversation schema version. |
+| `artifactId`, `revision` | string, positive integer | Identity, and the publication counter: `1` on first publication, then one more per republication. |
+| `objective`, `successRevision` | string | What the next attempt must achieve, and a reference to the revision of its success criteria (never the criteria text). |
+| `constraints`, `completedWork`, `validatedFacts`, `unresolvedQuestions` | `string[]` | Summary statements. Never `Message` objects. |
+| `evidenceReferences` | `{ kind, id, digest?, uri? }[]` | References to evidence held elsewhere. Evidence content is never embedded. |
+| `knownFailures` | `{ kind, summary, occurredAt }[]` | What already failed. `kind` is an `AgentRunErrorKind`: `load`, `contract`, `generate`, `tool`, `abort`, `output`, or `policy`. |
+| `nextRequestedAction` | string | The one next step. |
+| `allowedCarryForwardContext` | `string[]` | `sourceId`s from the producing run's sealed context epoch, such as `agent-instructions` or `toolbox`. At most `FRESH_ATTEMPT_ARTIFACT_MAX_CARRY_FORWARD_SOURCES`. |
+| `producer` | `{ agentName, runId, sessionId }` | The agent and run that produced the artifact. Its `runId` and `sessionId` must equal `sourceRunOrAttempt`'s. |
+| `sourceRunOrAttempt` | `{ sessionId, runId, sequence }` | The run the artifact hands off from. The host's resolver looks it up. |
+| `timestamp` | ISO-8601 with offset | When the handoff was produced. Retention is measured from here. |
+| `lineage` | `{ parentConversationId?, sourceRevision }` | Mirrors `ConversationSnapshot.lineage` without its conversation-tree fields. |
+| `provenance` | `{ producedAt, producingActor }` | Who authorized the write, kept separate from `producer` so an unauthorized actor is detectable. |
+| `digest` | `{ algorithm: 'sha-256', value }` | SHA-256 (`FRESH_ATTEMPT_ARTIFACT_DIGEST_ALGORITHM`) over the canonical serialization of every other field: keys sorted, `undefined` members dropped. |
+
+Every string must be non-empty, and every object is strict, so an unknown key is a rejection. `freshAttemptHandoffArtifactSchema` is the Zod schema. Build an artifact from a `FreshAttemptHandoffArtifactDraft` (every field but `schemaVersion` and `digest`) with `finalizeFreshAttemptHandoffArtifact(draft)`, and recompute a digest with `computeFreshAttemptArtifactDigest`. Changing any field after finalizing, without finalizing again, makes the artifact `corrupt`.
+
+#### Validation and rejection
+
+`validateFreshAttemptArtifact(value, { resolveSource, now })` runs before a fresh attempt consumes an artifact, and `validateFreshAttemptArtifactForPublication(value, context)` before the store writes one. Both resolve `{ artifact, source, carryForward }` or reject. The checks run in this order and stop at the first stage that fails:
+
+1. Shape. A value that is not an object is `invalid`. A numeric `schemaVersion` other than `1` is `incompatible`, and the body is never read. A transcript-shaped value anywhere (an object with a `role` key, a raw tool-call or tool-result payload, or a `ConversationHistory`, or a string holding a serialized `role` key or tool payload) is `secret-bearing`. Any other schema failure is `provenance-free` when `producer`, `provenance`, `sourceRunOrAttempt`, or `timestamp` is missing, and `invalid` otherwise.
+2. Size. A canonical serialization over `FRESH_ATTEMPT_ARTIFACT_MAX_BYTES` is `oversized`. An artifact is never truncated.
+3. Digest. A recomputed digest that differs from `digest.value` is `corrupt`.
+4. Window. A `timestamp` or `provenance.producedAt` more than `FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS` after `now` is `stale`, at publication and at consumption. At consumption only, an artifact whose `timestamp` is more than `FRESH_ATTEMPT_ARTIFACT_RETENTION_MS` before `now` is `stale`.
+5. Authorization. `resolveSource(artifact.sourceRunOrAttempt)` must return a `FreshAttemptSourceRecord` (`{ epoch, permittedActors }`), `producer` must name the same session and run, and `provenance.producingActor` must be in `permittedActors`. Otherwise the artifact is `unauthorized`.
+6. Secrets. Every string field is checked for a `key: value` or `key=value` pair whose key matches `SENSITIVE_KEY_PATTERN`, an API-key-shaped assignment (the output PII guardrail's API-key rule), a verbatim copy of a `protected-secret` or `forbidden` epoch source (by `digestText`), and a token of at least `FRESH_ATTEMPT_ARTIFACT_ENTROPY_MINIMUM_TOKEN_LENGTH` characters above `FRESH_ATTEMPT_ARTIFACT_ENTROPY_THRESHOLD` bits per character. Any match is `secret-bearing`.
+7. Carry-forward. An allowlist longer than the bound, or an entry the epoch does not hold or marks `protected-secret` or `forbidden`, is `overbroad`.
+
+| Outcome | Error class | `kind` | Diagnostic `rule` values |
+| --- | --- | --- | --- |
+| `invalid` | `InvalidFreshAttemptArtifactError` | `contract` | `not-an-object`, `required`, a Zod issue code such as `invalid_type` or `unrecognized_keys`, and `artifact-id-mismatch` from the store |
+| `incompatible` | `IncompatibleFreshAttemptArtifactError` | `contract` | `unsupported-schema-version` |
+| `provenance-free` | `ProvenanceFreeFreshAttemptArtifactError` | `contract` | `required` on a provenance field, plus any other schema issue |
+| `oversized` | `OversizedFreshAttemptArtifactError` | `contract` | `exceeds-byte-ceiling` |
+| `corrupt` | `CorruptFreshAttemptArtifactError` | `load` | `digest-mismatch`, and `unreadable-stored-artifact` from the store |
+| `stale` | `StaleFreshAttemptArtifactError` | `load` | `timestamp-in-future`, `retention-window`, and `revision-conflict` from the store |
+| `unauthorized` | `UnauthorizedFreshAttemptArtifactError` | `policy` | `source-unresolved`, `producer-source-mismatch`, `actor-not-permitted` |
+| `secret-bearing` | `SecretBearingFreshAttemptArtifactError` | `policy` | `transcript-role-key`, `transcript-tool-payload`, `conversation-history-shape`, `sensitive-key-pattern`, `pii-api-key`, `protected-source-digest`, `high-entropy-token` |
+| `overbroad` | `OverbroadFreshAttemptArtifactError` | `contract` | `exceeds-bounded-count`, `source-absent-from-epoch`, `source-not-carriable` |
+
+Every class extends `FreshAttemptArtifactError`, itself an `AgentRunError`, and carries `outcome` (a `FreshAttemptRejectionOutcome`), `kind`, and `diagnostics` (`FreshAttemptRejectionDiagnostic[]`, each `{ path, rule }`, with a path such as `knownFailures[0].summary`, or `''` for the whole artifact). Its `code` is always `'UNKNOWN'`, so tell rejections apart by class, `outcome`, or `kind`. A diagnostic never includes the offending value, so a rejection cannot become a second copy of a secret.
+
+The thresholds are exported constants, fixed from a corpus of ten hand-written sample handoffs in `src/fresh-attempt/fixtures/samples/`; `src/fresh-attempt/thresholds.ts` records how each was derived:
+
+| Constant                                              | Value                                   |
+| ----------------------------------------------------- | --------------------------------------- |
+| `FRESH_ATTEMPT_ARTIFACT_MAX_BYTES`                    | 10,240 bytes of canonical serialization |
+| `FRESH_ATTEMPT_ARTIFACT_RETENTION_MS`                 | 7 days after `timestamp`                |
+| `FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS`                | 60 seconds                              |
+| `FRESH_ATTEMPT_ARTIFACT_ENTROPY_THRESHOLD`            | 4.5 bits per character                  |
+| `FRESH_ATTEMPT_ARTIFACT_ENTROPY_MINIMUM_TOKEN_LENGTH` | 20 characters                           |
+| `FRESH_ATTEMPT_ARTIFACT_MAX_CARRY_FORWARD_SOURCES`    | 8 sources                               |
+
+#### Publishing: the artifact store
+
+`createFreshAttemptArtifactStore(backing, { resolveSource, clock })` wraps a Weft `ConditionalTextValueStore` and returns a `FreshAttemptArtifactStore`:
+
+- `update(artifactId, updater)` loads the latest revision, calls `updater(latest)`, runs every publish-time check on the candidate (all of the above except retention, with `clock.now()` as `now`), and commits it with a compare-and-write. The candidate's `artifactId` must match (`invalid`, `artifact-id-mismatch`), and its `revision` must be the latest revision plus one, starting at `1`. A wrong revision, or a concurrent writer that commits first, rejects with `StaleFreshAttemptArtifactError` (`revision-conflict`). A conflict is never merged or retried: read the new latest revision and republish, or give up. An updater that returns `undefined` publishes nothing and resolves the latest revision.
+- `load(artifactId)` resolves the latest revision or `undefined`, and `history(artifactId)` resolves every revision, oldest first. Both check only that the stored body parses as an artifact (`corrupt`, `unreadable-stored-artifact`); the digest, retention, and authorization are checked when the artifact is consumed.
+- Nothing is ever deleted. Retention decides whether an artifact may still seed a fresh attempt, not whether its record survives, so a failed attempt's handoff stays available for audit and evaluation.
+
+#### Starting the attempt
+
+`SessionHandle.startFreshAttempt({ artifact, instructions })` validates the artifact with `validateFreshAttemptArtifact`, measuring time with the handle's `runtime.clock` and resolving the source through `SessionHandleContext.resolveFreshAttemptSource`. A rejection throws before a session id is minted or anything is saved. On success it saves a new session under the handle's `agentName` with `runs: []`, the two seed messages, and `metadata.freshAttempt` (`{ artifactId, revision, digest, sourceSessionId, sourceRunId }`), and returns a handle over it.
+
+#### What fresh attempts do not do
+
+- **Operative never produces an artifact.** No code in this workspace turns a failed run into a handoff, and no shipped controller chooses a policy for you; the managed-goal controller that will (COR-634) is not built. The host writes the draft, including its summaries.
+- **Policies are opt-in.** `applyConversationPolicy` is the only function that reads a `ConversationPolicy`. A run started any other way continues its conversation.
+- **Operative stores neither epochs nor publisher lists.** Keep the producing run's sealed epoch (the sealer's `current()` right after that run ends, before another run seals a newer one) and the actors allowed to publish for it, and serve them from `resolveFreshAttemptSource`. A handle without a resolver rejects every artifact as `unauthorized`. Neither the validator nor the store checks that the epoch a resolver returns really belongs to that run.
+- **Carry-forward context is an allowlist of source identities, not content.** A fresh conversation receives no source's text. Its instructions come from the `instructions` you pass, and its tools and generation settings from the handle's `runOptions`.
+- **The secret scan is a second line of defense, not a complete scanner.** The strict schema is the first. The scan misses a credential that is not a `key: value` or `key=value` pair under a key name containing `password`, `secret`, `token`, `apiKey`, `authorization`, `credential`, or `privateKey` (in any case), does not look like an API-key assignment, and contains no token of 20 or more characters above 4.5 bits per character: a short password in prose passes. It can also reject legitimate text that pairs a sensitive key name with a value, such as `token: 3`; rephrase such a field.
+- **The protected-source check matches only verbatim copies.** It compares each whole string field's 64-bit FNV-1a `digestText` with the digests of sources the epoch marks `protected-secret` or `forbidden`. None of the sources `createContextEpochSealer` records carries either marking today, so the check fires only for epochs a host extends with such sources.
+- **The thresholds are not options.** No call overrides the byte ceiling, retention window, clock skew, entropy threshold, or carry-forward bound.
+- **A fresh attempt dispatches no session event.** `fork()` dispatches `SessionForkEvent`; `startFreshAttempt()` does not. Read `metadata.freshAttempt` to trace a fresh session to its source.
+- **A fork is not a reset.** `fork-from-baseline` copies the transcript verbatim, failed turns included.
+
+#### Fresh-attempt exports
+
+Every name here is exported from `@lostgradient/operative`:
+
+| Area | Values | Types |
+| --- | --- | --- |
+| Policies | `applyConversationPolicy` | `ConversationPolicy`, `ApplyConversationPolicyOptions` |
+| Artifact | `finalizeFreshAttemptHandoffArtifact`, `computeFreshAttemptArtifactDigest`, `freshAttemptHandoffArtifactSchema`, `FRESH_ATTEMPT_ARTIFACT_SCHEMA_VERSION`, `FRESH_ATTEMPT_ARTIFACT_DIGEST_ALGORITHM` | `FreshAttemptHandoffArtifact`, `FreshAttemptHandoffArtifactDraft`, `EvidenceReference`, `FailureRecord`, `FreshAttemptProducer`, `FreshAttemptSourceRunOrAttempt`, `FreshAttemptLineage`, `FreshAttemptProvenance`, `FreshAttemptArtifactDigest` |
+| Validation | `validateFreshAttemptArtifact`, `validateFreshAttemptArtifactForPublication` | `FreshAttemptValidationContext`, `FreshAttemptSourceResolver`, `FreshAttemptSourceRecord`, `ValidatedFreshAttemptArtifact` |
+| Rejections | `FreshAttemptArtifactError`, `InvalidFreshAttemptArtifactError`, `IncompatibleFreshAttemptArtifactError`, `ProvenanceFreeFreshAttemptArtifactError`, `OversizedFreshAttemptArtifactError`, `CorruptFreshAttemptArtifactError`, `StaleFreshAttemptArtifactError`, `UnauthorizedFreshAttemptArtifactError`, `SecretBearingFreshAttemptArtifactError`, `OverbroadFreshAttemptArtifactError` | `FreshAttemptRejectionOutcome`, `FreshAttemptRejectionDiagnostic` |
+| Store | `createFreshAttemptArtifactStore` | `FreshAttemptArtifactStore`, `FreshAttemptArtifactStoreContext` |
+| Thresholds | `FRESH_ATTEMPT_ARTIFACT_MAX_BYTES`, `FRESH_ATTEMPT_ARTIFACT_RETENTION_MS`, `FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS`, `FRESH_ATTEMPT_ARTIFACT_ENTROPY_THRESHOLD`, `FRESH_ATTEMPT_ARTIFACT_ENTROPY_MINIMUM_TOKEN_LENGTH`, `FRESH_ATTEMPT_ARTIFACT_MAX_CARRY_FORWARD_SOURCES` | None |
+
+`SessionHandle.startFreshAttempt` and `SessionHandleContext.resolveFreshAttemptSource` are part of the session handle exported with `createSessionHandle`.
 
 ### Hooks
 
@@ -1038,6 +1350,8 @@ const withFallback = createFallbackGenerate({
 
 ### Multi-Agent Patterns
 
+For the whole lifecycle across packages—addressing, observation, signals, budgets, cancellation, recovery, and what is unsupported—read [Multi-agent lifecycle and communication](../../documentation/multi-agent-lifecycle.md). Communication is supervisor-mediated only (COR-807): a parent can address its own children, and nothing here lets a child address a sibling, an unrelated run, or a global mailbox. To pass information between siblings, the parent observes one and signals the other.
+
 `createSupervisor` and `createAgentDiscoveryTool` moved to the `bureau` package (AB-22)—they now operate directly on a `BureauAgentCatalog`/`AgentDescriptor` rather than the older registry types, which no longer exist in this package. See `bureau`'s README for both. `createHandoffTool` stays here; it now takes a `RunnableAgent` (from `createAgent` or `createLazyAgent`) directly instead of a registry adapter.
 
 **Subagents:**
@@ -1126,6 +1440,8 @@ const [resultAlpha, resultBeta] = await Promise.all([alpha.result(), beta.result
 
 `dispatchChildRun` dispatches through `RunnableAgent.run()`—the in-process route—and emits the four `multiagent.child-workflow.*` lifecycle events (`started`/`completed`/`failed`/`aborted`) on `emitter` when one is supplied, each correlated by `parentRunId` and `childRunId`.
 
+Two failures surface as exceptions rather than as a resolved result. If `agent.run()` throws, `dispatchChildRun` closes the child's signal channel as `failed`, settles its registry entry as `'failed'`, emits `multiagent.child-workflow.failed`, and then rethrows synchronously, so the caller gets no handle. If the child's own `result()` rejects, or throws instead of returning a promise, the handle's `result()` rejects with that error after the same failure settlement. A child that finishes with any finish reason other than `stop-condition` or an abort still resolves `result()`, and is reported as `'failed'`.
+
 **Child discovery.** `AgentRun.children()` / `.abortChild(id, reason?)` (the signatures the started-work control contract in `documentation/operative-type-safe-api.md` assigns to AB-50) are backed by an opt-in `ChildRunRegistry`. Discovery does not happen automatically—a tool is constructed once, independent of any particular run, so nothing can inject a run-scoped registry into an already-built tool by itself. Wire the same registry into both places to make a run's children discoverable even when the tool's own return value never surfaces them to the caller:
 
 ```typescript
@@ -1187,9 +1503,9 @@ This also fixes a reuse hazard the construction-time wiring had: build `research
 
 `parentRunId` follows the same per-execution-over-construction-time rule, but only when the active run actually carries a `runId`—session-owned and durable runs (`RunOptions.runId`). A bare `createAgent().run()` call, as in the example above, has none: `AgentRunContext` has no `runId` field today, so `parentContext.parentRunId` (the construction-time value) is what gets stamped on that path. Supply `parentContext.parentRunId` explicitly when you need a correct value there.
 
-**Child terminal lifecycle and relationship-query events (AB-90 child ab90-02, AB-222).** Alongside `ChildWorkflowStartedEvent` (`child.started`), `dispatchChildRun` emits `ChildWorkflowCompletedEvent`/`ChildWorkflowFailedEvent`/`ChildWorkflowAbortedEvent` (`multiagent.child-workflow.completed`/`.failed`/`.aborted`—AB-87's decision record names these `child.completed`/`child.failed`/`child.aborted`; AB-50 shipped them). They're mutually exclusive terminals for one child run, each carrying `childRunId` and `parentRunId`.
+**Child terminal lifecycle and relationship-query events (AB-90 child ab90-02, AB-222).** Alongside `ChildWorkflowStartedEvent` (`multiagent.child-workflow.started`), `dispatchChildRun` emits `ChildWorkflowCompletedEvent`/`ChildWorkflowFailedEvent`/`ChildWorkflowAbortedEvent` (`multiagent.child-workflow.completed`/`.failed`/`.aborted`—AB-87's decision record names these `child.completed`/`child.failed`/`child.aborted`; AB-50 shipped them under the `multiagent.child-workflow.*` names). They're mutually exclusive terminals for one child run, each carrying `childRunId` and `parentRunId`. Bureau's audit trail uses the `child.*` names for its own durable records (see [Bureau's parent-child topology](../bureau/README.md#parent-child-topology-cor-772)); those are audit entries, not these events.
 
-Two further event classes are typed and exported by this package but not yet wired to a live dispatch call site: `ChildWorkflowReattachedEvent` (`multiagent.child-workflow.reattached`, `childRunId`/`parentRunId`) fires only once AB-53's persisted parent-child topology recovery reattaches a previously detached child's event stream to its parent—this package defines the type, payload shape, and intended dispatch point, but does not itself implement persisted topology or recovery. `ChildWorkflowProgressEvent` (`multiagent.child-workflow.progress`) additionally carries the child's own `SemanticProgress` (`@lostgradient/operative`'s `liveness` module, AB-88/AB-214) and is explicitly non-cursor-advancing—an ephemeral delta, never a durable state transition.
+Two further event classes are typed and exported by this package but have no production emitter. `ChildWorkflowReattachedEvent` (`multiagent.child-workflow.reattached`, `childRunId`/`parentRunId`) describes a child reattached to its parent after recovery. This package does not persist or recover children, and Bureau's durable topology (COR-772) records reattachment as a `child.reattached` audit-trail entry rather than dispatching this event—see [Bureau's parent-child topology](../bureau/README.md#parent-child-topology-cor-772). `ChildWorkflowProgressEvent` (`multiagent.child-workflow.progress`) additionally carries the child's own `SemanticProgress` (`@lostgradient/operative`'s `liveness` module, AB-88/AB-214) and is explicitly non-cursor-advancing—an ephemeral delta, never a durable state transition.
 
 `listChildRuns(registry, parentRunId)` is a relationship-query function over the same `ChildRunRegistry` `AgentRun.children()` reads from—it lets a caller enumerate a run's children and their outcomes without polling each child's own handle:
 
@@ -1210,6 +1526,54 @@ listChildRuns(registry, 'parent-1');
 
 A `parentRunId` with no registered children returns an empty array—never a throw. Deliberately not `bureau.*`-namespaced: `listChildRuns` is an operative-level export over operative's own in-process registry; a Bureau-level relationship-query API, if wanted later, wraps this function rather than being built here.
 
+**Typed parent-child signals (COR-814).** A parent and a live in-memory child can exchange typed, correlated messages without waiting for the child's terminal result. Define the contract once—`signals` flow parent → child, `events` flow child → parent, and every entry is a Zod schema—then pass it to `dispatchChildRun` as `signals`. The returned handle gains a `signals` endpoint, and the child receives the matching port as `AgentRunContext.parentSignals` (a `createAgent` child also hands it to every tool call as `ToolContext.executionContext.parentSignals`):
+
+```typescript
+import { createTool } from 'armorer';
+import { defineChildSignals, dispatchChildRun, readParentSignals } from '@lostgradient/operative';
+import { z } from 'zod';
+
+export const researchSignals = defineChildSignals({
+  signals: { focus: z.object({ topic: z.string() }) },
+  events: { progress: z.object({ percent: z.number().min(0).max(100) }) },
+});
+
+// Inside the child: a tool reads the port typed by the same contract object.
+const research = createTool({
+  name: 'research',
+  description: 'Researches the current topic.',
+  input: z.object({}),
+  async execute(_input, context) {
+    const parent = readParentSignals(context.executionContext, researchSignals);
+    parent?.onSignal('focus', ({ payload }) => refocus(payload.topic));
+    parent?.emit('progress', { percent: 50 });
+    return 'done';
+  },
+});
+
+// In the parent:
+const child = dispatchChildRun(researcherAgent, 'Research birds', {
+  agentName: 'researcher',
+  parentRunId,
+  signals: researchSignals,
+});
+child.signals.on('progress', ({ payload }) => console.log(payload.percent));
+const outcome = await child.signals.send('focus', { topic: 'corvids' });
+// { status: 'acknowledged', id, sequence, name: 'focus', parentRunId, childRunId }
+// or { status: 'rejected', code, reason, delivered, closeReason? }
+```
+
+- **Acknowledgement or typed rejection.** `send` never rejects: it resolves `acknowledged` once the child's handler returns or resolves, or `rejected` with a `code`—`handler-failed` (the handler threw), `invalid-payload` (the schema refused it or threw while parsing it—including a refinement or transform that throws, or one that is asynchronous—or it cannot be structurally cloned), `unknown-name`, `buffer-full`, or `channel-closed`. `emit` returns `emitted` (with `delivered: false` when it was buffered) or the same rejection shape, synchronously.
+- **Validated and isolated.** Every payload is parsed by its schema and then structurally cloned, so the recipient receives the schema's output and never shares a reference with the sender. The recipient still decides whether to act: a handler that refuses throws, and the parent sees `handler-failed`.
+- **Correlated to one pair.** Neither endpoint takes a run id—each is bound to one `parentRunId`/`childRunId` pair when `dispatchChildRun` builds the channel, and every message and outcome carries that pair. `readParentSignals` returns a port only for the exact contract object the channel was built with, and only for a port a channel created. A grandchild the child dispatches never receives its parent's port; there is no sibling addressing or global mailbox.
+- **Signal before listener.** A message sent before its consumer registers waits in a bounded buffer (`signalBufferLimit`, default `DEFAULT_CHILD_SIGNAL_BUFFER_LIMIT` = 64 per direction; `0` refuses instead of buffering) and is delivered in order the moment `onSignal`/`on` registers. With `signals` supplied, a `signalBufferLimit` that is not a non-negative integer makes `dispatchChildRun` throw `RangeError` before anything is registered, emitted, or started; `createChildSignalChannel` throws the same `RangeError` for its `bufferLimit`.
+- **One consumer per name.** One handler per signal name and one listener per event name at a time. `handle.signals.on` and the port's `onSignal` throw `TypeError` for a name the contract does not declare, and `Error` when that name already has a consumer. Once the channel has closed, a registration for a declared name is inert instead of throwing.
+- **Deterministic close.** The channel closes once, with the first of `aborted` (the handle's `abort()` or the parent's `signal`), `completed`/`failed`/`aborted` (the child's settled result, before `result()` resolves), or `disposed` (`[Symbol.dispose]()`). Closing resolves every unsettled send as `channel-closed`—`delivered: true` when the child's handler was already running—drops buffered messages, releases every handler and listener, and makes later sends, emits, and registrations inert. `closeReason` on either endpoint reports it.
+
+Everything here is in-process: no persistence, restart recovery, or network transport. `createAgent` children receive the port automatically; `createSubagentTool` has no `signals` option. A host that starts a child run itself, as Bureau does for `bureau.children`, can build the channel with `createChildSignalChannel(contract, { parentRunId, childRunId }, { bufferLimit? })`, hand `channel.child` to the child as `AgentRunContext.parentSignals`, keep `channel.parent`, and call `channel.close(reason)` when the child ends. Bureau's durable children use a contract registered in `BureauOptions.children.signals`, and Bureau can send them signals but exposes no way to observe their `events`.
+
+**Exported types.** Child dispatch and discovery export `DispatchChildRunOptions`; `ChildRunHandle`, and `SignaledChildRunHandle` (a handle with `signals`, returned when `signals` is supplied); `ChildEventEmitter` (the `dispatchEvent` surface `emitter` needs); `ChildRunRegistry` (the read surface) and `MutableChildRunRegistry` (what `registry` accepts and `createChildRunRegistry()` returns); `ChildRunDescriptor`; `ChildRunStatus` (`'running' | 'completed' | 'failed' | 'aborted'`); `ChildRunTerminalStatus` (every status but `'running'`); and `ChildRunSummary`, whose `status` is a `ChildRunTerminalStatus` or `undefined` while the child runs. Every `multiagent.child-workflow.*` event carries `ChildWorkflowCorrelation` (`parentAgentName`, `parentRunId`, `childAgentName`, `childRunId`). `ChildWorkflowReattachedPayload` and `ChildWorkflowProgressPayload` type the two events with no emitter. Signals export `ChildSignalSchemas` and `ChildSignalContract` (the contract); `ParentSignalEndpoint` (`handle.signals`) and `ChildSignalPort` (the child's port); `ChildSignalCorrelation`; `ChildSignalMessage` (`id`, `sequence`, `name`, `payload`, and the correlation); `ChildSignalHandler`; `ChildSignalOutcome` (`ChildSignalAcknowledgement | ChildSignalRejection`); `ChildEventOutcome` (`ChildEventEmission | ChildSignalRejection`); `ChildSignalRejectionCode`; `ChildSignalCloseReason`; and, for `createChildSignalChannel`, `ChildSignalChannel` and `CreateChildSignalChannelOptions`.
+
 **Cleanup acknowledgement.** `closed(options?)` (AB-37, delivered by AB-204) is on `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` alike—a truthful cleanup acknowledgement, backed by the same settlement `abort()` already uses, for a caller that wants more than "I fired `abort()` and hoped":
 
 ```typescript
@@ -1228,6 +1592,18 @@ Approval- and input-gated invocations also settle: their `tool.settled` status i
 **Supervisor:** moved to the `bureau` package (AB-22)—see its README for `createSupervisor`, `RoutingStrategy<D>`, and the built-in routing strategies, which now operate on a `BureauAgentCatalog<D>` and metadata-only `AgentDescriptor`s.
 
 **Handoffs:**
+
+A handoff passes the same conversation to another agent. It is not a reset: to retry without the failed transcript, start a [fresh attempt](#fresh-attempts-and-conversation-policies-cor-1354) instead. `createHandoffTool(options)` takes `CreateHandoffToolOptions` and returns an armorer tool:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `agent` | Required | A `HandoffTarget`, `{ agentName, agent }`: the target's identity and its `RunnableAgent`. `agentName` is the identity used everywhere, because a `createLazyAgent` result's `name` is a placeholder until it loads. |
+| `name` | `transfer_to_<agentName>` | The tool name. |
+| `description` | `Hand off the conversation to the "<agentName>" agent.` | The description shown to the model. |
+| `input` | `z.object({})` | The Zod schema for the call's arguments (see the warning below). |
+| `sourceContext` | None | `{ emitter, sourceAgentName, sessionId? }`. When set, every execution dispatches a `HandoffOccurredEvent` on `emitter` with the source agent, the target agent, and `sessionId` when given. |
+
+The tool never runs the target agent and never touches a session. Executing it returns `JSON.stringify({ type: HANDOFF_MARKER, agent: agentName })`, where `HANDOFF_MARKER` is `'__handoff__'`, and `extractHandoffTarget(steps)` reads that marker from the final step. Starting the target agent, in the same session or anywhere else, is the caller's job.
 
 ```typescript
 import {
@@ -1328,6 +1704,73 @@ if (target) {
 > If the target agent needs the reason in its own context, pass it explicitly when you start that agent's run—the handoff mechanism will not carry it across for you.
 
 **Agent discovery:** moved to the `bureau` package (AB-22)—see its README for `createAgentDiscoveryTool`, which now takes a `BureauAgentCatalog<D>` directly rather than a standalone registry.
+
+### Delegation grants (COR-336)
+
+A `DelegationGrant` is the signed authority record for one child dispatch. It binds the parent and child run identifiers, the child's agent name and version, an `objective` (or an `artifactDigest` when the objective is an approved artifact), the recipient, the child's `effectiveCapabilities`, a `delegatedAuthority` for model selection, `budget` ceilings, the remaining nesting `depth`, `policyVersion`, `issuedAt`/`expiresAt`, `revoked`, and a `disclosurePolicy`. The HMAC-SHA-256 `signature` covers every other field in a canonical serialization, so a changed field, including `revoked`, fails verification. The objective is metadata: a natural-language claim that authority exists is never the authority record.
+
+The helpers are pure functions:
+
+- `signDelegationGrant(unsigned, secret)` signs a grant. `verifyDelegationGrant(grant, secret, now)` checks, in order, `version`, signature, revocation, and expiry, and returns `{ valid: true }` or `{ valid: false, code, reason }` with `code` of `'unsupported-version'`, `'invalid-signature'`, `'revoked'`, or `'expired'`. Every failure is a hard deny.
+- `revokeDelegationGrant(grant, secret)` returns the grant revoked and re-signed.
+- `attenuateDelegationCapabilities(parent, requested)` and `attenuateDelegationBudget(parent, requested)` compute a child's values that are never wider than the parent's. Allow-lists intersect, `network`/`admin` switches can only turn off, numeric ceilings take the lower value, and a dimension absent on one side inherits the other. `parent === undefined` returns `requested` unchanged.
+- `isDelegationGrant(value)` is a fail-closed structural guard for a grant read back from storage. `digestDelegationArtifact(value)` is a SHA-256 digest of a value's canonical JSON. `DELEGATION_GRANT_VERSION` (`1`) is the compatibility boundary for the signed payload.
+- The exported types are `DelegationGrant`, `UnsignedDelegationGrant` (a grant without `signature`, the input to `signDelegationGrant`), `DelegationCapabilities` (`tools`, `pathPatterns`, and `secrets` allow-lists, plus `network` and `admin`, each an allow-list or a switch), `DelegationBudget` (`concurrentChildren`, `totalDescendants`, `duration`, `steps`, `tokens`, `cost`, `toolCalls`), `DelegationDisclosurePolicy` (`'full' | 'redacted' | 'digest-only'`), `DelegationGrantVerification`, and `DelegationGrantVerificationCode`.
+
+```typescript
+import {
+  attenuateDelegationBudget,
+  attenuateDelegationCapabilities,
+  DELEGATION_GRANT_VERSION,
+  revokeDelegationGrant,
+  signDelegationGrant,
+  verifyDelegationGrant,
+} from '@lostgradient/operative';
+
+const secret = 'replace-with-a-real-secret';
+const now = Date.now();
+
+const grant = signDelegationGrant(
+  {
+    version: DELEGATION_GRANT_VERSION,
+    id: 'delegation:planner-1',
+    parentRunId: 'root-run',
+    childRunId: 'planner-1',
+    agentName: 'planner',
+    agentVersion: '1',
+    objective: 'Plan the corvid report',
+    recipientId: 'planner-1',
+    effectiveCapabilities: { tools: ['search', 'fetch'], network: ['example.com'] },
+    delegatedAuthority: { policyVersion: 'policy/1' },
+    budget: { concurrentChildren: 2, totalDescendants: 4 },
+    depth: 1,
+    policyVersion: 'policy/1',
+    issuedAt: now,
+    expiresAt: now + 60_000,
+    revoked: false,
+    disclosurePolicy: 'redacted',
+  },
+  secret,
+);
+
+const capabilities = attenuateDelegationCapabilities(grant.effectiveCapabilities, {
+  tools: ['search', 'shell'],
+  network: true,
+});
+// { tools: ['search'], network: ['example.com'] }
+
+const budget = attenuateDelegationBudget(grant.budget, { concurrentChildren: 5, steps: 20 });
+// { concurrentChildren: 2, totalDescendants: 4, steps: 20 }
+
+const valid = verifyDelegationGrant(grant, secret, now); // { valid: true }
+const tampered = verifyDelegationGrant({ ...grant, depth: 5 }, secret, now); // code: 'invalid-signature'
+const revoked = verifyDelegationGrant(revokeDelegationGrant(grant, secret), secret, now); // code: 'revoked'
+const expired = verifyDelegationGrant(grant, secret, grant.expiresAt); // code: 'expired'
+```
+
+`test/multi-agent-lifecycle-guide.test.ts` runs this example and asserts each commented result.
+
+This package issues no grants on its own: `dispatchChildRun` and `createSubagentTool` narrow only model selection, through `DelegatedAuthority` (see [Selection Gate and Boundary Revalidation](#selection-gate-and-boundary-revalidation-ab-64-ab-250)). Nothing here stores grants, keeps a budget ledger, or counts usage. Bureau's `bureau.children` issues, stores, reserves budget against, and re-verifies grants on recovery; see [Bureau's parent-child topology](../bureau/README.md#parent-child-topology-cor-772). Even there, only the signature, revocation, expiry, `depth`, `concurrentChildren`, and `totalDescendants` are enforced. The capability lists, the grant's `delegatedAuthority`, and the `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings are recorded and attenuated, but they do not constrain the running child.
 
 ### Scheduler
 
@@ -1650,6 +2093,38 @@ const activeRun = createActiveRun({
     onCompact,
   },
 });
+```
+
+#### Background compaction
+
+A step can also prepare compaction ahead of time without waiting for it. Create a scheduler for the run's conversation with conversationalist's `createCompactionScheduler`, then pass it as `contextManagement.background`. When a step's estimate is above `background.threshold` but at or below the synchronous `compactionThreshold`, the step requests background compaction and generates without waiting.
+
+The candidate publishes only through `Conversation.compact()`'s revision compare-and-swap. A step therefore reads either the whole history before the commit or the whole compacted history after it. When a message or streamed token lands while the summary is being written, the candidate goes stale and is rescheduled under the scheduler's bounded policy instead of overwriting the write. A candidate also starts only at a durable boundary: a window that opens while a step is streaming or while its tool calls are still running waits until the stream closes or the results land, so a summary never strands a streaming reply or removes a pending tool call. Aborting the run withdraws queued work and aborts a running summary. A step that reaches the synchronous threshold cancels background work and waits for any aborted summary to return before its own `onCompact` runs, so the synchronous summary never overlaps a background one. Overflow recovery through `createOverflowMutator` never waits for background work, and the retry loop hands it the history the failed request was sent with. What it does depends on where the background candidate is when the overflow arrives. If the candidate already committed after the request was sent, for example during the provider's network wait, recovery retries once against that compaction without writing a summary of its own. If the candidate is still running, recovery's summary overlaps it and the compare-and-swap publishes whichever commits first; when the candidate wins, recovery retries once against it. If no candidate is running, recovery compacts the history itself. In every case a second overflow against the same compacted history rethrows the provider error instead of compacting it again. The caller owns the scheduler and disposes it.
+
+```typescript
+import { Conversation, createCompactionScheduler } from 'conversationalist';
+
+const conversation = new Conversation();
+const scheduler = createCompactionScheduler(conversation, {
+  summarizer: async (messages) => `Summary of ${messages.length} prior messages.`,
+  compaction: { preserveRecentCount: 6 },
+});
+
+const activeRun = createActiveRun({
+  generate,
+  toolbox,
+  conversation,
+  stopWhen: stopWhen.noToolCalls(),
+  contextManagement: {
+    maxTokens: 80_000,
+    onCompact,
+    background: { threshold: 40_000, scheduler },
+  },
+});
+
+await activeRun.result;
+console.log(scheduler.state.phase, scheduler.state.counts);
+await scheduler.dispose();
 ```
 
 ### Memory Bridge
@@ -2129,7 +2604,7 @@ console.log(state.textContent);
 
 ### Retry Mutators
 
-Transforms the generate context before each retry attempt—escalate temperature, drop bad tools, inject schema error feedback, or add jitter to delays.
+Transforms the generate context before each retry attempt—escalate temperature, drop bad tools, inject schema error feedback, or add jitter to delays. A mutator receives the context, the error, the attempt number, and the conversation history the failed attempt was sent with, so it can tell whether another writer changed the history while the request was in flight.
 
 ```typescript
 import {
@@ -2154,7 +2629,7 @@ const schemaFeedback = createSchemaErrorMutator();
 // Remove tools that caused errors on the previous attempt
 const dropBadTools = createToolRemovalMutator();
 
-// Handle context-window overflow by trimming early messages
+// Recover from one context-window overflow by compacting the run's conversation
 const overflow = createOverflowMutator({
   summarize: async (messages) => `Summary of ${messages.length} trimmed messages.`,
   retainRecentMessages: 10,
@@ -2182,11 +2657,11 @@ const activeRun = createActiveRun({
 
 | Function | Description |
 | --- | --- |
-| `composeMutators(...mutators)` | Chains mutators left-to-right—each receives the context the previous one returned. |
+| `composeMutators(...mutators)` | Chains mutators left-to-right—each receives the context the previous one returned, and the history the failed attempt was sent with. |
 | `createTemperatureEscalationMutator(options)` | Increases temperature on each retry. Writes to `RETRY_TEMPERATURE_KEY` in metadata. |
 | `createSchemaErrorMutator()` | Appends schema validation error details as a user message. |
 | `createToolRemovalMutator()` | Removes tools that failed on the previous attempt. |
-| `createOverflowMutator(options)` | Trims the conversation when a context-overflow error is detected. |
+| `createOverflowMutator(options)` | On a context-overflow error, compacts the run's conversation once through `Conversation.compact()` and retries. When another writer, such as a background candidate, compacted the history after the failed request was sent, either before recovery started or while its own summary was being written, it retries once against that compaction instead of compacting again. A second overflow before any new durable message rethrows the provider error instead of looping. It never compacts over an open stream. |
 | `addJitter(options?)` | Wraps a delay function to add random offset. |
 | `RETRY_TEMPERATURE_KEY` | Metadata key used by `createTemperatureEscalationMutator`. |
 

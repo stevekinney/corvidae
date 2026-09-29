@@ -131,7 +131,7 @@ Snapshots are cached, immutable, and side-effect-free. Calling `snapshot()` does
 
 ### Required capabilities
 
-An independently owned live operation exposes a cached snapshot, independent observation, idempotent cancellation where supported, an awaitable terminal result, and an awaitable cleanup acknowledgement. `AgentRun` supplies these as `snapshot()`, `subscribeSnapshot()`, `abort()`, `result()`, and `closed()`. Child runs remain parent-owned and are discovered through `children()` and `abortChild()` when a `ChildRunRegistry` is wired.
+An independently owned live operation exposes a cached snapshot, independent observation, idempotent cancellation where supported, an awaitable terminal result, and an awaitable cleanup acknowledgement. `AgentRun` supplies these as `snapshot()`, `subscribeSnapshot()`, `abort()`, `result()`, and `closed()`. Child runs remain parent-owned and are discovered through `children()` and `abortChild()` when a `ChildRunRegistry` is wired. Bureau's durable children are a separate surface, `bureau.children`, that the parent's `children()` does not list; see [Multi-agent lifecycle and communication](./multi-agent-lifecycle.md).
 
 Cleanup acknowledgement describes cleanup, not optimistic rollback. An external tool, provider, or hook may already have committed a side effect; the run preserves the observed outcome and idempotency evidence rather than claiming that effect was reversed.
 
@@ -183,7 +183,7 @@ A source change produces a successor epoch with its own id and a `supersedes` li
 
 The Bureau durable options that affect the Operative contract include `workflowVersion`, `durableOwnership`, `durableGuardrails`, persistence, and the durable storage configuration. `workflowVersion` is passed to both the workflow stamp and recovery comparison when a durable engine is composed.
 
-`BureauOptions.memory?: CreateMemoryOptions | Memory` accepts either construction options or an already-constructed `Memory` instance; `isMemoryInstance` decides which branch it holds, calling `createMemory()` only for the options branch. The resolved instance is exposed on `Bureau.memory` (`Memory | undefined`).
+`BureauOptions.memory?: GovernedMemory` takes a host-constructed governed memory (COR-41); Bureau never constructs memory storage itself. Each run's recall and persistence hooks act under a memory authority `createRunMemoryAuthority` derives from the run's persisted request authority, delegated from Bureau (`BureauOptions.memoryAuthority.runCapabilities`, default `memory:search` and `memory:write`) through the request principal to the run; a run with no persisted request authority gets no memory hooks. Recall goes through the governed memory's mandatory recall admission and enters the conversation as a labeled evidence envelope; persisted assistant content is admitted as untrusted conversation memory. The instance is exposed on `Bureau.memory` (`GovernedMemory | undefined`).
 
 ## Reserved for memory
 

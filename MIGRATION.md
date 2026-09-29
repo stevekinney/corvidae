@@ -34,6 +34,7 @@ This inventory records the consolidation boundaries and validation evidence. The
 | `/Users/stevekinney/Developer/cinder/packages/testing` | `packages/testing` | `@cinder/testing` | `@lostgradient/testing` | Library |
 | `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room`, later `applications/desktop` | `@cinder/chat-room-lab` | `@lostgradient/chat-room`, later `@lostgradient/desktop` | Application |
 | Extracted from `applications/chat-room` | `packages/telephone` | — | `@lostgradient/telephone` | Library |
+| New in COR-1348 | `packages/evaluation` | — | `@lostgradient/evaluation` | Library |
 
 ## Architecture
 
@@ -51,7 +52,7 @@ File length, closure hoisting, and generic simplification are design-review guid
 
 ## Complete internal dependency graph
 
-Arrows run from consumer to provider. Every manifest edge appears below, including development dependencies. The 19-workspace graph has 72 edges. Root tooling adds 6 development edges; no package depends on the root.
+Arrows run from consumer to provider. Every manifest edge appears below, including development dependencies. The 21-workspace graph has 80 edges. Root tooling adds 6 development edges; no package depends on the root.
 
 | Consumer | Runtime or source-contract providers | Development providers |
 | --- | --- | --- |
@@ -66,6 +67,7 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 | `conversationalist` | `@lostgradient/lifecycle`, `@lostgradient/tool-protocol` | `@lostgradient/typescript` |
 | `@lostgradient/cryptography` | None | `@lostgradient/typescript` |
 | `@lostgradient/embeddings` | None | `@lostgradient/typescript` |
+| `@lostgradient/evaluation` | `armorer`, `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/operative` | `@lostgradient/typescript` |
 | `@lostgradient/lifecycle` | None | `@lostgradient/typescript` |
 | `@lostgradient/markdown` | None | `@lostgradient/typescript` |
 | `@lostgradient/memory` | `armorer`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/weft` | `@lostgradient/typescript` |
@@ -92,6 +94,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | `@lostgradient/chat` | `decode-named-character-reference`, `micromark-util-decode-numeric-character-reference`, `svelte`, `zod` |
 | `@lostgradient/cinder` | `@floating-ui/dom`, `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/themes`, `@shikijs/types`, `@tanstack/virtual-core`, `ajv`, `ajv-formats`, `culori`, `esm-env`, `libphonenumber-js`, `lucide-svelte`, `qrcode`, `shiki`, `svelte`, `zod` |
 | `conversationalist` | `@anthropic-ai/sdk`, `js-yaml`, `zod` |
+| `@lostgradient/evaluation` | `zod` |
 | `@lostgradient/editor` | `@floating-ui/dom`, `@milkdown/ctx`, `@milkdown/kit`, `@milkdown/prose`, `esm-env`, `prosemirror-inputrules`, `prosemirror-model`, `prosemirror-state`, `prosemirror-view`, `svelte` |
 | `@lostgradient/markdown` | `@shikijs/engine-oniguruma`, `@shikijs/langs`, `@shikijs/types`, `@types/mdast`, `@types/unist`, `comlink`, `diff-match-patch`, `hast-util-sanitize`, `js-yaml`, `rehype-katex`, `rehype-sanitize`, `rehype-stringify`, `remark-gfm`, `remark-math`, `remark-parse`, `remark-rehype`, `remark-stringify`, `shiki`, `unified`, `unist-util-visit` |
 | `@lostgradient/memory` | `zod` |

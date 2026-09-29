@@ -1,0 +1,395 @@
+{
+  "kind": "evaluation-run",
+  "schemaVersion": 1,
+  "id": "run-candidate",
+  "recordedAt": "2026-09-28T13:00:00.000Z",
+  "evaluator": {
+    "name": "capital-cities",
+    "revision": 3,
+    "digest": "c90fcd2bedc8ab96e71ac82c3522fd7f0cf21cf5138705e37672f012265524f0"
+  },
+  "resultSchemaVersion": 1,
+  "dataset": {
+    "id": "capitals",
+    "version": "capitals-2026-09"
+  },
+  "codeRevision": "b1c2d3e4f5a60718293a4b5c6d7e8f9012345678",
+  "repetitions": 2,
+  "variancePolicy": null,
+  "outcomes": {
+    "pass": 1,
+    "fail": 0,
+    "disagreement": 1,
+    "indeterminate": 0
+  },
+  "statistics": {
+    "verdicts": {
+      "trials": 4,
+      "passes": 3,
+      "passFraction": 0.75,
+      "wilsonInterval": {
+        "lower": 0.30064184258240184,
+        "upper": 0.9544127391902995,
+        "width": 0.6537708966078977
+      }
+    },
+    "criteria": [
+      {
+        "name": "names-the-capital",
+        "trials": 4,
+        "passes": 3,
+        "passFraction": 0.75,
+        "wilsonInterval": {
+          "lower": 0.30064184258240184,
+          "upper": 0.9544127391902995,
+          "width": 0.6537708966078977
+        },
+        "meanScore": 0.75,
+        "sampleVariance": 0.25,
+        "standardDeviation": 0.5
+      },
+      {
+        "name": "concise",
+        "trials": 4,
+        "passes": 2,
+        "passFraction": 0.5,
+        "wilsonInterval": {
+          "lower": 0.15003898915214953,
+          "upper": 0.8499610108478505,
+          "width": 0.699922021695701
+        },
+        "meanScore": 0.625,
+        "sampleVariance": 0.10416666666666667,
+        "standardDeviation": 0.3227486121839514
+      },
+      {
+        "name": "no-web-search",
+        "trials": 4,
+        "passes": 4,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.5101091635454027,
+          "upper": 1,
+          "width": 0.4898908364545973
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "follows-style-guide",
+        "trials": 4,
+        "passes": 4,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.5101091635454027,
+          "upper": 1,
+          "width": 0.4898908364545973
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      }
+    ]
+  },
+  "costUsd": 1.5,
+  "latencyMilliseconds": 1250,
+  "cases": [
+    {
+      "ordinal": 1,
+      "visibility": "held-out",
+      "outcome": "disagreement",
+      "disagreementReasons": ["split-without-variance-policy"],
+      "statistics": {
+        "verdicts": {
+          "trials": 2,
+          "passes": 1,
+          "passFraction": 0.5,
+          "wilsonInterval": {
+            "lower": 0.09453120573423074,
+            "upper": 0.9054687942657693,
+            "width": 0.8109375885315386
+          }
+        },
+        "criteria": [
+          {
+            "name": "names-the-capital",
+            "trials": 2,
+            "passes": 1,
+            "passFraction": 0.5,
+            "wilsonInterval": {
+              "lower": 0.09453120573423074,
+              "upper": 0.9054687942657693,
+              "width": 0.8109375885315386
+            },
+            "meanScore": 0.5,
+            "sampleVariance": 0.5,
+            "standardDeviation": 0.7071067811865476
+          },
+          {
+            "name": "concise",
+            "trials": 2,
+            "passes": 1,
+            "passFraction": 0.5,
+            "wilsonInterval": {
+              "lower": 0.09453120573423074,
+              "upper": 0.9054687942657693,
+              "width": 0.8109375885315386
+            },
+            "meanScore": 0.625,
+            "sampleVariance": 0.03125,
+            "standardDeviation": 0.1767766952966369
+          },
+          {
+            "name": "no-web-search",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "follows-style-guide",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1180243005,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.25,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "concise",
+              "score": 0.5,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9166666666666666
+        },
+        {
+          "trial": 2,
+          "seed": 2222386836,
+          "verdict": "fail",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.25,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 0,
+              "hardGate": "failed"
+            },
+            {
+              "name": "concise",
+              "score": 0.75,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.4583333333333333
+        }
+      ]
+    },
+    {
+      "ordinal": 2,
+      "visibility": "public",
+      "caseId": "case-japan",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 2,
+          "passes": 2,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.34238022750665303,
+            "upper": 1,
+            "width": 0.657619772493347
+          }
+        },
+        "criteria": [
+          {
+            "name": "names-the-capital",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "concise",
+            "trials": 2,
+            "passes": 1,
+            "passFraction": 0.5,
+            "wilsonInterval": {
+              "lower": 0.09453120573423074,
+              "upper": 0.9054687942657693,
+              "width": 0.8109375885315386
+            },
+            "meanScore": 0.625,
+            "sampleVariance": 0.28125,
+            "standardDeviation": 0.5303300858899106
+          },
+          {
+            "name": "no-web-search",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "follows-style-guide",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1914121908,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.5,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "concise",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        },
+        {
+          "trial": 2,
+          "seed": 4177310903,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.5,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "concise",
+              "score": 0.25,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.875
+        }
+      ]
+    }
+  ]
+}

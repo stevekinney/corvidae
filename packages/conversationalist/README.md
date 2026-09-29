@@ -968,7 +968,7 @@ await conversation.dispose();
 
 `getSnapshot()` and `getServerSnapshot()` return the same cached, immutable, serializable `{ conversation, revision, lifecycle }` value until a transition commits. `complete()` and `close()` idempotently close the controller: later writes throw a typed `ConversationalistError` with `error:conversation-closed`, while reads remain available. `dispose()` aborts owned work, awaits final quiescence, releases subscriptions, and changes the lifecycle to `disposed`. Synchronous `Symbol.dispose` starts that cleanup; `Symbol.asyncDispose` awaits it.
 
-Expected-revision clients can use `applyMutation(...)`; external projections can use `reconcileExternalSnapshot(...)`. Both return frozen accepted or rejected results without hidden mutation. Stale external revisions and stale compaction results are discarded.
+Expected-revision clients can use `applyMutation(...)`; external projections can use `reconcileExternalSnapshot(...)`. Both return frozen accepted or rejected results without hidden mutation. Stale external revisions and stale compaction results are discarded; [Compaction](#compaction) describes the compaction compare-and-swap.
 
 The typed event surface remains available independently:
 
@@ -1017,32 +1017,224 @@ Every mutation event carries the resulting controller `revision`, a monotonic ev
 
 Message plugins remain transcript transformations only. Use `defineMessagePlugin({ id, revision }, transform)` to give a plugin stable identity. Duplicate identities are rejected, and activation or failure events include the plugin identity and fixed `transcript-transform` authority; plugins cannot register Bureau, Agent, run, or authorization hooks.
 
-Streaming messages (those with `metadata.__streaming === true`) are automatically protected from compaction, truncation, and adapter export. They are preserved in `partitionMessages`, locked in `truncateToTokenLimit` and `truncateFromPosition`, and excluded from provider adapters so that incomplete content is never sent to an API.
+Streaming messages (those with `metadata.__streaming === true`) are automatically protected from compaction, truncation, and adapter export. Compaction always keeps a visible streaming message rather than summarizing it, although a commit re-appends it under a new identifier. A hidden streaming message is dropped like any other hidden message (see [What compaction keeps](#what-compaction-keeps)). Streaming messages are locked in `truncateToTokenLimit` and `truncateFromPosition`, and excluded from provider adapters so that incomplete content is never sent to an API.
 
 ## Compaction
 
-Reclaim context window space by summarizing older messages. The summarization function is caller-provided—no large language model dependency in the library.
+Compaction reclaims context-window space by replacing older messages with a summary. You supply the summarizer, so the library has no large language model dependency. `Conversation.compact()` builds the summary as a candidate that nothing else can see, then publishes it only if the conversation has not changed since the attempt started. If a message, tool result, or streamed token lands while the summary is being written, the candidate is thrown away instead of overwriting that newer state.
+
+### Compacting a conversation
 
 ```typescript
-import { Conversation } from 'conversationalist';
+import { Conversation, messageText, type Summarizer } from 'conversationalist';
+
+// `summarizeWithModel` is your model call. The library forwards the signal but never
+// checks it between chunks, so passing it through is what stops the work on abort.
+const summarize: Summarizer = (messages, options) =>
+  summarizeWithModel(messages.map((message) => messageText(message)).join('\n'), options?.signal);
 
 const conversation = new Conversation(existingHistory);
+const result = await conversation.compact(summarize, { preserveRecentCount: 6 });
 
-const result = await conversation.compact(
-  async (messages) => {
-    // Call your large language model to summarize
-    const response = await llm.summarize(messages.map((m) => m.content).join('\n'));
-    return response.text;
-  },
-  { preserveRecentCount: 6 },
-);
-
-if (result.compacted) {
-  console.log(
-    `Removed ${result.messagesRemoved} messages, created ${result.chunksProcessed} summaries`,
-  );
+switch (result.outcome) {
+  case 'committed':
+    console.log(`Replaced ${result.messagesRemoved} messages at revision ${result.revision}`);
+    break;
+  case 'no-op':
+    // Nothing was old enough to summarize, and the revision did not move.
+    break;
+  case 'discarded':
+    // result.reason is 'revision-conflict': a newer write landed while the summary
+    // was being written. The candidate was dropped and the newer history is untouched.
+    console.log(
+      `Built at revision ${result.attempt.baseRevision}, stale at ${result.attempt.observedRevision}`,
+    );
+    break;
 }
 ```
+
+`compact()` resolves one of three outcomes:
+
+- **`committed`**: the candidate replaced the current history as one new history node. `compacted` is `true` and `revision` is the new controller revision.
+- **`no-op`**: no message was eligible for summarizing, so nothing was published and the revision did not move.
+- **`discarded`**: the conversation moved past the attempt's base revision before the candidate could publish. `reason` is `'revision-conflict'`, `compacted` is `false`, `messagesRemoved` is `0`, `summaryContent` is empty, and `revision` is the newer revision.
+
+Failures reject instead of resolving, and publish nothing. A failed attempt rejects with the error that ended it, which is usually, but not always, the summarizer's error: rebuilding the kept messages can also reject with `error:invalid-tool-reference`, as [What compaction keeps](#what-compaction-keeps) describes. An aborted `signal`, or closing or disposing the conversation mid-attempt, rejects with a `ConversationalistError` whose `code` is `error:operation-cancelled`. The library only forwards the signal to the summarizer and does not check it between chunks, so a summarizer that ignores it runs every chunk before the attempt rejects. Calling `compact()` on a closed or disposed conversation rejects with `error:conversation-closed` or `error:conversation-disposed` before any summarizer runs.
+
+### What compaction keeps
+
+Revisioned commits did not change which messages are summarized. Compaction looks only at visible messages. Of those, `compact()` keeps these by default:
+
+- every `system` message
+- the most recent `preserveRecentCount` non-system messages (default `4`)
+- open streaming messages
+- messages marked `metadata.pinned`, `metadata.decision`, or `metadata.error`, and tool results whose outcome is `error`
+
+A kept tool call or tool result keeps its visible partner. For the recent window, that holds only while `preserveToolPairs` is `true`, which is the default. Every other visible message is split into chunks and handed to the summarizer one chunk at a time, in order. Before a chunk reaches the summarizer, its tool-result payloads are replaced with a `[tool result]` placeholder and its thinking blocks are dropped. The [API reference](documentation/api-reference.md#compaction) lists every option and default.
+
+A commit drops hidden messages. This is a current limitation, and [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing it:
+
+- A hidden message is never summarized, never kept, and never counted in `messagesRemoved`, whatever its role or metadata. A hidden `system`, pinned, decision, error, or streaming message is gone after a commit.
+- The `preserveRecentCount` window counts visible non-system messages only.
+- A kept tool call whose result is hidden loses that result and reads as pending afterwards.
+- A no-op publishes nothing, so hidden messages survive it.
+
+The committed history starts with a single `system` message carrying `metadata.compactionSummary: true`, followed by the kept messages in their original order. The kept messages are rebuilt rather than carried over, and plugins reach the summary too. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) also tracks this:
+
+- Each kept message is re-appended with a new `id`, a new `position`, and a `createdAt` from the environment's `now()` at the moment the candidate is assembled, after the last summarizer call.
+- Its content, metadata, `hidden` flag, tool call or tool result, `tokenUsage`, and `cacheBoundary` are copied. An assistant message's `goalCompleted` is not, so a kept message that completed a goal no longer says so.
+- The conversation's message plugins run again over every kept message and over the summary message. A plugin that is not idempotent applies twice to each kept message, and once more on every later commit.
+- `result.summaryContent` is the chunk summaries joined with `\n\n---\n\n`. The stored summary message holds the plugins' output for that text, which differs from `summaryContent` whenever a plugin changes content.
+
+Compaction never publishes a tool result without its call. When a kept visible tool result's call is not kept, the attempt rejects with `error:invalid-tool-reference`. That happens in two cases:
+
+- **The call is hidden.** A hidden call is dropped, so the attempt rejects whatever `preserveToolPairs` is set to. That covers a result kept by the recent window and one kept by the preservation policy, such as an `error` result. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks this too.
+- **`preserveToolPairs` is `false`.** If the recent window holds a tool result whose call would be summarized, for example because the window begins on that result, the attempt rejects.
+
+The summarizer has already run by then. `compact()` emits `compaction.started` and then `compaction.failed`, and publishes nothing.
+
+### Revisions and compare-and-swap
+
+`conversation.revision` is the controller revision. It is a monotonic counter that moves on every committed state transition, including:
+
+- appending, updating, or removing messages
+- streaming tokens, and finalizing or cancelling a stream
+- appending tool calls and tool results
+- `push()`, `undo()`, `redo()`, and `switchToBranch()`
+- an accepted `applyMutation()` or `reconcileExternalSnapshot()`
+- a compaction commit itself
+
+It is the same number that `getSnapshot().revision`, `snapshot().controllerRevision`, and every event's `revision` carry. Compaction does not keep a counter of its own.
+
+Each attempt uses the revision like this:
+
+1. `compact()` reads the current history and revision synchronously, before it returns its promise. That revision becomes the attempt's `baseRevision`, and any write you make after the call returns is newer than the candidate.
+2. The summarizer runs against that snapshot. While it runs, `current`, `revision`, `getSnapshot()`, `snapshot()`, and the undo tree stay exactly as they were. The attempt emits `compaction.started` and nothing else until it settles.
+3. When the summary is ready, `compact()` compares the live revision with `baseRevision`. The comparison and the commit happen in one synchronous step, so no other write can land between them.
+4. If the revisions match, the candidate is committed and the revision moves to `baseRevision + 1`.
+5. If they differ, the candidate is dropped. The current history, revision, store snapshot, and history tree stay byte-for-byte as the newer write left them, and the attempt's `observedRevision` is that newer revision.
+
+A no-op follows the same rule: if nothing was eligible but the revision moved while the attempt ran, it resolves `discarded`, not `no-op`.
+
+This race mirrors `test/compaction-revision.test.ts`. The summarizer waits on a promise, so a write can land while the summary is being written:
+
+```typescript
+import { Conversation, createConversationHistory } from 'conversationalist';
+
+const conversation = new Conversation(createConversationHistory());
+for (let index = 0; index < 8; index++) {
+  conversation.appendUserMessage(`question ${index}`);
+  conversation.appendAssistantMessage(`answer ${index}`);
+}
+
+let finishSummary!: () => void;
+const summaryWritten = new Promise<void>((resolve) => {
+  finishSummary = resolve;
+});
+
+const compacting = conversation.compact(
+  async (messages) => {
+    await summaryWritten;
+    return `Summary of ${messages.length} messages`;
+  },
+  { preserveRecentCount: 2 },
+);
+
+// compact() captured revision 16. This append moves the conversation to 17.
+conversation.appendUserMessage('arrived mid-summary');
+finishSummary();
+
+const result = await compacting;
+result.outcome; // 'discarded'
+result.attempt.baseRevision; // 16
+result.attempt.observedRevision; // 17
+conversation.revision; // 17
+conversation.getMessages().at(-1)?.content; // 'arrived mid-summary'
+```
+
+If you still need the space, call `compact()` again. The new attempt summarizes the newer history.
+
+A committed compaction is an ordinary history node, so `undo()` returns to the uncompacted history, as a new revision like any other undo. Operative's context-epoch sealer versions the conversation source by this revision. A commit therefore always seals a new effective-context epoch, and an attempt that published nothing never does.
+
+### Compaction events
+
+Every attempt emits `compaction.started` and then exactly one settling event. Each event carries the attempt record on `event.compaction`, typed as `CompactionAttempt`:
+
+| Field | Meaning |
+| --- | --- |
+| `attemptId` | Identity of one `compact()` call, minted from the environment runtime's identifiers. Every event of one attempt carries the same value. |
+| `baseRevision` | Controller revision of the snapshot the candidate is built from. |
+| `observedRevision` | Controller revision when the record was taken. It equals `baseRevision` on a commit and is the newer revision on a discard. |
+| `durationMs` | Milliseconds since the attempt started, on the environment runtime's clock. |
+| `baseTokens` | Estimated tokens in the base snapshot, using the conversation's token estimator (the value `conversation.estimateTokens()` returned at the start). |
+| `candidateTokens` | Estimated tokens in the candidate. Present only once a candidate exists. |
+
+| Event | Emitted when | `event.revision` | `event.outcome` | `event.reason` | `candidateTokens` |
+| --- | --- | --- | --- | --- | --- |
+| `compaction.started` | Inside the `compact()` call, before it returns | base revision | `started` | — | absent |
+| `compaction.completed` | The candidate committed | base revision + 1 | `completed` | — | present |
+| `compaction.completed` | No-op: nothing was eligible and the revision had not moved | base revision | `completed` | — | equals `baseTokens` |
+| `compaction.stale-discarded` | The revision moved before the compare-and-swap | the newer revision | `discarded` | `revision-conflict` | present |
+| `compaction.failed` | The attempt threw (usually the summarizer) while the conversation was open and the attempt was not aborted | current revision | `failed` | the error, as a string | absent |
+| `compaction.cancelled` | The attempt's `signal` aborted while the conversation was open | current revision | `cancelled` | the abort reason, or the error the aborted summarizer threw, as a string | absent |
+
+The result's `attempt` equals the record on the settling event. A commit also emits `change` (with `action: 'compaction.completed'`) and `push` just before `compaction.completed`. All three carry the new revision and the same `compaction` record. Their `messageIds` list every identifier the commit removed. That includes the kept messages, because they are re-appended under new identifiers, and the hidden messages the commit dropped. An attempt that publishes nothing emits no `change` or `push`, so store subscribers are not notified. Closing or disposing the conversation mid-attempt emits no `compaction.cancelled`, because the controller has stopped emitting. The promise still rejects with `error:operation-cancelled`.
+
+```typescript
+for (const type of [
+  'compaction.started',
+  'compaction.completed',
+  'compaction.stale-discarded',
+  'compaction.failed',
+  'compaction.cancelled',
+] as const) {
+  conversation.addEventListener(type, (event) => {
+    const attempt = event.compaction;
+    if (!attempt) return;
+    console.log(type, attempt.attemptId, attempt.baseRevision, attempt.observedRevision);
+  });
+}
+```
+
+`CompactionStartedEvent` and `CompactionCompletedEvent` are exported event classes. The other three compaction events dispatch as `ConversationEvent`.
+
+### Compaction limits
+
+- **No rebasing.** A discarded candidate is never merged into the newer history, and `compact()` never retries on its own. Call it again, or use the background scheduler, which reschedules a fresh candidate under a bounded policy.
+- **Preservation policy is unchanged.** Revisioned commits changed _when_ a candidate may publish, not _which_ messages it keeps. The retention rules above behave as they did before.
+- **Hidden messages are dropped.** A commit deletes every hidden message instead of summarizing or keeping it, and `messagesRemoved` does not count it. A kept visible tool result whose call is hidden makes the attempt reject with `error:invalid-tool-reference`, whatever `preserveToolPairs` is set to. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing both.
+- **Kept messages are rebuilt, not carried over.** Each gets a new `id`, `position`, and `createdAt`, and loses `goalCompleted`. Message plugins run again over every kept message and over the summary, so the stored summary can differ from `result.summaryContent`. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing this.
+- **`compact()` does not wait for a durable boundary.** A commit re-appends every kept message under a new identifier. If you compact while a stream is open, the streaming message is kept but re-identified, and calls that still use its old identifier do not act on it. `updateStreamingMessage(oldId, …)` does nothing. `finalizeStreamingMessage(oldId)` and `cancelStreamingMessage(oldId)` do not throw: each still commits a new revision and emits `change` plus `stream.finalized` or `stream.cancelled` for the old identifier, yet the message stays streaming, and provider adapters leave it out of every export. That lasts until you finalize or cancel it by its new identifier, which `getStreamingMessage()` returns. A tool call that is still waiting for its result can be summarized away if it falls outside the recent window. Appending its result afterwards throws `error:invalid-tool-reference`, and `appendToolResultAsync()` rejects with it. Call `compact()` when no stream is open and no tool call is pending, or use the background scheduler, which starts candidates only at that boundary.
+- **Overlapping calls are not serialized.** Two `compact()` calls started from the same revision each run their own summarizer. The first to finish commits, and the other resolves `discarded`. The background scheduler runs one candidate at a time.
+- **No progress events.** An attempt reports `compaction.started` and one settling event. There is no per-chunk progress event.
+- **`compactConversation()` has no revision check.** The pure helper resolves `{ conversation, result }`, emits no events, and publishes nothing. It hands `signal` to the summarizer and never checks it, so an ignored signal has no effect and the call resolves normally. `push()` commits its output unconditionally. `applyMutation({ expectedRevision }, () => compacted)` with the revision you read before summarizing rejects a stale result with `reason: 'revision-conflict'`.
+
+### Background compaction
+
+`createCompactionScheduler()` prepares candidates off the caller's critical path. It publishes only by calling `conversation.compact()`, so every candidate goes through the same compare-and-swap. On top of that, the scheduler adds:
+
+- single-flight requests
+- a bounded stale-retry policy
+- durable-boundary gating
+- cancellation
+- a state snapshot you can inspect
+
+```typescript
+import { createCompactionScheduler, createIdleCompactionSchedule } from 'conversationalist';
+
+const scheduler = createCompactionScheduler(conversation, {
+  summarizer: summarize,
+  compaction: { preserveRecentCount: 6 },
+  // Uses requestIdleCallback in browsers and falls back to a timer elsewhere.
+  schedule: createIdleCompactionSchedule(),
+});
+
+const outcome = await scheduler.request(); // resolves a typed outcome and never rejects
+console.log(outcome.outcome, scheduler.state.phase, scheduler.state.counts);
+await scheduler.dispose();
+```
+
+A stale candidate is discarded and rescheduled in a new window up to `maxStaleRetries` times (default `2`). After that, the request settles `discarded`. Candidates are never rebased. Scheduling decides only when work runs. It is neither persistence nor ownership of the conversation. The [API reference](documentation/api-reference.md#background-compaction) covers the full policy. `@lostgradient/operative` wires the scheduler into agent steps through `contextManagement.background`.
 
 ## Documentation
 

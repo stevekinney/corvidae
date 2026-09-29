@@ -175,6 +175,23 @@ describe('lifecycle state and revisions', () => {
     ).toEqual({ accepted: false, revision: 1, reason: 'invalid-external-snapshot' });
   });
 
+  it('accepts the next external snapshot as one committed revision', () => {
+    const conversation = new Conversation(createConversationHistory({ id: 'external' }));
+    const pushes: Array<{ revision: number; actor?: string | undefined; durability: string }> = [];
+    conversation.addEventListener('push', (event) => pushes.push(event));
+    const next = appendUserMessage(conversation.current, 'written elsewhere');
+
+    expect(
+      conversation.reconcileExternalSnapshot(
+        { conversation: next, revision: 1, lifecycle: 'open' },
+        { correlationId: 'sync-1', actor: 'replica' },
+      ),
+    ).toEqual({ accepted: true, revision: 1 });
+    expect(conversation.revision).toBe(1);
+    expect(conversation.current).toEqual(next);
+    expect(pushes).toMatchObject([{ revision: 1, actor: 'replica', durability: 'external' }]);
+  });
+
   it('discards compaction results computed from a stale revision', async () => {
     const conversation = new Conversation(createConversationHistory({ id: 'stale' }));
     for (let index = 0; index < 8; index++) conversation.appendUserMessage(`message ${index}`);
@@ -193,7 +210,11 @@ describe('lifecycle state and revisions', () => {
     conversation.appendAssistantMessage('newer state');
     release();
 
-    expect(await rejectionOf(compaction)).toMatchObject({ code: 'error:revision-conflict' });
+    expect(await compaction).toMatchObject({
+      outcome: 'discarded',
+      reason: 'revision-conflict',
+      compacted: false,
+    });
     expect(conversation.current.ids).toHaveLength(9);
     expect(staleEvents).toEqual(['compaction.stale-discarded']);
   });

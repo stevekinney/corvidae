@@ -1,0 +1,37 @@
+{
+  "name": "@lostgradient/evaluation",
+  "private": true,
+  "description": "Versioned evaluators for completed operative runs: typed rubrics, calibrated model judges, repeated trials, append-only history, local release-gate, replay, and promotion-signal commands, and the action-based memory-lifecycle evaluation suite.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "history": "bun scripts/history.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
+    "memory-lifecycle": "bun scripts/memory-lifecycle.ts",
+    "promotion-signal": "bun scripts/promotion-signal.ts",
+    "release-gate": "bun scripts/release-gate.ts",
+    "replay": "bun scripts/replay.ts",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lostgradient/cryptography": "workspace:*",
+    "@lostgradient/memory": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
+    "@lostgradient/weft": "workspace:*",
+    "armorer": "workspace:*",
+    "conversationalist": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

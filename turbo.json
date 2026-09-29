@@ -145,6 +145,10 @@
         "WEFT_TEST_POSTGRES_URL"
       ]
     },
+    "@lostgradient/evaluation#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"]
+    },
     "@lostgradient/chat#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],

@@ -109,6 +109,19 @@ describe('composeMutators', () => {
     expect(result!.step).toBe(7);
   });
 
+  it('passes every mutator the history the failed attempt was sent with', async () => {
+    const context = makeContext();
+    const sentHistory = context.conversation.current;
+    const received: unknown[] = [];
+    const record: RetryMutator = async (_context, _error, _attempt, sent) => {
+      received.push(sent);
+    };
+
+    await composeMutators(record, record)(context, new Error('fail'), 1, sentHistory);
+
+    expect(received).toEqual([sentHistory, sentHistory]);
+  });
+
   it('works with zero mutators', async () => {
     const composed = composeMutators();
     const result = await composed(makeContext(), new Error('fail'), 1);

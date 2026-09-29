@@ -1,0 +1,3333 @@
+{
+  "kind": "evaluation-run",
+  "schemaVersion": 1,
+  "id": "memory-lifecycle.deterministic.raw-log-search",
+  "recordedAt": "2026-09-28T00:00:00.000Z",
+  "evaluator": {
+    "name": "memory-lifecycle",
+    "revision": 1,
+    "digest": "b3c6f85754f9ad0ed072228a3892e664200d495bdafc89493739b46ace3dd8a1"
+  },
+  "resultSchemaVersion": 1,
+  "dataset": {
+    "id": "memory-lifecycle",
+    "version": "memory-lifecycle-2026-09"
+  },
+  "codeRevision": "cf437e437790efa1bd713f4f28e8a2feecbb20de",
+  "repetitions": 1,
+  "variancePolicy": null,
+  "outcomes": {
+    "pass": 10,
+    "fail": 4,
+    "disagreement": 0,
+    "indeterminate": 0
+  },
+  "statistics": {
+    "verdicts": {
+      "trials": 14,
+      "passes": 10,
+      "passFraction": 0.7142857142857143,
+      "wilsonInterval": {
+        "lower": 0.4535091567010681,
+        "upper": 0.8827862135542308,
+        "width": 0.4292770568531627
+      }
+    },
+    "criteria": [
+      {
+        "name": "action-success",
+        "trials": 14,
+        "passes": 11,
+        "passFraction": 0.7857142857142857,
+        "wilsonInterval": {
+          "lower": 0.524107694133997,
+          "upper": 0.9242861328730683,
+          "width": 0.4001784387390712
+        },
+        "meanScore": 0.7857142857142857,
+        "sampleVariance": 0.1813186813186814,
+        "standardDeviation": 0.42581531362632014
+      },
+      {
+        "name": "tool-correctness",
+        "trials": 14,
+        "passes": 14,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.7846891972623643,
+          "upper": 1,
+          "width": 0.2153108027376357
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "authorization",
+        "trials": 14,
+        "passes": 14,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.7846891972623643,
+          "upper": 1,
+          "width": 0.2153108027376357
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "deletion",
+        "trials": 14,
+        "passes": 13,
+        "passFraction": 0.9285714285714286,
+        "wilsonInterval": {
+          "lower": 0.6853129557584889,
+          "upper": 0.9872777847521093,
+          "width": 0.3019648289936203
+        },
+        "meanScore": 0.9285714285714286,
+        "sampleVariance": 0.07142857142857138,
+        "standardDeviation": 0.2672612419124243
+      },
+      {
+        "name": "poisoning",
+        "trials": 14,
+        "passes": 12,
+        "passFraction": 0.8571428571428571,
+        "wilsonInterval": {
+          "lower": 0.6005862050302965,
+          "upper": 0.9599060787285351,
+          "width": 0.3593198736982386
+        },
+        "meanScore": 0.8571428571428571,
+        "sampleVariance": 0.13186813186813187,
+        "standardDeviation": 0.36313651960128146
+      },
+      {
+        "name": "state-maintenance",
+        "trials": 14,
+        "passes": 12,
+        "passFraction": 0.8571428571428571,
+        "wilsonInterval": {
+          "lower": 0.6005862050302965,
+          "upper": 0.9599060787285351,
+          "width": 0.3593198736982386
+        },
+        "meanScore": 0.8571428571428571,
+        "sampleVariance": 0.13186813186813187,
+        "standardDeviation": 0.36313651960128146
+      },
+      {
+        "name": "cost-ceiling",
+        "trials": 14,
+        "passes": 14,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.7846891972623643,
+          "upper": 1,
+          "width": 0.2153108027376357
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "retrieval-sufficiency",
+        "trials": 14,
+        "passes": 14,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.7846891972623643,
+          "upper": 1,
+          "width": 0.2153108027376357
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "evidence-admission",
+        "trials": 14,
+        "passes": 13,
+        "passFraction": 0.9285714285714286,
+        "wilsonInterval": {
+          "lower": 0.6853129557584889,
+          "upper": 0.9872777847521093,
+          "width": 0.3019648289936203
+        },
+        "meanScore": 0.9619047619047619,
+        "sampleVariance": 0.010061050061050063,
+        "standardDeviation": 0.10030478583322963
+      },
+      {
+        "name": "context-efficiency",
+        "trials": 14,
+        "passes": 5,
+        "passFraction": 0.35714285714285715,
+        "wilsonInterval": {
+          "lower": 0.1634473175355414,
+          "upper": 0.612355768960926,
+          "width": 0.4489084514253846
+        },
+        "meanScore": 0.6388392857142858,
+        "sampleVariance": 0.04744698660714285,
+        "standardDeviation": 0.2178232921593622
+      }
+    ]
+  },
+  "costUsd": null,
+  "latencyMilliseconds": 0,
+  "cases": [
+    {
+      "ordinal": 1,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.43125,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 615489180,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 550,
+            "completion": 52,
+            "total": 602
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 0,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.43125,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.8488970588235294
+        }
+      ]
+    },
+    {
+      "ordinal": 2,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.58125,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1388388793,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 505,
+            "completion": 47,
+            "total": 552
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.58125,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9753676470588236
+        }
+      ]
+    },
+    {
+      "ordinal": 3,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.99375,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 287877340,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 359,
+            "completion": 44,
+            "total": 403
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.99375,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9996323529411764
+        }
+      ]
+    },
+    {
+      "ordinal": 4,
+      "visibility": "held-out",
+      "outcome": "fail",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 0,
+          "passFraction": 0,
+          "wilsonInterval": {
+            "lower": 0,
+            "upper": 0.7934506856227626,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.83125,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1430977896,
+          "verdict": "fail",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 415,
+            "completion": 49,
+            "total": 464
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 0,
+              "hardGate": "failed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 0,
+              "hardGate": "failed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.83125,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.6371323529411765
+        }
+      ]
+    },
+    {
+      "ordinal": 5,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.6375,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1575641287,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 475,
+            "completion": 48,
+            "total": 523
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.6375,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9786764705882353
+        }
+      ]
+    },
+    {
+      "ordinal": 6,
+      "visibility": "held-out",
+      "outcome": "fail",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 0,
+          "passFraction": 0,
+          "wilsonInterval": {
+            "lower": 0,
+            "upper": 0.7934506856227626,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.8,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.5125,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 3253200579,
+          "verdict": "fail",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 517,
+            "completion": 52,
+            "total": 569
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 0,
+              "hardGate": "failed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 0,
+              "hardGate": "failed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 0.8,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.5125,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.6066176470588235
+        }
+      ]
+    },
+    {
+      "ordinal": 7,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.375,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1055800459,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 591,
+            "completion": 65,
+            "total": 656
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.375,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9632352941176471
+        }
+      ]
+    },
+    {
+      "ordinal": 8,
+      "visibility": "held-out",
+      "outcome": "fail",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 0,
+          "passFraction": 0,
+          "wilsonInterval": {
+            "lower": 0,
+            "upper": 0.7934506856227626,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.6666666666666666,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.49375,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1634386449,
+          "verdict": "fail",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 531,
+            "completion": 61,
+            "total": 592
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 0,
+              "hardGate": "failed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 0.6666666666666666,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.49375,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.8329656862745098
+        }
+      ]
+    },
+    {
+      "ordinal": 9,
+      "visibility": "held-out",
+      "outcome": "fail",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 0,
+          "passFraction": 0,
+          "wilsonInterval": {
+            "lower": 0,
+            "upper": 0.7934506856227626,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.375,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1302626770,
+          "verdict": "fail",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 576,
+            "completion": 62,
+            "total": 638
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 0,
+              "hardGate": "failed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.375,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.7279411764705882
+        }
+      ]
+    },
+    {
+      "ordinal": 10,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.8125,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 2194190038,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 413,
+            "completion": 44,
+            "total": 457
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.8125,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9889705882352942
+        }
+      ]
+    },
+    {
+      "ordinal": 11,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.80625,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 1049169206,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 423,
+            "completion": 52,
+            "total": 475
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.80625,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9886029411764705
+        }
+      ]
+    },
+    {
+      "ordinal": 12,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.675,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 2145639776,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 473,
+            "completion": 47,
+            "total": 520
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 0,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.675,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.8632352941176471
+        }
+      ]
+    },
+    {
+      "ordinal": 13,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.99375,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 3095357273,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 353,
+            "completion": 43,
+            "total": 396
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.99375,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9996323529411764
+        }
+      ]
+    },
+    {
+      "ordinal": 14,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 1,
+          "passes": 1,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.20654931437723745,
+            "upper": 1,
+            "width": 0.7934506856227626
+          }
+        },
+        "criteria": [
+          {
+            "name": "action-success",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "tool-correctness",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "authorization",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "deletion",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "poisoning",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "state-maintenance",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "cost-ceiling",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "retrieval-sufficiency",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "evidence-admission",
+            "trials": 1,
+            "passes": 1,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.20654931437723745,
+              "upper": 1,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 1,
+            "sampleVariance": null,
+            "standardDeviation": null
+          },
+          {
+            "name": "context-efficiency",
+            "trials": 1,
+            "passes": 0,
+            "passFraction": 0,
+            "wilsonInterval": {
+              "lower": 0,
+              "upper": 0.7934506856227626,
+              "width": 0.7934506856227626
+            },
+            "meanScore": 0.42500000000000004,
+            "sampleVariance": null,
+            "standardDeviation": null
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 994724774,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 545,
+            "completion": 47,
+            "total": 592
+          },
+          "scores": [
+            {
+              "name": "action-success",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "tool-correctness",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "authorization",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "deletion",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "poisoning",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "state-maintenance",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "cost-ceiling",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "retrieval-sufficiency",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "evidence-admission",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "context-efficiency",
+              "score": 0.42500000000000004,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 0.9661764705882353
+        }
+      ]
+    }
+  ]
+}

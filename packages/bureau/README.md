@@ -20,6 +20,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [`streamEventToFrame`](#streameventtoframe)
   - [The Audit Trail](#the-audit-trail)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
+  - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
 - [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog)
   - [`createSupervisor` and `createAgentDiscoveryTool`](#createsupervisor-and-createagentdiscoverytool)
 - [Test utilities](#test-utilities)
@@ -40,10 +41,11 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 - Emits a typed event surface (`BureauEventMap`) and live WebSocket/SSE-ready frames (`ServerFrame`) via `subscribeLiveFrames` and `streamEventToFrame`.
 - Records a durable, append-only audit trail of tool, run, and step lifecycle events when persistence is configured.
 - Exposes a typed `AgentDefinitions` catalog (`bureau.agents`) and a synchronous `bureau.run(name, input, options?)` for dispatching to a statically named agent, alongside the session/durability-backed `createRun`.
+- Records durable parent-child relationships (`bureau.children`): dispatch a catalog agent as a child of a known run, then list, inspect, wait on, signal, and cancel it by a stable identifier, including after a restart, with optional signed delegation grants that bound how deep and how wide the tree below each child may grow. A top-level parent holds no grant, so its own dispatches are neither checked nor budgeted.
 
 ## How It Works
 
-`createBureau(options)` is async because composing the runtime may involve resolving a Weft storage backend, building a durable engine, and loading a session store. The returned `Bureau` object wraps an `@lostgradient/operative` `Store` (the live run/action registry), an optional `Memory`, an optional `Scheduler`, and the resolved runtime composition (generate function, toolbox, session store, durable engine).
+`createBureau(options)` is async because composing the runtime may involve resolving a Weft storage backend, building a durable engine, and loading a session store. The returned `Bureau` object wraps an `@lostgradient/operative` `Store` (the live run/action registry), an optional `GovernedMemory`, an optional `Scheduler`, and the resolved runtime composition (generate function, toolbox, session store, durable engine).
 
 `createRun(request)` (**deprecated**, not yet removed—see AB-242's decision record and the removal issue it names, AB-352) loads or creates a session, appends the request message to its conversation, builds an `ActiveRun` via `operative`'s `createActiveRun`, and registers it with the store. If a durable engine is composed, the run is routed through it instead of the in-memory loop, so it can crash and resume from its last completed step. Terminal run events (`run.completed`, `run.aborted`) persist the session's status with a bounded retry.
 
@@ -63,7 +65,7 @@ import { createBureau } from '@lostgradient/bureau';
 const bureau = await createBureau({
   agents: {},
   provider: { provider: 'anthropic', model: 'claude-sonnet-4.5' },
-  storage: { type: 'sqlite', path: 'agent-bureau.sqlite' },
+  storage: { type: 'sqlite', path: 'bureau.sqlite' },
 });
 
 const run = await bureau.createRun({ message: 'Summarize the Q3 report.' });
@@ -115,6 +117,7 @@ Every field except `agents` is optional.
 | Field | Type | Purpose |
 | --- | --- | --- |
 | `agents` | `AgentDefinitions` (`D`) | **Required.** The typed agent catalog, exposed as `bureau.agents` and dispatched by name through `bureau.run`. Pass `{}` for a bureau that doesn't use it. |
+| `children` | `{ signals?: { [agentName]?: ChildSignalContract }; delegation?: { secret; policyVersion?; defaultTimeToLiveMilliseconds? } }` | COR-772—configuration for `bureau.children`. `signals` registers each child agent's typed signal contract (contracts are code, so they are configured rather than persisted); `delegation` turns on signed COR-336 delegation grants. An empty `secret` or a non-positive lifetime is a `BAD_REQUEST` at construction. See [Parent-child topology](#parent-child-topology-cor-772). |
 | `generate` **(deprecated)** | `GenerateFunction` | Escape hatch: supply your own generate function directly, bypassing provider resolution entirely. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `generate`. |
 | `provider` **(deprecated)** | `ProviderConfiguration` | Resolve a single provider (`'anthropic' \| 'openai' \| 'gemini'`) to a generate function. Agent-owned now—deprecated, not removed, per AB-242; resolve the provider into a `GenerateFunction` and pass it as `createAgent`'s `generate` instead. |
 | `providers` / `routing` **(deprecated)** | `ProviderRouteConfiguration[]` / `RoutingConfiguration` | Resolve multiple named providers with fallover or step-based routing between them. Agent-owned now—deprecated, not removed, per AB-242; resolve the fallback/routing behavior into a `GenerateFunction` and pass it as `createAgent`'s `generate` instead. |
@@ -122,7 +125,8 @@ Every field except `agents` is optional.
 | `store` | `Store` | Supply your own `@lostgradient/operative` `Store` instead of letting `bureau` create one. |
 | `persistence` / `storage` | `PersistenceOptions \| StorageConfiguration \| ConditionalTextValueStore` | Configure session and key-value persistence. `storage` is shorthand for the common case; `persistence` is the full options-object form. |
 | `durableExecution` | `boolean` | Override the default (on for persistent `storage`, off for `memory`) for Weft-backed crash-and-resume execution. |
-| `memory` | `CreateMemoryOptions \| Memory` | Attach recall/persistence hooks backed by the `memory` package. |
+| `memory` | `GovernedMemory` | COR-41—attach governed recall and persistence hooks. Recall runs through the governed memory's mandatory recall admission and is injected as a labeled `<memory-evidence>` system message; final assistant content is admitted as untrusted `conversation` memory (scanned, quota-checked, quarantined when poisoned). Both run under the run's memory authority, and a run without a persisted request authority gets no memory hooks. |
+| `memoryAuthority` | `BureauMemoryAuthorityOptions` | COR-41—`runCapabilities` (default `['memory:search', 'memory:write']`) Bureau delegates to each run through the request principal; explicit `memory:*` capabilities on a request can only narrow them. `purpose` defaults to `'conversation-memory'`. See `createRunMemoryAuthority`. |
 | `cache` | `CacheConfiguration` | Wrap the resolved generate function with response caching. |
 | `guardrails` **(deprecated)** | `GuardrailsOptions` | Attach `operative` guardrail detectors to every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
 | `identity` | `IdentityConfiguration` | Configure identity resolution for memory and session ownership. |
@@ -168,6 +172,7 @@ The most commonly used members:
 | `modelCatalog` | `ModelCatalogService` | AB-246—the model-catalog refresh service, present regardless of `D`. `dispose()` awaits any in-flight refresh before reporting rather than aborting it. |
 | `planSelection(request)` | `SelectionPlan` | AB-64/AB-250—builds a full `SelectionPlan` for `request` against this bureau's CURRENT model catalog and `BureauOptions.modelPolicy` configuration. Synchronous and side-effect-free: starts no run, refreshes no catalog, dispatches no event. `request.principal` selects the per-principal `UserModelConfiguration`, the same value `BureauRunOptions.principal` carries for an actual run. |
 | `run(name, input, options?)` | `AgentRun<...>` | Synchronous dispatch to a named catalog agent. |
+| `children` | `BureauChildren` | COR-772—dispatch a catalog agent as the child of a run this bureau knows, then `list`/`get`/`wait`/`signal`/`cancel` it by its stable identifier, including after a restart. See [Parent-child topology](#parent-child-topology-cor-772). |
 | `createRun(request)` **(deprecated)** | `Promise<RunSummary>` | Create and start a run against a session. Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
 | `submitSchedulerTask(request)` | `Promise<SubmitSchedulerTaskResponse>` | Queue a task on the in-process scheduler. |
 | `listRuns(status?)` | `RunSummary[]` | List tracked runs, optionally filtered by status. |
@@ -298,6 +303,105 @@ This is a THIRD layer, distinct from both the operative store (Layer A, live) an
 A producer (`createDurableEventProducer`, wired into `createBureau()` alongside the audit trail) sinks the run/session/schedule-fire/schedule-definition families AB-87's matrix classifies as durable into `record()`—`run.completed`/`error`/`aborted`/`tripwire` (owner: the action's `runId`) and the durable `session.*` lifecycle rows (owner: the action detail's `sessionId`) from the bureau's own action stream; `schedule.completed`/`schedule.failed` (a scheduled fire is "an ordinary run" per AB-87, so these are recorded under the fired run's own `{ kind: 'run', id: runId }` owner) and, as of AB-320, `schedule.created`/`paused`/`resumed`/`cancelled` (recorded under `{ kind: 'schedule', id: scheduleId }`, the schedule's own owner kind) from the bureau's own schedule-lifecycle events. A schedule's durable page carries its four definition events only—never a fire; the fired run's own page carries the fire only—never a definition event. `schedule.attempted`/`schedule.skipped` (COR-660) are deliberately absent from both: one event per tick per schedule is a liveness pulse rather than a durable transition, and AB-87's matrix excludes high-rate pulses from cursor advancement, so they dispatch live on the bureau emitter and are recorded nowhere. Whether a dropped occurrence specifically deserves a durable row — it is the only observable trace of a tick that produced no run — is settled by COR-1224: neither is durable as an event row, and a dropped occurrence is instead recorded on Weft's own schedule record as `skippedCount` and `lastSkippedAt`. A schedule whose fires outlast its cadence collides on every tick, so a durable row per drop would grow without bound and advance the durable cursor for a fact whose content is that nothing happened; a counter answers the operator's question — is this schedule colliding, and when last — in constant space, and survives a restart that a live listener would not. AB-224 adds a fourth source, the same shape as `schedule.*`: the seven `review.*` lifecycle events (`review.approved`/`denied`/`rejected`/`expired`/`revoked`/`canceled`/`superseded`), recorded under the reviewed run's own `{ kind: 'run', id: runId }` owner with a minimal, privileged payload (`reviewId`/`runId`/`principal`/`kind`). AB-372 adds a fifth, dedicated listener rather than another `'action'`-stream case: `deleteSession` dispatches `SessionDeletedEvent` on the bureau emitter (never through the action stream—as of AB-389, replayed from the session commit outbox by `drainOutbox` rather than dispatched directly by `deleteSession` itself; see "Session commit outbox" below), so this producer listens for it directly and records the same `{ kind: 'session', id: sessionId }` / `session.deleted` durable event `Bureau.eventHistory`'s deleted-aggregate detection reads—closing the gap where that detection was previously only ever exercised by synthetic records the test suite constructed directly. It de-duplicates a same-process duplicate dispatch (concurrent `deleteSession` calls racing to delete the same session) with an in-flight `Map` keyed by owner AND `AgentSession.incarnation` (AB-384—before it, the key was owner alone, which conflated a session id recreated and deleted again WHILE the prior incarnation's own write was still pending with a duplicate dispatch of that prior deletion; see `SessionDeletedEvent`'s own doc comment), checked and set synchronously before any `await`; it does not scan the durable page for a prior record, so a session recreated under the same id and deleted again writes a second, later `session.deleted` row rather than being suppressed as a duplicate—the two dispatches are for different incarnations, not the same one, and now produce two records even when their writes overlap. This producer also exposes `waitForActiveWrites(owner): Promise<void>`, a snapshot-only sibling to `hasActiveWrite`: it awaits every write in flight for that owner AT THE MOMENT OF THE CALL (never one started afterward) and never rejects, so `resolveEventHistory` can await it before paging to close the read-your-writes race against this producer's own fire-and-forget writes without risking an unrelated caller's write leaving it hanging.
 
 AB-384 adds a sixth and seventh source, closing a dead entry each: `SESSION_DURABLE_ACTION_TYPES` has listed `session.created`/`session.saved` since AB-91, but nothing ever dispatched either onto the `'action'` stream. `@lostgradient/operative`'s `SessionStore` dispatches both on the bureau-level emitter—as of AB-389, replayed from the session commit outbox, never dispatched directly by `save()`/`update()` themselves (see "Session commit outbox" below)—and this producer's two dedicated listeners record them under the same `{ kind: 'session', id: sessionId }` owner `session.deleted` already uses. Every one of these three listeners' `history.record()` calls now also passes an `options.dedupeKey` (the outbox entry's own `ordinal`, stringified) and `options.emittedAtMs` (the entry's own `committedAtMs`, so a delayed replay never misdates the event as happening "now")—never embedded in the recorded `payload` itself, so a caller's own payload carrying a same-named `dedupeKey` field is unaffected. `record()` writes the dedupe identity as an atomic storage compare-and-swap alongside the event append itself (in the SAME `conditionalBatch` `FleetEventFeed.append` commits), not a read-before-write scan: two processes racing to record the identical `(owner, kind, dedupeKey)` can never both succeed, closing the redelivery race a scan alone cannot (a crash between a durable write settling and the entry being acknowledged, or two drains racing over one shared backend, resolves to a no-op read of the winner's own record, never a second durable append).
+
+### Parent-child topology (COR-772)
+
+`bureau.children.dispatch({ parentRunId, agentName, input, childRunId?, parentCancellation?, authority? })` starts a catalog agent as the child of a run Bureau already knows—a `createRun` run, a durable `bureau.run` run, or another child—and writes the relationship to Bureau's key-value store before the child starts. The record carries the parent and child run identifiers, both agent names, the status, `createdAt`/`updatedAt`/`settledAt`/`reattachedAt` timestamps, and the child's workflow identity (`{ kind: 'durable', workflowType: 'agentRun', workflowId }` when the durable engine runs it, `{ kind: 'process-local' }` otherwise). Every later transition is a compare-and-swap on the record's revision, so a stale writer changes nothing, and supplying the same `childRunId` twice—even concurrently—returns `duplicate` instead of starting a second workflow. A `childRunId` becomes the child's durable run identifier, so one that already names another run or workflow Bureau knows is rejected as `child-run-id-conflict` before anything is reserved, recorded, or started; it can never take over that run's attribution, recovery record, or place in the topology.
+
+A parent is a `createRun` run (its `RunSummary.id`), a durable `bureau.run` run (its handle's `snapshot().id`), or another child (its `childRunId`). The handle `bureau.run` returns reports a placeholder snapshot until the durable dispatch resolves: its `id` is the agent name and its `durability` is `'process-local'`. Then `id` is the durable run identifier and `durability` is `'durable'`, and children can be dispatched under it once `bureau.getDurableRun(id)` returns the workflow. `bureau.listDurableRuns()` is not a way to find a parent: it lists every durable run newest first, including other callers' runs and every durable child. A non-durable `bureau.run` run cannot own children: dispatching under its `snapshot().id` returns `not-found`. A child is durable—a Weft workflow recovery can reattach—when Bureau has a durable engine and the catalog agent supports definition resolution (every `createAgent` or `createLazyAgent` result does); otherwise it is process-local and dies with its process. The same condition decides whether a `bureau.run` run is durable enough to be a parent. For the cross-package contract, including what is unsupported, see [Multi-agent lifecycle and communication](../../documentation/multi-agent-lifecycle.md).
+
+- **Addressing.** `list(parentRunId)`, `get`, `wait`, `signal`, and `cancel` all name the owning parent, and naming an unrelated parent reads as `not-found`. A child's record carries the parent run's principal or, when the parent has none, the principal that dispatched it. `dispatch` compares the caller's principal with the parent's; `list`, `get`, `wait`, `signal`, and `cancel` compare it with the child record's. A mismatch reads as `not-found`, and a comparison passes when either side has no principal. So under a parent without a principal, a child one principal dispatched reads as `not-found` to another.
+- **Signals.** A child whose agent has a contract in `BureauOptions.children.signals` gets a typed COR-814 channel; `signal` resolves to `acknowledged` or the channel's typed rejection.
+- **Parent cancellation.** A child never receives its parent's abort signal. `abortRun`, a committed `cancelDurableRun`, aborting a durable `bureau.run` parent through its own `AgentRun` handle, or `children.cancel` on a child that is itself a parent applies each running child's `parentCancellation`: `'cascade'` (the default) cancels it and its own cascade children, `'detach'` leaves it running. From the moment its cancellation is requested, a parent admits no new child (`parent-terminal`), even while its own run still reads as running, so no child escapes a cascade that recovery would apply. A `children.cancel` that fails, or finds the child already finished, cancels nothing below it; a cascade the engine cannot perform is diagnosed, leaves that subtree running, and is retried when the parent settles. During `dispose()`, shutdown ends every live run itself, and boot recovery applies the policy to whatever it left running from the cancelled parent's durable state.
+- **Recovery.** Boot recovery never starts a child workflow. A child whose workflow is still running is reattached (its signal channel reopened before the workflow resumes); one that finished while nobody was watching is recorded with its real outcome; a process-local child, or one whose workflow is missing, is recorded as failed. A child of a parent that was cancelled, or that cannot be recovered, follows its `parentCancellation`, with one exception: a child that holds a grant is cancelled when its parent cannot be recovered, even under `'detach'` (see **Delegation grants** below). Under an unrecoverable parent, only a `'detach'` child without a grant keeps running.
+- **Audit.** When persistence is configured, `child.started`, `child.completed`, `child.failed`, `child.aborted`, and `child.reattached` are written to the audit trail under the child's run identifier, plus `delegation.revoked`/`delegation.rejected` on recovery. A dispatch rejected before the child's record is registered (`unknown-agent`, `parent-terminal`, `child-run-id-conflict`, `delegation-invalid`, `depth-exhausted`, `authority-exceeded`, or `budget-exhausted`) returns its outcome to the caller and writes no audit entry. `start-failed` is decided after registration: it writes `child.started` and `child.failed` and leaves a `'failed'` record, so a retry with the same `childRunId` returns `duplicate`.
+- **Delegation grants.** Without `BureauOptions.children.delegation`, a dispatch's `authority` is ignored, not rejected: it is not validated, no grant is issued, nothing is budgeted, and depth, fan-out, and capabilities are unbounded. With it, each dispatch issues a signed `DelegationGrant` (`@lostgradient/operative`), attenuated from the parent's own grant, and reserves `concurrentChildren`/`totalDescendants` in a durable reserve/release ledger keyed by dispatch attempt, so an attempt that loses a registration race releases only its own reservation. A request for more depth, budget, or capability than the parent's grant allows is rejected, never clamped; a requested `delegatedAuthority` is intersected with the parent's instead. A top-level parent (a `createRun` or `bureau.run` run) holds no grant, so its dispatches are neither checked against a grant nor budgeted, and its own fan-out is unbounded. There, `authority` sets the child's ceilings as given rather than narrowing them, and an omitted capability list or budget ceiling is unrestricted. `authority.depth` defaults to `0` under a top-level parent and to the parent's `depth - 1` below it, so pass `depth` on the top-level dispatch to allow grandchildren. Recovery re-verifies each running child's grant (signature, expiry, revocation) and reconciles its ledger before reattaching it; a child whose parent cannot be recovered has its grant revoked on recovery and is cancelled, whatever its `parentCancellation`.
+
+Expected results are values, not exceptions. Malformed input (an empty identifier, an unknown `parentCancellation`, invalid agent input, or an invalid `authority` when delegation is configured) throws `BureauError` with `BAD_REQUEST`, and a failure of the underlying key-value store rejects the returned promise.
+
+| Operation | Resolves |
+| --- | --- |
+| `dispatch(request)` | `started` (with the record and, with delegation, a `grant` summary), `duplicate`, `not-found`, or `rejected` with `code` `unknown-agent`, `parent-terminal`, `child-run-id-conflict`, `delegation-invalid`, `depth-exhausted`, `authority-exceeded`, `budget-exhausted`, or `start-failed` |
+| `list(parentRunId, { principal? })` | Every `BureauChildRecord` under that parent the principal may see; `[]` for an unknown parent |
+| `get(reference)` | The record, or `undefined` |
+| `wait(reference, { signal? })` | `settled`, `not-found`, `wait-aborted`, or `unobservable` (still running, but nothing in this process is watching it) |
+| `signal({ ...reference, name, payload })` | `acknowledged` (`signalId`, `sequence`), `rejected` (the channel's `code`, `reason`, `delivered`), `not-found`, `child-terminal`, or `unsupported` (`no-signal-contract` or `child-not-live`) |
+| `cancel({ ...reference, reason? })` | `requested`, `already-terminal`, `not-found`, or `failed` |
+
+The public types are `BureauChildren` (the `bureau.children` surface); `BureauChildrenOptions` (`BureauOptions.children`) and `BureauChildDelegationOptions` (its `delegation` field); the requests `BureauChildDispatchRequest`, `BureauChildAuthorityRequest` (`authority`), `BureauChildReference`, `BureauChildSignalRequest`, and `BureauChildCancelRequest`; the outcomes `BureauChildDispatchOutcome` (with `BureauChildDispatchRejection` codes and a `BureauChildGrantSummary`), `BureauChildWaitOutcome`, `BureauChildSignalOutcome`, and `BureauChildCancelOutcome`; and the record types `BureauChildRecord`, `BureauChildStatus`, `BureauChildTerminalStatus`, `BureauChildOutcome`, `BureauChildParentCancellation`, and `BureauChildWorkflowIdentity`. `CHILD_AGENT_RUN_WORKFLOW_TYPE` (`'agentRun'`) is the `workflowType` a durable child's record names.
+
+A child's `status` is `'completed'` when its run ends with `finishReason: 'stop-condition'`, `'aborted'` when it ends aborted, and `'failed'` for every other finish reason; `outcome.finishReason` keeps the original. A parent that finishes normally does not stop its children—they keep running and stay addressable through its identifier—but it admits no new child.
+
+A grant's summary carries `grantId`, `policyVersion`, `depth`, `expiresAt`, and `artifactDigest` (present when the input is a conversation), plus `budget` only under a `'full'` `disclosurePolicy`; the default is `'redacted'`. The stored grant is always complete. `timeToLiveMilliseconds` defaults to `children.delegation.defaultTimeToLiveMilliseconds` (one hour), and a child's `expiresAt` never outlives its parent's. Bureau enforces the signature, revocation, expiry, `depth`, `concurrentChildren`, and `totalDescendants`. It signs and attenuates the capability lists, the grant's `delegatedAuthority`, and the `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings, but does not apply them to the running child. Expiry and revocation are checked when a descendant is dispatched and during recovery; neither stops a child already running. There is no public revoke operation. Rotating `children.delegation.secret` invalidates every existing grant.
+
+```typescript
+import { createBureau } from '@lostgradient/bureau';
+
+// `planner` is a long-running `createAgent` agent, `delegationSecret` comes
+// from the host's secret store (and must not change across restarts), and
+// `durableRunId` waits until `root.snapshot().id` is the durable run
+// identifier and `bureau.getDurableRun` finds its workflow (see the
+// multi-agent guide's durable example).
+const bureau = await createBureau({
+  agents: { planner },
+  storage: { type: 'sqlite', path: 'bureau.sqlite' },
+  children: { delegation: { secret: delegationSecret } },
+});
+
+const root = bureau.run('planner', 'Plan the corvid report');
+const parentRunId = await durableRunId(bureau, root);
+
+const lead = await bureau.children.dispatch({
+  parentRunId,
+  agentName: 'planner',
+  input: 'Lead the research',
+  childRunId: 'lead',
+  authority: {
+    depth: 1,
+    budget: { concurrentChildren: 1 },
+    capabilities: { tools: ['search'] },
+  },
+});
+// { outcome: 'started', child, grant: { grantId, policyVersion: 'bureau-delegation/1', depth: 1, expiresAt } }
+
+const helper = await bureau.children.dispatch({
+  parentRunId: 'lead',
+  agentName: 'planner',
+  input: 'Collect sources',
+  childRunId: 'helper',
+});
+// { outcome: 'started', grant: { depth: 0, ... } } — attenuated from lead's grant
+
+const widened = await bureau.children.dispatch({
+  parentRunId: 'lead',
+  agentName: 'planner',
+  input: 'Run a shell command',
+  authority: { capabilities: { tools: ['shell'] } },
+});
+// { outcome: 'rejected', code: 'authority-exceeded' }
+
+const secondHelper = await bureau.children.dispatch({
+  parentRunId: 'lead',
+  agentName: 'planner',
+  input: 'Collect more sources',
+});
+// { outcome: 'rejected', code: 'budget-exhausted' } — lead allows one concurrent child
+
+const grandchild = await bureau.children.dispatch({
+  parentRunId: 'helper',
+  agentName: 'planner',
+  input: 'Go one level deeper',
+});
+// { outcome: 'rejected', code: 'depth-exhausted' }
+
+root.abort('report planned');
+await bureau.children.wait({ parentRunId: 'lead', childRunId: 'helper' });
+await bureau.dispose();
+```
+
+`src/bureau-children-guide.test.ts` runs this example, and the lifecycle example in the [multi-agent guide](../../documentation/multi-agent-lifecycle.md#durable-example), asserting each commented result. Aborting `root` cascades to `lead` and then to `helper`, because both use the default `'cascade'` policy.
+
+Not supported: observing a child's signal `events` (Bureau only sends signals; a child's `emit` buffers until it is refused as `buffer-full`), replaying signals that were unacknowledged when a process died, messaging between siblings or any peer (communication is parent-mediated only, per COR-807), and recovering a process-local child, which recovery records as `'failed'`. Bureau children are not registered in the parent `AgentRun`'s `ChildRunRegistry`, so the parent's `children()` and `closed()` do not see them.
 
 ### Session commit outbox (AB-389)
 

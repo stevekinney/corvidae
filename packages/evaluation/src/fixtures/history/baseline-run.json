@@ -1,0 +1,394 @@
+{
+  "kind": "evaluation-run",
+  "schemaVersion": 1,
+  "id": "run-baseline",
+  "recordedAt": "2026-09-28T12:00:00.000Z",
+  "evaluator": {
+    "name": "capital-cities",
+    "revision": 3,
+    "digest": "8a1bf3bc9117ef8fedc1cddfe467697d44a08741458e6f5694be7b7af20df41a"
+  },
+  "resultSchemaVersion": 1,
+  "dataset": {
+    "id": "capitals",
+    "version": "capitals-2026-09"
+  },
+  "codeRevision": "a7679370f3e1a3b850299d13c9e768541a601722",
+  "repetitions": 2,
+  "variancePolicy": null,
+  "outcomes": {
+    "pass": 2,
+    "fail": 0,
+    "disagreement": 0,
+    "indeterminate": 0
+  },
+  "statistics": {
+    "verdicts": {
+      "trials": 4,
+      "passes": 4,
+      "passFraction": 1,
+      "wilsonInterval": {
+        "lower": 0.5101091635454027,
+        "upper": 1,
+        "width": 0.4898908364545973
+      }
+    },
+    "criteria": [
+      {
+        "name": "names-the-capital",
+        "trials": 4,
+        "passes": 4,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.5101091635454027,
+          "upper": 1,
+          "width": 0.4898908364545973
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "concise",
+        "trials": 4,
+        "passes": 4,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.5101091635454027,
+          "upper": 1,
+          "width": 0.4898908364545973
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "no-web-search",
+        "trials": 4,
+        "passes": 4,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.5101091635454027,
+          "upper": 1,
+          "width": 0.4898908364545973
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "follows-style-guide",
+        "trials": 4,
+        "passes": 4,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.5101091635454027,
+          "upper": 1,
+          "width": 0.4898908364545973
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      }
+    ]
+  },
+  "costUsd": 1,
+  "latencyMilliseconds": 1000,
+  "cases": [
+    {
+      "ordinal": 1,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 2,
+          "passes": 2,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.34238022750665303,
+            "upper": 1,
+            "width": 0.657619772493347
+          }
+        },
+        "criteria": [
+          {
+            "name": "names-the-capital",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "concise",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "no-web-search",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "follows-style-guide",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 2748981985,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.25,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "concise",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        },
+        {
+          "trial": 2,
+          "seed": 601336829,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.25,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "concise",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        }
+      ]
+    },
+    {
+      "ordinal": 2,
+      "visibility": "public",
+      "caseId": "case-japan",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 2,
+          "passes": 2,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.34238022750665303,
+            "upper": 1,
+            "width": 0.657619772493347
+          }
+        },
+        "criteria": [
+          {
+            "name": "names-the-capital",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "concise",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "no-web-search",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "follows-style-guide",
+            "trials": 2,
+            "passes": 2,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.34238022750665303,
+              "upper": 1,
+              "width": 0.657619772493347
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 3929716780,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.25,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "concise",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        },
+        {
+          "trial": 2,
+          "seed": 1148625681,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 12,
+            "completion": 8,
+            "total": 20
+          },
+          "costUsd": 0.25,
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "concise",
+              "score": 1,
+              "hardGate": "not-applicable"
+            },
+            {
+              "name": "no-web-search",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "follows-style-guide",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        }
+      ]
+    }
+  ]
+}
