@@ -903,10 +903,6 @@ describe('countWorkflowRevisionReferences', () => {
       throw new Error(`expected a "referenced" refusal, got ${JSON.stringify(result)}`);
     }
 
-    // The signal wake re-enters resume, which (COR-13) fails closed for an
-    // eager type with no registered revision — restore what the delete above
-    // simulated away so the wake can drive the parked run to completion.
-    getInternals(engine).registeredCatalogRevisions.set('checkout', revA);
     await engine.getHandle('checkout-parked-2')?.signal('go', 'done');
     await engine.getHandle('checkout-parked-2')?.result();
   });

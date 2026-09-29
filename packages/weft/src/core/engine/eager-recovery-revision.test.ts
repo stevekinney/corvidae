@@ -17,7 +17,7 @@ import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts'
 import { VersionMismatchError } from '../versioning.ts';
 import { ensureWorkflowCatalogReady } from './catalog-readiness.ts';
 import { getWorkflowRevisionDiagnostics } from './catalog-removal.ts';
-import { Engine } from './index.ts';
+import { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING, Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { prepareResumeState } from './lifecycle/persist.ts';
 import { restampWorkflowRevision } from './lifecycle/resume-revision-restamp.ts';
@@ -243,6 +243,28 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       await using engine = await redeployedEngine(storage, 'incompatible');
       const fork = await engine.fork('fork-source-incompatible');
       expect(await revisionOf(storage, fork.id)).toBe(revisionA);
+    });
+
+    it('lets a default fork complete after a signal under an incompatible redeploy', async () => {
+      const storage = new MemoryStorage();
+      await seedParkedRuns(storage, ['fork-wake-incompatible']);
+      await using engine = await redeployedEngine(storage, 'incompatible');
+      const fork = await engine.fork('fork-wake-incompatible');
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](fork.id);
+      await fork.signal('continue', 'x');
+      expect(await fork.result()).toBe('done:x');
+    });
+
+    it('keeps a default fork on its original revision after a compatible redeploy', async () => {
+      const storage = new MemoryStorage();
+      const revisionA = await seedParkedRuns(storage, ['fork-wake-compatible']);
+      await using engine = await redeployedEngine(storage, 'b');
+      const fork = await engine.fork('fork-wake-compatible');
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](fork.id);
+      await fork.signal('continue', 'x');
+      expect(await fork.result()).toBe('done:x');
+      expect(await revisionOf(storage, fork.id)).toBe(revisionA);
+      expect(await revisionOf(storage, 'fork-wake-compatible')).toBe(revisionA);
     });
   });
 

@@ -86,6 +86,7 @@ export async function prepareResumeState(
   checkpointBytes: Uint8Array,
   registration: RegistrationEntry,
   callbacks: LifecycleCallbacks,
+  skipEagerRevisionCheck = false,
 ): Promise<{
   state: WorkflowState;
   checkpoint: Checkpoint;
@@ -105,7 +106,11 @@ export async function prepareResumeState(
 
   // Strictly after the version check, so a workflowVersion drift still throws
   // VersionMismatchError first. Read-only; the write happens in the serialized resume.
-  const restampRevision = await resolveEagerRecoveryRestamp(internals, workflowId, state);
+  // Skipped for a wake of an inline-parked run: `parkedInlineWorkflows` is in-memory only, so
+  // that run was admitted by this process or already passed the check at recovery.
+  const restampRevision = skipEagerRevisionCheck
+    ? undefined
+    : await resolveEagerRecoveryRestamp(internals, workflowId, state);
 
   const hydratedCheckpoint = await hydrateCheckpointReplayState(
     internals.storage,

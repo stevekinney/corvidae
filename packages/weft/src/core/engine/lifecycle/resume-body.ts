@@ -399,6 +399,7 @@ export async function performResumeAfterClaimAcquired(
   dispatchResumedEvent: boolean,
   callbacks: LifecycleCallbacks,
   onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'],
+  skipEagerRevisionCheck?: boolean,
 ): Promise<WorkflowHandle> {
   // Load terminal-cleanup tracking BEFORE anything below that can commit a
   // terminal failure for this run: ensures `workflowsNeedingTerminalCleanup`
@@ -436,6 +437,7 @@ export async function performResumeAfterClaimAcquired(
     checkpointBytes,
     registration,
     callbacks,
+    skipEagerRevisionCheck,
   );
   const resumeCheckpoint = preparedResumeState.checkpoint;
   const registeredVersionTuple = preparedResumeState.versionTuple;
