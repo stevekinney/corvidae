@@ -144,7 +144,7 @@ async function bundle(
     success: result.success,
     logs: result.logs,
     metafile: result.metafile,
-    files: await readEmittedScripts(outdir),
+    files: await readEmittedScripts(outdir).catch(() => new Map<string, string>()),
   };
 }
 

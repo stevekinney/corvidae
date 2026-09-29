@@ -115,12 +115,20 @@ afterAll(async () => {
   await rm(workDirectory, { recursive: true, force: true });
 });
 
-const shipped = await buildBrowser({
-  entrypoints: [htmlEntrypoint],
-  outdir: join(workDirectory, 'shipped'),
-  development: false,
-});
-const shippedFiles = await readEmittedScripts(join(workDirectory, 'shipped'));
+type ShippedBuild = Awaited<ReturnType<typeof buildBrowser>>;
+let shipped: ShippedBuild | undefined;
+let shippedBuildError: unknown;
+let shippedFiles = new Map<string, string>();
+try {
+  shipped = await buildBrowser({
+    entrypoints: [htmlEntrypoint],
+    outdir: join(workDirectory, 'shipped'),
+    development: false,
+  });
+  shippedFiles = await readEmittedScripts(join(workDirectory, 'shipped'));
+} catch (error) {
+  shippedBuildError = error;
+}
 
 const controlEntrypoint = join(workDirectory, 'control-entry.ts');
 await writeFile(
@@ -158,18 +166,32 @@ function emittedFindings(snippet: string): NodeCryptoFinding[] {
 }
 
 describe('weft-ui browser bundle portability', () => {
+  it('builds the shipped SPA without errors or warnings', () => {
+    const failures =
+      shippedBuildError instanceof AggregateError
+        ? shippedBuildError.errors.map((entry) => String(entry?.message ?? entry))
+        : shippedBuildError === undefined
+          ? []
+          : [
+              shippedBuildError instanceof Error
+                ? shippedBuildError.message
+                : JSON.stringify(shippedBuildError),
+            ];
+    expect(failures).toEqual([]);
+  });
+
   it('bundles weft source and emits index.html', () => {
-    const inputs = Object.keys(shipped.metafile?.inputs ?? {});
+    const inputs = Object.keys(shipped?.metafile?.inputs ?? {});
     expect(inputs.some((key) => key.includes('packages/weft/src/'))).toBe(true);
-    const outputs = Object.keys(shipped.metafile?.outputs ?? {});
+    const outputs = Object.keys(shipped?.metafile?.outputs ?? {});
     expect(outputs.some((key) => key.endsWith('index.html'))).toBe(true);
   });
 
   it('resolves node:crypto nowhere in the shipped SPA', () => {
     expect(
       nodeCryptoResolutions({
-        metafile: shipped.metafile,
-        logs: shipped.logs,
+        metafile: shipped?.metafile,
+        logs: shipped?.logs ?? [],
         files: shippedFiles,
       }),
     ).toEqual([]);
