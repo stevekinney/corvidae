@@ -174,15 +174,16 @@ export function encodeSnapshot(state: EncodableSnapshot): ConversationSnapshot {
   });
 }
 
-interface NodeFields {
+export interface NodeFields {
   readonly id: string;
   readonly revision: number;
   readonly header: Record<string, unknown>;
   readonly messageReferences: ReadonlyMap<string, number>;
+  readonly children: readonly unknown[];
 }
 
 /** The message ids a node resolves to, each mapped to its index in the envelope's table. */
-interface NodeMessages {
+export interface NodeMessages {
   readonly ids: readonly string[];
   readonly sources: ReadonlyMap<string, number>;
 }
@@ -191,11 +192,12 @@ interface ParentContext extends NodeMessages {
   readonly id: string;
 }
 
-function readNodeFields(
+export function readNodeFields(
   value: unknown,
   envelope: SnapshotEnvelope,
   tableLength: number,
   parent: ParentContext | null,
+  shape: 'flat' | 'nested' = 'flat',
 ): NodeFields & NodeMessages {
   const node = asRecord(value, 'node');
   const id = readString(node, 'id', 'node');
@@ -205,6 +207,9 @@ function readNodeFields(
   if (parentId !== null && typeof parentId !== 'string') throw snapshotError('invalid node');
   if (parentId !== (parent?.id ?? null)) throw snapshotError(`inconsistent parent for ${id}`);
   const header = asRecord(node['conversation'], 'node');
+  const children = node['children'];
+  if (shape === 'nested' && !Array.isArray(children)) throw snapshotError('invalid node');
+  if (shape === 'flat' && children !== undefined) throw snapshotError('invalid node');
 
   const parentIds = parent?.ids ?? [];
   const retainedMessageCount = node['retainedMessageCount'];
@@ -250,10 +255,18 @@ function readNodeFields(
       throw snapshotError(`message reference ${messageId} is not listed for ${id}`);
     }
   }
-  return { id, revision, header, messageReferences, ids, sources };
+  return {
+    id,
+    revision,
+    header,
+    messageReferences,
+    children: Array.isArray(children) ? children : [],
+    ids,
+    sources,
+  };
 }
 
-function deserializeNodeConversation(
+export function deserializeNodeConversation(
   fields: NodeFields & NodeMessages,
   table: readonly unknown[],
   schemaVersion: number,
