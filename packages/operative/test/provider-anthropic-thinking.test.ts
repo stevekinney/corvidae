@@ -44,6 +44,7 @@ import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
 } from '../src/providers/test/mock-clients.ts';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 function makeContext(): GenerateContext {
@@ -249,7 +250,7 @@ describe('Anthropic extended-thinking budget validation', () => {
       thinking: { type: 'enabled', budget_tokens: 4096 },
     });
 
-    await expect(generate(makeContext())).rejects.toThrow(
+    expect(await throwingRejectionOf(generate(makeContext()))).toThrow(
       /budget_tokens \(4096\) must be less than max_tokens \(4096\)/,
     );
     expect(client._calls).toEqual([]);
@@ -264,7 +265,7 @@ describe('Anthropic extended-thinking budget validation', () => {
       thinking: { type: 'enabled', budget_tokens: 3000 },
     });
 
-    await expect(generate(makeContext())).rejects.toThrow(
+    expect(await throwingRejectionOf(generate(makeContext()))).toThrow(
       /budget_tokens \(3000\) must be less than max_tokens \(2048\)/,
     );
     expect(client._calls).toEqual([]);
@@ -278,9 +279,9 @@ describe('Anthropic extended-thinking budget validation', () => {
       thinking: { type: 'enabled', budget_tokens: 4096 },
     });
 
-    await expect(generate({ ...makeContext(), streaming: makeStreamingHandle() })).rejects.toThrow(
-      /budget_tokens \(4096\) must be less than max_tokens \(4096\)/,
-    );
+    expect(
+      await throwingRejectionOf(generate({ ...makeContext(), streaming: makeStreamingHandle() })),
+    ).toThrow(/budget_tokens \(4096\) must be less than max_tokens \(4096\)/);
     expect(client._calls).toEqual([]);
   });
 
@@ -293,7 +294,7 @@ describe('Anthropic extended-thinking budget validation', () => {
       thinking: { type: 'enabled', budget_tokens: 4096 },
     });
 
-    await expect(generate({ ...makeContext(), maximumTokens: 2048 })).rejects.toThrow(
+    expect(await throwingRejectionOf(generate({ ...makeContext(), maximumTokens: 2048 }))).toThrow(
       /budget_tokens \(4096\) must be less than max_tokens \(2048\)/,
     );
     expect(client._calls).toEqual([]);
@@ -308,9 +309,11 @@ describe('Anthropic extended-thinking budget validation', () => {
       thinking: { type: 'enabled', budget_tokens: 4096 },
     });
 
-    await expect(
-      generate({ ...makeContext(), maximumTokens: 2048, streaming: makeStreamingHandle() }),
-    ).rejects.toThrow(/budget_tokens \(4096\) must be less than max_tokens \(2048\)/);
+    expect(
+      await throwingRejectionOf(
+        generate({ ...makeContext(), maximumTokens: 2048, streaming: makeStreamingHandle() }),
+      ),
+    ).toThrow(/budget_tokens \(4096\) must be less than max_tokens \(2048\)/);
     expect(client._calls).toEqual([]);
   });
 

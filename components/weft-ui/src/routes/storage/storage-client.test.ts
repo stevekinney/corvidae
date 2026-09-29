@@ -8,6 +8,7 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { rejectionOf } from '@lostgradient/testing';
 import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
 import {
   probeConditionalBatchSupported,
@@ -79,7 +80,7 @@ describe('storageGet', () => {
     scripted = new ScriptedFetch();
     scripted.respondWith(new Response(null, { status: 404 }));
 
-    expect(storageGet(connection, 'missing')).resolves.toBeNull();
+    expect(await storageGet(connection, 'missing')).toBeNull();
   });
 
   test('returns the exact raw bytes on 200', async () => {
@@ -101,8 +102,8 @@ describe('storageGet', () => {
     );
 
     const rejection = storageGet(connection, 'k');
-    expect(rejection).rejects.toBeInstanceOf(HttpClientError);
-    expect(rejection).rejects.toMatchObject({
+    expect(await rejectionOf(rejection)).toBeInstanceOf(HttpClientError);
+    expect(await rejectionOf(rejection)).toMatchObject({
       status: 403,
       message: 'Raw storage access requires storage:admin.',
       faultCode: undefined,
@@ -119,7 +120,7 @@ describe('storageGet', () => {
     );
 
     const rejection = storageGet(connection, 'k');
-    expect(rejection).rejects.toMatchObject({
+    expect(await rejectionOf(rejection)).toMatchObject({
       status: 501,
       message: 'nope',
       faultCode: 'NotImplemented',
@@ -136,7 +137,7 @@ describe('storageGet', () => {
     );
 
     const rejection = storageGet(connection, 'k');
-    expect(rejection).rejects.toMatchObject({
+    expect(await rejectionOf(rejection)).toMatchObject({
       status: 500,
       message: 'unrecognized',
       faultCode: undefined,
@@ -150,7 +151,7 @@ describe('storageGet', () => {
     );
 
     const rejection = storageGet(connection, 'k');
-    expect(rejection).rejects.toMatchObject({ status: 500, message: 'Server Error' });
+    expect(await rejectionOf(rejection)).toMatchObject({ status: 500, message: 'Server Error' });
   });
 });
 
@@ -164,7 +165,7 @@ describe('probeConditionalBatchSupported', () => {
       }),
     );
 
-    expect(probeConditionalBatchSupported(connection)).resolves.toBe(false);
+    expect(await probeConditionalBatchSupported(connection)).toBe(false);
     expect(scripted.calls).toHaveLength(1);
     expect(scripted.calls[0]?.url).toBe(`${connection.baseUrl}/v1/storage/-/conditional-batch`);
     expect(scripted.calls[0]?.method).toBe('POST');
@@ -197,7 +198,7 @@ describe('storagePut', () => {
       }),
     );
 
-    expect(storagePut(connection, '', new Uint8Array())).rejects.toMatchObject({
+    expect(await rejectionOf(storagePut(connection, '', new Uint8Array()))).toMatchObject({
       status: 400,
     });
   });

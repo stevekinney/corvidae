@@ -69,9 +69,7 @@ describe('CodeBlock default-highlighter seam (real Shiki adapter)', () => {
 
       expect(first).toBe(second);
       expect(shikiHighlighter).toHaveBeenCalledTimes(1);
-      expect(Promise.resolve(first('const x: number = 1;', 'typescript'))).resolves.toContain(
-        '<pre>',
-      );
+      expect(await Promise.resolve(first('const x: number = 1;', 'typescript'))).toContain('<pre>');
       expect(highlighter).toHaveBeenCalledWith('const x: number = 1;', 'typescript');
     } finally {
       mock.restore();

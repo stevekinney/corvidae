@@ -25,9 +25,7 @@ describe('weftUi', () => {
     const response = weftUi({ distDir });
     expect(response).toBeInstanceOf(Response);
     expect((response as Response).headers.get('content-type')).toBe('text/html; charset=utf-8');
-    await expect((response as Response).text()).resolves.toBe(
-      '<!doctype html><div id="app"></div>',
-    );
+    expect(await (response as Response).text()).toBe('<!doctype html><div id="app"></div>');
   });
 
   test('defaults to the package’s own dist directory when none is supplied', () => {

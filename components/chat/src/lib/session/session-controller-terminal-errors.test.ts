@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
@@ -131,8 +132,8 @@ describe('chat session controller', () => {
       // ahead of the throw, it never did.
       await Promise.resolve(
         expect(
-          controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
-        ).rejects.toBeInstanceOf(ChatRunFailureError),
+          await rejectionOf(controller.adapter.sendMessage({ role: 'user', content: 'hi' }, [])),
+        ).toBeInstanceOf(ChatRunFailureError),
       );
       expect(cleanupSawAbort).toBe(true);
     });

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   createWorkflowVerifyEnvironment,
   readLockedVersion,
@@ -30,6 +31,8 @@ const privateWorkspaces: PrivateWorkspace[] = [
     workspace: '@lostgradient/testing',
     directory: 'packages/testing',
     publicName: '@lostgradient/testing',
+    dependsOn: [],
+    builds: true,
     typechecks: true,
     emitsTypeScript: true,
   },
@@ -114,7 +117,7 @@ describe('readLockedVersion', () => {
       await Bun.write(path, fixtureBunLock);
       expect(await readLockedVersion(path, 'publint')).toBe('0.3.24');
       expect(await readLockedVersion(path, '@arethetypeswrong/cli')).toBe('0.18.5');
-      await expect(readLockedVersion(path, 'not-a-real-package')).rejects.toThrow(
+      expect(await throwingRejectionOf(readLockedVersion(path, 'not-a-real-package'))).toThrow(
         /no locked entry/,
       );
     } finally {
@@ -150,14 +153,16 @@ describe('renderMirrorVerifyWorkflow', () => {
   test('a clone carrying both spellings is refused rather than resolved by probe order', async () => {
     await withFixture(
       async ({ targetDirectory, bunLockPath }) => {
-        await expect(
-          renderMirrorVerifyWorkflow({
-            targetDirectory,
-            bunLockPath,
-            published,
-            privateWorkspaces,
-          }),
-        ).rejects.toThrow(/carries both release\.yaml and release\.yml/);
+        expect(
+          await throwingRejectionOf(
+            renderMirrorVerifyWorkflow({
+              targetDirectory,
+              bunLockPath,
+              published,
+              privateWorkspaces,
+            }),
+          ),
+        ).toThrow(/carries both release\.yaml and release\.yml/);
       },
       ['release.yaml', 'release.yml'],
     );
@@ -165,14 +170,16 @@ describe('renderMirrorVerifyWorkflow', () => {
 
   test('a clone carrying neither spelling names both in its refusal', async () => {
     await withFixture(async ({ targetDirectory, bunLockPath }) => {
-      await expect(
-        renderMirrorVerifyWorkflow({
-          targetDirectory,
-          bunLockPath,
-          published,
-          privateWorkspaces,
-        }),
-      ).rejects.toThrow(/carries neither release\.yaml nor release\.yml/);
+      expect(
+        await throwingRejectionOf(
+          renderMirrorVerifyWorkflow({
+            targetDirectory,
+            bunLockPath,
+            published,
+            privateWorkspaces,
+          }),
+        ),
+      ).toThrow(/carries neither release\.yaml nor release\.yml/);
     }, []);
   });
 
@@ -344,9 +351,16 @@ describe('renderMirrorVerifyWorkflow', () => {
       );
       const bunLockPath = join(root, 'bun.lock');
       await Bun.write(bunLockPath, fixtureBunLock);
-      await expect(
-        renderMirrorVerifyWorkflow({ targetDirectory, bunLockPath, published, privateWorkspaces }),
-      ).rejects.toThrow(/bun-version/);
+      expect(
+        await throwingRejectionOf(
+          renderMirrorVerifyWorkflow({
+            targetDirectory,
+            bunLockPath,
+            published,
+            privateWorkspaces,
+          }),
+        ),
+      ).toThrow(/bun-version/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

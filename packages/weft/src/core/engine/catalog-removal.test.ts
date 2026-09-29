@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { ActivityRegistry } from '../activity-registry.ts';
 import { removeCatalogEntry } from '../catalog/index.ts';
 import { encode } from '../codec.ts';
@@ -1210,7 +1211,7 @@ describe('getWorkflowRevisionDiagnostics — dynamic-source extension (WFT-15/16
       ),
     );
 
-    expect(engine.start('lazy-checkout', null)).rejects.toThrow();
+    expect(await throwingRejectionOf(engine.start('lazy-checkout', null))).toThrow();
 
     const diagnosticsAfter = await getWorkflowRevisionDiagnostics(
       engine,
@@ -1479,7 +1480,7 @@ describe('removeWorkflowRevision vs. a concurrent start() — cross-process race
     );
 
     gate.resolve();
-    expect(startPromise).rejects.toThrow(WorkflowRevisionUnavailableError);
+    expect(await throwingRejectionOf(startPromise)).toThrow(WorkflowRevisionUnavailableError);
 
     const state = await engineA.get('race-fail-closed-new');
     expect(state).toBeNull();

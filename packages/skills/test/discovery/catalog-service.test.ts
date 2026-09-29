@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+
 import { findRecord } from '../../src/discovery/catalog';
 import {
   createSkillCatalogService,
@@ -405,6 +407,7 @@ describe('createSkillCatalogService', () => {
       integrity: { publicKey: 'PEM' },
     };
 
+    const runtime = createManualRuntimeServices({ origin: '2026-09-19T00:00:00.000Z' });
     const service = createSkillCatalogService({
       sources: [hungSource],
       // A transport that ignores its signal entirely.
@@ -413,16 +416,21 @@ describe('createSkillCatalogService', () => {
           new Promise<Response>(() => undefined)) as typeof globalThis.fetch,
       },
       refreshTimeoutMilliseconds: 50,
-      now,
+      runtime,
     });
 
     const wedged = service.refresh();
+    await runtime.advance(49);
+    expect(wedged.snapshot().status).toBe('pending');
+    await runtime.advance(1);
     const result = await wedged.result();
 
     // Without a bound, this handle would hold the in-flight slot for the lifetime of the process
     // and every later refresh would join a scan that is never going to finish.
     expect(result.outcome).toBe('failed');
     expect(result.failureReason).toContain('exceeded');
+    expect(result.completedAt).toBe(runtime.clock.nowISO());
+    expect(runtime.pendingTimers()).toEqual([]);
 
     const recovered = service.refresh();
     expect(recovered.snapshot().cancellable).toBe(true);

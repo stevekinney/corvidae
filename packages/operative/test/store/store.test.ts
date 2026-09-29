@@ -443,7 +443,7 @@ describe('createTestStore', () => {
     expect(getActionTypes(runId)).toContain('run.completed');
     expect(getActionTypes()).toContain('run.completed');
 
-    await expect(waitForRun(runId)).resolves.toEqual(finalRun);
+    expect(await waitForRun(runId)).toEqual(finalRun);
     store.dispose();
   });
 });

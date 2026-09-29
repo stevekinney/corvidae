@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import type { Component } from 'svelte';
+import { rejectionOf, throwingRejectionOf } from '../../promise-outcome.test-support.ts';
 import { appFixtureDeclarations } from '../src/app-fixture-declarations.ts';
 import { loadFixture } from '../src/fixture-loader.ts';
 import { assertUniqueFixtureNames, manifestFilePath, readManifest } from '../src/manifest.ts';
@@ -129,9 +130,11 @@ test('every declared app fixture resolves and unknown names are rejected', async
     }
   }
 
-  await expect(
-    loadFixture('dropdown', 'unknown', { fixtureModules: {}, hostModules: {}, appHostModules }),
-  ).rejects.toThrow("Fixture 'dropdown/unknown' was not found.");
+  expect(
+    await throwingRejectionOf(
+      loadFixture('dropdown', 'unknown', { fixtureModules: {}, hostModules: {}, appHostModules }),
+    ),
+  ).toThrow("Fixture 'dropdown/unknown' was not found.");
 });
 
 const loadMissingHostDeclaration = async () => ({
@@ -165,13 +168,15 @@ test('returns 400 for malformed component URI escapes', async () => {
 
 test('unexpected manifest read errors reject readiness and manifest requests', async () => {
   for (const pathname of ['/ready', '/api/manifest']) {
-    await expect(
-      handleFixtureRequest(
-        new Request(`http://localhost${pathname}`),
-        '/manifest-that-does-not-exist.json',
-        async () => '<html lang="en"></html>',
+    expect(
+      await rejectionOf(
+        handleFixtureRequest(
+          new Request(`http://localhost${pathname}`),
+          '/manifest-that-does-not-exist.json',
+          async () => '<html lang="en"></html>',
+        ),
       ),
-    ).rejects.toBeInstanceOf(Error);
+    ).toBeInstanceOf(Error);
   }
 });
 
@@ -199,16 +204,18 @@ test('source fixtures resolve hosts beside their owning package', async () => {
 });
 
 test('ambiguous source component owners fail rather than selecting a package', async () => {
-  await expect(
-    loadFixture('example', 'assertion', {
-      fixtureModules: {
-        '../../../components/cinder/src/components/example/example-fixtures.ts':
-          loadMissingHostDeclaration,
-        '../../../components/chat/src/lib/components/example/example-fixtures.ts':
-          loadMissingHostDeclaration,
-      },
-      hostModules: {},
-      appHostModules: {},
-    }),
-  ).rejects.toThrow("Multiple fixture owners for 'example'.");
+  expect(
+    await throwingRejectionOf(
+      loadFixture('example', 'assertion', {
+        fixtureModules: {
+          '../../../components/cinder/src/components/example/example-fixtures.ts':
+            loadMissingHostDeclaration,
+          '../../../components/chat/src/lib/components/example/example-fixtures.ts':
+            loadMissingHostDeclaration,
+        },
+        hostModules: {},
+        appHostModules: {},
+      }),
+    ),
+  ).toThrow("Multiple fixture owners for 'example'.");
 });

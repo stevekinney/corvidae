@@ -14,6 +14,7 @@ import {
 } from '../../src/durable/run-workflow-result';
 import { stopWhen } from '../../src/index';
 import { UnsupportedRunResultVersionError } from '../../src/run-envelope';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 
 // Drain Weft's deferred inline-launch queue between tests (see other durable
 // suites) — a pending setTimeout(0) inline-launch left by one durable run can
@@ -71,31 +72,33 @@ describe('durable workflow result migration', () => {
   });
 
   it('rejects a legacy summary returned by a resumed terminal workflow', async () => {
-    await expect(
-      resumeDurableRunResult(
-        {
-          engine: {
-            resume: async () => ({
-              result: async () => ({
-                runId: 'legacy-resumed-run',
-                steps: 1,
-                content: '{"answer":"legacy"}',
-                finishReason: 'stop-condition',
-                structuredOutput: { answer: 'legacy' },
+    expect(
+      await throwingRejectionOf(
+        resumeDurableRunResult(
+          {
+            engine: {
+              resume: async () => ({
+                result: async () => ({
+                  runId: 'legacy-resumed-run',
+                  steps: 1,
+                  content: '{"answer":"legacy"}',
+                  finishReason: 'stop-condition',
+                  structuredOutput: { answer: 'legacy' },
+                }),
               }),
-            }),
-          } as never,
-          checkpointStore: {
-            loadCheckpoint: async () => ({
-              conversation: null,
-              cursor: { totalUsage: {}, lastContent: '{"answer":"legacy"}', schemaAttempts: 0 },
-              steps: [],
-            }),
-          } as never,
-        },
-        'legacy-resumed-run',
+            } as never,
+            checkpointStore: {
+              loadCheckpoint: async () => ({
+                conversation: null,
+                cursor: { totalUsage: {}, lastContent: '{"answer":"legacy"}', schemaAttempts: 0 },
+                steps: [],
+              }),
+            } as never,
+          },
+          'legacy-resumed-run',
+        ),
       ),
-    ).rejects.toThrow(UnsupportedRunResultVersionError);
+    ).toThrow(UnsupportedRunResultVersionError);
   });
 });
 

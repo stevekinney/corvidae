@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import {
   commitBulkCancel,
   commitBulkDelete,
@@ -83,7 +84,9 @@ describe('dryRunBulkCancel / commitBulkCancel', () => {
     fetch.routeJsonRpcMethod('weft.workflows.bulk.cancel', { unexpected: true });
     const client = realClient();
 
-    expect(dryRunBulkCancel(client, { status: 'failed' })).rejects.toThrow(TypeError);
+    expect(await throwingRejectionOf(dryRunBulkCancel(client, { status: 'failed' }))).toThrow(
+      TypeError,
+    );
     fetch.restore();
   });
 
@@ -95,9 +98,9 @@ describe('dryRunBulkCancel / commitBulkCancel', () => {
     );
     const client = realClient();
 
-    expect(commitBulkCancel(client, { status: 'failed' }, 'bulk:stale-token')).rejects.toThrow(
-      /confirmation token/i,
-    );
+    expect(
+      await throwingRejectionOf(commitBulkCancel(client, { status: 'failed' }, 'bulk:stale-token')),
+    ).toThrow(/confirmation token/i);
     fetch.restore();
   });
 });

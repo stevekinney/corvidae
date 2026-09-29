@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans } from './committed-plans.ts';
 import { mirrorTargets } from './target-definitions.ts';
 import {
@@ -326,17 +327,19 @@ describe('the guard refuses target-owned writes', () => {
   test('the whole plan is refused, so a permitted file in it is not written either', async () => {
     await withFixtureTarget(async (directory) => {
       const policy = await loadTargetOwnedPolicy();
-      await expect(
-        writeTransformOutput({
-          policy,
-          target: 'weft',
-          directory,
-          files: {
-            'packages/weft/src/added.ts': 'export const added = true;\n',
-            'packages/weft/CHANGELOG.md': '# Changelog\n\n## 9.9.9\n',
-          },
-        }),
-      ).rejects.toThrow(TargetOwnedViolation);
+      expect(
+        await throwingRejectionOf(
+          writeTransformOutput({
+            policy,
+            target: 'weft',
+            directory,
+            files: {
+              'packages/weft/src/added.ts': 'export const added = true;\n',
+              'packages/weft/CHANGELOG.md': '# Changelog\n\n## 9.9.9\n',
+            },
+          }),
+        ),
+      ).toThrow(TargetOwnedViolation);
       expect(await Bun.file(join(directory, 'packages/weft/src/added.ts')).exists()).toBe(false);
       expect(await runGit(directory, 'status', '--porcelain')).toBe('');
     });
@@ -487,22 +490,26 @@ describe('retiring a directory the target still carries', () => {
         // The one property that matters: the refusal turns on the enumeration, not on what the
         // plan happens to emit. `packages/unlisted` is a real directory in the clone, the plan
         // emits nothing for it, and it is still not deletable.
-        await expect(
-          collectRetiredPaths({
-            policy,
-            target: 'weft',
-            directory,
-            directories: ['packages/unlisted'],
-          }),
-        ).rejects.toThrow(RetirementError);
-        await expect(
-          collectRetiredPaths({
-            policy,
-            target: 'weft',
-            directory,
-            directories: ['packages/unlisted'],
-          }),
-        ).rejects.toThrow(/no entry in target-owned.json's `retired` section names it/);
+        expect(
+          await throwingRejectionOf(
+            collectRetiredPaths({
+              policy,
+              target: 'weft',
+              directory,
+              directories: ['packages/unlisted'],
+            }),
+          ),
+        ).toThrow(RetirementError);
+        expect(
+          await throwingRejectionOf(
+            collectRetiredPaths({
+              policy,
+              target: 'weft',
+              directory,
+              directories: ['packages/unlisted'],
+            }),
+          ),
+        ).toThrow(/no entry in target-owned.json's `retired` section names it/);
         expect(await Bun.file(join(directory, 'packages/unlisted/src/keep.ts')).exists()).toBe(
           true,
         );

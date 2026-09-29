@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { createMemory } from '../src/create-memory';
 import { createHyDEGenerator, withHyDE } from '../src/hyde';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Memory } from '../src/types';
 
 const DIMENSION = 64;
@@ -135,6 +136,19 @@ describe('withHyDE', () => {
     expect(generateHypothetical).not.toHaveBeenCalled();
   });
 
+  it('passes through rememberOnce() and list() without invoking the generator', async () => {
+    const generateHypothetical = mock(async () => 'hypothetical');
+    const hydeMemory = withHyDE(innerMemory, { generateHypothetical });
+
+    const first = await hydeMemory.rememberOnce('One entry', { dedupeKey: 'once' });
+    const duplicate = await hydeMemory.rememberOnce('One entry', { dedupeKey: 'once' });
+    const listed = await hydeMemory.list();
+
+    expect(duplicate.id).toBe(first.id);
+    expect(listed.map((entry) => entry.id)).toEqual([first.id]);
+    expect(generateHypothetical).not.toHaveBeenCalled();
+  });
+
   it('passes through init() and close() unchanged', async () => {
     const generateHypothetical = mock(async () => 'hypothetical');
     const hydeMemory = withHyDE(innerMemory, { generateHypothetical });
@@ -167,7 +181,7 @@ describe('withHyDE', () => {
     const hydeMemory = withHyDE(innerMemory, { generateHypothetical });
 
     await Promise.resolve(
-      expect(hydeMemory.recall('test query')).rejects.toThrow('LLM unavailable'),
+      expect(await throwingRejectionOf(hydeMemory.recall('test query'))).toThrow('LLM unavailable'),
     );
   });
 });

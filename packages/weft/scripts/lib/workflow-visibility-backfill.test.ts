@@ -14,6 +14,7 @@ import {
   runWorkflowVisibilityDrop,
 } from './workflow-visibility-backfill.ts';
 
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import {
   NoConditionalBatchStorage,
   RacingStorage,
@@ -167,7 +168,7 @@ describe('runWorkflowVisibilityBackfill', () => {
 
   it('refuses to run when the storage backend has no conditionalBatch', async () => {
     const storage = new NoConditionalBatchStorage();
-    expect(runWorkflowVisibilityBackfill(storage)).rejects.toThrow(
+    expect(await throwingRejectionOf(runWorkflowVisibilityBackfill(storage))).toThrow(
       /does not expose conditionalBatch/,
     );
   });

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { buildCleanPublishedPackage } from './clean-package-build.ts';
 import { mirrorPlatformEnvironment } from './environment-configuration.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
@@ -248,9 +249,11 @@ test.each([
   if (recipe === undefined) await rm(recipePath);
   else await Bun.write(recipePath, recipe);
   const observed = recorder();
-  await expect(
-    buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
-  ).rejects.toThrow(kind === 'missing' ? 'recipe is missing' : 'recipe is incompatible');
+  expect(
+    await throwingRejectionOf(
+      buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
+    ),
+  ).toThrow(kind === 'missing' ? 'recipe is missing' : 'recipe is incompatible');
   expect(
     observed.commands.some(
       ({ command }) =>
@@ -266,9 +269,11 @@ test('fails closed on a mismatched runtime or failed build and removes the scrat
   await using input = await fixture();
   for (const failure of ['version', 'build'] as const) {
     const observed = recorder(failure);
-    await expect(
-      buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
-    ).rejects.toThrow(failure === 'version' ? 'pins Bun' : 'intentional build failure');
+    expect(
+      await throwingRejectionOf(
+        buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
+      ),
+    ).toThrow(failure === 'version' ? 'pins Bun' : 'intentional build failure');
     expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
     expect(observed.commands.some(({ command }) => command[1] === 'pm')).toBe(false);
   }

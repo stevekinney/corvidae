@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { createValueResolver } from './resolve.ts';
 import { buildResolvedContexts } from './resolved-contexts.ts';
@@ -135,7 +136,9 @@ describe('D3: a resolved-context combo fills an unnamed modifier from its declar
   test('a combo that does not name density AND density has no declared default fails with a named error', async () => {
     const { resolver, documentsByPath } = thirdModifierFixture({});
 
-    expect(buildResolvedContexts(resolver, documentsByPath)).rejects.toThrow(/density/);
+    expect(await throwingRejectionOf(buildResolvedContexts(resolver, documentsByPath))).toThrow(
+      /density/,
+    );
   });
 });
 

@@ -69,6 +69,7 @@ import type {
   GeminiGenerateContentRequest,
   OpenAIStreamingClient,
 } from '../src/providers/types.ts';
+import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 const weatherTool = createTool({
@@ -196,15 +197,19 @@ describe('provider helper coverage', () => {
   });
 
   it('mock clients fail loudly when queued responses are exhausted', async () => {
-    await expect(
-      createMockAnthropicClient([]).messages.create({} as AnthropicMessageCreateRequest),
-    ).rejects.toThrow('MockAnthropicClient: no response at index 0');
-    await expect(createMockOpenAIClient([]).chat.completions.create({})).rejects.toThrow(
-      'MockOpenAIClient: no response at index 0',
-    );
-    await expect(
-      createMockGeminiModel([]).models.generateContent({} as GeminiGenerateContentRequest),
-    ).rejects.toThrow('MockGeminiModel: no response at index 0');
+    expect(
+      await throwingRejectionOf(
+        createMockAnthropicClient([]).messages.create({} as AnthropicMessageCreateRequest),
+      ),
+    ).toThrow('MockAnthropicClient: no response at index 0');
+    expect(
+      await throwingRejectionOf(createMockOpenAIClient([]).chat.completions.create({})),
+    ).toThrow('MockOpenAIClient: no response at index 0');
+    expect(
+      await throwingRejectionOf(
+        createMockGeminiModel([]).models.generateContent({} as GeminiGenerateContentRequest),
+      ),
+    ).toThrow('MockGeminiModel: no response at index 0');
   });
 
   it('streaming mock clients can fail after yielding part of a stream', async () => {
@@ -224,27 +229,33 @@ describe('provider helper coverage', () => {
       { errorAfterEvents: 1 },
     ).models.generateContentStream({} as GeminiGenerateContentRequest);
 
-    await expect(
-      (async () => {
-        for await (const _event of anthropicStream) {
-          // consume until the configured error fires
-        }
-      })(),
-    ).rejects.toThrow('anthropic stream failed');
-    await expect(
-      (async () => {
-        for await (const _chunk of openAIStream) {
-          // consume until the configured error fires
-        }
-      })(),
-    ).rejects.toThrow('openai stream failed');
-    await expect(
-      (async () => {
-        for await (const _chunk of geminiStream) {
-          // consume until the configured error fires
-        }
-      })(),
-    ).rejects.toThrow('gemini stream failed');
+    expect(
+      await throwingRejectionOf(
+        (async () => {
+          for await (const _event of anthropicStream) {
+            // consume until the configured error fires
+          }
+        })(),
+      ),
+    ).toThrow('anthropic stream failed');
+    expect(
+      await throwingRejectionOf(
+        (async () => {
+          for await (const _chunk of openAIStream) {
+            // consume until the configured error fires
+          }
+        })(),
+      ),
+    ).toThrow('openai stream failed');
+    expect(
+      await throwingRejectionOf(
+        (async () => {
+          for await (const _chunk of geminiStream) {
+            // consume until the configured error fires
+          }
+        })(),
+      ),
+    ).toThrow('gemini stream failed');
   });
 
   it('streaming mock clients throw after a short stream when the error threshold is beyond the stream length', async () => {
@@ -262,27 +273,33 @@ describe('provider helper coverage', () => {
       { errorAfterEvents: 1 },
     ).models.generateContentStream({} as GeminiGenerateContentRequest);
 
-    await expect(
-      (async () => {
-        for await (const _event of anthropicStream) {
-          // consume until the configured error fires
-        }
-      })(),
-    ).rejects.toThrow('anthropic late failure');
-    await expect(
-      (async () => {
-        for await (const _chunk of openAIStream) {
-          // consume until the configured error fires
-        }
-      })(),
-    ).rejects.toThrow('openai late failure');
-    await expect(
-      (async () => {
-        for await (const _chunk of geminiStream) {
-          // consume until the configured error fires
-        }
-      })(),
-    ).rejects.toThrow('gemini late failure');
+    expect(
+      await throwingRejectionOf(
+        (async () => {
+          for await (const _event of anthropicStream) {
+            // consume until the configured error fires
+          }
+        })(),
+      ),
+    ).toThrow('anthropic late failure');
+    expect(
+      await throwingRejectionOf(
+        (async () => {
+          for await (const _chunk of openAIStream) {
+            // consume until the configured error fires
+          }
+        })(),
+      ),
+    ).toThrow('openai late failure');
+    expect(
+      await throwingRejectionOf(
+        (async () => {
+          for await (const _chunk of geminiStream) {
+            // consume until the configured error fires
+          }
+        })(),
+      ),
+    ).toThrow('gemini late failure');
   });
 });
 
@@ -340,7 +357,7 @@ describe('OpenAI provider coverage', () => {
 
     const failingClient = createMockOpenAIClient([], [new Error('OpenAI failed')]);
     const failingGenerate = createOpenAIProvider({ model: 'gpt-4o', client: failingClient });
-    await expect(failingGenerate(makeContext())).rejects.toMatchObject({ provider: 'openai' });
+    expect(await rejectionOf(failingGenerate(makeContext()))).toMatchObject({ provider: 'openai' });
   });
 
   it("falls back to the run's context.responseFormat when no construction-time responseFormat is set", async () => {
@@ -443,9 +460,9 @@ describe('OpenAI provider coverage', () => {
 
     const failingClient = createMockOpenAIStreamingClient([], [new Error('OpenAI stream failed')]);
     const failingGenerate = createOpenAIProviderStream({ model: 'gpt-4o', client: failingClient });
-    await expect(
-      failingGenerate({ ...makeContext(), streaming: makeStreamingHandle() }),
-    ).rejects.toMatchObject({ provider: 'openai' });
+    expect(
+      await rejectionOf(failingGenerate({ ...makeContext(), streaming: makeStreamingHandle() })),
+    ).toMatchObject({ provider: 'openai' });
   });
 
   it('surfaces malformed streamed tool-call JSON as a distinct ToolCallParseError, not a generic ProviderError', async () => {
@@ -623,7 +640,9 @@ describe('Anthropic provider coverage', () => {
       model: 'claude-3-5-sonnet-20241022',
       client: failingClient,
     });
-    await expect(failingGenerate(makeContext())).rejects.toMatchObject({ provider: 'anthropic' });
+    expect(await rejectionOf(failingGenerate(makeContext()))).toMatchObject({
+      provider: 'anthropic',
+    });
   });
 
   it('streams text, tool calls, empty responses, usage fallbacks, aborts, and errors', async () => {
@@ -740,9 +759,9 @@ describe('Anthropic provider coverage', () => {
       model: 'claude-3-5-sonnet-20241022',
       client: failingClient,
     });
-    await expect(
-      failingGenerate({ ...makeContext(), streaming: makeStreamingHandle() }),
-    ).rejects.toMatchObject({ provider: 'anthropic' });
+    expect(
+      await rejectionOf(failingGenerate({ ...makeContext(), streaming: makeStreamingHandle() })),
+    ).toMatchObject({ provider: 'anthropic' });
   });
 
   it('surfaces malformed streamed tool-call JSON as a distinct ToolCallParseError, not a generic ProviderError', async () => {
@@ -886,7 +905,7 @@ describe('Gemini provider coverage', () => {
 
     const failingClient = createMockGeminiModel([], [new Error('Gemini failed')]);
     const failingGenerate = createGeminiProvider({ model: 'gemini-pro', client: failingClient });
-    await expect(failingGenerate(makeContext())).rejects.toMatchObject({ provider: 'gemini' });
+    expect(await rejectionOf(failingGenerate(makeContext()))).toMatchObject({ provider: 'gemini' });
   });
 
   it("falls back to the run's context.responseFormat when no construction-time responseFormat is set", async () => {
@@ -997,9 +1016,9 @@ describe('Gemini provider coverage', () => {
       model: 'gemini-pro',
       client: failingClient,
     });
-    await expect(
-      failingGenerate({ ...makeContext(), streaming: makeStreamingHandle() }),
-    ).rejects.toMatchObject({ provider: 'gemini' });
+    expect(
+      await rejectionOf(failingGenerate({ ...makeContext(), streaming: makeStreamingHandle() })),
+    ).toMatchObject({ provider: 'gemini' });
 
     expect(client._calls[0]?.['model']).toBe('gemini-pro');
     expect(client._calls[0]?.['config']).toMatchObject({

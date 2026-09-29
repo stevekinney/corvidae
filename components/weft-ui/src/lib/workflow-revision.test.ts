@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import {
   classifyRevisionAgainstActive,
   EAGER_REVISION_HEDGE,
@@ -65,9 +66,9 @@ function clientReturning(value: unknown): WorkflowActiveRevisionClient {
 
 describe('fetchActiveWorkflowRevision', () => {
   test('resolves the pointer for a well-formed response', async () => {
-    expect(
-      fetchActiveWorkflowRevision(clientReturning(POINTER), 'order-processing'),
-    ).resolves.toEqual(POINTER);
+    expect(await fetchActiveWorkflowRevision(clientReturning(POINTER), 'order-processing')).toEqual(
+      POINTER,
+    );
   });
 
   test('resolves null for "never activated" (NotFound fault)', async () => {
@@ -77,14 +78,14 @@ describe('fetchActiveWorkflowRevision', () => {
           Promise.reject(new HttpClientError(404, 'not found', { faultCode: 'NotFound' })),
       },
     };
-    expect(fetchActiveWorkflowRevision(client, 'never-activated')).resolves.toBeNull();
+    expect(await fetchActiveWorkflowRevision(client, 'never-activated')).toBeNull();
   });
 
   test('throws an HttpClientError (Unprocessable) for a malformed non-null body', async () => {
     const client = clientReturning({ revision: 'rev-a' }); // missing generation/activatedAt
-    expect(fetchActiveWorkflowRevision(client, 'order-processing')).rejects.toThrow(
-      HttpClientError,
-    );
+    expect(
+      await throwingRejectionOf(fetchActiveWorkflowRevision(client, 'order-processing')),
+    ).toThrow(HttpClientError);
     try {
       await fetchActiveWorkflowRevision(client, 'order-processing');
       throw new Error('expected a throw');
@@ -103,9 +104,9 @@ describe('fetchActiveWorkflowRevision', () => {
           Promise.reject(new HttpClientError(403, 'forbidden', { faultCode: 'Forbidden' })),
       },
     };
-    expect(fetchActiveWorkflowRevision(client, 'order-processing')).rejects.toThrow(
-      HttpClientError,
-    );
+    expect(
+      await throwingRejectionOf(fetchActiveWorkflowRevision(client, 'order-processing')),
+    ).toThrow(HttpClientError);
   });
 });
 

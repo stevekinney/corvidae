@@ -4,6 +4,7 @@
  * DEP-95: Mermaid diagram support.
  */
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { beforeEach, describe, expect, it } from 'bun:test';
 import {
   clearMermaidCache,
@@ -183,10 +184,12 @@ describe('mermaid-cache', () => {
     it('releases lock even when function throws', async () => {
       // First call throws
       expect(
-        withMermaidLock(async () => {
-          throw new Error('test error');
-        }),
-      ).rejects.toThrow('test error');
+        await throwingRejectionOf(
+          withMermaidLock(async () => {
+            throw new Error('test error');
+          }),
+        ),
+      ).toThrow('test error');
 
       // Second call should still execute (lock was released)
       const result = await withMermaidLock(async () => 'success');

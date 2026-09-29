@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   DeferredWorkspaceError,
   layoutCoverage,
@@ -46,7 +47,9 @@ describe('the layout table against the committed tree', () => {
   });
 
   test('a workspace with no entry stops the transform by name', async () => {
-    await expect(layoutFor('@lostgradient/nonexistent')).rejects.toThrow(LayoutMapError);
+    expect(await throwingRejectionOf(layoutFor('@lostgradient/nonexistent'))).toThrow(
+      LayoutMapError,
+    );
   });
 });
 
@@ -54,7 +57,7 @@ describe('the deferred workspace', () => {
   test('refuses to give a directory and names the issue that must rule on it', async () => {
     const layout = await layoutFor('@lostgradient/desktop');
     expect(layout.disposition).toBe('deferred');
-    await expect(targetDirectoryFor('@lostgradient/desktop')).rejects.toThrow(
+    expect(await throwingRejectionOf(targetDirectoryFor('@lostgradient/desktop'))).toThrow(
       DeferredWorkspaceError,
     );
     try {
@@ -88,7 +91,7 @@ describe('the table itself', () => {
         openQuestions: [],
       },
       async (path) => {
-        await expect(loadLayoutMap(path)).rejects.toThrow(LayoutMapError);
+        expect(await throwingRejectionOf(loadLayoutMap(path))).toThrow(LayoutMapError);
       },
     );
   });
@@ -107,7 +110,7 @@ describe('the table itself', () => {
         openQuestions: [],
       },
       async (path) => {
-        await expect(loadLayoutMap(path)).rejects.toThrow(LayoutMapError);
+        expect(await throwingRejectionOf(loadLayoutMap(path))).toThrow(LayoutMapError);
       },
     );
   });

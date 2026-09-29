@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+
 import { createFilesystemArtifactLoader } from '../../src/client/artifact-loader';
 import {
   isRenderedSkillContent,
@@ -80,6 +82,28 @@ async function clientFor(
 }
 
 describe('the skill client', () => {
+  it('timestamps activation with the supplied runtime clock', async () => {
+    const root = await scratch();
+    await writeSkill(root, 'clocked');
+    const runtime = createManualRuntimeServices({ origin: '2026-09-19T00:00:00.000Z' });
+    const catalog = await discoverSkills({
+      sources: [userSource(root)],
+      trustPolicy: trustEverything,
+      runtime,
+    });
+    const client = createSkillClient({
+      catalog,
+      loadArtifact: createFilesystemArtifactLoader(),
+      runtime,
+    });
+
+    await runtime.advance(1_000);
+    const outcome = await client.activate('clocked');
+
+    expect(outcome.activated).toBe(true);
+    if (outcome.activated) expect(outcome.record.activatedAt).toBe(runtime.clock.nowISO());
+  });
+
   it('offers the model only name and description', async () => {
     const root = await scratch();
     await writeSkill(root, 'code-review', { description: 'Review code.' });
