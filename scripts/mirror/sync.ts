@@ -252,20 +252,29 @@ interface CommitRecord extends ForeignCommit {
   provenance: string;
 }
 
+/** GitHub squash merges append co-author metadata after the App's provenance paragraph. */
+function squashMergeProvenance(message: string): string {
+  const paragraphs = message.trimEnd().split(/\n\s*\n/);
+  const finalParagraph = paragraphs.at(-1) ?? '';
+  if (!finalParagraph.split('\n').every((line) => /^Co-authored-by: .+$/i.test(line))) return '';
+  const provenance = paragraphs.at(-2)?.match(/^Corvidae-Commit: ([0-9a-f]{40})$/);
+  return provenance?.[1] ?? '';
+}
+
 /** Every commit reachable from HEAD, newest first, with its provenance trailer. */
 async function readHistory(directory: string): Promise<CommitRecord[]> {
   const head = await tryGit(directory, 'rev-parse', '--verify', 'HEAD');
   // An empty target has no HEAD to walk, which is a first sync rather than a failure.
   if (head.exitCode !== 0) return [];
-  const format = `%H${unitSeparator}%s${unitSeparator}%(trailers:key=${provenanceTrailer},valueonly,separator=%x2C)${recordSeparator}`;
+  const format = `%H${unitSeparator}%s${unitSeparator}%(trailers:key=${provenanceTrailer},valueonly,separator=%x2C)${unitSeparator}%B${recordSeparator}`;
   const log = await git(directory, 'log', '--topo-order', `--format=${format}`);
   return log
     .split(recordSeparator)
     .map((record) => record.replace(/^\n/, ''))
     .filter((record) => record.length > 0)
     .map((record) => {
-      const [sha = '', subject = '', provenance = ''] = record.split(unitSeparator);
-      return { sha, subject, provenance: provenance.trim() };
+      const [sha = '', subject = '', trailer = '', message = ''] = record.split(unitSeparator);
+      return { sha, subject, provenance: trailer.trim() || squashMergeProvenance(message) };
     });
 }
 

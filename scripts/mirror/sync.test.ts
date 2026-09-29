@@ -943,6 +943,53 @@ describe('runSync in pull-request mode', () => {
 });
 
 describe('the foreign-commit guard', () => {
+  test('recognizes a GitHub squash merge with co-author metadata after mirror provenance', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-squash-provenance-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      const path = 'packages/weft/src/version.ts';
+      const ownership = {
+        policy: await loadTargetOwnedPolicy(),
+        target: 'weft' as const,
+        transform: { files: new Set([path]), prefixes: [] },
+      };
+      await Bun.write(join(root, path), "export const VERSION = '0.27.0';\n");
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+
+      await Bun.write(join(root, path), "export const VERSION = '0.27.1';\n");
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Sync weft from corvidae (#123)\n\n${provenanceTrailer}: ${'b'.repeat(40)}\n\nCo-authored-by: mirror[bot] <123+mirror[bot]@users.noreply.github.com>`,
+      );
+      await Bun.write(join(root, 'README.md'), '# Release notes\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Document release');
+      expect(await findForeignCommits(root, ownership)).toEqual([]);
+
+      await Bun.write(
+        join(root, path),
+        "export const VERSION = '0.27.1';\nexport const changed = true;\n",
+      );
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Change mirrored source');
+      const foreign = await findForeignCommits(root, ownership);
+      expect(foreign.map(({ subject }) => subject)).toEqual(['Change mirrored source']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('accepts only a declared source version constant that follows the release manifest', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-version-release-'));
     try {
