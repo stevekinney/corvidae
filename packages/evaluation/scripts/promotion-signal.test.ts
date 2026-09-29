@@ -244,8 +244,15 @@ describe('promotion-signal (spawned bun process)', () => {
   });
 
   test('issue exits 3 for a failing decision and 5 for one recorded at another revision, appending nothing', async () => {
-    const failing = await decide(fixtureGateFile('regressing'), { sourceRevision: HEAD });
-    const elsewhere = await decide(fixtureGateFile(), { sourceRevision: OTHER_REVISION });
+    const decidedAt = Date.now();
+    const failing = await decide(fixtureGateFile('regressing'), {
+      now: () => decidedAt,
+      sourceRevision: HEAD,
+    });
+    const elsewhere = await decide(fixtureGateFile(), {
+      now: () => decidedAt,
+      sourceRevision: OTHER_REVISION,
+    });
     const before = await records();
 
     const refused = await spawnScript('promotion-signal', [
