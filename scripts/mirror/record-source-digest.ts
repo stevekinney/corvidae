@@ -259,6 +259,7 @@ export interface RecordOptions {
   targetRepositoryDirectory: string;
   publishedSourceRoot: string;
   mirrorCommit: string;
+  mergedMirrorCommit?: string;
   registryRunner?: CommandRunner;
   gitRunner?: CommandRunner;
   fetcher?: typeof fetch;
@@ -290,6 +291,7 @@ export async function recordSourceDigest({
   targetRepositoryDirectory,
   publishedSourceRoot,
   mirrorCommit,
+  mergedMirrorCommit,
   registryRunner = runCommand,
   gitRunner = runCommand,
   fetcher = fetch,
@@ -333,6 +335,7 @@ export async function recordSourceDigest({
     targetRoot: targetRepositoryDirectory,
     gitHead,
     mirrorCommit,
+    ...(mergedMirrorCommit === undefined ? {} : { mergedMirrorCommit }),
     sourceRoot: publishedSourceRoot,
     target: historicalRouting.target,
     workspace,
@@ -460,6 +463,9 @@ export async function run(argv: readonly string[]): Promise<number> {
     const targetRepositoryDirectory = readOption(argv, 'target-clone');
     const publishedSourceRoot = readOption(argv, 'published-source-root');
     const mirrorCommit = readOption(argv, 'mirror-commit');
+    const mergedMirrorCommit = argv.includes('--merged-mirror-commit')
+      ? readOption(argv, 'merged-mirror-commit')
+      : undefined;
     const bunExecutable = argv.includes('--bun-executable')
       ? readOption(argv, 'bun-executable')
       : undefined;
@@ -471,6 +477,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       targetRepositoryDirectory,
       publishedSourceRoot,
       mirrorCommit,
+      ...(mergedMirrorCommit === undefined ? {} : { mergedMirrorCommit }),
       packageMap: map,
       ...(bunExecutable === undefined ? {} : { bunExecutable }),
     });

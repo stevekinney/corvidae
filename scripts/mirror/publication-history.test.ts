@@ -148,3 +148,96 @@ test('rejects extra text after a GitHub squash suffix', async () => {
     ).toThrow('unexpected sync subject or author');
   }, 'Sync weft from corvidae (#649) extra');
 });
+
+test('accepts a squash merge whose parent and tree match the App sync commit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'publication-squash-'));
+  try {
+    const source = join(root, 'source');
+    const target = join(root, 'target');
+    await mkdir(source);
+    await mkdir(target);
+    await initialize(source);
+    await Bun.write(
+      join(source, 'scripts/mirror/source.ts'),
+      "export const versionConstants = {'@lostgradient/weft': 'src/version.ts'};\n",
+    );
+    await Bun.write(
+      join(source, 'scripts/mirror/target-owned.json'),
+      await Bun.file(new URL('./target-owned.json', import.meta.url)).text(),
+    );
+    const sourceCommit = await commit(source, 'Historical source');
+
+    await initialize(target);
+    await Bun.write(join(target, 'README.md'), 'Target base\n');
+    const baseCommit = await commit(target, 'Target base');
+    await requireGit(target, ['switch', '-c', 'mirror']);
+    await Bun.write(
+      join(target, manifestPath),
+      '{"name":"@lostgradient/weft","version":"0.27.0"}\n',
+    );
+    await Bun.write(
+      join(target, versionPath),
+      "/** Version. */\nexport const VERSION = '0.27.0';\n",
+    );
+    const mirrorCommit = await commit(
+      target,
+      `Sync weft from corvidae\n\nCorvidae-Commit: ${sourceCommit}`,
+      true,
+    );
+    await requireGit(target, ['switch', 'main']);
+    await requireGit(target, ['checkout', mirrorCommit, '--', 'packages/weft']);
+    const mergedMirrorCommit = await commit(target, 'Sync weft from corvidae (#123)');
+    await Bun.write(
+      join(target, manifestPath),
+      '{"name":"@lostgradient/weft","version":"0.27.1"}\n',
+    );
+    await Bun.write(
+      join(target, versionPath),
+      "/** Version. */\nexport const VERSION = '0.27.1';\n",
+    );
+    const gitHead = await commit(target, 'Release Weft 0.27.1');
+    const options = {
+      sourceRoot: source,
+      targetRoot: target,
+      target: 'weft',
+      workspace: '@lostgradient/weft',
+      targetDirectory: 'packages/weft',
+      mirrorCommit,
+      mergedMirrorCommit,
+      gitHead,
+    };
+    expect(await requireGit(target, ['rev-parse', `${mirrorCommit}^`])).toBe(baseCommit);
+    expect(await verifyHistoricalCheckout(options)).toBe(sourceCommit);
+
+    await requireGit(target, ['switch', '-c', 'different-tree', baseCommit]);
+    await requireGit(target, ['checkout', mirrorCommit, '--', 'packages/weft']);
+    await Bun.write(join(target, 'unexpected.txt'), 'Extra content\n');
+    const differentTree = await commit(target, 'Sync weft from corvidae (#124)');
+    expect(
+      await throwingRejectionOf(
+        verifyHistoricalCheckout({
+          ...options,
+          mergedMirrorCommit: differentTree,
+          gitHead: differentTree,
+        }),
+      ),
+    ).toThrow('Squash tree');
+
+    await requireGit(target, ['switch', '-c', 'different-parent', baseCommit]);
+    await Bun.write(join(target, 'README.md'), 'Different target base\n');
+    await commit(target, 'Advance target base');
+    await requireGit(target, ['checkout', mirrorCommit, '--', 'packages/weft']);
+    const differentParent = await commit(target, 'Sync weft from corvidae (#125)');
+    expect(
+      await throwingRejectionOf(
+        verifyHistoricalCheckout({
+          ...options,
+          mergedMirrorCommit: differentParent,
+          gitHead: differentParent,
+        }),
+      ),
+    ).toThrow('must share the App sync commit parent');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
