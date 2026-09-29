@@ -21,6 +21,11 @@ const v1Fixture: ConversationSnapshotV1 = await Bun.file(
   new URL('./fixtures/conversation-snapshot-v1.json', import.meta.url),
 ).json();
 
+// Produced by the published v2 encoder before flat node storage was introduced.
+const nestedV2Fixture: any = await Bun.file(
+  new URL('./fixtures/conversation-snapshot-v2-nested.json', import.meta.url),
+).json();
+
 /** Independent of the implementation: its own canonical JSON and BigInt FNV-1a. */
 function stable(value: unknown): string {
   if (value === undefined) return 'null';
@@ -109,6 +114,63 @@ describe('snapshot format version 1', () => {
 });
 
 describe('snapshot format version 2', () => {
+  it('restores the published nested v2 shape and writes the current flat shape', () => {
+    const restored = Conversation.from(nestedV2Fixture);
+    expect(restored.current).toMatchObject({
+      id: 'conversation-id',
+      ids: ['message-1', 'message-2'],
+    });
+    expect(currentConversationFromSnapshot(nestedV2Fixture)).toEqual(restored.current);
+
+    const snapshot = restored.snapshot();
+    expect(snapshot.nodes).toHaveLength(3);
+    expect(Conversation.from(snapshot).current).toEqual(restored.current);
+  });
+
+  it('rejects tampered nested v2 snapshots after integrity is re-signed', () => {
+    const cases: Array<[string, (value: any) => void, string]> = [
+      [
+        'a missing child message',
+        (value) => Reflect.set(value.root.children[0], 'appendedMessageIds', ['missing']),
+        'missing message missing',
+      ],
+      [
+        'an invalid current path',
+        (value) => Reflect.set(value, 'currentPath', [0, 1]),
+        'current path index 1 is out of range',
+      ],
+      [
+        'a mismatched child parent',
+        (value) => Reflect.set(value.root.children[0], 'parentId', 'wrong-parent'),
+        'inconsistent parent',
+      ],
+    ];
+
+    for (const [, mutate, message] of cases) {
+      const tampered = structuredClone(nestedV2Fixture);
+      mutate(tampered);
+      const resigned = resign(tampered);
+      expect(() => decodeSnapshot(resigned)).toThrow(message);
+      expect(() => currentConversationFromSnapshot(resigned)).toThrow(message);
+    }
+  });
+
+  it('rejects mixed and shape-inconsistent v2 snapshots after re-signing', () => {
+    const mixed = structuredClone(nestedV2Fixture);
+    Reflect.set(mixed, 'nodes', []);
+    const flatNodeWithChildren = structuredClone(editedConversation().snapshot());
+    Reflect.set(flatNodeWithChildren.nodes[0]!, 'children', []);
+
+    for (const snapshot of [resign(mixed), resign(flatNodeWithChildren)]) {
+      expect(() => decodeSnapshot(snapshot)).toThrow(
+        snapshot === mixed ? 'ambiguous version 2 snapshot shape' : 'invalid node',
+      );
+      expect(() => currentConversationFromSnapshot(snapshot)).toThrow(
+        snapshot === mixed ? 'ambiguous version 2 snapshot shape' : 'invalid node',
+      );
+    }
+  });
+
   it('keeps the message table and size unchanged across restore round trips', () => {
     const conversation = editedConversation();
     const forked = conversation.fork(conversation.current.ids[0]);
