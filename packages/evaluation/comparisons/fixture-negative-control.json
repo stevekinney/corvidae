@@ -1,0 +1,38 @@
+{
+  "description": "Offline negative control: one Agent already answers, and the collaboration loses to it, so admission is rejected and the direct Agent stays authoritative.",
+  "suite": "../src/fixtures/comparison/negative-control.ts",
+  "admissionRule": {
+    "kind": "collaboration-admission-rule",
+    "name": "fixture-direct-admission",
+    "version": "1",
+    "taskClass": "direct",
+    "minimumCases": 1,
+    "quality": {
+      "successComparison": "point-estimate",
+      "minimumSuccessGain": 0.2,
+      "minimumVerifierAcceptance": 0.9
+    },
+    "safety": {
+      "forbiddenFailureLabels": [
+        "premature-completion",
+        "conflicting-commits",
+        "untrusted-message-elevation",
+        "prompt-infection",
+        "faulty-agent-contamination"
+      ],
+      "maximumUnresolvedContradictions": 0,
+      "maximumPropagatedFaults": 0,
+      "maximumStaleReads": 0
+    },
+    "tradeoffs": {
+      "maximumCostRatio": {
+        "direct": 5,
+        "ensemble": 1.5
+      },
+      "maximumLatencyRatio": {
+        "direct": 5,
+        "ensemble": 1.5
+      }
+    }
+  }
+}

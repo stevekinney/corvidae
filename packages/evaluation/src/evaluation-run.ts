@@ -30,7 +30,7 @@ import { AGENT_FAILURE_REASONS, type CaseVerdict, INFRASTRUCTURE_FAILURE_REASONS
 /** The version of the {@link EvaluationRunRecord} shape this package writes. */
 export const EVALUATION_HISTORY_SCHEMA_VERSION = 1;
 
-const CASE_VERDICTS = [
+export const CASE_VERDICTS = [
   'pass',
   'fail',
   'agent-failed',
@@ -41,7 +41,7 @@ const HARD_GATE_OUTCOMES = [
   'failed',
   'not-applicable',
 ] as const satisfies readonly HardGateOutcome[];
-const AGGREGATE_OUTCOMES = [
+export const AGGREGATE_OUTCOMES = [
   'pass',
   'fail',
   'disagreement',
@@ -81,7 +81,7 @@ export function toRecordedUsage(usage: TokenUsage): z.output<typeof usageSchema>
   };
 }
 
-const trialStatisticsFields = {
+export const trialStatisticsFields = {
   trials: count,
   passes: count,
   passFraction: unitInterval.nullable(),
@@ -90,7 +90,7 @@ const trialStatisticsFields = {
     .nullable(),
 };
 
-const statisticsSchema = z.strictObject({
+export const statisticsSchema = z.strictObject({
   verdicts: z.strictObject(trialStatisticsFields),
   criteria: z.array(
     z.strictObject({

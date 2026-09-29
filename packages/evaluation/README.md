@@ -2,7 +2,7 @@
 
 Scores completed [Operative](../operative/README.md) runs against a versioned evaluator configuration: typed multi-criterion rubrics, hard per-criterion gates, calibration examples for a model judge, and a digest that identifies the configuration exactly. On top of that it runs each case its declared number of times, reports distributions and uncertainty rather than one score, surfaces disagreement and infrastructure failure explicitly, and refuses to treat an unchecked held-out dataset, an uncalibrated judge, or a drifted judge revision as gate-eligible. It implements the evaluator configuration, result-class, inspection-surface, and held-out, repeated-trial, variance, drift, and calibration sections of the calibrated evaluator contract (COR-896).
 
-`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, `replay` recomputes any stored decision from its recorded evidence without calling a model, and `promotion-signal` turns a passing decision into attributed evidence that binds exactly what was evaluated. The memory-lifecycle suite, run with the `memory-lifecycle` command, uses all of these to compare memory architectures by the actions they lead to (see [Memory lifecycle evaluation](#memory-lifecycle-evaluation)).
+`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, `replay` recomputes any stored decision from its recorded evidence without calling a model, and `promotion-signal` turns a passing decision into attributed evidence that binds exactly what was evaluated. A local `comparison` command runs one task three ways (one strong Agent, a compute-matched independent ensemble, and a `CollaborationPlan`-governed collaboration) and decides, under a predeclared rule, whether the collaboration is admitted (COR-818, against COR-820's collaboration decision). The memory-lifecycle suite, run with the `memory-lifecycle` command, uses all of these to compare memory architectures by the actions they lead to (see [Memory lifecycle evaluation](#memory-lifecycle-evaluation)).
 
 ## Workspace usage
 
@@ -443,6 +443,72 @@ Each call runs the case through `runTrials` with a subject that replays the atte
 
 Every `pass`, `fail`, and `indeterminate` verdict, and every `error` from a trial, names the `evaluation-run` record it appended in `evidenceReference`, so `history.read(verdict.evidenceReference)` returns that evidence. `feedback` is exactly `toGeneratorProjection(aggregate).feedback`, built from trial counts alone, so no expected answer, reference material, held-out case id, criterion weight, or judge identity can reach the next attempt. Error messages are built from typed reasons and names; the raw failure is on `error.cause`, for reviewers only.
 
+## Collaboration comparison and admission
+
+A collaboration earns admission only by beating one strong Agent and a compute-matched independent ensemble on a named task class, under one predeclared resource envelope. Nothing here dispatches a plan or changes production routing: a comparison evaluates plans, and its evidence is what a later deterministic selector reads.
+
+### Collaboration plans
+
+`collaborationPlanSchema` is COR-820's `CollaborationPlan`: plan id and monotonic revision, policy version, task and success-contract revisions, task class, execution profile, resource envelope (tokens, cost in cents, wall clock, steps, fan-out, descendants, and operative's `DelegatedAuthority` as tool authority), participants (`agentName`, `capabilityEvidence`, role, and eligibility reason; there is no `agentRevision`), topology, context projections, artifacts with one commit authority each, message schemas, stage verifiers, stop conditions, the direct-Agent fallback, lifecycle, and security. Beyond the shape it enforces what COR-820 states in prose: every participant reference resolves, a projection's required sources are among its sources, stage verifiers bind at handoff creation, cycles only for verifier-driven revision or a named extension (and a cyclic edge graph must permit one), an extension authors its topology, a direct-agent plan is one participant with no edges, and a shared-state collaboration declares its authoritative state. `collaborationMessageSchema` is the message envelope; a verification result or commit carries an evidence digest.
+
+### Datasets
+
+A comparison dataset (`comparisonDatasetSchema`) is a separate shape from an evaluation dataset. Each case names its task class and the recorded reason it belongs there, an `exact` success contract (the trimmed final content) or a `heuristic` one scored by deterministic code registered as `<name>@<version>`, the evidence the task draws on and which of it is required, and who sees what: the direct Agent's view and the shards producers get round-robin. Controls are explicit: `negative-control`, `distributed-information` (the schema checks that no single view sees every required piece, so no majority vote can recover it, while the shards together do), and `ungoverned-shared-state` (shared-state cases only). `toEvaluationDataset` projects it onto the evaluation dataset the comparison's evaluator scores.
+
+`src/fixtures/comparison/representative-dataset.json` covers all six classes (direct, independent sampling, partitioned search, sequential dependency, shared state, and verifier revision) and the three controls.
+
+### Running a comparison
+
+```ts
+import { decideAdmission, runComparison, toComparisonEvidence } from '@lostgradient/evaluation';
+
+const comparison = await runComparison({
+  definition, // agents (model, effort, definition and prompt revisions, tools), tool revisions,
+  // data revision, concurrency, compute match, aggregation rule, stopping rule, case ids
+  plans: { direct, ensemble, collaboration }, // one CollaborationPlan per profile
+  dataset,
+  evaluator, // createEvaluator over toEvaluationDataset(dataset)
+  subjects: { direct, ensembleSample, ensembleReducer, collaboration },
+  successHeuristics,
+  runtime, // seeds and the latency clock
+});
+const admission = await decideAdmission(rule, comparison);
+const evidence = toComparisonEvidence({ comparison, admission, recordedAt });
+```
+
+`runComparison` validates everything first (`bindComparison` does only that) and rejects with one `EvaluatorConfigurationError` listing every problem: plans that do not run their own profile or do not share the collaboration plan's task, class, policy, and envelope; an ensemble with edges, the wrong reducer count for its aggregation, or a participant count that does not match the collaboration's (unless the definition declares an `equivalent-compute` match with its reason); concurrency above the envelope's fan-out; a participant not bound to an Agent definition; an evaluator that scores another dataset; and a case of another class or without its success heuristic.
+
+Each case then runs under `direct-agent`, `compute-matched-ensemble`, and `collaboration`, in that order, each through `scoreTrials` with the case's seeds, so every profile gets the evaluator's verdicts, variance, and Wilson intervals. The ensemble's samples run at most `concurrency` at a time, each under a recorded seed derived from the trial's, and every sample in a batch settles before the trial moves on. A `majority-vote` ensemble picks the answer most completed samples gave, ties to the first; a `reducer` ensemble passes every answer to one reducer. The collaboration subject returns the committed result (usage, steps, and cost covering every participant) and its trajectory. A subject that throws or returns a malformed trajectory is the trial's `subject-error`, never a verdict.
+
+The result binds everything that could change it (`binding`: the definition, the three plans, the evaluator identity, the dataset digest, the trial count, and the cases by placement), and `revision` is the SHA-256 of that binding. Cases are placed by ordinal; a held-out case never appears by id.
+
+### Metrics and failure labels
+
+`measureTrajectory(plan, trajectory)` reads a run's events (participants starting, finishing, or being detached; handoffs; messages; artifact reads and writes; work units; retries; replans; faults; quarantines; and failures a reviewer observed) and reports coordination tokens and turns (messages only), ungoverned writes (to a store the plan does not declare: never coordination and never a commit), duplicate work, message novelty, corrected false claims, unresolved contradictions, stale reads, retries, replans, propagated faults, cleanup state, and failure labels. The labels are `task-role-drift`, `cycle`, `history-loss`, `reset`, `ignored-or-withheld-information`, `action-reasoning-mismatch`, `premature-completion`, `missing-or-incorrect-verification`, `incompatible-conventions`, `conflicting-commits`, `untrusted-message-elevation`, `prompt-infection`, and `faulty-agent-contamination`. A participant acts when it sends a message, is handed its sources, works, reads or writes an artifact, retries, replans, or faults, and its `participant-started` precedes all of it. Whatever the plan makes checkable is derived; the rest arrives as `failure-observed`. A `cycle` is a revision, counted per participant P, verifier V, and subject s, as COR-820's amendment of 2026-09-29 defines it. Work is a message whose intent is `observation`, `hypothesis`, `proposal`, or `artifact`; a request, verification result, commit, rejection, or cancellation is not work. A rejection is a `verification-result` with a `rejected` verdict from V (a participant with the verifier role or a stage-verifier binding) to P on s. It rejects P's latest work to V on s, chosen by order alone (`correlation` is not read), and opens a revision for (P, V, s); if P has sent V no work on s, it rejects and opens nothing. The revision is the first work P then sends V on s, and sending it closes it. So a rejection opens at most one: more work before V's next rejection is not a revision, and two rejections before P's next work open one. An acceptance, request, commit, cancellation, or work P sends anyone else leaves it open. `permittedCycles: N` allows N revisions per (P, V, s), never summed across keys, and each revision whose count k exceeds N is labelled `cycle` at its event with the evidence "Cycle k exceeds the plan's limit of N", so `permittedCycles: 0` labels every revision. Every message between declared participants is counted, declared edge or not: work on an undeclared edge gets `task-role-drift`, then any `cycle`. Each count depends only on the order of P's work to V on s and V's rejections of it, so interleaving other participants or subjects never changes which messages are revisions; the work is constant per event, and no plan graph is read, so no topology is refused for its density. The limits are deliberate: a revision relayed through another participant, forwarded, or sent to a verifier other than the one that rejected is not counted, and a rejection that follows relayed work is attributed to P's latest direct work to V on s (opening nothing if there is none); a verifier that answers with observations or `rejection` messages drives no revisions; and work sent with no rejection before it is not a revision. A verdict counts only from a verifier, a commit only from the commit authority, and a message is trusted only once a verifier accepted its correlation.
+
+Every trial of every profile records its seed (and each sample's), verdict, finish reason, task success, cost, latency, tokens, tool calls, steps, coordination metrics, failures, cleanup (`quiescent`, `detached` with each named work item, or `abandoned` with each participant still running at the end or acting where no recorded start covered it: before its `participant-started`, or after it finished or detached; such a participant also counts toward fan-out and descendants), and envelope breaches (`tokens`, `cost`, `wall-clock`, `steps`, `fan-out`, `descendants`). Missing evidence is `null`, never `0`. Each profile's totals cover only the trials whose run finished, which `trialsWithRuns` counts; when none finished, every total is `null`, including the failure-label and breach counts.
+
+### Admission
+
+An admission rule (`admissionRuleSchema`) is a versioned document with no defaults: the task class it admits, the minimum number of cases, the quality gates (success comparison by point estimate or by 95 percent Wilson interval separation, the minimum success gain over the better control, and the minimum evaluator acceptance), the safety gates (forbidden failure labels and ceilings on unresolved contradictions, propagated faults, and stale reads), and the cost and latency tradeoffs (the most the collaboration may spend per trial relative to each control). `decideAdmission` pools every case's trials per profile and also always rejects an abandoned participant or a breached envelope. Extra calls or tokens never count as gain.
+
+It reuses the release gate's contract: `admit` is `pass` (exit 0), `reject` is `regression` (1), then `infrastructure-failure` (2) and `insufficient-evidence` (3), most severe first. Anything but `admit` leaves the plan's fallback, one strong direct Agent, authoritative.
+
+### Evidence and report
+
+`toComparisonEvidence` assembles the versioned artifact (`kind: 'collaboration-comparison-evidence'`, `schemaVersion: 1`): an id from the comparison id and revision, `recordedAt`, the binding and revision, every case, and the admission. `verifyComparisonEvidence` parses it and checks the revision against the binding. `admissionFromEvidence(evidence, { comparison: await bindComparison(current), rule })` returns the recorded admission only while nothing it was bound to has changed; otherwise it is `stale` and names every change (`model`, `prompt`, `agent-definition`, `tool`, `evaluator`, `topology`, `policy`, `budget`, `context-projection`, `commit-authority`, `verification`, `aggregation`, and the rest of `BINDING_CHANGES`). `recordedSeeds` turns evidence back into seeds for a replay. `renderComparisonReport(evidence, digest)` renders the Markdown report from the same document, one table per case with a row per metric and a column per profile. Its first row, `Trials with runs`, reads `2 of 3` when one trial's run failed, so partial totals are labelled, and a total no finished trial measured reads `unknown`, never `0` or `none`.
+
+### The `comparison` command
+
+```bash
+# Machine form: stdout is exactly one JSON document and $? is authoritative.
+bun run --cwd packages/evaluation comparison --suite <suiteId> [--report <path>] [--seeds <evidence.json>]
+```
+
+A suite is `comparisons/<suiteId>.json`: its module (relative to the file), whose default export builds the comparison, and its admission rule, committed before the run. Stdout is the evidence, or a `collaboration-comparison-failure`; `--report` writes the Markdown report from the same evidence; `--seeds` replays the seeds of earlier evidence. The exit code is the admission's, or `64` for an invalid suite or usage and `2` when the comparison machinery itself fails.
+
+The committed suites are offline fixtures over the representative dataset, scripted with `createScriptedGenerate`: `fixture-vault-code` (distributed information: admitted), `fixture-negative-control` (collaboration loses to one Agent: rejected), and `fixture-ungoverned-scratchpad` (writes to an undeclared store are not coordination: rejected). Each injects a manual runtime, so two runs print byte-identical evidence.
+
 ## Memory lifecycle evaluation
 
 The memory-lifecycle suite (COR-755) measures whether a memory architecture makes an agent's final action better, not whether it retrieves text. It runs one versioned scenario set against four memory baselines under one compute envelope, checks each run's final action against a deterministic environment, and feeds a release gate. It lives in `src/memory-lifecycle/` and uses this package's own evaluator, `scoreTrials`, history, release gate, and replay: it adds no runner and no agent loop, and it changes nothing in `@lostgradient/memory`. [Memory governance and lifecycle evaluation](../../documentation/memory-governance.md) explains what the governed memory it evaluates guarantees.
@@ -548,6 +614,7 @@ These limits are part of the contract. Code that needs more than this has to bui
 - **Generator redaction is exact-substring.** `toGeneratorProjection` removes verbatim copies of a held-out case id, the expected answer, reference material text, and calibration responses. A paraphrase, translation, or partial quote of them is not detected.
 - **Goal-adapter repetitions re-judge one attempt.** The adapter replays the same `RunResult` for every trial, so its repetitions measure the judge's variance, not the agent's. It never re-runs the agent.
 - **The release gate is local.** Nothing runs it on a schedule or blocks a merge on it, and a promotion signal publishes, tags, syncs, and deploys nothing.
+- **A comparison routes nothing.** `comparison` evaluates plans and records admission evidence; it dispatches no plan and changes no production routing. The evidence is what a later selector reads, and anything but `admit` leaves one strong direct Agent authoritative.
 - **No migration or dual-read.** Configurations must declare `resultSchemaVersion: 1`, and history records carry schema version 1; a record of any other shape is corrupt, not upgraded.
 - **The history only grows.** There is no update, delete, compaction, or retention policy for history records. The commands share one local SQLite file; `append` is safe against a concurrent append of the same id, but nothing replicates or coordinates that file across machines.
 
@@ -592,6 +659,13 @@ Every name below is exported from `@lostgradient/evaluation`, grouped by the sou
 | `memory-lifecycle/artifact.ts` | `replayScenarioArtifact`, `scenarioRunArtifactSchema`, `MEMORY_LIFECYCLE_REPLAY_EXIT_CODES` | `ArtifactReplayOutcome`, `ScenarioRunArtifact` |
 | `memory-lifecycle/benchmarks.ts` | `benchmarkAdoptions`, `EXTERNAL_SCORE_POLICY` | `BenchmarkAdoption` |
 | `goal-adapter.ts` | `createGoalEvaluatorAdapter` | `CreateGoalEvaluatorAdapterOptions`, `GoalEvaluatorConfiguration`, `GoalEvaluatorAdapter`, `GoalEvaluationOptions`, `GoalEvaluatorVerdict`, `GoalEvaluatorError`, `GoalEvaluatorErrorKind`, `GoalEvaluatorErrorCode` |
+| `collaboration-plan.ts` | `collaborationPlanSchema`, `parseCollaborationPlan`, `collaborationPlanDigest`, `collaborationMessageSchema`, `taskClassKey`, `EXECUTION_PROFILES`, `MESSAGE_INTENTS`, `PARTICIPANT_ROLES`, `TASK_CLASSES` | `CollaborationPlan`, `CollaborationParticipant`, `CollaborationArtifact`, `CollaborationMessage`, `ExecutionProfile`, `MessageIntent`, `NamedTaskClass`, `ParticipantRole`, `ResourceEnvelope`, `TaskClass` |
+| `comparison-datasets.ts` | `comparisonDatasetSchema`, `parseComparisonDataset`, `comparisonDatasetDigest`, `toEvaluationDataset`, `checkSuccessContract`, `COMPARISON_CONTROLS` | `ComparisonDataset`, `ComparisonCase`, `ComparisonControl`, `SuccessContract`, `SuccessHeuristic`, `SuccessHeuristics` |
+| `trajectory.ts` | `measureTrajectory`, `collaborationTrajectorySchema`, `parseCollaborationTrajectory`, `CLEANUP_STATES`, `FAILURE_LABELS` | `CollaborationTrajectory`, `TrajectoryEvent`, `TrajectoryMeasurement`, `CoordinationMetrics`, `CleanupReport`, `CleanupState`, `FailureLabel`, `FailureOccurrence` |
+| `comparison.ts` | `runComparison`, `bindComparison`, `comparisonDefinitionSchema`, `comparisonBindingSchema`, `comparisonResultSchema`, `AGGREGATION_KINDS`, `COMPARISON_SCHEMA_VERSION`, `ENVELOPE_BREACHES` | `RunComparisonOptions`, `BindComparisonOptions`, `BoundComparison`, `ComparisonDefinition`, `ComparisonBinding`, `ComparisonResult`, `ComparisonSubjects`, `CollaborationContext`, `CollaborationRun`, `ParticipantContext`, `ProfilePlans`, `CaseComparison`, `ProfileResult`, `ProfileTotals`, `ProfileTrial`, `EnvelopeBreach` |
+| `admission.ts` | `decideAdmission`, `parseAdmissionRule`, `admissionRuleSchema`, `admissionDecisionSchema`, `ADMISSION_DECISIONS`, `ADMISSION_FINDING_REASONS` | `AdmissionRule`, `AdmissionDecision`, `AdmissionDecisionKind`, `AdmissionFinding`, `AdmissionFindingReason`, `PooledProfile` |
+| `comparison-evidence.ts` | `toComparisonEvidence`, `verifyComparisonEvidence`, `admissionFromEvidence`, `recordedSeeds`, `comparisonEvidenceDigest`, `comparisonEvidenceSchema`, `BINDING_CHANGES`, `COMPARISON_EVIDENCE_SCHEMA_VERSION` | `ComparisonEvidence`, `ComparisonEvidenceOptions`, `CurrentComparison`, `EvidenceCurrency`, `BindingChange` |
+| `comparison-report.ts` | `renderComparisonReport`, `REPORT_METRICS` | none |
 
 `src/index.test.ts` pins the runtime export list, so a new value export fails that test until it is added there and here.
 
@@ -603,6 +677,7 @@ bun run --filter=@lostgradient/evaluation test:coverage
 bun run --cwd packages/evaluation history list
 bun run --cwd packages/evaluation release-gate --gate fixture-regression
 bun run --cwd packages/evaluation replay --gate fixture-regression --latest
+bun run --cwd packages/evaluation comparison --suite fixture-vault-code --report .cache/vault-code.md
 bun run --cwd packages/evaluation promotion-signal issue --gate fixture-regression
 bun run --cwd packages/evaluation promotion-signal verify <signalId>
 bun run --cwd packages/evaluation memory-lifecycle run --lane deterministic

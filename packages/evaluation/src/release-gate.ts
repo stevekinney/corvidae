@@ -165,7 +165,7 @@ export function mostSevere(outcomes: readonly GateOutcome[]): GateOutcome {
 }
 
 /** Deltas this close to a threshold are treated as on it, so float noise never decides. */
-const THRESHOLD_TOLERANCE = 1e-9;
+export const THRESHOLD_TOLERANCE = 1e-9;
 
 export interface RunReleaseGateOptions {
   /** The directory holding `<gateId>.json`. */

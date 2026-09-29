@@ -1,0 +1,116 @@
+{
+  "id": "collaboration-comparison",
+  "version": "collaboration-comparison-2026-09",
+  "owner": "evaluation-datasets-team",
+  "cases": [
+    {
+      "id": "direct-multiplication",
+      "taskClass": "direct",
+      "classReason": "One agent can read the whole task and check its own arithmetic, so nothing is gained by splitting it.",
+      "input": "Compute 17 multiplied by 23. Reply with the number only.",
+      "visibility": "public",
+      "successContract": { "kind": "exact", "expected": "391" },
+      "evidence": [],
+      "requiredEvidence": [],
+      "views": { "direct": [], "shards": [] },
+      "controls": [
+        {
+          "kind": "negative-control",
+          "reason": "A collaboration adds handoffs and coordination tokens to a task one Agent completes alone, so the collaboration profile should lose to a simpler profile: no gain in success for more cost."
+        }
+      ]
+    },
+    {
+      "id": "independent-sampling-prime",
+      "taskClass": "independent-sampling",
+      "classReason": "Each sample can produce a complete answer on its own and their errors are independent, so aggregating samples, not communication, is what can help.",
+      "input": "Name the smallest prime number greater than 90. Reply with the number only.",
+      "visibility": "public",
+      "successContract": { "kind": "exact", "expected": "97" },
+      "evidence": [],
+      "requiredEvidence": [],
+      "views": { "direct": [], "shards": [] },
+      "controls": []
+    },
+    {
+      "id": "partitioned-search-vault-code",
+      "taskClass": "partitioned-search",
+      "classReason": "The evidence splits into disjoint shards that workers can search independently and one reducer must combine.",
+      "input": "Three ledger shards each record one digit of a vault code, in shard order A, B, C. Report the three-digit code with no separators.",
+      "visibility": "public",
+      "successContract": { "kind": "exact", "expected": "472" },
+      "evidence": [
+        { "id": "shard-a", "text": "Shard A records the digit 4." },
+        { "id": "shard-b", "text": "Shard B records the digit 7." },
+        { "id": "shard-c", "text": "Shard C records the digit 2." }
+      ],
+      "requiredEvidence": ["shard-a", "shard-b", "shard-c"],
+      "views": { "direct": ["shard-a"], "shards": [["shard-a"], ["shard-b"], ["shard-c"]] },
+      "controls": [
+        {
+          "kind": "distributed-information",
+          "reason": "Each participant sees one shard, so every independent sample lacks two of the three digits and a majority vote over their answers cannot recover evidence no single participant saw."
+        }
+      ]
+    },
+    {
+      "id": "sequential-dependency-conversion",
+      "taskClass": "sequential-dependency",
+      "classReason": "Each step consumes the previous step's result, so no stage can start before its input artifact exists.",
+      "input": "Convert 5 miles to kilometres (1 mile is 1.609344 kilometres), round the result to the nearest whole number, then double it. Reply with the final number only.",
+      "visibility": "held-out",
+      "successContract": { "kind": "exact", "expected": "16" },
+      "evidence": [],
+      "requiredEvidence": [],
+      "views": { "direct": [], "shards": [] },
+      "controls": []
+    },
+    {
+      "id": "shared-state-inventory",
+      "taskClass": "shared-state",
+      "classReason": "Two writers update one authoritative count, so ordering, freshness, and a single commit authority decide whether the result is correct.",
+      "input": "An inventory count starts at 10. One clerk records a delivery of 5 units and another records a shipment of 3 units. Report the final count.",
+      "visibility": "public",
+      "successContract": { "kind": "exact", "expected": "12" },
+      "evidence": [],
+      "requiredEvidence": [],
+      "views": { "direct": [], "shards": [] },
+      "controls": []
+    },
+    {
+      "id": "shared-state-ungoverned-scratchpad",
+      "taskClass": "shared-state",
+      "classReason": "Several writers change one count, so the count needs one owner, a freshness rule, and one commit authority.",
+      "input": "An inventory count starts at 20. Three clerks each record a shipment of 4 units on a shared scratchpad. Report the final count.",
+      "visibility": "public",
+      "successContract": { "kind": "exact", "expected": "8" },
+      "evidence": [],
+      "requiredEvidence": [],
+      "views": { "direct": [], "shards": [] },
+      "controls": [
+        {
+          "kind": "ungoverned-shared-state",
+          "reason": "Participants that only write to an undeclared scratchpad have not coordinated: those writes are reported as ungoverned writes and never count as coordination turns, tokens, or commits."
+        }
+      ]
+    },
+    {
+      "id": "verifier-revision-seven-words",
+      "taskClass": "verifier-revision",
+      "classReason": "A verifier can count words cheaply and return a structured defect the producer revises against, within a bounded number of rounds.",
+      "input": "Write one sentence about rivers that has exactly seven words.",
+      "visibility": "public",
+      "successContract": {
+        "kind": "heuristic",
+        "name": "exact-word-count",
+        "version": "1",
+        "expected": "7",
+        "description": "The response is one sentence whose whitespace-separated word count equals the expected number."
+      },
+      "evidence": [],
+      "requiredEvidence": [],
+      "views": { "direct": [], "shards": [] },
+      "controls": []
+    }
+  ]
+}

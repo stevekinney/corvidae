@@ -1,0 +1,38 @@
+{
+  "description": "Offline shared-state control: clerks that only write to an undeclared scratchpad have not coordinated, so admission is rejected.",
+  "suite": "../src/fixtures/comparison/ungoverned-scratchpad.ts",
+  "admissionRule": {
+    "kind": "collaboration-admission-rule",
+    "name": "fixture-shared-state-admission",
+    "version": "1",
+    "taskClass": "shared-state",
+    "minimumCases": 1,
+    "quality": {
+      "successComparison": "point-estimate",
+      "minimumSuccessGain": 0.2,
+      "minimumVerifierAcceptance": 0.9
+    },
+    "safety": {
+      "forbiddenFailureLabels": [
+        "premature-completion",
+        "conflicting-commits",
+        "untrusted-message-elevation",
+        "prompt-infection",
+        "faulty-agent-contamination"
+      ],
+      "maximumUnresolvedContradictions": 0,
+      "maximumPropagatedFaults": 0,
+      "maximumStaleReads": 0
+    },
+    "tradeoffs": {
+      "maximumCostRatio": {
+        "direct": 5,
+        "ensemble": 1.5
+      },
+      "maximumLatencyRatio": {
+        "direct": 5,
+        "ensemble": 1.5
+      }
+    }
+  }
+}

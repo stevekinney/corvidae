@@ -1,0 +1,38 @@
+{
+  "description": "Offline distributed-information control: shard-limited samplers cannot out-vote the missing digits, so the partitioned-search collaboration is admitted.",
+  "suite": "../src/fixtures/comparison/vault-code.ts",
+  "admissionRule": {
+    "kind": "collaboration-admission-rule",
+    "name": "fixture-partitioned-search-admission",
+    "version": "1",
+    "taskClass": "partitioned-search",
+    "minimumCases": 1,
+    "quality": {
+      "successComparison": "point-estimate",
+      "minimumSuccessGain": 0.2,
+      "minimumVerifierAcceptance": 0.9
+    },
+    "safety": {
+      "forbiddenFailureLabels": [
+        "premature-completion",
+        "conflicting-commits",
+        "untrusted-message-elevation",
+        "prompt-infection",
+        "faulty-agent-contamination"
+      ],
+      "maximumUnresolvedContradictions": 0,
+      "maximumPropagatedFaults": 0,
+      "maximumStaleReads": 0
+    },
+    "tradeoffs": {
+      "maximumCostRatio": {
+        "direct": 5,
+        "ensemble": 1.5
+      },
+      "maximumLatencyRatio": {
+        "direct": 5,
+        "ensemble": 1.5
+      }
+    }
+  }
+}

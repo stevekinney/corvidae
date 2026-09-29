@@ -1,4 +1,20 @@
 export {
+  ADMISSION_DECISIONS,
+  ADMISSION_FINDING_REASONS,
+  admissionDecisionSchema,
+  admissionRuleSchema,
+  decideAdmission,
+  parseAdmissionRule,
+} from './admission';
+export type {
+  AdmissionDecision,
+  AdmissionDecisionKind,
+  AdmissionFinding,
+  AdmissionFindingReason,
+  AdmissionRule,
+  PooledProfile,
+} from './admission';
+export {
   calibrationRecordSchema,
   driftCheckRecordSchema,
   isGateEligibleJudge,
@@ -11,6 +27,91 @@ export type {
   GateEligibleJudgeOptions,
   JudgeEligibility,
 } from './calibration';
+export {
+  EXECUTION_PROFILES,
+  MESSAGE_INTENTS,
+  PARTICIPANT_ROLES,
+  TASK_CLASSES,
+  collaborationMessageSchema,
+  collaborationPlanDigest,
+  collaborationPlanSchema,
+  parseCollaborationPlan,
+  taskClassKey,
+} from './collaboration-plan';
+export type {
+  CollaborationArtifact,
+  CollaborationMessage,
+  CollaborationParticipant,
+  CollaborationPlan,
+  ExecutionProfile,
+  MessageIntent,
+  NamedTaskClass,
+  ParticipantRole,
+  ResourceEnvelope,
+  TaskClass,
+} from './collaboration-plan';
+export {
+  AGGREGATION_KINDS,
+  COMPARISON_SCHEMA_VERSION,
+  ENVELOPE_BREACHES,
+  bindComparison,
+  comparisonBindingSchema,
+  comparisonDefinitionSchema,
+  comparisonResultSchema,
+  runComparison,
+} from './comparison';
+export type {
+  BindComparisonOptions,
+  BoundComparison,
+  CaseComparison,
+  CollaborationContext,
+  CollaborationRun,
+  ComparisonBinding,
+  ComparisonDefinition,
+  ComparisonResult,
+  ComparisonSubjects,
+  EnvelopeBreach,
+  ParticipantContext,
+  ProfilePlans,
+  ProfileResult,
+  ProfileTotals,
+  ProfileTrial,
+  RunComparisonOptions,
+} from './comparison';
+export {
+  COMPARISON_CONTROLS,
+  checkSuccessContract,
+  comparisonDatasetDigest,
+  comparisonDatasetSchema,
+  parseComparisonDataset,
+  toEvaluationDataset,
+} from './comparison-datasets';
+export type {
+  ComparisonCase,
+  ComparisonControl,
+  ComparisonDataset,
+  SuccessContract,
+  SuccessHeuristic,
+  SuccessHeuristics,
+} from './comparison-datasets';
+export {
+  BINDING_CHANGES,
+  COMPARISON_EVIDENCE_SCHEMA_VERSION,
+  admissionFromEvidence,
+  comparisonEvidenceDigest,
+  comparisonEvidenceSchema,
+  recordedSeeds,
+  toComparisonEvidence,
+  verifyComparisonEvidence,
+} from './comparison-evidence';
+export type {
+  BindingChange,
+  ComparisonEvidence,
+  ComparisonEvidenceOptions,
+  CurrentComparison,
+  EvidenceCurrency,
+} from './comparison-evidence';
+export { REPORT_METRICS, renderComparisonReport } from './comparison-report';
 export {
   EvaluatorConfigurationError,
   evaluatorConfigurationSchema,
@@ -246,6 +347,23 @@ export { REPLAY_EXIT_CODES, replayGateDecision } from './replay';
 export type { ReplayDifference, ReplayOptions, ReplayOutcome, ReplaySelector } from './replay';
 export { applyRubric } from './rubric';
 export type { CriterionResult, CriterionScore, HardGateOutcome, RubricResult } from './rubric';
+export {
+  CLEANUP_STATES,
+  FAILURE_LABELS,
+  collaborationTrajectorySchema,
+  measureTrajectory,
+  parseCollaborationTrajectory,
+} from './trajectory';
+export type {
+  CleanupReport,
+  CleanupState,
+  CollaborationTrajectory,
+  CoordinationMetrics,
+  FailureLabel,
+  FailureOccurrence,
+  TrajectoryEvent,
+  TrajectoryMeasurement,
+} from './trajectory';
 export { runTrials, scoreTrials } from './trials';
 export type {
   AggregateStatistics,
