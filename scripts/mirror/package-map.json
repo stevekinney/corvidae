@@ -9091,12 +9091,12 @@
       "name": "@lostgradient/operative",
       "basis": "settled",
       "reason": "Already published under this name.",
-      "lastPublishedVersion": "0.12.2",
+      "lastPublishedVersion": "0.12.3",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.12.2",
-        "gitHead": "d87621c7ee479086d82f9c3389538cf186a9f0cf",
-        "corvidaeCommit": "67dce946162e4d1fcf236b2645a7e0506ee42abe",
+        "version": "0.12.3",
+        "gitHead": "a85915953654d8303d03e3358b0b6d3b7f9f1b0e",
+        "corvidaeCommit": "5197e10f9a96731a53f6e7aad5c75c1a799b849d",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -9357,15 +9357,15 @@
             "src/toolbox-event-forwarding.ts",
             "src/types.ts"
           ],
-          "digest": "242614aa2264fc6bd952aefc6e71f8bc266bca74268c8617b326355e09f09e9b"
+          "digest": "d63d2ed09c889810e60a522f48f29e66eb3826b7d65a0c94565a836effef6189"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "53a8d15d8bb35d7a1824d3d851237ce34628ffcbd5f44eadf3589db963879ce5"
+          "digest": "7f912f14292212750a25aba22bbf2c27e8acd7ce801861291ad0b492b3d6a23a"
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "472e80042b1979bc5a09d9d47aa7c2f5890c45369d5bdae3f92cc447a397e569"
+          "digest": "3705e8ad3bf8b1dab5d65c8483c51ae8d2624b85939c7061ecbc0cf32985c0b5"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -9539,19 +9539,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/durable-B3ocath_.js",
+              "path": "package/dist/durable-CW5Gi4iK.js",
               "executable": false
             },
             {
-              "path": "package/dist/durable-B3ocath_.js.map",
+              "path": "package/dist/durable-CW5Gi4iK.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/durable-DVRi3eyc.cjs",
+              "path": "package/dist/durable-wck98b9-.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/durable-DVRi3eyc.cjs.map",
+              "path": "package/dist/durable-wck98b9-.cjs.map",
               "executable": false
             },
             {
@@ -10443,19 +10443,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-AConfXrE.cjs",
+              "path": "package/dist/run-workflow-BxlzJz1a.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-AConfXrE.cjs.map",
+              "path": "package/dist/run-workflow-BxlzJz1a.cjs.map",
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-BufcfGHq.js",
+              "path": "package/dist/run-workflow-CnECvYWb.js",
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-BufcfGHq.js.map",
+              "path": "package/dist/run-workflow-CnECvYWb.js.map",
               "executable": false
             },
             {
@@ -10539,11 +10539,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/test-CxZPhsBy.cjs",
+              "path": "package/dist/test-BOc7ziTN.js",
               "executable": false
             },
             {
-              "path": "package/dist/test-CxZPhsBy.cjs.map",
+              "path": "package/dist/test-BOc7ziTN.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-CC-hAL5D.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-CC-hAL5D.cjs.map",
               "executable": false
             },
             {
@@ -10560,14 +10568,6 @@
             },
             {
               "path": "package/dist/test-GbWfhEDn.cjs.map",
-              "executable": false
-            },
-            {
-              "path": "package/dist/test-TbbO8BZJ.js",
-              "executable": false
-            },
-            {
-              "path": "package/dist/test-TbbO8BZJ.js.map",
               "executable": false
             },
             {
@@ -10607,7 +10607,7 @@
               "executable": false
             }
           ],
-          "digest": "2e73dff79496acadef39ffe3aabe2bc41a802ae450edcae6b4be5b08bfb09c24"
+          "digest": "0e075ab2c625d4f604a94e7bfed81b0468c70a01cb54d4c978a8397bf8e9623e"
         }
       }
     },
@@ -11756,12 +11756,12 @@
       "name": "conversationalist",
       "basis": "settled",
       "reason": "Keeps its unscoped name deliberately. Roughly 53,608 installs a month, the most-installed package in the graph.",
-      "lastPublishedVersion": "1.3.1",
+      "lastPublishedVersion": "2.0.0",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "1.3.1",
-        "gitHead": "d87621c7ee479086d82f9c3389538cf186a9f0cf",
-        "corvidaeCommit": "67dce946162e4d1fcf236b2645a7e0506ee42abe",
+        "version": "2.0.0",
+        "gitHead": "a85915953654d8303d03e3358b0b6d3b7f9f1b0e",
+        "corvidaeCommit": "5197e10f9a96731a53f6e7aad5c75c1a799b849d",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -11808,6 +11808,7 @@
             "src/conversation/snapshot-format.ts",
             "src/conversation/snapshot-integrity.ts",
             "src/conversation/snapshot-v1.ts",
+            "src/conversation/snapshot-v2-nested.ts",
             "src/conversation/snapshot-v2.ts",
             "src/conversation/system-messages.ts",
             "src/conversation/tool-interactions.ts",
@@ -11875,7 +11876,7 @@
             "src/versioning/index.ts",
             "src/with-conversation.ts"
           ],
-          "digest": "faf845336a29b29151b0faae2fe4c1988abe0261588f8705f963b963df20bd41"
+          "digest": "4eaa7c0f5054340e803e1e7c455f3c19f2a0ab6d3b6429db9802543838870394"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -11883,7 +11884,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "a03f3df20ed81ddd20efb9ceb51aab244e88223ea9a840369f118205a57fc21b"
+          "digest": "c8a4669938bde644ece02e68c778fc50b4b85c4f53ee6f2949398acd0e773e65"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -11973,11 +11974,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/conditional-section-BNE2OzK6.d.ts",
+              "path": "package/dist/conditional-section-A6X3kg_W.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/conditional-section-BNE2OzK6.d.ts.map",
+              "path": "package/dist/conditional-section-A6X3kg_W.d.ts.map",
               "executable": false
             },
             {
@@ -11989,11 +11990,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/context-blocks-HunWfqSC.d.ts",
+              "path": "package/dist/context-blocks-w8L-u7Nc.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/context-blocks-HunWfqSC.d.ts.map",
+              "path": "package/dist/context-blocks-w8L-u7Nc.d.ts.map",
               "executable": false
             },
             {
@@ -12033,19 +12034,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/deterministic-Dd2MEF-P.d.ts",
+              "path": "package/dist/deterministic-CwbgEIcS.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/deterministic-Dd2MEF-P.d.ts.map",
+              "path": "package/dist/deterministic-CwbgEIcS.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/environment-Dv2zmhh1.d.ts",
+              "path": "package/dist/environment-B6kfg4Ey.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/environment-Dv2zmhh1.d.ts.map",
+              "path": "package/dist/environment-B6kfg4Ey.d.ts.map",
               "executable": false
             },
             {
@@ -12077,19 +12078,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/history-BfpntDzF.d.ts",
+              "path": "package/dist/history-DBWNjUCE.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/history-BfpntDzF.d.ts.map",
+              "path": "package/dist/history-DBWNjUCE.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/history-CWQnv9n3.js",
+              "path": "package/dist/history-DplKH75X.js",
               "executable": false
             },
             {
-              "path": "package/dist/history-CWQnv9n3.js.map",
+              "path": "package/dist/history-DplKH75X.js.map",
               "executable": false
             },
             {
@@ -12101,19 +12102,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/index-BPwlR8JL.d.ts",
+              "path": "package/dist/index-DdJ4VkhM.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-BPwlR8JL.d.ts.map",
+              "path": "package/dist/index-DdJ4VkhM.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/index-Cjm2WHW7.d.ts",
+              "path": "package/dist/index-_IEp5KtF.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-Cjm2WHW7.d.ts.map",
+              "path": "package/dist/index-_IEp5KtF.d.ts.map",
               "executable": false
             },
             {
@@ -12133,11 +12134,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/markdown-CYsc5eR_.js",
+              "path": "package/dist/markdown-Dg2Kb35Y.js",
               "executable": false
             },
             {
-              "path": "package/dist/markdown-CYsc5eR_.js.map",
+              "path": "package/dist/markdown-Dg2Kb35Y.js.map",
               "executable": false
             },
             {
@@ -12169,11 +12170,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/message-n03NMUZA.d.ts",
+              "path": "package/dist/message-BwM54tso.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/message-n03NMUZA.d.ts.map",
+              "path": "package/dist/message-BwM54tso.d.ts.map",
               "executable": false
             },
             {
@@ -12289,11 +12290,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/tool-interactions-CPxeezRt.d.ts",
+              "path": "package/dist/tool-interactions-C4zk_6DR.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/tool-interactions-CPxeezRt.d.ts.map",
+              "path": "package/dist/tool-interactions-C4zk_6DR.d.ts.map",
               "executable": false
             },
             {
@@ -12321,11 +12322,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/types-CzKeMyBG.d.ts",
+              "path": "package/dist/types-CdIhmOL6.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/types-CzKeMyBG.d.ts.map",
+              "path": "package/dist/types-CdIhmOL6.d.ts.map",
               "executable": false
             },
             {
@@ -12389,7 +12390,7 @@
               "executable": false
             }
           ],
-          "digest": "50b96e7a97e9066cf0c9e1aaab875283f8107cfdd484b2a244c99f9fba9f4793"
+          "digest": "8135f081f554016ab8dc0407213a8e3dd28b2c89c81ec959e655cff94c185564"
         }
       }
     },
