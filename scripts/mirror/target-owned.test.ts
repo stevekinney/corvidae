@@ -138,6 +138,9 @@ describe('mirror target-owned enumeration', () => {
     expect(
       findTargetOwner(policy, '.github/workflows/deploy-playground.yaml', 'cinder')?.glob,
     ).toBe('.github/workflows/deploy-playground.yaml');
+    expect(findTargetOwner(policy, '.github/workflows/mcp-verify.yaml', 'cinder')?.glob).toBe(
+      '.github/workflows/mcp-verify.yaml',
+    );
     // The two retired workflow files are no longer target-owned at all — they are deleted by
     // `retired`, not preserved by `paths`. Both guards agree they are not writable/preservable the
     // same way, which is why `assertRetirementsCoherent` does not refuse them as a collision.

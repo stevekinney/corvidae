@@ -59,6 +59,11 @@
       "targets": ["cinder"]
     },
     {
+      "glob": ".github/workflows/mcp-verify.yaml",
+      "reason": "Cinder owns this separate pull-request verification workflow for its published MCP package. It runs the MCP consumer, lint, type, and test gates alongside the transform-emitted mirror verification, and the mirror must preserve its target-owned action versions and job contract.",
+      "targets": ["cinder"]
+    },
+    {
       "glob": ".github/workflows/deploy-playground.yaml",
       "reason": "Cinder's playground deployment workflow, target-owned until COR-1201 resolves its disposition.",
       "targets": ["cinder"]
