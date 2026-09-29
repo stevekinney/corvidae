@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import { canonicalManifest, objectRecord, readGitJson } from './registry-manifest.ts';
 import { collectDigestedFiles, type DigestScope, type DigestedFile } from './source-digest.ts';
+import { isSafeVersionConstant } from './source.ts';
 import { findTargetOwner, loadTargetOwnedPolicy } from './target-owned.ts';
 
 export async function requireGit(
@@ -174,8 +175,18 @@ export async function isManifestVersionOnlyChange(
   const manifestPath = `${targetDirectory}/package.json`;
   const beforeManifest = await readGitJson(targetRoot, parent, manifestPath, runner);
   const afterManifest = await readGitJson(targetRoot, commit, manifestPath, runner);
-  if (typeof beforeManifest['version'] !== 'string' || typeof afterManifest['version'] !== 'string')
+  if (
+    typeof beforeManifest['version'] !== 'string' ||
+    typeof afterManifest['version'] !== 'string' ||
+    !isSafeVersionConstant(beforeManifest['version']) ||
+    !isSafeVersionConstant(afterManifest['version'])
+  )
     return false;
+  const [beforeTree, afterTree] = await Promise.all([
+    requireGit(targetRoot, ['ls-tree', parent, '--', path], runner),
+    requireGit(targetRoot, ['ls-tree', commit, '--', path], runner),
+  ]);
+  if (!beforeTree.startsWith('100644 blob ') || !afterTree.startsWith('100644 blob ')) return false;
   const before = await runner(['git', 'show', `${parent}:${path}`], { cwd: targetRoot });
   const after = await runner(['git', 'show', `${commit}:${path}`], { cwd: targetRoot });
   if (before.exitCode !== 0 || after.exitCode !== 0) return false;

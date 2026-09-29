@@ -739,6 +739,22 @@ describe('applyVersionConstants', () => {
     );
   });
 
+  test('rejects an unsafe manifest version before writing executable source', () => {
+    const files = { 'packages/weft/src/version.ts': encoder.encode(documented) };
+    expect(() =>
+      applyVersionConstants(files, [{ ...published[0]!, version: "0.27.1';\nsideEffect();//" }]),
+    ).toThrow(SourceEmissionError);
+    expect(decoder.decode(files['packages/weft/src/version.ts'])).toBe(documented);
+  });
+
+  test('allows a SemVer prerelease with build metadata in the generated source literal', () => {
+    const files = { 'packages/weft/src/version.ts': encoder.encode(documented) };
+    applyVersionConstants(files, [{ ...published[0]!, version: '0.27.2-next.3+build.1' }]);
+    expect(decoder.decode(files['packages/weft/src/version.ts'])).toEndWith(
+      "export const VERSION = '0.27.2-next.3+build.1';\n",
+    );
+  });
+
   test('a declared file the plan does not carry is a refusal, naming the workspace and path', () => {
     expect(() => applyVersionConstants({}, published)).toThrow(SourceEmissionError);
     expect(() => applyVersionConstants({}, published)).toThrow('packages/weft/src/version.ts');
