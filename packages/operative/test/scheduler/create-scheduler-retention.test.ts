@@ -291,18 +291,20 @@ describe('createScheduler retention', () => {
     });
 
     it('reports not-found for unknown ids and dispatch() ids', async () => {
-      const { scheduler } = createTrackedScheduler();
+      const { runtime, scheduler } = createTrackedScheduler();
       scheduler.start();
       expect(scheduler.locateTask('never-submitted')).toEqual({ status: 'not-found' });
 
-      const { activeRun, result } = scheduler.dispatch(() => ({
+      // dispatch() mints its id from the runtime's `task` counter.
+      const dispatchedId = `${runtime.identifierPrefix}-task-1`;
+      const { result } = scheduler.dispatch(() => ({
         generate: createMockGenerate([textResponse('dispatched')]),
         toolbox: createTestToolbox([]),
         conversation: new Conversation(),
         maximumSteps: 1,
       }));
       await result;
-      expect(scheduler.locateTask(activeRun.id)).toEqual({ status: 'not-found' });
+      expect(scheduler.locateTask(dispatchedId)).toEqual({ status: 'not-found' });
       await scheduler.stop();
     });
   });

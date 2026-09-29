@@ -6,7 +6,7 @@ type TaskOutcome = PromiseSettledResult<RunResult | null>;
 type TimerHandle = ReturnType<RuntimeServices['timers']['setTimeout']>;
 
 type RetentionRecord =
-  | { readonly kind: 'terminal'; readonly outcome: TaskOutcome; timer: TimerHandle | undefined }
+  | { readonly kind: 'terminal'; readonly outcome: TaskOutcome; timer?: TimerHandle }
   | { readonly kind: 'tombstone'; timer: TimerHandle };
 
 export type RetainedLookup =
@@ -55,7 +55,7 @@ export function createTaskRetention(options: {
   function record(taskId: string, outcome: TaskOutcome): void {
     forget(taskId);
     if (retentionWindowMs === undefined) {
-      records.set(taskId, { kind: 'terminal', outcome, timer: undefined });
+      records.set(taskId, { kind: 'terminal', outcome });
       return;
     }
     const window = retentionWindowMs;
