@@ -37,6 +37,7 @@ import { canonicalJson } from './identity';
 /** The version of the {@link ComparisonEvidence} shape this package writes. */
 export const COMPARISON_EVIDENCE_SCHEMA_VERSION = 1;
 
+/** The versioned evidence artifact: binding, revision, every case, and the admission decision. */
 export const comparisonEvidenceSchema = z.strictObject({
   kind: z.literal('collaboration-comparison-evidence'),
   schemaVersion: z.literal(COMPARISON_EVIDENCE_SCHEMA_VERSION),
@@ -129,6 +130,7 @@ export async function recordedSeeds(
   );
 }
 
+/** The named inputs whose change makes recorded evidence stale in `admissionFromEvidence`. */
 export const BINDING_CHANGES = [
   'comparison',
   'model',

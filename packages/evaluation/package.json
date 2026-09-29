@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/evaluation",
   "private": true,
-  "description": "Versioned evaluators for completed operative runs: typed rubrics, calibrated model judges, repeated trials, append-only history, local release-gate, replay, and promotion-signal commands, and the action-based memory-lifecycle evaluation suite.",
+  "description": "Versioned evaluators for completed operative runs: typed rubrics, calibrated model judges, repeated trials, append-only history, local release-gate, replay, and promotion-signal commands, compute-matched collaboration comparison and admission evidence with a local comparison command, and the action-based memory-lifecycle evaluation suite.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

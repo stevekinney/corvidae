@@ -1,7 +1,10 @@
 /**
  * Scores one completed operative run against a versioned evaluator
- * configuration. This is not an evaluation runner: it never starts a run, and
- * it scores exactly the `RunResultBase` it is handed.
+ * configuration. The evaluator itself never starts a run: it scores exactly
+ * the `RunResultBase` it is handed. Running cases is `runTrials` and
+ * `scoreTrials` (one subject, repeated trials) and `runComparison` (the same
+ * cases under the direct-agent, compute-matched-ensemble, and collaboration
+ * profiles); both call this evaluator to score each trial.
  *
  * The flow for one case is fixed:
  *

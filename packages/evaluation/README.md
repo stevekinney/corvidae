@@ -451,6 +451,26 @@ A collaboration earns admission only by beating one strong Agent and a compute-m
 
 `collaborationPlanSchema` is COR-820's `CollaborationPlan`: plan id and monotonic revision, policy version, task and success-contract revisions, task class, execution profile, resource envelope (tokens, cost in cents, wall clock, steps, fan-out, descendants, and operative's `DelegatedAuthority` as tool authority), participants (`agentName`, `capabilityEvidence`, role, and eligibility reason; there is no `agentRevision`), topology, context projections, artifacts with one commit authority each, message schemas, stage verifiers, stop conditions, the direct-Agent fallback, lifecycle, and security. Beyond the shape it enforces what COR-820 states in prose: every participant reference resolves, a projection's required sources are among its sources, stage verifiers bind at handoff creation, cycles only for verifier-driven revision or a named extension (and a cyclic edge graph must permit one), an extension authors its topology, a direct-agent plan is one participant with no edges, and a shared-state collaboration declares its authoritative state. `collaborationMessageSchema` is the message envelope; a verification result or commit carries an evidence digest.
 
+#### What a comparison does with each plan field
+
+A plan is evaluated, never executed. Each field is validated by `collaborationPlanSchema`; some are also measured against the trajectory the collaboration subject reports or checked against each trial's usage, and every field is bound into the comparison, so changing it makes recorded evidence stale under the named `BINDING_CHANGES` entry (and under `plan`, which any plan change also reports). A field this table marks "bound only" is recorded and compared, but nothing in this package enforces it.
+
+| Concern | Fields | Checked during a comparison | Stale-evidence change |
+| --- | --- | --- | --- |
+| Control routing (topology) | `participants[].role`, `topology.edges`, `topology.maximumRounds`, `topology.defaultForClass` | A message along an undeclared edge, or naming an undeclared participant, is `task-role-drift`. `maximumRounds` is bound only. | `topology` (`maximumRounds` also under `stopping-rule`) |
+| Revision cycles | `topology.permittedCycles` | Revisions are counted per (participant, verifier, subject), whatever the sending participant's role, and each one over the limit is labelled `cycle` (see [Metrics and failure labels](#metrics-and-failure-labels)). | `topology` |
+| Context routing | `contextProjections[].sources`, `contextProjections[].requiredSources` | A `handoff` event that omits a required source is `ignored-or-withheld-information`; a later handoff that drops a source it already delivered is `history-loss`. The comparison does not deliver sources itself: the subject receives the task (a producer, its round-robin shard) and reports what it handed over. | `context-projection` |
+| Budget | `resourceEnvelope.tokens`, `costCents`, `wallClockMilliseconds`, `steps`, `fanOut`, `maximumDescendants` | Every profile's trials are checked against every ceiling and their breaches (`tokens`, `cost`, `wall-clock`, `steps`, `fan-out`, `descendants`) are recorded; a breach by a collaboration trial blocks admission, while a breach by a direct-agent or compute-matched-ensemble trial is recorded without blocking. The definition's `concurrency` may not exceed `fanOut`. | `budget` |
+| Tool authority | `resourceEnvelope.toolAuthority` (operative's `DelegatedAuthority`) | Bound only: the comparison grants and restricts no tools. | `policy` |
+| Commit authority | `commitAuthority`, `artifacts[].commitAuthority` | A commit (message or artifact write) from anyone but the artifact's authority, or the plan's when the subject is not an artifact, is `premature-completion` and does not count as a commit. | `commit-authority` |
+| Shared state | `artifacts[].owner`, `readers`, `writers`, `revision`, `freshnessRule`, `conflictBehavior` | A proposal from a non-writer is `task-role-drift`; a commit against an old revision is `conflicting-commits`, and under `reject-stale` it does not advance the revision; a read of an older revision is a stale read; a write to an undeclared store is an ungoverned write. `owner`, `readers`, and `freshnessRule` are bound only. | `plan` (`commitAuthority` also under `commit-authority`) |
+| Message conventions | `messageSchemas[]` | A message under an undeclared schema, or an intent its schema does not cover, is `incompatible-conventions`. | `plan` |
+| Verification | `stageVerifiers[]` (`boundAt: 'handoff-creation'`, `acceptanceCriteria`, `rejector`, `onFailure`, `retryBudget`) | A verdict counts only from a `verifier` or a stage `rejector`; with any stage verifier declared, a commit before an acceptance is `missing-or-incorrect-verification`. `onFailure` and `retryBudget` are bound only: retries and replans are counted, never limited. | `verification` |
+| Stop rule | `stopConditions`, the definition's `stoppingRule` | Bound only. | `stopping-rule` |
+| Fallback | `fallback` (always `direct-agent`) | Named in the admission decision; authoritative for anything but `admit`. | `plan` |
+| Lifecycle | `lifecycle.ownership`, `executionMode`, `durability`, `cancellationOwner` | `cancellationOwner` must be a participant; the rest is bound only. Cleanup (`quiescent`, `detached`, `abandoned`) comes from the trajectory's start, finish, and detach events. | `plan` |
+| Security | `security.redactionPolicy`, `auditRetentionDays`, `emergencyDisableFlag`, `messageIntegrityBoundary` | Bound only: no flag is read, no message is signed, nothing is redacted or retained by this package. | `policy` |
+
 ### Datasets
 
 A comparison dataset (`comparisonDatasetSchema`) is a separate shape from an evaluation dataset. Each case names its task class and the recorded reason it belongs there, an `exact` success contract (the trimmed final content) or a `heuristic` one scored by deterministic code registered as `<name>@<version>`, the evidence the task draws on and which of it is required, and who sees what: the direct Agent's view and the shards producers get round-robin. Controls are explicit: `negative-control`, `distributed-information` (the schema checks that no single view sees every required piece, so no majority vote can recover it, while the shards together do), and `ungoverned-shared-state` (shared-state cases only). `toEvaluationDataset` projects it onto the evaluation dataset the comparison's evaluator scores.
@@ -459,22 +479,55 @@ A comparison dataset (`comparisonDatasetSchema`) is a separate shape from an eva
 
 ### Running a comparison
 
-```ts
-import { decideAdmission, runComparison, toComparisonEvidence } from '@lostgradient/evaluation';
+This walks the whole workflow with the committed `fixture-vault-code` suite: its module builds three plans (a direct `solver`, a four-sampler majority-vote ensemble, and three shard searchers reporting to one `reducer` that alone commits), the representative dataset's partitioned-search case, an evaluator, scripted subjects, and a manual runtime. Run it from `packages/evaluation` with `bun`; it prints the lines in the comments.
 
-const comparison = await runComparison({
-  definition, // agents (model, effort, definition and prompt revisions, tools), tool revisions,
-  // data revision, concurrency, compute match, aggregation rule, stopping rule, case ids
-  plans: { direct, ensemble, collaboration }, // one CollaborationPlan per profile
-  dataset,
-  evaluator, // createEvaluator over toEvaluationDataset(dataset)
-  subjects: { direct, ensembleSample, ensembleReducer, collaboration },
-  successHeuristics,
-  runtime, // seeds and the latency clock
+```ts
+import {
+  admissionFromEvidence,
+  bindComparison,
+  comparisonEvidenceDigest,
+  decideAdmission,
+  parseCollaborationPlan,
+  renderComparisonReport,
+  runComparison,
+  toComparisonEvidence,
+  verifyComparisonEvidence,
+} from '@lostgradient/evaluation';
+
+import suiteFile from './comparisons/fixture-vault-code.json';
+import buildVaultCode from './src/fixtures/comparison/vault-code';
+
+// definition, plans { direct, ensemble, collaboration }, dataset, evaluator,
+// subjects, successHeuristics, and runtime: exactly what runComparison takes.
+const suite = await buildVaultCode();
+const plan = parseCollaborationPlan(suite.plans.collaboration);
+console.log(plan.taskClass, plan.commitAuthority, plan.topology.edges.length);
+// partitioned-search reducer 3
+
+const comparison = await runComparison(suite);
+const admission = await decideAdmission(suiteFile.admissionRule, comparison);
+console.log(admission.decision, admission.exitCode, admission.authoritativeProfile);
+// admit 0 collaboration
+
+const evidence = toComparisonEvidence({
+  comparison,
+  admission,
+  recordedAt: suite.runtime.clock.nowISO(),
 });
-const admission = await decideAdmission(rule, comparison);
-const evidence = toComparisonEvidence({ comparison, admission, recordedAt });
+await verifyComparisonEvidence(evidence);
+const report = renderComparisonReport(evidence, await comparisonEvidenceDigest(evidence));
+console.log(evidence.kind, report.split('\n')[0]);
+// collaboration-comparison-evidence # Collaboration comparison: vault-code
+
+const currency = await admissionFromEvidence(evidence, {
+  comparison: await bindComparison(suite),
+  rule: suiteFile.admissionRule,
+});
+console.log(currency.status);
+// current
 ```
+
+`bun run --cwd packages/evaluation comparison --suite fixture-vault-code` runs the same steps, and `scripts/comparison.test.ts` checks every committed suite's decision and exit code. For your own comparison, the suite module is yours: plans are plain documents in the shape above (`src/fixtures/comparison/plans.ts` builds the fixture ones), and the subjects are your code. `direct` and `ensembleSample` (and `ensembleReducer`, required with `reducer` aggregation) return a `TrialSubject` for a named participant. `collaboration` receives the plan and each participant's input and must run the collaboration itself, then return the committed `RunResultBase` and the trajectory it produced; this package measures that trajectory but never executes a topology.
 
 `runComparison` validates everything first (`bindComparison` does only that) and rejects with one `EvaluatorConfigurationError` listing every problem: plans that do not run their own profile or do not share the collaboration plan's task, class, policy, and envelope; an ensemble with edges, the wrong reducer count for its aggregation, or a participant count that does not match the collaboration's (unless the definition declares an `equivalent-compute` match with its reason); concurrency above the envelope's fan-out; a participant not bound to an Agent definition; an evaluator that scores another dataset; and a case of another class or without its success heuristic.
 
@@ -615,6 +668,9 @@ These limits are part of the contract. Code that needs more than this has to bui
 - **Goal-adapter repetitions re-judge one attempt.** The adapter replays the same `RunResult` for every trial, so its repetitions measure the judge's variance, not the agent's. It never re-runs the agent.
 - **The release gate is local.** Nothing runs it on a schedule or blocks a merge on it, and a promotion signal publishes, tags, syncs, and deploys nothing.
 - **A comparison routes nothing.** `comparison` evaluates plans and records admission evidence; it dispatches no plan and changes no production routing. The evidence is what a later selector reads, and anything but `admit` leaves one strong direct Agent authoritative.
+- **No collaboration runtime.** Nothing here implements child handles, parent-child signals, peer or same-bureau message delivery, durable topology, or a plan-level abort signal. The collaboration subject runs the participants and reports the trajectory; plan fields the table under [Collaboration plans](#collaboration-plans) marks "bound only" (tool authority, retry budgets and failure paths, stop conditions, lifecycle, security, and the emergency-disable flag) are recorded and bound into evidence, not enforced.
+- **No universal thresholds.** An admission rule has no defaults: its minimum cases, success gain, verifier acceptance, safety ceilings, and cost and latency ratios are whatever the committed rule says, per task class. The fixture rules' numbers are fixture values, not product constants.
+- **Cycle counting is exact only on the direct route.** A revision is counted per (participant, verifier, subject), whatever the sending participant's role, and is opened only by that verifier's rejected `verification-result`. Revisions relayed through another participant, forwarded, or sent to a different verifier go uncounted; a verifier that answers with `observation` or `rejection` messages drives none; and work with no rejection before it is never a revision (COR-820 amendment, 2026-09-29).
 - **No migration or dual-read.** Configurations must declare `resultSchemaVersion: 1`, and history records carry schema version 1; a record of any other shape is corrupt, not upgraded.
 - **The history only grows.** There is no update, delete, compaction, or retention policy for history records. The commands share one local SQLite file; `append` is safe against a concurrent append of the same id, but nothing replicates or coordinates that file across machines.
 

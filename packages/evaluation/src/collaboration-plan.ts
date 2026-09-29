@@ -43,6 +43,7 @@ import {
 } from './configuration';
 import { canonicalJson } from './identity';
 
+/** COR-820's six named task classes; anything else is an explicitly named `{ extension, reason }`. */
 export const TASK_CLASSES = [
   'direct',
   'independent-sampling',
@@ -54,6 +55,7 @@ export const TASK_CLASSES = [
 
 export type NamedTaskClass = (typeof TASK_CLASSES)[number];
 
+/** The three profiles admission compares, each governed by its own plan. */
 export const EXECUTION_PROFILES = [
   'direct-agent',
   'compute-matched-ensemble',
@@ -62,6 +64,7 @@ export const EXECUTION_PROFILES = [
 
 export type ExecutionProfile = (typeof EXECUTION_PROFILES)[number];
 
+/** The closed set of message intents (COR-820, "Message intent and epistemic authority"). */
 export const MESSAGE_INTENTS = [
   'observation',
   'hypothesis',
@@ -76,6 +79,7 @@ export const MESSAGE_INTENTS = [
 
 export type MessageIntent = (typeof MESSAGE_INTENTS)[number];
 
+/** The roles a plan participant may hold; control routing is `topology.edges` plus these roles. */
 export const PARTICIPANT_ROLES = [
   'producer',
   'verifier',
@@ -440,6 +444,10 @@ function reportClassRules(plan: PlanShape, context: z.RefinementCtx): void {
   }
 }
 
+/**
+ * The full `CollaborationPlan` schema: the plan shape plus the structural
+ * rules this module's header lists. Parsing never dispatches the plan.
+ */
 export const collaborationPlanSchema = planShapeSchema.superRefine((plan, context) => {
   reportReferences(plan, context);
   reportClassRules(plan, context);

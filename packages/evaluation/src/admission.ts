@@ -59,6 +59,10 @@ import { summarizeProportion, type TrialStatistics } from './variance';
 const count = z.number().int().min(0);
 const ratio = z.number().positive();
 
+/**
+ * A versioned admission rule with no defaults: the task class it admits,
+ * the minimum case count, and explicit quality, safety, and tradeoff gates.
+ */
 export const admissionRuleSchema = z
   .strictObject({
     kind: z.literal('collaboration-admission-rule'),
@@ -106,6 +110,7 @@ export function parseAdmissionRule(input: unknown): AdmissionRule {
   return parsed.data;
 }
 
+/** Admission outcomes, mapped onto the release gate's decisions and exit codes. */
 export const ADMISSION_DECISIONS = [
   'admit',
   'reject',
@@ -122,6 +127,7 @@ const GATE_DECISION_OF = {
   'insufficient-evidence': 'insufficient-evidence',
 } as const satisfies Record<AdmissionDecisionKind, GateDecision>;
 
+/** Why an admission gate found against the collaboration; each finding names one. */
 export const ADMISSION_FINDING_REASONS = [
   'evaluator-indeterminate',
   'too-few-cases',
@@ -156,6 +162,7 @@ const pooledProfileSchema = z.strictObject({
 
 export type PooledProfile = z.output<typeof pooledProfileSchema>;
 
+/** A recorded admission decision: rule identity, outcome, pooled profiles, and findings. */
 export const admissionDecisionSchema = z.strictObject({
   kind: z.literal('collaboration-admission-decision'),
   rule: z.strictObject({ name: identifier, version: identifier, digest: digestSchema }),

@@ -112,8 +112,13 @@ const GOLDEN_GAMMA = 0x9e_37_79_b9;
 /** Cost comparisons this close to a ceiling are treated as on it, so float noise never breaches. */
 const COST_TOLERANCE = 1e-9;
 
+/** How the compute-matched ensemble aggregates its samples: a majority vote, or one reducer. */
 export const AGGREGATION_KINDS = ['majority-vote', 'reducer'] as const;
 
+/**
+ * The resource-envelope ceilings a trial can breach. Breaches are recorded for
+ * every profile's trials; only a collaboration trial's breach blocks admission.
+ */
 export const ENVELOPE_BREACHES = [
   'tokens',
   'cost',
@@ -162,6 +167,11 @@ const definitionShape = z.strictObject({
   caseIds: z.array(identifier).min(1),
 });
 
+/**
+ * What a comparison declares before it runs: the Agents and tools with their
+ * revisions, the data revision, ensemble concurrency, the compute match,
+ * the aggregation and stopping rules, and the case ids.
+ */
 export const comparisonDefinitionSchema = definitionShape.superRefine((definition, context) => {
   reportDuplicates(
     definition.agents.map((agent) => agent.name),
@@ -207,6 +217,7 @@ const profilePlansSchema = z.strictObject({
 
 export type ProfilePlans = z.output<typeof profilePlansSchema>;
 
+/** Everything that could change a comparison's result; its SHA-256 is the comparison revision. */
 export const comparisonBindingSchema = z.strictObject({
   schemaVersion: z.literal(COMPARISON_SCHEMA_VERSION),
   /** The declared definition, with its cases bound by placement in `cases`. */
@@ -329,6 +340,7 @@ export const caseComparisonSchema = z
 
 export type CaseComparison = z.output<typeof caseComparisonSchema>;
 
+/** A finished comparison: its revision, its binding, and every case's three profile results. */
 export const comparisonResultSchema = z.strictObject({
   /** The SHA-256 of the binding's canonical JSON. */
   revision: digestSchema,

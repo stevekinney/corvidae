@@ -38,6 +38,7 @@ import {
 } from './collaboration-plan';
 import { EvaluatorConfigurationError, identifier, toConfigurationIssues } from './configuration';
 
+/** Every failure label a trajectory measurement can report, derived or reviewer-observed. */
 export const FAILURE_LABELS = [
   'task-role-drift',
   'cycle',
@@ -114,6 +115,7 @@ const trajectoryEventSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+/** One run's ordered trajectory events, as a collaboration subject reports them. */
 export const collaborationTrajectorySchema = z
   .array(trajectoryEventSchema)
   .superRefine((events, context) => {
@@ -183,6 +185,7 @@ export const failureOccurrenceSchema = z.strictObject({
 
 export type FailureOccurrence = z.output<typeof failureOccurrenceSchema>;
 
+/** How a run ended for its participants: all finished, some detached as named work, or some abandoned. */
 export const CLEANUP_STATES = ['quiescent', 'detached', 'abandoned'] as const;
 
 export type CleanupState = (typeof CLEANUP_STATES)[number];

@@ -37,6 +37,7 @@ import {
 import { CASE_VISIBILITIES, type EvaluationDataset } from './datasets';
 import { canonicalJson } from './identity';
 
+/** The explicit controls a comparison case may declare; `ungoverned-shared-state` is for shared-state cases only. */
 export const COMPARISON_CONTROLS = [
   'negative-control',
   'distributed-information',
@@ -186,6 +187,11 @@ function reportCaseIssues(entry: ComparisonCase, index: number, context: z.Refin
   }
 }
 
+/**
+ * A comparison dataset: cases with a task class and the reason for it, a
+ * success contract, required evidence, and each profile's view of it.
+ * Separate from an evaluation dataset; `toEvaluationDataset` projects it.
+ */
 export const comparisonDatasetSchema = z
   .strictObject({
     id: identifier,
