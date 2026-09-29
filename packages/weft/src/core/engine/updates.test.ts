@@ -286,7 +286,7 @@ describe('engine update helpers', () => {
     const successorWaiter = mock(() => {});
     internals.updateWaiters.set(waiterKey, successorWaiter);
     advance.resolve();
-    await expect(delivery).resolves.toBe(true);
+    expect(await delivery).toBe(true);
     expect(internals.updateCoordinator.deleteRequest).toHaveBeenCalledWith(
       'workflow-1',
       'update-1',

@@ -4,6 +4,7 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
 import { withTimeout } from '../../testing/fake-timers.test-support.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
@@ -111,7 +112,7 @@ describe('async activity completion recovery buffering', () => {
     );
 
     const engine = new Engine({ storage });
-    await expect(recoverPendingAsyncActivities(getInternals(engine))).rejects.toThrow(
+    expect(await throwingRejectionOf(recoverPendingAsyncActivities(getInternals(engine)))).toThrow(
       'legacy async-activity resolution record without run identity',
     );
 

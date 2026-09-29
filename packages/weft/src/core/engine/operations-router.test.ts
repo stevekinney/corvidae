@@ -1,5 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import {
   processOperation,
@@ -153,15 +154,17 @@ describe('operations router', () => {
   });
 
   it('rejects result operations that omit their operation ID', async () => {
-    await expect(
-      runOperationWithResult(
-        createRouterInternals('workflow-without-operation-id', 'operation:1'),
-        'workflow-without-operation-id',
-        {} as never,
-        async () => 'finished',
-        createRouterCallbacks(),
+    expect(
+      await throwingRejectionOf(
+        runOperationWithResult(
+          createRouterInternals('workflow-without-operation-id', 'operation:1'),
+          'workflow-without-operation-id',
+          {} as never,
+          async () => 'finished',
+          createRouterCallbacks(),
+        ),
       ),
-    ).rejects.toThrow('Operation result is missing its operation ID');
+    ).toThrow('Operation result is missing its operation ID');
   });
 
   it('completes operations that produce a result', async () => {
