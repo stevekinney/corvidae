@@ -8289,6 +8289,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // writes already under way are awaited, never a child's own result, so
       // a child that ignores its abort cannot hold shutdown open.
       await childTopology.drain();
+      // Land terminal session saves already under way before the outbox
+      // drain await and `backgroundShutdownController.abort()` below: a save
+      // committing after that abort leaves its `session.saved` entry
+      // unrecorded. Its commit triggers the drain synchronously, so the
+      // `outboxDrainInFlight` await then covers it. See `drain()` for why
+      // this cannot wedge on a run; `timeoutMilliseconds` bounds a hung store.
+      await sessionPersistence.drain();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;

@@ -12683,6 +12683,62 @@ describe('Bureau.shutdown() (AB-207)', () => {
     }
   });
 
+  it("lands a run's terminal session save when dispose() follows its run.completed action immediately", async () => {
+    // The README's Quick Start sequence: wait for the terminal action, then
+    // dispose at once. The terminal session save starts from the
+    // `run.completed` listener, so shutdown has to wait for it — otherwise
+    // the save commits after the durable event producer stops, and its
+    // `session.saved` outbox entry is left pending with a diagnostic.
+    const databasePath = join(
+      tmpdir(),
+      `bureau-dispose-after-completion-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+    const diagnostics: string[] = [];
+
+    try {
+      const bureau = await createBureau({
+        agents: {},
+        generate: createMockGenerate(),
+        storage: { type: 'sqlite', path: databasePath },
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      });
+
+      const run = await bureau.createRun({ message: 'Dispose the moment this finishes' });
+      await new Promise<void>((resolve) => {
+        const subscription = bureau.subscribe('action', ({ action }) => {
+          if (action.runId === run.id && action.type === 'run.completed') {
+            subscription.unsubscribe();
+            resolve();
+          }
+        });
+      });
+      await bureau.dispose();
+
+      expect(diagnostics.filter((message) => message.includes('was not durably recorded'))).toEqual(
+        [],
+      );
+
+      const verifyStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+      const verifySessionStore = createSessionStore(
+        textValueStore(verifyStorage, { disposeUnderlyingStorage: false }),
+      );
+      const session = await verifySessionStore.load(run.sessionId);
+      // No stop condition, as in the README, so the run steps to its limit,
+      // which Bureau records as an `error` status.
+      expect(session?.metadata).toMatchObject({
+        lastRunId: run.id,
+        lastRunStatus: 'error',
+        lastFinishReason: 'maximum-steps',
+      });
+      expect(await verifySessionStore.outbox.pending()).toEqual([]);
+      verifyStorage[Symbol.dispose]();
+    } finally {
+      await rm(databasePath, { force: true });
+      await rm(`${databasePath}-wal`, { force: true });
+      await rm(`${databasePath}-shm`, { force: true });
+    }
+  });
+
   it('reports a webhook-notifier owner, awaited to completion, for a bureau configured with a webhook target', async () => {
     const bureau = await createBureau({
       agents: {},
@@ -12835,6 +12891,58 @@ describe('Bureau.shutdown() (AB-207)', () => {
       () => bureau.getRun(run.id)?.status === 'completed',
       'drained run never reached its own natural terminal result',
     );
+  });
+
+  it("policy: 'drain' lands the drained run's terminal session save before closing SQLite storage", async () => {
+    // The drained run settles while shutdown is under way, so its terminal
+    // session save starts mid-shutdown and has to land before storage closes.
+    const databasePath = join(
+      tmpdir(),
+      `bureau-drain-terminal-save-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+    const diagnostics: string[] = [];
+    let releaseGenerate!: () => void;
+    const generateGate = new Promise<void>((resolve) => {
+      releaseGenerate = resolve;
+    });
+
+    try {
+      const bureau = await createBureau({
+        agents: {},
+        generate: async () => {
+          await generateGate;
+          return { content: 'Drained to completion', toolCalls: [] };
+        },
+        toolbox: createEmptyToolbox(),
+        storage: { type: 'sqlite', path: databasePath },
+        stopWhen: stopWhen.noToolCalls(),
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      });
+
+      const run = await bureau.createRun({ message: 'Save me while draining' });
+      await waitForCondition(
+        () => bureau.getRun(run.id)?.status === 'running',
+        'run never reached running before shutdown() was called',
+      );
+      const shutdownPromise = bureau.shutdown({ policy: 'drain' });
+      releaseGenerate();
+      await shutdownPromise;
+
+      expect(diagnostics).toEqual([]);
+
+      const verifyStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+      const verifySessionStore = createSessionStore(
+        textValueStore(verifyStorage, { disposeUnderlyingStorage: false }),
+      );
+      const session = await verifySessionStore.load(run.sessionId);
+      expect(session?.metadata).toMatchObject({ lastRunId: run.id, lastRunStatus: 'completed' });
+      expect(await verifySessionStore.outbox.pending()).toEqual([]);
+      verifyStorage[Symbol.dispose]();
+    } finally {
+      await rm(databasePath, { force: true });
+      await rm(`${databasePath}-wal`, { force: true });
+      await rm(`${databasePath}-shm`, { force: true });
+    }
   });
 
   it('shutdown({ timeoutMilliseconds }) resolves within a bounded margin of N, reporting a still-unresolved owner "unresolved" and every other owner its real outcome — the underlying drain keeps running rather than being abandoned', async () => {
