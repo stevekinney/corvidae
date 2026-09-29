@@ -9252,9 +9252,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
   }
 
-  // A standard `createBureau()` then `createGateway()` boot has no validator
-  // until the Gateway is constructed. Defer recovery when persisted sessions
-  // contain gateway-issued authority so those runs cannot execute unvalidated.
+  // A host that calls `createBureau()` without `requestAuthorityValidator` has
+  // no validator until it calls `bureau.setRequestAuthorityValidator()`. Defer
+  // recovery when a persisted session's in-flight run carries transport-issued
+  // authority, so that run cannot execute unvalidated.
   let hasDeferredGatewayAuthority = false;
   if (runtime.durable && runtime.sessionStore) {
     try {
