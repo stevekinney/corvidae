@@ -3438,7 +3438,7 @@ describe('worker WebSocket protocol', () => {
     const { RemoteWorker } = await import('../worker/index.ts');
 
     const worker = new RemoteWorker({
-      serverUrl: `ws://localhost:${server.port}/v1/tasks/default/stream`,
+      serverUrl: `ws://127.0.0.1:${server.port}/v1/tasks/default/stream`,
       workerId: 'remote-1',
       deploymentName: 'test-deployment',
       buildId: 'test-build',
@@ -3858,7 +3858,7 @@ describe('queue-aware worker stream', () => {
     const { RemoteWorker } = await import('../worker/index.ts');
 
     const worker = new RemoteWorker({
-      serverUrl: `ws://localhost:${server.port}/v1/tasks/billing/stream`,
+      serverUrl: `ws://127.0.0.1:${server.port}/v1/tasks/billing/stream`,
       workerId: 'billing-remote',
       deploymentName: 'test-deployment',
       buildId: 'test-build',
@@ -8849,7 +8849,7 @@ describe('header propagation in task dispatch', () => {
     );
 
     const worker = new RemoteWorker({
-      serverUrl: `ws://localhost:${server.port}/v1/tasks/default/stream`,
+      serverUrl: `ws://127.0.0.1:${server.port}/v1/tasks/default/stream`,
       workerId: 'header-e2e-worker',
       deploymentName: 'test-deployment',
       buildId: 'test-build',
@@ -8908,7 +8908,7 @@ describe('header propagation in task dispatch', () => {
     );
 
     const worker = new RemoteWorker({
-      serverUrl: `ws://localhost:${server.port}/v1/tasks/default/stream`,
+      serverUrl: `ws://127.0.0.1:${server.port}/v1/tasks/default/stream`,
       workerId: 'header-e2e-no-headers',
       deploymentName: 'test-deployment',
       buildId: 'test-build',

@@ -165,12 +165,7 @@ export async function parkDeferredAsyncActivity(
     deferral.token,
   );
   if (queuedResolution !== undefined) {
-    await deliverPendingAsyncActivityResolution(
-      internals,
-      details.workflowId,
-      { ...queuedResolution, operationId: details.operationId },
-      callbacks,
-    );
+    await deliverQueuedResolutionForParkedActivity(internals, details, queuedResolution, callbacks);
     return new Promise<never>(() => {});
   }
 
@@ -185,6 +180,45 @@ export async function parkDeferredAsyncActivity(
   // registered token nothing will ever resolve.
   await deferral.afterRegister?.();
   return new Promise<never>(() => {});
+}
+
+async function deliverQueuedResolutionForParkedActivity(
+  internals: EngineInternals,
+  details: Omit<PendingAsyncActivity, 'token' | 'createdAt'>,
+  queuedResolution: PendingAsyncActivityResolution,
+  callbacks: AsyncActivityResolutionCallbacks,
+): Promise<void> {
+  const currentWorkflowExecutionToken = workflowExecutionTokenForWorkflow(
+    internals,
+    details.workflowId,
+  );
+  const currentOperation = internals.durableInlineOperations?.get(details.workflowId);
+  const resolutionBelongsToParkedRun =
+    currentOperation !== undefined &&
+    queuedResolution.workflowExecutionToken === details.workflowExecutionToken &&
+    currentWorkflowExecutionToken === details.workflowExecutionToken;
+  if (!resolutionBelongsToParkedRun) {
+    if (
+      internals.workflowClaimRegistry !== null &&
+      (await confirmWakeOwnership(internals, details.workflowId, 'async-activity')) === 'discard'
+    ) {
+      return;
+    }
+    if (
+      queuedResolution.workflowExecutionToken !== undefined &&
+      queuedResolution.workflowExecutionToken === details.workflowExecutionToken &&
+      currentWorkflowExecutionToken === undefined
+    ) {
+      queuePendingAsyncActivityResolution(internals, details.workflowId, queuedResolution);
+    }
+    return;
+  }
+  await deliverPendingAsyncActivityResolution(
+    internals,
+    details.workflowId,
+    { ...queuedResolution, operationId: details.operationId },
+    callbacks,
+  );
 }
 
 /**
@@ -303,12 +337,18 @@ async function deliverPendingAsyncActivityResolution(
   // outcome recoverable until the workflow has durably adopted it; a record
   // whose delete never commits is redelivered on recovery, which is idempotent
   // for a deterministic token.
-  stageAtomicWorkflowCommitSideEffects(internals, workflowId, {
-    conditions: [],
-    operations: [
-      { type: 'delete', key: KEYS.asyncActivityResolution(workflowId, resolution.token) },
-    ],
-  });
+  stageAtomicWorkflowCommitSideEffects(
+    internals,
+    workflowId,
+    {
+      conditions: [],
+      operations: [
+        { type: 'delete', key: KEYS.asyncActivityResolution(workflowId, resolution.token) },
+      ],
+    },
+    resolution.workflowExecutionToken,
+    true,
+  );
   callbacks.finalizeTimeline(workflowId, resolution.timelineStatus, resolution.timelineOutput);
   callbacks.feedOperationResult(
     workflowId,

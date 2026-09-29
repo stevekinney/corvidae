@@ -15,12 +15,12 @@ import type {
   ReviewListFilter,
   SubmitReviewOptions,
 } from '../types.ts';
-import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import {
   deleteCompletedReviewsForWorkflow,
   listCompletedReviewsFromStorage,
   matchesReviewListFilter,
   persistCompletedReviewRecord,
+  stageTimedOutReviewDeletion,
 } from './completed-review-storage.ts';
 import type { EngineInternals } from './internals.ts';
 import { parseStoredReviewRequest, toPendingReviewEntry } from './review-list-entries.ts';
@@ -237,6 +237,7 @@ export async function handleReviewEscalationTimer(
   resolve: (result: ReviewOperationOutcome) => void,
   entry: { id: string; workflowId: string },
   callbacks: Pick<ReviewOperationCallbacks, 'dispatchEvent' | 'failWorkflow'>,
+  workflowExecutionToken?: string,
 ): Promise<boolean> {
   if (
     !entry.id.startsWith(`review-escalation:${reviewId}:`) &&
@@ -250,10 +251,7 @@ export async function handleReviewEscalationTimer(
     untrackWaiterKey(internals.reviewWaitersByWorkflow, workflowId, waiterKey);
     const elapsed = internals.options.getNow() - reviewRequest.createdAt;
     const timeoutError = new ReviewTimeoutError(reviewId, elapsed);
-    stageAtomicWorkflowCommitSideEffects(internals, workflowId, {
-      operations: [{ type: 'delete', key: KEYS.review(workflowId, reviewId) }],
-      conditions: [],
-    });
+    stageTimedOutReviewDeletion(internals, workflowId, reviewId, workflowExecutionToken);
     await callbacks.failWorkflow(workflowId, timeoutError);
     resolve({ ok: false, error: timeoutError });
     return true;
@@ -484,6 +482,7 @@ export async function processReviewOperation(
       resolve,
       entry,
       callbacks,
+      workflowExecutionToken,
     ),
   );
   const outcome = await promise;

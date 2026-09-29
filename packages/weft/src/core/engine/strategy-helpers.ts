@@ -33,6 +33,14 @@ export function workflowExecutionTokenForWorkflow(
   );
 }
 
+export function isCurrentWorkflowExecutionToken(
+  internals: EngineInternals,
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+): boolean {
+  return workflowExecutionTokenForWorkflow(internals, workflowId) === workflowExecutionToken;
+}
+
 /**
  * Feed an operation outcome back to the strategy. For failures, callers
  * pass the original thrown reason via a `CapturedRejectionReason`
@@ -117,7 +125,7 @@ export function isCurrentOperation(
   const current = internals.durableInlineOperations?.get(workflowId);
   const currentToken =
     current?.workflowExecutionToken ??
-    internals.checkpoints.get(workflowId)?.workflowExecutionToken;
+    internals.checkpoints?.get(workflowId)?.workflowExecutionToken;
   return current?.operationId === operationId && currentToken === workflowExecutionToken;
 }
 

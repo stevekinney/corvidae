@@ -11,10 +11,10 @@ import {
   processParallelOperation,
   processRaceOperation,
   processRunAllOperation,
-  processWaitSignalOperation,
 } from './operations-coordination.ts';
 import { completeOperation, failOperation } from './operations-router.ts';
 import { processWaitConditionOperation } from './operations-wait-condition.ts';
+import { processWaitSignalOperation } from './operations-wait-signal.ts';
 import { registerSignalWaiter } from './signals.ts';
 
 function createWorkerModeInternals(): EngineInternals {
@@ -384,6 +384,49 @@ describe('partial-failure preservation worker-mode boundary', () => {
     expect(internals.signalWaitersByWorkflow.size).toBe(0);
   });
 
+  it('does not stage a signal delete when a successor replaces the run during the scan', async () => {
+    const operation = {
+      type: 'wait-signal' as const,
+      operationId: 'wait:stale-delete',
+      signalName: 'release',
+    };
+    const internals = createSignalInternals();
+    internals.durableInlineOperations = new Map([
+      [
+        'workflow-id',
+        { operationId: operation.operationId, type: operation.type, workflowExecutionToken: 'old' },
+      ],
+    ]);
+    let scanCount = 0;
+    internals.storage = {
+      async delete() {},
+      scan() {
+        scanCount += 1;
+        return (async function* () {
+          if (scanCount === 2) {
+            internals.durableInlineOperations.set('workflow-id', {
+              operationId: operation.operationId,
+              type: operation.type,
+              workflowExecutionToken: 'successor',
+            });
+            yield [KEYS.signal('workflow-id', 'release', 'signal-1'), encode({ ok: true })];
+          }
+        })();
+      },
+    } as never;
+    const complete = mock(() => {});
+
+    await processWaitSignalOperation(internals, 'workflow-id', operation, {
+      completeOperation: complete,
+      failOperation: () => {
+        throw new Error('stale signal scan must not fail');
+      },
+    });
+
+    expect(internals.pendingAtomicWorkflowCommitSideEffects.size).toBe(0);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it('drops a buffered success after post-registration replacement and preserves the successor waiter', async () => {
     const operation = {
       type: 'wait-signal' as const,
@@ -438,6 +481,54 @@ describe('partial-failure preservation worker-mode boundary', () => {
     expect(finalized).not.toHaveBeenCalled();
     expect(fed).not.toHaveBeenCalled();
     expect(internals.signalWaiters.get('workflow-id:release')).toBe(replacement);
+  });
+
+  it('does not re-register an old waiter after delivery and run replacement', async () => {
+    const operation = {
+      type: 'wait-signal' as const,
+      operationId: 'wait:delivered-replacement',
+      signalName: 'release',
+    };
+    const signalWaiters = new WaiterTrackingMap();
+    const internals = {
+      ...createSignalInternals(createSequencedStorage([[], [], []]) as never),
+      signalWaiters,
+      durableInlineOperations: new Map([
+        [
+          'workflow-id',
+          {
+            operationId: operation.operationId,
+            type: operation.type,
+            workflowExecutionToken: 'old',
+          },
+        ],
+      ]),
+    } as unknown as EngineInternals;
+    const complete = mock(() => {});
+    const task = processWaitSignalOperation(internals, 'workflow-id', operation, {
+      completeOperation: complete,
+      failOperation: () => {
+        throw new Error('stale waiter must not fail');
+      },
+    });
+
+    await signalWaiters.registration.promise;
+    // Let the post-registration scan finish so the old operation is parked on
+    // its waiter promise before replacement races the delivered wake.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const oldWaiter = signalWaiters.get('workflow-id:release');
+    if (!oldWaiter) throw new Error('expected the old waiter');
+    signalWaiters.delete('workflow-id:release');
+    internals.durableInlineOperations?.set('workflow-id', {
+      operationId: operation.operationId,
+      type: operation.type,
+      workflowExecutionToken: 'successor',
+    });
+    oldWaiter();
+    await task;
+
+    expect(signalWaiters.has('workflow-id:release')).toBe(false);
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it('releases the waiter and fails the operation when the buffered-signal scan after registration throws', async () => {
@@ -669,6 +760,90 @@ describe('partial-failure preservation worker-mode boundary', () => {
 
     expect(finalized).not.toHaveBeenCalled();
     expect(fed).not.toHaveBeenCalled();
+  });
+
+  it('does not let an old wait-condition cleanup remove a successor waiter', async () => {
+    const schedule = Promise.withResolvers<void>();
+    const running = Promise.withResolvers<boolean>();
+    const internals = {
+      ...createSignalInternals(),
+      options: { getNow: () => 0 },
+    } as unknown as EngineInternals;
+    const operation = {
+      type: 'wait-condition' as const,
+      operationId: 'condition:old',
+      step: 1,
+      predicate: () => false,
+    };
+    const failed = mock(() => {});
+    const task = processWaitConditionOperation(internals, 'workflow-id', operation, {
+      completeOperation: () => {},
+      failOperation: failed,
+      isWorkflowRunning: () => running.promise,
+      scheduleConditionDeadline: async () => schedule.promise,
+      cancelConditionDeadline: async () => {},
+    });
+
+    schedule.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    const oldWaiter = internals.conditionWaiters.get('workflow-id');
+    expect(oldWaiter).toBeFunction();
+    oldWaiter?.();
+    await Promise.resolve();
+    const successorWaiter = mock(() => {});
+    internals.conditionWaiters.set('workflow-id', successorWaiter);
+    running.resolve(false);
+    await task;
+
+    expect(internals.conditionWaiters.get('workflow-id')).toBe(successorWaiter);
+    expect(failed).not.toHaveBeenCalled();
+  });
+
+  it('does not register a condition waiter after deadline scheduling replaces the run', async () => {
+    const operation = {
+      type: 'wait-condition' as const,
+      operationId: 'condition:old',
+      step: 1,
+      deadline: 1_000,
+      predicate: () => false,
+    };
+    const internals = {
+      ...createSignalInternals(),
+      durableInlineOperations: new Map([
+        [
+          'workflow-id',
+          {
+            operationId: operation.operationId,
+            type: operation.type,
+            workflowExecutionToken: 'old',
+          },
+        ],
+      ]),
+      options: { getNow: () => 0 },
+    } as unknown as EngineInternals;
+    const complete = mock(() => {});
+    const fail = mock(() => {});
+    const cancel = mock(async () => {});
+
+    await processWaitConditionOperation(internals, 'workflow-id', operation, {
+      completeOperation: complete,
+      failOperation: fail,
+      isWorkflowRunning: async () => true,
+      scheduleConditionDeadline: async () => {
+        internals.durableInlineOperations.set('workflow-id', {
+          operationId: operation.operationId,
+          type: operation.type,
+          workflowExecutionToken: 'successor',
+        });
+      },
+      cancelConditionDeadline: cancel,
+    });
+
+    expect(internals.conditionWaiters.has('workflow-id')).toBe(false);
+    expect(complete).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
   });
 
   it('exits wait-signal cleanly when cancellation happens while awaiting the waiter promise', async () => {

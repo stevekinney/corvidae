@@ -11,6 +11,7 @@ import type { EngineInternals } from './internals.ts';
 import { resolveDelayedStartRegistrationOrFail } from './lifecycle/delayed-start-registration.ts';
 import { reprovideRecoveredServices } from './lifecycle/recovered-services.ts';
 import { ensureDelayedStartClaimAndCleanupBeforeFailure } from './lifecycle/standalone-claim-acquire.ts';
+import { registerSleepResolver } from './sleep-resolver-registration.ts';
 import {
   acknowledgeSupersededSleepTimers,
   handleSleepTimerWithAcknowledgement,
@@ -50,13 +51,20 @@ export function createDelayedStartTimerEntry(
 function sleepTimerFiredEarly(
   internals: EngineInternals,
   workflowId: string,
-  operation: Pick<SleepOperation, 'operationId' | 'scheduledFireAt'>,
+  operation: Pick<SleepOperation, 'operationId' | 'scheduledFireAt'> & {
+    workflowExecutionToken?: string;
+  },
 ): boolean {
   const workflowMarkers = internals.sleepTimersFiredWithoutResolver.get(workflowId);
   if (!workflowMarkers) return false;
   const markedFireAt = workflowMarkers.get(operation.operationId);
   if (markedFireAt === undefined) return false;
+  const markerToken = internals.sleepTimerTokensFiredWithoutResolver
+    ?.get(workflowId)
+    ?.get(operation.operationId);
+  if (markerToken !== operation.workflowExecutionToken) return false;
   workflowMarkers.delete(operation.operationId);
+  internals.sleepTimerTokensFiredWithoutResolver?.get(workflowId)?.delete(operation.operationId);
   if (workflowMarkers.size === 0) {
     internals.sleepTimersFiredWithoutResolver.delete(workflowId);
   }
@@ -90,14 +98,17 @@ export async function processSleepOperation(
     workflowId,
     fireAt: operation.scheduledFireAt,
     kind: 'sleep',
+    ...(workflowExecutionToken === undefined ? {} : { workflowExecutionToken }),
   });
-  registerSleepResolver(
+  const registered = registerSleepResolver(
     internals,
     workflowId,
     operation.operationId,
     resolve,
     operation.scheduledFireAt,
+    workflowExecutionToken,
   );
+  if (!registered) return;
 
   // Guard against the race where the scheduler tick fires the timer in the window
   // between the schedule() write and registerSleepResolver(). The resolver guard
@@ -125,33 +136,6 @@ export async function processSleepOperation(
       operation.operationId,
       workflowExecutionToken,
     );
-  }
-}
-
-export function registerSleepResolver(
-  internals: EngineInternals,
-  workflowId: string,
-  operationId: string,
-  resolve: () => void,
-  scheduledFireAt: number,
-): void {
-  // Store the deadline so resolveSleepTimer ignores a stale timer reused by an old run.
-  internals.sleepResolvers.set(`${workflowId}:${operationId}`, {
-    resolve,
-    fireAt: scheduledFireAt,
-  });
-
-  let workflowOperations = internals.sleepResolversByWorkflow.get(workflowId);
-  if (!workflowOperations) {
-    workflowOperations = new Set();
-    internals.sleepResolversByWorkflow.set(workflowId, workflowOperations);
-  }
-  workflowOperations.add(operationId);
-
-  const readinessWaiters = internals.sleepResolverReadyWaitersForTesting?.get(workflowId);
-  if (readinessWaiters !== undefined) {
-    internals.sleepResolverReadyWaitersForTesting?.delete(workflowId);
-    for (const notifyReady of readinessWaiters) notifyReady();
   }
 }
 

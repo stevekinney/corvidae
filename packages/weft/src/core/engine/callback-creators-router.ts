@@ -22,7 +22,6 @@ import {
   processParallelOperation,
   processRaceOperation,
   processRunAllOperation,
-  processWaitSignalOperation,
 } from './operations-coordination.ts';
 import {
   processArchiveOperation,
@@ -36,10 +35,11 @@ import { processStateCommitOperation, processStateReadOperation } from './operat
 import { processStreamOperation } from './operations-stream.ts';
 import { processSleepOperation } from './operations-time.ts';
 import { processWaitConditionOperation } from './operations-wait-condition.ts';
+import { processWaitSignalOperation } from './operations-wait-signal.ts';
 import { feedOperationResult, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
 import { processWaitReviewOperation } from './sub-operation.ts';
 import { finalizePendingTimelineEntry } from './termination.ts';
-import { processWaitUpdateOperation } from './updates.ts';
+import { processWaitUpdateOperation } from './wait-update-operations.ts';
 
 export function createOperationRouterCallbacks<
   TWorkflows extends object,

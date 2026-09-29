@@ -7,10 +7,14 @@ import type { UpdateRequest } from '../updates.ts';
 import { extractStandardSchemaIssues } from './update-validation.ts';
 import {
   deliverCoordinatedUpdateToWaiterIfAvailable,
-  processWaitUpdateOperation,
   tryInlineUpdateHandler,
   update,
 } from './updates.ts';
+import {
+  claimPendingUpdateForWaiter,
+  processWaitUpdateOperation,
+  stagePendingUpdateDeletion,
+} from './wait-update-operations.ts';
 import { encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 
 function createUpdateRequest(overrides: Partial<UpdateRequest> = {}): UpdateRequest {
@@ -189,6 +193,189 @@ describe('engine update helpers', () => {
     expect(waiter).not.toHaveBeenCalled();
   });
 
+  it('does not delete a pending update after a successor replaces the run during lookup', async () => {
+    const deleteRequest = mock(async () => {});
+    const internals = {
+      durableInlineOperations: new Map([
+        ['workflow-1', { operationId: 'op-1', type: 'wait-update', workflowExecutionToken: 'old' }],
+      ]),
+      updateCoordinator: { deleteRequest },
+      updateWaiters: new Map(),
+      updateWaitersByWorkflow: new Map<string, Set<string>>(),
+    } as any;
+    const updateRequest = createUpdateRequest();
+    let lookupCount = 0;
+    const completeOperation = mock(() => {});
+
+    await processWaitUpdateOperation(
+      internals,
+      'workflow-1',
+      { type: 'wait-update', operationId: 'op-1', updateName: 'rename', callerStack: 'stack' },
+      {
+        dispatchEvent: mock(() => true),
+        broadcast: mock(() => {}),
+        completeOperation,
+        guardTerminalWorkflow: mock(async () => {}),
+        guardTerminalWorkflowAfterCoordinatedRequest: mock(async () => {}),
+        persistCoordinatedUpdateResponse: mock(async () => {}),
+        deliverCoordinatedUpdateToWaiterIfAvailable: mock(async () => false),
+        dispatchPendingUpdateReceived: mock(() => {}),
+        createCoordinatedUpdateResponder: mock(() => () => {}),
+        findPendingUpdateByName: mock(async () => {
+          lookupCount += 1;
+          internals.durableInlineOperations.set('workflow-1', {
+            operationId: 'op-1',
+            type: 'wait-update',
+            workflowExecutionToken: 'successor',
+          });
+          return lookupCount === 1 ? updateRequest : undefined;
+        }),
+        schedulePendingInlineUpdateDrain: mock(() => {}),
+      },
+    );
+
+    expect(deleteRequest).not.toHaveBeenCalled();
+    expect(completeOperation).not.toHaveBeenCalled();
+  });
+
+  it('does not deliver an update discovered after a successor replaces the registered waiter', async () => {
+    const updateRequest = createUpdateRequest();
+    const successorWaiter = mock(() => {});
+    const completeOperation = mock(() => {});
+    const deleteRequest = mock(async () => {});
+    const internals = {
+      durableInlineOperations: new Map([
+        ['workflow-1', { operationId: 'op-1', type: 'wait-update', workflowExecutionToken: 'old' }],
+      ]),
+      updateCoordinator: { deleteRequest },
+      updateWaiters: new Map(),
+      updateWaitersByWorkflow: new Map<string, Set<string>>(),
+    } as any;
+    let lookupCount = 0;
+
+    await processWaitUpdateOperation(
+      internals,
+      'workflow-1',
+      { type: 'wait-update', operationId: 'op-1', updateName: 'rename', callerStack: 'stack' },
+      {
+        dispatchEvent: mock(() => true),
+        broadcast: mock(() => {}),
+        completeOperation,
+        guardTerminalWorkflow: mock(async () => {}),
+        guardTerminalWorkflowAfterCoordinatedRequest: mock(async () => {}),
+        persistCoordinatedUpdateResponse: mock(async () => {}),
+        deliverCoordinatedUpdateToWaiterIfAvailable: mock(async () => false),
+        dispatchPendingUpdateReceived: mock(() => {}),
+        createCoordinatedUpdateResponder: mock(() => () => {}),
+        findPendingUpdateByName: mock(async () => {
+          lookupCount += 1;
+          if (lookupCount === 1) return undefined;
+          internals.updateWaiters.set('workflow-1:rename', successorWaiter);
+          return updateRequest;
+        }),
+        schedulePendingInlineUpdateDrain: mock(() => {}),
+      },
+    );
+
+    expect(internals.updateWaiters.get('workflow-1:rename')).toBe(successorWaiter);
+    expect(deleteRequest).not.toHaveBeenCalled();
+    expect(completeOperation).not.toHaveBeenCalled();
+  });
+
+  it('retains a waiter when its pending update request is no longer durable', async () => {
+    const updateRequest = createUpdateRequest();
+    const waiter = mock(() => {});
+    const waiterKey = 'workflow-1:rename';
+    const internals = {
+      storage: new MemoryStorage(),
+      workflowClaimRegistry: null,
+      updateCoordinator: { deleteRequest: mock(async () => {}) },
+      updateWaiters: new Map([[waiterKey, waiter]]),
+      updateWaitersByWorkflow: new Map([['workflow-1', new Set([waiterKey])]]),
+      pendingAtomicWorkflowCommitSideEffects: new Map(),
+    } as any;
+
+    const claimed = await claimPendingUpdateForWaiter(
+      internals,
+      'workflow-1',
+      updateRequest,
+      waiterKey,
+      waiter,
+      undefined,
+      { findPendingUpdateByName: async () => updateRequest },
+    );
+
+    expect(claimed).toBe(false);
+    expect(internals.updateWaiters.get(waiterKey)).toBe(waiter);
+    expect(internals.pendingAtomicWorkflowCommitSideEffects.size).toBe(0);
+    expect(internals.updateCoordinator.deleteRequest).not.toHaveBeenCalled();
+  });
+
+  it('stages an existing request deletion for the captured run without a registered waiter', async () => {
+    const storage = new MemoryStorage();
+    const key = KEYS.update('workflow-1', 'update-1');
+    await storage.put(key, Uint8Array.of(1));
+    const internals = {
+      storage,
+      pendingAtomicWorkflowCommitSideEffects: new Map(),
+    } as any;
+
+    expect(await stagePendingUpdateDeletion(internals, 'workflow-1', 'update-1', 'run-1')).toBe(
+      true,
+    );
+    expect(await storage.get(key)).toEqual(Uint8Array.of(1));
+    expect(
+      internals.pendingOperationAtomicWorkflowCommitSideEffects.get('workflow-1').get('run-1'),
+    ).toEqual({ conditions: [], operations: [{ type: 'delete', key }] });
+  });
+
+  it('does not stage a post-registration update after storage read replaces the waiter', async () => {
+    const backingStorage = new MemoryStorage();
+    const key = KEYS.update('workflow-1', 'update-1');
+    await backingStorage.put(key, Uint8Array.of(1));
+    const successorWaiter = mock(() => {});
+    const completeOperation = mock(() => {});
+    const internals = {
+      storage: {
+        get: async (requestedKey: string) => {
+          internals.updateWaiters.set('workflow-1:rename', successorWaiter);
+          return backingStorage.get(requestedKey);
+        },
+      },
+      updateWaiters: new Map<string, (value: unknown) => void>(),
+      updateWaitersByWorkflow: new Map<string, Set<string>>(),
+      pendingAtomicWorkflowCommitSideEffects: new Map(),
+    } as any;
+    const updateRequest = createUpdateRequest();
+    let lookupCount = 0;
+
+    await processWaitUpdateOperation(
+      internals,
+      'workflow-1',
+      { type: 'wait-update', operationId: 'op-1', updateName: 'rename', callerStack: 'stack' },
+      {
+        dispatchEvent: mock(() => true),
+        broadcast: mock(() => {}),
+        completeOperation,
+        guardTerminalWorkflow: mock(async () => {}),
+        guardTerminalWorkflowAfterCoordinatedRequest: mock(async () => {}),
+        persistCoordinatedUpdateResponse: mock(async () => {}),
+        deliverCoordinatedUpdateToWaiterIfAvailable: mock(async () => false),
+        dispatchPendingUpdateReceived: mock(() => {}),
+        createCoordinatedUpdateResponder: mock(() => () => {}),
+        findPendingUpdateByName: mock(async () =>
+          ++lookupCount === 1 ? undefined : updateRequest,
+        ),
+        schedulePendingInlineUpdateDrain: mock(() => {}),
+      },
+    );
+
+    expect(internals.updateWaiters.get('workflow-1:rename')).toBe(successorWaiter);
+    expect(internals.pendingOperationAtomicWorkflowCommitSideEffects).toBeUndefined();
+    expect(await backingStorage.get(key)).toEqual(Uint8Array.of(1));
+    expect(completeOperation).not.toHaveBeenCalled();
+  });
+
   it('dispatches the pending-update received hook when waiter delivery requests it', async () => {
     const waiter = mock(() => {});
     const deleteRequest = mock(async () => {});
@@ -276,9 +463,7 @@ describe('engine update helpers', () => {
     void delivery.then(() => {
       settled = true;
     });
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
     expect(settled).toBe(false);
     expect(waiter).toHaveBeenCalledTimes(1);
     expect(internals.updateWaiters.has(waiterKey)).toBe(false);

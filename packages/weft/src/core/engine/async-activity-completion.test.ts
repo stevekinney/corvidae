@@ -145,6 +145,68 @@ function queueResolution(
 }
 
 describe('parkDeferredAsyncActivity: buffered-resolution redelivery ownership check', () => {
+  it('keeps a queued resolution until the successor operation is registered', async () => {
+    const { internals } = await createWorkflowLeaseEngine();
+    await installAndAcquireClaim(internals, 'wf-before-register');
+    queueResolution(
+      internals,
+      'wf-before-register',
+      'tok-before-register',
+      'old-operation',
+      'run-1',
+    );
+    internals.durableInlineOperations?.delete('wf-before-register');
+    const callbacks = makeCallbacks();
+    const firstCheck = installOwnershipCheckSettledSignal(internals);
+    void parkDeferredAsyncActivity(
+      internals,
+      new AsyncActivityDeferral('tok-before-register'),
+      {
+        workflowId: 'wf-before-register',
+        activityName: 'test-activity',
+        operationId: 'successor-operation',
+        step: 0,
+        attempt: 1,
+        workflowExecutionToken: 'run-1',
+      },
+      callbacks,
+    );
+    await firstCheck.settled;
+    firstCheck.restore();
+
+    expect(callbacks.feedOperationResult).not.toHaveBeenCalled();
+    expect(internals.pendingAsyncActivityResolutions?.get('wf-before-register')).toHaveLength(1);
+
+    internals.durableInlineOperations?.set('wf-before-register', {
+      operationId: 'successor-operation',
+      type: 'activity',
+      workflowExecutionToken: 'run-1',
+    });
+    const secondCheck = installOwnershipCheckSettledSignal(internals);
+    void parkDeferredAsyncActivity(
+      internals,
+      new AsyncActivityDeferral('tok-before-register'),
+      {
+        workflowId: 'wf-before-register',
+        activityName: 'test-activity',
+        operationId: 'successor-operation',
+        step: 0,
+        attempt: 1,
+        workflowExecutionToken: 'run-1',
+      },
+      callbacks,
+    );
+    await secondCheck.settled;
+    secondCheck.restore();
+    expect(callbacks.feedOperationResult).toHaveBeenCalledWith(
+      'wf-before-register',
+      OUTCOME,
+      undefined,
+      'successor-operation',
+      'run-1',
+    );
+  });
+
   it('delivers the queued resolution when this engine still holds the parked generation', async () => {
     const { internals } = await createWorkflowLeaseEngine();
     await installAndAcquireClaim(internals, 'wf-deliver');
@@ -183,7 +245,7 @@ describe('parkDeferredAsyncActivity: buffered-resolution redelivery ownership ch
     );
     // Staged for the checkpoint commit that never comes in this unit test —
     // proves the delete was staged (delivery ran), not that it was committed.
-    expect(internals.pendingAtomicWorkflowCommitSideEffects.has('wf-deliver')).toBe(true);
+    expect(internals.pendingOperationAtomicWorkflowCommitSideEffects.has('wf-deliver')).toBe(true);
   });
 
   it('discards the queued resolution without staging or feeding when a successor now owns the workflow', async () => {
