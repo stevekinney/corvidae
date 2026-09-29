@@ -199,6 +199,35 @@ function withConfiguration(changes: Record<string, unknown>): GateEvaluatorLoade
 
 const judge = fixtureConfiguration()['judge'] as Record<string, unknown>;
 
+/**
+ * Issuing from a failing decision exits 3 and from one recorded at another
+ * revision exits 5, appending nothing. `run` reads the checked-out repository
+ * and `now`, and the decisions are dated on that same clock: one dated at a
+ * fixed instant expires a day later, after which `run` refuses it as expired
+ * before it ever compares revisions.
+ */
+async function expectRefusalsAppendNothing(
+  run: (args: readonly string[]) => Promise<CommandResult>,
+  now: () => number,
+): Promise<void> {
+  const failing = await decide(fixtureGateFile('regressing'), { sourceRevision: HEAD, now });
+  const elsewhere = await decide(fixtureGateFile(), { sourceRevision: OTHER_REVISION, now });
+  const before = await records();
+
+  const refused = await run(['issue', failing.id, '--store', storePath]);
+  expect(expectReport(refused, 3, 'insufficient-evidence')).toMatchObject({
+    reason: 'decision-not-passing',
+  });
+
+  const stale = await run(['issue', elsewhere.id, '--store', storePath]);
+  expect(expectReport(stale, 5, 'stale').stale).toEqual([
+    { field: 'sourceRevision', bound: OTHER_REVISION, current: HEAD },
+  ] as never);
+  expect(stale.stderr).toContain(`  sourceRevision: bound "${OTHER_REVISION}", now "${HEAD}"`);
+
+  expect(await records()).toEqual(before);
+}
+
 describe('promotion-signal (spawned bun process)', () => {
   test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
     const gate = await spawnScript('release-gate', [
@@ -244,40 +273,25 @@ describe('promotion-signal (spawned bun process)', () => {
   });
 
   test('issue exits 3 for a failing decision and 5 for one recorded at another revision, appending nothing', async () => {
-    // The spawned command reads the real clock, so these decisions are made on
-    // it too: one dated at the fixed `DECIDED_AT` expires a day later, and the
-    // command would then refuse it as expired before checking its revision.
-    const now = () => Date.now();
-    const failing = await decide(fixtureGateFile('regressing'), { sourceRevision: HEAD, now });
-    const elsewhere = await decide(fixtureGateFile(), { sourceRevision: OTHER_REVISION, now });
-    const before = await records();
-
-    const refused = await spawnScript('promotion-signal', [
-      'issue',
-      failing.id,
-      '--store',
-      storePath,
-    ]);
-    expect(expectReport(refused, 3, 'insufficient-evidence')).toMatchObject({
-      reason: 'decision-not-passing',
-    });
-
-    const stale = await spawnScript('promotion-signal', [
-      'issue',
-      elsewhere.id,
-      '--store',
-      storePath,
-    ]);
-    expect(expectReport(stale, 5, 'stale').stale).toEqual([
-      { field: 'sourceRevision', bound: OTHER_REVISION, current: HEAD },
-    ] as never);
-    expect(stale.stderr).toContain(`  sourceRevision: bound "${OTHER_REVISION}", now "${HEAD}"`);
-
-    expect(await records()).toEqual(before);
+    // The spawned command reads the real clock, so its decisions are dated on it too.
+    await expectRefusalsAppendNothing(
+      (args) => spawnScript('promotion-signal', args),
+      () => Date.now(),
+    );
   });
 });
 
 describe('runPromotionSignalCommand', () => {
+  test('refuses a failing decision with 3 and another revision with 5 however long after `DECIDED_AT` it runs', async () => {
+    // The spawned-process test ran this scenario on the real clock with its
+    // decisions dated at `DECIDED_AT`, and began failing a day later.
+    const longAfter = Date.parse(DECIDED_AT) + 5 * 365 * 24 * 60 * 60 * 1000;
+    await expectRefusalsAppendNothing(
+      (args) => runInProcess(args, { now: () => longAfter }),
+      () => longAfter,
+    );
+  });
+
   test('issues against the checked-out repository by default', async () => {
     const decision = await decide(fixtureGateFile(), { sourceRevision: HEAD });
 
