@@ -5,7 +5,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
 import { createScheduler } from '../../src/scheduler/create-scheduler';
-import { TaskRetentionCleanedEvent } from '../../src/scheduler/events';
+import { SchedulerStoppedEvent, TaskRetentionCleanedEvent } from '../../src/scheduler/events';
 import { SchedulerTaskLookupError } from '../../src/scheduler/task-lookup-error';
 import type { SchedulerPriority, SchedulerTask } from '../../src/scheduler/types';
 import { createMockGenerate } from '../../src/test/index';
@@ -270,10 +270,20 @@ describe('createScheduler retention', () => {
       await waitForEventLoop(() => started.scheduler.getState().activeTask?.id === running.id);
       const queued = makeTask({ priority: 'background' });
       const queuedPromise = started.scheduler.submit(queued);
+      const waiter = started.scheduler.awaitTask(queued.id);
+      let located: unknown;
+      started.scheduler.addEventListener(SchedulerStoppedEvent.type, () => {
+        located = started.scheduler.locateTask(queued.id);
+      });
       const stopPromise = started.scheduler.stop();
       gate.release();
       await stopPromise;
       expect(await queuedPromise).toBeNull();
+      expect(await waiter).toBeNull();
+      expect(located).toEqual({
+        status: 'terminal',
+        outcome: { status: 'fulfilled', value: null },
+      });
     });
 
     it('records a rejected outcome with the original reason when createRun throws', async () => {
