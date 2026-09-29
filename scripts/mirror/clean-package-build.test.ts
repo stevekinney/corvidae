@@ -146,7 +146,13 @@ type BuildRun = { input: Fixture; observed: Recorder; outcome: BuildOutcome };
 // COR-1331). Test bodies assert on the captured outcomes.
 const fixtures: Fixture[] = [];
 afterAll(async () => {
-  for (const input of fixtures) await input[Symbol.asyncDispose]();
+  // Dispose every fixture even if one removal fails, then report all failures.
+  const results = await Promise.allSettled(fixtures.map((input) => input[Symbol.asyncDispose]()));
+  const failures = results.flatMap((result) =>
+    result.status === 'rejected' ? [result.reason] : [],
+  );
+  if (failures.length > 0)
+    throw new AggregateError(failures, 'clean-package fixture cleanup failed');
 });
 
 async function prepared(...options: Parameters<typeof fixture>): Promise<Fixture> {
