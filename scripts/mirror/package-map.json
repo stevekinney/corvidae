@@ -11,12 +11,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.1",
+      "lastPublishedVersion": "0.27.2",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.1",
-        "gitHead": "1017fff9b8e11a9bf254818661a6007ea86b92b3",
-        "corvidaeCommit": "841093b5c0568e38a5c8a83347762f88878cff33",
+        "version": "0.27.2",
+        "gitHead": "9c869f543a5a472903baafdc08a196a469d6c693",
+        "corvidaeCommit": "6671344e0bfda34096cd5a86684bfb598ca0276f",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -270,6 +270,7 @@
             "src/core/engine/catalog-removal.ts",
             "src/core/engine/catalog-tombstone-recovery.ts",
             "src/core/engine/checkpoint-commit-snapshots.ts",
+            "src/core/engine/checkpoint-encoding-error.ts",
             "src/core/engine/checkpoint-io.ts",
             "src/core/engine/checkpoint-prune.ts",
             "src/core/engine/checkpoint-reads.ts",
@@ -1158,7 +1159,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "83e7d7b69c039acfdba29fc213d167307519b65e0c61a22647b1e1862a326ddd"
+          "digest": "bd4834e2e058add3b6e1c5b9ded28514bee72446d60c480b6d1ff9ba9179ca5a"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1166,7 +1167,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "64e6e6d72883960dcaf71abdda34785ee1f3b14e3c9a2720c72b754f3ac75043"
+          "digest": "572a2cf9aa67d1f6d1f6e7c14e66e72a542f4edce2dc32dd117d598d716f5438"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -2849,6 +2850,14 @@
             },
             {
               "path": "package/dist/core/engine/checkpoint-commit-snapshots.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/checkpoint-encoding-error.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/checkpoint-encoding-error.js",
               "executable": false
             },
             {
@@ -9068,7 +9077,7 @@
               "executable": false
             }
           ],
-          "digest": "c2de5f7fb4249cefc94537dfa38110102cbb3005396af6eb59b3575d07de2e50"
+          "digest": "f66e769a13432ce3e343aa130e7fea96ef49bee24571ea2cb8d26aba748f60eb"
         }
       }
     },
