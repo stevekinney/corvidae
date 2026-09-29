@@ -1,3 +1,10 @@
+/**
+ * Reads the nested format-2 snapshots published by conversationalist 1.3.1.
+ * Current format-2 snapshots use flat nodes under the same version number, so
+ * snapshot-format.ts selects this decoder when the envelope has a root tree.
+ * Full restoration walks that tree iteratively; current-conversation reads
+ * follow only the selected path.
+ */
 import type { ConversationHistory, Message } from '../types';
 import { deepFreeze } from '../utilities/type-helpers';
 import {
