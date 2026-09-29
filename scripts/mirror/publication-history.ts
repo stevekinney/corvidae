@@ -39,6 +39,8 @@ export async function verifyHistoricalCheckout(options: {
   mirrorCommit: string;
   sourceRoot: string;
   target: string;
+  workspace: string;
+  targetDirectory: string;
   runner?: CommandRunner;
 }): Promise<string> {
   const {
@@ -47,6 +49,8 @@ export async function verifyHistoricalCheckout(options: {
     mirrorCommit: mirrored,
     sourceRoot,
     target,
+    workspace,
+    targetDirectory,
     runner = runCommand,
   } = options;
   // This exact SHA comes from the coordinator's verified sync result, not a target message search.
@@ -76,6 +80,13 @@ export async function verifyHistoricalCheckout(options: {
     throw new Error(`Historical source HEAD must equal Corvidae-Commit ${sourceCommit}`);
   if (await requireGit(sourceRoot, ['status', '--porcelain'], runner))
     throw new Error('Historical source checkout must be clean');
+
+  const sourceDeclarations = (await import(
+    pathToFileURL(join(sourceRoot, 'scripts/mirror/source.ts')).href
+  )) as typeof import('./source.ts');
+  const declaredVersionPath = sourceDeclarations.versionConstants[workspace];
+  const versionConstantPath =
+    declaredVersionPath === undefined ? undefined : `${targetDirectory}/${declaredVersionPath}`;
 
   const policy = await loadTargetOwnedPolicy(join(sourceRoot, 'scripts/mirror/target-owned.json'));
   const releaseManifestKeys = new Set([
@@ -127,6 +138,18 @@ export async function verifyHistoricalCheckout(options: {
                 `Intervening commit ${commit} changes source-owned manifest field ${path}:${key}`,
               );
           }
+        } else if (
+          path === versionConstantPath &&
+          (await isManifestVersionOnlyChange(
+            targetRoot,
+            parent,
+            commit,
+            path,
+            targetDirectory,
+            runner,
+          ))
+        ) {
+          continue;
         } else if (!findTargetOwner(policy, path, target)) {
           throw new Error(`Intervening commit ${commit} changes non-target-owned path ${path}`);
         }
@@ -134,6 +157,31 @@ export async function verifyHistoricalCheckout(options: {
     }
   }
   return sourceCommit;
+}
+
+async function isManifestVersionOnlyChange(
+  targetRoot: string,
+  parent: string,
+  commit: string,
+  path: string,
+  targetDirectory: string,
+  runner: CommandRunner,
+): Promise<boolean> {
+  const manifestPath = `${targetDirectory}/package.json`;
+  const beforeManifest = await readGitJson(targetRoot, parent, manifestPath, runner);
+  const afterManifest = await readGitJson(targetRoot, commit, manifestPath, runner);
+  if (typeof beforeManifest['version'] !== 'string' || typeof afterManifest['version'] !== 'string')
+    return false;
+  const before = await runner(['git', 'show', `${parent}:${path}`], { cwd: targetRoot });
+  const after = await runner(['git', 'show', `${commit}:${path}`], { cwd: targetRoot });
+  if (before.exitCode !== 0 || after.exitCode !== 0) return false;
+  const versionShape = /^([\s\S]*?)export const VERSION = '([^']*)';\n$/;
+  const match = versionShape.exec(before.stdout);
+  return (
+    match !== null &&
+    match[2] === beforeManifest['version'] &&
+    after.stdout === `${match[1]}export const VERSION = '${afterManifest['version']}';\n`
+  );
 }
 
 export type HistoricalCollector = (scope: DigestScope) => Promise<DigestedFile[]>;
