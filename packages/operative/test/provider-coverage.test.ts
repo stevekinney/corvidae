@@ -67,6 +67,7 @@ import type {
   AnthropicStreamEvent,
   AnthropicStreamingClient,
   GeminiGenerateContentRequest,
+  OpenAIChatCompletionCreateRequest,
   OpenAIStreamingClient,
 } from '../src/providers/types.ts';
 import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
@@ -203,7 +204,9 @@ describe('provider helper coverage', () => {
       ),
     ).toThrow('MockAnthropicClient: no response at index 0');
     expect(
-      await throwingRejectionOf(createMockOpenAIClient([]).chat.completions.create({})),
+      await throwingRejectionOf(
+        createMockOpenAIClient([]).chat.completions.create({} as OpenAIChatCompletionCreateRequest),
+      ),
     ).toThrow('MockOpenAIClient: no response at index 0');
     expect(
       await throwingRejectionOf(
@@ -218,11 +221,11 @@ describe('provider helper coverage', () => {
       [new Error('anthropic stream failed')],
       { errorAfterEvents: 1 },
     ).messages.create({} as AnthropicMessageCreateRequest);
-    const openAIStream = createMockOpenAIStreamingClient(
+    const openAIStream = await createMockOpenAIStreamingClient(
       [openAIStreamTextChunks],
       [new Error('openai stream failed')],
       { errorAfterEvents: 1 },
-    ).chat.completions.create({});
+    ).chat.completions.create({} as OpenAIChatCompletionCreateRequest);
     const geminiStream = await createMockGeminiStreamingModel(
       [geminiStreamTextChunks],
       [new Error('gemini stream failed')],
@@ -264,9 +267,11 @@ describe('provider helper coverage', () => {
       [new Error('anthropic late failure')],
       { errorAfterEvents: 1 },
     ).messages.create({} as AnthropicMessageCreateRequest);
-    const openAIStream = createMockOpenAIStreamingClient([[]], [new Error('openai late failure')], {
-      errorAfterEvents: 1,
-    }).chat.completions.create({});
+    const openAIStream = await createMockOpenAIStreamingClient(
+      [[]],
+      [new Error('openai late failure')],
+      { errorAfterEvents: 1 },
+    ).chat.completions.create({} as OpenAIChatCompletionCreateRequest);
     const geminiStream = await createMockGeminiStreamingModel(
       [[]],
       [new Error('gemini late failure')],
@@ -358,6 +363,38 @@ describe('OpenAI provider coverage', () => {
     const failingClient = createMockOpenAIClient([], [new Error('OpenAI failed')]);
     const failingGenerate = createOpenAIProvider({ model: 'gpt-4o', client: failingClient });
     expect(await rejectionOf(failingGenerate(makeContext()))).toMatchObject({ provider: 'openai' });
+  });
+
+  it('rejects a custom tool call with a defined ProviderError', async () => {
+    const client = createMockOpenAIClient([
+      {
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                { id: 'call_custom_01', type: 'custom', custom: { name: 'tool', input: 'x' } },
+              ],
+            },
+            finish_reason: 'tool_calls',
+          },
+        ],
+      },
+    ]);
+    const generate = createOpenAIProvider({ model: 'gpt-4o', client });
+
+    const error = await rejectionOf(generate(makeContext()));
+
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({
+      provider: 'openai',
+      message:
+        '[provider:openai] OpenAI returned a custom tool call (id "call_custom_01"); only function tool calls are supported',
+      retryable: false,
+    });
+    const cause = (error as ProviderError).cause;
+    expect(cause).toBeInstanceOf(Error);
+    expect(cause).not.toBeInstanceOf(TypeError);
   });
 
   it("falls back to the run's context.responseFormat when no construction-time responseFormat is set", async () => {
