@@ -1017,7 +1017,7 @@ Every mutation event carries the resulting controller `revision`, a monotonic ev
 
 Message plugins remain transcript transformations only. Use `defineMessagePlugin({ id, revision }, transform)` to give a plugin stable identity. Duplicate identities are rejected, and activation or failure events include the plugin identity and fixed `transcript-transform` authority; plugins cannot register Bureau, Agent, run, or authorization hooks.
 
-Streaming messages (those with `metadata.__streaming === true`) are automatically protected from compaction, truncation, and adapter export. Compaction always keeps a visible streaming message rather than summarizing it, although a commit re-appends it under a new identifier. A hidden streaming message is dropped like any other hidden message (see [What compaction keeps](#what-compaction-keeps)). Streaming messages are locked in `truncateToTokenLimit` and `truncateFromPosition`, and excluded from provider adapters so that incomplete content is never sent to an API.
+Streaming messages (those with `metadata.__streaming === true`) are automatically protected from compaction, truncation, and adapter export. Compaction always keeps a streaming message rather than summarizing it, under the identifier it already has, so the stream keeps writing to the same message after a commit (see [What compaction keeps](#what-compaction-keeps)). Streaming messages are locked in `truncateToTokenLimit` and `truncateFromPosition`, and excluded from provider adapters so that incomplete content is never sent to an API.
 
 ## Compaction
 
@@ -1059,11 +1059,11 @@ switch (result.outcome) {
 - **`no-op`**: no message was eligible for summarizing, so nothing was published and the revision did not move.
 - **`discarded`**: the conversation moved past the attempt's base revision before the candidate could publish. `reason` is `'revision-conflict'`, `compacted` is `false`, `messagesRemoved` is `0`, `summaryContent` is empty, and `revision` is the newer revision.
 
-Failures reject instead of resolving, and publish nothing. A failed attempt rejects with the error that ended it, which is usually, but not always, the summarizer's error: rebuilding the kept messages can also reject with `error:invalid-tool-reference`, as [What compaction keeps](#what-compaction-keeps) describes. An aborted `signal`, or closing or disposing the conversation mid-attempt, rejects with a `ConversationalistError` whose `code` is `error:operation-cancelled`. The library only forwards the signal to the summarizer and does not check it between chunks, so a summarizer that ignores it runs every chunk before the attempt rejects. Calling `compact()` on a closed or disposed conversation rejects with `error:conversation-closed` or `error:conversation-disposed` before any summarizer runs.
+Failures reject instead of resolving, and publish nothing. A failed attempt rejects with the error that ended it, which is usually, but not always, the summarizer's error: checking the kept messages can also reject with `error:invalid-tool-reference`, as [What compaction keeps](#what-compaction-keeps) describes. An aborted `signal`, or closing or disposing the conversation mid-attempt, rejects with a `ConversationalistError` whose `code` is `error:operation-cancelled`. The library only forwards the signal to the summarizer and does not check it between chunks, so a summarizer that ignores it runs every chunk before the attempt rejects. Calling `compact()` on a closed or disposed conversation rejects with `error:conversation-closed` or `error:conversation-disposed` before any summarizer runs.
 
 ### What compaction keeps
 
-Revisioned commits did not change which messages are summarized. Compaction looks only at visible messages. Of those, `compact()` keeps these by default:
+Revisioned commits did not change which messages are summarized. The summarizer sees visible messages only, and of those `compact()` keeps these by default:
 
 - every `system` message
 - the most recent `preserveRecentCount` non-system messages (default `4`)
@@ -1072,23 +1072,21 @@ Revisioned commits did not change which messages are summarized. Compaction look
 
 A kept tool call or tool result keeps its visible partner. For the recent window, that holds only while `preserveToolPairs` is `true`, which is the default. Every other visible message is split into chunks and handed to the summarizer one chunk at a time, in order. Before a chunk reaches the summarizer, its tool-result payloads are replaced with a `[tool result]` placeholder and its thinking blocks are dropped. The [API reference](documentation/api-reference.md#compaction) lists every option and default.
 
-A commit drops hidden messages. This is a current limitation, and [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing it:
+Hidden messages are never summarized and never dropped. A commit keeps every hidden message, whatever its role or metadata, so a hidden `system`, pinned, decision, error, or streaming message survives it. Summarizing them would copy content the transcript deliberately hides into a visible summary, so the summarizer never receives one. The rules around that:
 
-- A hidden message is never summarized, never kept, and never counted in `messagesRemoved`, whatever its role or metadata. A hidden `system`, pinned, decision, error, or streaming message is gone after a commit.
-- The `preserveRecentCount` window counts visible non-system messages only.
-- A kept tool call whose result is hidden loses that result and reads as pending afterwards.
-- A no-op publishes nothing, so hidden messages survive it.
+- `messagesRemoved` counts the messages that left history, and only those. Every kept message, hidden or not, stays out of the count.
+- The `preserveRecentCount` window counts visible non-system messages only, so a hidden message never uses up a slot in it.
+- A hidden tool call or tool result is kept, and pulls its visible partner in with it, so a tool pair stays intact across the hidden/visible boundary.
+- A no-op publishes nothing, so hidden messages survive it too.
 
-The committed history starts with a single `system` message carrying `metadata.compactionSummary: true`, followed by the kept messages in their original order. The kept messages are rebuilt rather than carried over, and plugins reach the summary too. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) also tracks this:
+The committed history starts with a single `system` message carrying `metadata.compactionSummary: true`, followed by the kept messages in their original order. The kept messages are carried over, not rebuilt:
 
-- Each kept message is re-appended with a new `id`, a new `position`, and a `createdAt` from the environment's `now()` at the moment the candidate is assembled, after the last summarizer call.
-- Its content, metadata, `hidden` flag, tool call or tool result, `tokenUsage`, and `cacheBoundary` are copied. An assistant message's `goalCompleted` is not, so a kept message that completed a goal no longer says so.
-- The conversation's message plugins run again over every kept message and over the summary message. A plugin that is not idempotent applies twice to each kept message, and once more on every later commit.
-- `result.summaryContent` is the chunk summaries joined with `\n\n---\n\n`. The stored summary message holds the plugins' output for that text, which differs from `summaryContent` whenever a plugin changes content.
+- Each kept message keeps its `id`, `createdAt`, content, metadata, `hidden` flag, tool call or tool result, `tokenUsage`, `cacheBoundary`, and, on an assistant message, `goalCompleted`. Only `position` changes, because the messages now follow the summary.
+- The conversation's message plugins do not run over kept messages again, so a plugin that is not idempotent applies once, when the message was first appended.
+- The summary message is not passed through the plugins either. The stored summary is exactly `result.summaryContent`, which is the chunk summaries joined with `\n\n---\n\n`.
 
-Compaction never publishes a tool result without its call. When a kept visible tool result's call is not kept, the attempt rejects with `error:invalid-tool-reference`. That happens in two cases:
+Compaction never publishes a tool result without its call. A hidden call is always kept, so a kept visible tool result whose call is hidden no longer fails the attempt, whatever `preserveToolPairs` is set to. The attempt still rejects with `error:invalid-tool-reference` in one case:
 
-- **The call is hidden.** A hidden call is dropped, so the attempt rejects whatever `preserveToolPairs` is set to. That covers a result kept by the recent window and one kept by the preservation policy, such as an `error` result. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks this too.
 - **`preserveToolPairs` is `false`.** If the recent window holds a tool result whose call would be summarized, for example because the window begins on that result, the attempt rejects.
 
 The summarizer has already run by then. `compact()` emits `compaction.started` and then `compaction.failed`, and publishes nothing.
@@ -1178,7 +1176,7 @@ Every attempt emits `compaction.started` and then exactly one settling event. Ea
 | `compaction.failed` | The attempt threw (usually the summarizer) while the conversation was open and the attempt was not aborted | current revision | `failed` | the error, as a string | absent |
 | `compaction.cancelled` | The attempt's `signal` aborted while the conversation was open | current revision | `cancelled` | the abort reason, or the error the aborted summarizer threw, as a string | absent |
 
-The result's `attempt` equals the record on the settling event. A commit also emits `change` (with `action: 'compaction.completed'`) and `push` just before `compaction.completed`. All three carry the new revision and the same `compaction` record. Their `messageIds` list every identifier the commit removed. That includes the kept messages, because they are re-appended under new identifiers, and the hidden messages the commit dropped. An attempt that publishes nothing emits no `change` or `push`, so store subscribers are not notified. Closing or disposing the conversation mid-attempt emits no `compaction.cancelled`, because the controller has stopped emitting. The promise still rejects with `error:operation-cancelled`.
+The result's `attempt` equals the record on the settling event. A commit also emits `change` (with `action: 'compaction.completed'`) and `push` just before `compaction.completed`. All three carry the new revision and the same `compaction` record. Their `messageIds` list every identifier the commit removed, which are the summarized messages and nothing else: kept messages, hidden or not, keep their identifiers. An attempt that publishes nothing emits no `change` or `push`, so store subscribers are not notified. Closing or disposing the conversation mid-attempt emits no `compaction.cancelled`, because the controller has stopped emitting. The promise still rejects with `error:operation-cancelled`.
 
 ```typescript
 for (const type of [
@@ -1202,9 +1200,7 @@ for (const type of [
 
 - **No rebasing.** A discarded candidate is never merged into the newer history, and `compact()` never retries on its own. Call it again, or use the background scheduler, which reschedules a fresh candidate under a bounded policy.
 - **Preservation policy is unchanged.** Revisioned commits changed _when_ a candidate may publish, not _which_ messages it keeps. The retention rules above behave as they did before.
-- **Hidden messages are dropped.** A commit deletes every hidden message instead of summarizing or keeping it, and `messagesRemoved` does not count it. A kept visible tool result whose call is hidden makes the attempt reject with `error:invalid-tool-reference`, whatever `preserveToolPairs` is set to. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing both.
-- **Kept messages are rebuilt, not carried over.** Each gets a new `id`, `position`, and `createdAt`, and loses `goalCompleted`. Message plugins run again over every kept message and over the summary, so the stored summary can differ from `result.summaryContent`. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing this.
-- **`compact()` does not wait for a durable boundary.** A commit re-appends every kept message under a new identifier. If you compact while a stream is open, the streaming message is kept but re-identified, and calls that still use its old identifier do not act on it. `updateStreamingMessage(oldId, …)` does nothing. `finalizeStreamingMessage(oldId)` and `cancelStreamingMessage(oldId)` do not throw: each still commits a new revision and emits `change` plus `stream.finalized` or `stream.cancelled` for the old identifier, yet the message stays streaming, and provider adapters leave it out of every export. That lasts until you finalize or cancel it by its new identifier, which `getStreamingMessage()` returns. A tool call that is still waiting for its result can be summarized away if it falls outside the recent window. Appending its result afterwards throws `error:invalid-tool-reference`, and `appendToolResultAsync()` rejects with it. Call `compact()` when no stream is open and no tool call is pending, or use the background scheduler, which starts candidates only at that boundary.
+- **`compact()` does not wait for a durable boundary.** A tool call that is still waiting for its result can be summarized away if it falls outside the recent window. Appending its result afterwards throws `error:invalid-tool-reference`, and `appendToolResultAsync()` rejects with it. An open stream is not at risk: the streaming message is kept under its own identifier, and `updateStreamingMessage`, `finalizeStreamingMessage`, and `cancelStreamingMessage` keep acting on it. Call `compact()` when no tool call is pending, or use the background scheduler, which starts candidates only at a durable boundary.
 - **Overlapping calls are not serialized.** Two `compact()` calls started from the same revision each run their own summarizer. The first to finish commits, and the other resolves `discarded`. The background scheduler runs one candidate at a time.
 - **No progress events.** An attempt reports `compaction.started` and one settling event. There is no per-chunk progress event.
 - **`compactConversation()` has no revision check.** The pure helper resolves `{ conversation, result }`, emits no events, and publishes nothing. It hands `signal` to the summarizer and never checks it, so an ignored signal has no effect and the call resolves normally. `push()` commits its output unconditionally. `applyMutation({ expectedRevision }, () => compacted)` with the revision you read before summarizing rejects a stale result with `reason: 'revision-conflict'`.

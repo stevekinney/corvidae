@@ -387,7 +387,7 @@ Within one `compact()` or `compactConversation()` call, the summarizer is called
 | `signal` | none | Forwarded to the summarizer. The library does not check it between chunks, so a summarizer that ignores it runs every chunk. `compact()` combines it with the conversation's lifecycle signal, and an aborted attempt rejects with `error:operation-cancelled` and publishes nothing, whether the summarizer stopped early or ran every chunk. `compactConversation()` passes it through unchanged: an ignored signal has no effect and the call resolves normally, while a summarizer that honours it makes the call reject with the summarizer's own abort error. |
 | `preserveRecentCount` | `4` | Number of most recent visible non-system messages to keep. Hidden messages do not count toward it. With this many visible non-system messages or fewer, nothing is eligible and the attempt is a no-op. |
 | `preserveSystemMessages` | `true` | Keeps every visible `system` message. When `false`, visible system messages are eligible for summarizing. A hidden system message is dropped on commit either way. |
-| `preserveToolPairs` | `true` | Keeps both halves of a visible tool call and result when the recent window includes one of them. With `false`, a recent window that holds a tool result whose call would be summarized (for example, a window that begins on that result) makes the attempt reject with `error:invalid-tool-reference`. A kept tool result whose call is hidden rejects the same way under either setting ([COR-1369](https://linear.app/lost-gradient/issue/COR-1369)). The summarizer has already run by then. `compact()` emits `compaction.failed` and publishes nothing, and `compactConversation()` rejects the same way. |
+| `preserveToolPairs` | `true` | Keeps both halves of a visible tool call and result when the recent window includes one of them. With `false`, a recent window that holds a tool result whose call would be summarized (for example, a window that begins on that result) makes the attempt reject with `error:invalid-tool-reference`. A hidden call is always kept, so a kept tool result whose call is hidden does not reject under either setting. The summarizer has already run by then. `compact()` emits `compaction.failed` and publishes nothing, and `compactConversation()` rejects the same way. |
 | `baseChunkRatio` | `0.4` | Chunk budget as a fraction of the eligible tokens: `floor(eligibleTokens × ratio ÷ safetyMargin)`, and at least `1`. |
 | `minimumChunkRatio` | `0.15` | Used instead of `baseChunkRatio` when the average eligible message is more than 30% of the eligible total. |
 | `safetyMargin` | `1.2` | Divisor applied to the chunk budget. |
@@ -396,12 +396,12 @@ Within one `compact()` or `compactConversation()` call, the summarizer is called
 
 Open streaming messages are always kept, and so are the visible tool partners of streaming and policy-kept messages, whatever these options say. These retention rules predate revisioned commits and are unchanged by them.
 
-Every rule above applies to visible messages only. `compact()` and `compactConversation()` read the history without its hidden messages, so the candidate leaves them out and a commit drops them. This is a current limitation, and [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing it:
+The summarizer sees visible messages only, and the recency window counts visible non-system messages only. Every hidden message is kept, never summarized and never dropped, whatever its role or metadata:
 
-- A hidden message is never summarized, never kept, and never counted in `messagesRemoved`, whatever its role or metadata. That includes a hidden `system`, pinned, decision, error, or streaming message.
-- A kept visible tool result whose call is hidden makes the attempt reject with `error:invalid-tool-reference` after the summarizer has run, whatever `preserveToolPairs` is set to. The result can be kept by the recent window or by the preservation policy.
-- A kept tool call whose result is hidden loses that result and reads as pending after the commit.
-- A no-op publishes nothing, so hidden messages survive it.
+- A hidden `system`, pinned, decision, error, or streaming message survives a commit.
+- `messagesRemoved` equals the number of messages that left history.
+- A hidden tool call or tool result is kept together with its visible partner, so a kept visible tool result whose call is hidden does not fail the attempt, whatever `preserveToolPairs` is set to.
+- A no-op publishes nothing, so hidden messages survive it too.
 
 #### `CompactionPreservePolicy`
 
@@ -411,7 +411,7 @@ Every rule above applies to visible messages only. `compact()` and `compactConve
 | `decisions` | `true` | Messages with `metadata.decision === true`. |
 | `errors` | `true` | Tool results whose `outcome` is `'error'`, and messages with `metadata.error === true`. |
 
-The policy keeps visible messages only. A commit drops a hidden pinned, decision, or error message ([COR-1369](https://linear.app/lost-gradient/issue/COR-1369)).
+A hidden message is kept whether or not the policy matches it, so a hidden pinned, decision, or error message survives a commit.
 
 #### `CompactionResult`
 
@@ -419,14 +419,13 @@ The policy keeps visible messages only. A commit drops a hidden pinned, decision
 | --- | --- | --- |
 | `compacted` | `boolean` | `true` when a summary replaced eligible messages. From `compact()`, `true` only on `committed`. |
 | `chunksProcessed` | `number` | Summarizer calls made. A `discarded` result still counts the chunks its dropped candidate summarized. |
-| `messagesRemoved` | `number` | Visible messages the summary replaced. Hidden messages a commit drops are not counted. From `compact()`, `0` unless `committed`. From `compactConversation()`, the candidate's own count, which is `0` only when nothing was eligible. |
-| `summaryContent` | `string` | The summary text, with chunk summaries joined by `\n\n---\n\n`. The stored summary message holds the message plugins' output for this text, so the two differ when a plugin changes content. From `compact()`, empty unless `committed`. From `compactConversation()`, the candidate's own summary, which is empty only when nothing was eligible. |
+| `messagesRemoved` | `number` | Messages the summary replaced, which is the number that left history. Kept messages, hidden or not, are not counted. From `compact()`, `0` unless `committed`. From `compactConversation()`, the candidate's own count, which is `0` only when nothing was eligible. |
+| `summaryContent` | `string` | The summary text, with chunk summaries joined by `\n\n---\n\n`. The stored summary message holds exactly this text; message plugins do not run over it. From `compact()`, empty unless `committed`. From `compactConversation()`, the candidate's own summary, which is empty only when nothing was eligible. |
 
-A committed history starts with one `system` message that has `metadata.compactionSummary: true`, followed by the kept messages in their original order. Kept messages are rebuilt rather than carried over. This is a current limitation, and [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing it:
+A committed history starts with one `system` message that has `metadata.compactionSummary: true`, followed by the kept messages in their original order. Kept messages are carried over, not rebuilt:
 
-- Each kept message is re-appended with a new `id`, a new `position`, and a `createdAt` from the environment's `now()` at the moment the candidate is assembled, after the last summarizer call.
-- Content, metadata, `hidden`, the tool call or tool result, `tokenUsage`, and `cacheBoundary` are copied. Assistant `goalCompleted` is not carried over.
-- The conversation's message plugins run again over every kept message and over the summary message. A plugin that is not idempotent applies twice to each kept message, and once more on every later commit. The stored summary is the plugins' output for `summaryContent`, not `summaryContent` itself.
+- Each kept message keeps its `id`, `createdAt`, content, metadata, `hidden`, tool call or tool result, `tokenUsage`, `cacheBoundary`, and assistant `goalCompleted`. Only `position` changes, because the messages now follow the summary.
+- The conversation's message plugins do not run again over kept messages or over the summary message. The stored summary is exactly `summaryContent`.
 
 #### `CompactionAttempt`
 
@@ -456,7 +455,7 @@ A `CompactionResult` plus these fields:
 - **`no-op`**: `compacted: false`, `chunksProcessed: 0`, `messagesRemoved: 0`, and `summaryContent: ''`. Nothing was eligible and the revision had not moved. `attempt.candidateTokens` equals `attempt.baseTokens`.
 - **`discarded`**: `compacted: false`, `messagesRemoved: 0`, and `summaryContent: ''`. The conversation moved past `attempt.baseRevision` before the compare-and-swap, so the candidate was dropped unpublished. The current history, revision, store snapshot, and history tree are left byte-for-byte unchanged. A no-op whose base revision went stale also resolves `discarded`.
 
-A failed attempt rejects with the error that ended it. That is usually the summarizer's error, but not always. Rebuilding the kept messages rejects with `error:invalid-tool-reference` when a kept visible tool result's call is not kept: when the call is hidden, under either `preserveToolPairs` setting ([COR-1369](https://linear.app/lost-gradient/issue/COR-1369)), or, under `preserveToolPairs: false`, when the call would be summarized. A thrown value that is not an `Error` is wrapped in one. A cancelled attempt rejects with `error:operation-cancelled`. Neither publishes anything.
+A failed attempt rejects with the error that ended it. That is usually the summarizer's error, but not always. Checking the kept messages rejects with `error:invalid-tool-reference` when a kept tool result's call is not kept, which happens under `preserveToolPairs: false` when the call would be summarized. A hidden call is always kept. A thrown value that is not an `Error` is wrapped in one. A cancelled attempt rejects with `error:operation-cancelled`. Neither publishes anything.
 
 ### Events
 
@@ -468,14 +467,12 @@ A failed attempt rejects with the error that ended it. That is usually the summa
 | `compaction.failed` | The attempt threw while the conversation was open and the attempt was not aborted | current revision | `failed` | the error, as a string |
 | `compaction.cancelled` | The attempt's `signal` aborted while the conversation was open | current revision | `cancelled` | the abort reason, or the error the aborted summarizer threw, as a string |
 
-A commit emits `change` (with `action: 'compaction.completed'`), then `push`, then `compaction.completed`. All three carry the new revision and the same `compaction` record. Their `messageIds` list every identifier the commit removed: the summarized messages, the kept messages (re-appended under new identifiers), and the hidden messages the commit dropped. An attempt that publishes nothing emits no `change` or `push`. Closing or disposing the conversation mid-attempt emits no `compaction.cancelled`; the promise still rejects with `error:operation-cancelled`.
+A commit emits `change` (with `action: 'compaction.completed'`), then `push`, then `compaction.completed`. All three carry the new revision and the same `compaction` record. Their `messageIds` list every identifier the commit removed, which are the summarized messages and nothing else: kept messages, hidden or not, keep their identifiers. An attempt that publishes nothing emits no `change` or `push`. Closing or disposing the conversation mid-attempt emits no `compaction.cancelled`; the promise still rejects with `error:operation-cancelled`.
 
 ### Not provided
 
 - **Stale-result rebasing.** A discarded candidate is never merged into newer history, and `compact()` never retries on its own. [Background compaction](#background-compaction) reschedules a fresh candidate under a bounded policy.
-- **Durable-boundary gating in `compact()`.** A commit re-identifies every kept message, including an open streaming message. After that, `updateStreamingMessage`, `finalizeStreamingMessage`, and `cancelStreamingMessage` called with the old identifier do not act on the message. Finalize and cancel still commit a new revision and emit `change` plus `stream.finalized` or `stream.cancelled` for the old identifier. The message stays streaming, and provider adapters skip it, until it is finalized or cancelled by its new identifier, which `getStreamingMessage()` returns. A tool call that is still waiting for its result can be summarized away if it falls outside the recent window. Appending its result afterwards throws `error:invalid-tool-reference`, and `appendToolResultAsync()` rejects with it. The background scheduler starts candidates only at a durable boundary.
-- **Hidden-message retention.** A commit drops every hidden message instead of summarizing or keeping it. A kept visible tool result whose call is hidden fails the attempt with `error:invalid-tool-reference`, whatever `preserveToolPairs` is set to. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing both.
-- **Kept-message identity.** Kept messages get a new `id`, `position`, and `createdAt`, lose assistant `goalCompleted`, and pass through the message plugins again, as the summary message does. [COR-1369](https://linear.app/lost-gradient/issue/COR-1369) tracks fixing this.
+- **Durable-boundary gating in `compact()`.** A tool call that is still waiting for its result can be summarized away if it falls outside the recent window. Appending its result afterwards throws `error:invalid-tool-reference`, and `appendToolResultAsync()` rejects with it. An open streaming message is kept under its own identifier, so stream updates, finalize, and cancel keep acting on it. The background scheduler starts candidates only at a durable boundary.
 - **Abort checks between chunks.** The library forwards `signal` to the summarizer and never checks it itself. Passing the signal through to your model call is what stops the work.
 - **Serialized calls.** Overlapping `compact()` calls each run their own summarizer. The first to finish commits, and the rest resolve `discarded`.
 - **Progress events.** There is no per-chunk progress event.
@@ -510,7 +507,7 @@ A `CompactionScheduler` prepares compaction candidates outside the caller's crit
 
 - **Single flight**: overlapping requests join the job that is already queued or running. A new candidate waits for a cancelled one that is still running, so two summaries never run at the same time.
 - **Stale policy**: when a newer write makes a candidate stale, the candidate is discarded and rescheduled in a new adapter window. This happens at most `maxStaleRetries` times per request (default `2`), after which the request settles `discarded`. Stale candidates are never rebased and never retried inline.
-- **Durable boundaries**: a candidate starts only when no stream is open and no tool call is waiting for its result. A commit rebuilds every retained message, so compacting mid-stream would strand the reply the stream is still writing, and compacting mid-tool-execution could summarize away a call whose result has not arrived. A window that opens away from a boundary starts nothing. The request stays `pending` until a committed change reaches a boundary, then queues a new window. That wait spends no candidate and no stale retry, it is withdrawn like queued work, and `counts.deferred` records each window that waited.
+- **Durable boundaries**: a candidate starts only when no stream is open and no tool call is waiting for its result. Every streamed token moves the revision, so a candidate started mid-stream would be discarded as stale, and compacting mid-tool-execution could summarize away a call whose result has not arrived. A window that opens away from a boundary starts nothing. The request stays `pending` until a committed change reaches a boundary, then queues a new window. That wait spends no candidate and no stale retry, it is withdrawn like queued work, and `counts.deferred` records each window that waited.
 - **Cancellation**: `cancel()`, `dispose()`, an aborted request `signal`, and closing or disposing the conversation all withdraw queued work and abort the running candidate. A summary that comes back after that point cannot publish. `cancel()` and `dispose()` resolve once the candidate that was running has settled.
 - **Observation**: `scheduler.state` is a frozen `{ phase, disposed, candidate, attempt, counts }` snapshot, where `phase` is one of `idle`, `pending`, `running`, `committed`, `no-op`, `discarded`, `cancelled`, or `failed`. `subscribe(listener)` delivers every new state. Neither depends on conversation events. `request()` resolves a typed outcome and never rejects.
 
@@ -530,7 +527,7 @@ A `CompactionScheduler` prepares compaction candidates outside the caller's crit
 
 Messages flagged as streaming (`isStreamingMessage` returns `true`) are automatically protected across the library:
 
-- **Compaction**: compaction always keeps visible streaming messages, with their tool partners, so they are never summarized away. A commit re-appends every kept message under a new identifier, an open streaming message included. A hidden streaming message is dropped on commit like any other hidden message ([COR-1369](https://linear.app/lost-gradient/issue/COR-1369)). See [Compaction](#compaction).
+- **Compaction**: compaction always keeps visible streaming messages, with their tool partners, so they are never summarized away. A commit keeps every streaming message, hidden or not, under its existing identifier. See [Compaction](#compaction).
 - **Truncation**: `truncateToTokenLimit` locks streaming message blocks alongside system and protected blocks. `truncateFromPosition` preserves streaming messages that fall below the cutoff position.
 - **Adapters**: All three provider adapters (OpenAI, Anthropic, Gemini) skip streaming messages during export so that incomplete content is never sent to an API. Once a streaming message is finalized via `finalizeStreamingMessage`, the streaming flag is removed and the message participates normally in all subsystems.
 - **Late updates**: `updateStreamingMessage` writes only to a message that is still streaming. After `finalizeStreamingMessage` (or `cancelStreamingMessage`, which removes the message), it returns the conversation unchanged rather than appending to a message the UI has already presented as final, and it does not read `environment.now()` on that path. `Conversation.updateStreamingMessage` propagates the rejection: it skips the commit when the returned conversation is the one it passed in, so no history node is recorded and no event is emitted. `updateUnsafeStreamingMessage` skips the streaming-status check for render-side projections.

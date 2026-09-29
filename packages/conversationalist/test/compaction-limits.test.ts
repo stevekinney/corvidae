@@ -3,14 +3,14 @@
  *
  * These pin the behavior the README's "Compaction limits" section and the API
  * reference's "Not provided" list describe, so the documentation cannot drift
- * from what the library does: a commit re-identifies an open stream, a pending
+ * from what the library does: a pending
  * tool call can be summarized away, and the library forwards an abort signal to
  * the summarizer without checking it between chunks.
  *
- * The COR-1369 block pins defects the docs describe as current limitations: a
- * commit drops hidden messages, a kept tool result whose call is hidden fails the
- * attempt, and kept messages are rebuilt rather than carried over. When COR-1369
- * fixes them, these tests and the documented limits change together.
+ * The COR-1369 block pins the fixed behavior for hidden messages and kept
+ * messages: a commit keeps every hidden message, a kept visible tool result whose
+ * call is hidden no longer fails the attempt, and kept messages are carried over
+ * rather than rebuilt.
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -19,7 +19,6 @@ import { Conversation } from '../src/history';
 import {
   createConversationHistory,
   defineMessagePlugin,
-  isStreamingMessage,
   type ConversationEnvironment,
   type ConversationEvent,
   type Message,
@@ -76,70 +75,25 @@ function abortedSignal(): AbortSignal {
 }
 
 describe('compact() does not wait for a durable boundary', () => {
-  async function compactMidStream() {
+  it('keeps an open stream under its own identifier, so its updates and finalize still land', async () => {
     const conversation = conversationWithPairs(8);
-    const oldId = conversation.appendStreamingMessage('assistant');
-    conversation.updateStreamingMessage(oldId, 'partial reply');
+    const id = conversation.appendStreamingMessage('assistant');
+    conversation.updateStreamingMessage(id, 'partial reply');
 
     const result = await conversation.compact(async () => 'summary', { preserveRecentCount: 2 });
     expect(result.outcome).toBe('committed');
 
-    const streaming = conversation.getStreamingMessage();
-    expect(streaming).toBeDefined();
-    expect(streaming!.id).not.toBe(oldId);
-    expect(streaming!.content).toBe('partial reply');
-    expect(conversation.current.messages[oldId]).toBeUndefined();
-    return { conversation, oldId, newId: streaming!.id };
-  }
-
-  it('ignores an update addressed to the streaming message by its old identifier', async () => {
-    const { conversation, oldId } = await compactMidStream();
+    expect(conversation.getStreamingMessage()?.id).toBe(id);
     const revision = conversation.revision;
-
-    conversation.updateStreamingMessage(oldId, 'partial reply and more');
-
-    expect(conversation.revision).toBe(revision);
-    expect(conversation.getStreamingMessage()!.content).toBe('partial reply');
-  });
-
-  it('commits and announces a finalize by the old identifier without finalizing the message', async () => {
-    const { conversation, oldId, newId } = await compactMidStream();
-    const events = recordEvents(conversation, ['change', 'stream.finalized']);
-    const revision = conversation.revision;
-
-    conversation.finalizeStreamingMessage(oldId);
-
+    conversation.updateStreamingMessage(id, 'partial reply and more');
     expect(conversation.revision).toBe(revision + 1);
-    expect(events.map((event) => event.type)).toEqual(['change', 'stream.finalized']);
-    for (const event of events) expect(event.messageIds).toEqual([oldId]);
-    expect(conversation.getStreamingMessage()?.id).toBe(newId);
-    expect(isStreamingMessage(conversation.current.messages[newId]!)).toBe(true);
-    expect(JSON.stringify(await conversation.toProvider('anthropic'))).not.toContain(
-      'partial reply',
+    expect(conversation.getStreamingMessage()!.content).toBe('partial reply and more');
+
+    conversation.finalizeStreamingMessage(id);
+    expect(conversation.getStreamingMessage()).toBeUndefined();
+    expect(JSON.stringify(await conversation.toProvider('anthropic'))).toContain(
+      'partial reply and more',
     );
-
-    conversation.finalizeStreamingMessage(newId);
-
-    expect(conversation.getStreamingMessage()).toBeUndefined();
-    expect(JSON.stringify(await conversation.toProvider('anthropic'))).toContain('partial reply');
-  });
-
-  it('commits and announces a cancel by the old identifier without removing the message', async () => {
-    const { conversation, oldId, newId } = await compactMidStream();
-    const events = recordEvents(conversation, ['change', 'stream.cancelled']);
-    const revision = conversation.revision;
-
-    conversation.cancelStreamingMessage(oldId);
-
-    expect(conversation.revision).toBe(revision + 1);
-    expect(events.map((event) => event.type)).toEqual(['change', 'stream.cancelled']);
-    for (const event of events) expect(event.messageIds).toEqual([oldId]);
-    expect(conversation.getStreamingMessage()?.id).toBe(newId);
-
-    conversation.cancelStreamingMessage(newId);
-
-    expect(conversation.getStreamingMessage()).toBeUndefined();
-    expect(conversation.current.messages[newId]).toBeUndefined();
   });
 
   it('rejects the result of a pending tool call that was summarized away', async () => {
@@ -225,8 +179,8 @@ function lastMessage(conversation: Conversation): Message {
   return conversation.current.messages[conversation.current.ids.at(-1)!]!;
 }
 
-describe('current compaction limitations tracked by COR-1369', () => {
-  it('drops hidden messages on commit without summarizing, keeping, or counting them', async () => {
+describe('hidden and kept messages after a commit (COR-1369)', () => {
+  it('keeps hidden messages, summarizes only visible ones, and counts what left history', async () => {
     const conversation = new Conversation(createConversationHistory({ id: 'hidden' }));
     conversation.appendMessages({ role: 'system', content: 'hidden rules', hidden: true });
     for (let index = 0; index < 4; index++) {
@@ -260,14 +214,16 @@ describe('current compaction limitations tracked by COR-1369', () => {
     expect(result.messagesRemoved).toBe(7);
     expect(transcript(conversation)).toEqual([
       `system:${result.summaryContent}`,
+      'system(hidden):hidden rules',
       'assistant:a3',
+      'user(hidden):hidden pin',
       'assistant:last',
     ]);
     expect(hiddenIds).toHaveLength(2);
-    expect(changes[0]!.messageIds).toEqual(expect.arrayContaining(hiddenIds));
+    for (const id of hiddenIds) expect(changes[0]!.messageIds).not.toContain(id);
   });
 
-  it('drops a hidden tool result and leaves its kept call pending', async () => {
+  it('keeps a hidden tool result together with its visible call', async () => {
     const conversation = conversationWithPairs(4);
     conversation.appendToolCall({ id: 'kept-call', name: 'lookup', arguments: {} });
     conversation.appendMessages({
@@ -284,13 +240,14 @@ describe('current compaction limitations tracked by COR-1369', () => {
     expect(transcript(conversation)).toEqual([
       `system:${result.summaryContent}`,
       'tool-call:',
+      'tool-result(hidden):',
       'user:after',
     ]);
-    expect(conversation.getPendingToolCalls().map((call) => call.id)).toEqual(['kept-call']);
+    expect(conversation.getPendingToolCalls()).toEqual([]);
   });
 
   for (const preserveToolPairs of [true, false]) {
-    it(`rejects a kept visible tool result whose call is hidden (preserveToolPairs: ${preserveToolPairs})`, async () => {
+    it(`keeps a visible tool result whose call is hidden (preserveToolPairs: ${preserveToolPairs})`, async () => {
       const conversation = conversationWithPairs(4);
       conversation.appendMessages({
         role: 'tool-call',
@@ -300,23 +257,24 @@ describe('current compaction limitations tracked by COR-1369', () => {
       });
       conversation.appendToolResult({ callId: 'hidden-call', outcome: 'success', content: 'x' });
       const events = recordEvents(conversation, ['compaction.started', 'compaction.failed']);
-      const revision = conversation.revision;
 
-      const failing = conversation.compact(async () => 'summary', {
+      const result = await conversation.compact(async () => 'summary', {
         preserveRecentCount: 2,
         preserveToolPairs,
       });
 
-      expect(await rejectionOf(failing)).toMatchObject({ code: 'error:invalid-tool-reference' });
-      expect(events.map((event) => event.type)).toEqual([
-        'compaction.started',
-        'compaction.failed',
+      expect(result.outcome).toBe('committed');
+      expect(events.map((event) => event.type)).toEqual(['compaction.started']);
+      expect(transcript(conversation)).toEqual([
+        `system:${result.summaryContent}`,
+        'assistant:answer 3',
+        'tool-call(hidden):',
+        'tool-result:',
       ]);
-      expect(conversation.revision).toBe(revision);
     });
   }
 
-  it('rejects an error tool result kept by policy when its call is hidden', async () => {
+  it('keeps an error tool result kept by policy together with its hidden call', async () => {
     const conversation = new Conversation(createConversationHistory({ id: 'hidden-error' }));
     conversation.appendMessages({
       role: 'tool-call',
@@ -330,12 +288,17 @@ describe('current compaction limitations tracked by COR-1369', () => {
       conversation.appendAssistantMessage(`a${index}`);
     }
 
-    const failing = conversation.compact(async () => 'summary', { preserveRecentCount: 2 });
+    const result = await conversation.compact(async () => 'summary', { preserveRecentCount: 2 });
 
-    expect(await rejectionOf(failing)).toMatchObject({ code: 'error:invalid-tool-reference' });
+    expect(result.outcome).toBe('committed');
+    expect(transcript(conversation).slice(0, 3)).toEqual([
+      `system:${result.summaryContent}`,
+      'tool-call(hidden):',
+      'tool-result:',
+    ]);
   });
 
-  it('re-appends kept messages with a new identity and creation time, and without goalCompleted', async () => {
+  it('carries kept messages over with their identity, creation time, and goalCompleted', async () => {
     let tick = Date.parse('2026-01-01T00:00:00.000Z');
     const now = () => new Date((tick += 1000)).toISOString();
     const conversation = conversationWithPairs(4, { now });
@@ -347,14 +310,11 @@ describe('current compaction limitations tracked by COR-1369', () => {
 
     expect(result.outcome).toBe('committed');
     const after = lastMessage(conversation);
-    expect(after.content).toBe('done');
-    expect(after.id).not.toBe(before.id);
-    expect(after.position).toBe(2);
-    expect(Date.parse(after.createdAt)).toBeGreaterThan(Date.parse(before.createdAt));
-    expect(after).not.toHaveProperty('goalCompleted', true);
+    expect(after).toEqual({ ...before, position: 2 });
+    expect(after).toHaveProperty('goalCompleted', true);
   });
 
-  it('runs message plugins again over every kept message and over the summary', async () => {
+  it('does not run message plugins again over kept messages or the summary', async () => {
     const tagger = defineMessagePlugin({ id: 'tagger', revision: 1 }, (input) =>
       typeof input.content === 'string' ? { ...input, content: `[t]${input.content}` } : input,
     );
@@ -365,9 +325,9 @@ describe('current compaction limitations tracked by COR-1369', () => {
 
     expect(result.summaryContent).not.toContain('[t]');
     expect(transcript(conversation)).toEqual([
-      `system:[t]${result.summaryContent}`,
-      'user:[t][t]question 3',
-      'assistant:[t][t]answer 3',
+      `system:${result.summaryContent}`,
+      'user:[t]question 3',
+      'assistant:[t]answer 3',
     ]);
   });
 });

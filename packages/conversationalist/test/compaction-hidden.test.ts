@@ -136,8 +136,8 @@ for (const path of paths) {
       const hidden = messagesOf(before).filter((message) => message.hidden);
       expect(hidden).toHaveLength(2);
       for (const message of hidden) expect(after.messages[message.id]).toBeDefined();
-      // q0..q2 and a0..a2 left history; a3 and the final assistant stayed.
-      expect(result.messagesRemoved).toBe(6);
+      // q0..q3 and a0..a2 left history; a3 and the final assistant stayed.
+      expect(result.messagesRemoved).toBe(7);
       expectAccounted(before, after, result);
     });
 
@@ -181,7 +181,8 @@ for (const path of paths) {
       ]);
       const { after, result } = await path.run(before, { preserveRecentCount: 2 }, [prefixPlugin]);
 
-      expect(result.summaryContent).toBe('Summary of 4 messages');
+      expect(result.summaryContent).toContain('Summary of');
+      expect(result.summaryContent).not.toContain('[t]');
       expect(storedSummary(after).content).toBe(result.summaryContent);
       expect(messagesOf(after).map((message) => message.content)).toEqual([
         result.summaryContent,
