@@ -37,6 +37,11 @@ on:
         type: boolean
         required: true
         default: false
+      base_branch:
+        description: Existing target branch to sync into (leave empty for its default branch)
+        type: string
+        required: false
+        default: ''
 
   schedule:
     # Monday 06:17 UTC. An off-hour, off-the-hour time, so this does not compete with every other
@@ -99,11 +104,12 @@ jobs:
         env:
           TARGET: ${{ inputs.target }}
           SNAPSHOT: ${{ inputs.snapshot }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
           CORVIDAE_COMMIT: ${{ github.sha }}
           WORK: ${{ runner.temp }}/mirror-sync-dispatch
           SCRATCH: ${{ runner.temp }}/mirror-sync-scratch
           ARTIFACT: ${{ runner.temp }}/mirror-sync-artifact
-        run: bun scripts/mirror/mirror-sync-action.ts --mode prepare --target "$TARGET" --snapshot "$SNAPSHOT" --corvidae-commit "$CORVIDAE_COMMIT" --work "$WORK" --scratch "$SCRATCH" --artifact "$ARTIFACT"
+        run: bun scripts/mirror/mirror-sync-action.ts --mode prepare --target "$TARGET" --snapshot "$SNAPSHOT" --base-branch "$BASE_BRANCH" --corvidae-commit "$CORVIDAE_COMMIT" --work "$WORK" --scratch "$SCRATCH" --artifact "$ARTIFACT"
 
       - name: Upload verified artifact
         uses: actions/upload-artifact@v7
@@ -142,6 +148,7 @@ jobs:
           MIRROR_APP_PRIVATE_KEY: ${{ secrets.MIRROR_APP_PRIVATE_KEY }}
           TARGET: ${{ inputs.target }}
           SNAPSHOT: ${{ inputs.snapshot }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
           CORVIDAE_COMMIT: ${{ github.sha }}
           ARTIFACT: ${{ runner.temp }}/mirror-sync-artifact
-        run: bun scripts/mirror/mirror-sync-action.ts --mode publish --target "$TARGET" --snapshot "$SNAPSHOT" --corvidae-commit "$CORVIDAE_COMMIT" --artifact "$ARTIFACT"
+        run: bun scripts/mirror/mirror-sync-action.ts --mode publish --target "$TARGET" --snapshot "$SNAPSHOT" --base-branch "$BASE_BRANCH" --corvidae-commit "$CORVIDAE_COMMIT" --artifact "$ARTIFACT"
