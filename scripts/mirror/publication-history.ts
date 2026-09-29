@@ -62,9 +62,13 @@ export async function verifyHistoricalCheckout(options: {
     ['show', '-s', '--format=%s%n%an%n%ae', mirrored],
     runner,
   );
+  const [subject, author, email] = identity.split('\n');
+  const expectedSubject = `Sync ${target} from corvidae`;
+  const squashSubject = subject?.match(/^(.*) \(#[1-9]\d*\)$/)?.[1];
   if (
-    identity !==
-    `Sync ${target} from corvidae\nlost-gradient-mirror-sync[bot]\n331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com`
+    (subject !== expectedSubject && squashSubject !== expectedSubject) ||
+    author !== 'lost-gradient-mirror-sync[bot]' ||
+    email !== '331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com'
   )
     throw new Error('Mirror commit has an unexpected sync subject or author');
   const message = await requireGit(targetRoot, ['show', '-s', '--format=%B', mirrored], runner);

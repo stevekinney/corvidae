@@ -38,6 +38,7 @@ async function withVersionRelease(
     mirrorCommit: string;
     releaseCommit: string;
   }) => Promise<void>,
+  mirrorSubject = 'Sync weft from corvidae',
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), 'publication-version-'));
   try {
@@ -67,7 +68,7 @@ async function withVersionRelease(
     );
     const mirrorCommit = await commit(
       target,
-      `Sync weft from corvidae\n\nCorvidae-Commit: ${sourceCommit}`,
+      `${mirrorSubject}\n\nCorvidae-Commit: ${sourceCommit}`,
       true,
     );
     await Bun.write(
@@ -109,4 +110,41 @@ test('accepts only the declared version constant matching a release manifest bum
       ).toThrow('non-target-owned path');
     },
   );
+});
+
+test('accepts the GitHub squash suffix on a verified mirror commit', async () => {
+  await withVersionRelease(
+    async ({ source, target, sourceCommit, mirrorCommit, releaseCommit }) => {
+      expect(
+        await verifyHistoricalCheckout({
+          sourceRoot: source,
+          targetRoot: target,
+          target: 'weft',
+          workspace: '@lostgradient/weft',
+          targetDirectory: 'packages/weft',
+          mirrorCommit,
+          gitHead: releaseCommit,
+        }),
+      ).toBe(sourceCommit);
+    },
+    'Sync weft from corvidae (#649)',
+  );
+});
+
+test('rejects extra text after a GitHub squash suffix', async () => {
+  await withVersionRelease(async ({ source, target, mirrorCommit, releaseCommit }) => {
+    expect(
+      await throwingRejectionOf(
+        verifyHistoricalCheckout({
+          sourceRoot: source,
+          targetRoot: target,
+          target: 'weft',
+          workspace: '@lostgradient/weft',
+          targetDirectory: 'packages/weft',
+          mirrorCommit,
+          gitHead: releaseCommit,
+        }),
+      ),
+    ).toThrow('unexpected sync subject or author');
+  }, 'Sync weft from corvidae (#649) extra');
 });
