@@ -67,6 +67,7 @@ import type {
   AnthropicStreamEvent,
   AnthropicStreamingClient,
   GeminiGenerateContentRequest,
+  OpenAIChatCompletionCreateRequest,
   OpenAIStreamingClient,
 } from '../src/providers/types.ts';
 import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
@@ -203,7 +204,9 @@ describe('provider helper coverage', () => {
       ),
     ).toThrow('MockAnthropicClient: no response at index 0');
     expect(
-      await throwingRejectionOf(createMockOpenAIClient([]).chat.completions.create({})),
+      await throwingRejectionOf(
+        createMockOpenAIClient([]).chat.completions.create({} as OpenAIChatCompletionCreateRequest),
+      ),
     ).toThrow('MockOpenAIClient: no response at index 0');
     expect(
       await throwingRejectionOf(
@@ -218,11 +221,11 @@ describe('provider helper coverage', () => {
       [new Error('anthropic stream failed')],
       { errorAfterEvents: 1 },
     ).messages.create({} as AnthropicMessageCreateRequest);
-    const openAIStream = createMockOpenAIStreamingClient(
+    const openAIStream = await createMockOpenAIStreamingClient(
       [openAIStreamTextChunks],
       [new Error('openai stream failed')],
       { errorAfterEvents: 1 },
-    ).chat.completions.create({});
+    ).chat.completions.create({} as OpenAIChatCompletionCreateRequest);
     const geminiStream = await createMockGeminiStreamingModel(
       [geminiStreamTextChunks],
       [new Error('gemini stream failed')],
@@ -264,9 +267,11 @@ describe('provider helper coverage', () => {
       [new Error('anthropic late failure')],
       { errorAfterEvents: 1 },
     ).messages.create({} as AnthropicMessageCreateRequest);
-    const openAIStream = createMockOpenAIStreamingClient([[]], [new Error('openai late failure')], {
-      errorAfterEvents: 1,
-    }).chat.completions.create({});
+    const openAIStream = await createMockOpenAIStreamingClient(
+      [[]],
+      [new Error('openai late failure')],
+      { errorAfterEvents: 1 },
+    ).chat.completions.create({} as OpenAIChatCompletionCreateRequest);
     const geminiStream = await createMockGeminiStreamingModel(
       [[]],
       [new Error('gemini late failure')],
