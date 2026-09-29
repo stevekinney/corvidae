@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/evaluation",
   "private": true,
-  "description": "Versioned evaluator configurations, typed rubrics, calibrated model judges, and hard per-criterion gates for completed operative runs.",
+  "description": "Versioned evaluators for completed operative runs: typed rubrics, calibrated model judges, repeated trials, append-only history, and local release-gate, replay, and promotion-signal commands.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

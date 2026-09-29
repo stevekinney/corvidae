@@ -1,6 +1,6 @@
 # Operative
 
-`@lostgradient/operative` is the provider-agnostic agent runtime for Agent Bureau. It owns the loop that assembles context, calls a generate function, executes tools, records steps, handles stop conditions, emits events, manages sessions, and coordinates advanced runtime behavior.
+`@lostgradient/operative` is Corvidae's provider-agnostic agent runtime. It owns the loop that assembles context, calls a generate function, executes tools, records steps, handles stop conditions, emits events, manages sessions, and coordinates advanced runtime behavior.
 
 ## Workspace usage
 
@@ -13,7 +13,8 @@ Declare `"@lostgradient/operative": "workspace:*"` in the consuming workspace's 
 - Accepts caller-provided generate functions and includes Anthropic, OpenAI, and Gemini provider factories.
 - Provides sessions, session stores, durable run support, scheduler primitives, and heartbeat utilities.
 - Adds hooks for generation, tool execution, context assembly, validation, run lifecycle, and error handling.
-- Provides guardrails, retry mutators, cache middleware, context compaction, streaming, backpressure, budgets, handoffs, subagents, and supervisors.
+- Provides guardrails, retry mutators, cache middleware, context compaction, streaming, backpressure, budgets, handoffs, and subagents. Supervisors and agent discovery live in `@lostgradient/bureau`.
+- Lets a retry or reset start from a typed, validated handoff artifact instead of a failed transcript, and names the three ways an attempt gets its conversation: continue, fork from a baseline, or fresh from an artifact.
 
 ## How It Works
 
@@ -694,6 +695,265 @@ sessions.events.addEventListener('session.outbox-appended', () => {
 });
 ```
 
+### Fresh attempts and conversation policies (COR-1354)
+
+A retry or reset that must not inherit a failed attempt's transcript starts from a typed, validated handoff artifact instead. The artifact carries the minimum state the next attempt needs (objective, constraints, completed work, validated facts, known failures, open questions, the next action, and references to evidence) and has no field that can hold a message or a transcript. Operative keeps this apart from every other way an attempt can get its context:
+
+| Mechanism | API | Session | What the next run starts from |
+| --- | --- | --- | --- |
+| Continue | `SessionHandle.run()` | Same | The stored history, appended to in place. |
+| Fork from baseline | `SessionHandle.fork(options?)` | New id, `runs: []` | A verbatim copy of the stored history or, with `{ throughRun }`, of that terminal run's recorded boundary. An unusable fork point rejects with `ForkThroughRunError` (`reason`: `invalid`, `negative`, `out-of-range`, `non-terminal`, or `unavailable`) before anything is saved. |
+| Fresh from artifact | `SessionHandle.startFreshAttempt({ artifact, instructions })` | New id, `runs: []` | Exactly two messages: `instructions` as a system message and one rendering of the validated artifact as a user message. No message of the source session is copied, by id or by content. |
+| Same-session handoff | `createHandoffTool()` | Same | Unchanged. The tool returns a marker, and the caller decides which agent continues the same conversation (see Handoffs under [Multi-Agent Patterns](#multi-agent-patterns)). |
+| Subagent summary | `createSubagentTool()` | The child's own | The parent keeps its own history plus the tool result, by default a capped summary of the child's `content`. |
+| Compaction | `createContextCompactor()` | Same | The same conversation, with older messages replaced in place by a summary system message and the most recent `retainRecentMessages` kept verbatim. |
+
+#### Choosing a policy
+
+`ConversationPolicy` names the first three rows as values, so a controller can decide which one an attempt gets:
+
+```typescript
+type ConversationPolicy =
+  | { kind: 'continue' }
+  | { kind: 'fork-from-baseline'; throughRun?: number }
+  | { kind: 'fresh-from-artifact'; artifact: FreshAttemptHandoffArtifact };
+```
+
+`applyConversationPolicy(session, { policy, instructions })` resolves the `SessionHandle` an attempt should run in: `session` itself for `continue` (also the result when `policy` is omitted), `session.fork()` for `fork-from-baseline`, and `session.startFreshAttempt()` for `fresh-from-artifact`. Only `fresh-from-artifact` reads `instructions`; a continued or forked conversation already carries its own.
+
+```typescript
+const attempt = await applyConversationPolicy(session, {
+  policy: { kind: 'fresh-from-artifact', artifact },
+  instructions: 'You are the implementer. Follow AGENTS.md.',
+});
+await attempt.run('Continue from the handoff.').result();
+```
+
+Nothing calls it for you. `SessionHandle.run()`, `createAgent().run()`, and `createActiveRun()` take no policy and always continue the conversation they are given.
+
+#### A reset from start to finish
+
+The host owns three things Operative does not keep: the producing run's sealed context epoch, the actors allowed to publish for that run, and the artifact's text. This example runs a first attempt, records its epoch, publishes a handoff, and starts a fresh attempt from it. It runs offline with a stub `generate`:
+
+```typescript
+import {
+  applyConversationPolicy,
+  createContextEpochSealer,
+  createFreshAttemptArtifactStore,
+  createSessionHandle,
+  createSessionStore,
+  finalizeFreshAttemptHandoffArtifact,
+  SecretBearingFreshAttemptArtifactError,
+  StaleFreshAttemptArtifactError,
+  type FreshAttemptHandoffArtifactDraft,
+  type FreshAttemptSourceRecord,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
+
+const generate: GenerateFunction = async () => ({
+  content: 'The revision-realm test still times out under load.',
+  toolCalls: [],
+});
+
+// The producing run seals its effective context. The epoch is the only
+// record of which sources a fresh attempt may name as carry-forward context.
+const sealer = createContextEpochSealer({ agentName: 'implementer' });
+
+// Operative does not keep epochs or publisher lists for you: the host does.
+const sources = new Map<string, FreshAttemptSourceRecord>();
+
+const session = createSessionHandle('session-1', {
+  store: createSessionStore(textValueStore(new MemoryStorage())),
+  agentName: 'implementer',
+  runOptions: { generate, toolbox: createToolbox([]), maximumSteps: 1, contextEpoch: sealer },
+  resolveFreshAttemptSource: (source) => sources.get(source.runId),
+});
+
+// 1. The first attempt runs and fails.
+await session.run('Fix the flaky revision-realm test.').result();
+const [failedRun] = (await session.getSession()).runs;
+sources.set(failedRun!.runId, { epoch: sealer.current()!, permittedActors: ['operator:steve'] });
+
+// 2. The host summarizes the failed attempt. Operative never writes an artifact for you.
+const now = new Date().toISOString();
+const draft = {
+  artifactId: 'revision-realm-handoff',
+  revision: 1,
+  objective: 'Make revision-realm-execution.test.ts pass under host load.',
+  successRevision: 'COR-1333#acceptance-1',
+  constraints: ['Never raise a test timeout.'],
+  completedWork: ['Replaced the first signal poll with an event wait.'],
+  validatedFacts: ['The old file fails 7 of 9 runs with an injected 700 ms boot delay.'],
+  evidenceReferences: [{ kind: 'commit', id: '55a9f8d2' }],
+  knownFailures: [
+    { kind: 'tool', summary: 'bun test timed out waiting for a realm.', occurredAt: now },
+  ],
+  unresolvedQuestions: ['Does the child-process sibling need the same change?'],
+  nextRequestedAction: 'Convert the remaining polls to observed events.',
+  allowedCarryForwardContext: ['agent-instructions', 'toolbox'],
+  producer: { agentName: 'implementer', runId: failedRun!.runId, sessionId: session.id },
+  sourceRunOrAttempt: {
+    sessionId: session.id,
+    runId: failedRun!.runId,
+    sequence: failedRun!.sequence,
+  },
+  timestamp: now,
+  lineage: { sourceRevision: 1 },
+  provenance: { producedAt: now, producingActor: 'operator:steve' },
+} satisfies FreshAttemptHandoffArtifactDraft;
+const artifact = await finalizeFreshAttemptHandoffArtifact(draft);
+
+// 3. Publish it. Every publish-time check runs before anything is written.
+const artifacts = createFreshAttemptArtifactStore(textValueStore(new MemoryStorage()), {
+  resolveSource: (source) => sources.get(source.runId),
+  clock: { now: () => Date.now() },
+});
+await artifacts.update(artifact.artifactId, () => artifact);
+
+// Publishing revision 1 again loses the compare-and-write: republish as revision 2 instead.
+await artifacts
+  .update(artifact.artifactId, () => artifact)
+  .catch((error: unknown) => {
+    if (!(error instanceof StaleFreshAttemptArtifactError)) throw error;
+    console.log(error.diagnostics); // [ { path: 'revision', rule: 'revision-conflict' } ]
+  });
+
+// 4. Start the fresh attempt from the latest published revision.
+const fresh = await session.startFreshAttempt({
+  artifact: (await artifacts.load(artifact.artifactId))!,
+  instructions: 'You are the implementer. Follow AGENTS.md.',
+});
+const { runs, conversationHistory, metadata } = await fresh.getSession();
+console.log(fresh.id === session.id); // false
+console.log(runs.length); // 0
+console.log(conversationHistory.ids.map((id) => conversationHistory.messages[id]?.role)); // ['system', 'user']
+console.log(metadata['freshAttempt']);
+// { artifactId: 'revision-realm-handoff', revision: 1, digest: '<sha-256 hex>',
+//   sourceSessionId: 'session-1', sourceRunId: 'session-1:0' }
+
+// A credential typed into an ordinary field is rejected before anything is minted.
+const leaky = await finalizeFreshAttemptHandoffArtifact({
+  ...draft,
+  artifactId: 'leaky-handoff',
+  objective: 'Retry with password: swordfish',
+});
+try {
+  await session.startFreshAttempt({ artifact: leaky, instructions: 'You are the implementer.' });
+} catch (error) {
+  if (!(error instanceof SecretBearingFreshAttemptArtifactError)) throw error;
+  console.log(error.outcome, error.kind, error.diagnostics);
+  // secret-bearing policy [ { path: 'objective', rule: 'sensitive-key-pattern' } ]
+}
+
+// The same reset, chosen by value.
+const attempt = await applyConversationPolicy(session, {
+  policy: { kind: 'fresh-from-artifact', artifact },
+  instructions: 'You are the implementer. Follow AGENTS.md.',
+});
+await attempt.run('Continue from the handoff.').result();
+```
+
+The expected output is in the comments. The fresh session's user message renders every artifact field under its own name; for each allowlisted source it renders only what the epoch recorded (`sourceId`, trust, redaction, revision, and digest), never the source's content. Its metadata records `freshAttemptArtifactId` and `freshAttemptArtifactRevision`. The handle `startFreshAttempt` returns shares the source handle's context, so its runs use the same `runOptions` and resolver.
+
+#### The handoff artifact
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `schemaVersion` | `1` | Stamped by `finalizeFreshAttemptHandoffArtifact`. Its own counter (`FRESH_ATTEMPT_ARTIFACT_SCHEMA_VERSION`), independent of any conversation schema version. |
+| `artifactId`, `revision` | string, positive integer | Identity, and the publication counter: `1` on first publication, then one more per republication. |
+| `objective`, `successRevision` | string | What the next attempt must achieve, and a reference to the revision of its success criteria (never the criteria text). |
+| `constraints`, `completedWork`, `validatedFacts`, `unresolvedQuestions` | `string[]` | Summary statements. Never `Message` objects. |
+| `evidenceReferences` | `{ kind, id, digest?, uri? }[]` | References to evidence held elsewhere. Evidence content is never embedded. |
+| `knownFailures` | `{ kind, summary, occurredAt }[]` | What already failed. `kind` is an `AgentRunErrorKind`: `load`, `contract`, `generate`, `tool`, `abort`, `output`, or `policy`. |
+| `nextRequestedAction` | string | The one next step. |
+| `allowedCarryForwardContext` | `string[]` | `sourceId`s from the producing run's sealed context epoch, such as `agent-instructions` or `toolbox`. At most `FRESH_ATTEMPT_ARTIFACT_MAX_CARRY_FORWARD_SOURCES`. |
+| `producer` | `{ agentName, runId, sessionId }` | The agent and run that produced the artifact. Its `runId` and `sessionId` must equal `sourceRunOrAttempt`'s. |
+| `sourceRunOrAttempt` | `{ sessionId, runId, sequence }` | The run the artifact hands off from. The host's resolver looks it up. |
+| `timestamp` | ISO-8601 with offset | When the handoff was produced. Retention is measured from here. |
+| `lineage` | `{ parentConversationId?, sourceRevision }` | Mirrors `ConversationSnapshot.lineage` without its conversation-tree fields. |
+| `provenance` | `{ producedAt, producingActor }` | Who authorized the write, kept separate from `producer` so an unauthorized actor is detectable. |
+| `digest` | `{ algorithm: 'sha-256', value }` | SHA-256 (`FRESH_ATTEMPT_ARTIFACT_DIGEST_ALGORITHM`) over the canonical serialization of every other field: keys sorted, `undefined` members dropped. |
+
+Every string must be non-empty, and every object is strict, so an unknown key is a rejection. `freshAttemptHandoffArtifactSchema` is the Zod schema. Build an artifact from a `FreshAttemptHandoffArtifactDraft` (every field but `schemaVersion` and `digest`) with `finalizeFreshAttemptHandoffArtifact(draft)`, and recompute a digest with `computeFreshAttemptArtifactDigest`. Changing any field after finalizing, without finalizing again, makes the artifact `corrupt`.
+
+#### Validation and rejection
+
+`validateFreshAttemptArtifact(value, { resolveSource, now })` runs before a fresh attempt consumes an artifact, and `validateFreshAttemptArtifactForPublication(value, context)` before the store writes one. Both resolve `{ artifact, source, carryForward }` or reject. The checks run in this order and stop at the first stage that fails:
+
+1. Shape. A value that is not an object is `invalid`. A numeric `schemaVersion` other than `1` is `incompatible`, and the body is never read. A transcript-shaped value anywhere (an object with a `role` key, a raw tool-call or tool-result payload, or a `ConversationHistory`, or a string holding a serialized `role` key or tool payload) is `secret-bearing`. Any other schema failure is `provenance-free` when `producer`, `provenance`, `sourceRunOrAttempt`, or `timestamp` is missing, and `invalid` otherwise.
+2. Size. A canonical serialization over `FRESH_ATTEMPT_ARTIFACT_MAX_BYTES` is `oversized`. An artifact is never truncated.
+3. Digest. A recomputed digest that differs from `digest.value` is `corrupt`.
+4. Window. A `timestamp` or `provenance.producedAt` more than `FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS` after `now` is `stale`, at publication and at consumption. At consumption only, an artifact whose `timestamp` is more than `FRESH_ATTEMPT_ARTIFACT_RETENTION_MS` before `now` is `stale`.
+5. Authorization. `resolveSource(artifact.sourceRunOrAttempt)` must return a `FreshAttemptSourceRecord` (`{ epoch, permittedActors }`), `producer` must name the same session and run, and `provenance.producingActor` must be in `permittedActors`. Otherwise the artifact is `unauthorized`.
+6. Secrets. Every string field is checked for a `key: value` or `key=value` pair whose key matches `SENSITIVE_KEY_PATTERN`, an API-key-shaped assignment (the output PII guardrail's API-key rule), a verbatim copy of a `protected-secret` or `forbidden` epoch source (by `digestText`), and a token of at least `FRESH_ATTEMPT_ARTIFACT_ENTROPY_MINIMUM_TOKEN_LENGTH` characters above `FRESH_ATTEMPT_ARTIFACT_ENTROPY_THRESHOLD` bits per character. Any match is `secret-bearing`.
+7. Carry-forward. An allowlist longer than the bound, or an entry the epoch does not hold or marks `protected-secret` or `forbidden`, is `overbroad`.
+
+| Outcome | Error class | `kind` | Diagnostic `rule` values |
+| --- | --- | --- | --- |
+| `invalid` | `InvalidFreshAttemptArtifactError` | `contract` | `not-an-object`, `required`, a Zod issue code such as `invalid_type` or `unrecognized_keys`, and `artifact-id-mismatch` from the store |
+| `incompatible` | `IncompatibleFreshAttemptArtifactError` | `contract` | `unsupported-schema-version` |
+| `provenance-free` | `ProvenanceFreeFreshAttemptArtifactError` | `contract` | `required` on a provenance field, plus any other schema issue |
+| `oversized` | `OversizedFreshAttemptArtifactError` | `contract` | `exceeds-byte-ceiling` |
+| `corrupt` | `CorruptFreshAttemptArtifactError` | `load` | `digest-mismatch`, and `unreadable-stored-artifact` from the store |
+| `stale` | `StaleFreshAttemptArtifactError` | `load` | `timestamp-in-future`, `retention-window`, and `revision-conflict` from the store |
+| `unauthorized` | `UnauthorizedFreshAttemptArtifactError` | `policy` | `source-unresolved`, `producer-source-mismatch`, `actor-not-permitted` |
+| `secret-bearing` | `SecretBearingFreshAttemptArtifactError` | `policy` | `transcript-role-key`, `transcript-tool-payload`, `conversation-history-shape`, `sensitive-key-pattern`, `pii-api-key`, `protected-source-digest`, `high-entropy-token` |
+| `overbroad` | `OverbroadFreshAttemptArtifactError` | `contract` | `exceeds-bounded-count`, `source-absent-from-epoch`, `source-not-carriable` |
+
+Every class extends `FreshAttemptArtifactError`, itself an `AgentRunError`, and carries `outcome` (a `FreshAttemptRejectionOutcome`), `kind`, and `diagnostics` (`FreshAttemptRejectionDiagnostic[]`, each `{ path, rule }`, with a path such as `knownFailures[0].summary`, or `''` for the whole artifact). Its `code` is always `'UNKNOWN'`, so tell rejections apart by class, `outcome`, or `kind`. A diagnostic never includes the offending value, so a rejection cannot become a second copy of a secret.
+
+The thresholds are exported constants, fixed from a corpus of ten hand-written sample handoffs in `src/fresh-attempt/fixtures/samples/`; `src/fresh-attempt/thresholds.ts` records how each was derived:
+
+| Constant                                              | Value                                   |
+| ----------------------------------------------------- | --------------------------------------- |
+| `FRESH_ATTEMPT_ARTIFACT_MAX_BYTES`                    | 10,240 bytes of canonical serialization |
+| `FRESH_ATTEMPT_ARTIFACT_RETENTION_MS`                 | 7 days after `timestamp`                |
+| `FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS`                | 60 seconds                              |
+| `FRESH_ATTEMPT_ARTIFACT_ENTROPY_THRESHOLD`            | 4.5 bits per character                  |
+| `FRESH_ATTEMPT_ARTIFACT_ENTROPY_MINIMUM_TOKEN_LENGTH` | 20 characters                           |
+| `FRESH_ATTEMPT_ARTIFACT_MAX_CARRY_FORWARD_SOURCES`    | 8 sources                               |
+
+#### Publishing: the artifact store
+
+`createFreshAttemptArtifactStore(backing, { resolveSource, clock })` wraps a Weft `ConditionalTextValueStore` and returns a `FreshAttemptArtifactStore`:
+
+- `update(artifactId, updater)` loads the latest revision, calls `updater(latest)`, runs every publish-time check on the candidate (all of the above except retention, with `clock.now()` as `now`), and commits it with a compare-and-write. The candidate's `artifactId` must match (`invalid`, `artifact-id-mismatch`), and its `revision` must be the latest revision plus one, starting at `1`. A wrong revision, or a concurrent writer that commits first, rejects with `StaleFreshAttemptArtifactError` (`revision-conflict`). A conflict is never merged or retried: read the new latest revision and republish, or give up. An updater that returns `undefined` publishes nothing and resolves the latest revision.
+- `load(artifactId)` resolves the latest revision or `undefined`, and `history(artifactId)` resolves every revision, oldest first. Both check only that the stored body parses as an artifact (`corrupt`, `unreadable-stored-artifact`); the digest, retention, and authorization are checked when the artifact is consumed.
+- Nothing is ever deleted. Retention decides whether an artifact may still seed a fresh attempt, not whether its record survives, so a failed attempt's handoff stays available for audit and evaluation.
+
+#### Starting the attempt
+
+`SessionHandle.startFreshAttempt({ artifact, instructions })` validates the artifact with `validateFreshAttemptArtifact`, measuring time with the handle's `runtime.clock` and resolving the source through `SessionHandleContext.resolveFreshAttemptSource`. A rejection throws before a session id is minted or anything is saved. On success it saves a new session under the handle's `agentName` with `runs: []`, the two seed messages, and `metadata.freshAttempt` (`{ artifactId, revision, digest, sourceSessionId, sourceRunId }`), and returns a handle over it.
+
+#### What fresh attempts do not do
+
+- **Operative never produces an artifact.** No code in this workspace turns a failed run into a handoff, and no shipped controller chooses a policy for you; the managed-goal controller that will (COR-634) is not built. The host writes the draft, including its summaries.
+- **Policies are opt-in.** `applyConversationPolicy` is the only function that reads a `ConversationPolicy`. A run started any other way continues its conversation.
+- **Operative stores neither epochs nor publisher lists.** Keep the producing run's sealed epoch (the sealer's `current()` right after that run ends, before another run seals a newer one) and the actors allowed to publish for it, and serve them from `resolveFreshAttemptSource`. A handle without a resolver rejects every artifact as `unauthorized`. Neither the validator nor the store checks that the epoch a resolver returns really belongs to that run.
+- **Carry-forward context is an allowlist of source identities, not content.** A fresh conversation receives no source's text. Its instructions come from the `instructions` you pass, and its tools and generation settings from the handle's `runOptions`.
+- **The secret scan is a second line of defense, not a complete scanner.** The strict schema is the first. The scan misses a credential that is not a `key: value` or `key=value` pair under a key name containing `password`, `secret`, `token`, `apiKey`, `authorization`, `credential`, or `privateKey` (in any case), does not look like an API-key assignment, and contains no token of 20 or more characters above 4.5 bits per character: a short password in prose passes. It can also reject legitimate text that pairs a sensitive key name with a value, such as `token: 3`; rephrase such a field.
+- **The protected-source check matches only verbatim copies.** It compares each whole string field's 64-bit FNV-1a `digestText` with the digests of sources the epoch marks `protected-secret` or `forbidden`. None of the sources `createContextEpochSealer` records carries either marking today, so the check fires only for epochs a host extends with such sources.
+- **The thresholds are not options.** No call overrides the byte ceiling, retention window, clock skew, entropy threshold, or carry-forward bound.
+- **A fresh attempt dispatches no session event.** `fork()` dispatches `SessionForkEvent`; `startFreshAttempt()` does not. Read `metadata.freshAttempt` to trace a fresh session to its source.
+- **A fork is not a reset.** `fork-from-baseline` copies the transcript verbatim, failed turns included.
+
+#### Fresh-attempt exports
+
+Every name here is exported from `@lostgradient/operative`:
+
+| Area | Values | Types |
+| --- | --- | --- |
+| Policies | `applyConversationPolicy` | `ConversationPolicy`, `ApplyConversationPolicyOptions` |
+| Artifact | `finalizeFreshAttemptHandoffArtifact`, `computeFreshAttemptArtifactDigest`, `freshAttemptHandoffArtifactSchema`, `FRESH_ATTEMPT_ARTIFACT_SCHEMA_VERSION`, `FRESH_ATTEMPT_ARTIFACT_DIGEST_ALGORITHM` | `FreshAttemptHandoffArtifact`, `FreshAttemptHandoffArtifactDraft`, `EvidenceReference`, `FailureRecord`, `FreshAttemptProducer`, `FreshAttemptSourceRunOrAttempt`, `FreshAttemptLineage`, `FreshAttemptProvenance`, `FreshAttemptArtifactDigest` |
+| Validation | `validateFreshAttemptArtifact`, `validateFreshAttemptArtifactForPublication` | `FreshAttemptValidationContext`, `FreshAttemptSourceResolver`, `FreshAttemptSourceRecord`, `ValidatedFreshAttemptArtifact` |
+| Rejections | `FreshAttemptArtifactError`, `InvalidFreshAttemptArtifactError`, `IncompatibleFreshAttemptArtifactError`, `ProvenanceFreeFreshAttemptArtifactError`, `OversizedFreshAttemptArtifactError`, `CorruptFreshAttemptArtifactError`, `StaleFreshAttemptArtifactError`, `UnauthorizedFreshAttemptArtifactError`, `SecretBearingFreshAttemptArtifactError`, `OverbroadFreshAttemptArtifactError` | `FreshAttemptRejectionOutcome`, `FreshAttemptRejectionDiagnostic` |
+| Store | `createFreshAttemptArtifactStore` | `FreshAttemptArtifactStore`, `FreshAttemptArtifactStoreContext` |
+| Thresholds | `FRESH_ATTEMPT_ARTIFACT_MAX_BYTES`, `FRESH_ATTEMPT_ARTIFACT_RETENTION_MS`, `FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS`, `FRESH_ATTEMPT_ARTIFACT_ENTROPY_THRESHOLD`, `FRESH_ATTEMPT_ARTIFACT_ENTROPY_MINIMUM_TOKEN_LENGTH`, `FRESH_ATTEMPT_ARTIFACT_MAX_CARRY_FORWARD_SOURCES` | None |
+
+`SessionHandle.startFreshAttempt` and `SessionHandleContext.resolveFreshAttemptSource` are part of the session handle exported with `createSessionHandle`.
+
 ### Hooks
 
 Hooks plug into the loop lifecycle. Register them on `RunOptions.hooks`, which is a `HookRegistry` and the only hook surface a run has. The seven parallel array fields are gone (COR-1268): two surfaces meant a hook point's ordering depended on which one a caller reached for, and an array registration carried no identity, so per-registration ids, priorities, error policy, tier provenance and the `hook-plan.*` events below were all blind to half the hooks on a run.
@@ -1274,6 +1534,18 @@ Approval- and input-gated invocations also settle: their `tool.settled` status i
 **Supervisor:** moved to the `bureau` package (AB-22)—see its README for `createSupervisor`, `RoutingStrategy<D>`, and the built-in routing strategies, which now operate on a `BureauAgentCatalog<D>` and metadata-only `AgentDescriptor`s.
 
 **Handoffs:**
+
+A handoff passes the same conversation to another agent. It is not a reset: to retry without the failed transcript, start a [fresh attempt](#fresh-attempts-and-conversation-policies-cor-1354) instead. `createHandoffTool(options)` takes `CreateHandoffToolOptions` and returns an armorer tool:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `agent` | Required | A `HandoffTarget`, `{ agentName, agent }`: the target's identity and its `RunnableAgent`. `agentName` is the identity used everywhere, because a `createLazyAgent` result's `name` is a placeholder until it loads. |
+| `name` | `transfer_to_<agentName>` | The tool name. |
+| `description` | `Hand off the conversation to the "<agentName>" agent.` | The description shown to the model. |
+| `input` | `z.object({})` | The Zod schema for the call's arguments (see the warning below). |
+| `sourceContext` | None | `{ emitter, sourceAgentName, sessionId? }`. When set, every execution dispatches a `HandoffOccurredEvent` on `emitter` with the source agent, the target agent, and `sessionId` when given. |
+
+The tool never runs the target agent and never touches a session. Executing it returns `JSON.stringify({ type: HANDOFF_MARKER, agent: agentName })`, where `HANDOFF_MARKER` is `'__handoff__'`, and `extractHandoffTarget(steps)` reads that marker from the final step. Starting the target agent, in the same session or anywhere else, is the caller's job.
 
 ```typescript
 import {

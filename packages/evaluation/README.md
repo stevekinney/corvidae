@@ -4,39 +4,142 @@ Scores completed [Operative](../operative/README.md) runs against a versioned ev
 
 `runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, `replay` recomputes any stored decision from its recorded evidence without calling a model, and `promotion-signal` turns a passing decision into attributed evidence that binds exactly what was evaluated.
 
+## Workspace usage
+
+Declare `"@lostgradient/evaluation": "workspace:*"` in the consuming workspace's dependencies and install from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/evaluation`; the consumer compiles it. Its dependencies include `@lostgradient/operative`, for run results and the judge's `GenerateFunction`, and `@lostgradient/weft`, for history storage.
+
+## Quick start
+
+This evaluator scores one held-out case with a deterministic assertion and a built-in trajectory check. A scripted Operative agent stands in for a provider, so the example runs offline:
+
+```ts
+import { createEvaluator, runTrials, toGeneratorProjection } from '@lostgradient/evaluation';
+import { createAgent, createScriptedGenerate } from '@lostgradient/operative';
+
+const evaluator = await createEvaluator({
+  configuration: {
+    name: 'capitals',
+    revision: 1,
+    passThreshold: 0.75,
+    criteria: [
+      {
+        name: 'names-the-capital',
+        kind: 'deterministic-assertion',
+        description: 'The final answer names the expected capital.',
+        weight: 3,
+        hardThreshold: 1,
+      },
+      {
+        name: 'no-web-search',
+        kind: 'trajectory',
+        description: 'The agent answers without searching the web.',
+        weight: 1,
+        hardThreshold: 1,
+        forbiddenTools: ['web_search'],
+        requiredTools: [],
+      },
+    ],
+    examples: [],
+    referenceMaterial: { version: 'none', entries: [] },
+    judge: { kind: 'deterministic', name: 'capital-checks' },
+    promptVersion: 'none',
+    datasetVersion: 'capitals-2026-09',
+    environment: { name: 'scripted-generate', revision: '1' },
+    budgets: {
+      perEvaluation: { costUsd: 0, latencyMilliseconds: 5_000 },
+      perGateRun: { costUsd: 0, latencyMilliseconds: 60_000 },
+    },
+    repetitions: 2,
+    resultSchemaVersion: 1,
+    codeRevision: 'dbf15fc4',
+  },
+  dataset: {
+    id: 'capitals',
+    version: 'capitals-2026-09',
+    owner: 'evaluation-datasets-team',
+    cases: [
+      {
+        id: 'france',
+        input: 'What is the capital of France?',
+        expected: 'Paris',
+        visibility: 'held-out',
+      },
+    ],
+  },
+  scorers: {
+    assertions: {
+      'names-the-capital': ({ result, evaluationCase }) =>
+        result.content.includes(evaluationCase.expected),
+    },
+  },
+});
+
+// A scripted agent stands in for a provider. Swap in a real `generate` to evaluate a model.
+function geographer(answer: string) {
+  return createAgent({
+    name: 'geographer',
+    generate: createScriptedGenerate([
+      { kind: 'respond', response: { content: answer, toolCalls: [] } },
+    ]),
+  });
+}
+
+// One run, one verdict.
+const run = await geographer('Lyon, on the Rhone.').run('What is the capital of France?').result();
+const evaluation = await evaluator.evaluateCase('france', run);
+console.log(evaluation.verdict); // 'fail'
+console.log(toGeneratorProjection(evaluation));
+// { projection: 'generator', verdict: 'fail',
+//   feedback: 'Failed hard criteria: names-the-capital.', failedHardCriteria: ['names-the-capital'] }
+
+// The same case, `repetitions` times, aggregated.
+const aggregate = await runTrials({
+  evaluator,
+  caseId: 'france',
+  subject: () => geographer('Paris, on the Seine.'),
+});
+console.log(aggregate.outcome); // 'pass'
+console.log(aggregate.statistics.verdicts.passes, aggregate.statistics.verdicts.trials); // 2 2
+console.log(toGeneratorProjection(aggregate).feedback); // '2 of 2 trials passed.'
+```
+
+The expected output is in the comments. The generator projection names the failing hard criterion but never the expected answer. A model-judged evaluator adds `model-judge` criteria, a `{ kind: 'model', ... }` judge, a `variancePolicy`, and a `generate` function for the judge; see [The model judge](#the-model-judge).
+
 ## Configuration
 
-An evaluator configuration is plain data, validated by `evaluatorConfigurationSchema`. Every contract field is required and none is defaulted, because a release gate cites a configuration by identity and an implicit default would let two citations of "the same" configuration mean different things.
+An evaluator configuration is plain data, validated by `evaluatorConfigurationSchema` (`parseEvaluatorConfiguration` throws an `EvaluatorConfigurationError` whose `issues` name each failing path). Every contract field is required and none is defaulted, because a release gate cites a configuration by identity and an implicit default would let two citations of "the same" configuration mean different things. Unknown keys are rejected at every level.
 
 | Field | Meaning |
 | --- | --- |
-| `name`, `revision` | The human half of the evaluator identity. |
+| `name`, `revision` | The human half of the evaluator identity. `revision` is a positive integer. |
 | `passThreshold` | The weighted total, in `[0, 1]`, a case must reach. |
-| `criteria` | Named criteria, each with a `kind`, `description`, positive `weight`, and optional `hardThreshold` in `[0, 1]`. |
-| `examples` | Calibration examples shown to a model judge. Never scored, and never allowed to share an id with a dataset case. |
-| `referenceMaterial` | Rubric text, style guides, or policies, with their own `version`. |
-| `judge` | `{ kind: 'deterministic' \| 'heuristic', name }`, or `{ kind: 'model', name, model, effort, tools }`. |
-| `promptVersion`, `datasetVersion` | The judge prompt's version and the dataset's version. |
+| `criteria` | At least one named criterion, each with a `kind`, `description`, positive `weight`, and optional `hardThreshold` in `[0, 1]`. Names are unique. See [Criteria](#criteria) for the fields each kind adds. |
+| `examples` | Calibration examples shown to a model judge: `{ id, input, response, verdict: 'pass' \| 'fail', rationale }`. Never scored, and never allowed to share an id with a dataset case. |
+| `referenceMaterial` | `{ version, entries: [{ id, title, text }] }`: rubric text, style guides, or policies, versioned apart from the criteria. |
+| `judge` | `{ kind: 'deterministic' \| 'heuristic', name }`, or `{ kind: 'model', name, model, effort, tools }`. `effort` is Operative's `Effort` (`low`, `medium`, `high`, `xhigh`, `max`). |
+| `promptVersion`, `datasetVersion` | The judge prompt's version and the dataset's version. `createEvaluator` rejects a dataset whose `version` differs. |
 | `environment` | The fixture or harness `{ name, revision }` checks run against. |
-| `budgets` | `{ costUsd, latencyMilliseconds }` per evaluation and per gate run. |
+| `budgets` | `{ perEvaluation: { costUsd, latencyMilliseconds }, perGateRun: { costUsd, latencyMilliseconds } }`. Only `perEvaluation.latencyMilliseconds` is enforced (see [What this package does not do](#what-this-package-does-not-do)). |
 | `repetitions` | Trials per case. At least 1 for a deterministic judge and at least 2 for a model or heuristic judge, because one trial from a stochastic judge is never sufficient evidence. |
 | `variancePolicy` | `{ name, version, minimumPassFraction, maximumIntervalWidth }`: how trials collapse into a decision. Required for a model or heuristic judge, with no default; optional for a deterministic one. Its `maximumIntervalWidth` must be reachable at `repetitions`, so it can never be narrower than the 95 percent Wilson interval of a unanimous result. |
-| `resultSchemaVersion` | The case-evaluation shape this configuration emits (currently `1`). |
-| `codeRevision` | The evaluated system's commit hash. |
+| `resultSchemaVersion` | The case-evaluation shape this configuration emits. `createEvaluator` accepts only `EVALUATION_RESULT_SCHEMA_VERSION` (`1`). |
+| `codeRevision` | The evaluated system's commit hash: 7 to 64 lowercase hexadecimal characters. |
 
-`evaluatorIdentity(configuration)` returns `{ name, revision, digest }`, where `digest` is the SHA-256 of `canonicalJson(configuration)`: keys sorted at every depth, array order kept. Any single-field change moves the digest; key order never does.
+`evaluatorIdentity(configuration)` resolves `{ name, revision, digest }`, where `digest` is the SHA-256 of `canonicalJson(configuration)`: keys sorted at every depth, `undefined` members dropped, array order kept. Any single-field change moves the digest; key order never does.
 
 ## Criteria
 
-| Kind | Scored by |
-| --- | --- |
-| `deterministic-assertion` | A caller predicate in `scorers.assertions`; `true` is 1, `false` is 0. |
-| `heuristic` | A caller function in `scorers.heuristics` returning a number in `[0, 1]`. |
-| `trajectory` | Built in. Reads `RunResultBase.steps`: calling any of `forbiddenTools` or never calling one of `requiredTools` scores 0. |
-| `policy` | A caller check in `scorers.policies` that receives the `referenceMaterial` entry the criterion cites. |
-| `model-judge` | One call per case to the injected Operative `GenerateFunction`. |
+| Kind | Extra fields | Scored by |
+| --- | --- | --- |
+| `deterministic-assertion` | none | A caller predicate in `scorers.assertions`; `true` is 1, `false` is 0. |
+| `heuristic` | none | A caller function in `scorers.heuristics` returning a number in `[0, 1]`. |
+| `trajectory` | `forbiddenTools`, `requiredTools` (both required arrays) | Built in. Reads `RunResultBase.steps`: calling any of `forbiddenTools` or never calling one of `requiredTools` scores 0. |
+| `policy` | `referenceMaterialId` | A caller check in `scorers.policies` that receives the `referenceMaterial` entry the criterion cites and returns a boolean or a number in `[0, 1]`. |
+| `model-judge` | none | The case's single model-judge verdict. Requires a `model` judge. |
 
-The rubric's weighted total is `Σ(weight × score) / Σ weight`. A criterion whose score is below its `hardThreshold` fails the case no matter what the weighted total is.
+Scorers may be async and receive `{ evaluationCase, result, signal }`, where `evaluationCase` includes the expected answer and `signal` aborts when the evaluation exceeds its latency budget. A scorer that throws is a `scorer-error`, and one that returns the wrong type or a number outside `[0, 1]` is a `scorer-malformed-output`: both are infrastructure failures, never a low score.
+
+`applyRubric(scores, passThreshold)` computes the rubric: the weighted total is `Σ(weight × score) / Σ weight`, and a criterion whose score is below its `hardThreshold` fails the case no matter what the weighted total is.
 
 ## Evaluating a case
 
@@ -63,13 +166,21 @@ const evaluator = await createEvaluator({
 const evaluation = await evaluator.evaluateCase('france', runResult);
 ```
 
-`createEvaluator` rejects, with an `EvaluatorConfigurationError` naming each issue path, an invalid configuration or dataset, a dataset version other than `datasetVersion`, a calibration example id that equals a case id, a criterion without a scorer (or a scorer without a criterion), and model-judge criteria without a `generate` function. The model judge never constructs a provider: configure the injected function for `judge.model` and `judge.effort`, and drive it with `createScriptedGenerate` in tests.
+`createEvaluator` rejects, with an `EvaluatorConfigurationError` naming each issue path, an invalid configuration or dataset, a dataset version other than `datasetVersion`, a calibration example id that equals a case id, a criterion without a scorer (or a scorer without a criterion), a `resultSchemaVersion` other than `1`, model-judge criteria without a `generate` function, and both `generate` and `recordedJudgeOutput` at once. The resolved `Evaluator` exposes `identity`, the parsed `configuration` and `dataset`, and `evaluateCase(caseId, result)`, which throws a `RangeError` for a case id the dataset lacks. `timers` replaces the real clock for the latency budget in tests.
 
-`evaluateCase` returns one of four verdicts:
+`evaluateCase` never starts a run: it scores exactly the `RunResultBase` it is given and returns one of four verdicts.
 
-- `pass` or `fail`: the run finished with `stop-condition` and the rubric passed or failed.
-- `agent-failed`: the run finished with any other `finishReason`. No criterion is scored.
-- `infrastructure-failure`: a scorer or the judge threw, returned a malformed score, or the evaluation exceeded `budgets.perEvaluation.latencyMilliseconds`. It carries a typed `EvaluatorInfrastructureError` and no rubric, so it can never be read as a pass or a fail.
+- `pass` or `fail`: the run finished with `stop-condition` and the rubric passed or failed. The evaluation carries the `rubric` and `feedback`: the model judge's feedback when a model judge scored the case, otherwise a one-line summary of the rubric.
+- `agent-failed`: the run finished with any other `finishReason` (`AGENT_FAILURE_REASONS`). No criterion is scored.
+- `infrastructure-failure`: a scorer or the judge threw, returned a malformed score, or the evaluation exceeded `budgets.perEvaluation.latencyMilliseconds`. It carries a typed `EvaluatorInfrastructureError` (`reason` from `INFRASTRUCTURE_FAILURE_REASONS`, plus the `criterion` when there was one) and no rubric, so it can never be read as a pass or a fail.
+
+### The model judge
+
+The judge calls the injected Operative `GenerateFunction` at most once per case, however many `model-judge` criteria there are. It never constructs a provider: configure the injected function for `judge.model` and `judge.effort` yourself, and drive it with `createScriptedGenerate` in tests.
+
+- `renderJudgePrompt({ configuration, evaluationCase, result })` returns the `{ system, user }` prompt. The system message holds the model-judge rubric, the reference material, and the calibration examples; the user message holds the one case being scored, including its expected answer, the agent's final response, and its tool trajectory.
+- The request carries `responseFormat: JUDGE_RESPONSE_FORMAT`, a JSON schema for `judgeResponseSchema`. The reply's `content` must be exactly `{"criteria":[{"name","score","rationale"}],"feedback"}` with one entry per model-judge criterion. A reply that is not JSON, fails the schema, scores an unknown or duplicate criterion, omits a criterion, or requests tool calls is `judge-malformed-output`; a throw is `judge-error`.
+- `recordedJudgeOutput` replaces `generate` with a recorded `RecordedJudgeOutput` (`{ kind: 'reply', content, requestedTools }` or `{ kind: 'error' }`), read through the same checks. The release gate's replay scores model-judge criteria this way.
 
 ## Repeated trials
 
@@ -85,40 +196,40 @@ const aggregate = await runTrials({
 });
 ```
 
-`runTrials` calls the subject's `run()` with the case input exactly `repetitions` times, in order, and never retries. Each trial records its seed, finish reason, per-criterion results, weighted total, usage, cost estimate, feedback, and any typed infrastructure error. Seeds are drawn from the injected `runtime.random` before the first trial; pass `seeds` from an earlier aggregate to replay them. With the same seeds and the same scripted agent and judge, `JSON.stringify(aggregate)` is byte-identical.
+`runTrials` calls the subject's `run()` with the case input exactly `repetitions` times, in order, and never retries. Each trial records its seed, finish reason, per-criterion results, weighted total, usage, cost estimate, feedback, and any typed infrastructure error. Seeds are unsigned 32-bit integers drawn from the injected `runtime.random` (the real globals when omitted) before the first trial; pass `seeds` from an earlier aggregate to replay them, one per repetition, or get a `RangeError`. With the same seeds and the same scripted agent and judge, `JSON.stringify(aggregate)` is byte-identical. `scoreTrials` is the same executor with a `runResult(context, input)` callback in place of `subject`, for results produced some other way.
 
 The aggregate reports statistics rather than one score:
 
-- `statistics.verdicts`: trials, passes, pass fraction, and the 95 percent Wilson score interval, over every trial that produced a verdict. An `agent-failed` trial counts as not passing.
+- `statistics.verdicts`: trials, passes, pass fraction, and the 95 percent Wilson score interval (`wilsonInterval(passes, trials)`, with `WILSON_Z_95`), over every trial that produced a verdict. An `agent-failed` trial counts as not passing.
 - `statistics.criteria`: per criterion, over the scored trials, the same plus the mean score, the Bessel-corrected sample variance, and the standard deviation. A trial passes a criterion when its score reaches the criterion's hard threshold, or the configuration's pass threshold when it has none. A statistic that needs more trials than there are is `null`, never `0`.
 
 Its `outcome` is never a collapsed pass boolean:
 
 - `indeterminate` when any trial hit an infrastructure failure, including a run that rejected instead of finishing (`subject-error`). The typed errors are in `errors`.
 - `pass` or `fail` when every trial agrees.
-- For a split, `pass` only when the pass fraction reaches `minimumPassFraction` and the interval is no wider than `maximumIntervalWidth`; otherwise `disagreement`, with the thresholds it missed and the per-trial verdicts in `disagreement`. Without a variance policy, any split is `disagreement`.
+- For a split, `pass` only when the pass fraction reaches `minimumPassFraction` and the interval is no wider than `maximumIntervalWidth`; otherwise `disagreement`, with the thresholds it missed (`DISAGREEMENT_REASONS`) and the per-trial verdicts in `disagreement`. Without a variance policy, any split is `disagreement`.
 
-`reconcileJudges([first, second])` compares two or more judges' aggregates for the same case, dataset version, and code revision: any `indeterminate` stays indeterminate, a shared `pass` or `fail` is kept, and anything else is `disagreement`.
+`reconcileJudges([first, second])` compares two or more judges' aggregates for the same case, dataset version, and code revision: any `indeterminate` stays indeterminate, a shared `pass` or `fail` is kept, and anything else is `disagreement`. It throws a `RangeError` for fewer than two judges, two judges with the same evaluator digest, or judges that scored different cases, dataset versions, or code revisions.
 
 ## Held-out datasets
 
-Every dataset has an `id`, a `version`, and an `owner`, and every case declares `visibility: 'held-out' | 'public'` with no default.
+Every dataset has an `id`, a `version`, and an `owner`, and at least one case. Every case declares `visibility: 'held-out' | 'public'` (`CASE_VISIBILITIES`) with no default. `parseEvaluationDataset` and `evaluationDatasetSchema` validate one.
 
-- `isGateEligibleDataset({ dataset, codeRevision, contaminationChecks })` is true only when the owner has recorded a contamination check (`{ datasetId, datasetVersion, codeRevision, actor, recordedAt, statement }`, parsed with `parseContaminationCheck`) for that dataset, version, and exact code revision.
-- `promoteCaseToPublic({ dataset, caseId, principal, version })` returns a new dataset version with the case made public. Any principal other than the owner gets a `DatasetOwnershipError`, and the new version must differ from the old one, so a contamination check never covers two different held-out pools.
+- `isGateEligibleDataset({ dataset, codeRevision, contaminationChecks })` is true only when the owner has recorded a contamination check (`{ datasetId, datasetVersion, codeRevision, actor, recordedAt, statement }`, parsed with `parseContaminationCheck` or `contaminationCheckSchema`) for that dataset, version, and exact code revision. A check recorded by anyone but the owner does not count.
+- `promoteCaseToPublic({ dataset, caseId, principal, version })` returns a new dataset version with the case made public. Any principal other than the owner gets a `DatasetOwnershipError`, and the new version must differ from the old one, so a contamination check never covers two different held-out pools. An unknown or already public case is a `RangeError`.
 
 ## Judge drift and calibration
 
-- `judgeRevisionOf(configuration)` returns `{ name, promptVersion, digest }`, where `digest` covers exactly what the judge reads: the judge, the prompt version, the model-judge criteria, the reference material, and the calibration examples.
-- `checkJudgeDrift({ configuration, generate }, calibrationSet)` rescores a fixed calibration set (`{ id, version, tolerance, minimumAgreementRate, items }`, each item carrying a human reference score per model-judge criterion) once per item. It is `passed` when enough scores fall within `tolerance` of the reference, `drifted` when they do not, and `indeterminate` when the judge failed on any item.
-- `isGateEligibleJudge({ judgeRevision, driftChecks, calibrationRecords })` is true only when that exact revision digest has a passing drift check, no drift check that found drift, and a human `CalibrationRecord` (`{ judgeRevision, reviewer, sampleSize, agreementRate, recordedAt }`). Eligibility is per revision, so the prior approved revision stays eligible when a new one fails its drift check.
+- `judgeRevisionOf(configuration)` resolves `{ name, promptVersion, digest }`, where `digest` covers exactly what the judge reads: the judge, the prompt version, the model-judge criteria, the reference material, and the calibration examples. A change to the dataset version or the code revision is not a new judge revision.
+- `checkJudgeDrift({ configuration, generate }, calibrationSet)` rescores a fixed calibration set (`{ id, version, tolerance, minimumAgreementRate, items }`, each item carrying a human reference score per model-judge criterion; `parseCalibrationSet` and `calibrationSetSchema` validate one) once per item, with no retry. It is `passed` when enough scores fall within `tolerance` of the reference, `drifted` when they do not, and `indeterminate` when the judge failed on any item.
+- `isGateEligibleJudge({ judgeRevision, driftChecks, calibrationRecords })` is true only when that exact revision digest has a passing drift check, no drift check that found drift, and a human `CalibrationRecord` (`{ judgeRevision, reviewer, sampleSize, agreementRate, recordedAt }`, parsed with `parseCalibrationRecord` or `calibrationRecordSchema`). `judgeEligibility` returns the two facts separately as `{ calibrated, driftChecked }`, and `driftCheckRecordSchema` accepts the `{ judgeRevision, outcome }` a gate cites from an earlier check. Eligibility is per revision, so the prior approved revision stays eligible when a new one fails its drift check.
 
 `src/fixtures/judge-drift/` holds a calibration set and scripted judge outputs for a stable revision, which passes, and a drifted revision, which does not.
 
 ## Projections
 
 - `toReviewerProjection(evaluation)` is plain JSON with every inspectable fact: identity, configuration (including protected prompt material and reference material), the case with its expected answer and visibility, the rubric, unredacted feedback, the tool trajectory, usage, cost, the terminal reason, and any infrastructure error. It is for human calibrators and audit records. A trial aggregate is reviewer material in the same sense.
-- `toGeneratorProjection(evaluation)` is what may go back to the evaluated system: the verdict, the feedback text, and the names of failing hard criteria. The feedback has a held-out case's id, the expected answer, every reference material text, and every calibration response removed, because a model judge may quote them.
+- `toGeneratorProjection(evaluation)` is what may go back to the evaluated system: the verdict, the feedback text, and the names of failing hard criteria. The feedback has a held-out case's id, the expected answer, every reference material text, and every calibration response replaced with `[redacted]`, because a model judge may quote them.
 - `toGeneratorProjection(aggregate)` gives the outcome, a feedback line built only from trial counts, and the names of hard criteria that failed in any trial. It never contains a case id, a held-out status, or an expected answer.
 
 ## History
@@ -141,15 +252,15 @@ const { digest } = await history.append(
 );
 ```
 
-`createEvaluationHistory(store)` takes a weft `ConditionalTextValueStore` (`textValueStore` over `BunSQLiteStorage` for the local file, or over `MemoryStorage` in tests) and returns exactly `{ append, read, list }`. It keeps four kinds of record, told apart by `kind`: `evaluation-run`, the `gate-decision` and `gate-override` records the release gate writes, and the `promotion-signal` records a promotion writes (below). There is no update and no delete: historical results are never rewritten, and rolling an evaluator back means citing an earlier record.
+`createEvaluationHistory(store)` takes a weft `ConditionalTextValueStore` (`textValueStore` over `BunSQLiteStorage` for the local file, or over `MemoryStorage` in tests) and returns exactly `{ append, read, list }`. It keeps four kinds of record, told apart by `kind`: `evaluation-run`, the `gate-decision` and `gate-override` records the release gate writes, and the `promotion-signal` records a promotion writes (below). There is no update and no delete: historical results are never rewritten, and rolling an evaluator back means citing an earlier record. A record id is 1 to 128 letters, digits, dots, underscores, or hyphens, starting with a letter or digit.
 
-- `append(record)` commits with a compare-and-swap that requires the id to be absent. A second record with the same id rejects with `HistoricalRecordExistsError`, and the first stays byte-identical.
+- `append(record)` validates the record and commits with a compare-and-swap that requires the id to be absent. A second record with the same id rejects with `HistoricalRecordExistsError`, and the first stays byte-identical.
 - `read(id)` resolves the verified `{ digest, record }`, or `undefined` for an unknown id.
-- `list()` resolves every verified record, oldest first.
+- `list()` resolves every verified record, oldest first by `recordedAt`.
 
-Each stored row is the canonical JSON of `{ digest, record }`, where `digest` is the SHA-256 of the record's own canonical JSON. `read` and `list` reject with `CorruptHistoricalRecordError` when a row is not valid UTF-8, does not parse, is not in canonical form, matches no record schema, is stored under another id, or does not match its digest, so changing any one byte of a row makes it unreadable rather than silently different.
+Each stored row is the canonical JSON of `{ digest, record }`, where `digest` is `recordDigest(record)`: the SHA-256 of the record's own canonical JSON. `read` and `list` reject with `CorruptHistoricalRecordError` when a row is not valid UTF-8, does not parse, is not in canonical form, matches no record schema, is stored under another id, or does not match its digest, so changing any one byte of a row makes it unreadable rather than silently different.
 
-`toEvaluationRunRecord` builds an `evaluation-run` record (schema version 1) from `runTrials` aggregates: the evaluator identity, dataset id and version, code revision, repetitions, variance policy, outcome counts, verdict and per-criterion statistics pooled over every trial, the summed cost (`null` when any trial has no cost estimate), the latency, and each case with its own statistics and per-trial seeds, verdicts, finish reasons, usage, cost, criterion scores, and typed error reasons. It rejects an aggregate from another evaluator, a case outside the evaluator's dataset, and a case aggregated twice.
+`toEvaluationRunRecord` builds an `evaluation-run` record (`EVALUATION_HISTORY_SCHEMA_VERSION`, currently 1; `evaluationRunRecordSchema` and `parseEvaluationRunRecord` validate one) from `runTrials` aggregates: the evaluator identity, dataset id and version, code revision, repetitions, variance policy, outcome counts, verdict and per-criterion statistics pooled over every trial, the summed cost (`null` when any trial has no cost estimate), the latency, and each case with its own statistics and per-trial seeds, verdicts, finish reasons, usage, cost, criterion scores, and typed error reasons. It rejects an aggregate from another evaluator, a case outside the evaluator's dataset, and a case aggregated twice.
 
 An `evaluation-run` record never holds anything that could leak a held-out case. A held-out case is recorded by its ordinal in the dataset version, never by its id, and the schema rejects a held-out case that carries one. No expected answer, run content, feedback, judge rationale, or error message is stored, because each may quote one. A `gate-decision` record is the gate's audit record, so it also keeps reviewer-projection evidence (each trial's run content and tool trajectory, and its judge's raw reply) for replay; it still places cases by ordinal, and nothing in it is ever returned to the generator.
 
@@ -188,39 +299,67 @@ Options: `--gate <gateId>` runs only `gates/<gateId>.json`; `--gates-dir <path>`
 
 Several gates exit with the most severe code: `64` > `2` > `3` > `1` > `0`. The report is `{ kind: 'release-gate-report', schemaVersion: 1, recordId, decision, exitCode, gates }`, with one entry per gate carrying its record id and digest, baseline, sample, cost, latency, findings, applied override ids, rejected overrides, and per-criterion comparison. Human diagnostics go to stderr.
 
-A gate file, validated by `gateDefinitionSchema`, names:
+### Reading a decision
+
+A decision is the most severe of its findings, and each finding names its `reason` and a `detail` that cites cases by ordinal, never by held-out id:
+
+| Finding list | `reason` | Decision it forces | What it means |
+| --- | --- | --- | --- |
+| `infrastructureFailures` | `evaluator-infrastructure-failure` | `infrastructure-failure` | A case was `indeterminate`: some trial's scorer, judge, run, or latency budget failed. Fix the evaluator or its environment; the agent was not judged. |
+| `infrastructureFailures` | `gate-budget-exceeded` | `infrastructure-failure` | The gate run cost more, or took longer, than the gate file's `budgets`. |
+| `insufficientEvidence` | `sample-size-not-met` | `insufficient-evidence` | Fewer trials (or held-out cases, for a deterministic judge) than `sampleSize`. |
+| `insufficientEvidence` | `baseline-missing`, `baseline-expired`, `baseline-not-comparable` | `insufficient-evidence` | No baseline, one older than `expiry` allows (or at an unknown revision distance), or one that scored another dataset id or version. |
+| `insufficientEvidence` | `judge-uncalibrated`, `judge-not-drift-checked` | `insufficient-evidence` | The model judge's exact revision lacks a human calibration record, or a passing drift check with no drift found. |
+| `insufficientEvidence` | `dataset-not-contamination-checked` | `insufficient-evidence` | The dataset owner recorded no contamination check for this dataset version at the evaluated `codeRevision`. |
+| `insufficientEvidence` | `unresolved-disagreement` | `insufficient-evidence` | A case's trials split past the variance policy. |
+| `insufficientEvidence` | `criterion-not-comparable` | `insufficient-evidence` | A threshold's criterion and metric is missing from the baseline or the run. |
+| `regressions` | (none) | `regression`, unless every entry has an `overriddenBy` | A criterion's pass fraction or mean score fell by more than its `maximumDecrease`. Each entry records `baseline`, `candidate`, `delta`, `severity`, and the override that cleared it, if any. |
+
+Only a `pass` is evidence for a release, and only while it is fresh: a promotion signal (below) is the attributed, expiring form of that evidence. Regressions are measured only against a baseline that is present, unexpired, and comparable, so a missing or expired baseline means no regression was looked for at all. When a run has findings in more than one list, `decision` reports only the most severe, so a run with both an infrastructure failure and a regression decides `infrastructure-failure`. Read `findings`, not just `decision`, before acting on one.
+
+A gate file, `gates/<gateId>.json` with a gate id of 1 to 64 letters, digits, underscores, or hyphens, is validated by `gateDefinitionSchema` (`parseGateDefinition` throws an `EvaluatorConfigurationError`) and names:
 
 | Field | Meaning |
 | --- | --- |
+| `description` | Optional prose. |
 | `package` | Optional: the workspace, by package name, whose release the gate guards. A promotion signal binds it, so a decision of a gate without one cannot be promoted. |
 | `evaluator` | The evaluator module, relative to the gate file. Its default export builds a `GateEvaluatorDefinition`: configuration, dataset, scorers, model judge, the operative agent a trial runs, and the recorded contamination checks, calibration records, and drift checks. Rolling back an evaluator means pointing this at the prior approved module. |
 | `dataset` | The `{ id, version }` the evaluator must score. |
 | `baseline` | Required, no default: `{ kind: 'latest-passing-decision' }` (the newest decision of this gate that passed without an override, or that the override authority accepted as a permanent baseline change) or `{ kind: 'evaluation-run', path }` (a committed `evaluation-run` record). |
 | `sampleSize` | Required, no default: the minimum trial count for a stochastic judge, or held-out case count for a deterministic one. |
-| `regressionThresholds` | Per criterion and metric (`passFraction` or `meanScore`), the largest tolerated decrease from the baseline and its `severity`, `hard` or `overridable`. |
+| `regressionThresholds` | At least one, per criterion and metric (`passFraction` or `meanScore`): the largest tolerated decrease from the baseline and its `severity`, `hard` or `overridable`. |
 | `budgets` | `{ costUsd, latencyMilliseconds }` ceilings for the gate run. A run that reports no cost is checked for latency only. |
 | `overrideAuthority` | The principal who may override a blocking result. |
-| `expiry` | `maximumRevisionDistance` (commits, counted with `git rev-list --count`) and/or `maximumAgeMs`: how far a baseline may trail the run. |
+| `expiry` | `maximumRevisionDistance` (commits, counted with `git rev-list --count`) and/or `maximumAgeMs`: how far a baseline may trail the run. At least one is required. |
 
-Every gate run that gets past its configuration appends exactly one `gate-decision` record holding its inputs (the gate definition, evaluator identity and module, dataset digest, eligibility, per-trial evidence, baseline, and the overrides it weighed), its metrics and distributions (the embedded `evaluation-run` record), its findings, the decision, the actor, and the repository revision it ran at (`sourceRevision`, from `git rev-parse HEAD`). The history's SHA-256 digest covers all of it. `sourceRevision` is where the gate, its evaluator module, and the code under evaluation actually were; the configuration's `codeRevision` is what the evaluator declares it evaluated, and the fixture pins that to a fixed commit so its committed baseline stays comparable.
+Every gate run that gets past its configuration appends exactly one `gate-decision` record (`gateDecisionRecordSchema`, `GATE_RECORD_SCHEMA_VERSION` 1) holding its inputs (the gate definition, evaluator identity and module, dataset digest, eligibility, per-trial evidence, baseline, and the overrides it weighed), its metrics and distributions (the embedded `evaluation-run` record), its findings, the decision (`GATE_DECISIONS`), the actor, and the repository revision it ran at (`sourceRevision`, from `git rev-parse HEAD`). The history's SHA-256 digest covers all of it. `sourceRevision` is where the gate, its evaluator module, and the code under evaluation actually were; the configuration's `codeRevision` is what the evaluator declares it evaluated, and the fixture pins that to a fixed commit so its committed baseline stays comparable.
 
 `gates/fixture-regression.json` is an offline fixture gate: `src/fixtures/release-gate/` scripts the capitals agent and the model judge with `createScriptedGenerate` and commits the baseline run it is compared with.
 
+### Running a gate from code
+
+The command is a thin wrapper over the library:
+
+- `runReleaseGate({ gatesDirectory, gateId, history, actor, now?, runtime?, createId?, revisionDistance?, sourceRevision?, loadEvaluator? })` runs one gate and appends its decision. A configuration error is returned as `{ decision: 'configuration-error', issues }` and appends nothing; any other failure, such as the history store failing, rejects.
+- `loadGateEvaluator(modulePath)` imports an evaluator module and calls its default export; pass another `GateEvaluatorLoader` as `loadEvaluator` to build definitions some other way.
+- `decideGate(inputs)` decides from recorded inputs alone: infrastructure failure outranks insufficient evidence, which outranks an uncleared regression.
+- `toReleaseGateReport(results)` builds the command's report, and `RELEASE_GATE_EXIT_CODES` maps each outcome to its exit code.
+
 ### Overrides
 
-`recordOverride({ history, gate, override })` appends a `gate-override` record `{ gateDecisionId, actor, reason, expiresAt, permanentBaselineChange, evidence }` and never touches the decision. It rejects, with `OverrideRejectedError`, an override by anyone but the gate's `overrideAuthority`, by the principal who ran the decision, of a decision that does not exist, and of a decision it cannot answer: an expiring override needs at least one `overridable` regression, and a permanent baseline change needs a decision that neither passed without an override, failed on infrastructure, nor has any `hard` regression. `expiresAt` is mandatory unless `permanentBaselineChange` is set.
+`recordOverride({ history, gate, override })` appends a `gate-override` record (`gateOverrideRecordSchema`) `{ id, recordedAt, gateId, gateDecisionId, actor, reason, expiresAt, permanentBaselineChange, evidence }` and never touches the decision. It rejects, with `OverrideRejectedError` (whose `reason` is an `OverrideRejection`), an override by anyone but the gate's `overrideAuthority`, by the principal who ran the decision, of a decision that does not exist, and of a decision it cannot answer: an expiring override needs at least one `overridable` regression, and a permanent baseline change needs a decision that neither passed without an override, failed on infrastructure, nor has any `hard` regression. `expiresAt` is mandatory unless `permanentBaselineChange` is set, forbidden when it is, and must be after `recordedAt`. `assessOverride({ override, decision, gate, at, evaluatorDigest? })` is the validity check the gate applies when it reads an override later.
 
 The gate re-checks every override it reads, because validity also depends on the gate definition and the time. An expiring override clears a later regression of the same criterion and metric that is no worse than an `overridable` regression it answered, under the same evaluator digest, until `expiresAt`; the report lists it in `overrideIds`. No override ever clears a `hard` regression, nor one that was `hard` in the decision it answered, even after the gate demotes that threshold. Each override the gate cannot use is reported with its reason. A decision that passed only because an expiring override cleared a regression never becomes the `latest-passing-decision` baseline, so the regression returns once the override expires. A permanent baseline change instead makes the overridden decision's evidence the gate's `latest-passing-decision` baseline.
 
 ## Replay
 
 ```bash
-bun run --cwd packages/evaluation replay <gateDecisionRecordId>
-bun run --cwd packages/evaluation replay --gate <gateId> --latest
+bun run --cwd packages/evaluation replay <gateDecisionRecordId> [--store <path>]
+bun run --cwd packages/evaluation replay --gate <gateId> --latest [--store <path>]
 bun run --filter=@lostgradient/evaluation replay -- --gate <gateId> --latest
 ```
 
-`replay` reloads the evaluator module a decision names, only for its configuration, dataset, and scorers, and re-scores every trial through the same executor under its recorded seed and recorded run. Deterministic criteria re-execute on the stored reviewer-projection run; model-judge criteria read the recorded judge reply; no agent runs and no `GenerateFunction` is called. The baseline, eligibility, and overrides come from the record, so later history never changes a replay. It never writes.
+`replay` reloads the evaluator module a decision names, only for its configuration, dataset, and scorers, and re-scores every trial through the same executor under its recorded seed and recorded run. Deterministic criteria re-execute on the stored reviewer-projection run; model-judge criteria read the recorded judge reply; no agent runs and no `GenerateFunction` is called. The baseline, eligibility, and overrides come from the record, so later history never changes a replay. It never writes. From code, `replayGateDecision({ recordId } | { gateId }, { history, loadEvaluator? })` resolves the same `ReplayOutcome`, and `REPLAY_EXIT_CODES` maps each result to its exit code.
 
 | Exit | Result | Meaning |
 | --- | --- | --- |
@@ -243,7 +382,7 @@ bun run --cwd packages/evaluation promotion-signal issue <gateDecisionRecordId> 
 bun run --cwd packages/evaluation promotion-signal verify <signalId> [--store <path>]
 ```
 
-`issue --gate` issues from the newest decision of that gate, whatever its outcome. `--actor` names who issues the signal (default: the current user); `--store` is the same history file the gate writes.
+`issue --gate` issues from the newest decision of that gate (`latestGateDecision(history, gateId)`), whatever its outcome. `--actor` names who issues the signal (default: the current user); `--store` is the same history file the gate writes.
 
 | Field | Bound to |
 | --- | --- |
@@ -254,11 +393,11 @@ bun run --cwd packages/evaluation promotion-signal verify <signalId> [--store <p
 | `sourceRevision` | The repository revision the decision records it ran at. |
 | `gateDecisionRecordId`, `overrideRecordIds` | The decision, and the overrides that cleared a regression in it. |
 | `decidedAt`, `issuedAt`, `actor`, `expiresAt` | When the gate decided, when and by whom the signal was issued, and when it stops being evidence. |
-| `digest` | The SHA-256 of the signal's canonical JSON without `digest`. |
+| `digest` | `promotionSignalDigest(signal)`: the SHA-256 of the signal's canonical JSON without `digest`. |
 
-`issuePromotionSignal(gateDecisionRecordId, { history, currentRevision, actor, loadEvaluator, packageSourceRevision })` issues a signal, and appends one `promotion-signal` record, only when the decision passed, every override it relied on is still valid, it has not expired, and every bound value still holds: its recorded `sourceRevision` is the revision checked out now, and the evaluator module it names still builds the same evaluator identity and dataset version. A signal expires at the earliest of one day after the decision (`PROMOTION_SIGNAL_MAXIMUM_LIFETIME_MS`), the gate's `maximumAgeMs` after the decision, and the expiry of any override it relied on. Issuing twice from one decision gives two signals; neither changes the other.
+`issuePromotionSignal(gateDecisionRecordId, { history, currentRevision, actor, loadEvaluator, packageSourceRevision, now?, createId? })` issues a signal, and appends one `promotion-signal` record (`promotionSignalRecordSchema`, `PROMOTION_SIGNAL_SCHEMA_VERSION` 1; `promotionSignalSchema` validates the signal itself), only when the decision passed, every override it relied on is still valid, it has not expired, and every bound value still holds: its recorded `sourceRevision` is the revision checked out now, and the evaluator module it names still builds the same evaluator identity and dataset version. A signal expires at the earliest of one day after the decision (`PROMOTION_SIGNAL_MAXIMUM_LIFETIME_MS`), the gate's `maximumAgeMs` after the decision, and the expiry of any override it relied on. Issuing twice from one decision gives two signals; neither changes the other.
 
-`verifyPromotionSignal(signalId, current)` never writes. A signal is `expired` from its `expiresAt` on; otherwise it is `stale` when any bound value differs from the repository now, listing each such field with its bound and current value, and `valid` when none does.
+`verifyPromotionSignal(signalId, current)` never writes. A signal is `expired` from its `expiresAt` on; otherwise it is `stale` when any bound value differs from the repository now, listing each such field with its bound and current value, and `valid` when none does. `PROMOTION_SIGNAL_EXIT_CODES` maps each result to the command's exit code:
 
 | Exit | Result | Meaning |
 | --- | --- | --- |
@@ -277,6 +416,7 @@ A goal controller judges each finished attempt through `createGoalEvaluatorAdapt
 ```ts
 import { createEvaluator, createGoalEvaluatorAdapter } from '@lostgradient/evaluation';
 
+// Not awaited: `loadEvaluator` returns this same promise for every attempt.
 const evaluator = createEvaluator({ configuration, dataset, scorers, generate });
 const evaluateAttempt = createGoalEvaluatorAdapter({
   configuration: {
@@ -291,7 +431,7 @@ const evaluateAttempt = createGoalEvaluatorAdapter({
 const verdict = await evaluateAttempt(runResult, { signal });
 ```
 
-Each call runs the case through `runTrials` with a subject that replays the attempt's `RunResult`, so the attempt is judged exactly `repetitions` times and never retried. The verdict's `kind` is exactly COR-638's `ValidatorOutcome` kind union, and an error's `kind` is exactly its `ValidatorErrorKind`; `src/goal-adapter.test-d.ts` holds both equalities at compile time.
+Each call runs the case through `runTrials` with a subject that replays the attempt's `RunResult`, so the attempt is judged exactly `repetitions` times and never retried. The optional `runtime` (`clock`, `identifiers`, `monotonic`, and `random`) draws seeds and record ids and times each record; the real globals are used when it is omitted. The verdict's `kind` is exactly COR-638's `ValidatorOutcome` kind union, and an error's `kind` is exactly its `ValidatorErrorKind`; `src/goal-adapter.test-d.ts` holds both equalities at compile time.
 
 | Verdict | When |
 | --- | --- |
@@ -303,6 +443,53 @@ Each call runs the case through `runTrials` with a subject that replays the atte
 
 Every `pass`, `fail`, and `indeterminate` verdict, and every `error` from a trial, names the `evaluation-run` record it appended in `evidenceReference`, so `history.read(verdict.evidenceReference)` returns that evidence. `feedback` is exactly `toGeneratorProjection(aggregate).feedback`, built from trial counts alone, so no expected answer, reference material, held-out case id, criterion weight, or judge identity can reach the next attempt. Error messages are built from typed reasons and names; the raw failure is on `error.cause`, for reviewers only.
 
+## What this package does not do
+
+These limits are part of the contract. Code that needs more than this has to build it and own it.
+
+- **No retries, anywhere.** `evaluateCase`, `runTrials`, `checkJudgeDrift`, the release gate, and the goal adapter run each trial or item exactly once. An infrastructure failure is reported as `infrastructure-failure`, `indeterminate`, or `error`; it is never retried into a pass, and never counted as a failing case.
+- **No tie-breaking for disagreement.** A split past the variance policy is `disagreement`, and two judges that differ reconcile to `disagreement`. There is no majority vote, no preferred judge, and no automatic extra trial; a release gate treats unresolved disagreement as insufficient evidence.
+- **No claim that a model score is truth.** A model judge's score is evidence under a declared variance policy, calibrated against a human sample. Its prompt includes the case's expected answer, and nothing makes a live judge deterministic: only a replay from recorded judge output reproduces a decision exactly.
+- **Only one budget is enforced by the evaluator.** `budgets.perEvaluation.latencyMilliseconds` aborts a slow evaluation. `budgets.perEvaluation.costUsd` and both `budgets.perGateRun` values are recorded under the configuration digest but checked nowhere; the release gate enforces the ceilings in the gate file's own `budgets`, and a run whose trials report no cost estimate is checked for latency only.
+- **The judge's model settings are not applied for you.** `judge.model`, `judge.effort`, and `judge.tools` are recorded and digested, but the judge is called through the `generate` function you inject, with an empty toolbox. A reply that asks for a tool is malformed output, whatever `judge.tools` says.
+- **Calibration and contamination are attestations.** A contamination check is a statement the dataset owner records, not something this package computes. `isGateEligibleJudge` requires a calibration record for the exact judge revision but does not compare its `agreementRate` or `sampleSize` with any threshold.
+- **Generator redaction is exact-substring.** `toGeneratorProjection` removes verbatim copies of a held-out case id, the expected answer, reference material text, and calibration responses. A paraphrase, translation, or partial quote of them is not detected.
+- **Goal-adapter repetitions re-judge one attempt.** The adapter replays the same `RunResult` for every trial, so its repetitions measure the judge's variance, not the agent's. It never re-runs the agent.
+- **The release gate is local.** Nothing runs it on a schedule or blocks a merge on it, and a promotion signal publishes, tags, syncs, and deploys nothing.
+- **No migration or dual-read.** Configurations must declare `resultSchemaVersion: 1`, and history records carry schema version 1; a record of any other shape is corrupt, not upgraded.
+- **The history only grows.** There is no update, delete, compaction, or retention policy for history records. The commands share one local SQLite file; `append` is safe against a concurrent append of the same id, but nothing replicates or coordinates that file across machines.
+
+## API reference
+
+Every name below is exported from `@lostgradient/evaluation`, grouped by the source module that owns it.
+
+| Module | Values | Types |
+| --- | --- | --- |
+| `configuration.ts` | `evaluatorConfigurationSchema`, `parseEvaluatorConfiguration`, `EvaluatorConfigurationError` | `EvaluatorConfiguration`, `CriterionConfiguration`, `CriterionKind`, `CalibrationExample`, `ReferenceMaterial`, `ReferenceMaterialEntry`, `JudgeConfiguration`, `JudgeKind`, `EvaluationBudgets`, `ConfigurationIssue` |
+| `criteria.ts` | none | `CriterionScorers`, `AssertionScorer`, `HeuristicScorer`, `PolicyScorer`, `CriterionEvidence`, `PolicyEvidence` |
+| `rubric.ts` | `applyRubric` | `CriterionScore`, `CriterionResult`, `HardGateOutcome`, `RubricResult` |
+| `identity.ts` | `evaluatorIdentity`, `canonicalJson` | `EvaluatorIdentity` |
+| `evaluator.ts` | `createEvaluator` | `CreateEvaluatorOptions`, `Evaluator` |
+| `verdict.ts` | `EVALUATION_RESULT_SCHEMA_VERSION`, `AGENT_FAILURE_REASONS`, `isAgentFailureReason`, `INFRASTRUCTURE_FAILURE_REASONS`, `EvaluatorInfrastructureError` | `CaseEvaluation`, `CaseEvaluationBase`, `ScoredCaseEvaluation`, `AgentFailedCaseEvaluation`, `InfrastructureFailureCaseEvaluation`, `CaseVerdict`, `AgentFailureReason`, `InfrastructureFailureReason`, `EvaluatorInfrastructureErrorOptions` |
+| `judge.ts` | `renderJudgePrompt`, `judgeResponseSchema`, `JUDGE_RESPONSE_FORMAT` | `JudgePrompt`, `RecordedJudgeOutput` |
+| `trials.ts` | `runTrials`, `scoreTrials` | `RunTrialsOptions`, `ScoreTrialsOptions`, `TrialContext`, `TrialSubject`, `TrialRecord`, `TrialAggregate`, `AggregateStatistics`, `CriterionStatistics` |
+| `variance.ts` | `variancePolicySchema`, `wilsonInterval`, `WILSON_Z_95` | `VariancePolicy`, `WilsonInterval`, `TrialStatistics`, `ScoreStatistics` |
+| `disagreement.ts` | `reconcileJudges`, `DISAGREEMENT_REASONS` | `AggregateOutcome`, `Disagreement`, `DisagreementReason`, `TrialVerdict`, `JudgedCase`, `JudgeReconciliation` |
+| `datasets.ts` | `evaluationDatasetSchema`, `parseEvaluationDataset`, `CASE_VISIBILITIES`, `contaminationCheckSchema`, `parseContaminationCheck`, `isGateEligibleDataset`, `promoteCaseToPublic`, `DatasetOwnershipError` | `EvaluationDataset`, `EvaluationCase`, `CaseVisibility`, `ContaminationCheck`, `GateEligibleDatasetOptions`, `PromoteCaseOptions` |
+| `judge-drift.ts` | `judgeRevisionOf`, `checkJudgeDrift`, `calibrationSetSchema`, `parseCalibrationSet` | `JudgeRevision`, `JudgeUnderTest`, `CalibrationSet`, `CalibrationItem`, `JudgeDriftCheck`, `JudgeDriftOutcome`, `DriftComparison` |
+| `calibration.ts` | `calibrationRecordSchema`, `parseCalibrationRecord`, `driftCheckRecordSchema`, `judgeEligibility`, `isGateEligibleJudge` | `CalibrationRecord`, `DriftCheckRecord`, `GateEligibleJudgeOptions`, `JudgeEligibility` |
+| `projections.ts` | `toReviewerProjection`, `toGeneratorProjection` | `ReviewerProjection`, `GeneratorProjection`, `AggregateGeneratorProjection`, `TrajectoryStep`, `ErrorDescription` |
+| `evaluation-run.ts` | `evaluationRunRecordSchema`, `parseEvaluationRunRecord`, `EVALUATION_HISTORY_SCHEMA_VERSION` | `EvaluationRunRecord`, `EvaluationRunCase`, `EvaluationRunTrial` |
+| `history.ts` | `createEvaluationHistory`, `toEvaluationRunRecord`, `compareEvaluationRuns`, `recordDigest`, `HistoricalRecordExistsError`, `CorruptHistoricalRecordError` | `EvaluationHistory`, `HistoricalRecord`, `HistoryRecord`, `EvaluationRunRecordOptions`, `EvaluationRunComparison`, `ComparedRun`, `CriterionDelta`, `MetricDelta` |
+| `gate.ts` | `gateDefinitionSchema`, `parseGateDefinition`, `gateDecisionRecordSchema`, `gateOverrideRecordSchema`, `GATE_DECISIONS`, `GATE_RECORD_SCHEMA_VERSION` | `GateDefinition`, `GateDecision`, `GateDecisionRecord`, `GateOverrideRecord`, `GateEligibility`, `GateFindings`, `RecordedBaseline`, `Regression`, `RegressionMetric`, `RegressionSeverity` |
+| `release-gate.ts` | `runReleaseGate`, `decideGate`, `loadGateEvaluator`, `toReleaseGateReport`, `RELEASE_GATE_EXIT_CODES` | `RunReleaseGateOptions`, `GateRunResult`, `GateEvaluatorDefinition`, `GateEvaluatorLoader`, `GateDecisionInputs`, `GateDecisionOutputs`, `GateOutcome`, `GateReport`, `ReleaseGateReport` |
+| `override.ts` | `recordOverride`, `assessOverride`, `OverrideRejectedError` | `RecordOverrideOptions`, `AssessOverrideOptions`, `OverrideRejection` |
+| `replay.ts` | `replayGateDecision`, `REPLAY_EXIT_CODES` | `ReplayOptions`, `ReplaySelector`, `ReplayOutcome`, `ReplayDifference` |
+| `promotion.ts` | `issuePromotionSignal`, `verifyPromotionSignal`, `latestGateDecision`, `promotionSignalDigest`, `promotionSignalSchema`, `promotionSignalRecordSchema`, `PROMOTION_SIGNAL_SCHEMA_VERSION`, `PROMOTION_SIGNAL_MAXIMUM_LIFETIME_MS`, `PROMOTION_SIGNAL_EXIT_CODES` | `IssuePromotionSignalOptions`, `PromotionContext`, `PromotionBindings`, `PromotionSignal`, `PromotionSignalRecord`, `PromotionIssueOutcome`, `PromotionVerification`, `PromotionEvidenceReason`, `PromotionResult`, `StaleBinding` |
+| `goal-adapter.ts` | `createGoalEvaluatorAdapter` | `CreateGoalEvaluatorAdapterOptions`, `GoalEvaluatorConfiguration`, `GoalEvaluatorAdapter`, `GoalEvaluationOptions`, `GoalEvaluatorVerdict`, `GoalEvaluatorError`, `GoalEvaluatorErrorKind`, `GoalEvaluatorErrorCode` |
+
+`src/index.test.ts` pins the runtime export list, so a new value export fails that test until it is added there and here.
+
 ## Commands
 
 ```bash
@@ -312,6 +499,7 @@ bun run --cwd packages/evaluation history list
 bun run --cwd packages/evaluation release-gate --gate fixture-regression
 bun run --cwd packages/evaluation replay --gate fixture-regression --latest
 bun run --cwd packages/evaluation promotion-signal issue --gate fixture-regression
+bun run --cwd packages/evaluation promotion-signal verify <signalId>
 ```
 
 `test:coverage` fails below 100 percent line or function coverage of this workspace's `src/` and `scripts/`.
