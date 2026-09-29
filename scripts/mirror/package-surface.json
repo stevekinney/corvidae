@@ -740,7 +740,7 @@
         "!dist/**/*.fixture.*",
         "!dist/**/*-fixture.*",
         "!dist/**/*-fixtures.*",
-        "!dist/**/fixtures.*",
+        "!dist/session/fixtures.*",
         "!dist/**/test/**",
         "components.json"
       ],
