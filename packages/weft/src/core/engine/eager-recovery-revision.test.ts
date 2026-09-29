@@ -3,7 +3,7 @@
  * (COR-13). Every case restarts a fresh `Engine` on the same `MemoryStorage`
  * with a redeployed eager definition and drives `resume()` / `recoverAll()`.
  */
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { z } from 'zod';
 import { WORKFLOW_CATALOG_KEYS } from '../../storage/catalog-keys.ts';
@@ -11,7 +11,6 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { OWNERSHIP_CLAIM_KEYS } from '../../storage/ownership-keys.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 
 import { decode, encode } from '../codec.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
@@ -19,7 +18,9 @@ import { VersionMismatchError } from '../versioning.ts';
 import { ensureWorkflowCatalogReady } from './catalog-readiness.ts';
 import { getWorkflowRevisionDiagnostics } from './catalog-removal.ts';
 import { Engine } from './index.ts';
+import { getInternals } from './internals.ts';
 import { prepareResumeState } from './lifecycle/persist.ts';
+import { restampWorkflowRevision } from './lifecycle/resume-revision-restamp.ts';
 import { EagerRecoveryRevisionRefusedError } from './revision-errors.ts';
 
 const TYPE = 'eager-restamp';
@@ -41,9 +42,30 @@ function definitionFor(variant: Variant) {
       return workflow({ name: TYPE, version: '1.0.0', description: 'revision-b' }).execute(body);
     case 'incompatible':
       return workflow({ name: TYPE, version: '1.0.0', outputSchema: z.string() }).execute(body);
-    case 'version-bump':
+    default:
       return workflow({ name: TYPE, version: '1.1.0' }).execute(body);
   }
+}
+
+/** Resolves with the rejection reason of `promise`, failing if it fulfils. */
+/** Like {@link rejectionOf}, but asserts and narrows to the eager-recovery refusal. */
+async function refusalOf(promise: Promise<unknown>): Promise<EagerRecoveryRevisionRefusedError> {
+  const error = await rejectionOf(promise);
+  if (!(error instanceof EagerRecoveryRevisionRefusedError)) {
+    throw new Error(`Expected EagerRecoveryRevisionRefusedError, got ${String(error)}`, {
+      cause: error,
+    });
+  }
+  return error;
+}
+
+async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error('Expected the promise to reject');
 }
 
 async function readState(storage: MemoryStorage, id: string): Promise<WorkflowState> {
@@ -61,13 +83,31 @@ async function snapshot(storage: MemoryStorage, exclude: string[] = []) {
       entries.push([key, Buffer.from(value).toString('base64')]);
     }
   }
-  return entries.sort(([left], [right]) => (left < right ? -1 : 1));
+  return entries.toSorted(([left], [right]) => (left < right ? -1 : 1));
+}
+
+async function revisionOf(storage: MemoryStorage, id: string): Promise<string | undefined> {
+  const state = await readState(storage, id);
+  return state.revision;
+}
+
+async function statusOf(storage: MemoryStorage, id: string): Promise<string> {
+  const state = await readState(storage, id);
+  return state.status;
+}
+
+async function nonTerminalRuns(engine: Engine, revision: string): Promise<number> {
+  const diagnostics = await getWorkflowRevisionDiagnostics(engine, TYPE, revision);
+  return diagnostics.references.nonTerminalRuns;
 }
 
 /** Starts `ids` under revision A, parks them on a signal, and returns A. */
 async function seedParkedRuns(storage: MemoryStorage, ids: string[]): Promise<string> {
-  await using original = new Engine({ storage });
-  original.register(definitionFor('a'));
+  await using original = await Engine.create({
+    storage,
+    workflows: { [TYPE]: definitionFor('a') },
+    recover: false,
+  });
   for (const id of ids) {
     await original.start(TYPE, null, { id });
   }
@@ -76,19 +116,15 @@ async function seedParkedRuns(storage: MemoryStorage, ids: string[]): Promise<st
       label: `checkpoint for ${id}`,
     });
   }
-  const revision = (await readState(storage, ids[0]!)).revision;
+  const revision = await revisionOf(storage, ids[0]!);
   if (revision === undefined) {
     throw new Error('Expected the seeded run to carry a revision');
   }
   return revision;
 }
 
-async function redeployedEngine(
-  storage: MemoryStorage,
-  variant: Variant,
-  options: { ownership?: 'workflow-lease' } = {},
-) {
-  const engine = new Engine({ storage, checkpointHistory: 20, ...options });
+async function redeployedEngine(storage: MemoryStorage, variant: Variant) {
+  const engine = new Engine({ storage, checkpointHistory: 20 });
   engine.register(definitionFor(variant));
   await ensureWorkflowCatalogReady(engine);
   return engine;
@@ -102,7 +138,7 @@ async function revisionOfRedeploy(variant: Variant): Promise<string> {
   await waitForCondition(async () => (await scratch.get(KEYS.checkpoint('probe'))) !== null, {
     label: 'probe checkpoint',
   });
-  return (await readState(scratch, 'probe')).revision!;
+  return (await revisionOf(scratch, 'probe'))!;
 }
 
 describe('eager-type recovery revision policy (COR-13)', () => {
@@ -113,19 +149,13 @@ describe('eager-type recovery revision policy (COR-13)', () => {
     expect(revisionB).not.toBe(revisionA);
 
     await using engine = await redeployedEngine(storage, 'b');
-    expect(
-      (await getWorkflowRevisionDiagnostics(engine, TYPE, revisionA)).references,
-    ).toMatchObject({ nonTerminalRuns: 1 });
+    expect(await nonTerminalRuns(engine, revisionA)).toBe(1);
 
     const handles = await engine.recoverAll();
     expect(handles.map((handle) => handle.id)).toEqual(['restamp-run']);
-    expect((await readState(storage, 'restamp-run')).revision).toBe(revisionB);
-    expect(
-      (await getWorkflowRevisionDiagnostics(engine, TYPE, revisionA)).references.nonTerminalRuns,
-    ).toBe(0);
-    expect(
-      (await getWorkflowRevisionDiagnostics(engine, TYPE, revisionB)).references.nonTerminalRuns,
-    ).toBe(1);
+    expect(await revisionOf(storage, 'restamp-run')).toBe(revisionB);
+    expect(await nonTerminalRuns(engine, revisionA)).toBe(0);
+    expect(await nonTerminalRuns(engine, revisionB)).toBe(1);
 
     await handles[0]!.signal('continue', 'x');
     expect(await handles[0]!.result()).toBe('done:x');
@@ -135,7 +165,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
     const replay = await engine.replayTo('restamp-run', lastStep);
     expect(replay?.revision).toBe(revisionB);
     // No later write reverts the re-stamp.
-    expect((await readState(storage, 'restamp-run')).revision).toBe(revisionB);
+    expect(await revisionOf(storage, 'restamp-run')).toBe(revisionB);
   });
 
   it('re-stamps and reactivates a suspended run in one recovery', async () => {
@@ -163,9 +193,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       await using engine = await redeployedEngine(storage, 'incompatible');
       const before = await snapshot(storage);
 
-      const rejection = await throwingRejectionOf(engine.resume('a-refused'));
-      expect(rejection).toBeInstanceOf(EagerRecoveryRevisionRefusedError);
-      const refusal = rejection as unknown as EagerRecoveryRevisionRefusedError;
+      const refusal = await refusalOf(engine.resume('a-refused'));
       expect(refusal.persistedRevision).toBe(revisionA);
       expect(refusal.registeredRevision).toBe(revisionB);
       expect(refusal.reason).toBe('incompatible');
@@ -173,7 +201,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       expect(refusal.compatibilityReasons.length).toBeGreaterThan(0);
 
       const recovered: string[] = [];
-      const batchRejection = await throwingRejectionOf(
+      const batchRejection = await rejectionOf(
         engine.recoverAll({
           onRecoveredWorkflow: (info) => {
             recovered.push(info.workflowId);
@@ -183,37 +211,27 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       expect(batchRejection).toBeInstanceOf(EagerRecoveryRevisionRefusedError);
       expect(recovered).toEqual([]);
       expect(await snapshot(storage)).toEqual(before);
-      expect((await readState(storage, 'b-sibling')).status).toBe('running');
-      expect(
-        (await getWorkflowRevisionDiagnostics(engine, TYPE, revisionA)).references.nonTerminalRuns,
-      ).toBe(2);
-      expect(
-        (await getWorkflowRevisionDiagnostics(engine, TYPE, revisionB)).references.nonTerminalRuns,
-      ).toBe(0);
+      expect(await statusOf(storage, 'b-sibling')).toBe('running');
+      expect(await nonTerminalRuns(engine, revisionA)).toBe(2);
+      expect(await nonTerminalRuns(engine, revisionB)).toBe(0);
     });
 
     it('writes nothing under workflow-lease ownership other than claim churn', async () => {
       const storage = new MemoryStorage();
-      {
-        await using original = new Engine({ storage, ownership: 'workflow-lease' });
-        original.register(definitionFor('a'));
-        await original.start(TYPE, null, { id: 'leased' });
-        await waitForCondition(
-          async () => (await storage.get(KEYS.checkpoint('leased'))) !== null,
-          {
-            label: 'leased checkpoint',
-          },
-        );
-      }
-      await using engine = await redeployedEngine(storage, 'incompatible', {
+      await seedParkedRuns(storage, ['leased']);
+      await using engine = await Engine.create({
+        storage,
+        workflows: { [TYPE]: definitionFor('incompatible') },
         ownership: 'workflow-lease',
+        recover: false,
       });
+      await ensureWorkflowCatalogReady(engine as unknown as Engine);
       const exclude = [
         OWNERSHIP_CLAIM_KEYS.workflowOwnerEpoch('leased'),
         OWNERSHIP_CLAIM_KEYS.workflowOwnerHolder('leased'),
       ];
       const before = await snapshot(storage, exclude);
-      expect(await throwingRejectionOf(engine.resume('leased'))).toBeInstanceOf(
+      expect(await rejectionOf(engine.resume('leased'))).toBeInstanceOf(
         EagerRecoveryRevisionRefusedError,
       );
       expect(await snapshot(storage, exclude)).toEqual(before);
@@ -224,7 +242,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       const revisionA = await seedParkedRuns(storage, ['fork-source-incompatible']);
       await using engine = await redeployedEngine(storage, 'incompatible');
       const fork = await engine.fork('fork-source-incompatible');
-      expect((await readState(storage, fork.id)).revision).toBe(revisionA);
+      expect(await revisionOf(storage, fork.id)).toBe(revisionA);
     });
   });
 
@@ -236,11 +254,8 @@ describe('eager-type recovery revision policy (COR-13)', () => {
 
       await using engine = await redeployedEngine(storage, 'b');
       const before = await snapshot(storage);
-      const rejection = await throwingRejectionOf(engine.resume('absent-entry'));
-      expect(rejection).toBeInstanceOf(EagerRecoveryRevisionRefusedError);
-      expect((rejection as unknown as EagerRecoveryRevisionRefusedError).reason).toBe(
-        'persisted-revision-not-installed',
-      );
+      const refusal = await refusalOf(engine.resume('absent-entry'));
+      expect(refusal.reason).toBe('persisted-revision-not-installed');
       expect(await snapshot(storage)).toEqual(before);
     });
 
@@ -254,7 +269,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
         new Uint8Array([0xff, 0x00, 0x01]),
       );
       const before = await snapshot(storage);
-      const rejection = await throwingRejectionOf(engine.resume('corrupt-entry'));
+      const rejection = await rejectionOf(engine.resume('corrupt-entry'));
       expect(rejection).not.toBeInstanceOf(EagerRecoveryRevisionRefusedError);
       expect(await snapshot(storage)).toEqual(before);
     });
@@ -264,7 +279,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
     it('leaves a legacy run with no persisted revision untouched', async () => {
       const storage = new MemoryStorage();
       await seedParkedRuns(storage, ['legacy-run']);
-      const legacy = (await readState(storage, 'legacy-run')) as Record<string, unknown>;
+      const legacy = (await readState(storage, 'legacy-run')) as unknown as Record<string, unknown>;
       delete legacy['revision'];
       await storage.put(KEYS.workflow('legacy-run'), encode(legacy));
       const before = await storage.get(KEYS.workflow('legacy-run'));
@@ -307,7 +322,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       await using engine = await redeployedEngine(storage, 'version-bump');
 
       expect(
-        await throwingRejectionOf(engine.recoverAll({ versionMismatchPolicy: 'throw' })),
+        await rejectionOf(engine.recoverAll({ versionMismatchPolicy: 'throw' })),
       ).toBeInstanceOf(VersionMismatchError);
     });
   });
@@ -320,16 +335,33 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       await using engine = await redeployedEngine(storage, 'b');
 
       const beforeRecovery = await engine.fork('fork-source');
-      expect((await readState(storage, beforeRecovery.id)).revision).toBe(revisionA);
+      expect(await revisionOf(storage, beforeRecovery.id)).toBe(revisionA);
 
       await engine.resume('fork-source');
       const afterRecovery = await engine.fork('fork-source');
-      expect((await readState(storage, afterRecovery.id)).revision).toBe(revisionB);
+      expect(await revisionOf(storage, afterRecovery.id)).toBe(revisionB);
     });
   });
 
+  it('surfaces a lost CAS race from the dedicated re-stamp write', async () => {
+    await using storage = new MemoryStorage();
+    await using engine = await Engine.create({ storage, ownership: 'lease', recover: false });
+    spyOn(storage, 'conditionalBatch').mockResolvedValue(false);
+    const state = { id: 'raced', type: TYPE, status: 'running', updatedAt: 0 } as WorkflowState;
+
+    expect(
+      await rejectionOf(restampWorkflowRevision(getInternals(engine), state, 'sha256:b')),
+    ).toEqual(new Error('Revision re-stamp of workflow "raced" lost its CAS race.'));
+  });
+
   describe('prepareResumeState() direct', () => {
-    const checkpoint = { workflowId: 'unit', step: 0, version: '1', locals: {} } as never;
+    const checkpoint = {
+      workflowId: 'unit',
+      step: 0,
+      version: '1',
+      locals: {},
+      accumulatedResults: [],
+    } as never;
     const state = {
       id: 'unit',
       type: TYPE,
@@ -346,7 +378,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
         registeredCatalogRevisions: new Map<string, string>(),
         workflowCatalog: null,
       };
-      const rejection = await throwingRejectionOf(
+      const refusal = await refusalOf(
         prepareResumeState(
           internals as never,
           'unit',
@@ -357,10 +389,33 @@ describe('eager-type recovery revision policy (COR-13)', () => {
           callbacks,
         ),
       );
-      expect(rejection).toBeInstanceOf(EagerRecoveryRevisionRefusedError);
-      expect((rejection as unknown as EagerRecoveryRevisionRefusedError).reason).toBe(
-        'registered-revision-unknown',
+      expect(refusal.reason).toBe('registered-revision-unknown');
+    });
+
+    it("refuses with 'registered-revision-unknown' when the registered revision has no catalog entry", async () => {
+      const internals = {
+        options: { getNow: () => 0 },
+        storage: new MemoryStorage(),
+        registrations: new Map([[TYPE, {}]]),
+        registeredCatalogRevisions: new Map([[TYPE, 'sha256:registered']]),
+        workflowCatalog: {
+          resolveEntry: async (_type: string, revision: string) =>
+            revision === 'sha256:persisted' ? { manifest: {}, installedAt: 0 } : undefined,
+        },
+      };
+      const refusal = await refusalOf(
+        prepareResumeState(
+          internals as never,
+          'unit',
+          state,
+          checkpoint,
+          new Uint8Array(),
+          { version: '1' } as never,
+          callbacks,
+        ),
       );
+      expect(refusal.reason).toBe('registered-revision-unknown');
+      expect(refusal.registeredRevision).toBe('sha256:registered');
     });
 
     it('returns without reading registrations when the state has no revision', async () => {
@@ -374,7 +429,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       const prepared = await prepareResumeState(
         internals as never,
         'unit',
-        { ...state, revision: undefined } as WorkflowState,
+        { ...state, revision: undefined } as unknown as WorkflowState,
         checkpoint,
         new Uint8Array(),
         { version: '1' } as never,

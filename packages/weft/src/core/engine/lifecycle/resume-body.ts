@@ -35,6 +35,7 @@ import {
   workflowServicesResolverInfoFromState,
 } from './recovered-services.ts';
 import { assertSameGeneration, deriveResumeGeneration } from './resume-generation-guard.ts';
+import { restampWorkflowRevision } from './resume-revision-restamp.ts';
 import {
   enforceHistoryPolicyBeforeReplay,
   loadTerminalCleanupTrackedState,
@@ -63,6 +64,8 @@ export type SerializedResumeArgs = {
   resolvedRevision: string | undefined;
   expectedGeneration: ReturnType<typeof deriveResumeGeneration>;
   callbacks: LifecycleCallbacks;
+  /** Revision to durably re-stamp (COR-13); see `resume-revision-restamp.ts`. */
+  restampRevision?: string | undefined;
 };
 
 /**
@@ -361,6 +364,9 @@ async function performSerializedResume(
   }
 
   assertSameGeneration(workflowId, latestState, args.expectedGeneration);
+  if (args.restampRevision !== undefined) {
+    await restampWorkflowRevision(internals, latestState, args.restampRevision);
+  }
   // A suspended workflow must be flipped back to 'running' durably as part of
   // this serialized section, before the generator is relaunched. If we
   // relaunched but left the persisted status 'suspended', a crash right after
@@ -475,6 +481,7 @@ export async function performResumeAfterClaimAcquired(
       resolvedRevision,
       expectedGeneration: deriveResumeGeneration(state),
       callbacks,
+      restampRevision: preparedResumeState.restampRevision,
     }),
   );
 
