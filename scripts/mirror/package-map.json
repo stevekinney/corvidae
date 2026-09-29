@@ -11,12 +11,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.26.1",
+      "lastPublishedVersion": "0.27.1",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.26.1",
-        "gitHead": "3088015b862cd276ead44c2c3b81581d22190f22",
-        "corvidaeCommit": "a7679370f3e1a3b850299d13c9e768541a601722",
+        "version": "0.27.1",
+        "gitHead": "1017fff9b8e11a9bf254818661a6007ea86b92b3",
+        "corvidaeCommit": "841093b5c0568e38a5c8a83347762f88878cff33",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -56,6 +56,7 @@
             "src/cli/codegen-arguments.ts",
             "src/cli/codegen-emit-dedup.ts",
             "src/cli/codegen-emit-registry.ts",
+            "src/cli/codegen-emit-worker.ts",
             "src/cli/codegen-validate.ts",
             "src/cli/codegen.ts",
             "src/cli/command-suggestions.ts",
@@ -86,6 +87,8 @@
             "src/cli/validation.ts",
             "src/cli/version-check.ts",
             "src/cli/version.ts",
+            "src/cli/worker-arguments.ts",
+            "src/cli/worker-verify.ts",
             "src/cli/workflow-commands.ts",
             "src/client/__fixtures__/no-workflow-registry/consumer.ts",
             "src/client/__fixtures__/no-workflow-registry/tsconfig.json",
@@ -170,6 +173,7 @@
             "src/core/catalog/storage-io.ts",
             "src/core/catalog/types.ts",
             "src/core/catalog/workflow-catalog.ts",
+            "src/core/catalog/workflow-refresh.ts",
             "src/core/checkpoint.ts",
             "src/core/checkpoint/comparison.ts",
             "src/core/checkpoint/index.ts",
@@ -338,8 +342,11 @@
             "src/core/engine/lifecycle/start-precondition-attribution.ts",
             "src/core/engine/lifecycle/start-revision-resolution.ts",
             "src/core/engine/lifecycle/start-schedule-timing.ts",
+            "src/core/engine/lifecycle/start-services.ts",
             "src/core/engine/lifecycle/start-state.ts",
             "src/core/engine/lifecycle/start-terminal-conflict-purge.ts",
+            "src/core/engine/lifecycle/start-transient-state.ts",
+            "src/core/engine/lifecycle/start-worker-override.ts",
             "src/core/engine/lifecycle/start.ts",
             "src/core/engine/lifecycle/transition.ts",
             "src/core/engine/list-candidate-resolution.ts",
@@ -355,6 +362,7 @@
             "src/core/engine/operations-stream.ts",
             "src/core/engine/operations-time.ts",
             "src/core/engine/operations-wait-condition.ts",
+            "src/core/engine/operations-wait-signal.ts",
             "src/core/engine/owner-side-signal-poll.ts",
             "src/core/engine/owner-side-update-poll.ts",
             "src/core/engine/ownership-bootstrap.ts",
@@ -368,11 +376,13 @@
             "src/core/engine/persisted-data-version.ts",
             "src/core/engine/pinned-schedule-revision-count.ts",
             "src/core/engine/pinned-schedule-revision.ts",
+            "src/core/engine/purge-write-tracking.ts",
             "src/core/engine/queries.ts",
             "src/core/engine/registration.ts",
             "src/core/engine/registry-agnostic-engine.test-d.ts",
             "src/core/engine/remote-activity-broker.ts",
             "src/core/engine/retained-recovery-record-count.ts",
+            "src/core/engine/retention-scan.ts",
             "src/core/engine/retention.ts",
             "src/core/engine/review-list-entries.ts",
             "src/core/engine/reviews.ts",
@@ -394,6 +404,7 @@
             "src/core/engine/search-attribute-records.ts",
             "src/core/engine/second-instance-detector.ts",
             "src/core/engine/signals.ts",
+            "src/core/engine/sleep-resolver-registration.ts",
             "src/core/engine/sleep-timer-acknowledgements.ts",
             "src/core/engine/source-diagnostics.ts",
             "src/core/engine/source-install-fence.ts",
@@ -428,6 +439,7 @@
             "src/core/engine/validation/schedule-revision.ts",
             "src/core/engine/validation/schedule-warnings.ts",
             "src/core/engine/validation/schedule.ts",
+            "src/core/engine/wait-update-operations.ts",
             "src/core/engine/waiting-update-response.ts",
             "src/core/engine/wake-ownership-check.ts",
             "src/core/engine/wake-ownership-guard.ts",
@@ -611,6 +623,7 @@
             "src/core/task-ledger/task-ledger-transitions-cancellation.ts",
             "src/core/task-ledger/task-ledger-transitions.ts",
             "src/core/task-ledger/task-ledger-types.ts",
+            "src/core/task-ledger/task-ledger-worker-binding-codec.ts",
             "src/core/task-ledger/task-ledger.ts",
             "src/core/timeouts.ts",
             "src/core/type-ergonomics-client.test-d.ts",
@@ -924,7 +937,9 @@
             "src/server/operations/timeout-workflow.ts",
             "src/server/operations/update-schedule.ts",
             "src/server/operations/update-workflow.ts",
+            "src/server/operations/worker-deployment-routing.ts",
             "src/server/operations/worker-drain.ts",
+            "src/server/operations/worker-start-override-preview.ts",
             "src/server/operations/workflow-catalog-operation-helpers.ts",
             "src/server/operations/workflow-events-sse.ts",
             "src/server/operations/workflow-events-subscription.ts",
@@ -943,6 +958,7 @@
             "src/server/runtime/context.ts",
             "src/server/runtime/cors.ts",
             "src/server/runtime/event-broadcasting.ts",
+            "src/server/runtime/long-poll-drain.ts",
             "src/server/runtime/remote-activity-event-bridges.ts",
             "src/server/runtime/remote-activity-result-bridge.ts",
             "src/server/runtime/request-gate.ts",
@@ -968,11 +984,14 @@
             "src/server/runtime/websocket-worker-registration.ts",
             "src/server/runtime/websocket-worker.ts",
             "src/server/runtime/worker-disconnect-requeue.ts",
+            "src/server/runtime/worker-session-access.ts",
+            "src/server/runtime/worker-sessions.ts",
             "src/server/sequence-cursor.ts",
             "src/server/serve-internals.ts",
             "src/server/server-options.test-d.ts",
             "src/server/stdio-session.ts",
             "src/server/stdio-stream.test-support.ts",
+            "src/server/task-queue-ordering.ts",
             "src/server/task-queue-summary.ts",
             "src/server/task-queue-types.ts",
             "src/server/task-queue.ts",
@@ -1059,6 +1078,8 @@
             "src/testing/fake-timers.test-support.ts",
             "src/testing/index.ts",
             "src/testing/mocks.ts",
+            "src/testing/promise-outcome.test-support.ts",
+            "src/testing/real-timer-leak-guard.test-support.ts",
             "src/testing/replay-scenarios.test-support.ts",
             "src/testing/scheduler-contract.test-support.ts",
             "src/testing/storage-backends.test-support.ts",
@@ -1072,7 +1093,11 @@
             "src/testing/workflow-log-capture.test-support.ts",
             "src/worker/activity-table.ts",
             "src/worker/attempt-controllers.ts",
+            "src/worker/authoring.ts",
+            "src/worker/binding-helpers.ts",
+            "src/worker/deployment-routing.ts",
             "src/worker/execute-with-interceptors.ts",
+            "src/worker/generated-authoring.ts",
             "src/worker/heartbeat.ts",
             "src/worker/index.ts",
             "src/worker/long-poll-result-delivery.ts",
@@ -1114,7 +1139,11 @@
             "src/worker/registry/summary.ts",
             "src/worker/registry/types.ts",
             "src/worker/remote-activity-context.ts",
+            "src/worker/start-override-preview.ts",
+            "src/worker/strict-json.ts",
             "src/worker/task-result-outbox.ts",
+            "src/worker/versioning-policy.ts",
+            "src/worker/worker-authoring.test-d.ts",
             "src/worker/worker-protocol-incompatible-error.ts",
             "src/worker/workflow-activity-binding.ts",
             "src/workers/activity-runner.ts",
@@ -1129,15 +1158,15 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "c11baf254446196065e4553855ca6a2e5eee0e3693a9555b6722f9586d3395d2"
+          "digest": "83e7d7b69c039acfdba29fc213d167307519b65e0c61a22647b1e1862a326ddd"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "2da5e74ae542d26ce7b6cbb9791c237b62028d21965086aa5e232a6c19515120"
+          "digest": "dd34e144bc31253e0419b787ccbe3957d83ac1e43211b9151de78e2797aecc65"
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "6bb5593f9cdd8591ea9cbcb1c35ac1aa61dfa6703e34ea8a19164de0e72f58f1"
+          "digest": "64e6e6d72883960dcaf71abdda34785ee1f3b14e3c9a2720c72b754f3ac75043"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -1236,6 +1265,14 @@
             },
             {
               "path": "package/dist/cli/codegen-emit-registry.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/codegen-emit-worker.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/codegen-emit-worker.js",
               "executable": false
             },
             {
@@ -1476,6 +1513,22 @@
             },
             {
               "path": "package/dist/cli/version.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-arguments.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-arguments.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-verify.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-verify.js",
               "executable": false
             },
             {
@@ -2076,6 +2129,14 @@
             },
             {
               "path": "package/dist/core/catalog/workflow-catalog.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/catalog/workflow-refresh.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/catalog/workflow-refresh.js",
               "executable": false
             },
             {
@@ -3351,6 +3412,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/lifecycle/start-services.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-services.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/lifecycle/start-state.d.ts",
               "executable": false
             },
@@ -3364,6 +3433,22 @@
             },
             {
               "path": "package/dist/core/engine/lifecycle/start-terminal-conflict-purge.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-transient-state.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-transient-state.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-worker-override.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-worker-override.js",
               "executable": false
             },
             {
@@ -3487,6 +3572,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/operations-wait-signal.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/operations-wait-signal.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/owner-side-signal-poll.d.ts",
               "executable": false
             },
@@ -3583,6 +3676,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/purge-write-tracking.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/purge-write-tracking.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/queries.d.ts",
               "executable": false
             },
@@ -3612,6 +3713,14 @@
             },
             {
               "path": "package/dist/core/engine/retained-recovery-record-count.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/retention-scan.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/retention-scan.js",
               "executable": false
             },
             {
@@ -3764,6 +3873,14 @@
             },
             {
               "path": "package/dist/core/engine/signals.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/sleep-resolver-registration.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/sleep-resolver-registration.js",
               "executable": false
             },
             {
@@ -4036,6 +4153,14 @@
             },
             {
               "path": "package/dist/core/engine/validation/schedule.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/wait-update-operations.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/wait-update-operations.js",
               "executable": false
             },
             {
@@ -5260,6 +5385,14 @@
             },
             {
               "path": "package/dist/core/task-ledger/task-ledger-types.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/task-ledger/task-ledger-worker-binding-codec.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/task-ledger/task-ledger-worker-binding-codec.js",
               "executable": false
             },
             {
@@ -7471,11 +7604,27 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/operations/worker-deployment-routing.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/worker-deployment-routing.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/operations/worker-drain.d.ts",
               "executable": false
             },
             {
               "path": "package/dist/server/operations/worker-drain.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/worker-start-override-preview.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/worker-start-override-preview.js",
               "executable": false
             },
             {
@@ -7604,6 +7753,14 @@
             },
             {
               "path": "package/dist/server/runtime/event-broadcasting.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/long-poll-drain.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/long-poll-drain.js",
               "executable": false
             },
             {
@@ -7799,6 +7956,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/runtime/worker-session-access.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/worker-session-access.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/worker-sessions.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/worker-sessions.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/sequence-cursor.d.ts",
               "executable": false
             },
@@ -7820,6 +7993,14 @@
             },
             {
               "path": "package/dist/server/stdio-session.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/task-queue-ordering.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/task-queue-ordering.js",
               "executable": false
             },
             {
@@ -8427,11 +8608,43 @@
               "executable": false
             },
             {
+              "path": "package/dist/worker/authoring.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/authoring.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/binding-helpers.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/binding-helpers.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/deployment-routing.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/deployment-routing.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/worker/execute-with-interceptors.d.ts",
               "executable": false
             },
             {
               "path": "package/dist/worker/execute-with-interceptors.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/generated-authoring.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/generated-authoring.js",
               "executable": false
             },
             {
@@ -8739,11 +8952,35 @@
               "executable": false
             },
             {
+              "path": "package/dist/worker/start-override-preview.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/start-override-preview.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/strict-json.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/strict-json.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/worker/task-result-outbox.d.ts",
               "executable": false
             },
             {
               "path": "package/dist/worker/task-result-outbox.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/versioning-policy.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/versioning-policy.js",
               "executable": false
             },
             {
@@ -8831,7 +9068,7 @@
               "executable": false
             }
           ],
-          "digest": "ae9985b4a1a76abd4375788b083050df118662846a06d02d79cb9b45446b84df"
+          "digest": "c2de5f7fb4249cefc94537dfa38110102cbb3005396af6eb59b3575d07de2e50"
         }
       }
     },
