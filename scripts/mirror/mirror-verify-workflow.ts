@@ -12,8 +12,8 @@ import {
 } from './verify-steps.ts';
 
 /**
- * Renders `mirror-verify.yaml`: the one transform-emitted workflow whose jobs are exactly
- * `verifyTarget`'s steps, plus the target's existing release workflow, unchanged (D0's ruling).
+ * Renders `mirror-verify.yaml`: the one transform-emitted workflow whose verification operations
+ * come from `verifyTarget`'s steps, plus the target's existing release workflow, unchanged.
  *
  * Everything a step needs that is environment-specific — where tools come from, where scratch
  * files go — is resolved once, in {@link createWorkflowVerifyEnvironment}, into the *rendered*
@@ -121,33 +121,83 @@ export function shellWord(argument: string): string {
   return `'${argument.replaceAll("'", String.raw`'\''`)}'`;
 }
 
-/** One `VerifyStep` rendered as a GitHub Actions step. */
-function renderStep(step: VerifyStep): string {
-  const lines = [`      - name: ${step.description}`, `        working-directory: ${step.cwd}`];
+// GitHub rejects a `run` expression above 21,000 characters before it starts any job. Leave room
+// for YAML processing and future command growth rather than rendering right up to that limit.
+const MAX_RUN_LENGTH = 16_000;
+const FILE_DELIMITER = 'MIRROR_VERIFY_EOF';
+
+/** One bounded run body rendered as a GitHub Actions step. */
+function renderRunStep(description: string, cwd: string, runLines: readonly string[]): string {
+  const lines = [`      - name: ${description}`, `        working-directory: ${cwd}`];
+  if (runLines.length === 0) return lines.join('\n');
+  const runLength = runLines.join('\n').length + 1;
+  if (runLength > MAX_RUN_LENGTH) {
+    throw new Error(`${description} exceeds the GitHub Actions run expression limit`);
+  }
   // Every element here is one physical line — a multi-line heredoc body is split immediately
   // rather than pushed as one string carrying embedded `\n`s, because a YAML block scalar (`run:
   // |`) requires *every* line to carry its own indentation. Pushing a multi-line string and
   // indenting the array afterwards only indents each element's first line, leaving the rest at
   // column zero: valid-looking output that is not valid YAML (verified against a real parser
   // while building this — it broke exactly this way the first time).
-  const runLines: string[] = [];
-  if (step.files) {
-    for (const [path, contents] of Object.entries(step.files)) {
-      const delimiter = 'MIRROR_VERIFY_EOF';
-      runLines.push(
-        `cat > ${path} <<'${delimiter}'`,
-        ...contents.replace(/\n$/, '').split('\n'),
-        delimiter,
-      );
-    }
-  }
-  if (step.command.length > 0) runLines.push(step.command.map(shellWord).join(' '));
-  if (runLines.length === 0) return lines.join('\n');
   lines.push(
     '        run: |',
     ...runLines.map((line) => (line.length === 0 ? '' : `          ${line}`)),
   );
   return lines.join('\n');
+}
+
+/** Split a generated file into bounded append steps without changing its bytes or its order. */
+function renderFileSteps(step: VerifyStep, path: string, contents: string): string[] {
+  const rendered: string[] = [];
+  const sourceLines = contents.replace(/\n$/, '').split('\n');
+  let chunk: string[] = [];
+  let chunkLength = 0;
+
+  function flush(): void {
+    if (chunk.length === 0) return;
+    const redirect = rendered.length === 0 ? '>' : '>>';
+    rendered.push(
+      renderRunStep(`${step.description} (${path}, part ${rendered.length + 1})`, step.cwd, [
+        `cat ${redirect} ${path} <<'${FILE_DELIMITER}'`,
+        ...chunk,
+        FILE_DELIMITER,
+      ]),
+    );
+    chunk = [];
+    chunkLength = 0;
+  }
+
+  for (const line of sourceLines) {
+    const redirect = rendered.length === 0 ? '>' : '>>';
+    const overhead =
+      `cat ${redirect} ${path} <<'${FILE_DELIMITER}'`.length + FILE_DELIMITER.length + 2;
+    if (chunk.length > 0 && overhead + chunkLength + line.length + 1 > MAX_RUN_LENGTH) flush();
+    if (overhead + chunkLength + line.length + 1 > MAX_RUN_LENGTH) {
+      throw new Error(`${step.description} has a file line longer than the Actions run limit`);
+    }
+    chunk.push(line);
+    chunkLength += line.length + 1;
+  }
+  flush();
+  return rendered;
+}
+
+/** One shared verification operation, sometimes rendered as multiple bounded Actions steps. */
+function renderStep(step: VerifyStep): string[] {
+  const rendered = Object.entries(step.files ?? {}).flatMap(([path, contents]) =>
+    renderFileSteps(step, path, contents),
+  );
+  if (step.command.length > 0 || rendered.length === 0) {
+    rendered.push(
+      renderRunStep(
+        step.description,
+        step.cwd,
+        step.command.length > 0 ? [step.command.map(shellWord).join(' ')] : [],
+      ),
+    );
+  }
+  return rendered;
 }
 
 /**
@@ -194,16 +244,14 @@ export async function renderMirrorVerifyWorkflow({
   // part of `buildVerifySteps`'s shared list.
   const [installStep, ...remainingSteps] = steps;
   const rendered = [
-    installStep ? renderStep(installStep) : undefined,
+    ...(installStep ? renderStep(installStep) : []),
     renderScratchPreparationStep(environment.scratchDirectory),
-    ...remainingSteps.map(renderStep),
-  ]
-    .filter((entry): entry is string => entry !== undefined)
-    .join('\n\n');
+    ...remainingSteps.flatMap(renderStep),
+  ].join('\n\n');
 
   return [
     "# Generated by corvidae's mirror transform (COR-1286). Do not edit by hand: a sync overwrites",
-    "# this file every run. Its jobs are exactly verifyTarget's steps (scripts/mirror/verify-steps.ts",
+    "# this file every run. Its operations come from verifyTarget's steps (scripts/mirror/verify-steps.ts",
     "# in corvidae), rendered for this target's own CI so a pull request the mirror opens carries",
     '# the same verification the sync already ran before opening it.',
     'name: mirror-verify',

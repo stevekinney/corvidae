@@ -204,21 +204,26 @@ describe('renderMirrorVerifyWorkflow', () => {
     });
   });
 
-  test('a multi-line heredoc body has every one of its own lines indented, not just its first, inside its "run: |" block scalar', async () => {
-    // A structural indentation scan can't reliably tell "the block legitimately ended" apart from
-    // "this line should have been indented and was not" — a dedented line is exactly what both
-    // look like. So this checks against ground truth instead: `write-consumer-project`'s two
-    // heredoc bodies (`package.json`, `smoke.mjs`) are known multi-line strings, split the same way
-    // `renderStep` is documented to split them, and every one of those lines, reconstructed with
-    // the renderer's own indent, must appear verbatim and contiguously in the rendered output.
-    // This is the exact shape the bug had: a multi-line string pushed as one array element only
-    // had its first line indented by a later `.map()`, so every line after the first embedded
-    // `\n` stayed at column zero.
+  test('large consumer files stay under the Actions run limit and reconstruct byte-for-byte', async () => {
     await withFixture(async ({ targetDirectory, bunLockPath }) => {
+      const largePublished: PublishedPackage[] = [
+        {
+          ...published[0]!,
+          exports: {
+            ...published[0]!.exports,
+            ...Object.fromEntries(
+              Array.from({ length: 700 }, (_, index) => [
+                `./feature-${index}`,
+                { types: `./dist/feature-${index}.d.ts`, default: `./dist/feature-${index}.js` },
+              ]),
+            ),
+          },
+        },
+      ];
       const workflow = await renderMirrorVerifyWorkflow({
         targetDirectory,
         bunLockPath,
-        published,
+        published: largePublished,
         privateWorkspaces,
       });
       const environment = createWorkflowVerifyEnvironment({
@@ -230,25 +235,37 @@ describe('renderMirrorVerifyWorkflow', () => {
       const steps = buildVerifySteps(
         {
           installCommand: ['bun', 'install', '--frozen-lockfile', '--linker=isolated'],
-          published,
+          published: largePublished,
           privateWorkspaces,
           installArguments: ['--linker=isolated'],
         },
         environment,
       );
       const writeStep = steps.find((step) => step.kind === 'write-consumer-project');
-      expect(writeStep?.files).toBeDefined();
+      expect(writeStep?.files?.['smoke.mjs']?.length).toBeGreaterThan(21_000);
 
-      // `renderStep`'s own indentation constant, kept in sync by this test failing loudly if the
-      // renderer's indent ever changes without this assertion changing with it.
-      const indent = '          ';
-      for (const contents of Object.values(writeStep?.files ?? {})) {
-        const bodyLines = contents.replace(/\n$/, '').split('\n');
-        expect(bodyLines.length).toBeGreaterThan(1); // a single-line body would not have caught the bug
-        const expectedBlock = bodyLines
-          .map((line) => (line.length === 0 ? '' : `${indent}${line}`))
-          .join('\n');
-        expect(workflow).toContain(expectedBlock);
+      const parsed = Bun.YAML.parse(workflow) as {
+        jobs: { verify: { steps: { name?: string; run?: string }[] } };
+      };
+      const writeSteps = parsed.jobs.verify.steps.filter((step) =>
+        step.name?.startsWith('write the consumer smoke-test project'),
+      );
+      expect(writeSteps.length).toBeGreaterThan(3);
+
+      const consumerDirectory = await mkdtemp(join(tmpdir(), 'mirror-verify-consumer-'));
+      try {
+        for (const step of writeSteps) {
+          expect(step.run?.length).toBeLessThan(20_000);
+          const result = Bun.spawnSync(['bash', '-euc', step.run ?? ''], {
+            cwd: consumerDirectory,
+          });
+          expect(result.exitCode, result.stderr.toString()).toBe(0);
+        }
+        for (const [path, contents] of Object.entries(writeStep?.files ?? {})) {
+          expect(await Bun.file(join(consumerDirectory, path)).text()).toBe(contents);
+        }
+      } finally {
+        await rm(consumerDirectory, { recursive: true, force: true });
       }
     });
   });
