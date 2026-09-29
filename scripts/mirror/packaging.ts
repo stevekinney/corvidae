@@ -447,10 +447,15 @@ export function smokeScript(specifiers: readonly ImportableSpecifier[]): string 
           : `import * as module${index} from '${entry.specifier}';`,
       )
       .join('\n')}\n` +
-    `const loaded = [${specifiers.map((_, index) => `module${index}`).join(', ')}];\n` +
+    `const loaded = [\n  ${specifiers.map((_, index) => `module${index}`).join(',\n  ')}\n];\n` +
+    `const specifierNames = ${JSON.stringify(
+      specifiers.map((entry) => entry.specifier),
+      null,
+      2,
+    )};\n` +
     `for (const [index, module] of loaded.entries()) {\n` +
     `  if (typeof module !== 'object' || module === null) {\n` +
-    `    throw new Error(\`\${${JSON.stringify(specifiers.map((entry) => entry.specifier))}[index]} did not resolve to a module\`);\n` +
+    `    throw new Error(\`\${specifierNames[index]} did not resolve to a module\`);\n` +
     `  }\n` +
     `}\n`
   );

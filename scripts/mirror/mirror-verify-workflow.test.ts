@@ -212,7 +212,7 @@ describe('renderMirrorVerifyWorkflow', () => {
           exports: {
             ...published[0]!.exports,
             ...Object.fromEntries(
-              Array.from({ length: 350 }, (_, index) => [
+              Array.from({ length: 700 }, (_, index) => [
                 `./feature-${index}`,
                 { types: `./dist/feature-${index}.d.ts`, default: `./dist/feature-${index}.js` },
               ]),
