@@ -47,7 +47,6 @@ function definitionFor(variant: Variant) {
   }
 }
 
-/** Resolves with the rejection reason of `promise`, failing if it fulfils. */
 /** Like {@link rejectionOf}, but asserts and narrows to the eager-recovery refusal. */
 async function refusalOf(promise: Promise<unknown>): Promise<EagerRecoveryRevisionRefusedError> {
   const error = await rejectionOf(promise);
@@ -59,6 +58,7 @@ async function refusalOf(promise: Promise<unknown>): Promise<EagerRecoveryRevisi
   return error;
 }
 
+/** Resolves with the rejection reason of `promise`, failing if it fulfils. */
 async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
   try {
     await promise;
@@ -271,6 +271,11 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       const before = await snapshot(storage);
       const rejection = await rejectionOf(engine.resume('corrupt-entry'));
       expect(rejection).not.toBeInstanceOf(EagerRecoveryRevisionRefusedError);
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toContain(
+        WORKFLOW_CATALOG_KEYS.catalogEntry(TYPE, revisionA),
+      );
+      expect((rejection as Error).message).toContain('fails closed');
       expect(await snapshot(storage)).toEqual(before);
     });
   });
