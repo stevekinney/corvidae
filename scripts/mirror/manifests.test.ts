@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
   assertNothingDeferred,
@@ -380,8 +381,8 @@ describe('name mapping', () => {
     const plan = planFor('cinder', {
       extra: { 'packages/phantom/package.json': { name: '@lostgradient/phantom', private: true } },
     });
-    await expect(plan).rejects.toThrow(PackageMapError);
-    await expect(plan).rejects.toThrow(/@lostgradient\/phantom/);
+    expect(await throwingRejectionOf(plan)).toThrow(PackageMapError);
+    expect(await throwingRejectionOf(plan)).toThrow(/@lostgradient\/phantom/);
   });
 
   test('the command line transform exits non-zero on an unmapped workspace', async () => {
@@ -429,9 +430,9 @@ describe('name mapping', () => {
         },
       }),
       async (root) => {
-        await expect(planManifests({ corvidaeRoot: root, target: 'weft' })).rejects.toThrow(
-          /lists @lostgradient\/typescript under dependencies/,
-        );
+        expect(
+          await throwingRejectionOf(planManifests({ corvidaeRoot: root, target: 'weft' })),
+        ).toThrow(/lists @lostgradient\/typescript under dependencies/);
       },
     );
   });
@@ -585,8 +586,8 @@ describe('workspace and catalog resolution', () => {
           target: 'weft',
           packageMap: await packageMapWithNeverPublished(root, '@lostgradient/cryptography'),
         });
-        await expect(plan).rejects.toThrow(ManifestTransformError);
-        await expect(plan).rejects.toThrow(/never been published/);
+        expect(await throwingRejectionOf(plan)).toThrow(ManifestTransformError);
+        expect(await throwingRejectionOf(plan)).toThrow(/never been published/);
       },
     );
   });
@@ -607,8 +608,8 @@ describe('workspace and catalog resolution', () => {
       }),
       async (root) => {
         const plan = planManifests({ corvidaeRoot: root, target: 'weft' });
-        await expect(plan).rejects.toThrow(ManifestTransformError);
-        await expect(plan).rejects.toThrow(
+        expect(await throwingRejectionOf(plan)).toThrow(ManifestTransformError);
+        expect(await throwingRejectionOf(plan)).toThrow(
           /only a devDependencies edge to development-only tooling can be dropped/,
         );
       },
@@ -625,9 +626,9 @@ describe('workspace and catalog resolution', () => {
         },
       }),
       async (root) => {
-        await expect(planManifests({ corvidaeRoot: root, target: 'weft' })).rejects.toThrow(
-          /root catalog does not declare it/,
-        );
+        expect(
+          await throwingRejectionOf(planManifests({ corvidaeRoot: root, target: 'weft' })),
+        ).toThrow(/root catalog does not declare it/);
       },
     );
   });
@@ -1007,18 +1008,20 @@ describe("COR-1287: the target's own name for a mirror workspace is an alias, no
         'packages/lifecycle/package.json': { name: 'armorer', private: true, version: '0.0.1' },
       },
       async (targetDirectory) => {
-        await expect(
-          planFor('agent-bureau', {
-            targetDirectory,
-            extra: {
-              'packages/lifecycle/package.json': {
-                name: '@lostgradient/lifecycle',
-                private: true,
+        expect(
+          await throwingRejectionOf(
+            planFor('agent-bureau', {
+              targetDirectory,
+              extra: {
+                'packages/lifecycle/package.json': {
+                  name: '@lostgradient/lifecycle',
+                  private: true,
+                },
+                'packages/armorer/package.json': { name: 'armorer', private: true },
               },
-              'packages/armorer/package.json': { name: 'armorer', private: true },
-            },
-          }),
-        ).rejects.toThrow(/which is armorer's public name/);
+            }),
+          ),
+        ).toThrow(/which is armorer's public name/);
       },
     );
   });

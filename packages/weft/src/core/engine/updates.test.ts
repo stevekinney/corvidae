@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { UpdateRequest } from '../updates.ts';
 import { extractStandardSchemaIssues } from './update-validation.ts';
 import {
@@ -51,8 +52,10 @@ describe('engine update helpers', () => {
     } as any;
 
     expect(
-      update(internals, 'workflow-1', 'rename', { value: 'patched' }, undefined, callbacks),
-    ).rejects.toThrow('coordinated boom');
+      await throwingRejectionOf(
+        update(internals, 'workflow-1', 'rename', { value: 'patched' }, undefined, callbacks),
+      ),
+    ).toThrow('coordinated boom');
   });
 
   it('delivers a pending update found after waiter registration', async () => {

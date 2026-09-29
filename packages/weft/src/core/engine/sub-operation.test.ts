@@ -1,6 +1,7 @@
 import { describe, expect, it, mock } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { processStateCommitOperation } from './operations-state.ts';
 import { executeSubOperation, processWaitReviewOperation } from './sub-operation.ts';
 
@@ -170,7 +171,7 @@ describe('engine sub-operations', () => {
     };
 
     expect(
-      executeSubOperation(
+      await executeSubOperation(
         internals as never,
         'workflow-sub-operation',
         {
@@ -184,10 +185,10 @@ describe('engine sub-operations', () => {
         },
         callbacks as never,
       ),
-    ).resolves.toEqual(['first', 'second']);
+    ).toEqual(['first', 'second']);
 
     expect(
-      executeSubOperation(
+      await executeSubOperation(
         internals as never,
         'workflow-sub-operation',
         {
@@ -200,7 +201,7 @@ describe('engine sub-operations', () => {
         },
         callbacks as never,
       ),
-    ).resolves.toBe('winner');
+    ).toBe('winner');
   });
 
   it('propagates outer aborts into nested race controllers while work is pending', async () => {
@@ -256,17 +257,19 @@ describe('engine sub-operations', () => {
     outerController.abort('outer stopped');
     finishActivity('finished');
 
-    expect(racePromise).resolves.toBe('finished');
+    expect(await racePromise).toBe('finished');
   });
 
   it('rejects unsupported sub-operation types', async () => {
     expect(
-      executeSubOperation(
-        { options: { maxNestingDepth: 10 }, workflowNestingDepths: new Map() } as never,
-        'workflow-sub-operation',
-        { operationId: 'unknown:1', type: 'unknown' } as never,
-        createSubOperationCallbacks() as never,
+      await throwingRejectionOf(
+        executeSubOperation(
+          { options: { maxNestingDepth: 10 }, workflowNestingDepths: new Map() } as never,
+          'workflow-sub-operation',
+          { operationId: 'unknown:1', type: 'unknown' } as never,
+          createSubOperationCallbacks() as never,
+        ),
       ),
-    ).rejects.toThrow('Unsupported sub-operation type: unknown');
+    ).toThrow('Unsupported sub-operation type: unknown');
   });
 });

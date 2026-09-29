@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   assertTarballsPublishable,
   checkReadmePublicity,
@@ -593,28 +594,32 @@ describe('the consumer smoke test', () => {
         packageDirectory: directory,
         destination: join(scratch, 'tarballs'),
       });
-      await expect(
-        runConsumerSmokeTest({
-          directory: scratch,
-          packages: [
-            {
-              publicName: '@fixture/hollow',
-              tarball,
-              exports: { '.': './dist/index.js', './extra': './dist/extra.js' },
-            },
-          ],
-        }),
-      ).rejects.toThrow(PackagingError);
+      expect(
+        await throwingRejectionOf(
+          runConsumerSmokeTest({
+            directory: scratch,
+            packages: [
+              {
+                publicName: '@fixture/hollow',
+                tarball,
+                exports: { '.': './dist/index.js', './extra': './dist/extra.js' },
+              },
+            ],
+          }),
+        ),
+      ).toThrow(PackagingError);
     });
   }, 60_000);
 
   test('a smoke test with nothing importable is a failure rather than a vacuous pass', async () => {
-    await expect(
-      runConsumerSmokeTest({
-        directory: tmpdir(),
-        packages: [{ publicName: '@fixture/empty', tarball: '/dev/null', exports: {} }],
-      }),
-    ).rejects.toThrow(/no importable specifier/);
+    expect(
+      await throwingRejectionOf(
+        runConsumerSmokeTest({
+          directory: tmpdir(),
+          packages: [{ publicName: '@fixture/empty', tarball: '/dev/null', exports: {} }],
+        }),
+      ),
+    ).toThrow(/no importable specifier/);
   });
 
   // COR-1196. Before the fix, `smoke-node.mjs` wrote `import * as module1 from

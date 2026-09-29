@@ -45,7 +45,7 @@ describe('strategy helpers', () => {
   });
 
   it('treats an absent promise as a no-op rejection sink', async () => {
-    expect(swallowPromiseRejection(undefined)).resolves.toBeUndefined();
+    expect(await swallowPromiseRejection(undefined)).toBeUndefined();
   });
 
   it('resumes worker strategy execution with the latest checkpoint bytes', () => {

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create, Pax } from 'tar';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { readPackagePayload } from './package-payload.ts';
 
 async function packageTarball(
@@ -141,32 +142,36 @@ test('binds the digest to shipped bytes and executable mode', async () => {
 });
 
 test('rejects symbolic links and paths outside package/', async () => {
-  await expect(
-    readPackagePayload(await packageTarball({ symlinkPath: 'dist/link.js' })),
-  ).rejects.toThrow(/link|non-file|symbolic/i);
+  expect(
+    await throwingRejectionOf(
+      readPackagePayload(await packageTarball({ symlinkPath: 'dist/link.js' })),
+    ),
+  ).toThrow(/link|non-file|symbolic/i);
 
-  await expect(readPackagePayload(typedTarball('../outside.txt', 0x30))).rejects.toThrow(
-    /path|package|unsafe|traversal/i,
-  );
+  expect(
+    await throwingRejectionOf(readPackagePayload(typedTarball('../outside.txt', 0x30))),
+  ).toThrow(/path|package|unsafe|traversal/i);
 
-  await expect(
-    readPackagePayload(typedTarball('package/device', 0x33, Buffer.alloc(0))),
-  ).rejects.toThrow(/unsupported|device|non-file/i);
+  expect(
+    await throwingRejectionOf(
+      readPackagePayload(typedTarball('package/device', 0x33, Buffer.alloc(0))),
+    ),
+  ).toThrow(/unsupported|device|non-file/i);
 
-  await expect(readPackagePayload(typedTarball('package/./dist/index.js', 0x30))).rejects.toThrow(
-    /path|package|unsafe/i,
-  );
-  await expect(readPackagePayload(typedTarball('package', 0x30))).rejects.toThrow(
+  expect(
+    await throwingRejectionOf(readPackagePayload(typedTarball('package/./dist/index.js', 0x30))),
+  ).toThrow(/path|package|unsafe/i);
+  expect(await throwingRejectionOf(readPackagePayload(typedTarball('package', 0x30)))).toThrow(
     /root|directory/i,
   );
-  await expect(
-    readPackagePayload(typedTarball('package/dist/', 0x35, Buffer.alloc(0))),
-  ).resolves.toEqual(expect.objectContaining({ files: [] }));
+  expect(await readPackagePayload(typedTarball('package/dist/', 0x35, Buffer.alloc(0)))).toEqual(
+    expect.objectContaining({ files: [] }),
+  );
 });
 
 test('rejects a truncated archive', async () => {
   const archive = await packageTarball();
-  await expect(readPackagePayload(archive.slice(0, -20))).rejects.toThrow();
+  expect(await throwingRejectionOf(readPackagePayload(archive.slice(0, -20)))).toThrow();
 });
 
 test('validates and hashes effective PAX paths and ignores valid directories', async () => {
@@ -176,7 +181,7 @@ test('validates and hashes effective PAX paths and ignores valid directories', a
     Bun.gzipSync(Buffer.concat([new Pax({ path }).encode(), regular]));
   const payload = await readPackagePayload(extended(longPath));
   expect(payload.files).toEqual([{ path: longPath, executable: false }]);
-  await expect(readPackagePayload(extended('../outside.js'))).rejects.toThrow('path');
+  expect(await throwingRejectionOf(readPackagePayload(extended('../outside.js')))).toThrow('path');
   const directories = Buffer.concat([
     Buffer.from(Bun.gunzipSync(typedTarball('package/', 0x35, Buffer.alloc(0))).slice(0, 512)),
     Buffer.from(Bun.gunzipSync(typedTarball('package/dist/', 0x35, Buffer.alloc(0))).slice(0, 512)),
@@ -194,7 +199,9 @@ test('rejects absolute paths, backslashes, hard links, and FIFOs', async () => {
     ['package/hardlink', 0x31],
     ['package/fifo', 0x36],
   ] as const) {
-    await expect(readPackagePayload(typedTarball(path, type, Buffer.alloc(0)))).rejects.toThrow();
+    expect(
+      await throwingRejectionOf(readPackagePayload(typedTarball(path, type, Buffer.alloc(0)))),
+    ).toThrow();
   }
 });
 
@@ -227,11 +234,13 @@ test('rejects backslashes before the tar reader normalizes Windows paths', async
 });
 
 test('rejects duplicate archive entries instead of collapsing them', async () => {
-  await expect(
-    readPackagePayload(
-      await packageTarball({
-        entries: ['package/dist/index.js', 'package/dist/index.js'],
-      }),
+  expect(
+    await throwingRejectionOf(
+      readPackagePayload(
+        await packageTarball({
+          entries: ['package/dist/index.js', 'package/dist/index.js'],
+        }),
+      ),
     ),
-  ).rejects.toThrow(/duplicate/i);
+  ).toThrow(/duplicate/i);
 });

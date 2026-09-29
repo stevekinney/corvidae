@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
 import { probeHealth } from './health-probe.ts';
 
@@ -21,8 +22,8 @@ describe('probeHealth', () => {
     });
 
     expect(
-      probeHealth({ baseUrl: 'http://localhost:7233', headers: { 'x-api-key': 'secret' } }),
-    ).resolves.toBe(true);
+      await probeHealth({ baseUrl: 'http://localhost:7233', headers: { 'x-api-key': 'secret' } }),
+    ).toBe(true);
 
     expect(requestedUrl).toBe('http://localhost:7233/v1/health');
     expect(requestedHeaders).toEqual({ 'x-api-key': 'secret' });
@@ -31,7 +32,9 @@ describe('probeHealth', () => {
   test('throws when /v1/health responds with a non-ok status', async () => {
     restoreFetch = installFetchImplementation(async () => new Response('', { status: 503 }));
 
-    expect(probeHealth({ baseUrl: 'http://localhost:7233', headers: {} })).rejects.toThrow('503');
+    expect(
+      await throwingRejectionOf(probeHealth({ baseUrl: 'http://localhost:7233', headers: {} })),
+    ).toThrow('503');
   });
 
   test('propagates a network failure', async () => {
@@ -39,8 +42,8 @@ describe('probeHealth', () => {
       throw new TypeError('Failed to fetch');
     });
 
-    expect(probeHealth({ baseUrl: 'http://localhost:7233', headers: {} })).rejects.toThrow(
-      'Failed to fetch',
-    );
+    expect(
+      await throwingRejectionOf(probeHealth({ baseUrl: 'http://localhost:7233', headers: {} })),
+    ).toThrow('Failed to fetch');
   });
 });

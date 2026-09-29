@@ -3,6 +3,7 @@ import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import {
   additionalSourceRoots,
@@ -161,10 +162,10 @@ describe('the files that check a workspace’s emitted source', () => {
             targetDirectory: 'packages/weft',
           },
         ]);
-        await expect(plan).rejects.toThrow(SourceEmissionError);
-        await expect(plan).rejects.toThrow(omitted);
+        expect(await throwingRejectionOf(plan)).toThrow(SourceEmissionError);
+        expect(await throwingRejectionOf(plan)).toThrow(omitted);
         // Named so the message points at the table that has to change, not at the sibling one.
-        await expect(plan).rejects.toThrow('validationInputs');
+        expect(await throwingRejectionOf(plan)).toThrow('validationInputs');
       },
     );
   });
@@ -271,9 +272,9 @@ describe('the files that check cinder’s emitted source', () => {
             targetDirectory: 'packages/components',
           },
         ]);
-        await expect(plan).rejects.toThrow(SourceEmissionError);
-        await expect(plan).rejects.toThrow(omitted);
-        await expect(plan).rejects.toThrow('validationInputs');
+        expect(await throwingRejectionOf(plan)).toThrow(SourceEmissionError);
+        expect(await throwingRejectionOf(plan)).toThrow(omitted);
+        expect(await throwingRejectionOf(plan)).toThrow('validationInputs');
       },
     );
   });
@@ -389,8 +390,8 @@ describe('what counts as source', () => {
             targetDirectory: 'packages/weft',
           },
         ]);
-        await expect(plan).rejects.toThrow(SourceEmissionError);
-        await expect(plan).rejects.toThrow('README.md');
+        expect(await throwingRejectionOf(plan)).toThrow(SourceEmissionError);
+        expect(await throwingRejectionOf(plan)).toThrow('README.md');
       },
     );
   });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { composeGenerate, createFallbackGenerate } from '../src/generate-middleware';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type {
   GenerateContext,
   GenerateFunction,
@@ -122,7 +123,7 @@ describe('createFallbackGenerate', () => {
       },
     });
 
-    await expect(generate(createMockContext())).rejects.toThrow('auth error');
+    expect(await throwingRejectionOf(generate(createMockContext()))).toThrow('auth error');
   });
 
   it('throws last error when all providers fail', async () => {
@@ -134,7 +135,7 @@ describe('createFallbackGenerate', () => {
     };
 
     const generate = createFallbackGenerate({ providers: [first, second] });
-    await expect(generate(createMockContext())).rejects.toThrow('second failed');
+    expect(await throwingRejectionOf(generate(createMockContext()))).toThrow('second failed');
   });
 
   it('empty providers array throws immediately', () => {

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans, corvidaeRoot, packageMapForFixtures } from './committed-plans.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
 import {
@@ -494,8 +495,8 @@ describe('the guard against the real workspaces', () => {
         withDigest(dependency, '0'.repeat(64)),
       ]) {
         const refusal = planSurface({ corvidaeRoot, target, packageMap });
-        await expect(refusal).rejects.toThrow(StaleCrossTargetEdgeError);
-        await expect(refusal).rejects.toThrow(dependency);
+        expect(await throwingRejectionOf(refusal)).toThrow(StaleCrossTargetEdgeError);
+        expect(await throwingRejectionOf(refusal)).toThrow(dependency);
       }
     },
   );

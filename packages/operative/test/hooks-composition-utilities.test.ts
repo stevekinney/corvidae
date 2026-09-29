@@ -7,6 +7,7 @@ import {
   runOnce,
   withTimeout,
 } from '../src/hooks/composition';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 function createManualTimer() {
   const timeoutHandlers = new Map<number, () => void>();
@@ -225,7 +226,7 @@ describe('withTimeout', () => {
 
     const pendingResult = hook({ step: 0 });
     timer.fire();
-    await expect(pendingResult).rejects.toThrow('timed out');
+    expect(await throwingRejectionOf(pendingResult)).toThrow('timed out');
   });
 
   it('defaults to ignore when onTimeout is not specified', async () => {
@@ -268,7 +269,7 @@ describe('withTimeout', () => {
       timer.options,
     );
 
-    await expect(hook({ step: 0 })).rejects.toThrow('hook failed');
+    expect(await throwingRejectionOf(hook({ step: 0 }))).toThrow('hook failed');
     expect(timer.clearCount()).toBe(1);
   });
 
@@ -281,7 +282,7 @@ describe('withTimeout', () => {
       'error',
     );
 
-    await expect(hook({ step: 0 })).rejects.toThrow('plain failure');
+    expect(await throwingRejectionOf(hook({ step: 0 }))).toThrow('plain failure');
   });
 });
 
