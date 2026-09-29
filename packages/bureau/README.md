@@ -21,6 +21,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The Audit Trail](#the-audit-trail)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
+  - [Governed memory (COR-41)](#governed-memory-cor-41)
 - [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog)
   - [`createSupervisor` and `createAgentDiscoveryTool`](#createsupervisor-and-createagentdiscoverytool)
 - [Test utilities](#test-utilities)
@@ -40,6 +41,7 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 - Exposes durable primitives when a durable engine is composed: `signalSession` delivers a real fire-and-forget signal; `updateSession`/`querySession` are kept but unconditionally throw `BureauError('UNSUPPORTED_CAPABILITY')` (AB-192—the built-in `agentRun` workflow registers no `ctx.onUpdate`/`ctx.onQuery` handler; see `bureau.sessionVerbCapabilities`); `submitSessionInput` runs AB-42's fixed pre-admission checks (authorization, then session lifecycle, then capability/capacity) but—until a `@lostgradient/weft` version exposing WFT-84's durable mailbox is adopted—every authorized, non-terminal request unconditionally returns `{ outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' }` (AB-194); `submitSteeringCommand` admits `pause`, `resume`, `agent-identity`, `route`, `model`, `provider`, and `effort` for authorized in-memory and durable sessions, persisting durable commands before applying them; `policyRef` resolves configuration coordinates through `modelPolicy.users`, while an `agent-identity` `policyRef` remains `unsupported-capability` with `selector-unavailable`; plus full CRUD over durable schedules (`createSchedule`, `getSchedule`, `listSchedules`, `pauseSchedule`, `resumeSchedule`, `cancelSchedule`).
 - Emits a typed event surface (`BureauEventMap`) and live WebSocket/SSE-ready frames (`ServerFrame`) via `subscribeLiveFrames` and `streamEventToFrame`.
 - Records a durable, append-only audit trail of tool, run, and step lifecycle events when persistence is configured.
+- Gives the runs it composes governed memory (COR-41): recall through mandatory recall admission and persistence through write admission, both under an authority derived from the run's persisted request (see [Governed memory](#governed-memory-cor-41)).
 - Exposes a typed `AgentDefinitions` catalog (`bureau.agents`) and a synchronous `bureau.run(name, input, options?)` for dispatching to a statically named agent, alongside the session/durability-backed `createRun`.
 - Records durable parent-child relationships (`bureau.children`): dispatch a catalog agent as a child of a known run, then list, inspect, wait on, signal, and cancel it by a stable identifier, including after a restart, with optional signed delegation grants that bound how deep and how wide the tree below each child may grow. A top-level parent holds no grant, so its own dispatches are neither checked nor budgeted.
 
@@ -125,8 +127,8 @@ Every field except `agents` is optional.
 | `store` | `Store` | Supply your own `@lostgradient/operative` `Store` instead of letting `bureau` create one. |
 | `persistence` / `storage` | `PersistenceOptions \| StorageConfiguration \| ConditionalTextValueStore` | Configure session and key-value persistence. `storage` is shorthand for the common case; `persistence` is the full options-object form. |
 | `durableExecution` | `boolean` | Override the default (on for persistent `storage`, off for `memory`) for Weft-backed crash-and-resume execution. |
-| `memory` | `GovernedMemory` | COR-41—attach governed recall and persistence hooks. Recall runs through the governed memory's mandatory recall admission and is injected as a labeled `<memory-evidence>` system message; final assistant content is admitted as untrusted `conversation` memory (scanned, quota-checked, quarantined when poisoned). Both run under the run's memory authority, and a run without a persisted request authority gets no memory hooks. |
-| `memoryAuthority` | `BureauMemoryAuthorityOptions` | COR-41—`runCapabilities` (default `['memory:search', 'memory:write']`) Bureau delegates to each run through the request principal; explicit `memory:*` capabilities on a request can only narrow them. `purpose` defaults to `'conversation-memory'`. See `createRunMemoryAuthority`. |
+| `memory` | `GovernedMemory` | COR-41—attach governed recall and persistence hooks. Recall runs through the governed memory's mandatory recall admission and is injected as a labeled `<memory-evidence>` system message; final assistant content is admitted as untrusted `conversation` memory (scanned, quota-checked, quarantined when poisoned). Both run under the run's memory authority, and a recovered run whose request authority cannot be restored gets no memory hooks. Catalog runs (`bureau.run`) and `bureau.children` children get none either. See [Governed memory](#governed-memory-cor-41). |
+| `memoryAuthority` | `BureauMemoryAuthorityOptions` | COR-41—`runCapabilities` (default `['memory:search', 'memory:write']`) Bureau delegates to each run through the request principal; explicit `memory:*` capabilities on a request can only narrow them. `purpose` defaults to `'conversation-memory'`. See `createRunMemoryAuthority` and [Governed memory](#governed-memory-cor-41). |
 | `cache` | `CacheConfiguration` | Wrap the resolved generate function with response caching. |
 | `guardrails` **(deprecated)** | `GuardrailsOptions` | Attach `operative` guardrail detectors to every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
 | `identity` | `IdentityConfiguration` | Configure identity resolution for memory and session ownership. |
@@ -172,6 +174,7 @@ The most commonly used members:
 | `modelCatalog` | `ModelCatalogService` | AB-246—the model-catalog refresh service, present regardless of `D`. `dispose()` awaits any in-flight refresh before reporting rather than aborting it. |
 | `planSelection(request)` | `SelectionPlan` | AB-64/AB-250—builds a full `SelectionPlan` for `request` against this bureau's CURRENT model catalog and `BureauOptions.modelPolicy` configuration. Synchronous and side-effect-free: starts no run, refreshes no catalog, dispatches no event. `request.principal` selects the per-principal `UserModelConfiguration`, the same value `BureauRunOptions.principal` carries for an actual run. |
 | `run(name, input, options?)` | `AgentRun<...>` | Synchronous dispatch to a named catalog agent. |
+| `memory` | `GovernedMemory \| undefined` | COR-41—the governed memory passed as `BureauOptions.memory`, for host-side reads, legal holds, retention sweeps, deletions, and deletion propagation under the host's own authority. See [Governed memory](#governed-memory-cor-41). |
 | `children` | `BureauChildren` | COR-772—dispatch a catalog agent as the child of a run this bureau knows, then `list`/`get`/`wait`/`signal`/`cancel` it by its stable identifier, including after a restart. See [Parent-child topology](#parent-child-topology-cor-772). |
 | `createRun(request)` **(deprecated)** | `Promise<RunSummary>` | Create and start a run against a session. Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
 | `submitSchedulerTask(request)` | `Promise<SubmitSchedulerTaskResponse>` | Queue a task on the in-process scheduler. |
@@ -452,6 +455,108 @@ subscription.unsubscribe();
 `subscribeEventHistory` replays every event after `since`, then transitions to live delivery with no gap and no duplicate at the handoff, built entirely on `FleetEventFeed.subscribe()`—Weft's own race-free replay-then-tail composition—so this module adds no sequencing of its own. Disposing one subscription (`unsubscribe()`, or aborting `options.signal`) stops delivery to that listener only; a second, independent subscription to the same owner is unaffected, and the underlying `FleetEventFeed` is released only when the whole store's `dispose()` runs (Gateway's paging/SSE/WebSocket projection—AB-91's `ab91-03`—remains a separate, not-yet-built slice).
 
 `bureau.shutdown()`/`bureau.dispose()` dispose the producer, then this store (an `'event-history'` `BureauShutdownOwnerReport` row) in the same drain ordering as the audit trail, before the durable engine and raw storage are torn down.
+
+### Governed memory (COR-41)
+
+Pass a `GovernedMemory` as `BureauOptions.memory`, and every run Bureau composes recalls through mandatory recall admission and stores its final answer through write admission, both under an authority derived from the run's persisted request. The host builds the instance with `createGovernedMemory()` from `@lostgradient/memory`, so the host owns its storage, ledger, and policy. Bureau calls `memory.init()` while it composes and calls `memory.close()` without awaiting it when it shuts down. `bureau.memory` is the same instance, for the governance work the host does itself. The [memory README's governed memory section](../memory/README.md#governed-memory) is the API reference, and [Memory governance and lifecycle evaluation](../../documentation/memory-governance.md) covers the lifecycle across packages.
+
+This example runs in [`src/memory-governance-guide.test.ts`](./src/memory-governance-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau` and asserts every commented result. It uses the deprecated `generate`, `stopWhen`, and `createRun` fields, because only the runs Bureau composes itself get memory hooks:
+
+```typescript
+import { createBureau } from '@lostgradient/bureau';
+import {
+  createGovernedMemory,
+  createMemoryAuthority,
+  createMemoryGovernanceLedger,
+  createMemoryGovernancePolicy,
+  createMockEmbedder,
+  createWeftMemoryRecordStorage,
+} from '@lostgradient/memory';
+import { createMockGenerate, stopWhen, waitForRunState } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/weft';
+
+const storage = new MemoryStorage();
+const memory = createGovernedMemory({
+  storage: createWeftMemoryRecordStorage(storage),
+  ledger: createMemoryGovernanceLedger(storage),
+  embedder: createMockEmbedder(64), // use a real embedder in production
+  policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
+});
+
+const bureau = await createBureau({
+  agents: {},
+  generate: createMockGenerate([{ content: 'Booked seat 14C for Alice.', toolCalls: [] }]),
+  stopWhen: stopWhen.noToolCalls(),
+  memory,
+  // A caller-supplied request authority is re-validated before every run.
+  requestAuthorityValidator: () => true,
+});
+
+const run = await bureau.createRun({
+  message: 'Book the 9:40 to Denver.',
+  sessionId: 'session-42', // the memory collection this run recalls from and writes to
+  requestContext: {
+    authority: {
+      principalId: 'user:alice',
+      tenantId: 'acme',
+      ownerId: 'alice',
+      capabilities: ['tools:execute'],
+      authorizationRevision: 'authorization:7',
+    },
+  },
+});
+await waitForRunState(bureau, run.id);
+
+// The host reads memory with its own authority, never with the run's.
+const auditor = createMemoryAuthority({
+  principal: { kind: 'governance', id: 'governance:auditor' },
+  tenantId: 'acme',
+  ownerId: 'alice',
+  purpose: 'audit',
+  capabilities: ['memory:list', 'memory:inspect'],
+  policyRevision: 'authorization:7',
+  projection: 'audit',
+});
+const [stored] = await bureau.memory!.list(auditor, { collection: 'session-42' });
+console.log(stored?.content); // 'Booked seat 14C for Alice.'
+console.log(stored?.source); // 'conversation'
+console.log(stored?.trust); // 'untrusted'
+console.log(stored?.governance?.attribution.delegationChain.map((link) => link.principal.kind));
+// ['service', 'user', 'run']
+
+await bureau.dispose();
+```
+
+**Which runs get memory.** Bureau registers its two memory hooks in every run it composes itself: `createRun` runs, `submitSchedulerTask` tasks, durable schedule fires, and durable runs it recovers after a restart. A catalog run dispatched through `bureau.run(name, input)`, durable or not, gets neither hook, and neither does a `bureau.children` child, which is a catalog run too. Those hooks close over a Bureau session, and a catalog run has none (see `createRuntimeComposition`'s comment on Bureau invariants). A recovered run whose persisted request authority cannot be restored gets no memory hooks at all.
+
+**How a run's authority is derived.** `createRunMemoryAuthority(requestContext, { runId }, options.memoryAuthority)` builds a three-link delegation chain: a `service` principal with id `bureau` holding `memoryAuthority.runCapabilities`, then the request principal (`requestPrincipal(principalId)`) holding the capabilities granted to it, then the run itself as a `run` principal whose id is the run id. A `submitSchedulerTask` task has no run id, so Bureau passes its task id instead, and the task id becomes the `run` principal's id. Tenant, owner, and authorization revision come from the request authority, the purpose from `memoryAuthority.purpose` (`'conversation-memory'` by default), and the projection is `bureau`. `runCapabilities` defaults to `DEFAULT_RUN_MEMORY_CAPABILITIES`, which is `memory:search` and `memory:write`. When the request authority names explicit `memory:*` capabilities, they can only narrow that grant. A request that names none receives it unchanged. An empty grant does not turn memory off. With `runCapabilities: []`, or with explicit request `memory:*` capabilities that share nothing with `runCapabilities`, both hooks stay attached, and every run's recall and write are refused as `missing-capability`. Each refusal is recorded in the governance ledger as a `memory.access.denied` event and passed to `onEvent`, so a sink that throws still fails the run. To attach no memory hooks at all, leave `BureauOptions.memory` unset.
+
+The request authority is the run's `requestContext` when the caller supplies one. An authority whose `authorizationRevision` is not Bureau's own must pass `requestAuthorityValidator` before every run, or `createRun` throws `CONFLICT`. Without a `requestContext`, Bureau builds one: principal `request.principal`, or `run:<runId>` when there is none, tenant `bureau`, and owner the agent name (`bureau` by default). Every such run of one agent therefore shares one owner partition, separated only by session. Scheduled work, meaning schedule fires and `submitSchedulerTask` tasks, runs under a `service` request principal whose id is `service:scheduler`, in tenant `bureau`, owned by the agent name (for a task, its `metadata.agentName`, or `bureau`).
+
+**What the hooks do.**
+
+Both hook factories are exported from `@lostgradient/bureau`. Bureau builds its hooks once per run, from the run's memory authority and its session id, which is also the memory collection.
+
+| Factory, registered as | When | What it does |
+| --- | --- | --- |
+| `createMemoryRecallHook(memory, authority, sessionId)`, registered as `bureau:memory-recall` (`prepareStep`) | Step 0 only, when the conversation has a user message with string content | Calls `recallForModel(authority, latestUserMessage, { collection: sessionId, limit: 5, contextId: authority.principal.id })`. The `contextId` is the run id, or the task id for a `submitSchedulerTask` task. When any evidence is admitted, it appends `bundle.rendered` as a system message whose metadata is `memoryEvidence: { sessionId, recordIds, withheld }`. |
+| `createMemoryPersistHook(memory, authority, sessionId, runId?)`, registered as `bureau:memory-persist` (`onStep`) | The final step, when its content is not blank | Calls `write(authority, content, { collection: sessionId, source: 'conversation', memoryClass: 'episodic', metadata: { step, replay: 'effectful' }, dedupeKey })`. `dedupeKey` is `'<runId>:<step>'` when the hook was built with a `runId`. A replayed step's write then returns `duplicate` without storing anything, provided the governed memory's storage implements `getByDedupeKey()` and `putOnce()`, as both bundled backends do. On storage with neither method the key is ignored and the replayed write is stored again, and without `putOnce()` a replay racing the original write can store it twice. A hook built without a `runId` writes with no dedupe key. A rejected or quarantined write is recorded in the governance ledger and never reaches the run. A write that throws does reach it: see **What Bureau leaves to the host** below. |
+
+Bureau passes a `runId` to the persistence hook for `createRun` runs, durable schedule fires, and recovered runs. It passes none for a `submitSchedulerTask` task: the task's answer is written with no dedupe key, and the task id stands in as the run principal, the recall `contextId`, and the session, so each task recalls from and writes to a collection named after its own task id.
+
+Both hooks are classified `replay: 'effectful'`: recall writes ledger events and can quarantine a poisoned record, and persistence writes a record. When a recovered step runs again, recall is safe to repeat: the step's conversation is rebuilt, and a record quarantined the first time is simply absent. Persistence is a no-op on the repeat only when the run has a run id and the governed memory's storage honors dedupe keys, as described above. Nothing deduplicates a repeated write from a `submitSchedulerTask` task, even when a durable engine runs the task as a durable workflow.
+
+**One predicate for every projection.** Bureau adds no memory check of its own and has no path around the governed memory: every hook call goes through `decideMemoryAccess()`, the same predicate every projection uses, with the same redaction decision. The memory package's `test/governance/predicate.test.ts` checks every projection against every operation and resource shape and expects identical decisions.
+
+| Projection | What ships for it |
+| --- | --- |
+| `bureau` | The two hooks above, under `createRunMemoryAuthority()`. |
+| `tool` | `createGovernedMemoryTools()`'s default authority. Bureau does not add these tools to runs. A host that adds them to a toolbox must give the request explicit `memory:*` capabilities, because the tools read the request authority, not `runCapabilities`. |
+| `agent`, `child` | `attenuateMemoryAuthority()` for a host to derive a narrower authority. Bureau derives none for catalog agents or children. |
+| `a2a`, `mcp` | Nothing: this repository has no A2A or MCP memory adapter. An adapter records the projection on the authority it builds and calls the governed memory like any other caller. |
+| `audit`, `administrative` | The host's own reads, legal holds, retention sweeps, and deletions through `bureau.memory`, under the host's own authority. |
+
+**What Bureau leaves to the host.** Governance events go to the governed memory's ledger and its `onEvent` sink. Bureau does not copy them into `bureau.auditTrail`, whose `AUDIT_EVENT_TYPES` has no memory entries. Read them with `bureau.memory.listEvents()`. Bureau does not catch what a memory hook throws, and governed memory awaits `onEvent` inside each call, so a sink that throws fails the run. Step 0's recall records an event, so the run ends with status `error` and an `AgentRunError` of kind `generate`, before any answer is written. A sink that throws only on the final answer's `memory.write.admitted` event ends the run with an `AgentRunError` of kind `policy`, after the answer is stored. Give governed memory an `onEvent` that never throws. Bureau never calls `processDeletionPropagation()`, `sweepRetention()`, or `expireWorkingMemory()`, and never deletes memory. Its hooks write only `episodic` records, so a working-memory record never comes from Bureau. Schedule those calls in the host, under a service or governance authority.
 
 ## `AgentDefinitions` and the Agent Catalog
 

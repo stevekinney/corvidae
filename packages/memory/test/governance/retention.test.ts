@@ -22,6 +22,12 @@ describe('retentionExpiry (COR-806 per-class retention)', () => {
     }
   });
 
+  it('keeps episodic memory on its event clock after supersession', () => {
+    expect(
+      retentionExpiry({ memoryClass: 'episodic', eventAt: 1000, invalidatedAt: 5000 }, rules),
+    ).toBe(1000 + 90 * DAY);
+  });
+
   it('never clock-expires working, identity, or resource memory', () => {
     for (const memoryClass of ['working', 'identity', 'resource'] as const) {
       expect(

@@ -138,14 +138,19 @@ export interface MemoryDeletionResult extends MemoryOperationResult {
    * vocabulary. Present whenever `receipt` is.
    *
    * - `completed`: removed, so it is no longer readable or recallable, even
-   *   while bounded-async rows are still `pending`. A summary derived from it
-   *   stays stored until the receipt's `summaries` row completes, and until
-   *   then no other bounded-async row claims completion.
+   *   while bounded-async rows are still `pending`. After a source deletion, a
+   *   summary its lineage reaches stays stored until the receipt's `summaries`
+   *   row completes, and until then no other bounded-async row claims
+   *   completion. A projection deletion removes only its own record, so
+   *   records derived from it stay stored.
    * - `exempt`: a legal hold holds the deletion, so the record stays stored
-   *   and the deletion re-queues when the hold is released.
+   *   and the deletion re-queues when the hold is released. A hold on the
+   *   record holds it and, for a source deletion only, so does a hold on
+   *   anything its lineage reaches.
    * - `failed`: the step that removes it failed, so the record stays stored.
-   *   Requesting the deletion again, or the next propagation pass while the
-   *   receipt is open, retries the same receipt.
+   *   Requesting the deletion again retries the same receipt, and so does
+   *   each propagation pass while the receipt is open when the failed step is
+   *   the synchronous lane.
    *
    * A summary deleted as a projection is removed in the bounded-async lane,
    * so its row can also be `pending` or `unknown`.
@@ -250,7 +255,7 @@ export type MemoryDeletionPropagation = Partial<
   Record<AsynchronousDeletionTarget, MemoryDeletionPropagator | 'not-retained'>
 >;
 
-/** The redacted form of a governance event handed to `onEvent` (for example, Bureau's audit trail). */
+/** The redacted form of a governance event handed to `onEvent` (for example, for a host's audit trail). */
 export interface MemoryGovernanceNotification {
   readonly type: string;
   readonly outcome: string;
@@ -271,6 +276,11 @@ export interface CreateGovernedMemoryOptions {
   readonly textSearchProvider?: TextSearchProvider;
   readonly propagation?: MemoryDeletionPropagation;
   readonly runtime?: RuntimeServices;
+  /**
+   * Awaited inside each governed call, after its event is appended to the
+   * ledger. A throw or rejection escapes the call with its change and its
+   * ledger event already stored, so the sink should never throw.
+   */
   readonly onEvent?: (notification: MemoryGovernanceNotification) => void | Promise<void>;
 }
 

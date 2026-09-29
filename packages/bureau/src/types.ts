@@ -298,7 +298,13 @@ export interface PersistenceOptions {
  * no memory hooks at all.
  */
 export interface BureauMemoryAuthorityOptions {
-  /** Defaults to `['memory:search', 'memory:write']`; `[]` disables memory for every run. */
+  /**
+   * Defaults to `['memory:search', 'memory:write']`. `[]` does not detach the
+   * memory hooks: every run's recall and write are refused as
+   * `missing-capability`, and each refusal is recorded as a
+   * `memory.access.denied` event and passed to `onEvent`. Leave
+   * {@link BureauOptions.memory} unset to attach no memory hooks.
+   */
   readonly runCapabilities?: readonly MemoryCapability[];
   /** Recorded on every memory operation. Defaults to `'conversation-memory'`. */
   readonly purpose?: string;

@@ -445,7 +445,9 @@ Every `pass`, `fail`, and `indeterminate` verdict, and every `error` from a tria
 
 ## Memory lifecycle evaluation
 
-The memory-lifecycle suite (COR-755) measures whether a memory architecture makes an agent's final action better, not whether it retrieves text. It runs one versioned scenario set against four memory baselines under one compute envelope, checks each run's final action against a deterministic environment, and feeds a release gate. It lives in `src/memory-lifecycle/` and uses this package's own evaluator, `scoreTrials`, history, release gate, and replay: it adds no runner and no agent loop, and it changes nothing in `@lostgradient/memory`.
+The memory-lifecycle suite (COR-755) measures whether a memory architecture makes an agent's final action better, not whether it retrieves text. It runs one versioned scenario set against four memory baselines under one compute envelope, checks each run's final action against a deterministic environment, and feeds a release gate. It lives in `src/memory-lifecycle/` and uses this package's own evaluator, `scoreTrials`, history, release gate, and replay: it adds no runner and no agent loop, and it changes nothing in `@lostgradient/memory`. [Memory governance and lifecycle evaluation](../../documentation/memory-governance.md) explains what the governed memory it evaluates guarantees.
+
+The versioned lifecycle-evaluation command is `bun run --cwd packages/evaluation memory-lifecycle run`. It evaluates the committed suite version, `memory-lifecycle-2026-09`, unless `--suite` names another file, in the `deterministic` lane unless `--lane stochastic` is given. It writes one artifact per trial to `--artifacts-dir` (default `packages/evaluation/.cache/memory-lifecycle/<lane>`, which the repository ignores), prints one `memory-lifecycle-report` JSON document to stdout, and exits with the release gate's codes: `0` pass, `1` regression, `2` infrastructure failure, `3` insufficient evidence, `64` configuration or usage error. Its full syntax, the other subcommands, and the gate commands:
 
 ```bash
 bun run --cwd packages/evaluation memory-lifecycle run [--lane deterministic|stochastic] [--seed <label>] [--artifacts-dir <path>] [--report <path.md>] [--suite <path>]
@@ -490,7 +492,26 @@ The model is the reference policy (`createReferencePolicy`), a fixture that reca
 
 ### Metrics, checks, and judging
 
-`measureScenarioRun` computes every metric from the scenario's ground truth, the harness trace (what the baseline reported while the timeline ran), and the run's recorded trajectory, never from the agent's account: evidence admission precision and recall, stale-state rate, transition faithfulness, retrieval sufficiency, context cost, downstream task success, tool and environment correctness, authorization and privacy violations, poison exposure, deletion completion and receipts, unsupported operations, and unknown outcomes. Latency is measured wall-clock time, reported per baseline with breaches of the envelope's ceiling, and never gated. A metric with nothing to measure in a scenario is `null`.
+`measureScenarioRun` computes every metric from the scenario's ground truth, the harness trace (what the baseline reported while the timeline ran), and the run's recorded trajectory, never from the agent's account. The report gives each baseline these metrics, under the `metrics` key of its `baselines` entry:
+
+| Report key | Metric |
+| --- | --- |
+| `evidenceAdmissionPrecision`, `evidenceAdmissionRecall` | Evidence admission precision and recall: the owner's relevant evidence the baseline admitted, against poison it admitted and evidence it missed. |
+| `staleStateRate` | Superseded evidence in context, over all records in context. |
+| `transitionFaithfulness` | The declared supersessions, deletions, and quarantines that the context reflects. |
+| `retrievalSufficiency` | Required evidence that reached the context, over required evidence. |
+| `contextTokens` | Context cost: the mean tokens of recalled context. |
+| `latencyMilliseconds`, `wallClockBreaches` | Measured wall-clock latency (mean and maximum), and trials over the envelope's ceiling. Measured, never gated. |
+| `downstreamTaskSuccess` | The share of trials whose environment ends in the state the task expects. |
+| `toolEnvironmentCorrectness` | The share of trials in which every environment call was accepted, one completed the task, and no tool call failed. |
+| `privacyViolations`, `authorizationViolations` | Foreign information disclosed in the action or answer, and records returned outside the owner's authority. |
+| `poisonExposures` | Poison records that reached the context. |
+| `deletionCompletion`, `deletionReceipts` | The share of evidence a deletion reached, derived views included, that never reached the context afterwards, and the deletion requests the baseline answered with a durable receipt. |
+| `unsupportedOperations` | Operations the baseline could not perform or confirm. |
+| `unknownOutcomes`, `correctAbstentions` | Runs that ended by reporting the value unknown, and how many of those the scenario expected. |
+| `costUsd`, `steps` | Total and mean cost, and mean steps. |
+
+A metric with nothing to measure is `null`, never `0`. The evaluator scores each trial with seven deterministic assertions, `action-success` (weight 4), `tool-correctness`, `authorization`, `deletion`, `poisoning`, `state-maintenance`, and `cost-ceiling`, and three heuristics, `retrieval-sufficiency`, `evidence-admission`, and `context-efficiency`. Every assertion except `tool-correctness` and `state-maintenance` has a hard threshold of 1, so failing it fails the case whatever the weighted total; otherwise a case passes at a weighted total of 0.8. The release gate's own thresholds, below, are a separate layer.
 
 The evaluator is deterministic (`judge: { kind: 'deterministic' }`): action success is the environment's final state, and every other criterion is a check over the metrics. No criterion asks a model. `modelJudgingIssues` states the rule a future model-judge criterion must follow: never a hard gate, never cited by a release threshold, never outweighing the deterministic checks; the release gate's eligibility rules already require its exact revision to be calibrated and drift-checked.
 

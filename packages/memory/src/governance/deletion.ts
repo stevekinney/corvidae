@@ -37,21 +37,24 @@ export interface DeletionRequest {
 
 /**
  * Executes COR-806's deletion plan. Before planning, the deletion claims the
- * record and everything its lineage reaches (each envelope's
- * `deletionRequestedAt`), reading the lineage again after each round of claims
- * until a read finds nothing new, so the plan also reaches whatever a promotion
- * or derived write running alongside published. A receipt is persisted before
+ * record and, for a source deletion, everything its lineage reaches (each
+ * envelope's `deletionRequestedAt`), reading the lineage again after each round
+ * of claims until a read finds nothing new, so the plan also reaches whatever a
+ * promotion or derived write running alongside published. A projection
+ * deletion's plan is its own record alone. A receipt is persisted before
  * anything is deleted; the synchronous lane then removes source evidence, canonical
  * projections, identity views, and the managed-asset canonical record in one
  * storage transaction; and each bounded-async target settles against its own
  * deadline. Every step is idempotent, so {@link DeletionEngine.processOpen}
  * resumes an interrupted deletion after a restart.
  *
- * A legal hold is checked again before the synchronous lane and before each
+ * A legal hold on the record or on anything its plan reaches holds the
+ * deletion. It is checked again before the synchronous lane and before each
  * bounded-async target, and every record deletion is conditioned on the
- * versions that check read, so a hold placed at any point while the deletion
- * is in flight leaves the held record, and every target not yet settled, alone
- * until the hold is released.
+ * versions that check read, so a hold placed on one of those records at any
+ * point while the deletion is in flight leaves the held record, and every
+ * target not yet settled, alone until the hold is released. A projection
+ * deletion never sees a hold on its source or on a record derived from it.
  *
  * No row reports a target clean while a record the deletion names is still
  * stored: until every row that removes records (the named record's own row
@@ -682,9 +685,10 @@ export function createDeletionEngine(context: GovernanceContext): DeletionEngine
       request.scope === 'source'
         ? [...SYNCHRONOUS_DELETION_TARGETS, ...ASYNCHRONOUS_DELETION_TARGETS]
         : [TARGET_FOR_KIND[governance.lineage!.kind], ...PROJECTION_TARGETS];
-    // A hold on the record or on anything derived from it holds the whole
+    // A hold on the record, or on anything its plan reaches, holds the whole
     // deletion: the synchronous lane is one transaction and cannot remove the
-    // source while leaving a held projection pointing at nothing.
+    // source while leaving a held projection pointing at nothing. A projection
+    // deletion's plan is its own record, so only a hold on that record holds it.
     const derived = await inspectReferences(tenantId, planReferences(plan));
     const held = governance.legalHold === 'held' || derived.held;
     const receipt: MemoryDeletionReceipt = withOpen(

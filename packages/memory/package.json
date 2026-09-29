@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/memory",
   "private": true,
-  "description": "Pure utility functions for agent memory: temporal decay, MMR diversity, BM25 text search, and hybrid result merging.",
+  "description": "Agent memory: storage contracts, hybrid vector and BM25 recall, ingestion, hooks, identity, and governed memory with principal-aware authorization, admission, retention, legal hold, and receipted deletion.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
