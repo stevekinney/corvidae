@@ -484,8 +484,10 @@ function collectLegacyEntries(
 export const STATIC_FILES_GLOBS: readonly string[] = [
   'dist',
   'src/index.ts',
+  'src/exports/**/*.ts',
   'src/schema-types.ts',
   'src/components/**/*.ts',
+  '!src/components/**/*-test-helpers.ts',
   '!src/components/**/*.test.ts',
   '!src/components/**/*.spec.ts',
   '!src/components/**/*.type-test.ts',

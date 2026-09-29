@@ -260,6 +260,11 @@ describe('generateCinderSurface', () => {
 });
 
 describe('computeFiles', () => {
+  test('ships root source imports but excludes test-only component helpers', () => {
+    expect(STATIC_FILES_GLOBS).toContain('src/exports/**/*.ts');
+    expect(STATIC_FILES_GLOBS).toContain('!src/components/**/*-test-helpers.ts');
+  });
+
   test('keeps the static globs verbatim and in order', async () => {
     await withPackageRoot({}, (packageRoot) => {
       const { files } = generateCinderSurface({ packageRoot, components: [plainCard] });
