@@ -8289,19 +8289,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // writes already under way are awaited, never a child's own result, so
       // a child that ignores its abort cannot hold shutdown open.
       await childTopology.drain();
-      // Land every terminal session save a run's `run.completed`/
-      // `run.aborted` listener has already started — a run that finished
-      // just before `dispose()`, or one the 'drain' policy awaited above —
-      // before the outbox drain await below and
-      // `backgroundShutdownController.abort()`. A save that commits after
-      // that abort triggers a drain whose `session.saved` dispatch the
-      // durable event producer ignores, so `wasRecorded` fails and the
-      // entry is left pending with a diagnostic. The commit fires its drain
-      // trigger synchronously, so once this resolves any such drain is
-      // already `outboxDrainInFlight`. Like the child-settlement fence
-      // above, this waits only on saves already under way, never on a run
-      // settling, and each save's retries are bounded; a caller who needs a
-      // hard bound on a hung store passes `timeoutMilliseconds`.
+      // Land terminal session saves already under way before the outbox
+      // drain await and `backgroundShutdownController.abort()` below: a save
+      // committing after that abort leaves its `session.saved` entry
+      // unrecorded. Its commit triggers the drain synchronously, so the
+      // `outboxDrainInFlight` await then covers it. See `drain()` for why
+      // this cannot wedge on a run; `timeoutMilliseconds` bounds a hung store.
       await sessionPersistence.drain();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
