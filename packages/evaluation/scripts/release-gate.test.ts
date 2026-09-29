@@ -20,6 +20,7 @@ import {
 } from '../src/release-gate.test-support';
 import {
   DEFAULT_GATES_DIRECTORY,
+  gitHeadRevision,
   gitRevisionDistance,
   runReleaseGateCommand,
 } from './release-gate';
@@ -475,6 +476,21 @@ describe('runReleaseGateCommand', () => {
     expect(none.stderr).toContain(`No gate files in ${empty}`);
   });
 
+  test('records the repository revision it ran at, unless told another', async () => {
+    const head = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: PACKAGE_DIRECTORY })
+      .stdout.toString()
+      .trim();
+    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
+    await runInProcess(['--gates-dir', gates, '--store', storePath]);
+    await runInProcess(['--gates-dir', gates, '--store', storePath], {
+      sourceRevision: 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678',
+    });
+    const decisions = await gateDecisions();
+    expect(new Set(decisions.map((entry) => entry.record.sourceRevision))).toEqual(
+      new Set([head, 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678']),
+    );
+  });
+
   test('runs as the current user unless --actor names someone', async () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
     await runInProcess(['--gates-dir', gates, '--store', storePath]);
@@ -548,5 +564,32 @@ describe('gitRevisionDistance', () => {
     expect(gitRevisionDistance(revisions[2]!, revisions[2]!, repository)).toBe(0);
     expect(gitRevisionDistance('0'.repeat(40), revisions[2]!, repository)).toBeUndefined();
     expect(gitRevisionDistance(revisions[0]!, revisions[1]!)).toBeUndefined();
+  });
+});
+
+describe('gitHeadRevision', () => {
+  test('is the checked-out commit, and undefined outside a repository', async () => {
+    const repository = join(directory, 'repository');
+    await mkdir(repository);
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', ...args], {
+        cwd: repository,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Fixture',
+          GIT_AUTHOR_EMAIL: 'fixture@example.test',
+          GIT_COMMITTER_NAME: 'Fixture',
+          GIT_COMMITTER_EMAIL: 'fixture@example.test',
+        },
+      })
+        .stdout.toString()
+        .trim();
+    git('init', '--quiet');
+    expect(gitHeadRevision(repository)).toBeUndefined();
+    git('commit', '--quiet', '--allow-empty', '--no-gpg-sign', '-m', 'first');
+
+    expect(gitHeadRevision(repository)).toBe(git('rev-parse', 'HEAD'));
+    expect(gitHeadRevision(directory)).toBeUndefined();
+    expect(gitHeadRevision()).toMatch(/^[0-9a-f]{40,64}$/);
   });
 });

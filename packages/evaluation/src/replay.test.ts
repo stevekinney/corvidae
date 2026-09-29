@@ -112,6 +112,17 @@ describe('replayGateDecision', () => {
     },
   );
 
+  test('keeps the source revision a decision records', async () => {
+    const { history } = memoryHistory();
+    const stored = await decide(history, 'passing', {
+      sourceRevision: '857d7dbf10e51718e77bc484145cd4a95f244afc',
+    });
+
+    const outcome = await replayGateDecision({ recordId: stored.record.id }, { history });
+
+    expect(outcome).toMatchObject({ result: 'match', digest: stored.digest });
+  });
+
   test('replays the newest decision of a gate, and appends nothing', async () => {
     const { history } = memoryHistory();
     await decide(history, 'passing', { now: () => Date.parse('2026-09-28T12:00:00.000Z') });

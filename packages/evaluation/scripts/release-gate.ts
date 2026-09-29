@@ -16,6 +16,9 @@
  * gates exit with the most severe: 64 > 2 > 3 > 1 > 0. A failure of the gate
  * machinery itself, such as an unwritable history store, is an
  * infrastructure failure: it never looks like a pass or a regression.
+ *
+ * Each decision records the commit checked out when the gate ran (`git
+ * rev-parse HEAD`), the only revision a promotion signal can be issued for.
  */
 import { mkdir, readdir } from 'node:fs/promises';
 import { userInfo } from 'node:os';
@@ -69,7 +72,7 @@ export interface CommandOutput {
 
 export interface ReleaseGateCommandOptions extends Pick<
   RunReleaseGateOptions,
-  'now' | 'runtime' | 'createId' | 'loadEvaluator' | 'revisionDistance'
+  'now' | 'runtime' | 'createId' | 'loadEvaluator' | 'revisionDistance' | 'sourceRevision'
 > {
   readonly output?: CommandOutput | undefined;
 }
@@ -97,6 +100,19 @@ export function gitRevisionDistance(
   });
   const count = Number(child.stdout.toString().trim());
   return child.exitCode === 0 && Number.isInteger(count) ? count : undefined;
+}
+
+/**
+ * The commit checked out in the repository at `cwd` (`git rev-parse HEAD`),
+ * or `undefined` when there is none (no repository, or no commit yet).
+ */
+export function gitHeadRevision(cwd: string = import.meta.dir): string | undefined {
+  const child = Bun.spawnSync(['git', 'rev-parse', '--verify', '--quiet', 'HEAD'], {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  return child.exitCode === 0 ? child.stdout.toString().trim() : undefined;
 }
 
 function parseInvocation(argv: readonly string[]): Invocation | string {
@@ -206,10 +222,12 @@ export async function runReleaseGateCommand(
     await mkdir(dirname(invocation.store), { recursive: true });
     store = textValueStore(new BunSQLiteStorage(invocation.store));
     const history = createEvaluationHistory(store);
+    const sourceRevision = gitHeadRevision();
     for (const gateId of ids) {
       results.push(
         await runReleaseGate({
           revisionDistance: gitRevisionDistance,
+          sourceRevision,
           ...gateOptions,
           gatesDirectory: invocation.gatesDirectory,
           gateId,

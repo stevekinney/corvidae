@@ -1,5 +1,6 @@
 {
   "description": "Offline fixture gate: a scripted capitals agent and a scripted model judge, compared with the committed baseline run.",
+  "package": "@lostgradient/evaluation",
   "evaluator": "../src/fixtures/release-gate/passing.ts",
   "dataset": { "id": "capitals", "version": "capitals-2026-09" },
   "baseline": {

@@ -150,6 +150,29 @@ export type {
   TrajectoryStep,
 } from './projections';
 export {
+  PROMOTION_SIGNAL_EXIT_CODES,
+  PROMOTION_SIGNAL_MAXIMUM_LIFETIME_MS,
+  PROMOTION_SIGNAL_SCHEMA_VERSION,
+  issuePromotionSignal,
+  latestGateDecision,
+  promotionSignalDigest,
+  promotionSignalRecordSchema,
+  promotionSignalSchema,
+  verifyPromotionSignal,
+} from './promotion';
+export type {
+  IssuePromotionSignalOptions,
+  PromotionBindings,
+  PromotionContext,
+  PromotionEvidenceReason,
+  PromotionIssueOutcome,
+  PromotionResult,
+  PromotionSignal,
+  PromotionSignalRecord,
+  PromotionVerification,
+  StaleBinding,
+} from './promotion';
+export {
   RELEASE_GATE_EXIT_CODES,
   decideGate,
   loadGateEvaluator,

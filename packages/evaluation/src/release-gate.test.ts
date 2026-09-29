@@ -367,6 +367,15 @@ describe('runReleaseGate', () => {
     expect(await seedsOf('seeds-a')).toEqual(await seedsOf('seeds-a'));
     expect(await seedsOf('seeds-a')).not.toEqual(await seedsOf('seeds-b'));
   });
+
+  test('records the source revision it ran at when the runner knows it, apart from the declared code revision', async () => {
+    const known = decided(await gateResult(fixtureGateFile(), { sourceRevision: OTHER_REVISION }));
+    expect(known.sourceRevision).toBe(OTHER_REVISION);
+    expect(known.candidate.codeRevision).toBe(FIXTURE_CODE_REVISION);
+
+    const unknown = decided(await gateResult(fixtureGateFile()));
+    expect(unknown).not.toHaveProperty('sourceRevision');
+  });
 });
 
 describe('runReleaseGate baselines', () => {

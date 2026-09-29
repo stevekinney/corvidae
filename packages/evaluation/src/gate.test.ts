@@ -71,6 +71,13 @@ describe('parseGateDefinition', () => {
     expect(gate.baseline).toEqual({ kind: 'latest-passing-decision' });
   });
 
+  test('names the workspace the gate guards, which only a promotion signal needs', () => {
+    expect(parseGateDefinition(gateInput()).package).toBe('@lostgradient/evaluation');
+    const { package: _package, ...unnamed } = gateInput();
+    expect(parseGateDefinition(unnamed).package).toBeUndefined();
+    expect(issuePaths({ ...gateInput(), package: '' })).toEqual(['package']);
+  });
+
   test('rejects an expiry that bounds neither revision distance nor age', () => {
     expect(issuePaths({ ...gateInput(), expiry: {} })).toEqual(['expiry']);
     expect(
@@ -143,6 +150,13 @@ describe('gateOverrideRecordSchema', () => {
 });
 
 describe('gateDecisionRecordSchema', () => {
+  test('records the source revision the gate ran at only as a commit hash', () => {
+    const { sourceRevision } = gateDecisionRecordSchema.shape;
+    expect(sourceRevision.safeParse(undefined).success).toBe(true);
+    expect(sourceRevision.safeParse('857d7dbf10e51718e77bc484145cd4a95f244afc').success).toBe(true);
+    expect(sourceRevision.safeParse('HEAD').success).toBe(false);
+  });
+
   test('refuses a decision whose evidence names a held-out case by id', () => {
     const shape = gateDecisionRecordSchema.shape.evidence.element;
     const trial = {

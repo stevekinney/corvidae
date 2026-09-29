@@ -356,6 +356,65 @@ describe('runHistoryCommand', () => {
     }
   });
 
+  test('lists promotion signals with what they bind, and never compares them', async () => {
+    const signal = {
+      signalId: 'fixture-regression.signal-1',
+      package: {
+        name: '@lostgradient/evaluation',
+        sourceRevision: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+      },
+      model: { provider: 'anthropic', model: 'claude-sonnet-4-6', effort: 'medium' as const },
+      promptVersion: 'fixture-judge-prompt-1',
+      dataset: { id: 'capitals', version: 'capitals-2026-09' },
+      evaluator: { name: 'fixture-regression', revision: 1, digest: 'b'.repeat(64) },
+      sourceRevision: '857d7dbf10e51718e77bc484145cd4a95f244afc',
+      gateDecisionRecordId: 'fixture-regression.decision-1',
+      overrideRecordIds: [],
+      decidedAt: '2026-09-28T12:00:00.000Z',
+      issuedAt: '2026-09-28T12:30:00.000Z',
+      actor: 'release-owner',
+      expiresAt: '2026-09-29T12:00:00.000Z',
+      digest: 'c'.repeat(64),
+    };
+    const store = textValueStore(new BunSQLiteStorage(storePath));
+    try {
+      await createEvaluationHistory(store).append({
+        kind: 'promotion-signal',
+        schemaVersion: 1,
+        id: signal.signalId,
+        recordedAt: signal.issuedAt,
+        signal,
+      });
+    } finally {
+      await store.close();
+    }
+
+    const listed = await runInProcess('list', '--store', storePath);
+    expect(listed.exitCode).toBe(0);
+    expect(JSON.parse(listed.stdout)).toEqual({
+      id: signal.signalId,
+      kind: 'promotion-signal',
+      recordedAt: signal.issuedAt,
+      digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      gateDecisionRecordId: signal.gateDecisionRecordId,
+      actor: signal.actor,
+      package: signal.package,
+      sourceRevision: signal.sourceRevision,
+      expiresAt: signal.expiresAt,
+    });
+    const compared = await runInProcess(
+      'compare',
+      signal.signalId,
+      signal.signalId,
+      '--store',
+      storePath,
+    );
+    expect(compared.exitCode).toBe(64);
+    expect(compared.stderr).toContain(
+      'is a promotion-signal record; compare takes two evaluation runs',
+    );
+  });
+
   test('propagates a failure that is neither a usage error nor corruption', async () => {
     await expect(runInProcess('list', '--store', directory)).rejects.toThrow();
   });

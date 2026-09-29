@@ -2,7 +2,7 @@
 
 Scores completed [Operative](../operative/README.md) runs against a versioned evaluator configuration: typed multi-criterion rubrics, hard per-criterion gates, calibration examples for a model judge, and a digest that identifies the configuration exactly. On top of that it runs each case its declared number of times, reports distributions and uncertainty rather than one score, surfaces disagreement and infrastructure failure explicitly, and refuses to treat an unchecked held-out dataset, an uncalibrated judge, or a drifted judge revision as gate-eligible. It implements the evaluator configuration, result-class, inspection-surface, and held-out, repeated-trial, variance, drift, and calibration sections of the calibrated evaluator contract (COR-896).
 
-`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, and `replay` recomputes any stored decision from its recorded evidence without calling a model.
+`runTrials` is the only case executor. It adds no agent loop: each trial calls an Operative agent's `run()` and scores the result. Every run can be kept in an append-only, digest-verified history and inspected with a local `history` command. A local `release-gate` command decides whether an evaluator's current evidence clears a gate against an explicit baseline, `replay` recomputes any stored decision from its recorded evidence without calling a model, and `promotion-signal` turns a passing decision into attributed evidence that binds exactly what was evaluated.
 
 ## Configuration
 
@@ -141,7 +141,7 @@ const { digest } = await history.append(
 );
 ```
 
-`createEvaluationHistory(store)` takes a weft `ConditionalTextValueStore` (`textValueStore` over `BunSQLiteStorage` for the local file, or over `MemoryStorage` in tests) and returns exactly `{ append, read, list }`. It keeps three kinds of record, told apart by `kind`: `evaluation-run`, and the `gate-decision` and `gate-override` records the release gate writes (below). There is no update and no delete: historical results are never rewritten, and rolling an evaluator back means citing an earlier record.
+`createEvaluationHistory(store)` takes a weft `ConditionalTextValueStore` (`textValueStore` over `BunSQLiteStorage` for the local file, or over `MemoryStorage` in tests) and returns exactly `{ append, read, list }`. It keeps four kinds of record, told apart by `kind`: `evaluation-run`, the `gate-decision` and `gate-override` records the release gate writes, and the `promotion-signal` records a promotion writes (below). There is no update and no delete: historical results are never rewritten, and rolling an evaluator back means citing an earlier record.
 
 - `append(record)` commits with a compare-and-swap that requires the id to be absent. A second record with the same id rejects with `HistoricalRecordExistsError`, and the first stays byte-identical.
 - `read(id)` resolves the verified `{ digest, record }`, or `undefined` for an unknown id.
@@ -192,6 +192,7 @@ A gate file, validated by `gateDefinitionSchema`, names:
 
 | Field | Meaning |
 | --- | --- |
+| `package` | Optional: the workspace, by package name, whose release the gate guards. A promotion signal binds it, so a decision of a gate without one cannot be promoted. |
 | `evaluator` | The evaluator module, relative to the gate file. Its default export builds a `GateEvaluatorDefinition`: configuration, dataset, scorers, model judge, the operative agent a trial runs, and the recorded contamination checks, calibration records, and drift checks. Rolling back an evaluator means pointing this at the prior approved module. |
 | `dataset` | The `{ id, version }` the evaluator must score. |
 | `baseline` | Required, no default: `{ kind: 'latest-passing-decision' }` (the newest decision of this gate that passed without an override, or that the override authority accepted as a permanent baseline change) or `{ kind: 'evaluation-run', path }` (a committed `evaluation-run` record). |
@@ -201,7 +202,7 @@ A gate file, validated by `gateDefinitionSchema`, names:
 | `overrideAuthority` | The principal who may override a blocking result. |
 | `expiry` | `maximumRevisionDistance` (commits, counted with `git rev-list --count`) and/or `maximumAgeMs`: how far a baseline may trail the run. |
 
-Every gate run that gets past its configuration appends exactly one `gate-decision` record holding its inputs (the gate definition, evaluator identity and module, dataset digest, eligibility, per-trial evidence, baseline, and the overrides it weighed), its metrics and distributions (the embedded `evaluation-run` record), its findings, the decision, and the actor. The history's SHA-256 digest covers all of it.
+Every gate run that gets past its configuration appends exactly one `gate-decision` record holding its inputs (the gate definition, evaluator identity and module, dataset digest, eligibility, per-trial evidence, baseline, and the overrides it weighed), its metrics and distributions (the embedded `evaluation-run` record), its findings, the decision, the actor, and the repository revision it ran at (`sourceRevision`, from `git rev-parse HEAD`). The history's SHA-256 digest covers all of it. `sourceRevision` is where the gate, its evaluator module, and the code under evaluation actually were; the configuration's `codeRevision` is what the evaluator declares it evaluated, and the fixture pins that to a fixed commit so its committed baseline stays comparable.
 
 `gates/fixture-regression.json` is an offline fixture gate: `src/fixtures/release-gate/` scripts the capitals agent and the model judge with `createScriptedGenerate` and commits the baseline run it is compared with.
 
@@ -230,6 +231,44 @@ bun run --filter=@lostgradient/evaluation replay -- --gate <gateId> --latest
 | `65` | `corrupt-record` | The stored record fails verification, or its evidence cannot fit its own evaluator. |
 
 Replay covers evaluation decisions only; a lifecycle fault is replayed with operative's `replayReproductionArtifact`.
+
+## Promotion signals
+
+A promotion signal is an immutable, digest-bearing, actor-attributed record that one passing, unexpired gate decision covers exactly one package, model, prompt version, dataset version, evaluator, and source revision. It is evidence only: issuing one publishes, tags, syncs, and deploys nothing, and nothing in the repository consumes it. A release owner reads it; any future consumer needs its own decision.
+
+```bash
+# Machine form: stdout is exactly one JSON document and $? is authoritative.
+bun run --cwd packages/evaluation promotion-signal issue --gate <gateId> [--store <path>] [--actor <principal>]
+bun run --cwd packages/evaluation promotion-signal issue <gateDecisionRecordId> [--store <path>] [--actor <principal>]
+bun run --cwd packages/evaluation promotion-signal verify <signalId> [--store <path>]
+```
+
+`issue --gate` issues from the newest decision of that gate, whatever its outcome. `--actor` names who issues the signal (default: the current user); `--store` is the same history file the gate writes.
+
+| Field | Bound to |
+| --- | --- |
+| `package` | `{ name, sourceRevision }`: the gate's `package`, and the git tree of that workspace's directory at the source revision, so it moves only when the package's own files do. |
+| `model` | `{ provider, model, effort }` of the model judge. The provider and provider-native model come from operative's model catalog, which also resolves an alias; a judge model the catalog does not know cannot be bound. `null` when the judge is not a model. |
+| `promptVersion`, `dataset` | The configuration's judge prompt version, and the evaluated dataset's `{ id, version }`. |
+| `evaluator` | `{ name, revision, digest }`, the evaluator identity. The digest covers the whole configuration. |
+| `sourceRevision` | The repository revision the decision records it ran at. |
+| `gateDecisionRecordId`, `overrideRecordIds` | The decision, and the overrides that cleared a regression in it. |
+| `decidedAt`, `issuedAt`, `actor`, `expiresAt` | When the gate decided, when and by whom the signal was issued, and when it stops being evidence. |
+| `digest` | The SHA-256 of the signal's canonical JSON without `digest`. |
+
+`issuePromotionSignal(gateDecisionRecordId, { history, currentRevision, actor, loadEvaluator, packageSourceRevision })` issues a signal, and appends one `promotion-signal` record, only when the decision passed, every override it relied on is still valid, it has not expired, and every bound value still holds: its recorded `sourceRevision` is the revision checked out now, and the evaluator module it names still builds the same evaluator identity and dataset version. A signal expires at the earliest of one day after the decision (`PROMOTION_SIGNAL_MAXIMUM_LIFETIME_MS`), the gate's `maximumAgeMs` after the decision, and the expiry of any override it relied on. Issuing twice from one decision gives two signals; neither changes the other.
+
+`verifyPromotionSignal(signalId, current)` never writes. A signal is `expired` from its `expiresAt` on; otherwise it is `stale` when any bound value differs from the repository now, listing each such field with its bound and current value, and `valid` when none does.
+
+| Exit | Result | Meaning |
+| --- | --- | --- |
+| `0` | `issued` or `valid` | A signal was issued, or it still holds. |
+| `3` | `insufficient-evidence`, `expired`, or `unresolvable` | The decision is missing, did not pass, or expired; an override it relied on no longer stands; its gate names no package or it records no source revision; the signal is missing or past its expiry; or a current value cannot be resolved. Nothing is appended. |
+| `5` | `stale` | A bound value moved. The report's `stale` names each field. Nothing is appended. |
+| `64` | `usage-error` | Bad arguments. |
+| `65` | `corrupt-record` | A stored record fails verification, or a signal does not match its own digest. |
+
+To withdraw a promotion, issue nothing further: the signal expires or goes stale. No record is ever deleted.
 
 ## Goal-controller adapter
 
@@ -272,6 +311,7 @@ bun run --filter=@lostgradient/evaluation test:coverage
 bun run --cwd packages/evaluation history list
 bun run --cwd packages/evaluation release-gate --gate fixture-regression
 bun run --cwd packages/evaluation replay --gate fixture-regression --latest
+bun run --cwd packages/evaluation promotion-signal issue --gate fixture-regression
 ```
 
 `test:coverage` fails below 100 percent line or function coverage of this workspace's `src/` and `scripts/`.

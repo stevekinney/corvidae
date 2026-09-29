@@ -185,6 +185,12 @@ export interface RunReleaseGateOptions {
    * it, a baseline at another revision has an unknown distance.
    */
   readonly revisionDistance?: ((from: string, to: string) => number | undefined) | undefined;
+  /**
+   * The repository revision the gate runs at (`git rev-parse HEAD` in the
+   * command). Recorded on the decision when given; a promotion signal can
+   * only be issued from a decision that records one.
+   */
+  readonly sourceRevision?: string | undefined;
   readonly loadEvaluator?: GateEvaluatorLoader | undefined;
 }
 
@@ -866,6 +872,7 @@ export async function runReleaseGate(options: RunReleaseGateOptions): Promise<Ga
     recordedAt,
     gateId,
     actor: options.actor,
+    ...(options.sourceRevision === undefined ? {} : { sourceRevision: options.sourceRevision }),
     gate,
     evaluator: {
       module: relative(EVALUATION_PACKAGE_DIRECTORY, prepared.modulePath),

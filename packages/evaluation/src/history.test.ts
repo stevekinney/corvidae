@@ -113,6 +113,46 @@ describe('createEvaluationHistory', () => {
     expect(await history.list()).toEqual([run, appended]);
   });
 
+  test('keeps promotion-signal records beside evaluation runs, verified the same way', async () => {
+    const { history } = memoryHistory();
+    const signal = {
+      signalId: 'fixture-regression.signal-1',
+      package: {
+        name: '@lostgradient/evaluation',
+        sourceRevision: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+      },
+      model: { provider: 'anthropic', model: 'claude-sonnet-4-6', effort: 'medium' as const },
+      promptVersion: 'fixture-judge-prompt-1',
+      dataset: { id: 'capitals', version: 'capitals-2026-09' },
+      evaluator: { name: 'fixture-regression', revision: 1, digest: 'b'.repeat(64) },
+      sourceRevision: '857d7dbf10e51718e77bc484145cd4a95f244afc',
+      gateDecisionRecordId: 'fixture-regression.decision-1',
+      overrideRecordIds: [],
+      decidedAt: '2026-09-28T12:00:00.000Z',
+      issuedAt: '2026-09-28T12:30:00.000Z',
+      actor: 'release-owner',
+      expiresAt: '2026-09-29T12:00:00.000Z',
+      digest: 'c'.repeat(64),
+    };
+    const promotion = {
+      kind: 'promotion-signal' as const,
+      schemaVersion: 1 as const,
+      id: signal.signalId,
+      recordedAt: signal.issuedAt,
+      signal,
+    };
+
+    const run = await history.append(baselineRecord());
+    const appended = await history.append(promotion);
+
+    expect(appended).toEqual({
+      digest: await sha256Hex(canonicalJson(promotion)),
+      record: promotion,
+    });
+    expect(await history.read(signal.signalId)).toEqual(appended);
+    expect(await history.list()).toEqual([run, appended]);
+  });
+
   test('refuses to append a record of a kind the history does not keep', async () => {
     const { store, history } = memoryHistory();
     const unknownKind = { ...baselineRecord(), kind: 'dashboard-snapshot' };

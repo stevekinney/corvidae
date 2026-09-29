@@ -44,7 +44,13 @@ export class EvaluatorConfigurationError extends Error {
 }
 
 /** Operative's `Effort` vocabulary, reused so a judge's effort is validated like an agent's. */
-const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly Effort[];
+export const EFFORTS = [
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const satisfies readonly Effort[];
 // Fails to compile if operative adds an effort tier this list does not name.
 const EFFORTS_ARE_EXHAUSTIVE: Exclude<Effort, (typeof EFFORTS)[number]> extends never
   ? true

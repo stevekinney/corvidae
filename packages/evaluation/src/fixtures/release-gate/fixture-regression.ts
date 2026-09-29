@@ -61,7 +61,7 @@ export function fixtureConfiguration(): Record<string, unknown> {
     judge: {
       kind: 'model',
       name: 'fixture-judge',
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       effort: 'medium',
       tools: [],
     },

@@ -20,6 +20,9 @@
  * - `overrideAuthority`: the principal who may override a blocking result.
  * - `expiry`: how far, in commits or milliseconds, a baseline may trail the
  *   run before it stops being evidence. A gate result is never evergreen.
+ * - `package`: the workspace whose release the gate guards. Optional for the
+ *   gate itself, but a promotion signal (`promotion.ts`) binds it, so a gate
+ *   that does not name one has decisions no signal can be issued from.
  *
  * This module also defines the two records a gate appends to the history:
  * the `gate-decision` record, which holds everything a replay needs to
@@ -34,6 +37,7 @@
 import { z } from 'zod';
 
 import {
+  codeRevisionSchema,
   EvaluatorConfigurationError,
   identifier,
   reportDuplicates,
@@ -84,6 +88,8 @@ const regressionThresholdSchema = z.strictObject({
 export const gateDefinitionSchema = z
   .strictObject({
     description: z.string().min(1).optional(),
+    /** The workspace (by package name) whose release this gate guards. */
+    package: identifier.optional(),
     evaluator: z.string().min(1),
     dataset: z.strictObject({ id: identifier, version: identifier }),
     baseline: baselineSelectorSchema,
@@ -296,6 +302,14 @@ export const gateDecisionRecordSchema = z.strictObject({
   gateId: gateIdSchema,
   /** The principal who ran the gate. */
   actor: identifier,
+  /**
+   * The repository revision (`git rev-parse HEAD`) the gate ran at, when the
+   * runner could tell. The evaluator configuration's `codeRevision` is what
+   * the evaluator declares it evaluated; this is where the gate, its
+   * evaluator module, and the code under evaluation actually were. A
+   * promotion signal is issued only for this revision.
+   */
+  sourceRevision: codeRevisionSchema.optional(),
   /** The gate definition as it was when the gate ran. */
   gate: gateDefinitionSchema,
   evaluator: z.strictObject({

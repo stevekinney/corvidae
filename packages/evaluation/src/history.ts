@@ -1,11 +1,12 @@
 /**
  * Append-only evaluation history (COR-896, "audit record"). Every evaluation
- * run, release-gate decision, and gate override is kept as one immutable
- * record (`evaluation-run`, `gate-decision`, or `gate-override`) in a weft
- * `TextValueStore`: `BunSQLiteStorage` for the local file the `history`,
- * `release-gate`, and `replay` commands share, `MemoryStorage` in tests. The
- * store is the durable audit record itself, so a local command never needs a
- * running bureau.
+ * run, release-gate decision, gate override, and promotion signal is kept as
+ * one immutable record (`evaluation-run`, `gate-decision`, `gate-override`,
+ * or `promotion-signal`) in a weft `TextValueStore`: `BunSQLiteStorage` for
+ * the local file the `history`, `release-gate`, `replay`, and
+ * `promotion-signal` commands share, `MemoryStorage` in tests. The store is
+ * the durable audit record itself, so a local command never needs a running
+ * bureau.
  *
  * Records are never rewritten. {@link createEvaluationHistory} exposes only
  * `append`, `read`, and `list`; `append` commits with a compare-and-swap that
@@ -26,7 +27,8 @@
  * An `evaluation-run` record is built from `runTrials` aggregates by
  * {@link toEvaluationRunRecord}, which keeps the evidence a later comparison
  * or gate needs and drops everything that could leak a held-out case (see
- * `evaluation-run.ts`). Gate records are defined in `gate.ts`.
+ * `evaluation-run.ts`). Gate records are defined in `gate.ts`, and promotion
+ * signals in `promotion.ts`.
  */
 import { sha256Hex } from '@lostgradient/cryptography';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
@@ -53,6 +55,7 @@ import {
   gateOverrideRecordSchema,
 } from './gate';
 import { canonicalJson, type EvaluatorIdentity } from './identity';
+import { type PromotionSignalRecord, promotionSignalRecordSchema } from './promotion';
 import {
   type AggregateStatistics,
   aggregateStatistics,
@@ -67,9 +70,11 @@ const historyRecordSchema = z.discriminatedUnion('kind', [
   evaluationRunRecordSchema,
   gateDecisionRecordSchema,
   gateOverrideRecordSchema,
+  promotionSignalRecordSchema,
 ]);
 
-export type HistoryRecord = EvaluationRunRecord | GateDecisionRecord | GateOverrideRecord;
+export type HistoryRecord =
+  EvaluationRunRecord | GateDecisionRecord | GateOverrideRecord | PromotionSignalRecord;
 
 const historicalRecordSchema = z.strictObject({
   digest: digestSchema,

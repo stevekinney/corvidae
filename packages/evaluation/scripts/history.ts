@@ -7,11 +7,11 @@
  *
  * Output on stdout is JSON: one line per record for `list`, one document for
  * `show` and `compare`. `list` shows every kind of record the history keeps
- * (evaluation runs, gate decisions, and gate overrides); `compare` takes two
- * evaluation runs. Diagnostics go to stderr, and the exit code is the
- * authoritative result: 0 success, 64 a usage error, an unknown record, or a
- * comparison of something other than two evaluation runs, 65 a corrupt
- * record. The command never writes a record, and a store file that
+ * (evaluation runs, gate decisions, gate overrides, and promotion signals);
+ * `compare` takes two evaluation runs. Diagnostics go to stderr, and the exit
+ * code is the authoritative result: 0 success, 64 a usage error, an unknown
+ * record, or a comparison of something other than two evaluation runs, 65 a
+ * corrupt record. The command never writes a record, and a store file that
  * does not exist yet reads as an empty history rather than being created.
  */
 import { existsSync } from 'node:fs';
@@ -138,6 +138,15 @@ function summarize({ digest, record }: HistoricalRecord): Record<string, unknown
         actor: record.actor,
         expiresAt: record.expiresAt ?? null,
         permanentBaselineChange: record.permanentBaselineChange,
+      };
+    case 'promotion-signal':
+      return {
+        ...common,
+        gateDecisionRecordId: record.signal.gateDecisionRecordId,
+        actor: record.signal.actor,
+        package: record.signal.package,
+        sourceRevision: record.signal.sourceRevision,
+        expiresAt: record.signal.expiresAt,
       };
   }
 }
