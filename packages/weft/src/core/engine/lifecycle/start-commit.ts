@@ -429,12 +429,13 @@ export async function buildAndCommitStartBatch(
     // an ordinary start, but the delayed `startAt`/`startAfter` create batch is
     // intentionally external — its `pending` row has no owner yet, and the
     // corresponding acquire happens later, at the delayed-start timer fire (see
-    // `operations-time.ts`). Re-prepared fresh every attempt of this loop, since a
-    // stale epoch read would doom a later retry's CAS.
+    // `operations-time.ts`). Re-prepared fresh every attempt: a stale read dooms a CAS.
     const isDelayedStart = context.delayedStartTimer !== undefined;
     const claimFold = isDelayedStart
       ? undefined
-      : await prepareWorkflowClaimFold(internals, workflowId);
+      : await prepareWorkflowClaimFold(internals, workflowId, {
+          replaceExistingClaim: context.purgeDeleteOperations !== undefined,
+        });
 
     const outcome = await persistStartBatch(
       internals,

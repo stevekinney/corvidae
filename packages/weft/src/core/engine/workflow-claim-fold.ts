@@ -70,12 +70,23 @@ export type WorkflowClaimFold = {
 export async function prepareWorkflowClaimFold(
   internals: EngineInternals,
   workflowId: string,
+  options: { replaceExistingClaim?: boolean } = {},
 ): Promise<WorkflowClaimFold | undefined> {
   if (internals.options.ownershipMode !== 'workflow-lease') return undefined;
   const registry = internals.workflowClaimRegistry;
   if (registry === null) return undefined;
-  if (registry.currentEpoch(workflowId) !== null) return undefined;
-  const preparation = await registry.prepareAcquireFragment(workflowId);
+  // A `start-new` restart deliberately begins a new generation of an id whose
+  // cached claim belongs to the run being replaced, so it re-acquires instead of
+  // fencing on that possibly-stale epoch. Every other caller keeps the early
+  // return: its cached claim is the live one.
+  const cached = registry.currentEpoch(workflowId) !== null;
+  const preparation =
+    options.replaceExistingClaim === true && cached
+      ? await prepareReplacementAcquire(internals, registry, workflowId)
+      : cached
+        ? undefined
+        : await registry.prepareAcquireFragment(workflowId);
+  if (preparation === undefined) return undefined;
   return {
     registry,
     workflowId,
@@ -83,6 +94,35 @@ export async function prepareWorkflowClaimFold(
     conditions: preparation.fragment.conditions,
     operations: preparation.fragment.operations,
   };
+}
+
+/**
+ * Prepare a replacement acquire for a `start-new` restart of an id this engine
+ * still tracks. The cached claim can be stale in two ways a plain acquire
+ * cannot express: the durable holder is absent (a foreign terminal commit or a
+ * suspend rotated the epoch), so an ordinary acquire from the fresh epoch
+ * applies; or the durable holder and epoch are still byte-identical to the
+ * cache (the old run's release is still pending), so the acquire re-mints by
+ * expecting this engine's OWN holder bytes. Anything else (a live foreign
+ * holder) returns `undefined`, leaving the cached-epoch fence to raise the
+ * genuine `EngineDeposedError`.
+ */
+async function prepareReplacementAcquire(
+  internals: EngineInternals,
+  registry: WorkflowClaimRegistry,
+  workflowId: string,
+): Promise<WorkflowClaimAcquirePreparation | undefined> {
+  const holderBytes = await internals.storage.get(KEYS.workflowOwnerHolder(workflowId));
+  if (holderBytes === null) return registry.prepareAcquireFragment(workflowId);
+  const epochBytes = await internals.storage.get(KEYS.workflowOwnerEpoch(workflowId));
+  const cachedHolder = registry.currentHolderBytes(workflowId);
+  const cachedEpoch = registry.currentEpochBytes(workflowId);
+  const ownsDurableClaim =
+    cachedHolder !== null &&
+    cachedEpoch !== null &&
+    storageValuesEqual(holderBytes, cachedHolder) &&
+    storageValuesEqual(epochBytes, cachedEpoch);
+  return ownsDurableClaim ? registry.prepareAcquireFragment(workflowId, holderBytes) : undefined;
 }
 
 /** Outcome of {@link commitWithWorkflowClaimFold}. */
