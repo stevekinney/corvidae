@@ -14,6 +14,7 @@ import { join } from 'node:path';
 
 import {
   createAgent,
+  createLazyAgent,
   createMockGenerate,
   defineChildSignals,
   type GenerateFunction,
@@ -610,6 +611,50 @@ describe('bureau.children over a durable bureau', () => {
       expect(await bureau.getDurableRun('cascade-child')).toMatchObject({ status: 'cancelled' });
       const detachedWorkflow = await bureau.getDurableRun('detached-child');
       expect(detachedWorkflow?.status).not.toBe('cancelled');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('runs a createLazyAgent parent and child durably, as it does createAgent ones', async () => {
+    const lazyHanging = (name: string) =>
+      createLazyAgent(async () =>
+        createAgent({ name, generate: hangUntilAborted, stopWhen: stopWhen.noToolCalls() }),
+      );
+    const bureau = await createBureau({
+      agents: { planner: lazyHanging('planner'), worker: lazyHanging('worker') },
+      storage: { type: 'memory' },
+      durableExecution: true,
+      onDiagnostic,
+    });
+
+    try {
+      const plannerRun = bureau.run('planner', 'plan');
+      const parentRunId = await startedDurableRun(bureau);
+      // Its handle names the same durable run, as a createAgent parent's does.
+      expect(await pollUntil(() => plannerRun.snapshot().id === parentRunId)).toBe(true);
+      expect(plannerRun.snapshot().durability).toBe('durable');
+
+      expect(
+        await bureau.children.dispatch({
+          parentRunId,
+          agentName: 'worker',
+          input: 'work',
+          childRunId: 'lazy-child',
+        }),
+      ).toMatchObject({
+        outcome: 'started',
+        child: {
+          parentAgentName: 'planner',
+          workflow: { kind: 'durable', workflowType: 'agentRun', workflowId: 'lazy-child' },
+        },
+      });
+      expect(
+        await pollUntil(async () => {
+          const workflow = await bureau.getDurableRun('lazy-child');
+          return workflow?.status === 'running';
+        }),
+      ).toBe(true);
     } finally {
       await bureau.dispose();
     }

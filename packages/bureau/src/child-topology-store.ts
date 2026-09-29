@@ -89,7 +89,10 @@ export interface BureauChildRecord {
   readonly recoveries: number;
   readonly workflow: BureauChildWorkflowIdentity;
   readonly parentCancellation: BureauChildParentCancellation;
-  /** The principal that owns the parent run, when it had one. */
+  /**
+   * The principal that owns this child: the parent run's, or the
+   * dispatching principal when the parent had none.
+   */
   readonly principal?: string | undefined;
   /** This child's own delegation grant. */
   readonly grantId?: string | undefined;

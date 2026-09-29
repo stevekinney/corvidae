@@ -343,6 +343,42 @@ describe('children.dispatch', () => {
     expect(fixture.starts[0]?.context.parentSignals).toBeUndefined();
   });
 
+  it('ignores authority without delegation: nothing is validated, granted, or bounded', async () => {
+    const fixture = createFixture({
+      parents: {
+        'parent-1': { agentName: 'planner', live: true },
+        'child-a': { agentName: 'worker', live: true },
+      },
+    });
+
+    // With delegation this asks for no descendants at all, and its time to
+    // live would be a BAD_REQUEST. Without it, the request is dropped silently.
+    const bounded = await fixture.topology.children.dispatch({
+      parentRunId: 'parent-1',
+      agentName: 'worker',
+      input: 'x',
+      childRunId: 'child-a',
+      authority: { depth: 0, budget: { concurrentChildren: 0 }, timeToLiveMilliseconds: -1 },
+    });
+
+    const record = await fixture.store.get('child-a');
+    if (!record) throw new Error('child-a was not recorded');
+    expect(bounded).toEqual({ outcome: 'started', child: record });
+    expect(record.grantId).toBeUndefined();
+    // So the child's own dispatches are limited by nothing it was dispatched with.
+    for (const childRunId of ['grandchild-a', 'grandchild-b']) {
+      expect(
+        await fixture.topology.children.dispatch({
+          parentRunId: 'child-a',
+          agentName: 'worker',
+          input: 'y',
+          childRunId,
+        }),
+      ).toMatchObject({ outcome: 'started', child: { parentRunId: 'child-a' } });
+    }
+    expect(auditTypes(fixture.audits)).toEqual(['child.started', 'child.started', 'child.started']);
+  });
+
   it('rejects an unknown agent, and hides an unknown or unauthorized parent as not-found', async () => {
     const fixture = createFixture({
       parents: { 'parent-1': { agentName: 'planner', principal: 'owner', live: true } },
@@ -510,6 +546,20 @@ describe('children.dispatch', () => {
     expect(await fixture.store.get('child-a')).toMatchObject({
       status: 'failed',
       outcome: { reason: 'bureau is disposed' },
+    });
+    expect(auditTypes(fixture.audits)).toEqual(['child.started', 'child.failed']);
+
+    // The failed record keeps its identifier, so a retry reads as a duplicate.
+    const retry = await fixture.topology.children.dispatch({
+      parentRunId: 'parent-1',
+      agentName: 'worker',
+      input: 'x',
+      childRunId: 'child-a',
+    });
+
+    expect(retry).toMatchObject({
+      outcome: 'duplicate',
+      child: { childRunId: 'child-a', status: 'failed' },
     });
     expect(auditTypes(fixture.audits)).toEqual(['child.started', 'child.failed']);
   });
@@ -741,6 +791,74 @@ describe('children.list / get / wait authorization', () => {
         get({ parentRunId: 'parent-1', childRunId: 'child-a', principal: '' }),
       ),
     ).toThrow('BAD_REQUEST');
+  });
+
+  it('gives a child of a parent without a principal to the principal that dispatched it', async () => {
+    // `parent-1` has no principal, like a `createRun` or `bureau.run` run started without one.
+    const fixture = createFixture();
+    const alices = await startedChild(fixture, { childRunId: 'child-a', principal: 'alice' });
+    const bobs = await startedChild(fixture, { childRunId: 'child-b', principal: 'bob' });
+    const unowned = await startedChild(fixture, { childRunId: 'child-c' });
+    const { get, list, wait, signal, cancel } = fixture.topology.children;
+    const alicesAsBob = { parentRunId: 'parent-1', childRunId: 'child-a', principal: 'bob' };
+    const ids = (records: readonly BureauChildRecord[]) => records.map((r) => r.childRunId);
+
+    expect([alices.principal, bobs.principal, unowned.principal]).toEqual([
+      'alice',
+      'bob',
+      undefined,
+    ]);
+    expect(fixture.starts.map((start) => start.principal)).toEqual(['alice', 'bob', undefined]);
+
+    // Every read and write checks the child record's principal, not the parent's.
+    expect(await get(alicesAsBob)).toBeUndefined();
+    expect(await wait(alicesAsBob)).toEqual({ outcome: 'not-found' });
+    expect(await signal({ ...alicesAsBob, name: 'proceed', payload: { step: 1 } })).toEqual({
+      outcome: 'not-found',
+    });
+    expect(await cancel(alicesAsBob)).toEqual({ outcome: 'not-found' });
+    expect(await statusOf(fixture.store, 'child-a')).toBe('running');
+    expect(ids(await list('parent-1', { principal: 'bob' }))).toEqual(['child-b', 'child-c']);
+    expect(ids(await list('parent-1', { principal: 'alice' }))).toEqual(['child-a', 'child-c']);
+
+    // The dispatching principal, and a trusted call without one, find it.
+    expect(
+      await get({ parentRunId: 'parent-1', childRunId: 'child-a', principal: 'alice' }),
+    ).toEqual(alices);
+    expect(await get({ parentRunId: 'parent-1', childRunId: 'child-a' })).toEqual(alices);
+    expect(ids(await list('parent-1'))).toEqual(['child-a', 'child-b', 'child-c']);
+
+    // A child that no principal owns is visible to every principal.
+    expect(await get({ parentRunId: 'parent-1', childRunId: 'child-c', principal: 'bob' })).toEqual(
+      unowned,
+    );
+  });
+
+  it('gives a child of a parent with a principal to that principal, whoever dispatched it', async () => {
+    const fixture = createFixture({
+      parents: { 'parent-1': { agentName: 'planner', principal: 'owner', live: true } },
+    });
+    const { dispatch, get } = fixture.topology.children;
+
+    const asOwner = await startedChild(fixture, { childRunId: 'child-a', principal: 'owner' });
+    const trusted = await startedChild(fixture, { childRunId: 'child-b' });
+    const asAlice = await dispatch({
+      parentRunId: 'parent-1',
+      agentName: 'worker',
+      input: 'x',
+      childRunId: 'child-c',
+      principal: 'alice',
+    });
+
+    // Dispatch checks the caller's principal against the parent's.
+    expect(asAlice).toEqual({ outcome: 'not-found' });
+    expect([asOwner.principal, trusted.principal]).toEqual(['owner', 'owner']);
+    expect(
+      await get({ parentRunId: 'parent-1', childRunId: 'child-b', principal: 'owner' }),
+    ).toEqual(trusted);
+    expect(
+      await get({ parentRunId: 'parent-1', childRunId: 'child-b', principal: 'alice' }),
+    ).toBeUndefined();
   });
 
   it('answers wait for an unknown, settled, unobserved, or abandoned wait', async () => {
@@ -1716,6 +1834,53 @@ describe('delegation grants', () => {
         input: 'x',
       }),
     ).toMatchObject({ outcome: 'rejected', code: 'depth-exhausted' });
+    // A rejection decided before registration leaves no audit entry.
+    expect(auditTypes(fixture.audits)).toEqual(['child.started', 'child.started', 'child.started']);
+  });
+
+  it('checks and budgets nothing against a top-level parent, which holds no grant', async () => {
+    const fixture = createFixture({ delegation });
+
+    // The requested authority becomes the child's ceilings as given; nothing narrows it.
+    const lead = await fixture.topology.children.dispatch({
+      parentRunId: 'parent-1',
+      agentName: 'worker',
+      input: 'x',
+      childRunId: 'lead',
+      authority: {
+        depth: 5,
+        budget: { concurrentChildren: 1 },
+        capabilities: { admin: true },
+        disclosurePolicy: 'full',
+      },
+    });
+    expect(lead).toMatchObject({
+      outcome: 'started',
+      grant: { depth: 5, budget: { concurrentChildren: 1 } },
+    });
+    const leadGrant = await grantOf(fixture, 'lead');
+    expect(leadGrant.effectiveCapabilities).toEqual({ admin: true });
+
+    // No grant sits above the top-level parent, so its own fan-out is unbounded,
+    // and a child dispatched without `authority.depth` gets `depth: 0`.
+    for (const childRunId of ['child-b', 'child-c', 'child-d']) {
+      expect(
+        await fixture.topology.children.dispatch({
+          parentRunId: 'parent-1',
+          agentName: 'worker',
+          input: 'x',
+          childRunId,
+        }),
+      ).toMatchObject({ outcome: 'started', grant: { depth: 0 } });
+    }
+    fixture.parents['child-b'] = { agentName: 'worker', live: true };
+    expect(
+      await fixture.topology.children.dispatch({
+        parentRunId: 'child-b',
+        agentName: 'worker',
+        input: 'x',
+      }),
+    ).toMatchObject({ outcome: 'rejected', code: 'depth-exhausted' });
   });
 
   it('serializes sibling reservations and releases a slot when a child settles', async () => {
@@ -2081,6 +2246,7 @@ describe('delegation grants', () => {
         parentState?: 'running' | null;
         delegationAtRestart?: typeof delegation | undefined;
         dropGrant?: boolean;
+        parentCancellation?: 'cascade' | 'detach';
       } = {},
     ) {
       const engine = createFakeEngine();
@@ -2095,6 +2261,7 @@ describe('delegation grants', () => {
       await startedChild(first, {
         childRunId: 'child-a',
         authority: { depth: 1, budget: { concurrentChildren: 2 } },
+        parentCancellation: options.parentCancellation ?? 'cascade',
       });
       // One grandchild settled cleanly before the crash, so its release is already recorded.
       await startedChild(first, { parentRunId: 'child-a', childRunId: 'released-grandchild' });
@@ -2226,28 +2393,32 @@ describe('delegation grants', () => {
       );
     });
 
-    it('fences the grants of children whose parent cannot be recovered', async () => {
-      const { second, grant } = await recoverWith({ parentState: null });
+    it.each(['cascade', 'detach'] as const)(
+      'fences the grant of a %s child whose parent cannot be recovered, and cancels it',
+      async (parentCancellation) => {
+        const { second, grant } = await recoverWith({ parentState: null, parentCancellation });
 
-      expect(await second.store.get('child-a')).toMatchObject({
-        status: 'aborted',
-        outcome: { reason: expect.stringContaining('revoked on recovery') },
-      });
-      const load = await second.store.loadGrant(grant.id);
-      expect(load.status === 'found' && verifyDelegationGrant(load.grant, SECRET, 0)).toMatchObject(
-        {
+        expect(await second.store.get('child-a')).toMatchObject({
+          status: 'aborted',
+          parentCancellation,
+          outcome: { reason: expect.stringContaining('revoked on recovery') },
+        });
+        const load = await second.store.loadGrant(grant.id);
+        expect(
+          load.status === 'found' && verifyDelegationGrant(load.grant, SECRET, 0),
+        ).toMatchObject({
           valid: false,
           code: 'revoked',
-        },
-      );
-      expect(second.audits).toContainEqual(
-        expect.objectContaining({
-          type: 'delegation.revoked',
-          detail: expect.objectContaining({ reason: 'revoked-on-recovery' }),
-        }),
-      );
-      // The fenced child's own children follow its cascade.
-      expect(await statusOf(second.store, 'running-grandchild')).toBe('aborted');
-    });
+        });
+        expect(second.audits).toContainEqual(
+          expect.objectContaining({
+            type: 'delegation.revoked',
+            detail: expect.objectContaining({ reason: 'revoked-on-recovery' }),
+          }),
+        );
+        // The fenced child's own children follow its cascade.
+        expect(await statusOf(second.store, 'running-grandchild')).toBe('aborted');
+      },
+    );
   });
 });

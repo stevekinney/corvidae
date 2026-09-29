@@ -11,10 +11,17 @@
  * ## Addressing and authorization
  *
  * Every operation names both the parent and the child. A child is only
- * visible through the parent that owns it: naming an unrelated parent, or
- * supplying a principal other than the one that owns the parent run, reads
+ * visible through the parent that owns it: naming an unrelated parent reads
  * as `not-found` — the same not-found-shaped denial `eventHistory` and the
  * session verbs use, so a caller cannot tell "wrong id" from "not yours".
+ *
+ * A child's record carries the parent run's principal or, when the parent
+ * has none, the principal that dispatched it. `dispatch` compares the
+ * caller's principal with the parent's; `list`, `get`, `wait`, `signal`,
+ * and `cancel` compare it with the child record's, so under a parent
+ * without a principal a child one principal dispatched reads as
+ * `not-found` to another. A comparison passes when either side has no
+ * principal: omitting it is a trusted, internal call.
  *
  * A child's identifier is its durable run identifier too, so dispatch
  * refuses one that already names any other run or workflow Bureau knows
@@ -117,9 +124,10 @@ export interface BureauChildReference {
   readonly parentRunId: string;
   readonly childRunId: string;
   /**
-   * The caller's principal. When both this and the parent's recorded
+   * The caller's principal. When both this and the child record's
    * principal are present they must match; omitting it is a trusted,
-   * internal call, matching `eventHistory`'s rule.
+   * internal call, matching `eventHistory`'s rule. The record's principal
+   * is the parent's, or the dispatching principal when the parent had none.
    */
   readonly principal?: string | undefined;
 }
@@ -148,6 +156,11 @@ export interface BureauChildDispatchRequest<TName extends string = string> {
    * knows is rejected as `child-run-id-conflict`. Generated when omitted.
    */
   readonly childRunId?: string | undefined;
+  /**
+   * The caller's principal. When both this and the parent's principal are
+   * present they must match. The child records the parent's principal, or
+   * this one when the parent has none.
+   */
   readonly principal?: string | undefined;
   /** Defaults to `'cascade'`. */
   readonly parentCancellation?: BureauChildParentCancellation | undefined;

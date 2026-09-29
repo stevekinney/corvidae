@@ -131,7 +131,7 @@ Snapshots are cached, immutable, and side-effect-free. Calling `snapshot()` does
 
 ### Required capabilities
 
-An independently owned live operation exposes a cached snapshot, independent observation, idempotent cancellation where supported, an awaitable terminal result, and an awaitable cleanup acknowledgement. `AgentRun` supplies these as `snapshot()`, `subscribeSnapshot()`, `abort()`, `result()`, and `closed()`. Child runs remain parent-owned and are discovered through `children()` and `abortChild()` when a `ChildRunRegistry` is wired.
+An independently owned live operation exposes a cached snapshot, independent observation, idempotent cancellation where supported, an awaitable terminal result, and an awaitable cleanup acknowledgement. `AgentRun` supplies these as `snapshot()`, `subscribeSnapshot()`, `abort()`, `result()`, and `closed()`. Child runs remain parent-owned and are discovered through `children()` and `abortChild()` when a `ChildRunRegistry` is wired. Bureau's durable children are a separate surface, `bureau.children`, that the parent's `children()` does not list; see [Multi-agent lifecycle and communication](./multi-agent-lifecycle.md).
 
 Cleanup acknowledgement describes cleanup, not optimistic rollback. An external tool, provider, or hook may already have committed a side effect; the run preserves the observed outcome and idempotency evidence rather than claiming that effect was reversed.
 

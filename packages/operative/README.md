@@ -14,6 +14,7 @@ Declare `"@lostgradient/operative": "workspace:*"` in the consuming workspace's 
 - Provides sessions, session stores, durable run support, scheduler primitives, and heartbeat utilities.
 - Adds hooks for generation, tool execution, context assembly, validation, run lifecycle, and error handling.
 - Provides guardrails, retry mutators, cache middleware, context compaction, streaming, backpressure, budgets, handoffs, and subagents. Supervisors and agent discovery live in `@lostgradient/bureau`.
+- Dispatches child runs with typed, parent-mediated signals and provides the signed delegation-grant helpers Bureau's durable parent-child topology uses.
 - Lets a retry or reset start from a typed, validated handoff artifact instead of a failed transcript, and names the three ways an attempt gets its conversation: continue, fork from a baseline, or fresh from an artifact.
 
 ## How It Works
@@ -695,6 +696,56 @@ sessions.events.addEventListener('session.outbox-appended', () => {
 });
 ```
 
+### Forking a session through a completed run (COR-816)
+
+`SessionHandle.fork(options?)` creates a new session with a new id and an empty run list. With `throughRun` (a 0-based run sequence), its conversation is rebuilt from that terminal run's immutable `RunRef.conversationBoundary`, so no message from a later run reaches the fork. Tool calls stay paired with their results. Without `throughRun`, the fork copies the session's latest stored history. Nothing is shared between the two sessions afterwards, and a `SessionForkEvent` (`session.fork`, with `sourceSessionId`, `forkedSessionId`, and `throughRun`) fires once the fork is persisted. Each terminal `RunRef` records its boundary once, as a `RunConversationBoundary` delta-encoded against an earlier run's boundary, and never rewrites it.
+
+```typescript
+import {
+  createSessionHandle,
+  createSessionStore,
+  ForkThroughRunError,
+  type GenerateFunction,
+  stopWhen,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
+
+const generate: GenerateFunction = async ({ conversation }) => ({
+  content: `reply to message ${conversation.getMessages().length}`,
+  toolCalls: [],
+});
+
+const store = createSessionStore(textValueStore(new MemoryStorage()));
+const session = createSessionHandle('support-thread', {
+  store,
+  agentName: 'assistant',
+  // Session runs do not default `stopWhen` the way `createAgent` does.
+  runOptions: { generate, toolbox: createToolbox([]), stopWhen: stopWhen.noToolCalls() },
+});
+
+await session.run('First question').result(); // run 0
+await session.run('Second question').result(); // run 1
+
+const branch = await session.fork({ throughRun: 0 });
+const forked = await branch.getSession();
+// forked.id is new, forked.runs is [], and the history holds run 0's
+// question and reply only.
+
+let reason: string | undefined;
+try {
+  await session.fork({ throughRun: 5 });
+} catch (error) {
+  if (error instanceof ForkThroughRunError) reason = error.reason; // 'out-of-range'
+}
+```
+
+`test/multi-agent-lifecycle-guide.test.ts` runs this example and asserts each commented result.
+
+An unusable fork point rejects with `ForkThroughRunError` before anything is persisted or any event fires. Its `reason` (`ForkThroughRunErrorReason`) is `'invalid'` (not an integer), `'negative'`, `'out-of-range'` (no run with that sequence yet), `'non-terminal'` (the run is still running), or `'unavailable'` (the run is terminal but has no reconstructable boundary—a legacy `RunRef`, or a terminal commit with no transcript to record). The error also carries `sessionId`, `throughRun`, and `runCount`.
+
+A fork is a branch of history, not a child run: it has no parent relationship, signal channel, or cancellation link, and it does not replay tool calls or clone an in-flight provider request. A fresh attempt, context compaction, subagent summaries, and same-session handoffs are separate mechanisms with different histories; [Fresh attempts and conversation policies](#fresh-attempts-and-conversation-policies-cor-1354) compares them.
+
 ### Fresh attempts and conversation policies (COR-1354)
 
 A retry or reset that must not inherit a failed attempt's transcript starts from a typed, validated handoff artifact instead. The artifact carries the minimum state the next attempt needs (objective, constraints, completed work, validated facts, known failures, open questions, the next action, and references to evidence) and has no field that can hold a message or a transcript. Operative keeps this apart from every other way an attempt can get its context:
@@ -1299,6 +1350,8 @@ const withFallback = createFallbackGenerate({
 
 ### Multi-Agent Patterns
 
+For the whole lifecycle across packages—addressing, observation, signals, budgets, cancellation, recovery, and what is unsupported—read [Multi-agent lifecycle and communication](../../documentation/multi-agent-lifecycle.md). Communication is supervisor-mediated only (COR-807): a parent can address its own children, and nothing here lets a child address a sibling, an unrelated run, or a global mailbox. To pass information between siblings, the parent observes one and signals the other.
+
 `createSupervisor` and `createAgentDiscoveryTool` moved to the `bureau` package (AB-22)—they now operate directly on a `BureauAgentCatalog`/`AgentDescriptor` rather than the older registry types, which no longer exist in this package. See `bureau`'s README for both. `createHandoffTool` stays here; it now takes a `RunnableAgent` (from `createAgent` or `createLazyAgent`) directly instead of a registry adapter.
 
 **Subagents:**
@@ -1387,6 +1440,8 @@ const [resultAlpha, resultBeta] = await Promise.all([alpha.result(), beta.result
 
 `dispatchChildRun` dispatches through `RunnableAgent.run()`—the in-process route—and emits the four `multiagent.child-workflow.*` lifecycle events (`started`/`completed`/`failed`/`aborted`) on `emitter` when one is supplied, each correlated by `parentRunId` and `childRunId`.
 
+Two failures surface as exceptions rather than as a resolved result. If `agent.run()` throws, `dispatchChildRun` closes the child's signal channel as `failed`, settles its registry entry as `'failed'`, emits `multiagent.child-workflow.failed`, and then rethrows synchronously, so the caller gets no handle. If the child's own `result()` rejects, or throws instead of returning a promise, the handle's `result()` rejects with that error after the same failure settlement. A child that finishes with any finish reason other than `stop-condition` or an abort still resolves `result()`, and is reported as `'failed'`.
+
 **Child discovery.** `AgentRun.children()` / `.abortChild(id, reason?)` (the signatures the started-work control contract in `documentation/operative-type-safe-api.md` assigns to AB-50) are backed by an opt-in `ChildRunRegistry`. Discovery does not happen automatically—a tool is constructed once, independent of any particular run, so nothing can inject a run-scoped registry into an already-built tool by itself. Wire the same registry into both places to make a run's children discoverable even when the tool's own return value never surfaces them to the caller:
 
 ```typescript
@@ -1448,9 +1503,9 @@ This also fixes a reuse hazard the construction-time wiring had: build `research
 
 `parentRunId` follows the same per-execution-over-construction-time rule, but only when the active run actually carries a `runId`—session-owned and durable runs (`RunOptions.runId`). A bare `createAgent().run()` call, as in the example above, has none: `AgentRunContext` has no `runId` field today, so `parentContext.parentRunId` (the construction-time value) is what gets stamped on that path. Supply `parentContext.parentRunId` explicitly when you need a correct value there.
 
-**Child terminal lifecycle and relationship-query events (AB-90 child ab90-02, AB-222).** Alongside `ChildWorkflowStartedEvent` (`child.started`), `dispatchChildRun` emits `ChildWorkflowCompletedEvent`/`ChildWorkflowFailedEvent`/`ChildWorkflowAbortedEvent` (`multiagent.child-workflow.completed`/`.failed`/`.aborted`—AB-87's decision record names these `child.completed`/`child.failed`/`child.aborted`; AB-50 shipped them). They're mutually exclusive terminals for one child run, each carrying `childRunId` and `parentRunId`.
+**Child terminal lifecycle and relationship-query events (AB-90 child ab90-02, AB-222).** Alongside `ChildWorkflowStartedEvent` (`multiagent.child-workflow.started`), `dispatchChildRun` emits `ChildWorkflowCompletedEvent`/`ChildWorkflowFailedEvent`/`ChildWorkflowAbortedEvent` (`multiagent.child-workflow.completed`/`.failed`/`.aborted`—AB-87's decision record names these `child.completed`/`child.failed`/`child.aborted`; AB-50 shipped them under the `multiagent.child-workflow.*` names). They're mutually exclusive terminals for one child run, each carrying `childRunId` and `parentRunId`. Bureau's audit trail uses the `child.*` names for its own durable records (see [Bureau's parent-child topology](../bureau/README.md#parent-child-topology-cor-772)); those are audit entries, not these events.
 
-Two further event classes are typed and exported by this package but not yet wired to a live dispatch call site: `ChildWorkflowReattachedEvent` (`multiagent.child-workflow.reattached`, `childRunId`/`parentRunId`) fires only once AB-53's persisted parent-child topology recovery reattaches a previously detached child's event stream to its parent—this package defines the type, payload shape, and intended dispatch point, but does not itself implement persisted topology or recovery. `ChildWorkflowProgressEvent` (`multiagent.child-workflow.progress`) additionally carries the child's own `SemanticProgress` (`@lostgradient/operative`'s `liveness` module, AB-88/AB-214) and is explicitly non-cursor-advancing—an ephemeral delta, never a durable state transition.
+Two further event classes are typed and exported by this package but have no production emitter. `ChildWorkflowReattachedEvent` (`multiagent.child-workflow.reattached`, `childRunId`/`parentRunId`) describes a child reattached to its parent after recovery. This package does not persist or recover children, and Bureau's durable topology (COR-772) records reattachment as a `child.reattached` audit-trail entry rather than dispatching this event—see [Bureau's parent-child topology](../bureau/README.md#parent-child-topology-cor-772). `ChildWorkflowProgressEvent` (`multiagent.child-workflow.progress`) additionally carries the child's own `SemanticProgress` (`@lostgradient/operative`'s `liveness` module, AB-88/AB-214) and is explicitly non-cursor-advancing—an ephemeral delta, never a durable state transition.
 
 `listChildRuns(registry, parentRunId)` is a relationship-query function over the same `ChildRunRegistry` `AgentRun.children()` reads from—it lets a caller enumerate a run's children and their outcomes without polling each child's own handle:
 
@@ -1511,10 +1566,13 @@ const outcome = await child.signals.send('focus', { topic: 'corvids' });
 - **Acknowledgement or typed rejection.** `send` never rejects: it resolves `acknowledged` once the child's handler returns or resolves, or `rejected` with a `code`—`handler-failed` (the handler threw), `invalid-payload` (the schema refused it or threw while parsing it—including a refinement or transform that throws, or one that is asynchronous—or it cannot be structurally cloned), `unknown-name`, `buffer-full`, or `channel-closed`. `emit` returns `emitted` (with `delivered: false` when it was buffered) or the same rejection shape, synchronously.
 - **Validated and isolated.** Every payload is parsed by its schema and then structurally cloned, so the recipient receives the schema's output and never shares a reference with the sender. The recipient still decides whether to act: a handler that refuses throws, and the parent sees `handler-failed`.
 - **Correlated to one pair.** Neither endpoint takes a run id—each is bound to one `parentRunId`/`childRunId` pair when `dispatchChildRun` builds the channel, and every message and outcome carries that pair. `readParentSignals` returns a port only for the exact contract object the channel was built with, and only for a port a channel created. A grandchild the child dispatches never receives its parent's port; there is no sibling addressing or global mailbox.
-- **Signal before listener.** A message sent before its consumer registers waits in a bounded buffer (`signalBufferLimit`, default `DEFAULT_CHILD_SIGNAL_BUFFER_LIMIT` = 64 per direction; `0` refuses instead of buffering) and is delivered in order the moment `onSignal`/`on` registers. One handler per signal name and one listener per event name at a time.
+- **Signal before listener.** A message sent before its consumer registers waits in a bounded buffer (`signalBufferLimit`, default `DEFAULT_CHILD_SIGNAL_BUFFER_LIMIT` = 64 per direction; `0` refuses instead of buffering) and is delivered in order the moment `onSignal`/`on` registers. With `signals` supplied, a `signalBufferLimit` that is not a non-negative integer makes `dispatchChildRun` throw `RangeError` before anything is registered, emitted, or started; `createChildSignalChannel` throws the same `RangeError` for its `bufferLimit`.
+- **One consumer per name.** One handler per signal name and one listener per event name at a time. `handle.signals.on` and the port's `onSignal` throw `TypeError` for a name the contract does not declare, and `Error` when that name already has a consumer. Once the channel has closed, a registration for a declared name is inert instead of throwing.
 - **Deterministic close.** The channel closes once, with the first of `aborted` (the handle's `abort()` or the parent's `signal`), `completed`/`failed`/`aborted` (the child's settled result, before `result()` resolves), or `disposed` (`[Symbol.dispose]()`). Closing resolves every unsettled send as `channel-closed`—`delivered: true` when the child's handler was already running—drops buffered messages, releases every handler and listener, and makes later sends, emits, and registrations inert. `closeReason` on either endpoint reports it.
 
-Everything here is in-process: no persistence, restart recovery, or network transport.
+Everything here is in-process: no persistence, restart recovery, or network transport. `createAgent` children receive the port automatically; `createSubagentTool` has no `signals` option. A host that starts a child run itself, as Bureau does for `bureau.children`, can build the channel with `createChildSignalChannel(contract, { parentRunId, childRunId }, { bufferLimit? })`, hand `channel.child` to the child as `AgentRunContext.parentSignals`, keep `channel.parent`, and call `channel.close(reason)` when the child ends. Bureau's durable children use a contract registered in `BureauOptions.children.signals`, and Bureau can send them signals but exposes no way to observe their `events`.
+
+**Exported types.** Child dispatch and discovery export `DispatchChildRunOptions`; `ChildRunHandle`, and `SignaledChildRunHandle` (a handle with `signals`, returned when `signals` is supplied); `ChildEventEmitter` (the `dispatchEvent` surface `emitter` needs); `ChildRunRegistry` (the read surface) and `MutableChildRunRegistry` (what `registry` accepts and `createChildRunRegistry()` returns); `ChildRunDescriptor`; `ChildRunStatus` (`'running' | 'completed' | 'failed' | 'aborted'`); `ChildRunTerminalStatus` (every status but `'running'`); and `ChildRunSummary`, whose `status` is a `ChildRunTerminalStatus` or `undefined` while the child runs. Every `multiagent.child-workflow.*` event carries `ChildWorkflowCorrelation` (`parentAgentName`, `parentRunId`, `childAgentName`, `childRunId`). `ChildWorkflowReattachedPayload` and `ChildWorkflowProgressPayload` type the two events with no emitter. Signals export `ChildSignalSchemas` and `ChildSignalContract` (the contract); `ParentSignalEndpoint` (`handle.signals`) and `ChildSignalPort` (the child's port); `ChildSignalCorrelation`; `ChildSignalMessage` (`id`, `sequence`, `name`, `payload`, and the correlation); `ChildSignalHandler`; `ChildSignalOutcome` (`ChildSignalAcknowledgement | ChildSignalRejection`); `ChildEventOutcome` (`ChildEventEmission | ChildSignalRejection`); `ChildSignalRejectionCode`; `ChildSignalCloseReason`; and, for `createChildSignalChannel`, `ChildSignalChannel` and `CreateChildSignalChannelOptions`.
 
 **Cleanup acknowledgement.** `closed(options?)` (AB-37, delivered by AB-204) is on `ActiveRun`, `AgentRun`, and `DiagnosticAgentRun` alike—a truthful cleanup acknowledgement, backed by the same settlement `abort()` already uses, for a caller that wants more than "I fired `abort()` and hoped":
 
@@ -1646,6 +1704,73 @@ if (target) {
 > If the target agent needs the reason in its own context, pass it explicitly when you start that agent's run—the handoff mechanism will not carry it across for you.
 
 **Agent discovery:** moved to the `bureau` package (AB-22)—see its README for `createAgentDiscoveryTool`, which now takes a `BureauAgentCatalog<D>` directly rather than a standalone registry.
+
+### Delegation grants (COR-336)
+
+A `DelegationGrant` is the signed authority record for one child dispatch. It binds the parent and child run identifiers, the child's agent name and version, an `objective` (or an `artifactDigest` when the objective is an approved artifact), the recipient, the child's `effectiveCapabilities`, a `delegatedAuthority` for model selection, `budget` ceilings, the remaining nesting `depth`, `policyVersion`, `issuedAt`/`expiresAt`, `revoked`, and a `disclosurePolicy`. The HMAC-SHA-256 `signature` covers every other field in a canonical serialization, so a changed field, including `revoked`, fails verification. The objective is metadata: a natural-language claim that authority exists is never the authority record.
+
+The helpers are pure functions:
+
+- `signDelegationGrant(unsigned, secret)` signs a grant. `verifyDelegationGrant(grant, secret, now)` checks, in order, `version`, signature, revocation, and expiry, and returns `{ valid: true }` or `{ valid: false, code, reason }` with `code` of `'unsupported-version'`, `'invalid-signature'`, `'revoked'`, or `'expired'`. Every failure is a hard deny.
+- `revokeDelegationGrant(grant, secret)` returns the grant revoked and re-signed.
+- `attenuateDelegationCapabilities(parent, requested)` and `attenuateDelegationBudget(parent, requested)` compute a child's values that are never wider than the parent's. Allow-lists intersect, `network`/`admin` switches can only turn off, numeric ceilings take the lower value, and a dimension absent on one side inherits the other. `parent === undefined` returns `requested` unchanged.
+- `isDelegationGrant(value)` is a fail-closed structural guard for a grant read back from storage. `digestDelegationArtifact(value)` is a SHA-256 digest of a value's canonical JSON. `DELEGATION_GRANT_VERSION` (`1`) is the compatibility boundary for the signed payload.
+- The exported types are `DelegationGrant`, `UnsignedDelegationGrant` (a grant without `signature`, the input to `signDelegationGrant`), `DelegationCapabilities` (`tools`, `pathPatterns`, and `secrets` allow-lists, plus `network` and `admin`, each an allow-list or a switch), `DelegationBudget` (`concurrentChildren`, `totalDescendants`, `duration`, `steps`, `tokens`, `cost`, `toolCalls`), `DelegationDisclosurePolicy` (`'full' | 'redacted' | 'digest-only'`), `DelegationGrantVerification`, and `DelegationGrantVerificationCode`.
+
+```typescript
+import {
+  attenuateDelegationBudget,
+  attenuateDelegationCapabilities,
+  DELEGATION_GRANT_VERSION,
+  revokeDelegationGrant,
+  signDelegationGrant,
+  verifyDelegationGrant,
+} from '@lostgradient/operative';
+
+const secret = 'replace-with-a-real-secret';
+const now = Date.now();
+
+const grant = signDelegationGrant(
+  {
+    version: DELEGATION_GRANT_VERSION,
+    id: 'delegation:planner-1',
+    parentRunId: 'root-run',
+    childRunId: 'planner-1',
+    agentName: 'planner',
+    agentVersion: '1',
+    objective: 'Plan the corvid report',
+    recipientId: 'planner-1',
+    effectiveCapabilities: { tools: ['search', 'fetch'], network: ['example.com'] },
+    delegatedAuthority: { policyVersion: 'policy/1' },
+    budget: { concurrentChildren: 2, totalDescendants: 4 },
+    depth: 1,
+    policyVersion: 'policy/1',
+    issuedAt: now,
+    expiresAt: now + 60_000,
+    revoked: false,
+    disclosurePolicy: 'redacted',
+  },
+  secret,
+);
+
+const capabilities = attenuateDelegationCapabilities(grant.effectiveCapabilities, {
+  tools: ['search', 'shell'],
+  network: true,
+});
+// { tools: ['search'], network: ['example.com'] }
+
+const budget = attenuateDelegationBudget(grant.budget, { concurrentChildren: 5, steps: 20 });
+// { concurrentChildren: 2, totalDescendants: 4, steps: 20 }
+
+const valid = verifyDelegationGrant(grant, secret, now); // { valid: true }
+const tampered = verifyDelegationGrant({ ...grant, depth: 5 }, secret, now); // code: 'invalid-signature'
+const revoked = verifyDelegationGrant(revokeDelegationGrant(grant, secret), secret, now); // code: 'revoked'
+const expired = verifyDelegationGrant(grant, secret, grant.expiresAt); // code: 'expired'
+```
+
+`test/multi-agent-lifecycle-guide.test.ts` runs this example and asserts each commented result.
+
+This package issues no grants on its own: `dispatchChildRun` and `createSubagentTool` narrow only model selection, through `DelegatedAuthority` (see [Selection Gate and Boundary Revalidation](#selection-gate-and-boundary-revalidation-ab-64-ab-250)). Nothing here stores grants, keeps a budget ledger, or counts usage. Bureau's `bureau.children` issues, stores, reserves budget against, and re-verifies grants on recovery; see [Bureau's parent-child topology](../bureau/README.md#parent-child-topology-cor-772). Even there, only the signature, revocation, expiry, `depth`, `concurrentChildren`, and `totalDescendants` are enforced. The capability lists, the grant's `delegatedAuthority`, and the `steps`, `tokens`, `cost`, `toolCalls`, and `duration` ceilings are recorded and attenuated, but they do not constrain the running child.
 
 ### Scheduler
 
