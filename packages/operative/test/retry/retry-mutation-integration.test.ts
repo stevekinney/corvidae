@@ -1,6 +1,6 @@
 import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation, type ConversationHistory } from 'conversationalist';
 import { assertDefined } from '../assert-defined';
 
 import { noToolCalls } from '../../src/conditions/predicates';
@@ -9,7 +9,7 @@ import type { GenerateRetryEvent } from '../../src/events';
 import { composeMutators } from '../../src/retry/compose-mutators';
 import type { RetryMutator } from '../../src/retry/types';
 import { createRunRecorder } from '../../src/test/index';
-import type { GenerateResponse } from '../../src/types';
+import type { GenerateContext, GenerateResponse } from '../../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 
 function textResponse(content: string): GenerateResponse {
@@ -71,6 +71,46 @@ describe('retry with mutation integration', () => {
     expect(result.finishReason).toBe('stop-condition');
     // First call: step 0, second call: step 100 (mutated)
     expect(stepsSeenByGenerate).toEqual([0, 100]);
+  });
+
+  it('passes the mutator the history each failed attempt was sent with', async () => {
+    const conversation = new Conversation();
+    conversation.appendUserMessage('question');
+    const sentHistories: ConversationHistory[] = [];
+    const received: { sent: ConversationHistory | undefined; current: ConversationHistory }[] = [];
+
+    const generate = async (context: GenerateContext) => {
+      sentHistories.push(context.conversation.current);
+      if (sentHistories.length <= 2) {
+        // Another writer lands while this request is in flight.
+        context.conversation.appendUserMessage(`in flight ${sentHistories.length}`);
+        throw new Error('fail');
+      }
+      return textResponse('Done');
+    };
+
+    const mutator: RetryMutator = (context, _error, _attempt, sent) => {
+      received.push({ sent, current: context.conversation.current });
+      return undefined;
+    };
+
+    const result = await run({
+      generate,
+      toolbox: createTestToolbox([]),
+      conversation,
+      stopWhen: noToolCalls(),
+      retry: { attempts: 3, mutate: mutator },
+    });
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(received).toHaveLength(2);
+    expect(received[0]!.sent).toBe(sentHistories[0]);
+    expect(received[1]!.sent).toBe(sentHistories[1]);
+    // What was sent, not what the conversation holds once the attempt failed.
+    expect(received[0]!.sent!.ids).toHaveLength(1);
+    expect(received[0]!.current.ids).toHaveLength(2);
+    expect(received[1]!.sent!.ids).toHaveLength(2);
+    expect(received[1]!.current.ids).toHaveLength(3);
   });
 
   it('emits GenerateRetryEvent with mutated=true when context was mutated', async () => {

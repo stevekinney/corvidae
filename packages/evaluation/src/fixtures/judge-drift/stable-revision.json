@@ -1,0 +1,30 @@
+{
+  "description": "Scripted outputs of the approved judge revision (prompt version judge-prompt-3) for each calibration-set item, in item order. Every score is within the set's 0.2 tolerance of the human reference score.",
+  "promptVersion": "judge-prompt-3",
+  "replies": [
+    {
+      "criteria": [
+        { "name": "helpful-tone", "score": 0.95, "rationale": "Courteous and complete." }
+      ],
+      "feedback": "Clear and friendly."
+    },
+    {
+      "criteria": [{ "name": "helpful-tone", "score": 0.25, "rationale": "Correct but curt." }],
+      "feedback": "Drop the sarcasm."
+    },
+    {
+      "criteria": [
+        { "name": "helpful-tone", "score": 0.85, "rationale": "Friendly, slightly hedged." }
+      ],
+      "feedback": "State the answer with confidence."
+    },
+    {
+      "criteria": [{ "name": "helpful-tone", "score": 0.05, "rationale": "Refuses to help." }],
+      "feedback": "Answer the question."
+    },
+    {
+      "criteria": [{ "name": "helpful-tone", "score": 0.5, "rationale": "Polite but evasive." }],
+      "feedback": "Name the capital."
+    }
+  ]
+}

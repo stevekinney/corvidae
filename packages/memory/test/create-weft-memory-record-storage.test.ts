@@ -1,5 +1,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type BatchOperation,
+  type ConditionalBatchCondition,
   encodeStorageKeyComponent,
   MemoryStorage,
   WEFT_RESERVED_KEY_PREFIXES,
@@ -10,7 +12,7 @@ import {
   createWeftMemoryRecordStorage,
   DEFAULT_MEMORY_KEY_PREFIX,
 } from '../src/create-weft-memory-record-storage';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from '../src/types';
 
 /**
@@ -170,6 +172,40 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
 
       // The row is gone from the underlying storage — not flipped to a
       // status:'deleted' tombstone (that is Cloudflare-only behavior).
+      expect([...underlying.snapshot().keys()]).toEqual([]);
+    });
+
+    it('deleteMany commits every removal in one conditional batch, or none at all', async () => {
+      await storage.put(makeRecord('a'));
+      await storage.put(makeRecord('b', { namespace: 'beta', metadata: { dedupeKey: 'op' } }));
+      const before = [...underlying.snapshot().keys()].toSorted();
+      const batches: number[] = [];
+      const original = underlying.conditionalBatch.bind(underlying);
+      underlying.conditionalBatch = async (_conditions, operations) => {
+        batches.push(operations.length);
+        throw new Error('storage unavailable');
+      };
+
+      expect(
+        await throwingRejectionOf(
+          storage.deleteMany!([
+            { id: 'a', scope: SCOPE },
+            { id: 'b', scope: { namespace: 'beta' } },
+          ]),
+        ),
+      ).toThrow('storage unavailable');
+      // One batch carried both records and the dedupe index entry, and its
+      // failure left every row in place.
+      expect(batches).toEqual([3]);
+      expect([...underlying.snapshot().keys()].toSorted()).toEqual(before);
+
+      underlying.conditionalBatch = original;
+      expect(
+        await storage.deleteMany!([
+          { id: 'a', scope: SCOPE },
+          { id: 'b', scope: { namespace: 'beta' } },
+        ]),
+      ).toBe(2);
       expect([...underlying.snapshot().keys()]).toEqual([]);
     });
 
@@ -350,6 +386,56 @@ describe('createWeftMemoryRecordStorage (Weft-specific)', () => {
       const updated = await runtimeStorage.update('a', SCOPE, { content: 'new content' });
 
       expect(updated?.updatedAt).toBe(Date.parse('2026-06-01T00:00:00.000Z'));
+    });
+  });
+
+  describe('version-conditional writes against a concurrent writer', () => {
+    /** Runs one queued write immediately before the next batch commits, as another process would. */
+    class InterleavingStorage extends MemoryStorage {
+      beforeNextBatch: (() => Promise<unknown>) | undefined;
+
+      override async conditionalBatch(
+        conditions: ConditionalBatchCondition[],
+        operations: BatchOperation[],
+      ): Promise<boolean> {
+        const interleave = this.beforeNextBatch;
+        this.beforeNextBatch = undefined;
+        await interleave?.();
+        return super.conditionalBatch(conditions, operations);
+      }
+    }
+
+    let interleaving: InterleavingStorage;
+    let conditional: MemoryRecordStorage;
+
+    beforeEach(async () => {
+      interleaving = new InterleavingStorage();
+      conditional = createWeftMemoryRecordStorage(interleaving);
+      await conditional.put(makeRecord('a'));
+      await conditional.put(makeRecord('b'));
+    });
+
+    it('rejects an update whose record changed after it was read', async () => {
+      interleaving.beforeNextBatch = () => conditional.update('a', SCOPE, { content: 'theirs' });
+      expect(
+        await rejectionOf(
+          conditional.update('a', SCOPE, { content: 'mine' }, { expectedVersion: 1 }),
+        ),
+      ).toMatchObject({ code: 'version-conflict', recordIds: ['a'] });
+      expect(await conditional.get('a', SCOPE)).toMatchObject({ content: 'theirs', version: 2 });
+    });
+
+    it('deletes nothing when a conditioned record changed after it was read', async () => {
+      interleaving.beforeNextBatch = () => conditional.update('b', SCOPE, { content: 'theirs' });
+      expect(
+        await rejectionOf(
+          conditional.deleteMany!([
+            { id: 'a', scope: SCOPE, expectedVersion: 1 },
+            { id: 'b', scope: SCOPE, expectedVersion: 1 },
+          ]),
+        ),
+      ).toMatchObject({ code: 'version-conflict', recordIds: ['a', 'b'] });
+      expect(await conditional.count(SCOPE)).toBe(2);
     });
   });
 });

@@ -1,0 +1,7 @@
+[test]
+# `bun run test:coverage` fails below 100 percent line or function coverage.
+# Other workspaces are consumed as source, so their modules load into this
+# suite too; they are measured by their own packages, not here, so the
+# threshold covers exactly this workspace's `src/` and `scripts/`.
+coverageThreshold = { lines = 1.0, functions = 1.0 }
+coveragePathIgnorePatterns = ["../**"]

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { withEmbeddingCache } from '../src/embedding-cache';
+import { sha256Hex } from '../src/hash';
 import { createMockEmbedder } from '../src/test/index';
 import type { Embedder, EmbeddingVector } from '../src/types';
 
@@ -169,5 +170,47 @@ describe('withEmbeddingCache', () => {
 
     expect(hashCalls).toEqual(['test']);
     expect(cached.cache.size).toBe(1);
+  });
+});
+
+describe('withEmbeddingCache content eviction', () => {
+  const digest = (text: string) => sha256Hex(text);
+
+  it.each([
+    ['default keys', undefined],
+    ['a namespace', { namespace: 'tenant-a' }],
+    ['a custom hash', { hash: (text: string) => `custom-${text}` }],
+  ])('evicts entries by the digest of their content under %s', async (_label, options) => {
+    const spy = createSpyEmbedder();
+    const cached = withEmbeddingCache(spy, options);
+    await cached(['secret note', 'kept note', 'secret note']);
+    expect(cached.cache.size).toBe(2);
+
+    expect(cached.evictContent([await digest('secret note'), await digest('never cached')])).toBe(
+      1,
+    );
+    expect(cached.cache.size).toBe(1);
+    await cached(['kept note']);
+    expect(spy.calls).toHaveLength(1);
+    await cached(['secret note']);
+    expect(spy.calls).toHaveLength(2);
+    expect(spy.calls[1]).toEqual(['secret note']);
+  });
+
+  it('forgets the content index when entries leave the cache any other way', async () => {
+    const cached = withEmbeddingCache(createSpyEmbedder(), {
+      maximumEntries: 1,
+      namespace: 'tenant-a',
+    });
+    await cached(['first']);
+    await cached(['second']);
+    expect(cached.evictContent([await digest('first')])).toBe(0);
+
+    cached.clearNamespace('tenant-a');
+    expect(cached.evictContent([await digest('second')])).toBe(0);
+
+    await cached(['third']);
+    cached.clearCache();
+    expect(cached.evictContent([await digest('third')])).toBe(0);
   });
 });

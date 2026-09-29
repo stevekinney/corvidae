@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { registerVectorSearchContractTests } from './contract-harness-vector-search';
 
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
+import { MemoryRecordVersionConflictError } from '../src/memory-record-storage';
+import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from '../src/types';
 import { registerDeleteContractTests } from './contract-harness-delete';
 
@@ -346,6 +347,28 @@ export function runMemoryRecordStorageContract(
 
       it('returns undefined when no record matches', async () => {
         expect(await storage.update('missing', SCOPE, { content: 'x' })).toBeUndefined();
+        expect(
+          await storage.update('missing', SCOPE, { content: 'x' }, { expectedVersion: 1 }),
+        ).toBeUndefined();
+      });
+
+      it('applies a version-conditional update only at the expected version', async () => {
+        await storage.put(makeRecord('a'));
+        const updated = await storage.update(
+          'a',
+          SCOPE,
+          { content: 'first' },
+          { expectedVersion: 1 },
+        );
+        expect(updated?.version).toBe(2);
+
+        const stale = storage.update('a', SCOPE, { content: 'stale' }, { expectedVersion: 1 });
+        const conflict = await rejectionOf(stale);
+        expect(conflict).toBeInstanceOf(MemoryRecordVersionConflictError);
+        expect(conflict).toMatchObject({ code: 'version-conflict', recordIds: ['a'] });
+        const reread = await storage.get('a', SCOPE);
+        expect(reread?.content).toBe('first');
+        expect(reread?.version).toBe(2);
       });
     });
 

@@ -1,0 +1,319 @@
+{
+  "kind": "evaluation-run",
+  "schemaVersion": 1,
+  "id": "fixture-regression-baseline",
+  "recordedAt": "2026-09-28T00:00:00.000Z",
+  "evaluator": {
+    "name": "fixture-regression",
+    "revision": 1,
+    "digest": "2e456d26ad1879629e52fa7cdf384ba202c514281909e687decb02c09e30a9c1"
+  },
+  "resultSchemaVersion": 1,
+  "dataset": {
+    "id": "capitals",
+    "version": "capitals-2026-09"
+  },
+  "codeRevision": "e179aa61e7d926037cb590b35ad797acaaa5d556",
+  "repetitions": 3,
+  "variancePolicy": {
+    "name": "two-of-three",
+    "version": "1",
+    "minimumPassFraction": 0.6,
+    "maximumIntervalWidth": 0.75
+  },
+  "outcomes": {
+    "pass": 2,
+    "fail": 0,
+    "disagreement": 0,
+    "indeterminate": 0
+  },
+  "statistics": {
+    "verdicts": {
+      "trials": 6,
+      "passes": 6,
+      "passFraction": 1,
+      "wilsonInterval": {
+        "lower": 0.6096657120978346,
+        "upper": 1,
+        "width": 0.3903342879021654
+      }
+    },
+    "criteria": [
+      {
+        "name": "names-the-capital",
+        "trials": 6,
+        "passes": 6,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.6096657120978346,
+          "upper": 1,
+          "width": 0.3903342879021654
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      },
+      {
+        "name": "helpful-tone",
+        "trials": 6,
+        "passes": 6,
+        "passFraction": 1,
+        "wilsonInterval": {
+          "lower": 0.6096657120978346,
+          "upper": 1,
+          "width": 0.3903342879021654
+        },
+        "meanScore": 1,
+        "sampleVariance": 0,
+        "standardDeviation": 0
+      }
+    ]
+  },
+  "costUsd": null,
+  "latencyMilliseconds": 1000,
+  "cases": [
+    {
+      "ordinal": 1,
+      "visibility": "held-out",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 3,
+          "passes": 3,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.43850296824495455,
+            "upper": 1,
+            "width": 0.5614970317550454
+          }
+        },
+        "criteria": [
+          {
+            "name": "names-the-capital",
+            "trials": 3,
+            "passes": 3,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.43850296824495455,
+              "upper": 1,
+              "width": 0.5614970317550454
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "helpful-tone",
+            "trials": 3,
+            "passes": 3,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.43850296824495455,
+              "upper": 1,
+              "width": 0.5614970317550454
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 2366618581,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 10,
+            "completion": 5,
+            "total": 15
+          },
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "helpful-tone",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        },
+        {
+          "trial": 2,
+          "seed": 3527238484,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 10,
+            "completion": 5,
+            "total": 15
+          },
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "helpful-tone",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        },
+        {
+          "trial": 3,
+          "seed": 4069418738,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 10,
+            "completion": 5,
+            "total": 15
+          },
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "helpful-tone",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        }
+      ]
+    },
+    {
+      "ordinal": 2,
+      "visibility": "public",
+      "caseId": "case-japan",
+      "outcome": "pass",
+      "statistics": {
+        "verdicts": {
+          "trials": 3,
+          "passes": 3,
+          "passFraction": 1,
+          "wilsonInterval": {
+            "lower": 0.43850296824495455,
+            "upper": 1,
+            "width": 0.5614970317550454
+          }
+        },
+        "criteria": [
+          {
+            "name": "names-the-capital",
+            "trials": 3,
+            "passes": 3,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.43850296824495455,
+              "upper": 1,
+              "width": 0.5614970317550454
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          },
+          {
+            "name": "helpful-tone",
+            "trials": 3,
+            "passes": 3,
+            "passFraction": 1,
+            "wilsonInterval": {
+              "lower": 0.43850296824495455,
+              "upper": 1,
+              "width": 0.5614970317550454
+            },
+            "meanScore": 1,
+            "sampleVariance": 0,
+            "standardDeviation": 0
+          }
+        ]
+      },
+      "trials": [
+        {
+          "trial": 1,
+          "seed": 3924804443,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 10,
+            "completion": 5,
+            "total": 15
+          },
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "helpful-tone",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        },
+        {
+          "trial": 2,
+          "seed": 2860257773,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 10,
+            "completion": 5,
+            "total": 15
+          },
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "helpful-tone",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        },
+        {
+          "trial": 3,
+          "seed": 1451793986,
+          "verdict": "pass",
+          "finishReason": "stop-condition",
+          "usage": {
+            "prompt": 10,
+            "completion": 5,
+            "total": 15
+          },
+          "scores": [
+            {
+              "name": "names-the-capital",
+              "score": 1,
+              "hardGate": "passed"
+            },
+            {
+              "name": "helpful-tone",
+              "score": 1,
+              "hardGate": "not-applicable"
+            }
+          ],
+          "weightedTotal": 1
+        }
+      ]
+    }
+  ]
+}

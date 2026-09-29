@@ -292,6 +292,25 @@
         "typescript": "catalog:",
       },
     },
+    "packages/evaluation": {
+      "name": "@lostgradient/evaluation",
+      "dependencies": {
+        "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "@lostgradient/weft": "workspace:*",
+        "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/lifecycle": {
       "name": "@lostgradient/lifecycle",
       "devDependencies": {
@@ -756,6 +775,8 @@
     "@lostgradient/embeddings": ["@lostgradient/embeddings@workspace:packages/embeddings"],
 
     "@lostgradient/environmentalist": ["@lostgradient/environmentalist@0.1.0", "", { "dependencies": { "change-case": "^5.4.4", "dotenv": "^17.2.0", "jiti": "^2.4.2", "toml": "^5.0.0", "yaml": "^2.8.0" }, "optionalDependencies": { "ts-morph": "^28.0.0" }, "peerDependencies": { "react": ">=18", "svelte": ">=5", "zod": "^4" }, "optionalPeers": ["react", "svelte"], "bin": { "environmentalist": "dist/cli.js" } }, "sha512-9uV5b6kX5p3ahctWj4NyqXArpybIYLfdjFfeI8VWz0QN6OT73sWCLejRjokKJMtIxCS+SpM965lpNCJhaGL41g=="],
+
+    "@lostgradient/evaluation": ["@lostgradient/evaluation@workspace:packages/evaluation"],
 
     "@lostgradient/lifecycle": ["@lostgradient/lifecycle@workspace:packages/lifecycle"],
 

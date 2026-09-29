@@ -1,0 +1,43 @@
+{
+  "id": "capitals-judge-calibration",
+  "version": "2026-09",
+  "tolerance": 0.2,
+  "minimumAgreementRate": 0.8,
+  "items": [
+    {
+      "id": "calibration-courteous-correct",
+      "input": "What is the capital of Italy?",
+      "expected": "Rome",
+      "response": "Rome is the capital of Italy. Happy to help with anything else.",
+      "referenceScores": { "helpful-tone": 1 }
+    },
+    {
+      "id": "calibration-curt-correct",
+      "input": "What is the capital of Spain?",
+      "expected": "Madrid",
+      "response": "Madrid. Obviously.",
+      "referenceScores": { "helpful-tone": 0.3 }
+    },
+    {
+      "id": "calibration-courteous-hedged",
+      "input": "What is the capital of Canada?",
+      "expected": "Ottawa",
+      "response": "Good question! I believe it is Ottawa.",
+      "referenceScores": { "helpful-tone": 0.9 }
+    },
+    {
+      "id": "calibration-dismissive",
+      "input": "What is the capital of Kenya?",
+      "expected": "Nairobi",
+      "response": "Look it up yourself.",
+      "referenceScores": { "helpful-tone": 0 }
+    },
+    {
+      "id": "calibration-evasive",
+      "input": "What is the capital of Peru?",
+      "expected": "Lima",
+      "response": "Many cities in Peru are lovely to visit.",
+      "referenceScores": { "helpful-tone": 0.4 }
+    }
+  ]
+}

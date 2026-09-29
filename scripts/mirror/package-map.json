@@ -1,6 +1,11 @@
 {
   "documentation": "Every corvidae workspace's disposition when the mirror transform emits a public target, plus a ruling on each name that is published (or was once reserved) without corvidae source. The transform hard-errors on any workspace absent from `workspaces`; it never silently skips one. `publish-as` carries the public npm name, and is the only disposition that puts anything on the registry. `private-workspace` ships to the mirror repository but never into a tarball. `exclude` is not emitted at all. Names under `publishedOnly` have no corvidae source, so no sync can maintain them: `keep` means a human maintains it elsewhere, `deprecate` means publish a deprecation notice, and `orphan-untouched` means leave the registry entry exactly as it is.",
   "workspaces": {
+    "@lostgradient/evaluation": {
+      "disposition": "exclude",
+      "basis": "new-unpublished-workspace",
+      "reason": "Never published and new in this repository (COR-1348). It scores completed Operative runs against versioned evaluator configurations, nothing imports it yet, and no workspace the mirror emits depends on it. `private-workspace` would ship its source to a public repository, making a brand-new package public for the first time as a side effect of an internal feature; `exclude` keeps that a deliberate decision. Reversible: promote to `private-workspace` or `publish-as` when a public consumer exists."
+    },
     "@lostgradient/telephone": {
       "disposition": "exclude",
       "basis": "owner-excluded-from-public-mirror",

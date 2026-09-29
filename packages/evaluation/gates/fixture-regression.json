@@ -1,0 +1,28 @@
+{
+  "description": "Offline fixture gate: a scripted capitals agent and a scripted model judge, compared with the committed baseline run.",
+  "package": "@lostgradient/evaluation",
+  "evaluator": "../src/fixtures/release-gate/passing.ts",
+  "dataset": { "id": "capitals", "version": "capitals-2026-09" },
+  "baseline": {
+    "kind": "evaluation-run",
+    "path": "../src/fixtures/release-gate/baseline-run.json"
+  },
+  "sampleSize": 6,
+  "regressionThresholds": [
+    {
+      "criterion": "names-the-capital",
+      "metric": "passFraction",
+      "maximumDecrease": 0.1,
+      "severity": "hard"
+    },
+    {
+      "criterion": "helpful-tone",
+      "metric": "meanScore",
+      "maximumDecrease": 0.2,
+      "severity": "overridable"
+    }
+  ],
+  "budgets": { "costUsd": 1, "latencyMilliseconds": 60000 },
+  "overrideAuthority": "release-manager",
+  "expiry": { "maximumRevisionDistance": 50 }
+}
