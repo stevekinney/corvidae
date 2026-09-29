@@ -405,6 +405,7 @@ export async function verifyPreparedSyncArtifact(options: {
   expectedTarget: MirrorTarget;
   expectedCorvidaeCommit: string;
   expectedSnapshot: boolean;
+  expectedBaseBranch?: string;
   environment?: Record<string, string | undefined>;
   run?: CommandRunner;
 }): Promise<VerifiedPreparedSync> {
@@ -426,6 +427,12 @@ export async function verifyPreparedSyncArtifact(options: {
   if (manifest.snapshot !== options.expectedSnapshot) {
     throw new PreparedSyncError('Prepared sync snapshot flag does not match the workflow input');
   }
+  if (
+    options.expectedBaseBranch !== undefined &&
+    manifest.baseBranch !== options.expectedBaseBranch
+  ) {
+    throw new PreparedSyncError('Prepared sync base branch does not match the workflow input');
+  }
   const bundlePath = join(options.artifactDirectory, manifest.bundle.file);
   const digest = await fileSha256(bundlePath);
   if (digest !== manifest.bundle.sha256) {
@@ -441,6 +448,9 @@ export async function verifyPreparedSyncArtifact(options: {
     corvidaeRoot: options.corvidaeRoot,
     manifest,
     remote: options.remote,
+    ...(options.expectedBaseBranch === undefined
+      ? {}
+      : { expectedBaseBranch: options.expectedBaseBranch }),
   });
   return { manifest, bundlePath };
 }

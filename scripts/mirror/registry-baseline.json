@@ -5,7 +5,7 @@
     "@lostgradient/chat": {
       "workspace": "@lostgradient/chat",
       "version": "0.14.0",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./composer-popover",
@@ -44,7 +44,7 @@
     "@lostgradient/cinder": {
       "workspace": "@lostgradient/cinder",
       "version": "0.26.2",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./access-gate",
@@ -1043,13 +1043,13 @@
     "@lostgradient/cryptography": {
       "workspace": "@lostgradient/cryptography",
       "version": "0.0.1",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": ["."]
     },
     "@lostgradient/editor": {
       "workspace": "@lostgradient/editor",
       "version": "0.14.0",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./anchor-decorations",
@@ -1084,19 +1084,19 @@
     "@lostgradient/embeddings": {
       "workspace": "@lostgradient/embeddings",
       "version": "0.0.1",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": ["."]
     },
     "@lostgradient/lifecycle": {
       "workspace": "@lostgradient/lifecycle",
       "version": "0.0.2",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": ["."]
     },
     "@lostgradient/markdown": {
       "workspace": "@lostgradient/markdown",
       "version": "0.5.0",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./diff",
@@ -1120,8 +1120,8 @@
     },
     "@lostgradient/operative": {
       "workspace": "@lostgradient/operative",
-      "version": "0.12.1",
-      "fetchedAt": "2026-09-25",
+      "version": "0.12.2",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./anthropic",
@@ -1159,13 +1159,13 @@
     "@lostgradient/tool-protocol": {
       "workspace": "@lostgradient/tool-protocol",
       "version": "0.0.1",
-      "fetchedAt": "2026-09-25",
+      "fetchedAt": "2026-09-29",
       "subpaths": ["."]
     },
     "@lostgradient/weft": {
       "workspace": "@lostgradient/weft",
-      "version": "0.26.1",
-      "fetchedAt": "2026-09-28",
+      "version": "0.27.1",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./client",
@@ -1197,13 +1197,14 @@
         "./storage/turso",
         "./storage/web-extension",
         "./testing",
-        "./worker-protocol"
+        "./worker-protocol",
+        "./worker/generated-authoring"
       ]
     },
     "armorer": {
       "workspace": "armorer",
-      "version": "2.4.1",
-      "fetchedAt": "2026-09-25",
+      "version": "2.4.2",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./adapters/anthropic",
@@ -1229,11 +1230,12 @@
     },
     "conversationalist": {
       "workspace": "conversationalist",
-      "version": "1.3.0",
-      "fetchedAt": "2026-09-25",
+      "version": "1.3.1",
+      "fetchedAt": "2026-09-29",
       "subpaths": [
         ".",
         "./adapters/anthropic",
+        "./adapters/anthropic/sdk",
         "./adapters/gemini",
         "./adapters/openai",
         "./composition",

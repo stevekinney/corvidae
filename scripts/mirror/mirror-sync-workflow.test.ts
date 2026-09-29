@@ -105,6 +105,13 @@ describe('mirror-sync.yaml', () => {
     expect(publishJob?.[1]).toContain('MIRROR_APP_PRIVATE_KEY');
   });
 
+  test('binds an optional manual base branch across prepare and publish', async () => {
+    const text = await readWorkflow();
+    expect(text).toMatch(/base_branch:\n\s+description:/);
+    expect(text.match(/BASE_BRANCH: \$\{\{ inputs\.base_branch \}\}/g)).toHaveLength(2);
+    expect(text.match(/--base-branch "\$BASE_BRANCH"/g)).toHaveLength(2);
+  });
+
   test('does not persist checkout credentials in any job', async () => {
     const text = await readWorkflow();
     const checkoutSteps = [...text.matchAll(/uses: actions\/checkout@v4/g)];

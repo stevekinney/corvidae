@@ -25,11 +25,8 @@ import {
 } from './checkpoint-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
 import { executeActivityOperationResult } from './operations-activity.ts';
-import {
-  processParallelOperation,
-  processRaceOperation,
-  processWaitSignalOperation,
-} from './operations-coordination.ts';
+import { processParallelOperation, processRaceOperation } from './operations-coordination.ts';
+import { processWaitSignalOperation } from './operations-wait-signal.ts';
 import { executeSubOperation } from './sub-operation.ts';
 
 class FailingConditionalBatchStorage extends MemoryStorage {
@@ -188,6 +185,96 @@ describe('atomic workflow commit side effects', () => {
 
     expect(takePendingAtomicWorkflowCommitSideEffects(internals, 'empty-workflow')).toBeUndefined();
     expect(internals.pendingAtomicWorkflowCommitSideEffects.has('empty-workflow')).toBe(false);
+  });
+
+  it('flushes only the current bound generation while preserving workflow-scoped effects', () => {
+    const internals = {
+      pendingAtomicWorkflowCommitSideEffects: new Map(),
+      pendingOperationAtomicWorkflowCommitSideEffects: new Map(),
+    } as unknown as EngineInternals;
+
+    stageAtomicWorkflowCommitSideEffects(internals, 'workflow', {
+      conditions: [],
+      operations: [{ type: 'delete', key: 'workflow-scoped' }],
+    });
+    stageAtomicWorkflowCommitSideEffects(
+      internals,
+      'workflow',
+      { conditions: [], operations: [{ type: 'delete', key: 'old-run' }] },
+      'old-run',
+      true,
+    );
+    stageAtomicWorkflowCommitSideEffects(
+      internals,
+      'workflow',
+      { conditions: [], operations: [{ type: 'delete', key: 'current-run' }] },
+      'current-run',
+      true,
+    );
+
+    const pending = takePendingAtomicWorkflowCommitSideEffects(
+      internals,
+      'workflow',
+      'current-run',
+    );
+
+    expect(pending?.operations.map(({ key }) => key)).toEqual(['workflow-scoped', 'current-run']);
+    expect(internals.pendingOperationAtomicWorkflowCommitSideEffects.has('workflow')).toBe(false);
+  });
+
+  it('filters stale bound effects during a real successor checkpoint commit', async () => {
+    const storage = new MemoryStorage();
+    const checkpoint = createCheckpoint('successor-commit', '1', 1_000);
+    checkpoint.workflowExecutionToken = 'successor-token';
+    const internals = createEngineInternals(storage, checkpoint);
+    await seedRecoveredCheckpoint(storage, internals, checkpoint);
+    const oldKey = 'signal:old-generation';
+    const currentKey = 'signal:current-generation';
+    const workflowKey = 'signal:workflow-scoped';
+    await storage.put(oldKey, encode('old'));
+    await storage.put(currentKey, encode('current'));
+    await storage.put(workflowKey, encode('workflow'));
+    stageAtomicWorkflowCommitSideEffects(
+      internals,
+      checkpoint.workflowId,
+      {
+        conditions: [],
+        operations: [{ type: 'delete', key: oldKey }],
+      },
+      'old-token',
+      true,
+    );
+    stageAtomicWorkflowCommitSideEffects(
+      internals,
+      checkpoint.workflowId,
+      {
+        conditions: [],
+        operations: [{ type: 'delete', key: currentKey }],
+      },
+      'successor-token',
+      true,
+    );
+    stageAtomicWorkflowCommitSideEffects(internals, checkpoint.workflowId, {
+      conditions: [],
+      operations: [{ type: 'delete', key: workflowKey }],
+    });
+
+    const serialized = serializeCheckpoint(checkpoint);
+    const checkpointBuffer = serialized.buffer.slice(
+      serialized.byteOffset,
+      serialized.byteOffset + serialized.byteLength,
+    ) as ArrayBuffer;
+    await persistCheckpoint(
+      internals,
+      checkpoint.workflowId,
+      checkpointOperation,
+      checkpointBuffer,
+      createPersistCallbacks(),
+    );
+
+    expect(await storage.get(oldKey)).toEqual(encode('old'));
+    expect(await storage.get(currentKey)).toBeNull();
+    expect(await storage.get(workflowKey)).toBeNull();
   });
 
   describe('pendingAtomicWorkflowCommitSideEffectsStagePut', () => {

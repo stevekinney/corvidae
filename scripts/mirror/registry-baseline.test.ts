@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import { fileURLToPath } from 'node:url';
 
+import { serializeJson } from './json-formatting.ts';
 import { loadPackageMap } from './package-map.ts';
 import { describeDrift, fetchPublishedSubpaths } from './refresh-registry-baseline.ts';
 import {
   assertParity,
+  baselineFile,
   checkParity,
   describeParity,
   isFirstPublish,
@@ -30,6 +33,17 @@ const stubResponse = (status: number, body: unknown): Response =>
 describe('registry-baseline.json', () => {
   test('parses', async () => {
     expect(await loadRegistryBaseline()).toBeDefined();
+  });
+
+  test('uses repository formatting after a registry refresh', async () => {
+    const sourceRoot = fileURLToPath(new URL('../../', import.meta.url));
+    expect(await Bun.file(baselineFile).text()).toBe(
+      await serializeJson(
+        await loadRegistryBaseline(),
+        sourceRoot,
+        'scripts/mirror/registry-baseline.json',
+      ),
+    );
   });
 
   test('records exactly the packages the map says have a published predecessor', async () => {

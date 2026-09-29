@@ -11,12 +11,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.26.1",
+      "lastPublishedVersion": "0.27.1",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.26.1",
-        "gitHead": "3088015b862cd276ead44c2c3b81581d22190f22",
-        "corvidaeCommit": "a7679370f3e1a3b850299d13c9e768541a601722",
+        "version": "0.27.1",
+        "gitHead": "1017fff9b8e11a9bf254818661a6007ea86b92b3",
+        "corvidaeCommit": "841093b5c0568e38a5c8a83347762f88878cff33",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -56,6 +56,7 @@
             "src/cli/codegen-arguments.ts",
             "src/cli/codegen-emit-dedup.ts",
             "src/cli/codegen-emit-registry.ts",
+            "src/cli/codegen-emit-worker.ts",
             "src/cli/codegen-validate.ts",
             "src/cli/codegen.ts",
             "src/cli/command-suggestions.ts",
@@ -86,6 +87,8 @@
             "src/cli/validation.ts",
             "src/cli/version-check.ts",
             "src/cli/version.ts",
+            "src/cli/worker-arguments.ts",
+            "src/cli/worker-verify.ts",
             "src/cli/workflow-commands.ts",
             "src/client/__fixtures__/no-workflow-registry/consumer.ts",
             "src/client/__fixtures__/no-workflow-registry/tsconfig.json",
@@ -170,6 +173,7 @@
             "src/core/catalog/storage-io.ts",
             "src/core/catalog/types.ts",
             "src/core/catalog/workflow-catalog.ts",
+            "src/core/catalog/workflow-refresh.ts",
             "src/core/checkpoint.ts",
             "src/core/checkpoint/comparison.ts",
             "src/core/checkpoint/index.ts",
@@ -338,8 +342,11 @@
             "src/core/engine/lifecycle/start-precondition-attribution.ts",
             "src/core/engine/lifecycle/start-revision-resolution.ts",
             "src/core/engine/lifecycle/start-schedule-timing.ts",
+            "src/core/engine/lifecycle/start-services.ts",
             "src/core/engine/lifecycle/start-state.ts",
             "src/core/engine/lifecycle/start-terminal-conflict-purge.ts",
+            "src/core/engine/lifecycle/start-transient-state.ts",
+            "src/core/engine/lifecycle/start-worker-override.ts",
             "src/core/engine/lifecycle/start.ts",
             "src/core/engine/lifecycle/transition.ts",
             "src/core/engine/list-candidate-resolution.ts",
@@ -355,6 +362,7 @@
             "src/core/engine/operations-stream.ts",
             "src/core/engine/operations-time.ts",
             "src/core/engine/operations-wait-condition.ts",
+            "src/core/engine/operations-wait-signal.ts",
             "src/core/engine/owner-side-signal-poll.ts",
             "src/core/engine/owner-side-update-poll.ts",
             "src/core/engine/ownership-bootstrap.ts",
@@ -368,11 +376,13 @@
             "src/core/engine/persisted-data-version.ts",
             "src/core/engine/pinned-schedule-revision-count.ts",
             "src/core/engine/pinned-schedule-revision.ts",
+            "src/core/engine/purge-write-tracking.ts",
             "src/core/engine/queries.ts",
             "src/core/engine/registration.ts",
             "src/core/engine/registry-agnostic-engine.test-d.ts",
             "src/core/engine/remote-activity-broker.ts",
             "src/core/engine/retained-recovery-record-count.ts",
+            "src/core/engine/retention-scan.ts",
             "src/core/engine/retention.ts",
             "src/core/engine/review-list-entries.ts",
             "src/core/engine/reviews.ts",
@@ -394,6 +404,7 @@
             "src/core/engine/search-attribute-records.ts",
             "src/core/engine/second-instance-detector.ts",
             "src/core/engine/signals.ts",
+            "src/core/engine/sleep-resolver-registration.ts",
             "src/core/engine/sleep-timer-acknowledgements.ts",
             "src/core/engine/source-diagnostics.ts",
             "src/core/engine/source-install-fence.ts",
@@ -428,6 +439,7 @@
             "src/core/engine/validation/schedule-revision.ts",
             "src/core/engine/validation/schedule-warnings.ts",
             "src/core/engine/validation/schedule.ts",
+            "src/core/engine/wait-update-operations.ts",
             "src/core/engine/waiting-update-response.ts",
             "src/core/engine/wake-ownership-check.ts",
             "src/core/engine/wake-ownership-guard.ts",
@@ -611,6 +623,7 @@
             "src/core/task-ledger/task-ledger-transitions-cancellation.ts",
             "src/core/task-ledger/task-ledger-transitions.ts",
             "src/core/task-ledger/task-ledger-types.ts",
+            "src/core/task-ledger/task-ledger-worker-binding-codec.ts",
             "src/core/task-ledger/task-ledger.ts",
             "src/core/timeouts.ts",
             "src/core/type-ergonomics-client.test-d.ts",
@@ -924,7 +937,9 @@
             "src/server/operations/timeout-workflow.ts",
             "src/server/operations/update-schedule.ts",
             "src/server/operations/update-workflow.ts",
+            "src/server/operations/worker-deployment-routing.ts",
             "src/server/operations/worker-drain.ts",
+            "src/server/operations/worker-start-override-preview.ts",
             "src/server/operations/workflow-catalog-operation-helpers.ts",
             "src/server/operations/workflow-events-sse.ts",
             "src/server/operations/workflow-events-subscription.ts",
@@ -943,6 +958,7 @@
             "src/server/runtime/context.ts",
             "src/server/runtime/cors.ts",
             "src/server/runtime/event-broadcasting.ts",
+            "src/server/runtime/long-poll-drain.ts",
             "src/server/runtime/remote-activity-event-bridges.ts",
             "src/server/runtime/remote-activity-result-bridge.ts",
             "src/server/runtime/request-gate.ts",
@@ -968,11 +984,14 @@
             "src/server/runtime/websocket-worker-registration.ts",
             "src/server/runtime/websocket-worker.ts",
             "src/server/runtime/worker-disconnect-requeue.ts",
+            "src/server/runtime/worker-session-access.ts",
+            "src/server/runtime/worker-sessions.ts",
             "src/server/sequence-cursor.ts",
             "src/server/serve-internals.ts",
             "src/server/server-options.test-d.ts",
             "src/server/stdio-session.ts",
             "src/server/stdio-stream.test-support.ts",
+            "src/server/task-queue-ordering.ts",
             "src/server/task-queue-summary.ts",
             "src/server/task-queue-types.ts",
             "src/server/task-queue.ts",
@@ -1059,6 +1078,8 @@
             "src/testing/fake-timers.test-support.ts",
             "src/testing/index.ts",
             "src/testing/mocks.ts",
+            "src/testing/promise-outcome.test-support.ts",
+            "src/testing/real-timer-leak-guard.test-support.ts",
             "src/testing/replay-scenarios.test-support.ts",
             "src/testing/scheduler-contract.test-support.ts",
             "src/testing/storage-backends.test-support.ts",
@@ -1072,7 +1093,11 @@
             "src/testing/workflow-log-capture.test-support.ts",
             "src/worker/activity-table.ts",
             "src/worker/attempt-controllers.ts",
+            "src/worker/authoring.ts",
+            "src/worker/binding-helpers.ts",
+            "src/worker/deployment-routing.ts",
             "src/worker/execute-with-interceptors.ts",
+            "src/worker/generated-authoring.ts",
             "src/worker/heartbeat.ts",
             "src/worker/index.ts",
             "src/worker/long-poll-result-delivery.ts",
@@ -1114,7 +1139,11 @@
             "src/worker/registry/summary.ts",
             "src/worker/registry/types.ts",
             "src/worker/remote-activity-context.ts",
+            "src/worker/start-override-preview.ts",
+            "src/worker/strict-json.ts",
             "src/worker/task-result-outbox.ts",
+            "src/worker/versioning-policy.ts",
+            "src/worker/worker-authoring.test-d.ts",
             "src/worker/worker-protocol-incompatible-error.ts",
             "src/worker/workflow-activity-binding.ts",
             "src/workers/activity-runner.ts",
@@ -1129,15 +1158,15 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "c11baf254446196065e4553855ca6a2e5eee0e3693a9555b6722f9586d3395d2"
+          "digest": "83e7d7b69c039acfdba29fc213d167307519b65e0c61a22647b1e1862a326ddd"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "2da5e74ae542d26ce7b6cbb9791c237b62028d21965086aa5e232a6c19515120"
+          "digest": "dd34e144bc31253e0419b787ccbe3957d83ac1e43211b9151de78e2797aecc65"
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "6bb5593f9cdd8591ea9cbcb1c35ac1aa61dfa6703e34ea8a19164de0e72f58f1"
+          "digest": "64e6e6d72883960dcaf71abdda34785ee1f3b14e3c9a2720c72b754f3ac75043"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -1236,6 +1265,14 @@
             },
             {
               "path": "package/dist/cli/codegen-emit-registry.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/codegen-emit-worker.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/codegen-emit-worker.js",
               "executable": false
             },
             {
@@ -1476,6 +1513,22 @@
             },
             {
               "path": "package/dist/cli/version.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-arguments.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-arguments.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-verify.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cli/worker-verify.js",
               "executable": false
             },
             {
@@ -2076,6 +2129,14 @@
             },
             {
               "path": "package/dist/core/catalog/workflow-catalog.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/catalog/workflow-refresh.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/catalog/workflow-refresh.js",
               "executable": false
             },
             {
@@ -3351,6 +3412,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/lifecycle/start-services.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-services.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/lifecycle/start-state.d.ts",
               "executable": false
             },
@@ -3364,6 +3433,22 @@
             },
             {
               "path": "package/dist/core/engine/lifecycle/start-terminal-conflict-purge.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-transient-state.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-transient-state.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-worker-override.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-worker-override.js",
               "executable": false
             },
             {
@@ -3487,6 +3572,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/operations-wait-signal.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/operations-wait-signal.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/owner-side-signal-poll.d.ts",
               "executable": false
             },
@@ -3583,6 +3676,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/purge-write-tracking.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/purge-write-tracking.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/queries.d.ts",
               "executable": false
             },
@@ -3612,6 +3713,14 @@
             },
             {
               "path": "package/dist/core/engine/retained-recovery-record-count.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/retention-scan.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/retention-scan.js",
               "executable": false
             },
             {
@@ -3764,6 +3873,14 @@
             },
             {
               "path": "package/dist/core/engine/signals.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/sleep-resolver-registration.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/sleep-resolver-registration.js",
               "executable": false
             },
             {
@@ -4036,6 +4153,14 @@
             },
             {
               "path": "package/dist/core/engine/validation/schedule.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/wait-update-operations.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/wait-update-operations.js",
               "executable": false
             },
             {
@@ -5260,6 +5385,14 @@
             },
             {
               "path": "package/dist/core/task-ledger/task-ledger-types.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/task-ledger/task-ledger-worker-binding-codec.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/task-ledger/task-ledger-worker-binding-codec.js",
               "executable": false
             },
             {
@@ -7471,11 +7604,27 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/operations/worker-deployment-routing.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/worker-deployment-routing.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/operations/worker-drain.d.ts",
               "executable": false
             },
             {
               "path": "package/dist/server/operations/worker-drain.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/worker-start-override-preview.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/worker-start-override-preview.js",
               "executable": false
             },
             {
@@ -7604,6 +7753,14 @@
             },
             {
               "path": "package/dist/server/runtime/event-broadcasting.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/long-poll-drain.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/long-poll-drain.js",
               "executable": false
             },
             {
@@ -7799,6 +7956,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/runtime/worker-session-access.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/worker-session-access.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/worker-sessions.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/worker-sessions.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/sequence-cursor.d.ts",
               "executable": false
             },
@@ -7820,6 +7993,14 @@
             },
             {
               "path": "package/dist/server/stdio-session.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/task-queue-ordering.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/task-queue-ordering.js",
               "executable": false
             },
             {
@@ -8427,11 +8608,43 @@
               "executable": false
             },
             {
+              "path": "package/dist/worker/authoring.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/authoring.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/binding-helpers.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/binding-helpers.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/deployment-routing.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/deployment-routing.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/worker/execute-with-interceptors.d.ts",
               "executable": false
             },
             {
               "path": "package/dist/worker/execute-with-interceptors.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/generated-authoring.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/generated-authoring.js",
               "executable": false
             },
             {
@@ -8739,11 +8952,35 @@
               "executable": false
             },
             {
+              "path": "package/dist/worker/start-override-preview.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/start-override-preview.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/strict-json.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/strict-json.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/worker/task-result-outbox.d.ts",
               "executable": false
             },
             {
               "path": "package/dist/worker/task-result-outbox.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/versioning-policy.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/worker/versioning-policy.js",
               "executable": false
             },
             {
@@ -8831,7 +9068,7 @@
               "executable": false
             }
           ],
-          "digest": "ae9985b4a1a76abd4375788b083050df118662846a06d02d79cb9b45446b84df"
+          "digest": "c2de5f7fb4249cefc94537dfa38110102cbb3005396af6eb59b3575d07de2e50"
         }
       }
     },
@@ -8845,7 +9082,1525 @@
       "name": "@lostgradient/operative",
       "basis": "settled",
       "reason": "Already published under this name.",
-      "lastPublishedVersion": "0.12.1"
+      "lastPublishedVersion": "0.12.2",
+      "publishedSnapshot": {
+        "schemaVersion": 1,
+        "version": "0.12.2",
+        "gitHead": "d87621c7ee479086d82f9c3389538cf186a9f0cf",
+        "corvidaeCommit": "67dce946162e4d1fcf236b2645a7e0506ee42abe",
+        "source": {
+          "algorithm": "sha256-files-v1",
+          "paths": [
+            "src/agent-run.ts",
+            "src/agent-session.ts",
+            "src/anthropic.ts",
+            "src/backpressure.ts",
+            "src/cache/cache-keys.ts",
+            "src/cache/cache-metrics.ts",
+            "src/cache/cache-utilities.ts",
+            "src/cache/index.ts",
+            "src/cache/types.ts",
+            "src/cache/with-cache.ts",
+            "src/child-run.ts",
+            "src/closed-acknowledgement.ts",
+            "src/conditions/index.ts",
+            "src/conditions/predicates.ts",
+            "src/context-epoch.ts",
+            "src/context/assembly.ts",
+            "src/context/compaction-strategies.ts",
+            "src/context/index.ts",
+            "src/context/pending-tool-calls.ts",
+            "src/context/subagent-context.ts",
+            "src/context/token-budget.ts",
+            "src/context/types.ts",
+            "src/cost-budget-monitor.ts",
+            "src/cost-estimation.ts",
+            "src/create-agent.test-d.ts",
+            "src/create-agent.ts",
+            "src/create-context-compactor.ts",
+            "src/create-early-stopping-handler.ts",
+            "src/create-handoff-tool.ts",
+            "src/create-identity-hook.ts",
+            "src/create-lazy-agent-type-barrel.ts",
+            "src/create-lazy-agent-type-fixtures.ts",
+            "src/create-lazy-agent.test-d.ts",
+            "src/create-lazy-agent.ts",
+            "src/create-lazy-generate-type-barrel.ts",
+            "src/create-lazy-generate-type-fixtures.ts",
+            "src/create-lazy-generate.test-d.ts",
+            "src/create-lazy-generate.ts",
+            "src/create-mcp-elicitation-responder.ts",
+            "src/create-memory-bridge.ts",
+            "src/create-policy-enforcement-hook.ts",
+            "src/create-request-human-input-tool.ts",
+            "src/create-run.ts",
+            "src/create-schedule-self-tool.ts",
+            "src/create-schedule-wakeup-tool.ts",
+            "src/create-scratchpad.ts",
+            "src/create-subagent-tool.test-d.ts",
+            "src/create-subagent-tool.ts",
+            "src/durable/active-run-adapter.ts",
+            "src/durable/active-run-constants.ts",
+            "src/durable/active-run-create-event-surface.ts",
+            "src/durable/active-run-create.ts",
+            "src/durable/active-run-driver.ts",
+            "src/durable/active-run-event-surface.ts",
+            "src/durable/active-run-reattach-driver.ts",
+            "src/durable/active-run-reattach.ts",
+            "src/durable/active-run-result-entrypoints.ts",
+            "src/durable/active-run-result-reconstruction.ts",
+            "src/durable/checkpoint-store.ts",
+            "src/durable/continuation-input.ts",
+            "src/durable/create-run-engine.ts",
+            "src/durable/durable-capability-unavailable-error.ts",
+            "src/durable/durable-heartbeat-tick-workflow.ts",
+            "src/durable/event-history-types.ts",
+            "src/durable/index.ts",
+            "src/durable/run-workflow-input.ts",
+            "src/durable/run-workflow-park.ts",
+            "src/durable/run-workflow-result.ts",
+            "src/durable/run-workflow-step.ts",
+            "src/durable/run-workflow.ts",
+            "src/durable/schedule-agent.ts",
+            "src/durable/session-input-types.check.ts",
+            "src/durable/steering-types.check.ts",
+            "src/durable/storage-activities.ts",
+            "src/durable/tool-activity-liveness.ts",
+            "src/durable/types.ts",
+            "src/environment-configuration.ts",
+            "src/errors.ts",
+            "src/events.test-d.ts",
+            "src/events.ts",
+            "src/gemini.ts",
+            "src/generate-middleware.ts",
+            "src/generation-profile.ts",
+            "src/generation-selection-record.ts",
+            "src/guardrails/create-guardrails.ts",
+            "src/guardrails/index.ts",
+            "src/guardrails/input-guardrail.ts",
+            "src/guardrails/output-guardrail.ts",
+            "src/guardrails/session-taint.ts",
+            "src/guardrails/types.ts",
+            "src/guardrails/validators/code-safety.ts",
+            "src/guardrails/validators/grounding.ts",
+            "src/guardrails/validators/output-pii.ts",
+            "src/hook-authority.test-d.ts",
+            "src/hook-plan-events.ts",
+            "src/hooks.ts",
+            "src/hooks/composition.ts",
+            "src/hooks/index.ts",
+            "src/hooks/types.ts",
+            "src/index.ts",
+            "src/inheritance.ts",
+            "src/instrumentation/index.ts",
+            "src/liveness/active-run-liveness.ts",
+            "src/liveness/identifiers.ts",
+            "src/liveness/index.ts",
+            "src/liveness/policies.ts",
+            "src/liveness/types.ts",
+            "src/liveness/watchdog.ts",
+            "src/loop.ts",
+            "src/openai.ts",
+            "src/providers/anthropic-client-assignability.test-d.ts",
+            "src/providers/anthropic-sdk.ts",
+            "src/providers/anthropic-shared.ts",
+            "src/providers/anthropic-stream.ts",
+            "src/providers/anthropic-thinking-assignability.test-d.ts",
+            "src/providers/anthropic-token-counter.ts",
+            "src/providers/anthropic-token-counting-assignability.test-d.ts",
+            "src/providers/anthropic.ts",
+            "src/providers/backend-descriptor-attachment.ts",
+            "src/providers/batch-client-assignability.test-d.ts",
+            "src/providers/batches/anthropic.ts",
+            "src/providers/batches/gemini.ts",
+            "src/providers/batches/index.ts",
+            "src/providers/batches/openai.ts",
+            "src/providers/capabilities.ts",
+            "src/providers/embeddings/gemini.ts",
+            "src/providers/embeddings/index.ts",
+            "src/providers/embeddings/ollama.ts",
+            "src/providers/embeddings/openai.ts",
+            "src/providers/embeddings/voyage.ts",
+            "src/providers/errors.ts",
+            "src/providers/fallover/classify-error.ts",
+            "src/providers/fallover/create-fallover-generate.ts",
+            "src/providers/fallover/errors.ts",
+            "src/providers/fallover/index.ts",
+            "src/providers/fallover/provider-health.ts",
+            "src/providers/fallover/types.ts",
+            "src/providers/gemini-client-assignability.test-d.ts",
+            "src/providers/gemini.ts",
+            "src/providers/index.ts",
+            "src/providers/instrumentation/index.ts",
+            "src/providers/model-catalog-data.ts",
+            "src/providers/model-catalog-projection.ts",
+            "src/providers/model-catalog-rows.ts",
+            "src/providers/model-catalog.ts",
+            "src/providers/openai.ts",
+            "src/providers/policy.ts",
+            "src/providers/routing/create-routing-generate.ts",
+            "src/providers/routing/index.ts",
+            "src/providers/routing/routing-metrics.ts",
+            "src/providers/routing/strategies/complexity.ts",
+            "src/providers/routing/strategies/compose.ts",
+            "src/providers/routing/strategies/cost-aware.ts",
+            "src/providers/routing/strategies/step-based.ts",
+            "src/providers/routing/strategies/test-helpers.ts",
+            "src/providers/routing/types.ts",
+            "src/providers/selection.ts",
+            "src/providers/shared/batch-support.ts",
+            "src/providers/shared/cache-aware-assembly.ts",
+            "src/providers/shared/effort.ts",
+            "src/providers/shared/gemini-api-key.ts",
+            "src/providers/shared/model-registry.ts",
+            "src/providers/shared/resolve-common-parameters.ts",
+            "src/providers/streaming/index.ts",
+            "src/providers/streaming/normalize-anthropic.ts",
+            "src/providers/streaming/normalize-openai.ts",
+            "src/providers/streaming/stream-helpers.ts",
+            "src/providers/structured-output/index.ts",
+            "src/providers/structured-output/response-format-adapters.ts",
+            "src/providers/structured-output/tool-choice-adapters.ts",
+            "src/providers/test/fixtures.ts",
+            "src/providers/test/index.ts",
+            "src/providers/test/mock-clients.ts",
+            "src/providers/types.ts",
+            "src/retry/compose-mutators.ts",
+            "src/retry/index.ts",
+            "src/retry/jitter.ts",
+            "src/retry/overflow-mutator.ts",
+            "src/retry/schema-error-mutator.ts",
+            "src/retry/temperature-escalation-mutator.ts",
+            "src/retry/tool-removal-mutator.ts",
+            "src/retry/types.ts",
+            "src/run-envelope.ts",
+            "src/run-event-feed.ts",
+            "src/run-events-operation.ts",
+            "src/run-lifecycle.ts",
+            "src/run-step-finalization.ts",
+            "src/run-step-generation.ts",
+            "src/run-step-preparation.ts",
+            "src/run-step-support.ts",
+            "src/run-step-tools.ts",
+            "src/run-step-utilities.ts",
+            "src/run-step.ts",
+            "src/runnable-agent.test-d.ts",
+            "src/runnable-agent.ts",
+            "src/scheduler/create-chunked-task.ts",
+            "src/scheduler/create-durable-heartbeat.ts",
+            "src/scheduler/create-flow-controller.ts",
+            "src/scheduler/create-heartbeat.ts",
+            "src/scheduler/create-scheduler.ts",
+            "src/scheduler/events.ts",
+            "src/scheduler/index.ts",
+            "src/scheduler/priority-queue.ts",
+            "src/scheduler/sleep.ts",
+            "src/scheduler/types.ts",
+            "src/selection-gate.ts",
+            "src/session/create-session-store.ts",
+            "src/session/index.ts",
+            "src/session/session-engine-test-fixture.ts",
+            "src/session/session-handle-support.ts",
+            "src/session/session-handle-test-support.ts",
+            "src/session/session-handle-types.ts",
+            "src/session/session-handle.ts",
+            "src/session/session-liveness.ts",
+            "src/session/session-monitor-test-fixture.ts",
+            "src/session/session-monitor.ts",
+            "src/session/session-recovery-handle-test-fixture.ts",
+            "src/session/session-recovery.ts",
+            "src/session/session-resume.ts",
+            "src/session/session-run.ts",
+            "src/session/types.ts",
+            "src/store/events.ts",
+            "src/store/index.ts",
+            "src/store/store.ts",
+            "src/store/types.ts",
+            "src/streaming.ts",
+            "src/streaming/backpressure-buffer.ts",
+            "src/streaming/cancel-streaming.ts",
+            "src/streaming/enhanced-streaming.ts",
+            "src/streaming/index.ts",
+            "src/streaming/stream-state-machine.ts",
+            "src/streaming/types.ts",
+            "src/structured-output/index.ts",
+            "src/structured-output/response-schema.ts",
+            "src/structured-output/types.ts",
+            "src/test/artifact-io.ts",
+            "src/test/barriers.ts",
+            "src/test/durable-engine.ts",
+            "src/test/durable-multi-agent-harness.ts",
+            "src/test/event-recorder.ts",
+            "src/test/fault-engine.ts",
+            "src/test/fault-plan.test-d.ts",
+            "src/test/fault-plan.ts",
+            "src/test/index.ts",
+            "src/test/prompt-injection-fixtures.ts",
+            "src/test/reactive-source-suite.ts",
+            "src/test/resource-scope.ts",
+            "src/test/schedule-runner.ts",
+            "src/test/scripted-generate.ts",
+            "src/test/scripted-tool.ts",
+            "src/test/stepwise-generate.ts",
+            "src/test/store.ts",
+            "src/test/wait.ts",
+            "src/testing/promise-outcome.test-support.ts",
+            "src/toolbox-event-forwarding.ts",
+            "src/types.ts"
+          ],
+          "digest": "242614aa2264fc6bd952aefc6e71f8bc266bca74268c8617b326355e09f09e9b"
+        },
+        "publicationInputContract": {
+          "algorithm": "sha256-json-v1",
+          "digest": "53a8d15d8bb35d7a1824d3d851237ce34628ffcbd5f44eadf3589db963879ce5"
+        },
+        "registryManifestContract": {
+          "algorithm": "sha256-json-v1",
+          "digest": "472e80042b1979bc5a09d9d47aa7c2f5890c45369d5bdae3f92cc447a397e569"
+        },
+        "registryPayloadContract": {
+          "algorithm": "sha256-package-payload-v1",
+          "files": [
+            {
+              "path": "package/LICENSE",
+              "executable": false
+            },
+            {
+              "path": "package/README.md",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-CJPpztCT.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-CJPpztCT.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-CbZD6KMD.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-CjmDEWmu.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-V2i__Ufq.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-YIBZBnK9.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-sdk-D-_Pxhem.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-sdk-D-_Pxhem.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-sdk-DOmHeoPc.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-sdk-DOmHeoPc.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-zLRhQSAt.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-zLRhQSAt.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/backend-descriptor-attachment-BZsYKo5Q.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/backend-descriptor-attachment-BZsYKo5Q.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/backend-descriptor-attachment-atAUUOlV.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/backend-descriptor-attachment-atAUUOlV.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/batch-support-CDaCK2nB.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/batch-support-CDaCK2nB.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/batch-support-CZfs0-B2.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/batch-support-CZfs0-B2.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cache-aware-assembly-D1oiDwfJ.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cache-aware-assembly-D1oiDwfJ.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cache-aware-assembly-DZIMwxCB.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cache-aware-assembly-DZIMwxCB.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions-Y5MJ2Lma.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions-Y5MJ2Lma.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions-wNVtD2xD.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions-wNVtD2xD.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conditions/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cost-estimation-BfpmgDp7.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cost-estimation-BfpmgDp7.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cost-estimation-DP7V8h6w.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/cost-estimation-DP7V8h6w.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable-B3ocath_.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable-B3ocath_.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable-DVRi3eyc.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable-DVRi3eyc.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/durable/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/environment-configuration-BqF1N-Rd.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/environment-configuration-BqF1N-Rd.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/environment-configuration-IYovLRWw.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/environment-configuration-IYovLRWw.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-Bwl-G3Lw.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-Bwl-G3Lw.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-CXmMe7g9.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-CXmMe7g9.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-DxRUXYCI.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-DxRUXYCI.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-eNkhd2bK.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-eNkhd2bK.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/fallover-B4KF8k-a.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/fallover-B4KF8k-a.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/fallover-CAWJtJ6M.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/fallover-CAWJtJ6M.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-1Bu5E-Zy.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-BMU8wDHW.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-D7y34vvO.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-DOcv_Xnu.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-DOcv_Xnu.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-api-key-BqXweUR0.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-api-key-BqXweUR0.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-api-key-CwoLI_lX.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-api-key-CwoLI_lX.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-cqfwx8Hc.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails-BWxdfTYH.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails-BWxdfTYH.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails-DnHHuulb.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails-DnHHuulb.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/guardrails/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-ACYsR-lX.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BBI7qliE.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BNqAhf-w.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BdwA2N2w.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-C-xSboyL.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-C0FLPIVk.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-C3AAxvKD.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-C3V0aDzr.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CIYxl4ol.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CPnsGjNr.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CRdJB9B2.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CYEPGWDx.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Ch_MvN1d.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Cqs7-0rQ.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Cu91qjQ0.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-D-Izs6xI.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DAnd07f1.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DGiMIaei.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DGrDazP7.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DQAJongy.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DTQmdzLW.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Dnzgk9Cc.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-GJBRaM9N.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-H3_gaZsy.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Hbbo4xd3.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-LVTkjjph.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-NB91KoGM.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Neu3Dfa-.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/jitter-DllePrlB.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/jitter-DllePrlB.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/jitter-vE3kdCSw.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/jitter-vE3kdCSw.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness-Co8trUl7.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness-Co8trUl7.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness-oTOXQRJt.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness-oTOXQRJt.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/liveness/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/ollama-Blf5q5Zd.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/ollama-Blf5q5Zd.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-BYaA02qh.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-CJh8SblI.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-D3Y1dXFW.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-D3Y1dXFW.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-De1vJbJI.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-SuYNBA4g.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers-CXJhSvHp.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers-CXJhSvHp.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers-Dl4q78A7.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers-Dl4q78A7.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/anthropic.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/anthropic.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/anthropic.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/anthropic.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/anthropic.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/anthropic.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/anthropic.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/anthropic.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/anthropic.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/anthropic.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/gemini.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/gemini.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/gemini.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/gemini.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/gemini.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/gemini.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/openai.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/openai.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/openai.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/openai.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/openai.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/batches/openai.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/gemini.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/gemini.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/gemini.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/gemini.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/gemini.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/gemini.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/ollama.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/ollama.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/ollama.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/ollama.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/ollama.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/ollama.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/openai.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/openai.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/openai.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/openai.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/openai.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/openai.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/voyage.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/voyage.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/voyage.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/voyage.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/voyage.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/embeddings/voyage.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/fallover/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/fallover/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/fallover/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/fallover/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/gemini.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/gemini.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/gemini.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/gemini.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/gemini.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/gemini.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/instrumentation/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/instrumentation/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/instrumentation/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/instrumentation/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/instrumentation/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/instrumentation/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/openai.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/openai.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/openai.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/openai.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/openai.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/openai.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/routing/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/routing/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/routing/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/routing/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/streaming/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/streaming/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/streaming/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/streaming/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/test/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/test/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/test/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/providers/test/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/resolve-common-parameters-CJTxuVbZ.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/resolve-common-parameters-CJTxuVbZ.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/resolve-common-parameters-qMMnyds-.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/resolve-common-parameters-qMMnyds-.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/response-format-adapters-BGsuZY2k.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/response-format-adapters-BGsuZY2k.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/response-format-adapters-CUr_nqcD.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/response-format-adapters-CUr_nqcD.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry-DRs2IeYg.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry-DRs2IeYg.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry-yV4OFtbh.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry-yV4OFtbh.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/retry/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/routing-BFm0Lq46.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/routing-BFm0Lq46.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/routing-CW7x4Tku.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/routing-CW7x4Tku.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/run-workflow-AConfXrE.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/run-workflow-AConfXrE.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/run-workflow-BufcfGHq.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/run-workflow-BufcfGHq.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store-CkeXAlgq.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store-CkeXAlgq.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store-DRVrNIT5.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store-DRVrNIT5.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/store/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-BYcAaKwT.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-BYcAaKwT.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-C-8OvCOI.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-C-8OvCOI.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-C5RyU_LR.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-C5RyU_LR.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-ClBSIVe_.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming-ClBSIVe_.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/streaming/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-CxZPhsBy.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-CxZPhsBy.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-DHe4DN4U.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-DHe4DN4U.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-GbWfhEDn.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-GbWfhEDn.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-TbbO8BZJ.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-TbbO8BZJ.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-CmSHnj4A.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-Dte4LRu6.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/voyage-Cs6xE-OX.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/voyage-Cs6xE-OX.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/package.json",
+              "executable": false
+            }
+          ],
+          "digest": "2e73dff79496acadef39ffe3aabe2bc41a802ae450edcae6b4be5b08bfb09c24"
+        }
+      }
     },
     "@lostgradient/cinder": {
       "disposition": "publish-as",
@@ -8880,19 +10635,1124 @@
       "name": "armorer",
       "basis": "settled",
       "reason": "Keeps its unscoped name deliberately. Roughly 30,872 installs a month; renaming breaks real consumers for a cosmetic gain.",
-      "lastPublishedVersion": "2.4.1"
+      "lastPublishedVersion": "2.4.2",
+      "publishedSnapshot": {
+        "schemaVersion": 1,
+        "version": "2.4.2",
+        "gitHead": "d87621c7ee479086d82f9c3389538cf186a9f0cf",
+        "corvidaeCommit": "67dce946162e4d1fcf236b2645a7e0506ee42abe",
+        "source": {
+          "algorithm": "sha256-files-v1",
+          "paths": [
+            "src/adapters/anthropic/index.ts",
+            "src/adapters/anthropic/types.ts",
+            "src/adapters/gemini/index.ts",
+            "src/adapters/gemini/types.ts",
+            "src/adapters/imported-schema.ts",
+            "src/adapters/open-ai/agents/index.ts",
+            "src/adapters/openai/index.ts",
+            "src/adapters/openai/types.ts",
+            "src/adapters/shared.ts",
+            "src/approval-binding.ts",
+            "src/approval-policy.ts",
+            "src/approval-resolution-test-helpers.ts",
+            "src/async-assertion-test-helpers.ts",
+            "src/coding/glob.ts",
+            "src/coding/grep.ts",
+            "src/coding/index.ts",
+            "src/coding/jail.ts",
+            "src/coding/read-file.ts",
+            "src/combine-toolboxes.ts",
+            "src/compose-types.ts",
+            "src/compose.ts",
+            "src/core/context.ts",
+            "src/core/errors.ts",
+            "src/core/identity.ts",
+            "src/core/index.ts",
+            "src/core/inspect.ts",
+            "src/core/loop-detection.ts",
+            "src/core/query-predicates.ts",
+            "src/core/registry/candidate-sets.ts",
+            "src/core/registry/candidates.ts",
+            "src/core/registry/embedding-candidates.ts",
+            "src/core/registry/embedding-index.ts",
+            "src/core/registry/embedding-scoring.ts",
+            "src/core/registry/embeddings.ts",
+            "src/core/registry/field-token-index.ts",
+            "src/core/registry/filters.ts",
+            "src/core/registry/index.ts",
+            "src/core/registry/indexes.ts",
+            "src/core/registry/ranking-utilities.ts",
+            "src/core/registry/ranking.ts",
+            "src/core/registry/registry.ts",
+            "src/core/registry/resolve-name.ts",
+            "src/core/registry/selection.ts",
+            "src/core/registry/state.ts",
+            "src/core/registry/test-utilities.ts",
+            "src/core/registry/text-candidates.ts",
+            "src/core/registry/tool-access.ts",
+            "src/core/registry/types.ts",
+            "src/core/registry/version-comparison.ts",
+            "src/core/risk.ts",
+            "src/core/schema-utilities.ts",
+            "src/core/serialization/index.ts",
+            "src/core/serialization/json.ts",
+            "src/core/tag-utilities.ts",
+            "src/core/text-query.ts",
+            "src/core/text-scoring.ts",
+            "src/core/tool-definition.ts",
+            "src/create-tool-context.test-d.ts",
+            "src/create-tool.ts",
+            "src/create-tool/admission-authorization.ts",
+            "src/create-tool/admission-pause.ts",
+            "src/create-tool/admission.ts",
+            "src/create-tool/cancellation.ts",
+            "src/create-tool/content.ts",
+            "src/create-tool/diagnostics.ts",
+            "src/create-tool/errors.ts",
+            "src/create-tool/events.ts",
+            "src/create-tool/execution-contracts.ts",
+            "src/create-tool/execution-inner-support.ts",
+            "src/create-tool/execution-inner.ts",
+            "src/create-tool/execution-options.ts",
+            "src/create-tool/execution-pipeline.ts",
+            "src/create-tool/factory-core.ts",
+            "src/create-tool/factory-execution.ts",
+            "src/create-tool/factory-policy-context.ts",
+            "src/create-tool/factory-surface.ts",
+            "src/create-tool/factory.ts",
+            "src/create-tool/lazy-execute.ts",
+            "src/create-tool/legacy-registration.ts",
+            "src/create-tool/metadata.ts",
+            "src/create-tool/options.ts",
+            "src/create-tool/policy-hooks.ts",
+            "src/create-tool/policy.ts",
+            "src/create-tool/result-diagnostics.ts",
+            "src/create-tool/result-handlers.ts",
+            "src/create-tool/result-policy-context.ts",
+            "src/create-tool/runtime-execution.ts",
+            "src/create-tool/streaming-details.ts",
+            "src/create-tool/streaming.ts",
+            "src/create-tool/tool-call.ts",
+            "src/create-toolbox.ts",
+            "src/errors.ts",
+            "src/event-types.ts",
+            "src/execution-context.ts",
+            "src/execution-lifecycle.ts",
+            "src/guardrails/detectors/input-length.ts",
+            "src/guardrails/detectors/prompt-injection.ts",
+            "src/guardrails/detectors/topic-boundary.ts",
+            "src/guardrails/index.ts",
+            "src/guardrails/pipeline.ts",
+            "src/guardrails/scan.ts",
+            "src/guardrails/types.ts",
+            "src/idempotency/bounded-timeout.ts",
+            "src/idempotency/cache-entry-codec.ts",
+            "src/idempotency/cache-operations.ts",
+            "src/idempotency/create-tool-result-cache.ts",
+            "src/idempotency/direct-idempotency-admission.ts",
+            "src/idempotency/direct-idempotency-execution.ts",
+            "src/idempotency/direct-idempotency-receipts.ts",
+            "src/idempotency/direct-idempotency-support.ts",
+            "src/idempotency/index.ts",
+            "src/idempotency/key-generators.ts",
+            "src/idempotency/types.ts",
+            "src/idempotency/with-idempotency.ts",
+            "src/idempotency/with-toolbox-idempotency.ts",
+            "src/index.ts",
+            "src/inspect/index.ts",
+            "src/instrumentation/index.ts",
+            "src/integrations/mcp/index.ts",
+            "src/integrations/mcp/oauth-callback.ts",
+            "src/integrations/mcp/oauth.ts",
+            "src/integrations/openapi/index.ts",
+            "src/internal/approval-resume.ts",
+            "src/is-tool.ts",
+            "src/json-schema-to-zod.ts",
+            "src/middleware/index.ts",
+            "src/public-api.test-d.ts",
+            "src/query/index.ts",
+            "src/resolution/index.ts",
+            "src/runtime-tool-context.ts",
+            "src/test/index.ts",
+            "src/testing/promise-outcome.test-support.ts",
+            "src/tool-lifecycle-events.ts",
+            "src/tool-materialization.ts",
+            "src/tool-stream-events.ts",
+            "src/toolbox-approval-api.ts",
+            "src/toolbox-approval-consumption.ts",
+            "src/toolbox-approval-contracts.ts",
+            "src/toolbox-approval-resume.ts",
+            "src/toolbox-approval-state.ts",
+            "src/toolbox-approval-validation.ts",
+            "src/toolbox-approval.ts",
+            "src/toolbox-availability.ts",
+            "src/toolbox-budget.ts",
+            "src/toolbox-builder.ts",
+            "src/toolbox-configuration.ts",
+            "src/toolbox-construction-state.ts",
+            "src/toolbox-contracts-advanced.ts",
+            "src/toolbox-contracts.ts",
+            "src/toolbox-discovery-events.ts",
+            "src/toolbox-entry-validation.ts",
+            "src/toolbox-event-lifecycle.ts",
+            "src/toolbox-execution-admission.ts",
+            "src/toolbox-execution-approval-binding.ts",
+            "src/toolbox-execution-approval.ts",
+            "src/toolbox-execution-child.ts",
+            "src/toolbox-execution-events.ts",
+            "src/toolbox-execution-helpers.ts",
+            "src/toolbox-execution-options.ts",
+            "src/toolbox-execution-settlement.ts",
+            "src/toolbox-execution-setup.ts",
+            "src/toolbox-execution-task-contract.ts",
+            "src/toolbox-execution-task.ts",
+            "src/toolbox-execution.ts",
+            "src/toolbox-extension.ts",
+            "src/toolbox-grants.ts",
+            "src/toolbox-imports.ts",
+            "src/toolbox-instance.ts",
+            "src/toolbox-interface.ts",
+            "src/toolbox-internal-registry.ts",
+            "src/toolbox-lifecycle-events.ts",
+            "src/toolbox-normalization.ts",
+            "src/toolbox-policy-decisions.ts",
+            "src/toolbox-policy-events.ts",
+            "src/toolbox-policy-primitives.ts",
+            "src/toolbox-policy.ts",
+            "src/toolbox-provider-factories.ts",
+            "src/toolbox-public-surface.ts",
+            "src/toolbox-registration-state.ts",
+            "src/toolbox-registration.ts",
+            "src/toolbox-risk.ts",
+            "src/toolbox-runtime-helpers.ts",
+            "src/toolbox-stream-events.ts",
+            "src/toolbox-test-utilities.ts",
+            "src/toolbox-tool-access.ts",
+            "src/toolbox-type-inference.ts",
+            "src/toolbox-variance.test-d.ts",
+            "src/toolbox-view-state.ts",
+            "src/toolbox-views.ts",
+            "src/tools/index.ts",
+            "src/tools/search-tools.ts",
+            "src/truncation/index.ts",
+            "src/type-guards.ts",
+            "src/types.ts",
+            "src/utilities/concurrency.ts",
+            "src/utilities/index.ts",
+            "src/utilities/parallel.ts",
+            "src/utilities/postprocess.ts",
+            "src/utilities/preprocess.ts",
+            "src/utilities/retry.ts",
+            "src/utilities/schema-normalization.ts",
+            "src/utilities/tap.ts",
+            "src/utilities/when.ts"
+          ],
+          "digest": "29652de89292d690ac4c953257f8de24bd1d000a4a14e36c6948c92f517fa77a"
+        },
+        "publicationInputContract": {
+          "algorithm": "sha256-json-v1",
+          "digest": "fa6b10e0ecacc7d92f4d80a366245be358686add02ae58f937a57ac9a96300f6"
+        },
+        "registryManifestContract": {
+          "algorithm": "sha256-json-v1",
+          "digest": "b4df9a21b51dfda99616e1d779c9fd72c80f45acdc0a78482ad851634da2a23e"
+        },
+        "registryPayloadContract": {
+          "algorithm": "sha256-package-payload-v1",
+          "files": [
+            {
+              "path": "package/LICENSE",
+              "executable": false
+            },
+            {
+              "path": "package/README.md",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/gemini/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/open-ai/agents/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/open-ai/agents/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/open-ai/agents/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/open-ai/agents/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/open-ai/agents/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/open-ai/agents/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/openai/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/coding/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/coding/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/coding/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/coding/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/coding/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/coding/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/concurrency-C4v7_06x.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/concurrency-C4v7_06x.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/concurrency-DcuVxgSc.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/concurrency-DcuVxgSc.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/registry/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/registry/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/registry/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/registry/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool-BavVHcWf.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool-BavVHcWf.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool-BuHQRrlL.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool-CGXs2XqW.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool-CGXs2XqW.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool-CV30VYJL.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/create-tool.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-CI9PtYIU.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-DhYz2PaJ.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency-BPmTfDip.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency-BPmTfDip.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency-CnJ9lJ5w.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency-CnJ9lJ5w.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/idempotency/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/imported-schema-C9VrDxeJ.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/imported-schema-DsFc2MaX.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-7l9uKaVu.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-97obWwbW.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BD6s6V5E.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BLQT8pfr.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BcNLw2sN.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Bq_vb3y2.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BsgB-lNI.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Bw2UGsmV.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-BwSs6a-D.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-C9wh7Nd1.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CAY3mQ9O.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CICTzxzD.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CQs7qLef.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CZ7E6yc-.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CZR6Ih2j.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Cap0uIgq.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Cb1sbuhZ.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Cd7DH9v3.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-ChYXM0pd.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-D3GRPDTn.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DANiAPfr.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DG0pWaJd.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DPtMk-E2.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DW1zsRLZ.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DeAZECel.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DruPQftY.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-DuyH5nDd.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-KcQOxknp.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-dwT2ElC1.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-dwT2ElC1.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-mdGwvuly.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-oZW7NFHI.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect-BP9jhzT7.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect-BP9jhzT7.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect-Bi5sb0cZ.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect-Bi5sb0cZ.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect-Cq5q2gqA.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect-DRE77wjo.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/inspect/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/instrumentation/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/mcp/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/mcp/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/mcp/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/mcp/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/mcp/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/mcp/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/openapi/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/openapi/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/openapi/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/openapi/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/openapi/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/integrations/openapi/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/is-tool-8xJYEOYf.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/is-tool-8xJYEOYf.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/is-tool-GimGg9QH.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/is-tool-HccCQWpM.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/is-tool-HccCQWpM.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/is-tool-V_wGWBwQ.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-BotZQABY.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-BotZQABY.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-DVfV26EA.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-DVfV26EA.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-schema-to-zod-BM5t74MT.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-schema-to-zod-BM5t74MT.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-schema-to-zod-DLGoLkoz.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/json-schema-to-zod-DLGoLkoz.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/middleware/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/middleware/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/middleware/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/middleware/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/middleware/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/middleware/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/query/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/query/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/query/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/query/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/registry-B65tnbyA.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/registry-B65tnbyA.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/registry-YUDhY5Tm.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/registry-YUDhY5Tm.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schema-utilities-BdT4rWd8.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schema-utilities-BdT4rWd8.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schema-utilities-DsDyFZG5.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/schema-utilities-DsDyFZG5.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/serialization-B0x0N7ri.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/serialization-B0x0N7ri.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/serialization-CRZEEnap.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/serialization-CRZEEnap.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-C5D7xle-.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-C5D7xle-.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-CoVJQU-b.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-CxPFqKmX.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-Dwg6R8eI.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/shared-Dwg6R8eI.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tag-utilities-BTGjjt1B.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tag-utilities-BTGjjt1B.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tag-utilities-CCf-U5rP.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tag-utilities-CCf-U5rP.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-BvlQu03b.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-BvlQu03b.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-CQ24paoA.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test-CQ24paoA.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/test/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-definition-8YbEV1Nc.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-definition-8YbEV1Nc.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-definition-CEB9yzyi.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-definition-CEB9yzyi.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-definition-CUETcGY7.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tool-definition-CUETcGY7.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/toolbox-type-inference-B-jHCOb9.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/toolbox-type-inference-BWU6Lg5D.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tools/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tools/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tools/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tools/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tools/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/tools/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/truncation/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/truncation/index.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/truncation/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/truncation/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/truncation/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/truncation/index.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/type-guards-CJvL3qPS.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/type-guards-CJvL3qPS.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/type-guards-Db3hvJHW.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/type-guards-Db3hvJHW.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities-Be6e4DoV.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities-Be6e4DoV.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities-PpPKiEpP.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities-PpPKiEpP.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/index.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/index.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/index.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/utilities/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/package.json",
+              "executable": false
+            }
+          ],
+          "digest": "01f28468d201bd4432eb23003df9877f003eb0a4d748f5ecd284793baae8f9a9"
+        }
+      }
     },
     "conversationalist": {
       "disposition": "publish-as",
       "name": "conversationalist",
       "basis": "settled",
       "reason": "Keeps its unscoped name deliberately. Roughly 53,608 installs a month, the most-installed package in the graph.",
-      "lastPublishedVersion": "1.3.0",
+      "lastPublishedVersion": "1.3.1",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "1.3.0",
-        "gitHead": "95aa89fccc731c241ee658ed26af845d9a64321f",
-        "corvidaeCommit": "59afc90a0d1f9f95fe0a122283fef80cc2a1526f",
+        "version": "1.3.1",
+        "gitHead": "d87621c7ee479086d82f9c3389538cf186a9f0cf",
+        "corvidaeCommit": "67dce946162e4d1fcf236b2645a7e0506ee42abe",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -8936,7 +11796,10 @@
             "src/conversation/query.ts",
             "src/conversation/redaction.ts",
             "src/conversation/serialization.ts",
+            "src/conversation/snapshot-format.ts",
             "src/conversation/snapshot-integrity.ts",
+            "src/conversation/snapshot-v1.ts",
+            "src/conversation/snapshot-v2.ts",
             "src/conversation/system-messages.ts",
             "src/conversation/tool-interactions.ts",
             "src/conversation/tool-resolution.ts",
@@ -8984,6 +11847,7 @@
             "src/streaming-accumulator.ts",
             "src/streaming.ts",
             "src/test/index.ts",
+            "src/testing/promise-outcome.test-support.ts",
             "src/types.ts",
             "src/utilities/content.ts",
             "src/utilities/deterministic.ts",
@@ -9002,15 +11866,15 @@
             "src/versioning/index.ts",
             "src/with-conversation.ts"
           ],
-          "digest": "7eca5439093a1a9225c51ff57a56366fa08760c3332de6ee7f4f93a25cdf10d7"
+          "digest": "faf845336a29b29151b0faae2fe4c1988abe0261588f8705f963b963df20bd41"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "3828a89df02fcbc2a276ff197305bb880e5a7680d9bd93f50aba15d831e69e02"
+          "digest": "1b5c1f927b1d1560ac0effe1a7fa9dc4cc1ccd5ac7f1b2288e9cc422df56f922"
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "94f79d0e76a867be9c148da35a92e74dc921efd4b5ccf5bcc100ca13592e1972"
+          "digest": "a03f3df20ed81ddd20efb9ceb51aab244e88223ea9a840369f118205a57fc21b"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -9033,6 +11897,22 @@
             },
             {
               "path": "package/dist/adapters/anthropic/index.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/sdk.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/sdk.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/sdk.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/adapters/anthropic/sdk.js.map",
               "executable": false
             },
             {
@@ -9060,11 +11940,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-BUW7BK6v.js",
+              "path": "package/dist/anthropic-D4ju-sCV.js",
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-BUW7BK6v.js.map",
+              "path": "package/dist/anthropic-D4ju-sCV.js.map",
               "executable": false
             },
             {
@@ -9084,27 +11964,27 @@
               "executable": false
             },
             {
-              "path": "package/dist/conditional-section-CPBt6nET.d.ts",
+              "path": "package/dist/conditional-section-BNE2OzK6.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/conditional-section-CPBt6nET.d.ts.map",
+              "path": "package/dist/conditional-section-BNE2OzK6.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/context-CifiErVb.js",
+              "path": "package/dist/context--BbMMfxn.js",
               "executable": false
             },
             {
-              "path": "package/dist/context-CifiErVb.js.map",
+              "path": "package/dist/context--BbMMfxn.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/context-blocks-D9u-kqxT.d.ts",
+              "path": "package/dist/context-blocks-HunWfqSC.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/context-blocks-D9u-kqxT.d.ts.map",
+              "path": "package/dist/context-blocks-HunWfqSC.d.ts.map",
               "executable": false
             },
             {
@@ -9120,11 +12000,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/conversation-BjaKGaqc.js",
+              "path": "package/dist/conversation-BxdhYoSX.js",
               "executable": false
             },
             {
-              "path": "package/dist/conversation-BjaKGaqc.js.map",
+              "path": "package/dist/conversation-BxdhYoSX.js.map",
               "executable": false
             },
             {
@@ -9136,14 +12016,6 @@
               "executable": false
             },
             {
-              "path": "package/dist/deterministic-6TYiSGYj.d.ts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/deterministic-6TYiSGYj.d.ts.map",
-              "executable": false
-            },
-            {
               "path": "package/dist/deterministic-C6r1R87Y.js",
               "executable": false
             },
@@ -9152,19 +12024,27 @@
               "executable": false
             },
             {
-              "path": "package/dist/environment-BB1Rk1oE.d.ts",
+              "path": "package/dist/deterministic-Dd2MEF-P.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/environment-BB1Rk1oE.d.ts.map",
+              "path": "package/dist/deterministic-Dd2MEF-P.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/export-DVC44Bwh.js",
+              "path": "package/dist/environment-Dv2zmhh1.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/export-DVC44Bwh.js.map",
+              "path": "package/dist/environment-Dv2zmhh1.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/export-CcsuHomW.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/export-CcsuHomW.js.map",
               "executable": false
             },
             {
@@ -9180,27 +12060,27 @@
               "executable": false
             },
             {
-              "path": "package/dist/gemini-ElgR1n5O.js",
+              "path": "package/dist/gemini-CVYTA8WV.js",
               "executable": false
             },
             {
-              "path": "package/dist/gemini-ElgR1n5O.js.map",
+              "path": "package/dist/gemini-CVYTA8WV.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/history-BRxCP-fI.js",
+              "path": "package/dist/history-BfpntDzF.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/history-BRxCP-fI.js.map",
+              "path": "package/dist/history-BfpntDzF.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/history-BiDOwFh_.d.ts",
+              "path": "package/dist/history-CWQnv9n3.js",
               "executable": false
             },
             {
-              "path": "package/dist/history-BiDOwFh_.d.ts.map",
+              "path": "package/dist/history-CWQnv9n3.js.map",
               "executable": false
             },
             {
@@ -9212,19 +12092,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/index-CkgBOVTL.d.ts",
+              "path": "package/dist/index-BPwlR8JL.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-CkgBOVTL.d.ts.map",
+              "path": "package/dist/index-BPwlR8JL.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/index-Dem02cso.d.ts",
+              "path": "package/dist/index-Cjm2WHW7.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-Dem02cso.d.ts.map",
+              "path": "package/dist/index-Cjm2WHW7.d.ts.map",
               "executable": false
             },
             {
@@ -9244,19 +12124,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/markdown-B3HWpkrY.js",
+              "path": "package/dist/markdown-CYsc5eR_.js",
               "executable": false
             },
             {
-              "path": "package/dist/markdown-B3HWpkrY.js.map",
+              "path": "package/dist/markdown-CYsc5eR_.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/markdown-BVfXsiSL.js",
+              "path": "package/dist/markdown-DhWjd9WE.js",
               "executable": false
             },
             {
-              "path": "package/dist/markdown-BVfXsiSL.js.map",
+              "path": "package/dist/markdown-DhWjd9WE.js.map",
               "executable": false
             },
             {
@@ -9272,27 +12152,35 @@
               "executable": false
             },
             {
-              "path": "package/dist/message-BRwK40rw.js",
+              "path": "package/dist/message-6kSEh1Qi.js",
               "executable": false
             },
             {
-              "path": "package/dist/message-BRwK40rw.js.map",
+              "path": "package/dist/message-6kSEh1Qi.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/message-Ciqz3JFN.d.ts",
+              "path": "package/dist/message-n03NMUZA.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/message-Ciqz3JFN.d.ts.map",
+              "path": "package/dist/message-n03NMUZA.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/openai-B0UvTmAT.js",
+              "path": "package/dist/openai-BTRAiuGi.js",
               "executable": false
             },
             {
-              "path": "package/dist/openai-B0UvTmAT.js.map",
+              "path": "package/dist/openai-BTRAiuGi.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/outbound-Bx50j64T.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/outbound-Bx50j64T.js.map",
               "executable": false
             },
             {
@@ -9392,11 +12280,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/tool-interactions-DIRAjtuJ.d.ts",
+              "path": "package/dist/tool-interactions-CPxeezRt.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/tool-interactions-DIRAjtuJ.d.ts.map",
+              "path": "package/dist/tool-interactions-CPxeezRt.d.ts.map",
               "executable": false
             },
             {
@@ -9408,11 +12296,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/transient-KEVKQhIx.js",
+              "path": "package/dist/transient-CzELIPZR.js",
               "executable": false
             },
             {
-              "path": "package/dist/transient-KEVKQhIx.js.map",
+              "path": "package/dist/transient-CzELIPZR.js.map",
               "executable": false
             },
             {
@@ -9421,6 +12309,14 @@
             },
             {
               "path": "package/dist/types-Bok0vri9.d.ts.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-CzKeMyBG.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/types-CzKeMyBG.d.ts.map",
               "executable": false
             },
             {
@@ -9440,27 +12336,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/types-DozVbBtf.d.ts",
+              "path": "package/dist/types-DvrvJJ8b.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/types-DozVbBtf.d.ts.map",
+              "path": "package/dist/types-DvrvJJ8b.d.ts.map",
               "executable": false
             },
             {
-              "path": "package/dist/types-Dvn_LrYC.d.ts",
+              "path": "package/dist/utilities-DwcMkstp.js",
               "executable": false
             },
             {
-              "path": "package/dist/types-Dvn_LrYC.d.ts.map",
-              "executable": false
-            },
-            {
-              "path": "package/dist/utilities-uPlPfmKD.js",
-              "executable": false
-            },
-            {
-              "path": "package/dist/utilities-uPlPfmKD.js.map",
+              "path": "package/dist/utilities-DwcMkstp.js.map",
               "executable": false
             },
             {
@@ -9492,7 +12380,7 @@
               "executable": false
             }
           ],
-          "digest": "44f73d804a1185f986ea13a0eb9ad77898c4c9a9d5ab2247b8e1100ee12e42f0"
+          "digest": "50b96e7a97e9066cf0c9e1aaab875283f8107cfdd484b2a244c99f9fba9f4793"
         }
       }
     },
