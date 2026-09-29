@@ -282,12 +282,18 @@ describe('human-wait park marker across a second engine over the same storage (C
     }
   }
 
-  async function recoverOn(storage: Storage): Promise<CapturedEmitter> {
+  async function recoverOn(
+    storage: Storage,
+  ): Promise<{ emitter: CapturedEmitter; loggedMessages: string[] }> {
     const emitter = capturingEmitter();
+    const loggedMessages: string[] = [];
     const second = await createRunEngine({
       storage,
       runWorkflow: makeParkWorkflow(storage, { hangAfterPark: true }),
       recover: false,
+      onLog: (record) => {
+        loggedMessages.push(record.message);
+      },
       resolveWorkflowServices: () => ({
         status: 'available',
         services: servicesFor(emitter, true),
@@ -297,13 +303,13 @@ describe('human-wait park marker across a second engine over the same storage (C
     const handles = await second.engine.recoverAll();
     expect(handles).toHaveLength(1);
     void handles[0]?.result().catch(() => {});
-    return emitter;
+    return { emitter, loggedMessages };
   }
 
   it('dispatches exactly once for a park that is still pending', async () => {
     const storage = new MemoryStorage();
     await crashedEngineParkedOn(storage, false);
-    const emitter = await recoverOn(storage);
+    const { emitter } = await recoverOn(storage);
     await waitForCondition(
       () => emitter.events.length === 1,
       'expected the pending park to re-announce',
@@ -316,8 +322,13 @@ describe('human-wait park marker across a second engine over the same storage (C
   it('dispatches nothing for a park whose signal was already delivered', async () => {
     const storage = new MemoryStorage();
     await crashedEngineParkedOn(storage, true);
-    const emitter = await recoverOn(storage);
-    for (let turn = 0; turn < 20; turn++) await new Promise((resolve) => setTimeout(resolve, 0));
+    const { emitter, loggedMessages } = await recoverOn(storage);
+    // The 'past the park' record sits at the HANG_SIGNAL frontier, so it re-fires on
+    // recovery only after replay has passed the delivered park.
+    await waitForCondition(
+      () => loggedMessages.includes('past the park'),
+      'expected the recovered replay to pass the delivered park',
+    );
     expect(emitter.events).toHaveLength(0);
   });
 });
