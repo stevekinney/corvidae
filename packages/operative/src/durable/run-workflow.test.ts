@@ -457,6 +457,28 @@ describe('durable agentRun workflow', () => {
     }
   });
 
+  it('completes a run longer than the checkpoint codec nesting limit', async () => {
+    const { engine } = await buildEngine(new MemoryStorage(), false);
+    const services = makeServices(async ({ step }) => ({
+      content: `step ${step}`,
+      toolCalls: [{ name: 'next', arguments: {} }],
+    }));
+
+    try {
+      // Snapshots nested one level per history commit, so the checkpoint that
+      // carries the snapshot passed msgpack's 100-level limit after 14 steps.
+      const result = await runToCompletion(
+        engine,
+        { runId: 'run-long', prompt: 'Loop', maximumSteps: 40 },
+        services,
+      );
+      expect(result.steps).toBe(40);
+      expect(result.finishReason).toBe('maximum-steps');
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
   it('restores the conversation once per process, then reuses it across steps', async () => {
     const { engine, checkpointStore } = await buildEngine(new MemoryStorage(), false);
     const services = makeServices(async ({ step }) => {
@@ -1140,7 +1162,7 @@ describe('durable agentRun workflow', () => {
         const raw = await view.get('durable-run:json-run:transcript');
         expect(raw).not.toBeNull();
         const parsed = JSON.parse(raw!) as Record<string, unknown>;
-        expect(parsed).toHaveProperty('root');
+        expect(parsed).toHaveProperty('nodes');
         expect(parsed).toHaveProperty('currentPath');
         // structuredClone proves no functions/class-instances leaked into it.
         expect(() => structuredClone(parsed)).not.toThrow();
@@ -1170,7 +1192,7 @@ describe('durable agentRun workflow', () => {
           const raw = await view.get(`durable-run:size-run:step:${String(step).padStart(10, '0')}`);
           const record = JSON.parse(raw!) as Record<string, unknown>;
           expect(record).not.toHaveProperty('conversation');
-          expect(record).not.toHaveProperty('root');
+          expect(record).not.toHaveProperty('nodes');
         }
       } finally {
         engine[Symbol.dispose]();

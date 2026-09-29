@@ -151,11 +151,9 @@ describe('snapshot format version 2', () => {
     const snapshot = conversation.snapshot();
 
     let storedEntries = 0;
-    const count = (node: ConversationSnapshot['root']): void => {
+    for (const node of snapshot.nodes) {
       storedEntries += node.appendedMessageIds.length + Object.keys(node.messageReferences).length;
-      node.children.forEach(count);
-    };
-    count(snapshot.root);
+    }
 
     expect(snapshot.messages).toHaveLength(100);
     // Each append stores its new id and message once; version 1 stored every
@@ -180,13 +178,13 @@ describe('snapshot format version 2', () => {
 
     expect(currentConversationFromSnapshot(snapshot)).toEqual(conversation.current);
     const tampered = structuredClone(snapshot);
-    tampered.root.conversation.title = 'tampered';
+    tampered.nodes[0]!.conversation.title = 'tampered';
     expect(() => currentConversationFromSnapshot(tampered)).toThrow('integrity digest mismatch');
   });
 
   it('rejects malformed message deltas even when re-signed', () => {
     const snapshot = editedConversation().snapshot();
-    const child = (value: ConversationSnapshot) => value.root.children[0]!;
+    const child = (value: ConversationSnapshot) => value.nodes[1]!;
     const cases: Array<[string, (value: ConversationSnapshot) => void, string]> = [
       [
         'a table that is not an array',
@@ -196,8 +194,8 @@ describe('snapshot format version 2', () => {
       [
         'an out-of-range reference',
         (value) => {
-          const [id] = Object.keys(value.root.messageReferences);
-          Reflect.set(value.root.messageReferences, id!, value.messages.length);
+          const [id] = Object.keys(value.nodes[0]!.messageReferences);
+          Reflect.set(value.nodes[0]!.messageReferences, id!, value.messages.length);
         },
         'invalid message reference',
       ],
@@ -228,6 +226,34 @@ describe('snapshot format version 2', () => {
       mutate(mutated);
       expect(() => decodeSnapshot(resign(mutated))).toThrow(message);
     }
+  });
+
+  it('keeps a long history shallow enough for depth-limited codecs', () => {
+    const conversation = new Conversation(createConversationHistory());
+    for (let step = 0; step < 250; step += 1) {
+      conversation.appendUserMessage(`question ${step}`);
+      conversation.appendAssistantMessage(`answer ${step}`);
+    }
+    const snapshot = conversation.snapshot();
+
+    const depth = (value: unknown): number =>
+      value !== null && typeof value === 'object'
+        ? 1 + Math.max(0, ...Object.values(value).map(depth))
+        : 0;
+    // One node per commit: nesting children put this 500 levels deep, past
+    // msgpack's 100-level limit that Weft checkpoints enforce.
+    expect(snapshot.nodes).toHaveLength(501);
+    expect(depth(snapshot)).toBeLessThan(12);
+    expect(Conversation.from(snapshot).current).toEqual(conversation.current);
+  });
+
+  it('rejects a node listed before its parent, even when re-signed', () => {
+    const snapshot = structuredClone(editedConversation().snapshot());
+    const nodes = [...snapshot.nodes];
+    [nodes[1], nodes[2]] = [nodes[2]!, nodes[1]!];
+    Reflect.set(snapshot, 'nodes', nodes);
+
+    expect(() => decodeSnapshot(resign(snapshot))).toThrow('inconsistent parent');
   });
 
   it('rejects a future format version', () => {
