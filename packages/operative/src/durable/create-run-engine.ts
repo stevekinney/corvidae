@@ -24,6 +24,7 @@ import {
   DURABLE_HEARTBEAT_TICK_WORKFLOW_TYPE,
   resolveDurableHeartbeatTickServices,
 } from './durable-heartbeat-tick-workflow';
+import { createHumanWaitMarkerSink } from './human-wait-park-marker';
 import { createStorageActivities } from './storage-activities';
 
 /**
@@ -156,7 +157,8 @@ export interface CreateRunEngineOptions {
    * Host sink for `ctx.log` records emitted by durable workflows (Weft 0.4.0
    * structured logging). Receives every replay-safe log record from inline and
    * worker execution. A throwing sink falls back to console without failing the
-   * workflow. Omit to leave logs going to the host console.
+   * workflow. Omit to leave logs going to the host console. The replay-aware
+   * human-wait park marker (COR-121) is withheld from this sink and the console.
    */
   onLog?: ((record: WorkflowLogRecord) => void) | undefined;
 
@@ -375,7 +377,7 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
       ? { schedulerPollIntervalMs: options.schedulerPollIntervalMs }
       : {}),
     resolveWorkflowServices,
-    ...(options.onLog ? { onLog: options.onLog } : {}),
+    onLog: createHumanWaitMarkerSink(options.onLog),
     ...(options.history ? { history: options.history } : {}),
     ...(options.checkpointSizeWarningThreshold !== undefined
       ? { checkpointSizeWarningThreshold: options.checkpointSizeWarningThreshold }
