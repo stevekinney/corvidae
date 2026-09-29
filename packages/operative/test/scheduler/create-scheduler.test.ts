@@ -979,4 +979,26 @@ describe('createScheduler', () => {
       });
     });
   });
+
+  describe('task locator', () => {
+    it('resolves a settled task from its taskId alone', async () => {
+      const scheduler = createScheduler({
+        generate: createMockGenerate([textResponse('located')]),
+        toolbox: createTestToolbox([]),
+        idleDelay: 5,
+      });
+      scheduler.start();
+      const task = makeTask({ priority: 'immediate' });
+
+      // The submit() promise is awaited inside a helper and never retained.
+      const result = await (async () => scheduler.submit(task))();
+      expect(result).not.toBeNull();
+
+      expect(scheduler.locateTask(task.id)).toEqual({
+        status: 'terminal',
+        outcome: { status: 'fulfilled', value: result },
+      });
+      await scheduler.stop();
+    });
+  });
 });
