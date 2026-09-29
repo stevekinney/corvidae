@@ -38,6 +38,7 @@ export async function verifyHistoricalCheckout(options: {
   targetRoot: string;
   gitHead: string;
   mirrorCommit: string;
+  mergedMirrorCommit?: string;
   sourceRoot: string;
   target: string;
   workspace: string;
@@ -48,6 +49,7 @@ export async function verifyHistoricalCheckout(options: {
     targetRoot,
     gitHead,
     mirrorCommit: mirrored,
+    mergedMirrorCommit,
     sourceRoot,
     target,
     workspace,
@@ -57,7 +59,11 @@ export async function verifyHistoricalCheckout(options: {
   // This exact SHA comes from the coordinator's verified sync result, not a target message search.
   if (!/^[a-f0-9]{40}$/.test(mirrored))
     throw new Error('An exact verified mirror commit is required');
-  await requireGit(targetRoot, ['merge-base', '--is-ancestor', mirrored, gitHead], runner);
+  const lineageStart = mergedMirrorCommit ?? mirrored;
+  if (!/^[a-f0-9]{40}$/.test(lineageStart))
+    throw new Error('An exact verified merged mirror commit is required');
+  if (!(await isAncestor(targetRoot, lineageStart, gitHead, runner)))
+    throw new Error(`Mirror commit ${lineageStart} is not an ancestor of ${gitHead}`);
   const identity = await requireGit(
     targetRoot,
     ['show', '-s', '--format=%s%n%an%n%ae', mirrored],
@@ -75,6 +81,28 @@ export async function verifyHistoricalCheckout(options: {
   const message = await requireGit(targetRoot, ['show', '-s', '--format=%B', mirrored], runner);
   const trailer = message.match(/^Corvidae-Commit:\s*([a-f0-9]{7,40})\s*$/m)?.[1];
   if (!trailer) throw new Error('Invalid Corvidae-Commit trailer');
+  if (mergedMirrorCommit !== undefined) {
+    const mergedSubject = await requireGit(
+      targetRoot,
+      ['show', '-s', '--format=%s', mergedMirrorCommit],
+      runner,
+    );
+    if (mergedSubject.match(/^(.*) \(#[1-9]\d*\)$/)?.[1] !== expectedSubject)
+      throw new Error('Merged mirror commit has an unexpected squash subject');
+    const [appParents, mergedParents, appTree, mergedTree] = await Promise.all([
+      requireGit(targetRoot, ['show', '-s', '--format=%P', mirrored], runner),
+      requireGit(targetRoot, ['show', '-s', '--format=%P', mergedMirrorCommit], runner),
+      requireGit(targetRoot, ['rev-parse', `${mirrored}^{tree}`], runner),
+      requireGit(targetRoot, ['rev-parse', `${mergedMirrorCommit}^{tree}`], runner),
+    ]);
+    if (
+      appParents.split(' ').length !== 1 ||
+      mergedParents.split(' ').length !== 1 ||
+      appParents !== mergedParents
+    )
+      throw new Error('Squash merge must share the App sync commit parent');
+    if (appTree !== mergedTree) throw new Error('Squash tree differs from the App sync commit');
+  }
   const sourceCommit = await requireGit(
     sourceRoot,
     ['rev-parse', '--verify', `${trailer}^{commit}`],
@@ -109,7 +137,7 @@ export async function verifyHistoricalCheckout(options: {
   ]);
   const commits = await requireGit(
     targetRoot,
-    ['rev-list', '--reverse', '--ancestry-path', `${mirrored}..${gitHead}`],
+    ['rev-list', '--reverse', '--ancestry-path', `${lineageStart}..${gitHead}`],
     runner,
   );
   for (const commit of commits.split('\n').filter(Boolean)) {
@@ -117,10 +145,10 @@ export async function verifyHistoricalCheckout(options: {
     const parents = parentList.split(' ').filter(Boolean);
     const certifiedParents = [];
     for (const parent of parents) {
-      if (await isAncestor(targetRoot, mirrored, parent, runner)) certifiedParents.push(parent);
+      if (await isAncestor(targetRoot, lineageStart, parent, runner)) certifiedParents.push(parent);
     }
     if (certifiedParents.length === 0)
-      throw new Error(`Intervening commit ${commit} has no certified parent after ${mirrored}`);
+      throw new Error(`Intervening commit ${commit} has no certified parent after ${lineageStart}`);
     for (const parent of certifiedParents) {
       const paths = await requireGit(
         targetRoot,
