@@ -30,7 +30,6 @@ import type { AccessPolicy } from '../authorization.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import type { RestInputContext } from '../rest-binding.ts';
 import { readRestJsonBody } from '../rest-body.ts';
-import { mapDynamicSourceUnavailableToFault } from './dynamic-source-unavailable-fault.ts';
 import { invalidParamsFault, isOperationFault } from './operation-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
@@ -254,8 +253,15 @@ export function throwWorkflowCatalogOperationFault(error: unknown): never {
     // caller that DOES route this error type through this helper doesn't
     // silently reintroduce the leak; `'ambiguous-revision'`'s message
     // never interpolates a cause, so it's safe to forward verbatim.
-    const fault = mapDynamicSourceUnavailableToFault(error);
-    if (fault !== undefined) throw fault;
+    const fault: OperationFault = {
+      code: 'Conflict',
+      message:
+        error.reason === 'load-failed'
+          ? `Dynamic workflow source "${error.workflowType}"${error.revision === undefined ? '' : ` revision "${error.revision}"`} failed to load.`
+          : error.message,
+      data: { reason: error.reason, weftCode: error.code },
+    };
+    throw fault;
   }
   // A loaded module that fails validation (`engine.workflows.preload()`,
   // WFT-15/16) — not a load failure (the raw loader exception itself isn't
