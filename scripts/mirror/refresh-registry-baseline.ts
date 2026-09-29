@@ -1,3 +1,6 @@
+import { fileURLToPath } from 'node:url';
+
+import { serializeJson } from './json-formatting.ts';
 import { loadPackageMap } from './package-map.ts';
 import { baselineFile, loadRegistryBaseline, type RegistryBaseline } from './registry-baseline.ts';
 
@@ -122,7 +125,14 @@ export async function run(argv: readonly string[]): Promise<number> {
   try {
     const fresh = await buildBaseline();
     if (!argv.includes('--verify')) {
-      await Bun.write(baselineFile, `${JSON.stringify(fresh, undefined, 2)}\n`);
+      await Bun.write(
+        baselineFile,
+        await serializeJson(
+          fresh,
+          fileURLToPath(new URL('../../', import.meta.url)),
+          'scripts/mirror/registry-baseline.json',
+        ),
+      );
       const count = Object.keys(fresh.packages).length;
       process.stdout.write(`Refreshed registry-baseline.json for ${count} package(s)\n`);
       return 0;
