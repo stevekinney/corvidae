@@ -228,6 +228,7 @@ export async function cloneTarget({ remote, directory, branch }: CloneOptions): 
   await git(
     directory,
     'clone',
+    '--no-local',
     ...(branch ? ['--branch', branch] : []),
     '--quiet',
     remote,

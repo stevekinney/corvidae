@@ -520,7 +520,7 @@ async function withHarness(
 
     const seed = join(root, 'seed');
     await mkdir(seed, { recursive: true });
-    await git(seed, 'clone', '--quiet', remote, seed);
+    await git(seed, 'clone', '--no-local', '--quiet', remote, seed);
     await writeTree(seed, targetFiles);
     await git(seed, 'add', '--all');
     await git(seed, 'commit', '--quiet', '--message', 'Target repository before any sync');
@@ -545,6 +545,17 @@ async function withHarness(
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test('cloneTarget does not copy a transient local Git maintenance lock', async () => {
+  await withHarness(async (harness) => {
+    await Bun.write(join(harness.remote, 'objects/maintenance.lock'), 'transient\n');
+    const clone = await cloneTarget({
+      remote: harness.remote,
+      directory: harness.runDirectory('maintenance-lock'),
+    });
+    expect(await Bun.file(join(clone, '.git/objects/maintenance.lock')).exists()).toBe(false);
+  });
+});
 
 async function sync(harness: Harness, label: string): Promise<SyncResult> {
   return runSync({
@@ -723,7 +734,7 @@ describe('the mirror sync against a fake remote', () => {
       await withHarness(async (harness) => {
         const attacker = join(harness.scratch, 'attacker');
         await mkdir(harness.scratch, { recursive: true });
-        await git(harness.scratch, 'clone', '--quiet', harness.remote, attacker);
+        await git(harness.scratch, 'clone', '--no-local', '--quiet', harness.remote, attacker);
         await Bun.write(
           join(attacker, 'packages/cryptography/tsdown.config.ts'),
           stagedIndexTamperingTsdownConfiguration,
@@ -1057,7 +1068,7 @@ describe('the foreign-commit guard', () => {
 
         const bumper = harness.runDirectory('bumper');
         await mkdir(bumper, { recursive: true });
-        await git(bumper, 'clone', '--quiet', harness.remote, bumper);
+        await git(bumper, 'clone', '--no-local', '--quiet', harness.remote, bumper);
         const manifestPath = join(bumper, 'packages/cryptography/package.json');
         const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
           string,
@@ -1089,7 +1100,7 @@ describe('the foreign-commit guard', () => {
 
         const editor = harness.runDirectory('build-input-editor');
         await mkdir(editor, { recursive: true });
-        await git(editor, 'clone', '--quiet', harness.remote, editor);
+        await git(editor, 'clone', '--no-local', '--quiet', harness.remote, editor);
         // The fixture package's first declared build input, read from the surface rather than
         // hardcoded, so the test follows the declaration if it changes.
         const surface = await loadPackageSurface();
@@ -1124,7 +1135,7 @@ describe('the foreign-commit guard', () => {
 
         const releaser = harness.runDirectory('release-tooling');
         await mkdir(releaser, { recursive: true });
-        await git(releaser, 'clone', '--quiet', harness.remote, releaser);
+        await git(releaser, 'clone', '--no-local', '--quiet', harness.remote, releaser);
         await Bun.write(join(releaser, 'scripts/release.ts'), 'export const release = true;\n');
         await Bun.write(join(releaser, 'bunfig.toml'), '[install]\nexact = true\n');
         await Bun.write(
@@ -1160,7 +1171,7 @@ describe('the foreign-commit guard', () => {
 
         const mover = harness.runDirectory('rename-out-of-reach');
         await mkdir(mover, { recursive: true });
-        await git(mover, 'clone', '--quiet', harness.remote, mover);
+        await git(mover, 'clone', '--no-local', '--quiet', harness.remote, mover);
         // Git reports this as a rename whose new path the sync never touches; judged by that path
         // alone it would pass, and the sync would then restore the old path beside it.
         await git(mover, 'mv', 'packages/lifecycle/src/index.ts', 'packages/lifecycle/moved.ts');
@@ -1192,7 +1203,7 @@ describe('the foreign-commit guard', () => {
 
         const intruder = harness.runDirectory('prunable-intruder');
         await mkdir(intruder, { recursive: true });
-        await git(intruder, 'clone', '--quiet', harness.remote, intruder);
+        await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
         await Bun.write(
           join(intruder, 'packages/lifecycle/src/hand-added.ts'),
           'export const handAdded = true;\n',
@@ -1226,7 +1237,7 @@ describe('the foreign-commit guard', () => {
 
         const intruder = harness.runDirectory('exports-intruder');
         await mkdir(intruder, { recursive: true });
-        await git(intruder, 'clone', '--quiet', harness.remote, intruder);
+        await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
         const manifestPath = join(intruder, 'packages/cryptography/package.json');
         const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
           string,
@@ -1263,7 +1274,7 @@ describe('the foreign-commit guard', () => {
 
         const intruder = harness.runDirectory('intruder');
         await mkdir(intruder, { recursive: true });
-        await git(intruder, 'clone', '--quiet', harness.remote, intruder);
+        await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
         await Bun.write(
           join(intruder, 'packages/lifecycle/src/index.ts'),
           'export const phases = [];\n',
