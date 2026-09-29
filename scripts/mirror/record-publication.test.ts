@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { readPackagePayload } from './package-payload.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
@@ -252,7 +253,9 @@ async function withPublication(
 
 test('historical declared roots cannot disappear behind the current collector', async () => {
   await withPublication(async ({ options }) => {
-    await expect(recordSourceDigest(options)).rejects.toThrow('historical source paths or bytes');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+      'historical source paths or bytes',
+    );
   }, true);
 });
 
@@ -299,26 +302,30 @@ test('rejects changed historical input, source bytes, dirty checkout, and wrong 
       path,
       json({ ...JSON.parse(initial), imports: { '#worker': './src/worker.ts' } }),
     );
-    await expect(recordSourceDigest(options)).rejects.toThrow(
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
       'historical publication inputs differ',
     );
     await Bun.write(path, initial);
     await Bun.write(join(current, 'packages/operative/src/index.ts'), 'export const value = 2;\n');
-    await expect(recordSourceDigest(options)).rejects.toThrow('historical source paths or bytes');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+      'historical source paths or bytes',
+    );
     await Bun.write(join(current, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
     await Bun.write(join(historical, 'unexpected'), 'dirty');
-    await expect(recordSourceDigest(options)).rejects.toThrow('must be clean');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('must be clean');
     await commit(historical, 'different source revision');
-    await expect(recordSourceDigest(options)).rejects.toThrow('HEAD must equal');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('HEAD must equal');
   });
 });
 
 test('rejects tampered tarballs and mismatched registry manifests', async () => {
   await withPublication(async ({ options, registry, setRegistry }) => {
     await setRegistry(registry, true);
-    await expect(recordSourceDigest(options)).rejects.toThrow('integrity mismatch');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('integrity mismatch');
     await setRegistry({ ...registry, files: ['src'] });
-    await expect(recordSourceDigest(options)).rejects.toThrow('registry manifest differs');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+      'registry manifest differs',
+    );
   });
 });
 
@@ -330,7 +337,9 @@ test('rejects altered JavaScript and declarations despite matching manifest and 
         'dist/index.d.ts': 'export declare const value = 1;\n',
         [path]: 'altered published payload\n',
       });
-      await expect(recordSourceDigest(options)).rejects.toThrow('registry payload differs');
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
+        'registry payload differs',
+      );
     }
   });
 });
@@ -352,7 +361,7 @@ test('rejects source changes between the mirror and release commits', async () =
             stdout: changedCommit,
           })
         : registryRunner(command, settings);
-    await expect(recordSourceDigest(options)).rejects.toThrow('non-target-owned path');
+    expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('non-target-owned path');
   });
 });
 
@@ -364,38 +373,49 @@ test('rejects missing registry commits and invalid publication-map entries', asy
       stderr: '',
       stdout: '',
     });
-    await expect(recordSourceDigest({ ...options, registryRunner })).rejects.toThrow(
+    expect(await throwingRejectionOf(recordSourceDigest({ ...options, registryRunner }))).toThrow(
       'no recorded gitHead',
     );
-    await expect(
-      recordSourceDigest({
-        ...options,
-        registryRunner: async (command) => ({
-          command: command.join(' '),
-          exitCode: 0,
-          stderr: '',
-          stdout: '0'.repeat(40),
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({
+          ...options,
+          registryRunner: async (command) => ({
+            command: command.join(' '),
+            exitCode: 0,
+            stderr: '',
+            stdout: '0'.repeat(40),
+          }),
         }),
-      }),
-    ).rejects.toThrow(/is not in .* history/);
-    await expect(
-      recordSourceDigest({ ...options, workspace: '@lostgradient/nonexistent' }),
-    ).rejects.toThrow('no entry');
-    await expect(
-      recordSourceDigest({ ...options, workspace: '@lostgradient/weft-ui' }),
-    ).rejects.toThrow('not "publish-as"');
+      ),
+    ).toThrow(/is not in .* history/);
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({ ...options, workspace: '@lostgradient/nonexistent' }),
+      ),
+    ).toThrow('no entry');
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({ ...options, workspace: '@lostgradient/weft-ui' }),
+      ),
+    ).toThrow('not "publish-as"');
     const map = options.packageMap!;
     const entry = map.workspaces[workspace];
     if (entry?.disposition !== 'publish-as') throw new Error('Fixture package must publish');
-    await expect(
-      recordSourceDigest({
-        ...options,
-        packageMap: {
-          ...map,
-          workspaces: { ...map.workspaces, [workspace]: { ...entry, lastPublishedVersion: null } },
-        },
-      }),
-    ).rejects.toThrow('lastPublishedVersion is null');
+    expect(
+      await throwingRejectionOf(
+        recordSourceDigest({
+          ...options,
+          packageMap: {
+            ...map,
+            workspaces: {
+              ...map.workspaces,
+              [workspace]: { ...entry, lastPublishedVersion: null },
+            },
+          },
+        }),
+      ),
+    ).toThrow('lastPublishedVersion is null');
   });
 });
 
@@ -432,8 +452,8 @@ test('publication inputs resolve only referenced catalog values and preserve imp
   });
 });
 
-test('explicit mirror boundary rejects copied provenance trailers and runtime manifest edits', async () => {
-  for (const field of ['type', 'imports']) {
+for (const field of ['type', 'imports']) {
+  test(`explicit mirror boundary rejects a copied provenance trailer with a runtime manifest edit: ${field}`, async () => {
     await withPublication(async ({ options, target, sourceCommit, registry }) => {
       const path = join(target, 'packages/operative/package.json');
       const change =
@@ -454,15 +474,15 @@ test('explicit mirror boundary rejects copied provenance trailers and runtime ma
               stdout: changedCommit,
             })
           : registryRunner(command, settings);
-      await expect(recordSourceDigest(options)).rejects.toThrow(
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
         `source-owned manifest field packages/operative/package.json:${field}`,
       );
     });
-  }
-});
+  });
+}
 
-test('rejects historical build inputs while allowing release metadata changes', async () => {
-  for (const field of ['scripts', 'devDependencies', 'packageManager']) {
+for (const field of ['scripts', 'devDependencies', 'packageManager']) {
+  test(`rejects a historical build input change: ${field}`, async () => {
     await withPublication(async ({ options, target, registry, setRegistry }) => {
       const path = join(target, 'packages/operative/package.json');
       const change =
@@ -484,12 +504,14 @@ test('rejects historical build inputs while allowing release metadata changes', 
               stdout: changedCommit,
             })
           : registryRunner(command, settings);
-      await expect(recordSourceDigest(options)).rejects.toThrow(
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
         `source-owned manifest field packages/operative/package.json:${field}`,
       );
     });
-  }
+  });
+}
 
+test('allows a release metadata change beside historical build inputs', async () => {
   await withPublication(async ({ options, target, registry, setRegistry }) => {
     const path = join(target, 'packages/operative/package.json');
     await Bun.write(path, json({ ...registry, description: 'release metadata' }));
@@ -542,83 +564,80 @@ test('accepts a verified mirror commit merged into the old default branch', asyn
   });
 });
 
-test('rejects source, build-input, transient, and manifest merge-side changes', async () => {
-  const cases: {
-    name: string;
-    mutateAfterMerge?: (target: string) => Promise<void>;
-    mutateSideBranch?: (target: string) => Promise<void>;
-    mutateOldDefault?: (target: string) => Promise<void>;
-    expected: string;
-  }[] = [
-    {
-      name: 'merge resolution source change',
-      mutateAfterMerge: async (target: string) => {
-        await Bun.write(
-          join(target, 'packages/operative/src/index.ts'),
-          'export const value = "resolved-maliciously";\n',
-        );
-      },
-      expected: 'non-target-owned path packages/operative/src/index.ts',
+const mergeSideChangeCases: {
+  name: string;
+  mutateAfterMerge?: (target: string) => Promise<void>;
+  mutateSideBranch?: (target: string) => Promise<void>;
+  mutateOldDefault?: (target: string) => Promise<void>;
+  expected: string;
+}[] = [
+  {
+    name: 'merge resolution source change',
+    mutateAfterMerge: async (target: string) => {
+      await Bun.write(
+        join(target, 'packages/operative/src/index.ts'),
+        'export const value = "resolved-maliciously";\n',
+      );
     },
-    {
-      name: 'side branch build input',
-      mutateSideBranch: async (target: string) => {
-        const manifest = JSON.parse(
-          await Bun.file(join(target, 'packages/operative/package.json')).text(),
-        );
-        await Bun.write(
-          join(target, 'packages/operative/package.json'),
-          json({ ...manifest, scripts: { build: 'bun run bad.ts' } }),
-        );
-      },
-      expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    expected: 'non-target-owned path packages/operative/src/index.ts',
+  },
+  {
+    name: 'side branch build input',
+    mutateSideBranch: async (target: string) => {
+      const manifest = JSON.parse(
+        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+      );
+      await Bun.write(
+        join(target, 'packages/operative/package.json'),
+        json({ ...manifest, scripts: { build: 'bun run bad.ts' } }),
+      );
     },
-    {
-      name: 'old default side branch build input',
-      mutateOldDefault: async (target: string) => {
-        const manifest = JSON.parse(
-          await Bun.file(join(target, 'packages/operative/package.json')).text(),
-        );
-        await Bun.write(
-          join(target, 'packages/operative/package.json'),
-          json({ ...manifest, scripts: { build: 'bun run old-default-bad.ts' } }),
-        );
-      },
-      expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    expected: 'source-owned manifest field packages/operative/package.json:scripts',
+  },
+  {
+    name: 'old default side branch build input',
+    mutateOldDefault: async (target: string) => {
+      const manifest = JSON.parse(
+        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+      );
+      await Bun.write(
+        join(target, 'packages/operative/package.json'),
+        json({ ...manifest, scripts: { build: 'bun run old-default-bad.ts' } }),
+      );
     },
-    {
-      name: 'transient source change reverted on a descendant branch',
-      mutateSideBranch: async (target: string) => {
-        await Bun.write(
-          join(target, 'packages/operative/src/index.ts'),
-          'export const value = "transient";\n',
-        );
-        await commit(target, 'Transient source change');
-        await Bun.write(
-          join(target, 'packages/operative/src/index.ts'),
-          'export const value = 1;\n',
-        );
-      },
-      expected: 'non-target-owned path packages/operative/src/index.ts',
+    expected: 'source-owned manifest field packages/operative/package.json:scripts',
+  },
+  {
+    name: 'transient source change reverted on a descendant branch',
+    mutateSideBranch: async (target: string) => {
+      await Bun.write(
+        join(target, 'packages/operative/src/index.ts'),
+        'export const value = "transient";\n',
+      );
+      await commit(target, 'Transient source change');
+      await Bun.write(join(target, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
     },
-    {
-      name: 'manifest field add and delete',
-      mutateSideBranch: async (target: string) => {
-        const manifest = JSON.parse(
-          await Bun.file(join(target, 'packages/operative/package.json')).text(),
-        );
-        await Bun.write(
-          join(target, 'packages/operative/package.json'),
-          json({ ...manifest, imports: { '#bad': './bad.ts' } }),
-        );
-        await commit(target, 'Add source-owned manifest field');
-        await Bun.write(join(target, 'packages/operative/package.json'), json(manifest));
-      },
-      expected: 'source-owned manifest field packages/operative/package.json:imports',
+    expected: 'non-target-owned path packages/operative/src/index.ts',
+  },
+  {
+    name: 'manifest field add and delete',
+    mutateSideBranch: async (target: string) => {
+      const manifest = JSON.parse(
+        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+      );
+      await Bun.write(
+        join(target, 'packages/operative/package.json'),
+        json({ ...manifest, imports: { '#bad': './bad.ts' } }),
+      );
+      await commit(target, 'Add source-owned manifest field');
+      await Bun.write(join(target, 'packages/operative/package.json'), json(manifest));
     },
-  ];
+    expected: 'source-owned manifest field packages/operative/package.json:imports',
+  },
+];
 
-  for (const testCase of cases) {
+for (const testCase of mergeSideChangeCases) {
+  test(`rejects a merge-side change: ${testCase.name}`, async () => {
     await withPublication(async ({ options, target, registry }) => {
       const slug = testCase.name.replaceAll(' ', '-');
       const mirrored = await requireGit(target, ['rev-parse', 'HEAD~1']);
@@ -672,10 +691,10 @@ test('rejects source, build-input, transient, and manifest merge-side changes', 
               stdout: release,
             })
           : registryRunner(command, settings);
-      await expect(recordSourceDigest(options)).rejects.toThrow(testCase.expected);
+      expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(testCase.expected);
     });
-  }
-});
+  });
+}
 
 test('publication inputs include emitted build scripts and resolved toolchain versions', async () => {
   await withPublication(async ({ current }) => {
@@ -704,8 +723,8 @@ test('publication inputs include emitted build scripts and resolved toolchain ve
   });
 });
 
-test('publication inputs include effective emitted TypeScript configuration', async () => {
-  for (const configuration of ['library', 'browser'] as const) {
+for (const configuration of ['library', 'browser'] as const) {
+  test(`publication inputs include effective emitted TypeScript configuration: ${configuration}`, async () => {
     await withPublication(async ({ current }) => {
       await mkdir(join(current, 'internal/typescript'), { recursive: true });
       await Bun.write(
@@ -784,8 +803,8 @@ test('publication inputs include effective emitted TypeScript configuration', as
         }),
       ).toEqual(afterBaseConfiguration);
     });
-  }
-});
+  });
+}
 
 test('publication inputs use the historical layout', async () => {
   await withPublication(async ({ current, historical }) => {
@@ -921,26 +940,30 @@ test('publication inputs use historical routing for workspace dependency ranges'
 test('publication inputs fail closed when historical routing facts are missing', async () => {
   await withPublication(async ({ historical }) => {
     await rm(join(historical, 'scripts/mirror/layout-map.json'));
-    await expect(
-      publicationInputContract({
-        corvidaeRoot: historical,
-        corvidaeDirectory: 'packages/operative',
-        workspace,
-      }),
-    ).rejects.toThrow('historical layout is missing');
+    expect(
+      await throwingRejectionOf(
+        publicationInputContract({
+          corvidaeRoot: historical,
+          corvidaeDirectory: 'packages/operative',
+          workspace,
+        }),
+      ),
+    ).toThrow('historical layout is missing');
   });
 });
 
 test('publication inputs fail closed when historical routing modules are missing', async () => {
   await withPublication(async ({ historical }) => {
     await rm(join(historical, 'scripts/mirror/target-definitions.ts'));
-    await expect(
-      publicationInputContract({
-        corvidaeRoot: historical,
-        corvidaeDirectory: 'packages/operative',
-        workspace,
-      }),
-    ).rejects.toThrow('historical target routing is missing');
+    expect(
+      await throwingRejectionOf(
+        publicationInputContract({
+          corvidaeRoot: historical,
+          corvidaeDirectory: 'packages/operative',
+          workspace,
+        }),
+      ),
+    ).toThrow('historical target routing is missing');
   });
 });
 
@@ -967,7 +990,7 @@ test('publication inputs bind workspace dependencies to their recorded published
     expect(after).not.toEqual(before);
     map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = null;
     await Bun.write(mapPath, json(map));
-    await expect(read()).rejects.toThrow('no recorded published version');
+    expect(await throwingRejectionOf(read())).toThrow('no recorded published version');
     expect(
       await publicationInputContract({
         corvidaeRoot: current,

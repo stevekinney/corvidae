@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderThenHydrate } from '@lostgradient/testing';
+import { prepareSvelteServerSource, renderThenHydrate } from '@lostgradient/testing';
 
 import PortalHydrationTest from './_portal-hydration-test.svelte';
 import { childSnippet, Portal, render, restorePortalGlobalState } from './portal-test-helpers.ts';
+
+const portalHydrationSource = new URL('./_portal-hydration-test.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(portalHydrationSource);
 
 beforeEach(() => document.body.replaceChildren());
 afterEach(restorePortalGlobalState);
@@ -198,8 +201,7 @@ describe('Portal', () => {
   });
 
   test('omits portal children from SSR when disabled is false', async () => {
-    const sourcePath = new URL('./_portal-hydration-test.svelte', import.meta.url).pathname;
-    const result = await renderThenHydrate(PortalHydrationTest, sourcePath, {});
+    const result = await renderThenHydrate(PortalHydrationTest, portalHydrationSource, {});
 
     try {
       expect(result.ssrHtml).not.toContain('Portaled child');

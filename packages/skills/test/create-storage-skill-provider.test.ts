@@ -6,6 +6,7 @@ import { discoverSkills } from '../src/discovery/discover';
 import type { SkillSource } from '../src/discovery/source';
 import { parseSkillMarkdown, SkillParseError } from '../src/parse-skill-markdown';
 import { createMockKeyValueStore } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { resourceBytes } from './support/resource-bytes';
 
 /**
@@ -144,12 +145,14 @@ describe('a write that cannot be read back is refused at the write', () => {
   it('refuses a name the specification does not allow', async () => {
     const provider = createStorageSkillProvider(createMockKeyValueStore());
 
-    await expect(
-      provider.saveSkill('Not_Valid', {
-        metadata: { name: 'Not_Valid', description: 'Bad name.' },
-        body: 'Body.',
-      }),
-    ).rejects.toThrow(SkillParseError);
+    expect(
+      await throwingRejectionOf(
+        provider.saveSkill('Not_Valid', {
+          metadata: { name: 'Not_Valid', description: 'Bad name.' },
+          body: 'Body.',
+        }),
+      ),
+    ).toThrow(SkillParseError);
   });
 
   it('refuses a name that disagrees with the content it is saving', async () => {
@@ -157,16 +160,20 @@ describe('a write that cannot be read back is refused at the write', () => {
 
     // Written under one key and self-describing as another, this skill would be catalogued under
     // the name in its manifest and be unreachable at the key anything else addressed it by.
-    await expect(
-      provider.saveSkill('stored-as', parseSkillMarkdown(skillMarkdown('calls-itself'))),
-    ).rejects.toThrow(SkillParseError);
+    expect(
+      await throwingRejectionOf(
+        provider.saveSkill('stored-as', parseSkillMarkdown(skillMarkdown('calls-itself'))),
+      ),
+    ).toThrow(SkillParseError);
   });
 
   it('refuses an invalid name when saving a resource, not only a skill', async () => {
     const provider = createStorageSkillProvider(createMockKeyValueStore());
 
-    await expect(
-      provider.saveResource('Not_Valid', 'guide.md', resourceBytes('guide')),
-    ).rejects.toThrow(SkillParseError);
+    expect(
+      await throwingRejectionOf(
+        provider.saveResource('Not_Valid', 'guide.md', resourceBytes('guide')),
+      ),
+    ).toThrow(SkillParseError);
   });
 });

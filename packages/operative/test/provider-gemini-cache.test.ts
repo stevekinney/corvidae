@@ -46,6 +46,7 @@ import type {
   GeminiGenerateContentRequest,
   GeminiGenerateContentResult,
 } from '../src/providers/types.ts';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext, StreamingHandle } from '../src/types.ts';
 
 function makeContext(conversation: Conversation): GenerateContext {
@@ -259,9 +260,11 @@ describe('createGeminiProvider — caller-owned cachedContent', () => {
       cachedContent: 'cachedContents/provided-by-caller',
     });
 
-    await expect(
-      generate(makeContext(conversationWithSystem('You are a helpful assistant.'))),
-    ).rejects.toThrow(ProviderError);
+    expect(
+      await throwingRejectionOf(
+        generate(makeContext(conversationWithSystem('You are a helpful assistant.'))),
+      ),
+    ).toThrow(ProviderError);
     expect(client._calls).toHaveLength(0);
   });
 
@@ -273,9 +276,11 @@ describe('createGeminiProvider — caller-owned cachedContent', () => {
       cachedContent: 'cachedContents/provided-by-caller',
     });
 
-    await expect(
-      generate(makeContext(conversationWithSystem('You are a helpful assistant.'))),
-    ).rejects.toThrow(/cachedContents\/provided-by-caller.*tail only/s);
+    expect(
+      await throwingRejectionOf(
+        generate(makeContext(conversationWithSystem('You are a helpful assistant.'))),
+      ),
+    ).toThrow(/cachedContents\/provided-by-caller.*tail only/s);
   });
 
   it('rejects a non-tail conversation on the streaming factory too', async () => {
@@ -286,12 +291,14 @@ describe('createGeminiProvider — caller-owned cachedContent', () => {
       cachedContent: 'cachedContents/provided-by-caller',
     });
 
-    await expect(
-      generate({
-        ...makeContext(conversationWithSystem('You are a helpful assistant.')),
-        streaming: makeStreamingHandle(),
-      }),
-    ).rejects.toThrow(ProviderError);
+    expect(
+      await throwingRejectionOf(
+        generate({
+          ...makeContext(conversationWithSystem('You are a helpful assistant.')),
+          streaming: makeStreamingHandle(),
+        }),
+      ),
+    ).toThrow(ProviderError);
     expect(client._calls).toHaveLength(0);
   });
 
@@ -656,7 +663,7 @@ describe('createGeminiProvider — cache creation failures', () => {
     const client = { ...createMockGeminiModel([textResponse()]), ...cache };
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(generate(makeContext(conversation))).rejects.toThrow(ProviderError);
+    expect(await throwingRejectionOf(generate(makeContext(conversation)))).toThrow(ProviderError);
   });
 
   it('does not silently fall back to an uncached request when creation fails', async () => {
@@ -668,7 +675,7 @@ describe('createGeminiProvider — cache creation failures', () => {
     const client = { ...createMockGeminiModel([textResponse()]), ...cache };
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(generate(makeContext(conversation))).rejects.toThrow(ProviderError);
+    expect(await throwingRejectionOf(generate(makeContext(conversation)))).toThrow(ProviderError);
     expect(client._calls).toHaveLength(0);
   });
 
@@ -681,7 +688,9 @@ describe('createGeminiProvider — cache creation failures', () => {
     const client = { ...createMockGeminiModel([textResponse()]), ...cache };
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(generate(makeContext(conversation))).rejects.toThrow(/no resource name/);
+    expect(await throwingRejectionOf(generate(makeContext(conversation)))).toThrow(
+      /no resource name/,
+    );
   });
 });
 
@@ -769,7 +778,7 @@ describe('createGeminiProvider — cache keyed by stable prefix', () => {
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
     const conversation = conversationWithSystem('You are a helpful assistant.');
 
-    await expect(generate(makeContext(conversation))).rejects.toThrow(ProviderError);
+    expect(await throwingRejectionOf(generate(makeContext(conversation)))).toThrow(ProviderError);
     await generate(makeContext(conversation));
 
     expect(cache.calls).toHaveLength(2);
@@ -1008,9 +1017,9 @@ describe('createGeminiProvider — recovery from a missing cache', () => {
     const client = { ...createFailFirstGeminiModel({ code: 404 }), ...cache };
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(generate(makeContext(conversationWithSystem('You are helpful.')))).rejects.toThrow(
-      ProviderError,
-    );
+    expect(
+      await throwingRejectionOf(generate(makeContext(conversationWithSystem('You are helpful.')))),
+    ).toThrow(ProviderError);
     expect(cache.calls).toHaveLength(1);
     expect(client._calls).toHaveLength(1);
   });
@@ -1023,9 +1032,9 @@ describe('createGeminiProvider — recovery from a missing cache', () => {
     };
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(generate(makeContext(conversationWithSystem('You are helpful.')))).rejects.toThrow(
-      ProviderError,
-    );
+    expect(
+      await throwingRejectionOf(generate(makeContext(conversationWithSystem('You are helpful.')))),
+    ).toThrow(ProviderError);
     expect(cache.calls).toHaveLength(1);
     expect(client._calls).toHaveLength(1);
   });
@@ -1041,9 +1050,9 @@ describe('createGeminiProvider — recovery from a missing cache', () => {
     };
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(generate(makeContext(conversationWithSystem('You are helpful.')))).rejects.toThrow(
-      ProviderError,
-    );
+    expect(
+      await throwingRejectionOf(generate(makeContext(conversationWithSystem('You are helpful.')))),
+    ).toThrow(ProviderError);
     expect(client._calls).toHaveLength(1);
   });
 
@@ -1058,9 +1067,9 @@ describe('createGeminiProvider — recovery from a missing cache', () => {
     };
     const generate = createGeminiProvider({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(generate(makeContext(conversationWithSystem('You are helpful.')))).rejects.toThrow(
-      ProviderError,
-    );
+    expect(
+      await throwingRejectionOf(generate(makeContext(conversationWithSystem('You are helpful.')))),
+    ).toThrow(ProviderError);
     expect(cache.calls).toHaveLength(2);
     expect(client._calls).toHaveLength(2);
   });
@@ -1076,7 +1085,7 @@ describe('createGeminiProvider — recovery from a missing cache', () => {
       cachedContent: 'cachedContents/provided-by-caller',
     });
 
-    await expect(generate(makeContext(conversation))).rejects.toThrow(ProviderError);
+    expect(await throwingRejectionOf(generate(makeContext(conversation)))).toThrow(ProviderError);
     expect(client._calls).toHaveLength(1);
   });
 
@@ -1112,17 +1121,19 @@ describe('createGeminiProvider — recovery from a missing cache', () => {
     };
     const generate = createGeminiProviderStream({ model: 'gemini-pro', client, ...assembling() });
 
-    await expect(
-      generate({
-        ...makeContext(conversationWithSystem('You are helpful.')),
-        streaming: {
-          update: (text: string) => {
-            updates.push(text);
+    expect(
+      await throwingRejectionOf(
+        generate({
+          ...makeContext(conversationWithSystem('You are helpful.')),
+          streaming: {
+            update: (text: string) => {
+              updates.push(text);
+            },
+            messageId: 'test-message-id',
           },
-          messageId: 'test-message-id',
-        },
-      }),
-    ).rejects.toThrow(ProviderError);
+        }),
+      ),
+    ).toThrow(ProviderError);
 
     expect(updates).toEqual(['ok']);
     expect(cache.calls).toHaveLength(1);

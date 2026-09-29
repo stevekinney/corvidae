@@ -5,6 +5,7 @@ import { createChatRuns } from '../../src/bun/chat/chat-runs.ts';
 import { applicationRpcContract } from '../../src/shared/rpc-contract.ts';
 import { createValidatedRequestHandlers } from '../../src/shared/rpc-validation.ts';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import type { ApplicationWebviewMessageSender } from '../../src/shared/rpc-contract.ts';
 
 /**
@@ -63,31 +64,35 @@ describe('the validated request handlers', () => {
   test('rejects a malformed conversation at the contract boundary', async () => {
     const { handlers } = createHandlers();
 
-    await expect(
-      handlers.startChatRun?.({
-        runId: 'run-1',
-        // Missing every required field. The boundary that owns the contract
-        // should refuse this rather than letting it reach the agent loop.
-        conversation: { id: 'test' } as never,
-      }),
-    ).rejects.toThrow('Invalid RPC input');
+    expect(
+      await throwingRejectionOf(
+        handlers.startChatRun?.({
+          runId: 'run-1',
+          // Missing every required field. The boundary that owns the contract
+          // should refuse this rather than letting it reach the agent loop.
+          conversation: { id: 'test' } as never,
+        }),
+      ),
+    ).toThrow('Invalid RPC input');
   });
 
   test('rejects an empty run id', async () => {
     const { handlers } = createHandlers();
 
-    await expect(
-      handlers.startChatRun?.({
-        runId: '',
-        conversation: createConversationHistory({ id: 'test' }),
-      }),
-    ).rejects.toThrow('Invalid RPC input');
+    expect(
+      await throwingRejectionOf(
+        handlers.startChatRun?.({
+          runId: '',
+          conversation: createConversationHistory({ id: 'test' }),
+        }),
+      ),
+    ).toThrow('Invalid RPC input');
   });
 
   test('answers an abort for an unknown run without throwing', async () => {
     const { handlers } = createHandlers();
 
-    await expect(handlers.abortChatRun?.({ runId: 'never-existed' })).resolves.toEqual({
+    expect(await handlers.abortChatRun?.({ runId: 'never-existed' })).toEqual({
       aborted: false,
     });
   });

@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { pushVerifiedBundle, pushVerifiedCommit } from './authenticated-push.ts';
 import { runCommand } from './packaging.ts';
 import { git, gitEnvironment } from './sync.ts';
@@ -104,28 +105,30 @@ test.each(['push-url', 'included-rewrite', 'receive-pack'])(
 test('refuses a different imported commit before requesting credentials', async () => {
   let requestedCredentials = false;
   const commands: string[][] = [];
-  await expect(
-    pushVerifiedCommit({
-      directory: tmpdir(),
-      remote: 'https://github.com/stevekinney/weft.git',
-      commit: 'a'.repeat(40),
-      branch: 'verified',
-      environment: {},
-      credentialEnvironment: async () => {
-        requestedCredentials = true;
-        return {};
-      },
-      run: async (command) => {
-        commands.push([...command]);
-        return {
-          command: command.join(' '),
-          exitCode: 0,
-          stderr: '',
-          stdout: command.includes('rev-parse') ? 'b'.repeat(40) : '',
-        };
-      },
-    }),
-  ).rejects.toThrow('Imported push commit does not match');
+  expect(
+    await throwingRejectionOf(
+      pushVerifiedCommit({
+        directory: tmpdir(),
+        remote: 'https://github.com/stevekinney/weft.git',
+        commit: 'a'.repeat(40),
+        branch: 'verified',
+        environment: {},
+        credentialEnvironment: async () => {
+          requestedCredentials = true;
+          return {};
+        },
+        run: async (command) => {
+          commands.push([...command]);
+          return {
+            command: command.join(' '),
+            exitCode: 0,
+            stderr: '',
+            stdout: command.includes('rev-parse') ? 'b'.repeat(40) : '',
+          };
+        },
+      }),
+    ),
+  ).toThrow('Imported push commit does not match');
   expect(requestedCredentials).toBe(false);
   expect(commands.some((command) => command.includes('push'))).toBe(false);
 });
@@ -133,28 +136,30 @@ test('refuses a different imported commit before requesting credentials', async 
 test('refuses an invalid publish branch before requesting credentials', async () => {
   let requestedCredentials = false;
   const commands: string[][] = [];
-  await expect(
-    pushVerifiedBundle({
-      bundle: join(tmpdir(), 'verified.bundle'),
-      remote: 'https://github.com/stevekinney/weft.git',
-      commit: 'a'.repeat(40),
-      branch: 'refs/heads/main',
-      environment: {},
-      credentialEnvironment: async () => {
-        requestedCredentials = true;
-        return {};
-      },
-      run: async (command) => {
-        commands.push([...command]);
-        return {
-          command: command.join(' '),
-          exitCode: command.includes('check-ref-format') ? 1 : 0,
-          stderr: 'invalid ref',
-          stdout: '',
-        };
-      },
-    }),
-  ).rejects.toThrow('check-ref-format');
+  expect(
+    await throwingRejectionOf(
+      pushVerifiedBundle({
+        bundle: join(tmpdir(), 'verified.bundle'),
+        remote: 'https://github.com/stevekinney/weft.git',
+        commit: 'a'.repeat(40),
+        branch: 'refs/heads/main',
+        environment: {},
+        credentialEnvironment: async () => {
+          requestedCredentials = true;
+          return {};
+        },
+        run: async (command) => {
+          commands.push([...command]);
+          return {
+            command: command.join(' '),
+            exitCode: command.includes('check-ref-format') ? 1 : 0,
+            stderr: 'invalid ref',
+            stdout: '',
+          };
+        },
+      }),
+    ),
+  ).toThrow('check-ref-format');
   expect(requestedCredentials).toBe(false);
   expect(commands.some((command) => command.includes('push'))).toBe(false);
 });
@@ -162,28 +167,30 @@ test('refuses an invalid publish branch before requesting credentials', async ()
 test('pushVerifiedBundle requests credentials only after the bundle identity matches', async () => {
   let requestedCredentials = false;
   const commands: string[][] = [];
-  await expect(
-    pushVerifiedBundle({
-      bundle: join(tmpdir(), 'verified.bundle'),
-      remote: 'https://github.com/stevekinney/weft.git',
-      commit: 'a'.repeat(40),
-      branch: 'verified',
-      environment: {},
-      credentialEnvironment: async () => {
-        requestedCredentials = true;
-        return {};
-      },
-      run: async (command) => {
-        commands.push([...command]);
-        return {
-          command: command.join(' '),
-          exitCode: 0,
-          stderr: '',
-          stdout: command.includes('rev-parse') ? 'b'.repeat(40) : '',
-        };
-      },
-    }),
-  ).rejects.toThrow('Imported push commit does not match');
+  expect(
+    await throwingRejectionOf(
+      pushVerifiedBundle({
+        bundle: join(tmpdir(), 'verified.bundle'),
+        remote: 'https://github.com/stevekinney/weft.git',
+        commit: 'a'.repeat(40),
+        branch: 'verified',
+        environment: {},
+        credentialEnvironment: async () => {
+          requestedCredentials = true;
+          return {};
+        },
+        run: async (command) => {
+          commands.push([...command]);
+          return {
+            command: command.join(' '),
+            exitCode: 0,
+            stderr: '',
+            stdout: command.includes('rev-parse') ? 'b'.repeat(40) : '',
+          };
+        },
+      }),
+    ),
+  ).toThrow('Imported push commit does not match');
   expect(requestedCredentials).toBe(false);
   expect(commands.some((command) => command.includes('push'))).toBe(false);
 });

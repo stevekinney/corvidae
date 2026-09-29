@@ -10,6 +10,7 @@ import {
   createTruncationMiddleware,
   createUntrustedOutputFencingMiddleware,
 } from '../src/middleware/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 // AB-308: `createToolbox()`/the middleware functions under test only need
 // the fields a `ToolConfiguration` actually carries at runtime — this
@@ -167,7 +168,7 @@ describe('createRateLimitMiddleware', () => {
     const execute = configuration.execute as (p: unknown, c: unknown) => Promise<unknown>;
 
     await execute({}, {});
-    expect(execute({}, {})).rejects.toThrow('Rate limit exceeded');
+    expect(await throwingRejectionOf(execute({}, {}))).toThrow('Rate limit exceeded');
   });
 
   it('handles lazy execute (Promise<Function>)', async () => {
@@ -263,8 +264,10 @@ describe('createTimeoutMiddleware', () => {
     const middleware = createTimeoutMiddleware(5000);
     const wrapped = middleware(config);
     expect(
-      (wrapped.execute as (p: unknown, c: unknown) => Promise<unknown>)({}, {}),
-    ).rejects.toThrow('string-error');
+      await throwingRejectionOf(
+        (wrapped.execute as (p: unknown, c: unknown) => Promise<unknown>)({}, {}),
+      ),
+    ).toThrow('string-error');
   });
 
   it('handles lazy execute (Promise<Function>)', async () => {

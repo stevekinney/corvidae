@@ -29,9 +29,11 @@ import type {
   ConversationHistory,
   ConversationProvider,
   ConversationSnapshot,
+  ConversationSnapshotV1,
   MessagePlugin,
   MessagePluginIdentity,
 } from './types';
+import { cloneSharingFrozen } from './utilities/type-helpers';
 
 export type {
   ConversationActionType,
@@ -112,7 +114,7 @@ export class Conversation {
     // evaluated before `this.environment` exists, so it would always read
     // the real globals regardless of what `environment` the caller passed.
     const resolvedInitial = initial ?? createConversationHistory(undefined, this.environment);
-    const safeInitial = ensureConversationSafe(structuredClone(resolvedInitial));
+    const safeInitial = ensureConversationSafe(cloneSharingFrozen(resolvedInitial));
     this.transaction = new HistoryTransaction(safeInitial);
     Object.assign(
       this,
@@ -316,7 +318,7 @@ export class Conversation {
    * Reconstructs a Conversation instance from JSON.
    */
   static from(
-    json: ConversationSnapshot,
+    json: ConversationSnapshot | ConversationSnapshotV1,
     environment?: Partial<ConversationEnvironment>,
   ): Conversation {
     return restoreWithController(

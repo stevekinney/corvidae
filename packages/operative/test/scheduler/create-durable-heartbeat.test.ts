@@ -22,6 +22,7 @@ import type {
 import { createDurableHeartbeat } from '../../src/scheduler/create-durable-heartbeat';
 import type { Scheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerTask } from '../../src/scheduler/types';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { RunResult } from '../../src/types';
 
 type RunEngineInstance = Awaited<ReturnType<typeof createRunEngine>>['engine'];
@@ -153,21 +154,25 @@ describe('createDurableHeartbeat', () => {
   });
 
   it('throws when the durable tick workflow receives invalid input', async () => {
-    await expect(
-      createTickWorkflowHandler()(
-        { workflowId: 'invalid-tick', memo: runMemo },
-        { missingScheduleId: true },
-      ).next(),
-    ).rejects.toThrow('durable heartbeat tick input must include a scheduleId');
+    expect(
+      await throwingRejectionOf(
+        createTickWorkflowHandler()(
+          { workflowId: 'invalid-tick', memo: runMemo },
+          { missingScheduleId: true },
+        ).next(),
+      ),
+    ).toThrow('durable heartbeat tick input must include a scheduleId');
   });
 
   it('throws when the durable tick workflow runs without services', async () => {
-    await expect(
-      createTickWorkflowHandler()(
-        { workflowId: 'missing-services-tick', memo: runMemo },
-        { scheduleId: 'heartbeat' },
-      ).next(),
-    ).rejects.toThrow('durable heartbeat tick services are unavailable');
+    expect(
+      await throwingRejectionOf(
+        createTickWorkflowHandler()(
+          { workflowId: 'missing-services-tick', memo: runMemo },
+          { scheduleId: 'heartbeat' },
+        ).next(),
+      ),
+    ).toThrow('durable heartbeat tick services are unavailable');
   });
 
   it('reuses an existing schedule with the same scheduleId', async () => {
@@ -593,14 +598,16 @@ describe('createDurableHeartbeat', () => {
         { id: 'heartbeat-collision', overlap: 'skip', backfill: false },
       );
 
-      await expect(
-        createDurableHeartbeat(engine, {
-          scheduler,
-          scheduleId: 'heartbeat-collision',
-          spec: { every: '1h' },
-          createHeartbeatRun: () => ({ conversation: new Conversation() }),
-        }),
-      ).rejects.toThrow(
+      expect(
+        await throwingRejectionOf(
+          createDurableHeartbeat(engine, {
+            scheduler,
+            scheduleId: 'heartbeat-collision',
+            spec: { every: '1h' },
+            createHeartbeatRun: () => ({ conversation: new Conversation() }),
+          }),
+        ),
+      ).toThrow(
         'Schedule heartbeat-collision already exists for workflow agentRun; expected durableHeartbeatTick.',
       );
     } finally {
@@ -625,14 +632,16 @@ describe('createDurableHeartbeat', () => {
         { id: 'heartbeat-overlap-collision', overlap: 'queue', backfill: false },
       );
 
-      await expect(
-        createDurableHeartbeat(engine, {
-          scheduler,
-          scheduleId: 'heartbeat-overlap-collision',
-          spec: { every: '1h' },
-          createHeartbeatRun: () => ({ conversation: new Conversation() }),
-        }),
-      ).rejects.toThrow('Schedule heartbeat-overlap-collision already exists with overlap queue.');
+      expect(
+        await throwingRejectionOf(
+          createDurableHeartbeat(engine, {
+            scheduler,
+            scheduleId: 'heartbeat-overlap-collision',
+            spec: { every: '1h' },
+            createHeartbeatRun: () => ({ conversation: new Conversation() }),
+          }),
+        ),
+      ).toThrow('Schedule heartbeat-overlap-collision already exists with overlap queue.');
     } finally {
       engine[Symbol.dispose]();
     }
@@ -655,16 +664,16 @@ describe('createDurableHeartbeat', () => {
         { id: 'heartbeat-backfill-collision', overlap: 'skip', backfill: true },
       );
 
-      await expect(
-        createDurableHeartbeat(engine, {
-          scheduler,
-          scheduleId: 'heartbeat-backfill-collision',
-          spec: { every: '1h' },
-          createHeartbeatRun: () => ({ conversation: new Conversation() }),
-        }),
-      ).rejects.toThrow(
-        'Schedule heartbeat-backfill-collision already exists with backfill enabled.',
-      );
+      expect(
+        await throwingRejectionOf(
+          createDurableHeartbeat(engine, {
+            scheduler,
+            scheduleId: 'heartbeat-backfill-collision',
+            spec: { every: '1h' },
+            createHeartbeatRun: () => ({ conversation: new Conversation() }),
+          }),
+        ),
+      ).toThrow('Schedule heartbeat-backfill-collision already exists with backfill enabled.');
     } finally {
       engine[Symbol.dispose]();
     }
@@ -687,16 +696,16 @@ describe('createDurableHeartbeat', () => {
         { id: 'heartbeat-cron-collision', overlap: 'skip', backfill: false },
       );
 
-      await expect(
-        createDurableHeartbeat(engine, {
-          scheduler,
-          scheduleId: 'heartbeat-cron-collision',
-          spec: { cron: '5 * * * *' },
-          createHeartbeatRun: () => ({ conversation: new Conversation() }),
-        }),
-      ).rejects.toThrow(
-        'Schedule heartbeat-cron-collision already exists with a different cron spec.',
-      );
+      expect(
+        await throwingRejectionOf(
+          createDurableHeartbeat(engine, {
+            scheduler,
+            scheduleId: 'heartbeat-cron-collision',
+            spec: { cron: '5 * * * *' },
+            createHeartbeatRun: () => ({ conversation: new Conversation() }),
+          }),
+        ),
+      ).toThrow('Schedule heartbeat-cron-collision already exists with a different cron spec.');
     } finally {
       engine[Symbol.dispose]();
     }
@@ -719,14 +728,16 @@ describe('createDurableHeartbeat', () => {
         { id: 'heartbeat-interval-collision', overlap: 'skip', backfill: false },
       );
 
-      await expect(
-        createDurableHeartbeat(engine, {
-          scheduler,
-          scheduleId: 'heartbeat-interval-collision',
-          spec: { every: '2h' },
-          createHeartbeatRun: () => ({ conversation: new Conversation() }),
-        }),
-      ).rejects.toThrow(
+      expect(
+        await throwingRejectionOf(
+          createDurableHeartbeat(engine, {
+            scheduler,
+            scheduleId: 'heartbeat-interval-collision',
+            spec: { every: '2h' },
+            createHeartbeatRun: () => ({ conversation: new Conversation() }),
+          }),
+        ),
+      ).toThrow(
         'Schedule heartbeat-interval-collision already exists with a different interval spec.',
       );
     } finally {
@@ -752,14 +763,16 @@ describe('createDurableHeartbeat', () => {
       });
       await heartbeat.cancel();
 
-      await expect(
-        createDurableHeartbeat(engine, {
-          scheduler,
-          scheduleId: 'heartbeat-cancelled-reuse',
-          spec: { every: '1h' },
-          createHeartbeatRun: () => ({ conversation: new Conversation() }),
-        }),
-      ).rejects.toThrow('Schedule heartbeat-cancelled-reuse already exists but is cancelled.');
+      expect(
+        await throwingRejectionOf(
+          createDurableHeartbeat(engine, {
+            scheduler,
+            scheduleId: 'heartbeat-cancelled-reuse',
+            spec: { every: '1h' },
+            createHeartbeatRun: () => ({ conversation: new Conversation() }),
+          }),
+        ),
+      ).toThrow('Schedule heartbeat-cancelled-reuse already exists but is cancelled.');
     } finally {
       engine[Symbol.dispose]();
     }
@@ -798,7 +811,7 @@ describe('createDurableHeartbeat', () => {
         throw new Error('cancel failed');
       };
 
-      await expect(heartbeat.cancel()).rejects.toThrow('cancel failed');
+      expect(await throwingRejectionOf(heartbeat.cancel())).toThrow('cancel failed');
 
       expect(await engine.getSchedule('heartbeat-cancel-failure')).toMatchObject({
         status: 'active',
@@ -880,8 +893,8 @@ describe('createDurableHeartbeat', () => {
       expect(createSettled).toBe(false);
 
       finishCancel();
-      await expect(cancelAttempt).resolves.toBeUndefined();
-      await expect(createAttempt).rejects.toThrow(
+      expect(await cancelAttempt).toBeUndefined();
+      expect(await throwingRejectionOf(createAttempt)).toThrow(
         'Schedule heartbeat-cancel-create-race already exists but is cancelled.',
       );
       expect(firstScheduler.submittedTasks).toHaveLength(0);

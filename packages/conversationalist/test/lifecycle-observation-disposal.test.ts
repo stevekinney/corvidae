@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { Conversation } from '../src/history';
 import { appendUserMessage, createConversationHistory, defineMessagePlugin } from '../src/index';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 describe('lifecycle disposal and mutations', () => {
   it('honors caller cancellation when an async tool-result stream is blocked', async () => {
@@ -30,7 +31,7 @@ describe('lifecycle disposal and mutations', () => {
     await Promise.resolve();
     controller.abort('caller stopped');
 
-    expect(append).rejects.toMatchObject({ name: 'AbortError' });
+    expect(await rejectionOf(append)).toMatchObject({ name: 'AbortError' });
     expect(iteratorClosed).toBe(true);
   });
 
@@ -70,7 +71,7 @@ describe('lifecycle disposal and mutations', () => {
       { signal: controller.signal },
     );
 
-    expect(compacting).rejects.toMatchObject({ code: 'error:operation-cancelled' });
+    expect(await rejectionOf(compacting)).toMatchObject({ code: 'error:operation-cancelled' });
     expect(outcomes).toEqual([
       ['compaction.started', 'started'],
       ['compaction.cancelled', 'cancelled'],
@@ -124,7 +125,7 @@ describe('lifecycle disposal and mutations', () => {
 
     expect(conversation.inFlightOperationCount).toBe(1);
     release();
-    expect(compacting).rejects.toMatchObject({ code: 'error:operation-cancelled' });
+    expect(await rejectionOf(compacting)).toMatchObject({ code: 'error:operation-cancelled' });
     await disposal;
     expect(conversation.inFlightOperationCount).toBe(0);
   });

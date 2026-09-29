@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { createMemory } from '../src/create-memory';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { TextSearchProvider } from '../src/text-search-provider';
 import type { Memory } from '../src/types';
 
@@ -192,12 +193,14 @@ describe('createMemory integrations', () => {
 
       await Promise.resolve(
         expect(
-          textSearchMemory.rememberOnce('keyed content for indexing', {
-            namespace: 'indexed-once',
-            source: 'experiential',
-            dedupeKey: 'repair-index-key',
-          }),
-        ).rejects.toThrow(/temporary text index failure/),
+          await throwingRejectionOf(
+            textSearchMemory.rememberOnce('keyed content for indexing', {
+              namespace: 'indexed-once',
+              source: 'experiential',
+              dedupeKey: 'repair-index-key',
+            }),
+          ),
+        ).toThrow(/temporary text index failure/),
       );
       const secondEntry = await textSearchMemory.rememberOnce('different keyed content', {
         namespace: 'indexed-once',

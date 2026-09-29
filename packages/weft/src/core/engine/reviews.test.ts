@@ -2,6 +2,7 @@ import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
 import { ReviewTimeoutError, type HumanReviewResult, type ReviewRequest } from '../review/index.ts';
 import { handleReviewEscalationTimer, sendReviewWebhook, submitReview } from './reviews.ts';
@@ -26,18 +27,20 @@ describe('review helpers', () => {
     await storage.put(KEYS.review(review.workflowId, review.reviewId), encode('malformed'));
 
     expect(
-      submitReview(
-        {
-          options: { getNow: () => 2_000 },
-          reviewWaiters: new Map(),
-          reviewWaitersByWorkflow: new Map(),
-          storage,
-        } as never,
-        review.reviewId,
-        { decision: 'approved', reviewer: 'alex', workflowId: review.workflowId },
-        { dispatchEvent: () => true },
+      await throwingRejectionOf(
+        submitReview(
+          {
+            options: { getNow: () => 2_000 },
+            reviewWaiters: new Map(),
+            reviewWaitersByWorkflow: new Map(),
+            storage,
+          } as never,
+          review.reviewId,
+          { decision: 'approved', reviewer: 'alex', workflowId: review.workflowId },
+          { dispatchEvent: () => true },
+        ),
       ),
-    ).rejects.toThrow(`Review "${review.reviewId}" could not be loaded`);
+    ).toThrow(`Review "${review.reviewId}" could not be loaded`);
   });
 
   it('ignores unrelated escalation timers and escalation ticks without actions', async () => {

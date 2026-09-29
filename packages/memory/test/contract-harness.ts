@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { registerVectorSearchContractTests } from './contract-harness-vector-search';
 
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from '../src/types';
 import { registerDeleteContractTests } from './contract-harness-delete';
 
@@ -162,7 +163,7 @@ export function runMemoryRecordStorageContract(
         expect(duplicateResult.record.id).toBe(records[0]!.id);
         expect(duplicateResult.inserted).toBe(false);
         await Promise.resolve(
-          expect(storage.getByDedupeKey!(SCOPE, 'run-1:0')).resolves.toMatchObject({
+          expect(await storage.getByDedupeKey!(SCOPE, 'run-1:0')).toMatchObject({
             id: records[0]!.id,
           }),
         );
@@ -191,27 +192,31 @@ export function runMemoryRecordStorageContract(
 
       it('rejects a putOnce record without a non-empty dedupe key in metadata', async () => {
         await Promise.resolve(
-          expect(storage.putOnce!(makeRecord('missing-key'))).rejects.toThrow(
+          expect(await throwingRejectionOf(storage.putOnce!(makeRecord('missing-key')))).toThrow(
             /record\.metadata\.dedupeKey must be a non-empty string/,
           ),
         );
         await Promise.resolve(
           expect(
-            storage.putOnce!(makeRecord('empty-key', { metadata: { dedupeKey: '' } })),
-          ).rejects.toThrow(/record\.metadata\.dedupeKey must be a non-empty string/),
+            await throwingRejectionOf(
+              storage.putOnce!(makeRecord('empty-key', { metadata: { dedupeKey: '' } })),
+            ),
+          ).toThrow(/record\.metadata\.dedupeKey must be a non-empty string/),
         );
       });
 
       it('rejects a putOnce record that is not active', async () => {
         await Promise.resolve(
           expect(
-            storage.putOnce!(
-              makeRecord('deleted-key', {
-                metadata: { dedupeKey: 'deleted-key' },
-                status: 'deleted',
-              }),
+            await throwingRejectionOf(
+              storage.putOnce!(
+                makeRecord('deleted-key', {
+                  metadata: { dedupeKey: 'deleted-key' },
+                  status: 'deleted',
+                }),
+              ),
             ),
-          ).rejects.toThrow(/putOnce requires an active record/),
+          ).toThrow(/putOnce requires an active record/),
         );
       });
 
@@ -265,7 +270,7 @@ export function runMemoryRecordStorageContract(
         expect(result.inserted).toBe(true);
         expect(result.record.id).toBe('new-id');
         await Promise.resolve(
-          expect(storage.getByDedupeKey!(SCOPE, 'new-key')).resolves.toMatchObject({
+          expect(await storage.getByDedupeKey!(SCOPE, 'new-key')).toMatchObject({
             id: 'same-id',
           }),
         );
@@ -282,7 +287,7 @@ export function runMemoryRecordStorageContract(
         expect(result.inserted).toBe(true);
         expect(result.record.id).toBe('new-id');
         await Promise.resolve(
-          expect(storage.getByDedupeKey!(SCOPE, 'new-key')).resolves.toMatchObject({
+          expect(await storage.getByDedupeKey!(SCOPE, 'new-key')).toMatchObject({
             id: 'same-id',
           }),
         );

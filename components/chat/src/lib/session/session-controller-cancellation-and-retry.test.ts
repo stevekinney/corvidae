@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
@@ -26,9 +27,11 @@ describe('chat session controller', () => {
       },
     });
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'hi' }, [])).rejects.toThrow(
-        'Invalid chat stream event',
-      ),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
+        ),
+      ).toThrow('Invalid chat stream event'),
     );
     // A transport whose provider work hangs off `request.signal` would otherwise
     // keep running after the command has already failed.
@@ -64,9 +67,11 @@ describe('chat session controller', () => {
       },
     });
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'hi' }, [])).rejects.toThrow(
-        'Invalid chat stream event',
-      ),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
+        ),
+      ).toThrow('Invalid chat stream event'),
     );
     expect(cleanupSawAbort).toBe(true);
     expect(signal?.aborted).toBe(true);
@@ -103,9 +108,11 @@ describe('chat session controller', () => {
       },
     });
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'hi' }, [])).rejects.toThrow(
-        'offline',
-      ),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
+        ),
+      ).toThrow('offline'),
     );
     expect(Object.values(conversation.messages)[0]?.metadata['_deliveryStatus']).toBe('failed');
   });
@@ -125,7 +132,11 @@ describe('chat session controller', () => {
       },
     });
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'hi' }, [])).rejects.toThrow(),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'hi' }, []),
+        ),
+      ).toThrow(),
     );
     const messageId = conversation.ids[0]!;
     await controller.adapter.retryMessage?.(messageId);

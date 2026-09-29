@@ -9,12 +9,13 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
+import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { default: Checkbox } = await import('./checkbox.svelte');
 const sourcePath = new URL('./checkbox.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(sourcePath);
 
 describe('Checkbox hydration', () => {
   test('hydrates without warnings and keeps the checkbox role/id stable', async () => {

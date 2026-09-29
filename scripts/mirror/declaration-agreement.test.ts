@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   checkDeclarationAgreement,
   DeclarationAgreementError,
@@ -302,8 +303,8 @@ export declare namespace TypesOnly { type Inner = number }
       },
       sqliteShape,
     );
-    await expect(check).rejects.toThrow(DeclarationAgreementError);
-    await expect(check).rejects.toThrow('missing-base.json');
+    expect(await throwingRejectionOf(check)).toThrow(DeclarationAgreementError);
+    expect(await throwingRejectionOf(check)).toThrow('missing-base.json');
   });
 });
 

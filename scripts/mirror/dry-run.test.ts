@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   assertInstallationCoverage,
   CheckRunFailureError,
@@ -199,7 +200,9 @@ describe('deleteScratchRepository', () => {
     const { api, calls } = fakeGitHub({
       repositories: { [target]: scratchRecord({ fullName: target }) },
     });
-    await expect(deleteScratchRepository(api, target)).rejects.toThrow(ScratchGuardError);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, target))).toThrow(
+      ScratchGuardError,
+    );
     expect(calls.deleted).toEqual([]);
     expect(calls.read).toEqual([]);
   });
@@ -212,7 +215,9 @@ describe('deleteScratchRepository', () => {
     const { api, calls } = fakeGitHub({
       repositories: { [target]: scratchRecord({ fullName: target }) },
     });
-    await expect(deleteScratchRepository(api, target)).rejects.toThrow(/not a calendar date/);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, target))).toThrow(
+      /not a calendar date/,
+    );
     expect(calls.deleted).toEqual([]);
   });
 
@@ -227,7 +232,9 @@ describe('deleteScratchRepository', () => {
     const { api, calls } = fakeGitHub({
       repositories: { [validName]: scratchRecord({ description }) },
     });
-    await expect(deleteScratchRepository(api, validName)).rejects.toThrow(ScratchGuardError);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, validName))).toThrow(
+      ScratchGuardError,
+    );
     expect(calls.deleted).toEqual([]);
   });
 
@@ -235,13 +242,17 @@ describe('deleteScratchRepository', () => {
     const { api, calls } = fakeGitHub({
       repositories: { [validName]: scratchRecord({ description: null }) },
     });
-    await expect(deleteScratchRepository(api, validName)).rejects.toThrow(ScratchGuardError);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, validName))).toThrow(
+      ScratchGuardError,
+    );
     expect(calls.deleted).toEqual([]);
   });
 
   test('refuses when GitHub has no such repository', async () => {
     const { api, calls } = fakeGitHub();
-    await expect(deleteScratchRepository(api, validName)).rejects.toThrow(/no such repository/);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, validName))).toThrow(
+      /no such repository/,
+    );
     expect(calls.deleted).toEqual([]);
   });
 
@@ -251,7 +262,7 @@ describe('deleteScratchRepository', () => {
         [validName]: scratchRecord({ fullName: 'stevekinney/weft' }),
       },
     });
-    await expect(deleteScratchRepository(api, validName)).rejects.toThrow(/redirects/);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, validName))).toThrow(/redirects/);
     expect(calls.deleted).toEqual([]);
   });
 
@@ -259,7 +270,7 @@ describe('deleteScratchRepository', () => {
     const { api, calls } = fakeGitHub({
       repositories: { [validName]: scratchRecord({ private: true }) },
     });
-    await expect(deleteScratchRepository(api, validName)).rejects.toThrow(/private/);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, validName))).toThrow(/private/);
     expect(calls.deleted).toEqual([]);
   });
 
@@ -269,7 +280,9 @@ describe('deleteScratchRepository', () => {
     const { api, calls } = fakeGitHub({
       repositories: { [validName]: scratchRecord({ description: 'something else' }) },
     });
-    await expect(deleteScratchRepository(api, validName)).rejects.toThrow(ScratchGuardError);
+    expect(await throwingRejectionOf(deleteScratchRepository(api, validName))).toThrow(
+      ScratchGuardError,
+    );
     expect(calls.read).toEqual([validName]);
     expect(calls.deleted).toEqual([]);
   });
@@ -294,13 +307,15 @@ describe('ensureScratchRepository', () => {
     const { api, calls } = fakeGitHub({
       repositories: { [validName]: scratchRecord({ description: 'a real project' }) },
     });
-    await expect(ensureScratchRepository(api, validName)).rejects.toThrow(ScratchGuardError);
+    expect(await throwingRejectionOf(ensureScratchRepository(api, validName))).toThrow(
+      ScratchGuardError,
+    );
     expect(calls.created).toEqual([]);
   });
 
   test('refuses to create anything under a name the guard rejects', async () => {
     const { api, calls } = fakeGitHub();
-    await expect(ensureScratchRepository(api, 'stevekinney/weft')).rejects.toThrow(
+    expect(await throwingRejectionOf(ensureScratchRepository(api, 'stevekinney/weft'))).toThrow(
       ScratchGuardError,
     );
     expect(calls.created).toEqual([]);
@@ -317,7 +332,7 @@ describe('assertInstallationCoverage', () => {
 
   test('passes when the selected installation lists the scratch repository', async () => {
     const { api } = fakeGitHub({ reachable: ['stevekinney/corvidae', validName] });
-    await expect(assertInstallationCoverage(api, validName)).resolves.toBeDefined();
+    expect(await assertInstallationCoverage(api, validName)).toBeDefined();
   });
 
   test('refuses, naming the scratch repository and the browser step, when it does not', async () => {
@@ -456,21 +471,23 @@ describe('runDryRun', () => {
     const harness = fakeRunner();
     const probes = fakeProbe();
     await withWorkDirectory(async (workDirectory) => {
-      await expect(
-        runDryRun({
-          api,
-          corvidaeRoot: workDirectory,
-          target: 'weft',
-          workDirectory: join(workDirectory, 'clone'),
-          scratchDirectory: join(workDirectory, 'scratch'),
-          corvidaeCommit: 'abc123',
-          scratchRepository: validName,
-          run: harness.run,
-          stage: fakeStage('1.0.0'),
-          verify: fakeVerify,
-          probe: probes.probe,
-        }),
-      ).rejects.toThrow(InstallationCoverageError);
+      expect(
+        await throwingRejectionOf(
+          runDryRun({
+            api,
+            corvidaeRoot: workDirectory,
+            target: 'weft',
+            workDirectory: join(workDirectory, 'clone'),
+            scratchDirectory: join(workDirectory, 'scratch'),
+            corvidaeCommit: 'abc123',
+            scratchRepository: validName,
+            run: harness.run,
+            stage: fakeStage('1.0.0'),
+            verify: fakeVerify,
+            probe: probes.probe,
+          }),
+        ),
+      ).toThrow(InstallationCoverageError);
     });
     expect(calls.coverageReads).toBe(1);
     expect(calls.created).toEqual([]);
@@ -602,21 +619,23 @@ describe('runDryRun', () => {
     const harness = fakeRunner(['stable-tree', 'tampered-tree']);
     const probes = fakeProbe();
     await withWorkDirectory(async (workDirectory) => {
-      await expect(
-        runDryRun({
-          api,
-          corvidaeRoot: workDirectory,
-          target: 'weft',
-          workDirectory: join(workDirectory, 'clone'),
-          scratchDirectory: join(workDirectory, 'scratch'),
-          corvidaeCommit: 'abc123',
-          scratchRepository: validName,
-          run: harness.run,
-          stage: fakeStage('1.0.0'),
-          verify: fakeVerify,
-          probe: probes.probe,
-        }),
-      ).rejects.toThrow('staged tree changed during verification');
+      expect(
+        await throwingRejectionOf(
+          runDryRun({
+            api,
+            corvidaeRoot: workDirectory,
+            target: 'weft',
+            workDirectory: join(workDirectory, 'clone'),
+            scratchDirectory: join(workDirectory, 'scratch'),
+            corvidaeCommit: 'abc123',
+            scratchRepository: validName,
+            run: harness.run,
+            stage: fakeStage('1.0.0'),
+            verify: fakeVerify,
+            probe: probes.probe,
+          }),
+        ),
+      ).toThrow('staged tree changed during verification');
     });
     expect(calls.accountPushEnvironmentReads).toBe(1);
     expect(calls.pushEnvironmentReads).toBe(0);
@@ -663,21 +682,23 @@ describe('runDryRun', () => {
   test('refuses a scratch repository name the guard rejects before reaching GitHub', async () => {
     const { api, calls } = fakeGitHub();
     await withWorkDirectory(async (workDirectory) => {
-      await expect(
-        runDryRun({
-          api,
-          corvidaeRoot: workDirectory,
-          target: 'weft',
-          workDirectory: join(workDirectory, 'clone'),
-          scratchDirectory: join(workDirectory, 'scratch'),
-          corvidaeCommit: 'abc123',
-          scratchRepository: 'stevekinney/weft',
-          run: fakeRunner().run,
-          stage: fakeStage('1.0.0'),
-          verify: fakeVerify,
-          probe: fakeProbe().probe,
-        }),
-      ).rejects.toThrow(ScratchGuardError);
+      expect(
+        await throwingRejectionOf(
+          runDryRun({
+            api,
+            corvidaeRoot: workDirectory,
+            target: 'weft',
+            workDirectory: join(workDirectory, 'clone'),
+            scratchDirectory: join(workDirectory, 'scratch'),
+            corvidaeCommit: 'abc123',
+            scratchRepository: 'stevekinney/weft',
+            run: fakeRunner().run,
+            stage: fakeStage('1.0.0'),
+            verify: fakeVerify,
+            probe: fakeProbe().probe,
+          }),
+        ),
+      ).toThrow(ScratchGuardError);
     });
     expect(calls.coverageReads).toBe(0);
     expect(calls.created).toEqual([]);

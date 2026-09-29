@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
@@ -101,8 +102,13 @@ describe('chat session controller', () => {
     await controller.adapter.sendMessage({ role: 'user', content: 'write' }, []);
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('call', { decision: 'approve', remember: false }),
-      ).rejects.toThrow('approval unavailable'),
+        await throwingRejectionOf(
+          controller.adapter.resolveToolApproval?.('call', {
+            decision: 'approve',
+            remember: false,
+          }),
+        ),
+      ).toThrow('approval unavailable'),
     );
     expect(Object.values(conversation.messages)[0]?.metadata['_deliveryStatus']).toBeUndefined();
   });
@@ -140,8 +146,10 @@ describe('chat session controller', () => {
     await controller.adapter.sendMessage({ role: 'user', content: 'write' }, []);
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
-      ).rejects.toThrow('denial unavailable'),
+        await throwingRejectionOf(
+          controller.adapter.resolveToolApproval?.('call', { decision: 'deny', remember: false }),
+        ),
+      ).toThrow('denial unavailable'),
     );
     expect(Object.values(conversation.messages)[0]?.metadata['_deliveryStatus']).toBeUndefined();
   });
@@ -159,33 +167,48 @@ describe('chat session controller', () => {
     const original = conversation;
     controller.dispose();
     await Promise.resolve(
-      expect(controller.adapter.sendMessage({ role: 'user', content: 'x' }, [])).rejects.toThrow(
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.sendMessage({ role: 'user', content: 'x' }, []),
+        ),
+      ).toThrow('disposed'),
+    );
+    await Promise.resolve(
+      expect(await throwingRejectionOf(controller.adapter.retryMessage?.('missing'))).toThrow(
         'disposed',
       ),
     );
     await Promise.resolve(
-      expect(controller.adapter.retryMessage?.('missing')).rejects.toThrow('disposed'),
+      expect(
+        await throwingRejectionOf(
+          controller.adapter.editMessage?.({ messageId: 'missing', content: 'x' }),
+        ),
+      ).toThrow('disposed'),
     );
     await Promise.resolve(
       expect(
-        controller.adapter.editMessage?.({ messageId: 'missing', content: 'x' }),
-      ).rejects.toThrow('disposed'),
+        await throwingRejectionOf(
+          controller.adapter.resolveToolApproval?.('missing', {
+            decision: 'approve',
+            remember: false,
+          }),
+        ),
+      ).toThrow('disposed'),
     );
     await Promise.resolve(
       expect(
-        controller.adapter.resolveToolApproval?.('missing', {
-          decision: 'approve',
-          remember: false,
-        }),
-      ).rejects.toThrow('disposed'),
+        await throwingRejectionOf(
+          controller.adapter.resolveToolApproval?.('missing', {
+            decision: 'deny',
+            remember: false,
+          }),
+        ),
+      ).toThrow('disposed'),
     );
     await Promise.resolve(
-      expect(
-        controller.adapter.resolveToolApproval?.('missing', { decision: 'deny', remember: false }),
-      ).rejects.toThrow('disposed'),
-    );
-    await Promise.resolve(
-      expect(controller.adapter.stopGenerating?.('missing')).rejects.toThrow('disposed'),
+      expect(await throwingRejectionOf(controller.adapter.stopGenerating?.('missing'))).toThrow(
+        'disposed',
+      ),
     );
     expect(conversation).toBe(original);
   });

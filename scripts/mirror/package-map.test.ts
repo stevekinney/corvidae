@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   coverageReport,
   discoverWorkspaceNames,
@@ -116,8 +117,10 @@ describe('mirror package map', () => {
   });
 
   test('hard-errors on an unmapped workspace rather than skipping it', async () => {
-    expect(dispositionFor('@lostgradient/not-a-workspace')).rejects.toThrow(PackageMapError);
-    await expect(dispositionFor('@lostgradient/not-a-workspace')).rejects.toThrow(
+    expect(await throwingRejectionOf(dispositionFor('@lostgradient/not-a-workspace'))).toThrow(
+      PackageMapError,
+    );
+    expect(await throwingRejectionOf(dispositionFor('@lostgradient/not-a-workspace'))).toThrow(
       /@lostgradient\/not-a-workspace has no disposition/,
     );
   });

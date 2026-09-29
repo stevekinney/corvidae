@@ -16,6 +16,7 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { renderComponentAuthoringChecklist } from './component-conventions-props.ts';
 import { hasSubstantiveTest } from './component-conventions-tests.ts';
 import {
@@ -311,7 +312,9 @@ describe('createOne', () => {
       const context = temporaryContext(root, 'my-widget');
       await mkdir(context.directory, { recursive: true });
 
-      expect(createOne(context)).rejects.toThrow(/component directory already exists/);
+      expect(await throwingRejectionOf(createOne(context))).toThrow(
+        /component directory already exists/,
+      );
 
       // The pre-existing directory remains untouched and no scaffold files are
       // written after the collision is detected.

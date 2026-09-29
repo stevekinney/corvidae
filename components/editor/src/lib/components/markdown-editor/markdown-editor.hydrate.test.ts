@@ -95,7 +95,7 @@ describe('MarkdownEditor hydration status', () => {
     });
     const result = await renderThenHydrate(
       MarkdownEditor,
-      new URL('./markdown-editor.svelte', import.meta.url).pathname,
+      sourcePath,
       {
         id: 'hydration-editor',
         label: 'Hydration editor',

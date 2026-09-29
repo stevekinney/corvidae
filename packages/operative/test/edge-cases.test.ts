@@ -7,6 +7,7 @@ import { assertDefined } from './assert-defined';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { createMockGenerate, createMockGenerateOnce, createRunRecorder } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateResponse } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 
@@ -149,9 +150,9 @@ describe('test utility coverage', () => {
     await generate({ conversation: {} as any, toolbox: {} as any, step: 0 });
 
     // Second call throws
-    await expect(
-      generate({ conversation: {} as any, toolbox: {} as any, step: 1 }),
-    ).rejects.toThrow('createMockGenerate: no response at index 1');
+    expect(
+      await throwingRejectionOf(generate({ conversation: {} as any, toolbox: {} as any, step: 1 })),
+    ).toThrow('createMockGenerate: no response at index 1');
   });
 
   it('createMockGenerateOnce returns response on first call, throws on second', async () => {
@@ -160,9 +161,9 @@ describe('test utility coverage', () => {
     const response = await generate({ conversation: {} as any, toolbox: {} as any, step: 0 });
     expect(response.content).toBe('once');
 
-    await expect(
-      generate({ conversation: {} as any, toolbox: {} as any, step: 1 }),
-    ).rejects.toThrow('createMockGenerateOnce: already called');
+    expect(
+      await throwingRejectionOf(generate({ conversation: {} as any, toolbox: {} as any, step: 1 })),
+    ).toThrow('createMockGenerateOnce: already called');
   });
 
   it('createRunRecorder clear resets events and steps', async () => {

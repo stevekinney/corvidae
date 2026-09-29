@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'bun:test';
 
 import { createMemory } from '../src/create-memory';
 import { createInMemoryMemoryRecordStorage, createMockEmbedder } from '../src/test/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Memory, MemoryRecordStorage } from '../src/types';
 
 const DIMENSION = 64;
@@ -115,9 +116,9 @@ describe('createMemory', () => {
       // The contract requires a non-empty namespace; an empty string would
       // otherwise be persisted as a real but unreachable-by-default scope.
       await Promise.resolve(
-        expect(memory.remember('Empty namespace', { namespace: '' })).rejects.toThrow(
-          /namespace must be a non-empty string/,
-        ),
+        expect(
+          await throwingRejectionOf(memory.remember('Empty namespace', { namespace: '' })),
+        ).toThrow(/namespace must be a non-empty string/),
       );
     });
   });
@@ -143,36 +144,42 @@ describe('createMemory', () => {
     it('rejects an empty dedupe key', async () => {
       await Promise.resolve(
         expect(
-          memory.rememberOnce('missing key', {
-            source: 'manual',
-            dedupeKey: '',
-          }),
-        ).rejects.toThrow(/dedupeKey must be a non-empty string/),
+          await throwingRejectionOf(
+            memory.rememberOnce('missing key', {
+              source: 'manual',
+              dedupeKey: '',
+            }),
+          ),
+        ).toThrow(/dedupeKey must be a non-empty string/),
       );
     });
 
     it('rejects a non-string dedupe key at the public boundary', async () => {
       await Promise.resolve(
         expect(
-          Reflect.apply(memory.rememberOnce, memory, [
-            'invalid key',
-            {
-              source: 'manual',
-              dedupeKey: undefined,
-            },
-          ]),
-        ).rejects.toThrow(/dedupeKey must be a non-empty string/),
+          await throwingRejectionOf(
+            Reflect.apply(memory.rememberOnce, memory, [
+              'invalid key',
+              {
+                source: 'manual',
+                dedupeKey: undefined,
+              },
+            ]),
+          ),
+        ).toThrow(/dedupeKey must be a non-empty string/),
       );
       await Promise.resolve(
         expect(
-          Reflect.apply(memory.rememberOnce, memory, [
-            'invalid key',
-            {
-              source: 'manual',
-              dedupeKey: 123,
-            },
-          ]),
-        ).rejects.toThrow(/dedupeKey must be a non-empty string/),
+          await throwingRejectionOf(
+            Reflect.apply(memory.rememberOnce, memory, [
+              'invalid key',
+              {
+                source: 'manual',
+                dedupeKey: 123,
+              },
+            ]),
+          ),
+        ).toThrow(/dedupeKey must be a non-empty string/),
       );
     });
 
@@ -186,11 +193,13 @@ describe('createMemory', () => {
 
       await Promise.resolve(
         expect(
-          strict.rememberOnce('strict namespace', {
-            source: 'manual',
-            dedupeKey: 'strict-key',
-          }),
-        ).rejects.toThrow(/Namespace is required/),
+          await throwingRejectionOf(
+            strict.rememberOnce('strict namespace', {
+              source: 'manual',
+              dedupeKey: 'strict-key',
+            }),
+          ),
+        ).toThrow(/Namespace is required/),
       );
 
       await strict.close();
@@ -213,11 +222,13 @@ describe('createMemory', () => {
 
       await Promise.resolve(
         expect(
-          unsupported.rememberOnce('unsupported storage', {
-            source: 'manual',
-            dedupeKey: 'unsupported-key',
-          }),
-        ).rejects.toThrow(/rememberOnce requires storage\.putOnce support/),
+          await throwingRejectionOf(
+            unsupported.rememberOnce('unsupported storage', {
+              source: 'manual',
+              dedupeKey: 'unsupported-key',
+            }),
+          ),
+        ).toThrow(/rememberOnce requires storage\.putOnce support/),
       );
     });
   });

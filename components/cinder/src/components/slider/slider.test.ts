@@ -7,12 +7,13 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { fireEvent, render, cleanup } = await import('@testing-library/svelte');
-const { renderSvelteOnServer } = await import('@lostgradient/testing');
+const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@lostgradient/testing');
 const { tick } = await import('svelte');
 const { default: Slider } = await import('./slider.svelte');
 const { default: SliderDirectionFixture } =
   await import('../../test/fixtures/slider-direction-fixture.svelte');
 const SLIDER_DIRECTION_FIXTURE_SOURCE = `${import.meta.dir}/../../test/fixtures/slider-direction-fixture.svelte`;
+await prepareSvelteServerSource(SLIDER_DIRECTION_FIXTURE_SOURCE);
 
 // Unmount renders between tests; shared document.body otherwise leaks activeElement/nodes.
 afterEach(() => {

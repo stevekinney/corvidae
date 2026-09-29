@@ -6,6 +6,7 @@ import {
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { createCheckpoint, serializeCheckpoint } from '../checkpoint.ts';
 import { decode, encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
@@ -137,14 +138,16 @@ async function expectCheckpointCommitFailure(
   const buffer = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buffer).set(bytes);
   expect(
-    persistCheckpoint(
-      internals,
-      checkpoint.workflowId,
-      checkpointOperation,
-      buffer,
-      createPersistCallbacks(),
+    await throwingRejectionOf(
+      persistCheckpoint(
+        internals,
+        checkpoint.workflowId,
+        checkpointOperation,
+        buffer,
+        createPersistCallbacks(),
+      ),
     ),
-  ).rejects.toThrow('lost its CAS race');
+  ).toThrow('lost its CAS race');
 }
 
 function createSubOperationCallbacks() {
@@ -259,6 +262,9 @@ describe('atomic workflow commit side effects', () => {
       {
         completeOperation: (_workflowId, value) => {
           completedPayload = value;
+        },
+        failOperation: (_workflowId, _operation, error) => {
+          throw error;
         },
       },
     );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { validateSnapshot } from '../src/conversation/snapshot-integrity';
+import { decodeSnapshot } from '../src/conversation/snapshot-format';
 import { Conversation } from '../src/history';
 import { appendUserMessage, createConversationHistory } from '../src/index';
 import type { ConversationSnapshot } from '../src/types';
@@ -57,7 +57,7 @@ describe('Conversation state integrity', () => {
     conversation.appendUserMessage('hello');
     const snapshot = conversation.snapshot();
 
-    expect(snapshot.snapshotFormatVersion).toBe(1);
+    expect(snapshot.snapshotFormatVersion).toBe(2);
     expect(snapshot.conversationSchemaVersion).toBe(5);
     expect(snapshot.controllerRevision).toBe(1);
     expect(Object.isFrozen(snapshot)).toBe(true);
@@ -80,7 +80,7 @@ describe('Conversation state integrity', () => {
     const future: Omit<ConversationSnapshot, 'snapshotFormatVersion'> & {
       snapshotFormatVersion: number;
     } = structuredClone(snapshot);
-    future.snapshotFormatVersion = 2;
+    future.snapshotFormatVersion = 3;
     expect(() => Reflect.apply(Conversation.from, Conversation, [future])).toThrow(
       'unsupported snapshot format version',
     );
@@ -190,7 +190,7 @@ describe('Conversation state integrity', () => {
     ];
 
     for (const invalid of invalidValues) {
-      expect(() => validateSnapshot(invalid)).toThrow('failed to restore snapshot');
+      expect(() => decodeSnapshot(invalid)).toThrow('failed to restore snapshot');
     }
   });
 

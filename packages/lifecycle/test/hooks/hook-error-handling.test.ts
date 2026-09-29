@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { HookRegistry } from '../../src/hooks/hook-registry';
 import type { HookErrorHandler } from '../../src/hooks/types';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 
 type TestHooks = {
   process: (value: string) => string | Promise<string>;
@@ -18,7 +19,7 @@ describe('HookRegistry error handling', () => {
     });
 
     await Promise.resolve(
-      expect(registry.run('process', 'input')).rejects.toThrow('handler failed'),
+      expect(await throwingRejectionOf(registry.run('process', 'input'))).toThrow('handler failed'),
     );
   });
 
@@ -72,7 +73,9 @@ describe('HookRegistry error handling', () => {
     );
 
     await Promise.resolve(
-      expect(registry.run('process', 'input')).rejects.toThrow('critical failure'),
+      expect(await throwingRejectionOf(registry.run('process', 'input'))).toThrow(
+        'critical failure',
+      ),
     );
   });
 
@@ -119,7 +122,9 @@ describe('HookRegistry error handling', () => {
     );
 
     await Promise.resolve(
-      expect(registry.run('process', 'input')).rejects.toThrow('critical failure'),
+      expect(await throwingRejectionOf(registry.run('process', 'input'))).toThrow(
+        'critical failure',
+      ),
     );
   });
 

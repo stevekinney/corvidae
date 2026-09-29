@@ -3,7 +3,7 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 import { describe, expect, mock, test } from 'bun:test';
 import type { Component } from 'svelte';
 
-import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
+import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 import type { DataGridColumnDef, DataGridProps } from './data-grid.types.ts';
 
 // Extend Bun's expect with @testing-library/jest-dom matchers (e.g. toHaveAttribute).
@@ -17,6 +17,7 @@ const { render } = await import('@testing-library/svelte');
 const { default: DataGrid } = await import('./data-grid.svelte');
 const { default: DataGridHydrationFixture } = await import('./_data-grid-hydration-test.svelte');
 const sourcePath = new URL('./_data-grid-hydration-test.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(sourcePath);
 
 type Issue = {
   id: string;

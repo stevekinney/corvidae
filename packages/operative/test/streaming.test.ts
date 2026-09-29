@@ -11,6 +11,7 @@ import {
 } from '../src/providers/backend-descriptor-attachment';
 import { createModelCatalog } from '../src/providers/model-catalog';
 import { withStreaming } from '../src/streaming';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateResponse, StreamingGenerateFunction } from '../src/types';
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 
@@ -72,9 +73,9 @@ describe('withStreaming', () => {
 
     const generate = withStreaming(streamingGenerate);
 
-    await expect(generate({ conversation, step: 0, toolbox: {} as any })).rejects.toThrow(
-      'LLM connection lost',
-    );
+    expect(
+      await throwingRejectionOf(generate({ conversation, step: 0, toolbox: {} as any })),
+    ).toThrow('LLM connection lost');
 
     // The streaming message should not be left hanging
     const streamingMessage = conversation.getStreamingMessage();

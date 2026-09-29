@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { type CorpusEntry } from './corpus.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
@@ -202,7 +203,7 @@ describe('CIN-469 finding 3: the uniqueness guard runs per override block, not o
       ['motion-default.json', {}],
     ]);
 
-    expect(buildTokensBaseCss(resolver, documentsByPath)).rejects.toThrow(
+    expect(await throwingRejectionOf(buildTokensBaseCss(resolver, documentsByPath))).toThrow(
       /\[theme\.dark\].*--test-shared-swatch is claimed with conflicting values/,
     );
   });
@@ -256,7 +257,7 @@ describe('CIN-469 finding 3: the uniqueness guard runs per override block, not o
       ['motion-reduced.json', motionReducedDocument],
     ]);
 
-    expect(buildTokensBaseCss(resolver, documentsByPath)).rejects.toThrow(
+    expect(await throwingRejectionOf(buildTokensBaseCss(resolver, documentsByPath))).toThrow(
       /\[motion\.reduced \(dark theme\)\].*--test-shared-swatch is claimed with conflicting values/,
     );
   });
@@ -310,7 +311,7 @@ describe('CIN-469 finding 3: the uniqueness guard runs per override block, not o
       ['motion-reduced.json', motionReducedDocument],
     ]);
 
-    expect(buildTokensBaseCss(resolver, documentsByPath)).rejects.toThrow(
+    expect(await throwingRejectionOf(buildTokensBaseCss(resolver, documentsByPath))).toThrow(
       /\[motion\.reduced \(light theme\)\].*--test-shared-swatch is claimed with conflicting values/,
     );
   });

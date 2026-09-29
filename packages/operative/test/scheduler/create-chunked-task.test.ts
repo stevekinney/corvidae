@@ -7,6 +7,7 @@ import type { Scheduler } from '../../src/scheduler/create-scheduler';
 import { createScheduler } from '../../src/scheduler/create-scheduler';
 import type { SchedulerTask } from '../../src/scheduler/types';
 import { createMockGenerate } from '../../src/test/index';
+import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 import type { GenerateResponse } from '../../src/types';
 
 function textResponse(content: string): GenerateResponse {
@@ -122,7 +123,7 @@ describe('createChunkedTask', () => {
       },
     });
 
-    await expect(submitChunked(scheduler)).rejects.toThrow('chunk-failed');
+    expect(await throwingRejectionOf(submitChunked(scheduler))).toThrow('chunk-failed');
 
     expect(errorState).toEqual({ count: 1 });
     expect(errorValue).toBeInstanceOf(Error);
@@ -237,7 +238,9 @@ describe('createChunkedTask', () => {
       },
     });
 
-    await expect(submitChunked(scheduler)).rejects.toThrow('exceeded 1 preemption retries');
+    expect(await throwingRejectionOf(submitChunked(scheduler))).toThrow(
+      'exceeded 1 preemption retries',
+    );
     expect(failures).toHaveLength(1);
     expect(failures[0]?.state).toEqual({ count: 2 });
   });
@@ -271,7 +274,7 @@ describe('createChunkedTask', () => {
       },
     });
 
-    await expect(submitChunked(scheduler)).rejects.toThrow('Chunk processing failed');
+    expect(await throwingRejectionOf(submitChunked(scheduler))).toThrow('Chunk processing failed');
     expect(failures).toHaveLength(1);
     expect(failures[0]?.error).toBe('plain failure');
   });
@@ -283,7 +286,7 @@ describe('createChunkedTask', () => {
         if (!run.generate) throw new Error('chunk test requires generate');
         if (!run.toolbox) throw new Error('chunk test requires toolbox');
         expect(run.toolbox.tools()).toEqual([]);
-        await expect(run.toolbox.execute([])).resolves.toEqual([]);
+        expect(await run.toolbox.execute([])).toEqual([]);
         const subscription = run.toolbox.toObservable().subscribe();
         subscription.unsubscribe();
         if (!(run.conversation instanceof Conversation))
@@ -307,7 +310,7 @@ describe('createChunkedTask', () => {
       }),
     });
 
-    await expect(submitChunked(scheduler)).resolves.toEqual({ count: 1 });
+    expect(await submitChunked(scheduler)).toEqual({ count: 1 });
   });
 
   it('throws when processChunk never produces a result', async () => {
@@ -330,7 +333,9 @@ describe('createChunkedTask', () => {
       },
     });
 
-    await expect(submitChunked(scheduler)).rejects.toThrow('processChunk did not produce a result');
+    expect(await throwingRejectionOf(submitChunked(scheduler))).toThrow(
+      'processChunk did not produce a result',
+    );
     expect(failures).toHaveLength(1);
     expect(failures[0]?.state).toEqual({ count: 0 });
   });
@@ -420,7 +425,7 @@ describe('createChunkedTask', () => {
       expect(settled).toBe(false);
 
       releaseOnError();
-      await expect(resultPromise).rejects.toThrow('chunk-failed-pending');
+      expect(await throwingRejectionOf(resultPromise)).toThrow('chunk-failed-pending');
 
       expect(onErrorSettled).toBe(true);
       expect(settled).toBe(true);

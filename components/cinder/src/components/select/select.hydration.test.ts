@@ -8,12 +8,13 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
+import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { default: Select } = await import('./select.svelte');
 const sourcePath = new URL('./select.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(sourcePath);
 
 const options = [
   { value: 'a', label: 'Option A' },

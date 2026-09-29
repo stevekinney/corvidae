@@ -27,6 +27,7 @@ import {
   createMockGeminiModel,
   createMockGeminiStreamingModel,
 } from '../src/providers/test/mock-clients.ts';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 
 function makeContext() {
   return {
@@ -155,7 +156,7 @@ describe('createGeminiProvider — API key handling (PRRT_kwDORvupsc6MX3PU)', ()
     // Either way, missing key → ProviderError.
     const generate = createGeminiProvider({ model: 'gemini-pro' });
 
-    await expect(generate(makeContext())).rejects.toBeInstanceOf(ProviderError);
+    expect(await rejectionOf(generate(makeContext()))).toBeInstanceOf(ProviderError);
   });
 
   it('ProviderError message names the GOOGLE_API_KEY environment variable', async () => {
@@ -238,12 +239,14 @@ describe('createGeminiProviderStream — API key handling (PRRT_kwDORvupsc6MX3PU
   it('throws ProviderError (not ReferenceError) when no apiKey or env var is set', async () => {
     const generate = createGeminiProviderStream({ model: 'gemini-pro' });
 
-    await expect(
-      generate({
-        ...makeContext(),
-        streaming: { update: () => undefined, messageId: 'test-message-id' },
-      }),
-    ).rejects.toBeInstanceOf(ProviderError);
+    expect(
+      await rejectionOf(
+        generate({
+          ...makeContext(),
+          streaming: { update: () => undefined, messageId: 'test-message-id' },
+        }),
+      ),
+    ).toBeInstanceOf(ProviderError);
   });
 
   it('ProviderError message names the GOOGLE_API_KEY environment variable', async () => {
