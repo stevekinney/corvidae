@@ -97,6 +97,7 @@ import { z } from 'zod';
 import type { AuditRecord } from './audit-trail';
 import * as auditTrailModule from './audit-trail';
 import {
+  ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
   BureauError,
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
@@ -12943,6 +12944,101 @@ describe('Bureau.shutdown() (AB-207)', () => {
       await rm(`${databasePath}-wal`, { force: true });
       await rm(`${databasePath}-shm`, { force: true });
     }
+  });
+
+  it.each([
+    ['in-memory', false],
+    ['durable', true],
+  ])(
+    "dispose() lands an aborted run's terminal session save before closing SQLite storage (%s execution)",
+    async (_label, durableExecution) => {
+      // Under 'abort', the run's `run.aborted` listener starts its session
+      // save only after the run unwinds, which is later than the
+      // session-persistence drain alone waits for. Without a wait for the
+      // aborted run, storage closed first and the save failed with
+      // "Statement has finalized", leaving `lastRunStatus: 'running'`.
+      const databasePath = join(
+        tmpdir(),
+        `bureau-dispose-aborted-save-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+      );
+      const diagnostics: string[] = [];
+      let resolveEntered!: () => void;
+      const generateEntered = new Promise<void>((resolve) => {
+        resolveEntered = resolve;
+      });
+
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: (context) => {
+            resolveEntered();
+            return new Promise<GenerateResponse>((resolve) => {
+              context.signal?.addEventListener(
+                'abort',
+                () => resolve({ content: 'aborted', toolCalls: [] }),
+                { once: true },
+              );
+            });
+          },
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite', path: databasePath },
+          durableExecution,
+          onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+        });
+
+        const run = await bureau.createRun({ message: 'Abort me on dispose' });
+        await generateEntered;
+        await bureau.dispose();
+
+        expect(diagnostics.filter((message) => message.includes('persist'))).toEqual([]);
+
+        const verifyStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+        const verifySessionStore = createSessionStore(
+          textValueStore(verifyStorage, { disposeUnderlyingStorage: false }),
+        );
+        const session = await verifySessionStore.load(run.sessionId);
+        expect(session?.metadata).toMatchObject({
+          lastRunId: run.id,
+          lastRunStatus: 'aborted',
+          lastFinishReason: 'aborted',
+        });
+        verifyStorage[Symbol.dispose]();
+      } finally {
+        await rm(databasePath, { force: true });
+        await rm(`${databasePath}-wal`, { force: true });
+        await rm(`${databasePath}-shm`, { force: true });
+      }
+    },
+  );
+
+  it('dispose() still finishes when an aborted run never honors its abort, waiting no longer than the grace bound', async () => {
+    // The wait for aborted runs' terminal events is bounded by a runtime
+    // timer, so a run whose provider ignores its AbortSignal costs that
+    // bound and nothing more.
+    const runtime = createManualRuntimeServices();
+    const { generate, invoked } = createTrulyHungGenerate();
+    const bureau = await createBureau({
+      agents: {},
+      generate,
+      toolbox: createEmptyToolbox(),
+      runtime,
+    });
+
+    const run = await bureau.createRun({ message: 'Ignore the abort' });
+    await invoked;
+
+    let disposed = false;
+    const disposePromise = bureau.dispose().then(() => {
+      disposed = true;
+    });
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+    expect(disposed).toBe(false);
+
+    await runtime.advance(ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS);
+    await disposePromise;
+
+    expect(disposed).toBe(true);
+    expect(bureau.getRun(run.id)?.status).toBe('running');
   });
 
   it('shutdown({ timeoutMilliseconds }) resolves within a bounded margin of N, reporting a still-unresolved owner "unresolved" and every other owner its real outcome — the underlying drain keeps running rather than being abandoned', async () => {

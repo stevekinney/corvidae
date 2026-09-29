@@ -48,9 +48,14 @@ import {
   waitForCondition,
 } from '@lostgradient/operative';
 import type { ScheduleSummary, WorkflowState } from '@lostgradient/weft';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
 import type { AgentDefinitions, AgentNames, AgentRunForName } from '../agent-catalog';
-import { createBureau, detachBestEffortPromise } from '../create-bureau';
+import {
+  ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
+  createBureau,
+  detachBestEffortPromise,
+} from '../create-bureau';
 import type {
   Bureau,
   BureauOptions,
@@ -372,6 +377,20 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
             runtime.pendingTimers().map((timer) => timer.handle),
           );
           const reportPromise = assertBureauQuiescent(harness, shutdownOptions);
+          let reportSettled = false;
+          // `detachBestEffortPromise` over a bare `void ... .finally(...)`
+          // (same rationale as `create-bureau.ts`'s own uses of it): the
+          // `.finally()` callback marks the flag on either outcome, and
+          // wrapping the derived promise this way means a rejection
+          // (`assertBureauQuiescent` is documented never to produce one,
+          // but nothing here should rely on that to avoid an unhandled
+          // rejection) is swallowed rather than surfaced twice — the
+          // `await reportPromise` below is what actually re-observes it.
+          detachBestEffortPromise(
+            reportPromise.finally(() => {
+              reportSettled = true;
+            }),
+          );
 
           const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
           if (timeoutMilliseconds !== undefined) {
@@ -401,20 +420,6 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
             // clock for, so this stops waiting for a timer that was
             // legitimately cleared rather than mistaking that for one
             // that was simply slow to arm.
-            let reportSettled = false;
-            // `detachBestEffortPromise` over a bare `void ... .finally(...)`
-            // (same rationale as `create-bureau.ts`'s own uses of it): the
-            // `.finally()` callback marks the flag on either outcome, and
-            // wrapping the derived promise this way means a rejection
-            // (`assertBureauQuiescent` is documented never to produce one,
-            // but nothing here should rely on that to avoid an unhandled
-            // rejection) is swallowed rather than surfaced twice — the
-            // `await reportPromise` below is what actually re-observes it.
-            detachBestEffortPromise(
-              reportPromise.finally(() => {
-                reportSettled = true;
-              }),
-            );
             // Clamped the same way `ManualRuntimeServices.timers.setTimeout`
             // (and `.advance()`) themselves clamp a negative delay to `0` —
             // without this, a negative `timeoutMilliseconds` would compute
@@ -436,6 +441,28 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
             if (!reportSettled) {
               await runtime.advance(timeoutMilliseconds);
             }
+          }
+
+          // `shutdown({ policy: 'abort' })` also waits, under its own
+          // runtime timer, for the runs it aborted to reach a terminal event.
+          // A run that never honors its abort leaves that timer as the only
+          // way out, and a `ManualRuntimeServices` never fires it on its own,
+          // so advance past it once it is armed. It is armed after awaits,
+          // so its deadline is computed from the clock at each poll; a
+          // shutdown whose aborted runs settle clears it and settles the
+          // report instead.
+          while (!reportSettled) {
+            const graceDueAt = runtime.monotonic.now() + ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS;
+            const graceTimerArmed = runtime
+              .pendingTimers()
+              .some(
+                (timer) => timer.dueAt === graceDueAt && !preexistingTimerHandles.has(timer.handle),
+              );
+            if (graceTimerArmed) {
+              await runtime.advance(ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS);
+              break;
+            }
+            await yieldToPortableEventLoop();
           }
 
           const report = await reportPromise;
