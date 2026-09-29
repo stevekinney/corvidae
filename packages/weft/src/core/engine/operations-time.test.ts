@@ -898,7 +898,7 @@ describe('processSleepOperation', () => {
         { completeOperation, loadWorkflowState },
       ),
     ).resolves.toBeUndefined();
-    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined);
+    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined, operationId, undefined);
     // Marker consumed — no leak into sleepTimersFiredWithoutResolver.
     expect(firedWithoutResolver.size).toBe(0);
   });
@@ -994,7 +994,7 @@ describe('processSleepOperation', () => {
         { completeOperation, loadWorkflowState },
       ),
     ).resolves.toBeUndefined();
-    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined);
+    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined, operationId, undefined);
     // Marker consumed — no leak into sleepTimersFiredWithoutResolver.
     expect(firedWithoutResolver.size).toBe(0);
   });
@@ -1043,7 +1043,7 @@ describe('processSleepOperation', () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined);
+    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined, operationId, undefined);
     // The tick settled the resolver normally — no spurious marker must remain.
     expect(firedWithoutResolver.size).toBe(0);
   });

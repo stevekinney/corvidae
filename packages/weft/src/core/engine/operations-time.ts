@@ -72,8 +72,15 @@ export async function processSleepOperation(
   operation: SleepOperation,
   callbacks: Pick<TimeOperationCallbacks, 'completeOperation' | 'loadWorkflowState'>,
 ): Promise<void> {
+  const workflowExecutionToken =
+    internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken;
   if (operation.scheduledFireAt <= internals.options.getNow()) {
-    callbacks.completeOperation(workflowId, undefined);
+    callbacks.completeOperation(
+      workflowId,
+      undefined,
+      operation.operationId,
+      workflowExecutionToken,
+    );
     return;
   }
 
@@ -112,7 +119,12 @@ export async function processSleepOperation(
 
   const postSleepState = await callbacks.loadWorkflowState(workflowId);
   if (postSleepState?.status === 'running') {
-    callbacks.completeOperation(workflowId, undefined);
+    callbacks.completeOperation(
+      workflowId,
+      undefined,
+      operation.operationId,
+      workflowExecutionToken,
+    );
   }
 }
 
@@ -449,20 +461,15 @@ export async function handleTimerFired(
     } else {
       await resolveConditionTimerConfirmingOwnership(internals, entry, callbacks.loadWorkflowState);
     }
-  } else if (entry.kind === 'execution-deadline') {
-    await callbacks.timeout(entry.workflowId);
-  }
+  } else if (entry.kind === 'execution-deadline') await callbacks.timeout(entry.workflowId);
 }
-
 function isReviewTimerEntry(entry: TimerEntry): boolean {
   return entry.id.startsWith('review-escalation:') || entry.id.startsWith('review-timeout:');
 }
-
 /** Wakes a parked `ctx.waitUntil`. `'none'`/`'lease'` fast path; see `handleTimerFired`. */
 function resolveConditionTimer(internals: EngineInternals, entry: TimerEntry): void {
   notifyConditionWaiters(internals, entry.workflowId);
 }
-
 /**
  * `'workflow-lease'` counterpart to {@link resolveConditionTimer}: awaits the
  * ownership-confirmed wake so the Scheduler never treats this fire as
@@ -475,11 +482,9 @@ async function resolveConditionTimerConfirmingOwnership(
   loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>,
 ): Promise<void> {
   const decision = await notifyConditionWaitersForTimerFire(internals, entry.workflowId);
-  if (decision === 'discard') {
+  if (decision === 'discard')
     await retainDiscardedDurableTimer(entry.id, entry.workflowId, loadWorkflowState);
-  }
 }
-
 async function handleReviewTimer(
   internals: EngineInternals,
   entry: TimerEntry,
@@ -487,10 +492,8 @@ async function handleReviewTimer(
 ): Promise<void> {
   const reviewId = entry.id.split(':')[1];
   if (!reviewId) return;
-
   const handler = internals.reviewEscalationHandlers.get(reviewId);
   if (!handler) return;
-
   const state = await callbacks.loadWorkflowState(entry.workflowId);
   if (!state || state.status !== 'running') return;
   await handler(entry);

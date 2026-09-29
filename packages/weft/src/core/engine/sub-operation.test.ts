@@ -70,7 +70,7 @@ describe('engine sub-operations', () => {
     const runOperationWithoutResult = mock(async (_workflowId, _operation, execute) => execute());
 
     await processWaitReviewOperation(
-      {} as never,
+      { checkpoints: new Map() } as never,
       'workflow-review',
       {
         operationId: 'review:1',
@@ -80,10 +80,12 @@ describe('engine sub-operations', () => {
       { processReviewOperation, runOperationWithoutResult },
     );
 
-    expect(processReviewOperation).toHaveBeenCalledWith('workflow-review', {
-      artifact: { type: 'text', value: 'hello' },
-      reviewers: ['human'],
-    });
+    expect(processReviewOperation).toHaveBeenCalledWith(
+      'workflow-review',
+      { artifact: { type: 'text', value: 'hello' }, reviewers: ['human'] },
+      'review:1',
+      undefined,
+    );
   });
 
   it('reads and commits execution-scoped atomic state sub-operations', async () => {

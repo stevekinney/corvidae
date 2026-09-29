@@ -77,8 +77,18 @@ export function assertSupportedSignalBranches(
 }
 
 export type CoordinationOperationCallbacks = {
-  completeOperation: (workflowId: string, value: unknown) => void;
-  failOperation: (workflowId: string, operation: OperationWithCallerStack, error: unknown) => void;
+  completeOperation: (
+    workflowId: string,
+    value: unknown,
+    operationId: string,
+    workflowExecutionToken?: string,
+  ) => void;
+  failOperation: (
+    workflowId: string,
+    operation: OperationWithCallerStack,
+    error: unknown,
+    workflowExecutionToken?: string,
+  ) => void;
   runOperationWithResult: (
     workflowId: string,
     operation: OperationWithCallerStack,
@@ -93,6 +103,27 @@ export type CoordinationOperationCallbacks = {
   getActivityOperationCallbacks: () => ActivityOperationCallbacks;
 };
 
+function failWaitSignalOperation(
+  internals: EngineInternals,
+  workflowId: string,
+  waiterKey: string,
+  operation: WaitSignalOperation,
+  pendingWaiterResolve: (() => void) | undefined,
+  error: unknown,
+  failOperation: CoordinationOperationCallbacks['failOperation'],
+  workflowExecutionToken?: string,
+): void {
+  // A successor may replace this waiter while the post-registration scan is
+  // in flight. Its workflow must not receive the old scan's failure.
+  if (
+    pendingWaiterResolve !== undefined &&
+    !releaseSignalWaiter(internals, workflowId, waiterKey, pendingWaiterResolve)
+  ) {
+    return;
+  }
+  failOperation(workflowId, operation, error, workflowExecutionToken);
+}
+
 export async function processWaitSignalOperation(
   internals: EngineInternals,
   workflowId: string,
@@ -100,6 +131,8 @@ export async function processWaitSignalOperation(
   callbacks: Pick<CoordinationOperationCallbacks, 'completeOperation' | 'failOperation'>,
 ): Promise<void> {
   const abortSignal = internals.abortController.signal;
+  const workflowExecutionToken =
+    internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken;
   const waiterKey = `${workflowId}:${operation.signalName}`;
   // The waiter this loop registered and no signal has consumed yet. If a
   // buffered-signal scan then throws, the waiter must be released here, or it
@@ -118,7 +151,13 @@ export async function processWaitSignalOperation(
         operation.signalName,
       );
       if (existingPayload.found) {
-        callbacks.completeOperation(workflowId, existingPayload.payload);
+        completeWaitSignalOperation(
+          callbacks,
+          workflowId,
+          operation,
+          existingPayload.payload,
+          workflowExecutionToken,
+        );
         return;
       }
 
@@ -138,12 +177,16 @@ export async function processWaitSignalOperation(
         operation.signalName,
       );
       if (bufferedPayload.found) {
-        if (internals.signalWaiters.get(waiterKey) === resolve) {
-          internals.signalWaiters.delete(waiterKey);
-          untrackWaiterKey(internals.signalWaitersByWorkflow, workflowId, waiterKey);
-        }
-        callbacks.completeOperation(workflowId, bufferedPayload.payload);
-        return;
+        return completeBufferedWaitSignal(
+          internals,
+          workflowId,
+          waiterKey,
+          resolve,
+          operation,
+          bufferedPayload.payload,
+          callbacks,
+          workflowExecutionToken,
+        );
       }
 
       await promise;
@@ -155,11 +198,44 @@ export async function processWaitSignalOperation(
       }
     }
   } catch (error) {
-    if (pendingWaiterResolve !== undefined) {
-      releaseSignalWaiter(internals, workflowId, waiterKey, pendingWaiterResolve);
-    }
-    callbacks.failOperation(workflowId, operation, error);
+    failWaitSignalOperation(
+      internals,
+      workflowId,
+      waiterKey,
+      operation,
+      pendingWaiterResolve,
+      error,
+      callbacks.failOperation,
+      workflowExecutionToken,
+    );
   }
+}
+
+function completeWaitSignalOperation(
+  callbacks: Pick<CoordinationOperationCallbacks, 'completeOperation'>,
+  workflowId: string,
+  operation: WaitSignalOperation,
+  value: unknown,
+  workflowExecutionToken: string | undefined,
+): void {
+  callbacks.completeOperation(workflowId, value, operation.operationId, workflowExecutionToken);
+}
+
+function completeBufferedWaitSignal(
+  internals: EngineInternals,
+  workflowId: string,
+  waiterKey: string,
+  resolve: () => void,
+  operation: WaitSignalOperation,
+  value: unknown,
+  callbacks: Pick<CoordinationOperationCallbacks, 'completeOperation'>,
+  workflowExecutionToken: string | undefined,
+): void {
+  if (internals.signalWaiters.get(waiterKey) === resolve) {
+    internals.signalWaiters.delete(waiterKey);
+    untrackWaiterKey(internals.signalWaitersByWorkflow, workflowId, waiterKey);
+  }
+  completeWaitSignalOperation(callbacks, workflowId, operation, value, workflowExecutionToken);
 }
 
 export async function processParallelOperation(

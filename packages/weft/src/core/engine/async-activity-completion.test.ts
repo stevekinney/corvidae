@@ -121,13 +121,26 @@ function installOwnershipCheckSettledSignal(internals: EngineInternals): {
 
 const OUTCOME: OperationOutcome = { status: 'completed', value: 'delivered' };
 
-function queueResolution(internals: EngineInternals, workflowId: string, token: string): void {
+function queueResolution(
+  internals: EngineInternals,
+  workflowId: string,
+  token: string,
+  operationId = 'op-1',
+  workflowExecutionToken?: string,
+): void {
   const resolution: PendingAsyncActivityResolution = {
     token,
+    operationId,
+    ...(workflowExecutionToken === undefined ? {} : { workflowExecutionToken }),
     outcome: OUTCOME,
     timelineStatus: 'completed',
     timelineOutput: 'delivered',
   };
+  internals.durableInlineOperations ??= new Map();
+  internals.durableInlineOperations.set(workflowId, {
+    operationId,
+    type: 'activity',
+  });
   queuePendingAsyncActivityResolution(internals, workflowId, resolution);
 }
 
@@ -161,7 +174,13 @@ describe('parkDeferredAsyncActivity: buffered-resolution redelivery ownership ch
     expect(callbacks.finalizeTimeline).toHaveBeenCalledTimes(1);
     expect(callbacks.finalizeTimeline).toHaveBeenCalledWith('wf-deliver', 'completed', 'delivered');
     expect(callbacks.feedOperationResult).toHaveBeenCalledTimes(1);
-    expect(callbacks.feedOperationResult).toHaveBeenCalledWith('wf-deliver', OUTCOME, undefined);
+    expect(callbacks.feedOperationResult).toHaveBeenCalledWith(
+      'wf-deliver',
+      OUTCOME,
+      undefined,
+      'op-1',
+      undefined,
+    );
     // Staged for the checkpoint commit that never comes in this unit test —
     // proves the delete was staged (delivery ran), not that it was committed.
     expect(internals.pendingAtomicWorkflowCommitSideEffects.has('wf-deliver')).toBe(true);
@@ -208,5 +227,36 @@ describe('parkDeferredAsyncActivity: buffered-resolution redelivery ownership ch
     expect(
       await internals.storage.get(KEYS.asyncActivityResolution('wf-discard', 'tok-discard')),
     ).not.toBeNull();
+  });
+
+  it('drops a persisted resolution from the prior execution token after replay reuses the operation ID', async () => {
+    const { internals } = await createWorkflowLeaseEngine();
+    await installAndAcquireClaim(internals, 'wf-replayed');
+    internals.durableInlineOperations = new Map([
+      [
+        'wf-replayed',
+        { operationId: 'op-reused', type: 'activity', workflowExecutionToken: 'successor-run' },
+      ],
+    ]);
+    queueResolution(internals, 'wf-replayed', 'tok-replayed', 'op-reused', 'old-run');
+    const callbacks = makeCallbacks();
+    const ownershipCheckSignal = installOwnershipCheckSettledSignal(internals);
+    void parkDeferredAsyncActivity(
+      internals,
+      new AsyncActivityDeferral('tok-replayed'),
+      {
+        workflowId: 'wf-replayed',
+        activityName: 'test-activity',
+        operationId: 'op-reused',
+        step: 0,
+        attempt: 1,
+      },
+      callbacks,
+    );
+    await ownershipCheckSignal.settled;
+    ownershipCheckSignal.restore();
+
+    expect(callbacks.feedOperationResult).not.toHaveBeenCalled();
+    expect(callbacks.finalizeTimeline).not.toHaveBeenCalled();
   });
 });

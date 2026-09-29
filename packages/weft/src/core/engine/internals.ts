@@ -73,6 +73,7 @@ export type DurableInlineOperation = {
   operationId: string;
   scheduledFireAt?: number;
   type: ContextOperationRequest['type'];
+  workflowExecutionToken?: string;
 };
 
 type EngineRuntime = WorkflowHandleEngine &

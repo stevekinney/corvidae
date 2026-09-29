@@ -214,6 +214,7 @@ export function recordDurableInlineOperation(
   const durableOperation: DurableInlineOperation = {
     operationId: operation.operationId,
     type: operation.type,
+    ...workflowExecutionTokenField(internals, workflowId),
     ...(operation.type === 'sleep' && { scheduledFireAt: operation.scheduledFireAt }),
   };
   internals.durableInlineOperations.set(workflowId, durableOperation);
@@ -231,6 +232,14 @@ export function recordDurableInlineOperation(
     removeWaiter(internals, workflowId, waiter);
     waiter.resolve();
   }
+}
+
+function workflowExecutionTokenField(
+  internals: EngineInternals,
+  workflowId: string,
+): { workflowExecutionToken?: string } {
+  const token = internals.checkpoints?.get(workflowId)?.workflowExecutionToken;
+  return token === undefined ? {} : { workflowExecutionToken: token };
 }
 
 export function settleSleepTimerAcknowledgements(

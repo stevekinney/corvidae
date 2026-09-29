@@ -103,11 +103,52 @@ describe('engine update helpers', () => {
       'rename',
       updateRequest,
     );
-    expect(completeOperation).toHaveBeenCalledWith('workflow-1', {
-      payload: updateRequest.payload,
-      respond: responder,
-    });
+    expect(completeOperation).toHaveBeenCalledWith(
+      'workflow-1',
+      { payload: updateRequest.payload, respond: responder },
+      'op-1',
+      undefined,
+    );
     expect(internals.updateWaiters.size).toBe(0);
+  });
+
+  it('resolves a worker-mode waiter without requiring inline workflow adoption', async () => {
+    const internals = {
+      inlineStrategy: null,
+      updateCoordinator: { deleteRequest: mock(async () => {}) },
+      updateWaiters: new Map(),
+      updateWaitersByWorkflow: new Map(),
+    } as any;
+    const completeOperation = mock(() => {});
+    const waiting = processWaitUpdateOperation(
+      internals,
+      'workflow-worker-update',
+      { type: 'wait-update', operationId: 'op-worker', updateName: 'rename', callerStack: 'stack' },
+      {
+        dispatchEvent: mock(() => true),
+        broadcast: mock(() => {}),
+        completeOperation,
+        guardTerminalWorkflow: mock(async () => {}),
+        guardTerminalWorkflowAfterCoordinatedRequest: mock(async () => {}),
+        persistCoordinatedUpdateResponse: mock(async () => {}),
+        deliverCoordinatedUpdateToWaiterIfAvailable: mock(async () => false),
+        dispatchPendingUpdateReceived: mock(() => {}),
+        createCoordinatedUpdateResponder: mock(() => () => {}),
+        findPendingUpdateByName: mock(async () => undefined),
+        schedulePendingInlineUpdateDrain: mock(() => {}),
+      },
+    );
+    await Promise.resolve();
+    const waiter = internals.updateWaiters.get('workflow-worker-update:rename');
+    expect(waiter).toBeFunction();
+    waiter({ payload: 'worker-payload' });
+    await waiting;
+    expect(completeOperation).toHaveBeenCalledWith(
+      'workflow-worker-update',
+      { payload: 'worker-payload' },
+      'op-worker',
+      undefined,
+    );
   });
 
   it('returns false when a waiter exists for a different pending update', async () => {
@@ -194,6 +235,60 @@ describe('engine update helpers', () => {
       payload: updateRequest.payload,
       respond: expect.any(Function),
     });
+  });
+
+  it('waits for inline workflow adoption before completing coordinated delivery', async () => {
+    const waiter = mock(() => {});
+    const advance = Promise.withResolvers<void>();
+    const updateRequest = createUpdateRequest();
+    const waiterKey = 'workflow-1:rename';
+    const internals = {
+      inlineStrategy: { waitForWorkflowAdvance: () => advance.promise },
+      workflowClaimRegistry: null,
+      updateCoordinator: { deleteRequest: mock(async () => {}) },
+      updateWaiters: new Map([[waiterKey, waiter]]),
+      updateWaitersByWorkflow: new Map<string, Set<string>>([['workflow-1', new Set([waiterKey])]]),
+    } as any;
+    const delivery = deliverCoordinatedUpdateToWaiterIfAvailable(
+      internals,
+      'workflow-1',
+      updateRequest,
+      false,
+      {
+        dispatchEvent: mock(() => true),
+        broadcast: mock(() => {}),
+        completeOperation: mock(() => {}),
+        guardTerminalWorkflow: mock(async () => {}),
+        guardTerminalWorkflowAfterCoordinatedRequest: mock(async () => {}),
+        persistCoordinatedUpdateResponse: mock(async () => {}),
+        deliverCoordinatedUpdateToWaiterIfAvailable: mock(async () => false),
+        dispatchPendingUpdateReceived: mock(() => {}),
+        createCoordinatedUpdateResponder: mock(() => () => {}),
+        findPendingUpdateByName: mock(async () => updateRequest),
+        schedulePendingInlineUpdateDrain: mock(() => {}),
+      },
+    );
+
+    let settled = false;
+    void delivery.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(waiter).toHaveBeenCalledTimes(1);
+    expect(internals.updateWaiters.has(waiterKey)).toBe(false);
+
+    const successorWaiter = mock(() => {});
+    internals.updateWaiters.set(waiterKey, successorWaiter);
+    advance.resolve();
+    await expect(delivery).resolves.toBe(true);
+    expect(internals.updateCoordinator.deleteRequest).toHaveBeenCalledWith(
+      'workflow-1',
+      'update-1',
+    );
+    expect(internals.updateWaiters.get(waiterKey)).toBe(successorWaiter);
   });
 
   it('formats Standard Schema issue paths as RFC 6901 pointers', () => {

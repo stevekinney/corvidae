@@ -14,7 +14,12 @@ export type ConditionOperationCallbacks = Pick<
    * throws — a throwing predicate must surface as a catchable workflow failure,
    * not park the run forever.
    */
-  failOperation: (workflowId: string, operation: WaitConditionOperation, error: unknown) => void;
+  failOperation: (
+    workflowId: string,
+    operation: WaitConditionOperation,
+    error: unknown,
+    workflowExecutionToken?: string,
+  ) => void;
   /** Whether the workflow is still running — gates completion after a wake. */
   isWorkflowRunning: (workflowId: string) => Promise<boolean>;
   /** Schedule the deterministic deadline timer (`cond:${workflowId}:${step}`). */
@@ -76,13 +81,15 @@ export async function processWaitConditionOperation(
   callbacks: ConditionOperationCallbacks,
 ): Promise<void> {
   const abortSignal = internals.abortController.signal;
+  const workflowExecutionToken =
+    internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken;
   const { predicate, deadline } = operation;
 
   let settled = false;
   const complete = (value: boolean | undefined): void => {
     if (settled) return;
     settled = true;
-    callbacks.completeOperation(workflowId, value);
+    callbacks.completeOperation(workflowId, value, operation.operationId, workflowExecutionToken);
   };
 
   if (abortSignal.aborted) return;
@@ -133,7 +140,7 @@ export async function processWaitConditionOperation(
     // generator (`if (!generator) return`) and is absorbed — the workflow stays
     // completed. So no `settled` guard is needed here. Pinned by the "no
     // double-settle" test.
-    callbacks.failOperation(workflowId, operation, error);
+    callbacks.failOperation(workflowId, operation, error, workflowExecutionToken);
   }
 }
 

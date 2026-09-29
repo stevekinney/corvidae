@@ -14,7 +14,12 @@ import { confirmWakeOwnership } from './wake-ownership-guard.ts';
 export type UpdateCallbacks = {
   dispatchEvent: (event: Event) => boolean;
   broadcast: (message: { type: 'update:completed'; workflowId: string; updateId: string }) => void;
-  completeOperation: (workflowId: string, value: unknown) => void;
+  completeOperation: (
+    workflowId: string,
+    value: unknown,
+    operationId: string,
+    workflowExecutionToken?: string,
+  ) => void;
   guardTerminalWorkflow: (workflowId: string) => Promise<void>;
   guardTerminalWorkflowAfterCoordinatedRequest: (
     workflowId: string,
@@ -341,25 +346,41 @@ export async function processWaitUpdateOperation(
   operation: Extract<ContextOperationRequest, { type: 'wait-update' }>,
   callbacks: UpdateCallbacks,
 ): Promise<void> {
+  const workflowExecutionToken =
+    internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken;
   const waiterKey = `${workflowId}:${operation.updateName}`;
   const matchingUpdate = await callbacks.findPendingUpdateByName(workflowId, operation.updateName);
 
   if (matchingUpdate) {
     await internals.updateCoordinator.deleteRequest(workflowId, matchingUpdate.updateId);
     callbacks.dispatchPendingUpdateReceived(workflowId, operation.updateName, matchingUpdate);
-    callbacks.completeOperation(workflowId, {
-      payload: matchingUpdate.payload,
-      respond: callbacks.createCoordinatedUpdateResponder(
-        workflowId,
-        operation.updateName,
-        matchingUpdate,
-      ),
-    });
+    callbacks.completeOperation(
+      workflowId,
+      {
+        payload: matchingUpdate.payload,
+        respond: callbacks.createCoordinatedUpdateResponder(
+          workflowId,
+          operation.updateName,
+          matchingUpdate,
+        ),
+      },
+      operation.operationId,
+      workflowExecutionToken,
+    );
     return;
   }
 
-  const { promise, resolve } = Promise.withResolvers<unknown>();
-  internals.updateWaiters.set(waiterKey, resolve);
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const deliverWaiter = (value: unknown): void => {
+    callbacks.completeOperation(workflowId, value, operation.operationId, workflowExecutionToken);
+    const advance = internals.inlineStrategy?.waitForWorkflowAdvance(workflowId);
+    if (advance === undefined) {
+      resolve();
+      return;
+    }
+    void advance.then(resolve, resolve);
+  };
+  internals.updateWaiters.set(waiterKey, deliverWaiter);
   trackWaiterKey(internals.updateWaitersByWorkflow, workflowId, waiterKey);
 
   const pendingUpdateAfterRegistration = await callbacks.findPendingUpdateByName(
@@ -367,7 +388,7 @@ export async function processWaitUpdateOperation(
     operation.updateName,
   );
   if (pendingUpdateAfterRegistration) {
-    if (internals.updateWaiters.get(waiterKey) === resolve) {
+    if (internals.updateWaiters.get(waiterKey) === deliverWaiter) {
       internals.updateWaiters.delete(waiterKey);
       untrackWaiterKey(internals.updateWaitersByWorkflow, workflowId, waiterKey);
     }
@@ -381,18 +402,23 @@ export async function processWaitUpdateOperation(
       operation.updateName,
       pendingUpdateAfterRegistration,
     );
-    callbacks.completeOperation(workflowId, {
-      payload: pendingUpdateAfterRegistration.payload,
-      respond: callbacks.createCoordinatedUpdateResponder(
-        workflowId,
-        operation.updateName,
-        pendingUpdateAfterRegistration,
-      ),
-    });
+    callbacks.completeOperation(
+      workflowId,
+      {
+        payload: pendingUpdateAfterRegistration.payload,
+        respond: callbacks.createCoordinatedUpdateResponder(
+          workflowId,
+          operation.updateName,
+          pendingUpdateAfterRegistration,
+        ),
+      },
+      operation.operationId,
+      workflowExecutionToken,
+    );
     return;
   }
 
-  callbacks.completeOperation(workflowId, await promise);
+  await promise;
 }
 
 export function dispatchPendingUpdateReceived(
@@ -406,7 +432,6 @@ export function dispatchPendingUpdateReceived(
     new UpdateReceivedEvent(updateRequest.updateId, workflowId, updateName, updateRequest.payload),
   );
 }
-
 export function createCoordinatedUpdateResponder(
   _internals: EngineInternals,
   workflowId: string,
@@ -415,11 +440,9 @@ export function createCoordinatedUpdateResponder(
   callbacks: Pick<UpdateCallbacks, 'persistCoordinatedUpdateResponse'>,
 ): (value: unknown) => void {
   let coordinatedResponded = false;
-
   return (value: unknown) => {
     if (coordinatedResponded) return;
     coordinatedResponded = true;
-
     void callbacks.persistCoordinatedUpdateResponse(
       workflowId,
       updateName,
@@ -429,7 +452,6 @@ export function createCoordinatedUpdateResponder(
     );
   };
 }
-
 export async function deliverCoordinatedUpdateToWaiterIfAvailable(
   internals: EngineInternals,
   workflowId: string,
@@ -439,40 +461,22 @@ export async function deliverCoordinatedUpdateToWaiterIfAvailable(
 ): Promise<boolean> {
   const waiterKey = `${workflowId}:${updateRequest.name}`;
   const waiter = internals.updateWaiters.get(waiterKey);
-  if (!waiter) {
-    return false;
-  }
-
+  if (!waiter) return false;
   const oldestPendingUpdate = await callbacks.findPendingUpdateByName(
     workflowId,
     updateRequest.name,
   );
-  if (!oldestPendingUpdate || oldestPendingUpdate.updateId !== updateRequest.updateId) {
-    return false;
-  }
-
-  // Resolving this in-memory waiter advances the workflow's generator, so it is
-  // a claim-requiring wake path like sleep, wait-condition and async-activity.
-  // A lost renewal drops this engine's registry entry but leaves
-  // `internals.updateWaiters` populated, so without this fence a deposed engine
-  // would resolve its stale `ctx.waitForUpdate()` waiter and advance the old
-  // generator while the successor independently advances its replayed one.
+  if (!oldestPendingUpdate || oldestPendingUpdate.updateId !== updateRequest.updateId) return false;
+  // Resolving this waiter advances the generator, so ownership must be checked
+  // immediately before consuming it.
   //
-  // Returning `false` — rather than deleting the durable request — deliberately
-  // leaves the coordinated record in place so the engine that actually holds
-  // the claim delivers it. Inert under `ownership: 'none'`/`'lease'`, where no
-  // claim registry is installed and `confirmWakeOwnership` always proceeds.
-  if ((await confirmWakeOwnership(internals, workflowId, 'update')) === 'discard') {
-    return false;
-  }
-
+  // Keep the request durable when ownership is lost so its true owner can deliver it.
+  if ((await confirmWakeOwnership(internals, workflowId, 'update')) === 'discard') return false;
   await internals.updateCoordinator.deleteRequest(workflowId, updateRequest.updateId);
   internals.updateWaiters.delete(waiterKey);
   untrackWaiterKey(internals.updateWaitersByWorkflow, workflowId, waiterKey);
-  if (dispatchReceivedEvent) {
+  if (dispatchReceivedEvent)
     callbacks.dispatchPendingUpdateReceived(workflowId, updateRequest.name, updateRequest);
-  }
-
   waiter({
     payload: updateRequest.payload,
     respond: callbacks.createCoordinatedUpdateResponder(
@@ -481,9 +485,10 @@ export async function deliverCoordinatedUpdateToWaiterIfAvailable(
       updateRequest,
     ),
   });
+  // Finish adopting the update before another request can race the replacement waiter.
+  await internals.inlineStrategy?.waitForWorkflowAdvance(workflowId);
   return true;
 }
-
 export async function findPendingUpdateByName(
   internals: EngineInternals,
   workflowId: string,

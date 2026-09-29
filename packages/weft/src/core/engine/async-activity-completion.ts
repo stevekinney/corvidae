@@ -67,13 +67,16 @@ import {
 import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
+import { isCurrentOperation, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
 
 type AsyncActivityResolutionCallbacks = {
   feedOperationResult: (
     workflowId: string,
     outcome: OperationOutcome,
-    originalReason?: { value: unknown },
+    originalReason: { value: unknown } | undefined,
+    operationId: string,
+    workflowExecutionToken: string | undefined,
   ) => void;
   finalizeTimeline: (workflowId: string, status: 'completed' | 'failed', output: unknown) => void;
 };
@@ -165,7 +168,7 @@ export async function parkDeferredAsyncActivity(
     await deliverPendingAsyncActivityResolution(
       internals,
       details.workflowId,
-      queuedResolution,
+      { ...queuedResolution, operationId: details.operationId },
       callbacks,
     );
     return new Promise<never>(() => {});
@@ -273,6 +276,28 @@ async function deliverPendingAsyncActivityResolution(
     }
   }
 
+  if (
+    !isCurrentOperation(
+      internals,
+      workflowId,
+      resolution.operationId,
+      resolution.workflowExecutionToken,
+    )
+  ) {
+    // A callback can arrive after recovery has loaded the pending token but
+    // before replay re-registers the operation with its newly generated ID.
+    // The run token still proves this belongs to the current run; buffer it
+    // until the replay reaches the deterministic async activity and rebinds
+    // the operation ID. A different run token is stale and is discarded.
+    if (
+      resolution.workflowExecutionToken !== undefined &&
+      workflowExecutionTokenForWorkflow(internals, workflowId) === resolution.workflowExecutionToken
+    ) {
+      queuePendingAsyncActivityResolution(internals, workflowId, resolution);
+    }
+    return;
+  }
+
   // Retire the durable resolution record with the checkpoint that records the
   // delivered result. Staging (rather than deleting standalone) keeps the
   // outcome recoverable until the workflow has durably adopted it; a record
@@ -285,7 +310,13 @@ async function deliverPendingAsyncActivityResolution(
     ],
   });
   callbacks.finalizeTimeline(workflowId, resolution.timelineStatus, resolution.timelineOutput);
-  callbacks.feedOperationResult(workflowId, resolution.outcome, resolution.originalReason);
+  callbacks.feedOperationResult(
+    workflowId,
+    resolution.outcome,
+    resolution.originalReason,
+    resolution.operationId,
+    resolution.workflowExecutionToken,
+  );
 }
 
 /**
@@ -309,6 +340,10 @@ async function resolvePendingAsyncActivity(
   const timelineOutput = outcome.status === 'completed' ? outcome.value : outcome.error;
   const resolution: PendingAsyncActivityResolution = {
     token,
+    operationId: pending.operationId,
+    ...(pending.workflowExecutionToken === undefined
+      ? {}
+      : { workflowExecutionToken: pending.workflowExecutionToken }),
     outcome,
     timelineStatus: outcome.status,
     timelineOutput,
