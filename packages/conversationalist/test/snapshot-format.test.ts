@@ -127,6 +127,17 @@ describe('snapshot format version 2', () => {
     expect(Conversation.from(snapshot).current).toEqual(restored.current);
   });
 
+  it('reads only the selected nested v2 path when requesting the current conversation', () => {
+    const offPath = structuredClone(nestedV2Fixture);
+    offPath.root.children.push({});
+    resign(offPath);
+
+    expect(currentConversationFromSnapshot(offPath)).toEqual(
+      currentConversationFromSnapshot(nestedV2Fixture),
+    );
+    expect(() => Conversation.from(offPath)).toThrow('invalid node');
+  });
+
   it('rejects tampered nested v2 snapshots after integrity is re-signed', () => {
     const cases: Array<[string, (value: any) => void, string]> = [
       [

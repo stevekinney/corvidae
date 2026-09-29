@@ -125,8 +125,26 @@ export function decodeNestedSnapshotV2(value: unknown): DecodedSnapshot {
 }
 
 export function currentConversationFromNestedSnapshotV2(value: unknown): ConversationHistory {
-  const decoded = decodeNestedSnapshotV2(value);
-  let current: DecodedSnapshotNode = decoded.root;
-  for (const index of decoded.currentPath) current = current.children[index]!;
-  return deepFreeze(current.conversation);
+  const { envelope, table, root } = readNestedEnvelopeV2(value);
+  let fields = readNodeFields(root, envelope, table.length, null, 'nested');
+  for (const index of envelope.currentPath) {
+    const child = fields.children[index];
+    if (child === undefined) throw snapshotError(`current path index ${index} is out of range`);
+    fields = readNodeFields(
+      child,
+      envelope,
+      table.length,
+      { id: fields.id, ids: fields.ids, sources: fields.sources },
+      'nested',
+    );
+  }
+  const conversation = deserializeNodeConversation(
+    fields,
+    table,
+    envelope.conversationSchemaVersion,
+  );
+  if (fields.id !== envelope.currentBranchId || conversation.id !== envelope.conversationId) {
+    throw snapshotError('current identity mismatch');
+  }
+  return deepFreeze(conversation);
 }
