@@ -55,11 +55,12 @@ function conversationWithHistory(
 
 /** Everything a stale candidate could have touched, captured by value. */
 function captureState(conversation: Conversation) {
+  const snapshot = conversation.snapshot();
   return {
     current: conversation.current,
     serialized: JSON.stringify(conversation.current),
     revision: conversation.revision,
-    tree: JSON.stringify(conversation.snapshot().nodes),
+    tree: JSON.stringify({ nodes: snapshot.nodes, messages: snapshot.messages }),
     storeRevision: conversation.getSnapshot().revision,
   };
 }
@@ -71,7 +72,8 @@ function expectStateUnchanged(
   expect(conversation.current).toBe(before.current);
   expect(JSON.stringify(conversation.current)).toBe(before.serialized);
   expect(conversation.revision).toBe(before.revision);
-  expect(JSON.stringify(conversation.snapshot().nodes)).toBe(before.tree);
+  const snapshot = conversation.snapshot();
+  expect(JSON.stringify({ nodes: snapshot.nodes, messages: snapshot.messages })).toBe(before.tree);
   expect(conversation.getSnapshot().revision).toBe(before.storeRevision);
 }
 
