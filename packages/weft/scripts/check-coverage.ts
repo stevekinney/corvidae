@@ -1777,7 +1777,7 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     {
       reason:
         "Two defensive guards inside invokeRemoteActivity()/requireWorkflowTypeForRemoteDispatch() (both module-private, not exported): (1) `if (!broker) throw` — invokeRemoteActivity's ONLY call site gates it behind `isRemoteMode = Boolean(internals.remoteActivityBroker) && allowRemoteDispatch`, so `broker` is always truthy by construction whenever this function runs; the module comment states remoteActivityBroker is non-null if and only if activityExecution.mode === 'remote'. Reaching the throw would require internals.remoteActivityBroker to flip to null (engine disposal does this) in the exact synchronous gap between that boolean check and the call, which is not achievable from a test without internals manipulation the check-engine-internals-field-access lint already forbids reaching for. (2) `if (identity === undefined) throw` in requireWorkflowTypeForRemoteDispatch — internals.workflowTypeByWorkflowId only loses an entry via bulk-operations-purge.ts, which purge requires a TERMINAL workflow; a live in-flight remote dispatch by definition has a non-terminal workflow, so the two conditions (an active remote-mode ctx.run() and a purged mapping for the same id) are mutually exclusive in normal operation.",
-      lines: new Set([169, 170, 172, 204]),
+      lines: new Set([174, 175, 177, 209]),
       requireUncoveredLines: true,
     },
   ],

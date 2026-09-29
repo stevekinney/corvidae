@@ -232,6 +232,19 @@ describe('prepared sync artifacts', () => {
           }),
         ),
       ).toThrow(/snapshot flag/);
+      expect(
+        await throwingRejectionOf(
+          verifyPreparedSyncArtifact({
+            artifactDirectory,
+            ...fixtureVerificationOptions(fixture),
+            expectedTarget: 'weft',
+            expectedCorvidaeCommit: corvidaeCommit,
+            expectedSnapshot: true,
+            expectedBaseBranch: 'steve/cinder-mirror-conversion',
+            run,
+          }),
+        ),
+      ).toThrow(/base branch/);
       expect(imported).toBe(false);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });

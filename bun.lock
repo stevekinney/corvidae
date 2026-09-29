@@ -258,13 +258,13 @@
     "packages/conversationalist": {
       "name": "conversationalist",
       "dependencies": {
-        "@anthropic-ai/sdk": "catalog:",
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/tool-protocol": "workspace:*",
         "js-yaml": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",

@@ -335,6 +335,8 @@ export async function recordSourceDigest({
     mirrorCommit,
     sourceRoot: publishedSourceRoot,
     target: historicalRouting.target,
+    workspace,
+    targetDirectory: historicalRouting.targetDirectory,
     runner: gitRunner,
   });
   const collector = await historicalCollector(publishedSourceRoot, workspace);

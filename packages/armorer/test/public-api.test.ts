@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'bun:test';
 
 import * as root from '../src';
+import * as coding from '../src/coding';
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 if (!packageJson || typeof packageJson !== 'object') {
@@ -12,6 +13,10 @@ const pkg: {
   exports?: Record<string, unknown>;
 } = packageJson;
 const rootSource = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+const openAIAgentsAdapterSource = readFileSync(
+  new URL('../src/adapters/open-ai/agents/index.ts', import.meta.url),
+  'utf8',
+);
 const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
 
 describe('public API contract', () => {
@@ -69,6 +74,24 @@ describe('public API contract', () => {
     expect(root.createToolbox.fromOpenAITools).toBeDefined();
     expect(root.createToolbox.fromAnthropicTools).toBeDefined();
     expect(root.createToolbox.fromGeminiTools).toBeDefined();
+  });
+
+  it('keeps the root declaration independent of the optional OpenAI Agents SDK', () => {
+    expect(rootSource).not.toContain('./adapters/open-ai/agents');
+    expect(rootSource).toContain("export { createToolbox } from './create-toolbox';");
+  });
+
+  it('keeps the OpenAI Agents adapter available through its explicit subpath', () => {
+    expect(openAIAgentsAdapterSource).toContain("typeof import('@openai/agents')");
+    expect(openAIAgentsAdapterSource).toContain('armorer/open-ai/agents');
+  });
+
+  it('keeps Bun-only coding tools out of the browser-facing root', () => {
+    expect(rootSource).not.toContain("export * from './coding'");
+    expect('createCodingTools' in root).toBe(false);
+    expect('createCodingToolbox' in root).toBe(false);
+    expect(coding.createCodingTools).toBeFunction();
+    expect(coding.createCodingToolbox).toBeFunction();
   });
 
   it('exposes shared interop materializers and types on the root surface', () => {

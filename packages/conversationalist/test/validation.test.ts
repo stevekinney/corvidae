@@ -61,12 +61,12 @@ describe('Conversation state integrity', () => {
     expect(snapshot.conversationSchemaVersion).toBe(5);
     expect(snapshot.controllerRevision).toBe(1);
     expect(Object.isFrozen(snapshot)).toBe(true);
-    expect(Object.isFrozen(snapshot.root)).toBe(true);
-    expect(Object.isFrozen(snapshot.root.conversation)).toBe(true);
+    expect(Object.isFrozen(snapshot.nodes[0])).toBe(true);
+    expect(Object.isFrozen(snapshot.nodes[0]!.conversation)).toBe(true);
     expect(Conversation.from(snapshot).current).toEqual(conversation.current);
 
     const corrupted = structuredClone(snapshot);
-    corrupted.root.conversation.title = 'tampered';
+    corrupted.nodes[0]!.conversation.title = 'tampered';
     expect(() => Conversation.from(corrupted)).toThrow('integrity digest mismatch');
   });
 
@@ -90,15 +90,15 @@ describe('Conversation state integrity', () => {
     expect(() => Conversation.from(resign(partialPath))).toThrow('current path index 99');
 
     const duplicate = structuredClone(snapshot);
-    duplicate.root.children[1]!.id = duplicate.root.children[0]!.id;
+    duplicate.nodes[2]!.id = duplicate.nodes[1]!.id;
     expect(() => Conversation.from(resign(duplicate))).toThrow('duplicate node id');
 
     const invalidRevision = structuredClone(snapshot);
-    invalidRevision.root.children[0]!.revision = snapshot.controllerRevision + 1;
+    invalidRevision.nodes[1]!.revision = snapshot.controllerRevision + 1;
     expect(() => Conversation.from(resign(invalidRevision))).toThrow('invalid node revision');
 
     const invalidRootRevision = structuredClone(snapshot);
-    invalidRootRevision.root.revision = snapshot.controllerRevision + 1;
+    invalidRootRevision.nodes[0]!.revision = snapshot.controllerRevision + 1;
     expect(() => Conversation.from(resign(invalidRootRevision))).toThrow('invalid node revision');
   });
 
@@ -121,7 +121,7 @@ describe('Conversation state integrity', () => {
     source.appendUserMessage('three');
     const pruned = source.snapshot();
     expect(pruned.lineage.removedNodeIds.length).toBeGreaterThan(0);
-    expect(pruned.lineage.retainedFloorNodeId).toBe(pruned.root.id);
+    expect(pruned.lineage.retainedFloorNodeId).toBe(pruned.nodes[0]!.id);
     expect(pruned.lineage.removedNodeIds).not.toContain(pruned.currentBranchId);
     expect(Conversation.from(pruned).snapshot().lineage).toEqual(pruned.lineage);
 
@@ -174,18 +174,18 @@ describe('Conversation state integrity', () => {
       { ...structuredClone(snapshot), integrity: undefined },
       { ...structuredClone(snapshot), integrity: { algorithm: 'fnv1a-64', digest: 1 } },
       { ...structuredClone(snapshot), integrity: { algorithm: 'sha256', digest: 'nope' } },
-      { ...structuredClone(snapshot), root: null },
-      { ...structuredClone(snapshot), root: { id: 1 } },
+      { ...structuredClone(snapshot), nodes: null },
+      { ...structuredClone(snapshot), nodes: [] },
+      { ...structuredClone(snapshot), nodes: [{ id: 1 }] },
+      { ...structuredClone(snapshot), nodes: [structuredClone(snapshot.nodes[0]), null] },
       {
         ...structuredClone(snapshot),
-        root: { ...structuredClone(snapshot.root), children: [null] },
-      },
-      {
-        ...structuredClone(snapshot),
-        root: {
-          ...structuredClone(snapshot.root),
-          conversation: { ...structuredClone(snapshot.root.conversation), schemaVersion: 1 },
-        },
+        nodes: [
+          {
+            ...structuredClone(snapshot.nodes[0]),
+            conversation: { ...structuredClone(snapshot.nodes[0]!.conversation), schemaVersion: 1 },
+          },
+        ],
       },
     ];
 
@@ -202,7 +202,7 @@ describe('Conversation state integrity', () => {
 
   it('rejects removed-node evidence that names a retained node', () => {
     const snapshot = structuredClone(new Conversation(createConversationHistory()).snapshot());
-    snapshot.lineage.removedNodeIds = [snapshot.root.id];
+    snapshot.lineage.removedNodeIds = [snapshot.nodes[0]!.id];
 
     expect(() => Conversation.from(resign(snapshot))).toThrow('is still retained');
   });

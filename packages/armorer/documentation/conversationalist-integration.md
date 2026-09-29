@@ -56,7 +56,7 @@ import {
   appendUserMessage,
   createConversationHistory,
 } from 'conversationalist';
-import { toAnthropicMessagesForSdk } from 'conversationalist';
+import { toAnthropicMessagesForSdk } from 'conversationalist/adapters/anthropic/sdk';
 import { createToolbox } from 'armorer';
 import { parseAnthropicToolCalls, toAnthropicTools } from 'armorer';
 

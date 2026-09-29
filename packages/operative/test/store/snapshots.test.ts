@@ -86,7 +86,7 @@ describe('snapshots', () => {
     // Verify the final snapshot exists and has the ConversationSnapshot shape
     const finalSnapshot = snapshots[snapshots.length - 1];
     expect(finalSnapshot).toBeDefined();
-    expect(finalSnapshot).toHaveProperty('root');
+    expect(finalSnapshot).toHaveProperty('nodes');
     expect(finalSnapshot).toHaveProperty('currentPath');
   });
 
@@ -120,7 +120,7 @@ describe('snapshots', () => {
 
     // Each snapshot should have the ConversationSnapshot shape
     for (const snapshot of runState!.snapshots) {
-      expect(snapshot).toHaveProperty('root');
+      expect(snapshot).toHaveProperty('nodes');
       expect(snapshot).toHaveProperty('currentPath');
     }
 
@@ -233,7 +233,7 @@ describe('snapshots', () => {
 
     // The kept snapshots should have valid ConversationSnapshot shape
     for (const snapshot of runState!.snapshots) {
-      expect(snapshot).toHaveProperty('root');
+      expect(snapshot).toHaveProperty('nodes');
       expect(snapshot).toHaveProperty('currentPath');
     }
   });

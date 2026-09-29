@@ -139,6 +139,10 @@ function readOption(argv: readonly string[], name: string): string | undefined {
   return index === -1 ? undefined : argv[index + 1];
 }
 
+function baseBranchOption(argv: readonly string[]): string | undefined {
+  return readOption(argv, 'base-branch') || undefined;
+}
+
 function snapshotOption(argv: readonly string[]): boolean {
   const index = argv.indexOf('--snapshot');
   if (index === -1) return false;
@@ -263,6 +267,7 @@ async function runPrepare(argv: readonly string[]): Promise<number> {
   const scratchDirectory = required(argv, 'scratch');
   const artifactDirectory = required(argv, 'artifact');
   const corvidaeCommit = await corvidaeCommitFor(argv, corvidaeRoot);
+  const baseBranch = baseBranchOption(argv);
   const result: SyncResult = await runSync({
     corvidaeRoot,
     target,
@@ -270,6 +275,7 @@ async function runPrepare(argv: readonly string[]): Promise<number> {
     directory: `${workDirectory}/${target}`,
     scratchDirectory,
     corvidaeCommit,
+    branch: baseBranch,
     prepareBranch: `mirror-prepare-${target}-${corvidaeCommit.slice(0, 12)}`,
   });
   const workflowFile = snapshot ? await resolveReleaseWorkflowFile(result.directory) : undefined;
@@ -297,6 +303,7 @@ async function runPublish(argv: readonly string[]): Promise<number> {
   const corvidaeRoot = defaultCorvidaeRoot(argv);
   const artifactDirectory = required(argv, 'artifact');
   const corvidaeCommit = await corvidaeCommitFor(argv, corvidaeRoot);
+  const baseBranch = baseBranchOption(argv);
   const { manifest, bundlePath } = await verifyPreparedSyncArtifact({
     artifactDirectory,
     corvidaeRoot,
@@ -304,6 +311,7 @@ async function runPublish(argv: readonly string[]): Promise<number> {
     expectedTarget: target,
     expectedCorvidaeCommit: corvidaeCommit,
     expectedSnapshot: snapshot,
+    ...(baseBranch === undefined ? {} : { expectedBaseBranch: baseBranch }),
   });
   const fullName = targetRepositoryFullName(target);
   const branch = pullRequestBranchFor(corvidaeCommit);

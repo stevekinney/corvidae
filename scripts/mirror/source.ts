@@ -355,6 +355,15 @@ export const versionConstants: Readonly<Record<string, string>> = {
 /** The one shape a declared version file may have: any leading comment, then the export. */
 const versionConstantShape = /^([\s\S]*?)export const VERSION = '([^']*)';\n$/;
 
+/** A version safe to embed as a single-quoted source literal, using SemVer 2.0 syntax. */
+export function isSafeVersionConstant(version: string): boolean {
+  // The ECMAScript-compatible expression published by https://semver.org/ excludes quotes,
+  // backslashes and line breaks as well as malformed numeric/prerelease identifiers.
+  return /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/.test(
+    version,
+  );
+}
+
 /**
  * Rewrite each declared version file in `files` to its package's composed version, in place.
  *
@@ -370,6 +379,11 @@ export function applyVersionConstants(
   for (const entry of published) {
     const declared = versionConstants[entry.workspace];
     if (declared === undefined) continue;
+    if (!isSafeVersionConstant(entry.version)) {
+      throw new SourceEmissionError(
+        `${entry.workspace}'s composed version is not a valid SemVer source literal`,
+      );
+    }
     const path = `${entry.directory}/${declared}`;
     const current = files[path];
     if (current === undefined) {
@@ -393,6 +407,16 @@ export function applyVersionConstants(
 
 export const validationInputs: Readonly<Record<string, readonly DeclaredSourceFiles[]>> = {
   '@lostgradient/cinder': [
+    {
+      paths: [
+        'documentation/tokens.md',
+        'documentation/focus-ring-policy.md',
+        'documentation/theming.md',
+        'documentation/css-audit/translucent-border-seams.md',
+      ],
+      reason:
+        '`src/styles/tokens-doc-drift.test.ts` reads the token, focus-ring and theming documents by path, while the token document links to the seam audit. The target has no documentation directory, so the source tests need these documents emitted with the token corpus and their relative link closed.',
+    },
     {
       paths: [
         'scripts/check-component-examples.test.ts',
