@@ -87,10 +87,17 @@ function ownerKey(scope: PrincipalScope): string {
   return `${scope.tenantId}/${scope.ownerId}`;
 }
 
+/**
+ * A deletion that left its record stored reports why, straight from
+ * `deletion`; one that removed it reports its other rows in COR-806's order of
+ * severity. A refusal with no receipt is `failed`.
+ */
 export function deletionStatus(result: MemoryDeletionResult): DeletionOutcome['status'] {
   if (result.status === 'not-found') return 'not-found';
-  const statuses = new Set(result.receipt?.targets.map((target) => target.status));
-  if (result.status !== 'applied' || statuses.has('failed')) return 'failed';
+  if (result.deletion === undefined) return 'failed';
+  if (result.deletion !== 'completed') return result.deletion;
+  const statuses = new Set(result.receipt!.targets.map((target) => target.status));
+  if (statuses.has('failed')) return 'failed';
   if (statuses.has('pending')) return 'pending';
   return statuses.has('unknown') ? 'unknown' : 'completed';
 }

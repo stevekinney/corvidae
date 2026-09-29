@@ -56,12 +56,14 @@ export type AdmissionOutcome =
 
 /**
  * What a baseline reports for one deletion request, in COR-806's receipt
- * vocabulary where it has one. `receipted` says whether the baseline issued a
- * durable receipt at all; `completed` without one is the baseline's own
- * report, which the scorer still checks against what recall returns.
+ * vocabulary where it has one. `exempt` means a legal hold kept the record.
+ * `receipted` says whether the baseline issued a durable receipt at all;
+ * `completed` without one is the baseline's own report, which the scorer
+ * still checks against what recall returns.
  */
 export interface DeletionOutcome {
-  readonly status: 'completed' | 'pending' | 'failed' | 'unknown' | 'not-found' | 'not-retained';
+  readonly status:
+    'completed' | 'pending' | 'exempt' | 'failed' | 'unknown' | 'not-found' | 'not-retained';
   readonly receipted: boolean;
 }
 

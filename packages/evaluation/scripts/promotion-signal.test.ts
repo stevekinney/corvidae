@@ -244,8 +244,12 @@ describe('promotion-signal (spawned bun process)', () => {
   });
 
   test('issue exits 3 for a failing decision and 5 for one recorded at another revision, appending nothing', async () => {
-    const failing = await decide(fixtureGateFile('regressing'), { sourceRevision: HEAD });
-    const elsewhere = await decide(fixtureGateFile(), { sourceRevision: OTHER_REVISION });
+    // The spawned command reads the real clock, so these decisions are made on
+    // it too: one dated at the fixed `DECIDED_AT` expires a day later, and the
+    // command would then refuse it as expired before checking its revision.
+    const now = () => Date.now();
+    const failing = await decide(fixtureGateFile('regressing'), { sourceRevision: HEAD, now });
+    const elsewhere = await decide(fixtureGateFile(), { sourceRevision: OTHER_REVISION, now });
     const before = await records();
 
     const refused = await spawnScript('promotion-signal', [

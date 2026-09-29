@@ -179,21 +179,40 @@ describe('createLifecycleBaseline', () => {
 });
 
 describe('deletionStatus', () => {
-  const result = (status: MemoryDeletionResult['status'], statuses: string[] = []) =>
+  const result = (
+    status: MemoryDeletionResult['status'],
+    deletion?: MemoryDeletionResult['deletion'],
+    statuses: string[] = [],
+  ) =>
     ({
       operationId: 'operation-1',
       status,
-      ...(statuses.length === 0
+      ...(deletion === undefined
         ? {}
-        : { receipt: { targets: statuses.map((target) => ({ status: target })) } }),
+        : { deletion, receipt: { targets: statuses.map((target) => ({ status: target })) } }),
     }) as unknown as MemoryDeletionResult;
 
-  test("reads a receipt's targets in COR-806's order of severity", () => {
+  test('reports a deletion that left its record stored by why, never as completed', () => {
     expect(deletionStatus(result('not-found'))).toBe('not-found');
     expect(deletionStatus(result('denied'))).toBe('failed');
-    expect(deletionStatus(result('applied', ['completed', 'failed', 'pending']))).toBe('failed');
-    expect(deletionStatus(result('applied', ['completed', 'pending', 'unknown']))).toBe('pending');
-    expect(deletionStatus(result('applied', ['completed', 'unknown']))).toBe('unknown');
-    expect(deletionStatus(result('applied', ['completed', 'exempt']))).toBe('completed');
+    // A legal hold exempts every row; the record stays stored until the hold is released.
+    expect(deletionStatus(result('unchanged', 'exempt', ['exempt', 'exempt']))).toBe('exempt');
+    expect(deletionStatus(result('unchanged', 'failed', ['failed', 'pending']))).toBe('failed');
+    expect(deletionStatus(result('unchanged', 'pending', ['pending', 'pending']))).toBe('pending');
+  });
+
+  test("reads a completed deletion's remaining rows in COR-806's order of severity", () => {
+    expect(deletionStatus(result('applied', 'completed', ['completed', 'failed', 'pending']))).toBe(
+      'failed',
+    );
+    expect(
+      deletionStatus(result('applied', 'completed', ['completed', 'pending', 'unknown'])),
+    ).toBe('pending');
+    expect(deletionStatus(result('applied', 'completed', ['completed', 'unknown']))).toBe(
+      'unknown',
+    );
+    expect(deletionStatus(result('applied', 'completed', ['completed', 'exempt']))).toBe(
+      'completed',
+    );
   });
 });

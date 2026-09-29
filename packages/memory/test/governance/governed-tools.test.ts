@@ -91,7 +91,10 @@ describe('createGovernedMemoryTools (model-facing, untrusted)', () => {
       withheld: 0,
     });
     expect(await tools.store.execute({ content: 'x' }, {})).toEqual({ stored: false });
-    expect(await tools.forget.execute({ id: 'anything' }, {})).toEqual({ deleted: false });
+    expect(await tools.forget.execute({ id: 'anything' }, {})).toEqual({
+      deleted: false,
+      reason: 'refused',
+    });
     const readOnly = requestContext('owner-a', ['memory:search']);
     expect(await tools.store.execute({ content: 'x' }, { requestContext: readOnly })).toEqual({
       stored: false,
@@ -105,8 +108,14 @@ describe('createGovernedMemoryTools (model-facing, untrusted)', () => {
       ),
     ).toEqual({
       deleted: false,
+      reason: 'refused',
     });
+    // A record the caller cannot see is refused the same way, revealing nothing about it.
     const deleter = requestContext('owner-a', ['memory:delete']);
+    expect(await tools.forget.execute({ id: 'missing' }, { requestContext: deleter })).toEqual({
+      deleted: false,
+      reason: 'refused',
+    });
     expect(await tools.forget.execute({ id: hit!.record.id }, { requestContext: deleter })).toEqual(
       { deleted: true },
     );

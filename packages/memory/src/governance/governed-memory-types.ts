@@ -10,6 +10,7 @@ import type {
   AsynchronousDeletionTarget,
   MemoryDeletionPlan,
   MemoryDeletionReceipt,
+  MemoryDeletionTargetStatus,
   MemoryGovernanceEvent,
 } from './ledger-types';
 import type { MemoryClass, MemoryGovernancePolicy, MemorySourceKind } from './policy';
@@ -125,8 +126,31 @@ export interface MemoryExportResult extends MemoryOperationResult {
   readonly records: readonly GovernedMemoryRecord[];
 }
 
+/**
+ * What a deletion did to the record it names: `status` is `applied` only when
+ * the record is gone, and `unchanged` whenever a receipt shows it still stored.
+ */
 export interface MemoryDeletionResult extends MemoryOperationResult {
   readonly receipt?: MemoryDeletionReceipt;
+  /**
+   * The status of the receipt row that removes the named record (its
+   * `source-evidence` row, or a projection's own target), in COR-806's
+   * vocabulary. Present whenever `receipt` is.
+   *
+   * - `completed`: removed, so it is no longer readable or recallable, even
+   *   while bounded-async rows are still `pending`. A summary derived from it
+   *   stays stored until the receipt's `summaries` row completes, and until
+   *   then no other bounded-async row claims completion.
+   * - `exempt`: a legal hold holds the deletion, so the record stays stored
+   *   and the deletion re-queues when the hold is released.
+   * - `failed`: the step that removes it failed, so the record stays stored.
+   *   Requesting the deletion again, or the next propagation pass while the
+   *   receipt is open, retries the same receipt.
+   *
+   * A summary deleted as a projection is removed in the bounded-async lane,
+   * so its row can also be `pending` or `unknown`.
+   */
+  readonly deletion?: MemoryDeletionTargetStatus;
 }
 
 /**
@@ -165,9 +189,9 @@ export type MemoryForgetRequest =
 
 export type MemoryForgetMode = MemoryForgetRequest['mode'];
 
-export interface MemoryForgetResult extends MemoryOperationResult {
+/** The deletion modes carry `receipt` and `deletion` exactly as {@link MemoryDeletionResult} does. */
+export interface MemoryForgetResult extends MemoryDeletionResult {
   readonly mode: MemoryForgetMode;
-  readonly receipt?: MemoryDeletionReceipt;
   readonly write?: MemoryWriteReceipt;
 }
 

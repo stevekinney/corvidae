@@ -315,19 +315,25 @@ export function registerDurabilityContract(backend: GovernedBackend): void {
         const receipt = await receiptOf(racing.delete(principalA, notes(recordId)));
         expect(raced).toBe(true);
         // The hold changed the summary's version, so its conditioned deletion
-        // aborted; the next step's hold check then exempted what was left.
+        // aborted; the next step's hold check then exempted what was left. The
+        // summary is still stored, so no row downstream of it claims removal.
         expect(statuses(receipt)).toMatchObject({
           'source-evidence': 'completed',
-          indexes: 'completed',
+          indexes: 'exempt',
           summaries: 'exempt',
           exports: 'exempt',
         });
+        expect(
+          receipt.targets.filter(
+            (target) => target.lane === 'bounded-async' && target.status === 'completed',
+          ),
+        ).toEqual([]);
         expect(receipt).toMatchObject({ awaitingHoldRelease: true, open: false });
         expect(await fixture.storage.get(summary, scopeOf('digest'))).toBeDefined();
         expect(await fixture.memory.processDeletionPropagation()).toEqual([]);
       });
 
-      it('keeps the synchronous lane pending while its records keep changing, then finishes it', async () => {
+      it('fails the synchronous lane while its records keep changing, then finishes it on the next pass', async () => {
         const contended = fixture.restart({
           storage: {
             ...fixture.storage,
@@ -336,13 +342,17 @@ export function registerDurabilityContract(backend: GovernedBackend): void {
             },
           },
         });
-        const receipt = await receiptOf(contended.delete(principalA, notes(recordId)));
+        const result = await contended.delete(principalA, notes(recordId));
+        expect(result).toMatchObject({ status: 'unchanged', deletion: 'failed' });
+        const receipt = result.receipt!;
         expect(receipt.targets.find((target) => target.target === 'source-evidence')).toMatchObject(
           {
-            status: 'pending',
-            detail: 'records changed during deletion; will retry',
+            status: 'failed',
+            detail: 'records changed during deletion',
           },
         );
+        // Nothing downstream of the record claims removal while it is still stored.
+        expect(receipt.targets.filter((target) => target.status === 'completed')).toEqual([]);
         expect(receipt.open).toBe(true);
         expect(await fixture.storage.get(recordId, scopeOf('notes'))).toBeDefined();
 
