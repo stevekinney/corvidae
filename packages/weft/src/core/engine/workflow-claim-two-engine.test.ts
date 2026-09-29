@@ -1139,6 +1139,12 @@ describe('start-new over a stale cached workflow claim epoch', () => {
       claimTtlMs: 60_000,
       claimRenewIntervalMs: 5_000,
     });
+    const releaseCalled = Promise.withResolvers<void>();
+    const originalRelease = registryA.release.bind(registryA);
+    registryA.release = (workflowId, epoch) => {
+      if (workflowId === id) releaseCalled.resolve();
+      return originalRelease(workflowId, epoch);
+    };
     getInternals(engineA).workflowClaimRegistry = registryA;
 
     await engineA.start('claim-race-recovery', null, { id });
@@ -1161,9 +1167,10 @@ describe('start-new over a stale cached workflow claim epoch', () => {
       expect(await storage.get(holderKey)).not.toEqual(cachedHolderBefore);
 
       await engineA.signal(id, 'go');
-      await waitForCondition(async () => (await statusOf(engineA, id)) === 'completed', {
-        label: `old run of "${id}" completed`,
-      });
+      // release() runs only after the self-complete terminal commit, and then blocks on the gated
+      // renewal, so this is a race-free point at which the old run is terminal.
+      await releaseCalled.promise;
+      expect(await statusOf(engineA, id)).toBe('completed');
       const generationBefore = await durableGeneration(storage, id);
 
       await engineA.start('claim-race-recovery', null, { id, onTerminalConflict: 'start-new' });
