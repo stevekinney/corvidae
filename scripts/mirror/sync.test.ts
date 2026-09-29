@@ -943,6 +943,57 @@ describe('runSync in pull-request mode', () => {
 });
 
 describe('the foreign-commit guard', () => {
+  test('accepts only a declared source version constant that follows the release manifest', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-version-release-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      const directory = 'packages/weft';
+      const manifestPath = `${directory}/package.json`;
+      const versionPath = `${directory}/src/version.ts`;
+      const ownership = {
+        policy: await loadTargetOwnedPolicy(),
+        target: 'weft' as const,
+        versionConstantPaths: new Map([[versionPath, directory]]),
+        transform: { files: new Set([manifestPath, versionPath]), prefixes: [] },
+      };
+      await Bun.write(
+        join(root, manifestPath),
+        '{"name":"@lostgradient/weft","version":"0.27.0"}\n',
+      );
+      await Bun.write(join(root, versionPath), "export const VERSION = '0.27.0';\n");
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+
+      await Bun.write(
+        join(root, manifestPath),
+        '{"name":"@lostgradient/weft","version":"0.27.1"}\n',
+      );
+      await Bun.write(join(root, versionPath), "export const VERSION = '0.27.1';\n");
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Publish Weft 0.27.1');
+      expect(await findForeignCommits(root, ownership)).toEqual([]);
+
+      await Bun.write(
+        join(root, versionPath),
+        "export const VERSION = '0.27.1';\nexport const changed = true;\n",
+      );
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Change source under release metadata');
+      const foreign = await findForeignCommits(root, ownership);
+      expect(foreign.map(({ subject }) => subject)).toEqual([
+        'Change source under release metadata',
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('rejects a transient source edit even when a later commit reverts its bytes', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-transient-source-'));
     try {

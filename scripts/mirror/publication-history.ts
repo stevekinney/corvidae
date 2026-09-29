@@ -163,7 +163,7 @@ export async function verifyHistoricalCheckout(options: {
   return sourceCommit;
 }
 
-async function isManifestVersionOnlyChange(
+export async function isManifestVersionOnlyChange(
   targetRoot: string,
   parent: string,
   commit: string,

@@ -17,7 +17,8 @@ import {
   type SmokeTestResult,
   type TarballReport,
 } from './packaging.ts';
-import { collectPrunablePaths } from './source.ts';
+import { isManifestVersionOnlyChange } from './publication-history.ts';
+import { collectPrunablePaths, versionConstants } from './source.ts';
 import {
   assertPublishable,
   planSurface,
@@ -307,6 +308,8 @@ export async function findForeignCommits(
 export interface ForeignCommitOwnership {
   policy: TargetOwnedPolicy;
   target: string;
+  /** Declared version constants that a target release may update only to its manifest version. */
+  versionConstantPaths?: ReadonlyMap<string, string> | undefined;
   /**
    * Target-relative files that are the target's own although no `target-owned.json` glob names
    * them: the declared build inputs (`requiredInputs` in `package-surface.json`, target-owned by
@@ -374,7 +377,7 @@ async function isTargetOwnedDelta(
   directory: string,
   parent: string,
   sha: string,
-  { policy, target, targetOwnedFiles, transform }: ForeignCommitOwnership,
+  { policy, target, targetOwnedFiles, versionConstantPaths, transform }: ForeignCommitOwnership,
 ): Promise<boolean> {
   // `--no-renames`: a rename is judged as the deletion of its old path plus the addition of its
   // new one, so moving an emitted file out of the sync's reach is still a deletion the sync would
@@ -387,6 +390,20 @@ async function isTargetOwnedDelta(
     const path = fields[index + 1] ?? '';
     if (findTargetOwner(policy, path, target) !== undefined) continue;
     if (targetOwnedFiles?.has(path)) continue;
+    const versionDirectory = versionConstantPaths?.get(path);
+    if (
+      versionDirectory !== undefined &&
+      kind.startsWith('M') &&
+      (await isManifestVersionOnlyChange(
+        directory,
+        parent,
+        sha,
+        path,
+        versionDirectory,
+        runCommand,
+      ))
+    )
+      continue;
     if (!transformReaches(transform, path)) continue;
     if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
     const before = await git(directory, 'show', `${parent}:${path}`);
@@ -436,6 +453,14 @@ export async function foreignCommitOwnership(options: {
     policy,
     target: options.target,
     targetOwnedFiles: await declaredBuildInputs(options.target),
+    versionConstantPaths: new Map(
+      plan.published.flatMap((entry) => {
+        const declared = versionConstants[entry.workspace];
+        return declared === undefined
+          ? []
+          : [[`${entry.directory}/${declared}`, entry.directory] as const];
+      }),
+    ),
     transform: {
       files: new Set(Object.keys(plan.files)),
       prefixes: [...plan.source.ownedPrefixes, ...retiredDirectoriesFor(policy, options.target)],
