@@ -4547,6 +4547,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             maximumSteps: request.maximumSteps,
             systemPrompt: request.systemPrompt,
             sessionId: taskId,
+            // The task id is the run identity for the same reason it is the
+            // flow-control identity above: it survives preemption. A requeued
+            // task resumes from its last completed step (durable engine) or
+            // starts again (no engine), so a step that wrote memory can run
+            // twice, and the memory write deduplicates on `<taskId>:<step>`.
+            runId: taskId,
             requestContext: createSchedulerServiceRequestContext(taskId, agentName, taskId),
           },
           { liveStreaming: false },
