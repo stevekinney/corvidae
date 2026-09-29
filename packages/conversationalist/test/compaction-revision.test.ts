@@ -199,6 +199,34 @@ describe('revisioned compaction commits', () => {
     expect(attempt.attemptId).toBe(events[0]!.compaction!.attemptId);
   });
 
+  it('rejects after summarizing when preserveToolPairs is false and the recent window strands a tool result', async () => {
+    // The documented failure mode of `preserveToolPairs: false`: the recent window keeps a
+    // tool result whose call is summarized, so re-appending the kept messages fails after
+    // every chunk has already been summarized.
+    const conversation = conversationWithHistory();
+    conversation.appendToolCall({ id: 'stranded-call', name: 'lookup', arguments: {} });
+    conversation.appendToolResult({ callId: 'stranded-call', outcome: 'success', content: 'x' });
+    const events = recordCompactionEvents(conversation);
+    const before = captureState(conversation);
+    let summarizerCalls = 0;
+
+    const failing = conversation.compact(
+      async () => {
+        summarizerCalls += 1;
+        return 'summary';
+      },
+      { preserveRecentCount: 1, preserveToolPairs: false },
+    );
+
+    expect(await rejectionOf(failing)).toMatchObject({ code: 'error:invalid-tool-reference' });
+    await failing.catch(() => undefined);
+    expect(summarizerCalls).toBeGreaterThan(0);
+    expectStateUnchanged(conversation, before);
+    expect(hasPublishedSummary(conversation)).toBe(false);
+    expect(events.map((event) => event.type)).toEqual(['compaction.started', 'compaction.failed']);
+    expect(events[1]!.outcome).toBe('failed');
+  });
+
   it('leaves the prior boundary active when the caller cancels the attempt', async () => {
     const conversation = conversationWithHistory();
     const events = recordCompactionEvents(conversation);

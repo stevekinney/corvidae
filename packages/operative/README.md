@@ -706,7 +706,7 @@ A retry or reset that must not inherit a failed attempt's transcript starts from
 | Fresh from artifact | `SessionHandle.startFreshAttempt({ artifact, instructions })` | New id, `runs: []` | Exactly two messages: `instructions` as a system message and one rendering of the validated artifact as a user message. No message of the source session is copied, by id or by content. |
 | Same-session handoff | `createHandoffTool()` | Same | Unchanged. The tool returns a marker, and the caller decides which agent continues the same conversation (see Handoffs under [Multi-Agent Patterns](#multi-agent-patterns)). |
 | Subagent summary | `createSubagentTool()` | The child's own | The parent keeps its own history plus the tool result, by default a capped summary of the child's `content`. |
-| Compaction | `createContextCompactor()` | Same | The same conversation, with older messages replaced in place by a summary system message and the most recent `retainRecentMessages` kept verbatim. |
+| Compaction | `createContextCompactor()` | Same | The same conversation, with older messages replaced in place by a summary system message and the most recent `retainRecentMessages` visible non-system messages kept. Kept messages are re-appended under new identifiers and hidden messages are dropped; conversationalist's [What compaction keeps](../conversationalist/README.md#what-compaction-keeps) lists the current limits. |
 
 #### Choosing a policy
 
