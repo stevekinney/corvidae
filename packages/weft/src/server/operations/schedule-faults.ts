@@ -1,4 +1,3 @@
-import { DynamicWorkflowSourceUnavailableError } from '../../core/engine/dynamic-source-errors.ts';
 import {
   isValidScheduleOverlapPolicy,
   isValidScheduleRevisionPolicy,
@@ -6,6 +5,7 @@ import {
 } from '../../core/engine/validation/schedule.ts';
 import type { ScheduleSpec, ScheduleUpdateOptions } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
+import { mapDynamicSourceUnavailableToFault } from './dynamic-source-unavailable-fault.ts';
 import { invalidParamsFault } from './operation-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
@@ -109,24 +109,6 @@ function isScheduleInvalidParamsMessage(message: string, normalizedMessage: stri
     normalizedMessage.includes('cron') ||
     normalizedMessage.includes('interval')
   );
-}
-
-/**
- * Map a dynamic-source failure to a `Conflict`, mirroring the catalog branch. A
- * `load-failed` error's own message embeds the raw loader exception, so the wire
- * message is bounded; `ambiguous-revision` never interpolates a cause.
- */
-function mapDynamicSourceUnavailableToFault(error: unknown): OperationFault | undefined {
-  if (!(error instanceof DynamicWorkflowSourceUnavailableError)) return undefined;
-  const revisionSuffix = error.revision === undefined ? '' : ` revision "${error.revision}"`;
-  return {
-    code: 'Conflict',
-    message:
-      error.reason === 'load-failed'
-        ? `Dynamic workflow source "${error.workflowType}"${revisionSuffix} failed to load.`
-        : error.message,
-    data: { reason: error.reason, weftCode: error.code },
-  };
 }
 
 export function mapScheduleErrorToFault(scheduleId: string, error: unknown): OperationFault {
