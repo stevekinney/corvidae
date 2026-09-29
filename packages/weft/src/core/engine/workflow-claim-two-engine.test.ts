@@ -24,6 +24,7 @@
 import { ExtData, encode as msgpackEncode } from '@msgpack/msgpack';
 import { describe, expect, it } from 'bun:test';
 
+import { GENERATION_KEYS } from '../../storage/generation-keys.ts';
 import {
   KEYS,
   type BatchOperation,
@@ -34,13 +35,15 @@ import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';
+import { decodeGeneration } from './generation-codec.ts';
 import {
   ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING,
   Engine,
   WorkflowClaimUnavailableError,
 } from './index.ts';
 import { getInternals } from './internals.ts';
-import { encodeEpoch } from './lease-codec.ts';
+import { decodeEpoch, encodeEpoch } from './lease-codec.ts';
+import { EngineDeposedError } from './lease-errors.ts';
 import { decodeWorkflowClaimHolder, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 import { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
 
@@ -906,5 +909,167 @@ describe('WFT-134 review round 2: claim-generation release correctness', () => {
     // backstop; either way nothing is left stranded.
     expect(registry?.currentEpoch(workflowId)).toBeNull();
     expect(registry?.listHeldWorkflowIds()).not.toContain(workflowId);
+  });
+});
+
+let staleEpochInvocation = 0;
+
+/** A per-invocation suffix so `--rerun-each` repeats never reuse a workflow id. */
+function nextInvocation(): number {
+  staleEpochInvocation += 1;
+  return staleEpochInvocation;
+}
+
+describe('start-new over a stale cached workflow claim epoch', () => {
+  async function seedCancelledUnderStaleCache(id: string) {
+    const storage = new MemoryStorage();
+    const workflows: ClaimWorkflows = { 'claim-race-recovery': claimRaceRecoveryWorkflow };
+    await seedParkedWorkflow(storage, id);
+    const engineA = await createClaimEngine(storage, 'engine-a', workflows);
+    const engineB = await createClaimEngine(storage, 'engine-b', workflows);
+    const registryA = getInternals(engineA).workflowClaimRegistry!;
+    const registryB = getInternals(engineB).workflowClaimRegistry!;
+    expect((await registryA.acquire(id)).status).toBe('acquired');
+    await engineB.cancel(id);
+    return { storage, engineA, engineB, registryA, registryB };
+  }
+
+  it('rotation false-positive: start-new re-acquires instead of throwing EngineDeposedError', async () => {
+    const id = `stale-epoch-rotation-${nextInvocation()}`;
+    const { storage, engineA, engineB, registryA } = await seedCancelledUnderStaleCache(id);
+    await using _a = engineA;
+    await using _b = engineB;
+
+    expect((await engineA.get(id))?.status).toBe('cancelled');
+    expect(registryA.currentEpoch(id)).toBe(1);
+    const durableEpoch = await storage.get(KEYS.workflowOwnerEpoch(id));
+    expect(decodeEpoch(durableEpoch!)).toBe(2);
+    expect(durableEpoch).not.toEqual(registryA.currentEpochBytes(id));
+    expect(await storage.get(KEYS.workflowOwnerHolder(id))).toBeNull();
+    expect(await registryA.holderStatus(id)).toBeUndefined();
+
+    const handle = await engineA.start('claim-race-recovery', null, {
+      id,
+      onTerminalConflict: 'start-new',
+    });
+
+    expect(registryA.currentEpoch(id)).toBe(3);
+    const epochBytes = await storage.get(KEYS.workflowOwnerEpoch(id));
+    expect(decodeEpoch(epochBytes!)).toBe(3);
+    expect(epochBytes).toEqual(registryA.currentEpochBytes(id));
+    const holder = decodeWorkflowClaimHolder((await storage.get(KEYS.workflowOwnerHolder(id)))!);
+    expect(holder?.engineId).toBe('engine-a');
+    expect(holder?.epoch).toBe(3);
+
+    await engineA.signal(id, 'go');
+    expect(await handle.result()).toBe('ran');
+    expect(registryA.currentEpoch(id)).toBeNull();
+    expect(await storage.get(KEYS.workflowOwnerHolder(id))).toBeNull();
+  });
+
+  it('real deposition control: a live foreign holder still deposes the start-new', async () => {
+    const id = `stale-epoch-foreign-${nextInvocation()}`;
+    const { storage, engineA, engineB, registryA, registryB } =
+      await seedCancelledUnderStaleCache(id);
+    await using _a = engineA;
+    await using _b = engineB;
+    expect((await registryB.acquire(id)).status).toBe('acquired');
+
+    expect(registryA.currentEpoch(id)).toBe(1);
+    expect(decodeEpoch((await storage.get(KEYS.workflowOwnerEpoch(id)))!)).toBe(3);
+    const status = await registryA.holderStatus(id);
+    expect(status?.heldByAnyProcess).toBe(true);
+    expect(status?.heldByThisProcess).toBe(false);
+
+    const error = await rejectionOf(
+      engineA.start('claim-race-recovery', null, { id, onTerminalConflict: 'start-new' }),
+    );
+    expect(error).toBeInstanceOf(EngineDeposedError);
+    expect((error as EngineDeposedError).workflowId).toBe(id);
+
+    const holder = decodeWorkflowClaimHolder((await storage.get(KEYS.workflowOwnerHolder(id)))!);
+    expect(holder?.engineId).toBe('engine-b');
+    expect((await engineA.get(id))?.status).toBe('cancelled');
+  });
+
+  it('release-inheritance: the old run’s delayed release must not strip the start-new replacement’s claim', async () => {
+    const id = `stale-epoch-release-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const workflows: ClaimWorkflows = { 'claim-race-recovery': claimRaceRecoveryWorkflow };
+    await using engineA = await createClaimEngine(storage, 'engine-a', workflows);
+
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let armed = true;
+    const holderKey = KEYS.workflowOwnerHolder(id);
+    const gatedRegistryStorage = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch') {
+          return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+            if (armed && operations.some((op) => op.type === 'delete' && op.key === holderKey)) {
+              armed = false;
+              reached.resolve();
+              await release.promise;
+            }
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as MemoryStorage;
+    const registryA = installClaimRegistry(engineA, 'engine-a', gatedRegistryStorage);
+
+    await engineA.start('claim-race-recovery', null, { id });
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    expect(registryA.currentEpoch(id)).toBe(1);
+
+    const oldRunSettled = Promise.withResolvers<void>();
+    engineA.addEventListener('workflow:completed', (event) => {
+      if ((event as Event & { workflowId?: string }).workflowId === id) oldRunSettled.resolve();
+    });
+
+    try {
+      await engineA.signal(id, 'go');
+      await reached.promise;
+
+      expect((await engineA.get(id))?.status).toBe('completed');
+      expect(registryA.currentEpoch(id)).toBe(1);
+      const holderBefore = decodeWorkflowClaimHolder((await storage.get(holderKey))!);
+      expect(holderBefore?.engineId).toBe('engine-a');
+      expect(holderBefore?.epoch).toBe(1);
+      expect(await storage.get(KEYS.workflowOwnerEpoch(id))).toEqual(
+        registryA.currentEpochBytes(id),
+      );
+      expect(getInternals(engineA).parkedInlineWorkflows.has(id)).toBe(false);
+      // An absent `wf-gen` key means generation 0: nothing has been purged yet.
+      const generationBytesBefore = await storage.get(GENERATION_KEYS.workflowGeneration(id));
+      const generationBefore =
+        generationBytesBefore === null ? 0 : decodeGeneration(generationBytesBefore);
+
+      await engineA.start('claim-race-recovery', null, { id, onTerminalConflict: 'start-new' });
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+      expect((await engineA.get(id))?.status).toBe('running');
+      expect(decodeGeneration((await storage.get(GENERATION_KEYS.workflowGeneration(id)))!)).toBe(
+        generationBefore! + 1,
+      );
+      expect(registryA.currentEpoch(id)).toBe(1);
+      expect(await storage.get(holderKey)).not.toBeNull();
+      expect(getInternals(engineA).parkedInlineWorkflows.has(id)).toBe(true);
+    } finally {
+      release.resolve();
+    }
+
+    await oldRunSettled.promise;
+
+    const epoch = registryA.currentEpoch(id);
+    expect(epoch).not.toBeNull();
+    const holderAfter = await storage.get(holderKey);
+    expect(holderAfter).not.toBeNull();
+    expect(decodeWorkflowClaimHolder(holderAfter!)?.engineId).toBe('engine-a');
+    expect(decodeWorkflowClaimHolder(holderAfter!)?.epoch).toBe(epoch!);
+    expect(decodeEpoch((await storage.get(KEYS.workflowOwnerEpoch(id)))!)).toBe(epoch!);
+    expect((await engineA.get(id))?.status).toBe('running');
   });
 });
