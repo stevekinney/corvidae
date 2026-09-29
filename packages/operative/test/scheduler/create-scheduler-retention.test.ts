@@ -350,8 +350,8 @@ describe('createScheduler retention', () => {
       const submitted = scheduler.submit(task);
       const early = scheduler.awaitTask(task.id);
       await submitted.catch(() => undefined);
-      await expect(early).rejects.toBe(boom);
-      await expect(scheduler.awaitTask(task.id)).rejects.toBe(boom);
+      expect(await early.catch((error: unknown) => error)).toBe(boom);
+      expect(await scheduler.awaitTask(task.id).catch((error: unknown) => error)).toBe(boom);
       await scheduler.stop();
     });
 

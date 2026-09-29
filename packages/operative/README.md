@@ -1809,6 +1809,11 @@ const task: SchedulerTask = {
 
 await scheduler.submit(task);
 
+// Later, holding only the id, resolve or await the outcome without the promise
+scheduler.locateTask('background-sync');
+// { status: 'terminal', outcome: { status: 'fulfilled', value: RunResult | null } }
+await scheduler.awaitTask('background-sync'); // RunResult | null, or the original error
+
 // Periodic proactive task (heartbeat)—requires a running scheduler
 const heartbeat = createHeartbeat({
   scheduler,
@@ -1836,6 +1841,15 @@ await runChunked(scheduler);
 ```
 
 **Callback promises are tracked and awaited, not fired-and-forgotten (AB-208).** A scheduler task's `onComplete`/`onPreempted` callback can return a promise; `Scheduler.stop()` awaits every such promise (in the same pass it already awaits durable cancellations) before its own returned promise resolves, so a stopped scheduler is a real boundary for anything the callback closes over—a rejection after the owner stopped is captured and reported as a `task.failed` event rather than becoming an unhandled rejection. `createChunkedTask`'s `onComplete`/`onError` callbacks are likewise awaited before `submitChunkedWork`'s returned promise settles. `createHeartbeat(...).stop()` returns `Promise<void>`, resolving once the in-flight `tick()` (and its `onTick` callback promise) settles—calling it on an already-stopped heartbeat is a no-op that resolves promptly.
+
+#### Task locator and retention
+
+Tasks submitted through `submit()` and `submitImmediate()` (not `dispatch()`) stay resolvable by id after they settle:
+
+- `locateTask(taskId)` is synchronous, never throws, and returns a `SchedulerTaskLocation`: `{ status: 'in-progress' }`, `{ status: 'terminal', outcome }` (a `PromiseSettledResult<RunResult | null>`: a cancelled or `stop()`-discarded task is `fulfilled` with `null`, a failure is `rejected` with the original reason), `{ status: 'expired' }`, or `{ status: 'not-found' }`.
+- `awaitTask(taskId)` mirrors `submit()`'s settlement: it waits for an in-progress task, settles immediately for a retained one, and rejects with `SchedulerTaskLookupError` (`reason: 'expired' | 'not-found'`) otherwise. It never waits for a future submission, and an unobserved returned promise does not raise `unhandledRejection`.
+- `retentionWindowMs` (finite, greater than zero, otherwise `createScheduler` throws) bounds retention on `runtime.timers`. Each terminal outcome is evicted exactly one window after it settles, emitting `TaskRetentionCleanedEvent` (`task.retention-cleaned`, `outcome: 'completed'`) and leaving an `expired` tombstone; one further window later the id is `not-found`. Unset keeps outcomes indefinitely with no timers.
+- Resubmitting an id replaces its retained entry or tombstone. `stop()` clears all retention state and timers (emitting nothing), so every id is `not-found` afterward. Retention is in memory and per scheduler.
 
 ### Cost Estimation and Budget
 

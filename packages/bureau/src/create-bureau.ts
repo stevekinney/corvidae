@@ -48,6 +48,7 @@ import {
   // genuinely different values and must not shadow each other here.
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
   type RunReport,
+  type RunResult,
   ScheduleAttemptedEvent,
   ScheduleCancelledEvent,
   ScheduleCompletedEvent,
@@ -58,6 +59,7 @@ import {
   ScheduleResumedEvent,
   SchedulerTaskCompletedEvent,
   SchedulerTaskFailedEvent,
+  type SchedulerTaskLocation,
   ScheduleSkippedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
@@ -4597,6 +4599,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     });
   }
 
+  function locateSchedulerTask(taskId: string): SchedulerTaskLocation {
+    if (!runtime.scheduler) {
+      throw new BureauError('Scheduler not configured', 'NOT_CONFIGURED', 'scheduler');
+    }
+    return runtime.scheduler.locateTask(taskId);
+  }
+
+  function awaitSchedulerTask(taskId: string): Promise<RunResult | null> {
+    if (!runtime.scheduler) {
+      throw new BureauError('Scheduler not configured', 'NOT_CONFIGURED', 'scheduler');
+    }
+    return runtime.scheduler.awaitTask(taskId);
+  }
+
   function listRuns(status?: string): RunSummary[] {
     const state = store.getState();
     const summaries: RunSummary[] = [];
@@ -9114,6 +9130,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     },
     createRun: createRunFromRequest,
     submitSchedulerTask,
+    locateSchedulerTask,
+    awaitSchedulerTask,
     listRuns,
     getRun,
     subscribeRunSnapshot,

@@ -30,9 +30,10 @@
  * landing the quiescence report): the reproduction-artifact assembler and
  * Bureau-scoped fault selectors (AB-263/tst-03d), and the packed-consumer
  * extension (AB-264/tst-03e). Drivers for product surfaces that do not
- * exist yet on this baseline (managed goals — AB-101/AB-102 — and settled
- * scheduler-task retrieval — AB-180) are named as unsupported through
- * `supports()` and a typed throw, never silently stubbed out.
+ * exist yet on this baseline (managed goals — AB-101/AB-102) are named as
+ * unsupported through `supports()` and a typed throw, never silently stubbed
+ * out. Settled scheduler-task retrieval is supported: `getSchedulerTaskResult`
+ * and `awaitSchedulerTask` wrap `Bureau.locateSchedulerTask` / `awaitSchedulerTask`.
  */
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
@@ -45,6 +46,8 @@ import {
   type DispatchChildRunOptions,
   type MutableChildRunRegistry,
   type ResourceScope,
+  type RunResult,
+  type SchedulerTaskLocation,
   waitForCondition,
 } from '@lostgradient/operative';
 import type { ScheduleSummary, WorkflowState } from '@lostgradient/weft';
@@ -89,16 +92,15 @@ export interface DurableRunRegistration {
 
 /**
  * Product surfaces this harness cannot drive because Bureau has no shipped
- * capability for them yet. Deliberately just these two — a driver for
+ * capability for them yet. Deliberately just this one — a driver for
  * anything else on the eight-driver list above is expected to work, never
  * to be silently skipped.
  */
-export type BureauHarnessCapability = 'managed-goal' | 'scheduler-task-result';
+export type BureauHarnessCapability = 'managed-goal';
 
 const UNSUPPORTED_CAPABILITY_OWNERS: Readonly<Record<BureauHarnessCapability, readonly string[]>> =
   {
     'managed-goal': ['AB-101', 'AB-102'],
-    'scheduler-task-result': ['AB-180'],
   };
 
 /**
@@ -261,12 +263,11 @@ export interface BureauTestHarness<D extends AgentDefinitions = AgentDefinitions
    */
   startManagedGoal(...args: unknown[]): never;
 
-  /**
-   * Throws {@link BureauHarnessUnsupportedError} for
-   * `'scheduler-task-result'` — settled scheduler-task results have no
-   * resolvable locator on this baseline (AB-180).
-   */
-  getSchedulerTaskResult(taskId: string): never;
+  /** Thin wrapper over `Bureau.locateSchedulerTask`. */
+  getSchedulerTaskResult(taskId: string): SchedulerTaskLocation;
+
+  /** Thin wrapper over `Bureau.awaitSchedulerTask`. */
+  awaitSchedulerTask(taskId: string): Promise<RunResult | null>;
 }
 
 /**
@@ -527,8 +528,12 @@ export async function createBureauTestHarness<D extends AgentDefinitions = Agent
       return throwUnsupported('managed-goal');
     },
 
-    getSchedulerTaskResult() {
-      return throwUnsupported('scheduler-task-result');
+    getSchedulerTaskResult(taskId) {
+      return readyBureau.locateSchedulerTask(taskId);
+    },
+
+    awaitSchedulerTask(taskId) {
+      return readyBureau.awaitSchedulerTask(taskId);
     },
   };
 
