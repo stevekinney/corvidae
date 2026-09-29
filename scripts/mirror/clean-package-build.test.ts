@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { afterAll, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -109,25 +109,6 @@ try {
   };
 }
 
-test('packs executable declarations with the npm publish file-mode semantics', async () => {
-  await using input = await fixture(false, false, true);
-  const observed = recorder();
-  const result = await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
-  expect(
-    observed.commands.some(
-      ({ command }) =>
-        command[0] === 'npm' &&
-        command[1] === 'pack' &&
-        command.includes('--ignore-scripts') &&
-        command.includes('--pack-destination'),
-    ),
-  ).toBe(true);
-  expect(result.payload.files.find(({ path }) => path === 'package/dist/index.js')).toEqual({
-    path: 'package/dist/index.js',
-    executable: false,
-  });
-});
-
 function recorder(failure?: 'version' | 'build') {
   const commands: {
     command: readonly string[];
@@ -154,10 +135,104 @@ function recorder(failure?: 'version' | 'build') {
   return { runner, commands, checkout: () => checkout };
 }
 
+type Fixture = Awaited<ReturnType<typeof fixture>>;
+type Recorder = ReturnType<typeof recorder>;
+type BuildOutcome = PromiseSettledResult<Awaited<ReturnType<typeof buildCleanPublishedPackage>>>;
+type BuildRun = { input: Fixture; observed: Recorder; outcome: BuildOutcome };
+
+// Every fixture and clean build runs once here, at module scope, rather than in
+// a test body: each is a real git clone, build and npm pack, and under host load
+// that subprocess work does not belong on bun's per-test clock (COR-1316,
+// COR-1331). Test bodies assert on the captured outcomes.
+const fixtures: Fixture[] = [];
+afterAll(async () => {
+  for (const input of fixtures) await input[Symbol.asyncDispose]();
+});
+
+async function prepared(...options: Parameters<typeof fixture>): Promise<Fixture> {
+  const input = await fixture(...options);
+  fixtures.push(input);
+  return input;
+}
+
+async function build(input: Fixture, failure?: 'version' | 'build'): Promise<BuildRun> {
+  const observed = recorder(failure);
+  const [outcome] = await Promise.allSettled([
+    buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
+  ]);
+  return { input, observed, outcome };
+}
+
+/** The captured outcome as a promise again, so a test awaits or rejects it exactly as before. */
+function replay<T>(outcome: PromiseSettledResult<T>): Promise<T> {
+  return outcome.status === 'fulfilled'
+    ? Promise.resolve(outcome.value)
+    : Promise.reject(outcome.reason);
+}
+
+async function withHistoricalRecipe(recipe: string | undefined): Promise<Fixture> {
+  const input = await prepared();
+  const recipePath = join(input.root, 'historical/scripts/mirror/verify-steps.ts');
+  if (recipe === undefined) await rm(recipePath);
+  else await Bun.write(recipePath, recipe);
+  return input;
+}
+
+const executableRun = await build(await prepared(false, false, true));
+const dependencyOrderRun = await build(await prepared());
+const devDependencyCycleRun = await build(await prepared(false, true));
+const packScriptRun = await build(await prepared(true));
+const historicalRecipeRun = await build(
+  await (async () => {
+    const input = await prepared();
+    const historicalRecipeDirectory = join(input.root, 'historical/scripts/mirror');
+    await mkdir(historicalRecipeDirectory, { recursive: true });
+    await Bun.write(
+      join(historicalRecipeDirectory, 'verify-steps.ts'),
+      `import { buildVerifySteps as currentBuildVerifySteps } from ${JSON.stringify(
+        join(sourceRoot, 'scripts/mirror/verify-steps.ts'),
+      )};
+export function buildVerifySteps(inputs, environment) {
+  return currentBuildVerifySteps(inputs, environment).map((step) =>
+    step.kind === 'build' ? { ...step, command: [...step.command, '--historical'] } : step,
+  );
+}
+`,
+    );
+    return input;
+  })(),
+);
+const refusedRecipeRuns = {
+  missing: await build(await withHistoricalRecipe(undefined)),
+  incompatible: await build(await withHistoricalRecipe('export const buildVerifySteps = 42;\n')),
+};
+const failedBuildInput = await prepared();
+const failedBuildRuns = {
+  version: await build(failedBuildInput, 'version'),
+  build: await build(failedBuildInput, 'build'),
+};
+
+test('packs executable declarations with the npm publish file-mode semantics', async () => {
+  const { observed, outcome } = executableRun;
+  const result = await replay(outcome);
+  expect(
+    observed.commands.some(
+      ({ command }) =>
+        command[0] === 'npm' &&
+        command[1] === 'pack' &&
+        command.includes('--ignore-scripts') &&
+        command.includes('--pack-destination'),
+    ),
+  ).toBe(true);
+  expect(result.payload.files.find(({ path }) => path === 'package/dist/index.js')).toEqual({
+    path: 'package/dist/index.js',
+    executable: false,
+  });
+});
+
 test('builds dependencies first, preserves release install arguments, and packs committed workspace versions', async () => {
-  await using input = await fixture();
-  const observed = recorder();
-  const result = await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
+  const { observed, outcome } = dependencyOrderRun;
+  const result = await replay(outcome);
   expect(
     observed.commands
       .filter(({ command }) => command[2] === 'build')
@@ -183,9 +258,8 @@ test('builds dependencies first, preserves release install arguments, and packs 
 });
 
 test('ignores dev-only dependency cycles while preserving runtime build order', async () => {
-  await using input = await fixture(false, true);
-  const observed = recorder();
-  const result = await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
+  const { observed, outcome } = devDependencyCycleRun;
+  const result = await replay(outcome);
   expect(
     observed.commands
       .filter(({ command }) => command[2] === 'build')
@@ -198,9 +272,8 @@ test('ignores dev-only dependency cycles while preserving runtime build order', 
 });
 
 test('uses historical pack-script policy and returns its generated manifest from a clean checkout', async () => {
-  await using input = await fixture(true);
-  const observed = recorder();
-  const result = await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
+  const { input, observed, outcome } = packScriptRun;
+  const result = await replay(outcome);
   expect(result.manifest['gitHead']).toBe(input.options.gitHead);
   expect(result.manifest['description']).toBe('Generated by the publication pack script');
   expect(
@@ -215,23 +288,8 @@ test('uses historical pack-script policy and returns its generated manifest from
 });
 
 test('executes the verified historical build-step recipe', async () => {
-  await using input = await fixture();
-  const historicalRecipeDirectory = join(input.root, 'historical/scripts/mirror');
-  await mkdir(historicalRecipeDirectory, { recursive: true });
-  await Bun.write(
-    join(historicalRecipeDirectory, 'verify-steps.ts'),
-    `import { buildVerifySteps as currentBuildVerifySteps } from ${JSON.stringify(
-      join(sourceRoot, 'scripts/mirror/verify-steps.ts'),
-    )};
-export function buildVerifySteps(inputs, environment) {
-  return currentBuildVerifySteps(inputs, environment).map((step) =>
-    step.kind === 'build' ? { ...step, command: [...step.command, '--historical'] } : step,
-  );
-}
-`,
-  );
-  const observed = recorder();
-  await buildCleanPublishedPackage({ ...input.options, runner: observed.runner });
+  const { observed, outcome } = historicalRecipeRun;
+  await replay(outcome);
   expect(observed.commands.filter(({ command }) => command[2] === 'build')).toHaveLength(2);
   expect(
     observed.commands
@@ -240,40 +298,31 @@ export function buildVerifySteps(inputs, environment) {
   ).toBe(true);
 });
 
-test.each([
-  ['missing', undefined],
-  ['incompatible', 'export const buildVerifySteps = 42;\n'],
-] as const)('fails closed when the historical recipe is %s', async (kind, recipe) => {
-  await using input = await fixture();
-  const recipePath = join(input.root, 'historical/scripts/mirror/verify-steps.ts');
-  if (recipe === undefined) await rm(recipePath);
-  else await Bun.write(recipePath, recipe);
-  const observed = recorder();
-  expect(
-    await throwingRejectionOf(
-      buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
-    ),
-  ).toThrow(kind === 'missing' ? 'recipe is missing' : 'recipe is incompatible');
-  expect(
-    observed.commands.some(
-      ({ command }) =>
-        command[2] === 'build' ||
-        command[1] === 'pm' ||
-        command[2] === 'scripts/pack-for-publish.ts',
-    ),
-  ).toBe(false);
-  expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
-});
+test.each(['missing', 'incompatible'] as const)(
+  'fails closed when the historical recipe is %s',
+  async (kind) => {
+    const { observed, outcome } = refusedRecipeRuns[kind];
+    expect(await throwingRejectionOf(replay(outcome))).toThrow(
+      kind === 'missing' ? 'recipe is missing' : 'recipe is incompatible',
+    );
+    expect(
+      observed.commands.some(
+        ({ command }) =>
+          command[2] === 'build' ||
+          command[1] === 'pm' ||
+          command[2] === 'scripts/pack-for-publish.ts',
+      ),
+    ).toBe(false);
+    expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
+  },
+);
 
 test('fails closed on a mismatched runtime or failed build and removes the scratch checkout', async () => {
-  await using input = await fixture();
   for (const failure of ['version', 'build'] as const) {
-    const observed = recorder(failure);
-    expect(
-      await throwingRejectionOf(
-        buildCleanPublishedPackage({ ...input.options, runner: observed.runner }),
-      ),
-    ).toThrow(failure === 'version' ? 'pins Bun' : 'intentional build failure');
+    const { observed, outcome } = failedBuildRuns[failure];
+    expect(await throwingRejectionOf(replay(outcome))).toThrow(
+      failure === 'version' ? 'pins Bun' : 'intentional build failure',
+    );
     expect(await Bun.file(join(observed.checkout(), 'package.json')).exists()).toBe(false);
     expect(observed.commands.some(({ command }) => command[1] === 'pm')).toBe(false);
   }
