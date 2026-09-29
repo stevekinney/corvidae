@@ -463,7 +463,9 @@ describe('DurableSemaphore (promise-flavoured AtomicState slot)', () => {
     const slot = makeSlot();
     const mutex = new DurableMutex({ leaseMs: 5_000 });
 
-    expect((await mutex.tryAcquire(slot, { holderId: 'a', now: 1_000 })).acquired).toBe(true);
+    expect(await mutex.tryAcquire(slot, { holderId: 'a', now: 1_000 })).toMatchObject({
+      acquired: true,
+    });
     // b queues once and "crashes": it never calls again.
     expect(await mutex.tryAcquire(slot, { holderId: 'b', now: 1_000 })).toStrictEqual({
       acquired: false,
@@ -476,8 +478,12 @@ describe('DurableSemaphore (promise-flavoured AtomicState slot)', () => {
       position: 1,
     });
     // b's waiter lease is 1_000 + 5_000 = 6_000.
-    expect((await mutex.tryAcquire(slot, { holderId: 'c', now: 5_999 })).acquired).toBe(false);
-    expect((await mutex.tryAcquire(slot, { holderId: 'c', now: 6_000 })).acquired).toBe(true);
+    expect(await mutex.tryAcquire(slot, { holderId: 'c', now: 5_999 })).toMatchObject({
+      acquired: false,
+    });
+    expect(await mutex.tryAcquire(slot, { holderId: 'c', now: 6_000 })).toMatchObject({
+      acquired: true,
+    });
 
     expect(await holderIds(mutex, slot)).toStrictEqual(['c']);
   });
@@ -499,8 +505,12 @@ describe('DurableSemaphore (promise-flavoured AtomicState slot)', () => {
       acquired: false,
       position: 1,
     });
-    expect((await semaphore.tryAcquire(slot, { holderId: 'c', now: 5_999 })).acquired).toBe(false);
-    expect((await semaphore.tryAcquire(slot, { holderId: 'c', now: 6_000 })).acquired).toBe(true);
+    expect(await semaphore.tryAcquire(slot, { holderId: 'c', now: 5_999 })).toMatchObject({
+      acquired: false,
+    });
+    expect(await semaphore.tryAcquire(slot, { holderId: 'c', now: 6_000 })).toMatchObject({
+      acquired: true,
+    });
 
     expect(await holderIds(semaphore, slot)).toStrictEqual(['z', 'c']);
   });
