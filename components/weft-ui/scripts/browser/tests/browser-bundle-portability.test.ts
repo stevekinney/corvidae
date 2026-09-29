@@ -191,7 +191,11 @@ describe('weft-ui browser bundle portability', () => {
     expect(
       nodeCryptoResolutions({
         metafile: shipped?.metafile,
-        logs: shipped?.logs ?? [],
+        logs:
+          shipped?.logs ??
+          (shippedBuildError instanceof AggregateError
+            ? (shippedBuildError.errors as NodeCryptoLog[])
+            : []),
         files: shippedFiles,
       }),
     ).toEqual([]);
