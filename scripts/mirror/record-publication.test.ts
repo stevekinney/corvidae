@@ -452,8 +452,8 @@ test('publication inputs resolve only referenced catalog values and preserve imp
   });
 });
 
-test('explicit mirror boundary rejects copied provenance trailers and runtime manifest edits', async () => {
-  for (const field of ['type', 'imports']) {
+for (const field of ['type', 'imports']) {
+  test(`explicit mirror boundary rejects a copied provenance trailer with a runtime manifest edit: ${field}`, async () => {
     await withPublication(async ({ options, target, sourceCommit, registry }) => {
       const path = join(target, 'packages/operative/package.json');
       const change =
@@ -478,8 +478,8 @@ test('explicit mirror boundary rejects copied provenance trailers and runtime ma
         `source-owned manifest field packages/operative/package.json:${field}`,
       );
     });
-  }
-});
+  });
+}
 
 for (const field of ['scripts', 'devDependencies', 'packageManager']) {
   test(`rejects a historical build input change: ${field}`, async () => {
@@ -723,8 +723,8 @@ test('publication inputs include emitted build scripts and resolved toolchain ve
   });
 });
 
-test('publication inputs include effective emitted TypeScript configuration', async () => {
-  for (const configuration of ['library', 'browser'] as const) {
+for (const configuration of ['library', 'browser'] as const) {
+  test(`publication inputs include effective emitted TypeScript configuration: ${configuration}`, async () => {
     await withPublication(async ({ current }) => {
       await mkdir(join(current, 'internal/typescript'), { recursive: true });
       await Bun.write(
@@ -803,8 +803,8 @@ test('publication inputs include effective emitted TypeScript configuration', as
         }),
       ).toEqual(afterBaseConfiguration);
     });
-  }
-});
+  });
+}
 
 test('publication inputs use the historical layout', async () => {
   await withPublication(async ({ current, historical }) => {
