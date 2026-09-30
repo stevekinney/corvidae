@@ -209,7 +209,7 @@ describe('instrument', () => {
     expect(startedSpans[0]?.options?.links).toBe(spanLinks);
     expect(startedSpans[0]?.span.status).toEqual({
       code: SpanStatusCode.ERROR,
-      message: 'lookup failed',
+      message: 'Tool call failed',
     });
     expect(startedSpans[0]?.span.ended).toBe(true);
   });
@@ -866,7 +866,7 @@ describe('COR-96 regression: non-cancelled error fallback never leaks privileged
     expect(containsMarker(span.attributes)).toBe(false);
     expect(span.events.every((event) => !containsMarker(event.attributes))).toBe(true);
     expect(containsMarker(span.exceptions)).toBe(false);
-    expect(span.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span.status?.code).toBe(SpanStatusCode.ERROR);
     expect(span.attributes['error.type']).toBe('error');
     expect(span.ended).toBe(true);
   });
