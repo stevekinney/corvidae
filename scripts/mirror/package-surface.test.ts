@@ -55,6 +55,19 @@ function entryFor(overrides: Partial<PackageSurfaceEntry> = {}): PackageSurfaceE
 }
 
 describe('package-surface.json', () => {
+  test('keeps generated test artifacts out of packed Chat and Editor packages', async () => {
+    const surface = await loadPackageSurface();
+    for (const workspace of ['@lostgradient/chat', '@lostgradient/editor']) {
+      const files = surface.packages[workspace]?.files;
+      expect(Array.isArray(files), workspace).toBe(true);
+      if (!Array.isArray(files)) continue;
+      expect(filesCoverPath(files, 'dist/components/example-test-helper.js'), workspace).toBe(
+        false,
+      );
+      expect(filesCoverPath(files, 'dist/components/example.js'), workspace).toBe(true);
+    }
+  });
+
   test('exports every Weft package subpath emitted by worker codegen', async () => {
     const packageSurface = await loadPackageSurface();
     const entry = packageSurface.packages['@lostgradient/weft'];
