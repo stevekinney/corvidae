@@ -98,9 +98,7 @@ describe('lifecycle state and revisions', () => {
     expect(conversation.lifecycle).toBe('disposed');
     expect(conversation.inFlightOperationCount).toBe(0);
     expect(conversation.current.ids).toHaveLength(8);
-    expect(() => conversation.subscribe(() => {})).toThrow(
-      expect.objectContaining({ code: 'error:conversation-disposed' }),
-    );
+    expect(() => conversation.subscribe(() => {})()).not.toThrow();
   });
 
   it('publishes disposal after an earlier close', async () => {

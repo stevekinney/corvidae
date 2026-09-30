@@ -301,7 +301,10 @@ describe('Conversation core', () => {
 
     conversation.appendUserMessage('outer write');
 
-    expect(changes[0]).toEqual({ ids: 1, revision: 1, previousIds: 0 });
+    expect(changes).toEqual([
+      { ids: 2, revision: 2, previousIds: 1 },
+      { ids: 1, revision: 1, previousIds: 0 },
+    ]);
   });
 
   it('keeps the store snapshot referentially stable across non-state events', () => {

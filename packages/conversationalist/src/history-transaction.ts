@@ -87,15 +87,18 @@ export class HistoryTransaction {
     action: ConversationActionType,
     previousConversation: ConversationHistory,
     context: ConversationChangeContext = {},
+    state: { readonly conversation: ConversationHistory; readonly revision: number } = {
+      conversation: this.current,
+      revision: this.controllerRevision,
+    },
   ): ConversationEventDetail {
-    this.cachedStoreSnapshot = undefined;
     this.eventSequenceValue += 1;
     return buildConversationEventDetail(
       action,
-      this.current,
+      state.conversation,
       previousConversation,
       context,
-      this.controllerRevision,
+      state.revision,
       this.eventSequenceValue,
     );
   }
@@ -122,35 +125,48 @@ export class HistoryTransaction {
     this.currentNode.children.push(newNode);
     this.currentNode = newNode;
 
+    // Listeners can write reentrantly while events are emitted below, so every
+    // event of this commit describes the state this commit produced.
+    const committed = { conversation: safeNext, revision: this.controllerRevision };
     const pruned =
       hooks.environment.maxHistoryDepth !== undefined &&
       pruneHistoryToDepth(this.currentNode, hooks.environment.maxHistoryDepth, this.removedNodeIds);
     if (pruned) {
       hooks.emit(
         'branch.pruned',
-        this.buildEventDetail('branch.pruned', previousConversation, {
-          durability: 'snapshot',
-          outcome: 'completed',
-        }),
+        this.buildEventDetail(
+          'branch.pruned',
+          previousConversation,
+          { durability: 'snapshot', outcome: 'completed' },
+          committed,
+        ),
       );
     }
     for (const identity of hooks.takePendingPluginActivations()) {
       hooks.emit(
         'plugin.activated',
-        this.buildEventDetail('plugin.activated', previousConversation, {
-          outcome: 'completed',
-          plugin: identity,
-        }),
+        this.buildEventDetail(
+          'plugin.activated',
+          previousConversation,
+          { outcome: 'completed', plugin: identity },
+          committed,
+        ),
       );
     }
     const eventContext = {
       ...context,
       correlationId:
-        context?.correlationId ?? `${this.current.id}:revision:${this.controllerRevision}`,
+        context?.correlationId ?? `${safeNext.id}:revision:${committed.revision}`,
     };
-    hooks.emit('change', this.buildEventDetail(changeAction, previousConversation, eventContext));
+    hooks.emit(
+      'change',
+      this.buildEventDetail(changeAction, previousConversation, eventContext, committed),
+    );
     for (const eventType of emittedEvents) {
-      hooks.emit(eventType, this.buildEventDetail(eventType, previousConversation, eventContext));
+      hooks.emit(
+        eventType,
+        this.buildEventDetail(eventType, previousConversation, eventContext, committed),
+      );
     }
     this.publishStoreSnapshot();
   }
@@ -204,7 +220,9 @@ export class HistoryTransaction {
   }
 
   subscribe(notify: () => void, lifecycle: ConversationLifecycle): () => void {
-    this.assertOpen(lifecycle);
+    // The conversation can close between getSnapshot() and subscribe(); a
+    // closed store never publishes again, so there is nothing to subscribe to.
+    if (lifecycle !== 'open') return () => {};
     const subscription = { notify };
     this.storeListenersValue.add(subscription);
     let subscribed = true;
@@ -216,7 +234,16 @@ export class HistoryTransaction {
   }
 
   getSnapshot(lifecycle: ConversationLifecycle): ConversationStoreSnapshot {
-    this.cachedStoreSnapshot ??= Object.freeze({
+    const cached = this.cachedStoreSnapshot;
+    if (
+      cached &&
+      cached.conversation === this.current &&
+      cached.revision === this.controllerRevision &&
+      cached.lifecycle === lifecycle
+    ) {
+      return cached;
+    }
+    this.cachedStoreSnapshot = Object.freeze({
       conversation: this.current,
       revision: this.controllerRevision,
       lifecycle,
@@ -225,7 +252,6 @@ export class HistoryTransaction {
   }
 
   publishStoreSnapshot(): void {
-    this.cachedStoreSnapshot = undefined;
     for (const subscription of Array.from(this.storeListenersValue)) subscription.notify();
   }
 
