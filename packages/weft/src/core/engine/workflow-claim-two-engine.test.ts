@@ -1195,3 +1195,94 @@ describe('start-new over a stale cached workflow claim epoch', () => {
     expect(await statusOf(engineA, id)).toBe('running');
   });
 });
+
+describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-id start-new replacement', () => {
+  it('gated release: the replacement parked before the old run settles is still woken live by signal', async () => {
+    const id = `terminal-teardown-gated-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const workflows: ClaimWorkflows = { 'claim-race-recovery': claimRaceRecoveryWorkflow };
+    await using engineA = await createClaimEngine(storage, 'engine-a', workflows);
+
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let armed = true;
+    const holderKey = KEYS.workflowOwnerHolder(id);
+    const gatedRegistryStorage = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch') {
+          return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+            if (armed && operations.some((op) => op.type === 'delete' && op.key === holderKey)) {
+              armed = false;
+              reached.resolve();
+              await release.promise;
+            }
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    installClaimRegistry(engineA, 'engine-a', gatedRegistryStorage);
+
+    await engineA.start('claim-race-recovery', null, { id });
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+    const oldRunSettled = Promise.withResolvers<void>();
+    engineA.addEventListener('workflow:completed', (event) => {
+      if ((event as Event & { workflowId?: string }).workflowId === id) oldRunSettled.resolve();
+    });
+
+    let replacement: Awaited<ReturnType<typeof engineA.start>>;
+    try {
+      await engineA.signal(id, 'go');
+      await reached.promise;
+      expect(await statusOf(engineA, id)).toBe('completed');
+
+      replacement = await engineA.start('claim-race-recovery', null, {
+        id,
+        onTerminalConflict: 'start-new',
+      });
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      expect(getInternals(engineA).parkedInlineWorkflows.has(id)).toBe(true);
+    } finally {
+      release.resolve();
+    }
+
+    await oldRunSettled.promise;
+
+    // The old run's teardown has now run; the replacement's park state must survive it.
+    expect(getInternals(engineA).parkedInlineWorkflows.has(id)).toBe(true);
+    expect(getInternals(engineA).checkpoints.has(id)).toBe(true);
+    await engineA.signal(id, 'go');
+    expect(await replacement.result()).toBe('ran');
+  });
+
+  it('ungated: a start-new issued the instant the old run reads as terminal keeps its parked state', async () => {
+    const id = `terminal-teardown-ungated-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const workflows: ClaimWorkflows = { 'claim-race-recovery': claimRaceRecoveryWorkflow };
+    await using engineA = await createClaimEngine(storage, 'engine-a', workflows);
+    installClaimRegistry(engineA, 'engine-a', storage);
+
+    await engineA.start('claim-race-recovery', null, { id });
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+    const oldRunSettled = Promise.withResolvers<void>();
+    engineA.addEventListener('workflow:completed', (event) => {
+      if ((event as Event & { workflowId?: string }).workflowId === id) oldRunSettled.resolve();
+    });
+
+    await engineA.signal(id, 'go');
+    while ((await statusOf(engineA, id)) !== 'completed') await Bun.sleep(0);
+    const replacement = await engineA.start('claim-race-recovery', null, {
+      id,
+      onTerminalConflict: 'start-new',
+    });
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    await oldRunSettled.promise;
+
+    await engineA.signal(id, 'go');
+    expect(await replacement.result()).toBe('ran');
+  });
+});
