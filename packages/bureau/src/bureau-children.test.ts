@@ -655,9 +655,8 @@ describe('bureau.children over a durable bureau', () => {
         onDiagnostic,
       });
       try {
-        const aborted = (await second.auditTrail?.query({ runId: 'disposed-child' }))?.filter(
-          (record) => record.type === 'child.aborted',
-        );
+        const records = await second.auditTrail?.query({ runId: 'disposed-child' });
+        const aborted = records?.filter((record) => record.type === 'child.aborted');
         expect(aborted).toHaveLength(1);
         expect(
           await second.children.get({ parentRunId, childRunId: 'disposed-child' }),
