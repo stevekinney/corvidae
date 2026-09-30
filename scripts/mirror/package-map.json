@@ -16,12 +16,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.9",
+      "lastPublishedVersion": "0.27.10",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.9",
-        "gitHead": "2e9f806b8df7ab2fae31f250cc9aa1cd274cc74b",
-        "corvidaeCommit": "14015cc5db076a2ba1d4a2fbe4e17a4f3a28b30c",
+        "version": "0.27.10",
+        "gitHead": "eed5c6dc51141031cf37ce37863e3429f27742c3",
+        "corvidaeCommit": "145a1bdb230827fd749700bedfb2858b80dab644",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -196,6 +196,7 @@
             "src/core/compare-codepoint.ts",
             "src/core/compression.ts",
             "src/core/concurrency-lock-record.ts",
+            "src/core/concurrency-token-bucket.ts",
             "src/core/concurrency.ts",
             "src/core/constraint.ts",
             "src/core/context.ts",
@@ -1168,7 +1169,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "a6bcc35065b9987c7206aec9db970bd86742c6c5ac04aadb9e9966ce3b1c44c6"
+          "digest": "494c30799e2fd478068c693b737b47ec7ae4e30e8909975b8db72fdeeb3ca3bb"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1176,7 +1177,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "ce90e4fb85950f1be72eff3323b71ddc166cde76fd274f44f81dc58d86ae0ac3"
+          "digest": "56279777a11d91c38d0b4de0269f15d1dc3fed297eb2bb23f103ba82a4e30cdf"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -2283,6 +2284,14 @@
             },
             {
               "path": "package/dist/core/concurrency-lock-record.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/concurrency-token-bucket.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/concurrency-token-bucket.js",
               "executable": false
             },
             {
@@ -9110,7 +9119,7 @@
               "executable": false
             }
           ],
-          "digest": "fbbbcd7d30dd43fcc829a83c7353764677a68e7aeaade8882363a4f1adad1129"
+          "digest": "51f14bd9cd7dddeee08788b1bbb41abb10412791dd6c660e79da51b1f812e3ec"
         }
       }
     },
