@@ -7871,8 +7871,6 @@ describe('createBureau session signal authority revalidation', () => {
   });
 });
 
-// ── AB-20: review queue ──────────────────────────────────────────────
-
 /** Parks on `human-response` on its first two calls, then settles. */
 function createRepeatedHumanWaitGenerate(): GenerateFunction {
   let calls = 0;
@@ -7893,6 +7891,8 @@ function createRepeatedHumanWaitGenerate(): GenerateFunction {
     return { content: 'done', toolCalls: [] };
   };
 }
+
+// ── AB-20: review queue ──────────────────────────────────────────────
 
 /**
  * Builds a bare-bones `ActiveRun` backed by a real `CompletableEventTarget`,
@@ -8508,13 +8508,15 @@ describe('createBureau review queue (AB-20)', () => {
       expect(second!.id.split(':')[1]).toBe(run.id);
 
       // The stale first id is retired: resolving it is NOT_FOUND.
-      await expect(
-        bureau.resolveReview({
-          id: first!.id,
-          decision: 'approve',
-          principal: 'api-key:reviewer-repark',
-        }),
-      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(
+        await rejectionOf(
+          bureau.resolveReview({
+            id: first!.id,
+            decision: 'approve',
+            principal: 'api-key:reviewer-repark',
+          }),
+        ),
+      ).toMatchObject({ code: 'NOT_FOUND' });
     } finally {
       bureau.dispose();
     }
