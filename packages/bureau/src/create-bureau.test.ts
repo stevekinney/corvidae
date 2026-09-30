@@ -6439,7 +6439,6 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
     try {
       const run = await bureau.createRun({ message: 'Wait for a signal', principal: 'alice' });
@@ -7674,7 +7673,6 @@ describe('createBureau session signal/update/query with terminal sessions', () =
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
 
     const run = await bureau.createRun({ message: 'Complete me' });
@@ -7697,7 +7695,6 @@ describe('createBureau session signal/update/query with terminal sessions', () =
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
 
     const run = await bureau.createRun({ message: 'Complete me' });
@@ -8182,7 +8179,6 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
     try {
       expect(
@@ -8795,7 +8791,6 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -8814,7 +8809,6 @@ describe('createBureau review queue (AB-20)', () => {
         toolbox: createEmptyToolbox(),
         storage,
         durableExecution: true,
-        durableOwnership: { ownership: 'none' },
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
 
@@ -8883,7 +8877,6 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -8898,7 +8891,6 @@ describe('createBureau review queue (AB-20)', () => {
         toolbox: createEmptyToolbox(),
         storage,
         durableExecution: true,
-        durableOwnership: { ownership: 'none' },
       });
       try {
         expect(recoverAllSpy).not.toHaveBeenCalled();
@@ -8940,7 +8932,6 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       requestAuthorityValidator: () => true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -9119,7 +9110,6 @@ describe('createBureau review queue (AB-20)', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
         durableExecution: true,
-        durableOwnership: { ownership: 'none' },
       });
       const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
         recoverAll: () => Promise<unknown[]>;
@@ -9139,7 +9129,6 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createEmptyToolbox(),
           storage: { type: 'memory' },
           durableExecution: true,
-          durableOwnership: { ownership: 'none' },
         });
         try {
           const report = await bureau.waitForRecovery?.();
@@ -12831,7 +12820,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -12854,7 +12842,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       onlineEvals: {
         judges: [
           {
@@ -13126,7 +13113,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -13152,7 +13138,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       shutdownTimeoutSleep: sleep,
     });
 
@@ -13276,7 +13261,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -13303,7 +13287,6 @@ describe('Bureau.shutdown() (AB-207)', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
         durableExecution: true,
-        durableOwnership: { ownership: 'none' },
       });
       await bureau.dispose();
 
@@ -21070,7 +21053,6 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       stopWhen: stopWhen.noToolCalls(),
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -21129,7 +21111,6 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       checkpointRetention: { keepLast: 1 },
     });
     try {

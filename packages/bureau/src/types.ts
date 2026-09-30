@@ -650,12 +650,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * the default `ownership: 'workflow-lease'`. Pass `{ ownership: 'none' }` to
    * opt out — one bureau process per durable store, enforced by infrastructure
    * convention (one replica, a `Recreate` deploy) rather than the engine
-   * itself. Has effect only when a
-   * durable engine is composed.
+   * itself. Has effect only when a durable engine is composed.
    *
-   * Under `'workflow-lease'` more than one bureau process can safely share a durable store: Weft fences each workflow to
-   * exactly one engine before its generator runs, so a second process racing
-   * to resume the same workflow fails closed instead of double-executing it.
+   * Under `'workflow-lease'` more than one bureau process can safely share a
+   * durable store: Weft fences each workflow to exactly one engine before its
+   * generator runs, so a second process racing to resume the same workflow
+   * fails closed instead of double-executing it.
    */
   durableOwnership?: Pick<
     CreateRunEngineOptions,

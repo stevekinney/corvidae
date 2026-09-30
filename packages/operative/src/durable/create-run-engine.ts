@@ -69,10 +69,11 @@ export interface CreateRunEngineOptions {
    * engine racing to resume the same workflow fails closed with
    * `WorkflowClaimUnavailableError` instead of double-executing it.
    *
-   * Two things to weigh before opting in:
+   * One thing to weigh:
    * - **Storage requirement.** The backend must support the `conditionalBatch`
-   *   capability. `MemoryStorage` and `SQLiteStorage` both do; verify any
-   *   other backend before enabling this. The same-engine suspend/resume
+   *   capability, and construction throws without it; a backend that lacks it
+   *   must pass `ownership: 'none'`. `MemoryStorage` and `SQLiteStorage` both
+   *   support it; verify any other backend. The same-engine suspend/resume
    *   preemption path is supported under `'workflow-lease'`; the ownership
    *   claim is reacquired after a suspend and remains exclusive to that engine.
    *
@@ -325,11 +326,11 @@ export interface RunEngine {
  * the active-run adapter classifies as `error` (not a deadline timeout).
  *
  * **Multi-process safety (AB-178).** {@link CreateRunEngineOptions.ownership}
- * is host-configurable and defaults to `'workflow-lease'`, which claims every workflow for exactly one engine
- * before its generator runs, so a second engine pointed at the same store
- * fails closed on that workflow instead of double-executing it. Hosts that
- * require multi-engine safety should opt in and provide a
- * `conditionalBatch`-capable storage adapter.
+ * is host-configurable and defaults to `'workflow-lease'`, which claims every
+ * workflow for exactly one engine before its generator runs, so a second
+ * engine pointed at the same store fails closed on that workflow instead of
+ * double-executing it. Construction throws without a `conditionalBatch`-capable
+ * storage adapter; hosts that cannot provide one opt out with `'none'`.
  */
 export async function createRunEngine(options: CreateRunEngineOptions): Promise<RunEngine> {
   const checkpointStore =

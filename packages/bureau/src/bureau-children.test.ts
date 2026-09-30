@@ -576,7 +576,6 @@ describe('bureau.children over a durable bureau', () => {
       agents: hangingAgents(),
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       onDiagnostic,
     });
 
@@ -617,6 +616,37 @@ describe('bureau.children over a durable bureau', () => {
     }
   });
 
+  it('records child.aborted in the audit trail for a running child when the bureau is disposed under the default ownership', async () => {
+    const bureau = await createBureau({
+      agents: hangingAgents(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      onDiagnostic,
+    });
+
+    const parent = bureau.run('planner', 'plan');
+    const parentRunId = await startedDurableRun(bureau);
+    expect(
+      await bureau.children.dispatch({
+        parentRunId,
+        agentName: 'worker',
+        input: 'work',
+        childRunId: 'disposed-child',
+        parentCancellation: 'detach',
+      }),
+    ).toMatchObject({ outcome: 'started' });
+    parent.abort('done');
+    await parent.result();
+
+    await bureau.dispose();
+    await yieldToPortableEventLoop();
+
+    expect(diagnostics.filter((diagnostic) => diagnostic.message.includes('audit trail'))).toEqual(
+      [],
+    );
+    expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'child-topology')).toEqual([]);
+  });
+
   it('runs a createLazyAgent parent and child durably, as it does createAgent ones', async () => {
     const lazyHanging = (name: string) =>
       createLazyAgent(async () =>
@@ -626,7 +656,6 @@ describe('bureau.children over a durable bureau', () => {
       agents: { planner: lazyHanging('planner'), worker: lazyHanging('worker') },
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       onDiagnostic,
     });
 
@@ -686,7 +715,6 @@ describe('bureau.children over a durable bureau', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
-      durableOwnership: { ownership: 'none' },
       onDiagnostic,
     });
 

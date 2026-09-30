@@ -8365,6 +8365,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // listener was registered first — and a run that never honors its
       // abort only costs this bound, never a wedged shutdown.
       await awaitAbortedRunTerminals(abortedRunTerminals);
+      // A child aborted by this shutdown records its `aborted` settlement only
+      // once its own result arrives, which a durable child's fenced
+      // cancellation makes later than the drain above looked. Wait for it,
+      // under the same bound, so the audit trail is still open to take it.
+      if (policy === 'abort' && childTopology.awaitingSettlements() > 0) {
+        await awaitAbortedRunTerminals([childTopology.settlementsKnown()]);
+      }
+      await childTopology.drain();
       await sessionPersistence.drain();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
