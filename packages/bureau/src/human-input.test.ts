@@ -594,7 +594,89 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
       expect(reviews).toHaveLength(1);
       expect(reviews[0]!.id.endsWith(':human-response:1')).toBe(true);
       expect(reviews[0]!.id).not.toBe(first.id);
+
+      await bureauB.resolveReview({ id: reviews[0]!.id, decision: 'approve', principal: 'op' });
+      await waitForCondition(
+        () => bureauB.getRun(run.id)?.status === 'completed',
+        'expected bureau B to finish the recovered run before disposal',
+      );
     } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
+    }
+  });
+});
+
+describe('resolving a recovered run re-park leaves no phantom review (COR-106)', () => {
+  it('keeps listPendingReviews empty while the resumed run is still running its next step', async () => {
+    const databasePath = join(
+      tmpdir(),
+      `cor106-human-wait-phantom-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+    const park = (id: string) => ({
+      content: '',
+      toolCalls: [{ id, name: 'requestHumanInput', arguments: { signalName: 'human-response' } }],
+    });
+    const options = (generate: () => Promise<ReturnType<typeof park>>) => ({
+      agents: {},
+      generate,
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite' as const, path: databasePath },
+      durableExecution: true as const,
+      humanInput: true as const,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    const bureauA = await createBureau(options(async () => park('call-a')));
+    const run = await bureauA.createRun({ message: 'park-crash-repark-resolve' });
+    await waitForCondition(
+      () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
+      'expected bureau A to park',
+    );
+    // Not disposing bureauA: this is the crash.
+
+    let bCalls = 0;
+    let releaseNextStep: () => void = () => {};
+    const nextStepGate = new Promise<void>((resolve) => {
+      releaseNextStep = resolve;
+    });
+    const bureauB = await createBureau(
+      options(async () => {
+        bCalls++;
+        if (bCalls === 1) return park('call-b');
+        await nextStepGate; // the resumed run stays mid-step
+        return { content: 'done', toolCalls: [] };
+      }),
+    );
+    const pendingIds = (): string[] =>
+      bureauB
+        .listPendingReviews()
+        .filter((review) => review.runId === run.id)
+        .map((review) => review.id);
+
+    try {
+      await waitForCondition(() => pendingIds().length === 1, 'expected the reconstructed park');
+      const reconstructed = pendingIds()[0]!;
+      expect(reconstructed.endsWith(':human-response:0')).toBe(true);
+      await bureauB.resolveReview({ id: reconstructed, decision: 'approve', principal: 'op' });
+      await waitForCondition(
+        () => pendingIds().length === 1 && pendingIds()[0] !== reconstructed,
+        'expected the re-park to surface',
+      );
+      const repark = pendingIds()[0]!;
+      expect(repark.endsWith(':human-response:1')).toBe(true);
+      await bureauB.resolveReview({ id: repark, decision: 'approve', principal: 'op' });
+      await waitForCondition(() => bCalls >= 2, 'expected the run to resume into its next step');
+      // Let any replayed park marker land before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(bureauB.getRun(run.id)?.status).toBe('running');
+      expect(pendingIds()).toEqual([]);
+    } finally {
+      releaseNextStep();
+      await waitForCondition(
+        () => bureauB.getRun(run.id)?.status === 'completed',
+        'expected bureau B to finish the recovered run before disposal',
+      );
       await bureauA.dispose();
       await bureauB.dispose();
     }

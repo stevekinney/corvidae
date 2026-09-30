@@ -2847,7 +2847,7 @@ describe('createBureau', () => {
           ...session!.metadata,
           resolvedReviewIds: [
             `approval:${run.id}:recovered-approval`,
-            `human-wait:${run.id}:recovered-signal`,
+            `human-wait:${run.id}:recovered-signal:0`,
           ],
         },
       }));
@@ -7873,15 +7873,6 @@ describe('createBureau session signal authority revalidation', () => {
 
 // ── AB-20: review queue ──────────────────────────────────────────────
 
-/**
- * Builds a bare-bones `ActiveRun` backed by a real `CompletableEventTarget`,
- * so a test can `store.register()` it and then dispatch events onto its
- * `toObservable()` stream exactly as `operative`'s run loop would — without
- * needing a full `generate`/toolbox-driven run. Used to simulate a durable
- * run parked on `requestHumanInput` (operative's F3 HITL tool), since no
- * caller in this monorepo yet wires that tool into a real durable run (a
- * separate, tracked gap — see the AB-20 PR description).
- */
 /** Parks on `human-response` on its first two calls, then settles. */
 function createRepeatedHumanWaitGenerate(): GenerateFunction {
   let calls = 0;
@@ -7903,6 +7894,15 @@ function createRepeatedHumanWaitGenerate(): GenerateFunction {
   };
 }
 
+/**
+ * Builds a bare-bones `ActiveRun` backed by a real `CompletableEventTarget`,
+ * so a test can `store.register()` it and then dispatch events onto its
+ * `toObservable()` stream exactly as `operative`'s run loop would — without
+ * needing a full `generate`/toolbox-driven run. Used to simulate a durable
+ * run parked on `requestHumanInput` (operative's F3 HITL tool), since no
+ * caller in this monorepo yet wires that tool into a real durable run (a
+ * separate, tracked gap — see the AB-20 PR description).
+ */
 function createParkedActiveRun(): {
   activeRun: ActiveRun;
   emitter: CompletableEventTarget<CombinedOperativeEventMap>;

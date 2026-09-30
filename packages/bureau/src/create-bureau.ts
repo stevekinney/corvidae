@@ -3491,26 +3491,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const humanWaitParkBaseline = new Map<string, number>();
 
   /**
-   * Per run: action-log lengths at each moment a signal was delivered. A park
-   * recorded at or after one of them is a new park, not a duplicate of the
-   * park before it.
-   */
-  const humanWaitSignalBoundaries = new Map<string, number[]>();
-
-  /** Records that a signal is about to be delivered to `runId`; see the map above. */
-  function markHumanWaitSignalDelivered(runId: string): void {
-    humanWaitSignalBoundaries.set(runId, [
-      ...(humanWaitSignalBoundaries.get(runId) ?? []),
-      store.getRun(runId)?.actions.length ?? 0,
-    ]);
-  }
-
-  /**
    * The 0-based ordinal of the LAST distinct park in a run's action log.
    * `HumanWaitParkedEvent` can be recorded more than once for one park (the
    * tool's execute and the workflow's replay-aware marker, and the
-   * reconstruction from a checkpoint), so consecutive events on the same
-   * signal with no signal delivered between them count once. A reconstructed
+   * reconstruction from a checkpoint, and on a recovered run the marker again
+   * after the signal is delivered), so consecutive events on the same signal
+   * with no `step.started` between them count once: a genuine re-park always
+   * happens inside a later step. A reconstructed
    * park carries its durable ordinal in `detail.parkOrdinal`; otherwise the
    * count continues from the checkpoint's committed parks.
    */
@@ -3518,7 +3505,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runId: string,
     actions: readonly { type: string; detail: unknown }[],
   ): number {
-    const boundaries = humanWaitSignalBoundaries.get(runId) ?? [];
     let ordinal = (humanWaitParkBaseline.get(runId) ?? 0) - 1;
     let previous: { index: number; signalName: unknown } | undefined;
     actions.forEach((action, index) => {
@@ -3529,13 +3515,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           : undefined;
       const seeded = detail?.['parkOrdinal'];
       const signalName = detail?.['signalName'];
-      const previousIndex = previous?.index;
       if (typeof seeded === 'number') {
         ordinal = seeded;
       } else if (
-        previousIndex !== undefined &&
-        previous?.signalName === signalName &&
-        !boundaries.some((boundary) => boundary > previousIndex && boundary <= index)
+        previous !== undefined &&
+        previous.signalName === signalName &&
+        !actions.slice(previous.index + 1, index).some((entry) => entry.type === 'step.started')
       ) {
         // Duplicate record of the same park: same ordinal.
       } else {
@@ -3625,13 +3610,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         parkOrdinal: priorParks,
         ...(result.result.prompt !== undefined ? { prompt: result.result.prompt } : {}),
       });
-      // Its signal was already delivered (and the review resolved) by the dead
-      // process, which this process has no boundary for. Without one, the
-      // recovered run's re-park on the same signal would merge into this
-      // record and reuse the resolved id.
-      if (resolvedReviewIds.has(`human-wait:${runId}:${result.result.signalName}:${priorParks}`)) {
-        markHumanWaitSignalDelivered(runId);
-      }
       return;
     }
   }
@@ -4949,7 +4927,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     runToolboxesByRunId.delete(id);
     humanWaitParkBaseline.delete(id);
-    humanWaitSignalBoundaries.delete(id);
     store.removeRun(id);
     if (sessionId) {
       await retryRunDeletionPersistenceWrite('pending-approvals', sessionId, `approval:${id}:`);
@@ -6828,7 +6805,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         'CONFLICT',
       );
     }
-    markHumanWaitSignalDelivered(runId);
     await runtime.durable.engine.signal(runId, name, payload);
     // AB-13 — a signal is how a human-wait park is released (directly, or via
     // `resolveReview`'s human-wait approve path). Reacquire the concurrency
