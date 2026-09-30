@@ -238,6 +238,79 @@ describe('createLazyGenerate', () => {
     });
   });
 
+  it('delegates an abort that fires after loading to the loaded generate function', async () => {
+    const controller = new AbortController();
+    const lazy = createLazyGenerate(async () => async (context) => {
+      controller.abort('mid-generate');
+      if (context.signal?.aborted) throw new Error('generator saw abort');
+      return response;
+    });
+
+    const error = await expectRejects(lazy(createContext(controller.signal)), {
+      message: 'generator saw abort',
+    });
+    expect(error).not.toBeInstanceOf(AbortAgentRunError);
+  });
+
+  it('delegates an already-aborted signal to a generate function that has loaded', async () => {
+    const seen: unknown[] = [];
+    const lazy = createLazyGenerate(async () => async (context) => {
+      seen.push(context.signal?.reason);
+      return response;
+    });
+    await lazy(createContext());
+
+    const controller = new AbortController();
+    controller.abort('late');
+    await expectResolves(lazy(createContext(controller.signal)), response);
+    expect(seen).toEqual([undefined, 'late']);
+  });
+
+  it('does not start a duplicate load when the loader reenters the wrapper synchronously', async () => {
+    let loads = 0;
+    let inner: Promise<GenerateResponse> | undefined;
+    const lazy: GenerateFunction = createLazyGenerate(() => {
+      loads += 1;
+      if (loads === 1) inner = lazy(createContext());
+      return async () => response;
+    });
+
+    await expectResolves(lazy(createContext()), response);
+    await expectResolves(inner as Promise<GenerateResponse>, response);
+    expect(loads).toBe(1);
+  });
+
+  it('releases aborted callers when the loader never settles', async () => {
+    const lazy = createLazyGenerate(() => new Promise<GenerateFunction>(() => undefined));
+    const refs: WeakRef<AbortSignal>[] = [];
+    const outcomes: Promise<unknown>[] = [];
+
+    const start = (index: number): void => {
+      const controller = new AbortController();
+      const context = createContext(controller.signal);
+      refs.push(new WeakRef(controller.signal));
+      outcomes.push(
+        lazy(context).then(
+          () => 'resolved',
+          (error: unknown) => error,
+        ),
+      );
+      controller.abort(`caller ${index}`);
+    };
+    for (let index = 0; index < 5; index += 1) start(index);
+
+    for (const outcome of await Promise.all(outcomes)) {
+      expect(outcome).toBeInstanceOf(AbortAgentRunError);
+    }
+    outcomes.length = 0;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      Bun.gc(true);
+    }
+    expect(refs.map((ref) => ref.deref())).toEqual(refs.map(() => undefined));
+  });
+
   it('forwards a shared load failure to active callers', async () => {
     const controller = new AbortController();
     const lazy = createLazyGenerate(async () => {
