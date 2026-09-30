@@ -77,6 +77,7 @@ export const appFixtureDeclarations = {
   'review-editor-accessibility': ['assertion'],
   'review-editor-comments': ['assertion'],
   'review-editor-diff-comments': ['assertion'],
+  'review-editor-malformed-front-matter': ['assertion'],
   'review-editor-readonly': ['assertion'],
   'review-editor-scroll': ['assertion'],
   banner: ['assertion'],
