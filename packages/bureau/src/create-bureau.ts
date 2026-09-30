@@ -8347,8 +8347,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       maintenanceAdmissionClosed = true;
       // COR-772 — land every child-settlement write the run teardown above
       // produced before the audit trail and storage below go away. Only
-      // writes already under way are awaited, never a child's own result, so
-      // a child that ignores its abort cannot hold shutdown open.
+      // writes already under way are awaited here, not a child's own result.
+      // The bounded wait on child results for 'abort' shutdown comes below, so
+      // a child that ignores its abort costs at most that bound.
       await childTopology.drain();
       // Land terminal session saves already under way before the outbox
       // drain await and `backgroundShutdownController.abort()` below: a save
@@ -8365,6 +8366,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // listener was registered first — and a run that never honors its
       // abort only costs this bound, never a wedged shutdown.
       await awaitAbortedRunTerminals(abortedRunTerminals);
+      // A child aborted by this shutdown records its `aborted` settlement only
+      // once its own result arrives, which a durable child's fenced
+      // cancellation makes later than the drain above looked. Wait for it,
+      // under the same bound, so the audit trail is still open to take it.
+      if (policy === 'abort' && childTopology.awaitingSettlements() > 0) {
+        await awaitAbortedRunTerminals([childTopology.settlementsKnown()]);
+      }
+      await childTopology.drain();
       await sessionPersistence.drain();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
