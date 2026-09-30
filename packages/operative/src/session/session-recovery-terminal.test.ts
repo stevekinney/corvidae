@@ -43,7 +43,11 @@ function reconcileMetadata(session: AgentSession): AgentSession {
 
 function schemaValidation(schemaSuccess: boolean | undefined) {
   if (schemaSuccess === undefined) return {};
-  if (schemaSuccess) return { schemaValidation: { success: true }, output: { ok: true } };
+  if (schemaSuccess)
+    return {
+      schemaValidation: { success: true, error: 'private-validation-canary' },
+      output: { ok: true },
+    };
   return { schemaValidation: { success: false, error: 'private-validation-canary' } };
 }
 
