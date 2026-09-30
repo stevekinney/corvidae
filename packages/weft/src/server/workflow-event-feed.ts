@@ -60,13 +60,10 @@ function decodeCursorOrThrow(cursor: Cursor): number {
   return sequence;
 }
 
-/** Order two cursors by feed position; `'at'` means caught up. Throws on a malformed cursor. */
 export function compareCursor(a: Cursor, b: Cursor): 'before' | 'at' | 'after' {
   const delta = decodeCursorOrThrow(a) - decodeCursorOrThrow(b);
-  if (delta === 0) return 'at';
-  return delta < 0 ? 'before' : 'after';
+  return delta === 0 ? 'at' : delta < 0 ? 'before' : 'after';
 }
-
 // ---------------------------------------------------------------------------
 // Envelope
 // ---------------------------------------------------------------------------
