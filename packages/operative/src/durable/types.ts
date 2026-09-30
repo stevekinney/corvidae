@@ -46,13 +46,6 @@ export interface RunCursor {
    */
   lastAppliedConfigVersion: number;
   /**
-   * COR-104 — the steering `getAppliedFloor()` snapshot captured once when the
-   * run first executed. Replay reads this (through the `steeringBoundary` memo)
-   * instead of re-invoking the live gate. Absent on a cursor persisted before
-   * this field existed; such a run treats the floor as `0`, never a live read.
-   */
-  steeringBoundary?: number | undefined;
-  /**
    * The workflow version identifier this run was created under (see
    * {@link import('./run-workflow').createRunWorkflow}'s `version` option),
    * stamped once at run creation and carried unchanged across every subsequent

@@ -84,7 +84,6 @@ export function initialCursor(
     lastContent: '',
     schemaAttempts: 0,
     lastAppliedConfigVersion: initialAppliedConfigVersion,
-    steeringBoundary: initialAppliedConfigVersion,
     ...(version !== undefined ? { workflowVersion: version } : {}),
   };
 }

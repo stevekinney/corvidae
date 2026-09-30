@@ -158,18 +158,7 @@ export function createRunWorkflow(
         // instance. The checkpoint-store writes below exist only so the ActiveRun
         // adapter can reconstruct the RunResult post-completion; they are not the
         // workflow's own resume mechanism.
-        // COR-104: the steering floor is captured ONCE in a memo, so every replay
-        // reads the first run's value instead of the live gate. A run persisted
-        // before the snapshot existed has a stored cursor with no `steeringBoundary`;
-        // its floor is `0`, never a live read. Only a run with no stored cursor yet
-        // (a fresh run, or one that crashed before its first step committed) reads
-        // the live gate.
-        const steeringBoundary = yield* ctx.memo('steeringBoundary', async () => {
-          const stored = await checkpointStore.loadCursor(runId);
-          if (stored !== null) return stored.steeringBoundary ?? 0;
-          return runDepsFrom(ctx.services).options.steering?.getAppliedFloor?.() ?? 0;
-        });
-        let cursor: RunCursor = initialCursor(workflowVersion, steeringBoundary);
+        let cursor: RunCursor = initialCursor(workflowVersion);
         // Seed the conversation on the first run from the run's options + prompt,
         // then persist it so the adapter and any external reader see the transcript.
         const seededConversation = (() => {
@@ -191,7 +180,19 @@ export function createRunWorkflow(
           return seeded.snapshot();
         })();
         let snapshot = seededConversation;
-        yield* ctx.run('saveConversation', { runId, snapshot });
+        // COR-104: the steering floor is captured in the RESULT of this first
+        // `saveConversation` activity, not in a new replay slot: Weft keys
+        // operations by position, so adding a step ahead of this one would shift
+        // every slot of a history recorded before this change. The activity echoes
+        // the floor it was given; on replay the cached first result is returned
+        // and the live gate is never consulted. A pre-change history cached
+        // `undefined` here, so its floor is `0`, never a live read.
+        const capturedFloor = yield* ctx.run('saveConversation', {
+          runId,
+          snapshot,
+          steeringBoundary: runDepsFrom(ctx.services).options.steering?.getAppliedFloor?.() ?? 0,
+        });
+        cursor = { ...cursor, lastAppliedConfigVersion: capturedFloor ?? 0 };
         let finishReason: FinishReason = 'maximum-steps';
         let errorMessage: string | undefined;
         let errorKind: AgentRunErrorKind | undefined;
