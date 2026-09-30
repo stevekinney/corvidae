@@ -8447,6 +8447,57 @@ describe('createBureau review queue (AB-20)', () => {
     bureau.dispose();
   });
 
+  it('listPendingReviews gives a re-park on the same signal a distinct id after the first resolves', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+
+    const { activeRun, emitter } = createParkedActiveRun();
+    const runId = bureau.store.register(activeRun, 'run-repark-human-wait');
+    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'First?'));
+
+    const [first] = bureau.listPendingReviews();
+    expect(first).toBeDefined();
+    expect(first!.id.split(':')[1]).toBe(runId);
+
+    await bureau.resolveReview({
+      id: first!.id,
+      decision: 'approve',
+      principal: 'api-key:reviewer-repark',
+      payload: { approved: true },
+    });
+    expect(bureau.listPendingReviews()).toHaveLength(0);
+
+    // The run resumed and parked again on the SAME signal, later in time.
+    await Bun.sleep(5);
+    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Second?'));
+
+    const reviews = bureau.listPendingReviews();
+    expect(reviews).toHaveLength(1);
+    const [second] = reviews;
+    expect(second!.kind).toBe('human-wait');
+    expect(second!.id).not.toBe(first!.id);
+    expect(second!.id.split(':')[1]).toBe(runId);
+    if (second!.kind !== 'human-wait') throw new Error('unreachable');
+    expect(second!.prompt).toBe('Second?');
+
+    // The stale first id is retired: resolving it is NOT_FOUND.
+    await expect(
+      bureau.resolveReview({
+        id: first!.id,
+        decision: 'approve',
+        principal: 'api-key:reviewer-repark',
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    bureau.dispose();
+  });
+
   it('resolveReview approve resumes a tool-approval and executes the tool for real', async () => {
     const charges: number[] = [];
     let validatorCalls = 0;
