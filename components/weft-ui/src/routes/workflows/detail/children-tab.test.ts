@@ -155,6 +155,39 @@ describe('ChildrenTab', () => {
     });
   });
 
+  test('child rows show an active-versus-bound badge from one active-pointer fetch per distinct type (COR-15)', async () => {
+    const requested: string[] = [];
+    const client = {
+      list: async () =>
+        page([
+          summary({ id: 'wf_c1', type: 'validate-shipment', revision: 'rev-current' }),
+          summary({ id: 'wf_c2', type: 'validate-shipment', revision: 'rev-old' }),
+          summary({ id: 'wf_c3', type: 'monitor-delivery', revision: 'rev-mon' }),
+          summary({ id: 'wf_c4', type: 'monitor-delivery' }),
+        ]),
+      operations: {
+        'weft.workflows.active.get': async (input: { name: string }) => {
+          requested.push(input.name);
+          return {
+            revision: input.name === 'validate-shipment' ? 'rev-current' : 'rev-mon',
+            generation: 1,
+            activatedAt: 1,
+          };
+        },
+      },
+    };
+
+    const { getAllByText } = render(ChildrenTabHarness, {
+      props: { client, workflow: workflowState() },
+    });
+
+    await waitFor(() => {
+      expect(getAllByText('Active')).toHaveLength(2);
+    });
+    expect(getAllByText('Differs from active')).toHaveLength(1);
+    expect([...requested].sort()).toEqual(['monitor-delivery', 'validate-shipment']);
+  });
+
   test('a child row displays its truncated id and relative creation time', async () => {
     const client = {
       list: async () => page([summary({ id: 'wf_child_abcdef0123456789', createdAt: 1_000 })]),
