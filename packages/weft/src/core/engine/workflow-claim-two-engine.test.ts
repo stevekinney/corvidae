@@ -1442,6 +1442,127 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
     }
   });
 
+  /** Parks on a signal, then throws for the `fail` input and returns `ran` for any other, so an old run can fail while its same-id replacement completes. */
+  const failOrRunWorkflow = workflow({ name: 'claim-race-fail-or-run' }).execute(async function* (
+    ctx: WorkflowContext,
+    input: string,
+  ) {
+    yield* ctx.waitForSignal('go');
+    if (input === 'fail') throw new Error('old run failed');
+    return 'ran';
+  });
+
+  /** Gate the first claim release on engine A; returns the gate handles. */
+  async function createGatedSingleEngine(id: string) {
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({
+      storage,
+      workflows: { 'claim-race-fail-or-run': failOrRunWorkflow },
+      ownership: 'workflow-lease',
+      workflowClaimTtl: '1m',
+      workflowClaimRenewInterval: '5s',
+      recover: false,
+      backgroundTasks: 'manual',
+    });
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const holderKey = KEYS.workflowOwnerHolder(id);
+    let armed = true;
+    const gated = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch') {
+          return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+            if (armed && operations.some((op) => op.type === 'delete' && op.key === holderKey)) {
+              armed = false;
+              reached.resolve();
+              await release.promise;
+            }
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    installClaimRegistry(engine, 'engine-a', gated);
+    return { storage, engine, reached, release };
+  }
+
+  it('failed old run: a start-new replacement parked during the gated release survives the fail teardown', async () => {
+    const id = `terminal-teardown-failed-${nextInvocation()}`;
+    const { engine, reached, release } = await createGatedSingleEngine(id);
+    try {
+      const oldHandle = await engine.start('claim-race-fail-or-run', 'fail', { id });
+      void oldHandle.result().catch(() => undefined);
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      const oldRunSettled = Promise.withResolvers<void>();
+      engine.addEventListener('workflow:failed', (event) => {
+        if ((event as Event & { workflowId?: string }).workflowId === id) oldRunSettled.resolve();
+      });
+
+      await engine.signal(id, 'go');
+      await reached.promise;
+      const committed = await engine.get(id);
+      expect(committed?.status).toBe('failed');
+
+      const replacement = await engine.start('claim-race-fail-or-run', 'ok', {
+        id,
+        onTerminalConflict: 'start-new',
+      });
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
+      release.resolve();
+      await oldRunSettled.promise;
+
+      expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
+      await engine.signal(id, 'go');
+      expect(
+        await Promise.race([replacement.result(), Bun.sleep(1000).then(() => 'TIMEOUT')]),
+      ).toBe('ran');
+    } finally {
+      release.resolve();
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('cancelled old run: a start-new replacement parked during the gated release survives the cancel teardown', async () => {
+    const id = `terminal-teardown-cancelled-${nextInvocation()}`;
+    const { engine, reached, release } = await createGatedSingleEngine(id);
+    try {
+      const oldHandle = await engine.start('claim-race-fail-or-run', 'ok', { id });
+      void oldHandle.result().catch(() => undefined);
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      const oldRunSettled = Promise.withResolvers<void>();
+      engine.addEventListener('workflow:cancelled', (event) => {
+        if ((event as Event & { workflowId?: string }).workflowId === id) oldRunSettled.resolve();
+      });
+
+      const cancelled = engine.cancel(id);
+      await reached.promise;
+      const committed = await engine.get(id);
+      expect(committed?.status).toBe('cancelled');
+
+      const replacement = await engine.start('claim-race-fail-or-run', 'ok', {
+        id,
+        onTerminalConflict: 'start-new',
+      });
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
+      release.resolve();
+      await cancelled;
+      await oldRunSettled.promise;
+
+      expect(getInternals(engine).parkedInlineWorkflows.has(id)).toBe(true);
+      await engine.signal(id, 'go');
+      expect(
+        await Promise.race([replacement.result(), Bun.sleep(1000).then(() => 'TIMEOUT')]),
+      ).toBe('ran');
+    } finally {
+      release.resolve();
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
   it('a transient storage read failure after the terminal commit does not drop terminal delivery', async () => {
     const id = `terminal-teardown-readfail-${nextInvocation()}`;
     const { storage, engineA, engineB, reached, release } = await createGatedCrossEngine(id);
