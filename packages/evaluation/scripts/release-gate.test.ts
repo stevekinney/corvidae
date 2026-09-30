@@ -52,11 +52,11 @@ interface CommandResult {
   readonly stderr: string;
 }
 
-/** Runs the package's `release-gate` script in a separate `bun` process through the `--cwd` form. */
-async function spawnGate(...args: string[]): Promise<CommandResult> {
+/** The documented `--filter` form, from the repository root, in a separate `bun` process. */
+async function spawnFilteredGate(...args: string[]): Promise<CommandResult> {
   const child = Bun.spawn(
-    [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, 'release-gate', ...args],
-    { stdout: 'pipe', stderr: 'pipe' },
+    [process.execPath, 'run', '--filter=@lostgradient/evaluation', 'release-gate', '--', ...args],
+    { cwd: REPOSITORY_ROOT, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -64,15 +64,6 @@ async function spawnGate(...args: string[]): Promise<CommandResult> {
     child.exited,
   ]);
   return { exitCode, stdout, stderr };
-}
-
-/** The same gate set through the human `--filter` form, from the repository root. */
-async function spawnFilteredGate(...args: string[]): Promise<number> {
-  const child = Bun.spawn(
-    [process.execPath, 'run', '--filter=@lostgradient/evaluation', 'release-gate', '--', ...args],
-    { cwd: REPOSITORY_ROOT, stdout: 'ignore', stderr: 'ignore' },
-  );
-  return child.exited;
 }
 
 async function runInProcess(
@@ -123,7 +114,7 @@ function expectReport(
   return report;
 }
 
-describe('release-gate (spawned bun process, --cwd form)', () => {
+describe('runReleaseGateCommand (in process)', () => {
   test.each(['baseline', 'sampleSize'])(
     'exits 64 for a test gate file missing %s',
     async (field) => {
@@ -131,14 +122,14 @@ describe('release-gate (spawned bun process, --cwd form)', () => {
       delete gate[field];
       const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: gate });
 
-      const result = await spawnGate(
+      const result = await runInProcess([
         '--gate',
         FIXTURE_GATE_ID,
         '--gates-dir',
         gates,
         '--store',
         storePath,
-      );
+      ]);
 
       const report = expectReport(result, 64, 'configuration-error');
       expect(report.recordId).toBeNull();
@@ -168,14 +159,14 @@ describe('release-gate (spawned bun process, --cwd form)', () => {
   ])('fixture-regression with %s exits %d', async (_label, gate, exitCode, decision) => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: gate });
 
-    const result = await spawnGate(
+    const result = await runInProcess([
       '--gate',
       FIXTURE_GATE_ID,
       '--gates-dir',
       gates,
       '--store',
       storePath,
-    );
+    ]);
 
     const report = expectReport(result, exitCode, decision);
     const [decided] = await gateDecisions();
@@ -207,14 +198,14 @@ describe('release-gate (spawned bun process, --cwd form)', () => {
       }),
     });
 
-    const result = await spawnGate(
+    const result = await runInProcess([
       '--gate',
       FIXTURE_GATE_ID,
       '--gates-dir',
       gates,
       '--store',
       storePath,
-    );
+    ]);
 
     const report = expectReport(result, 3, 'insufficient-evidence');
     expect(report.gates[0]).toMatchObject({
@@ -227,10 +218,10 @@ describe('release-gate (spawned bun process, --cwd form)', () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
     const args = ['--gate', FIXTURE_GATE_ID, '--gates-dir', gates, '--store', storePath];
 
-    const firstRun = await spawnGate(...args);
+    const firstRun = await runInProcess(args);
     expect(firstRun.exitCode).toBe(0);
     const [first] = await gateDecisions();
-    const secondRun = await spawnGate(...args);
+    const secondRun = await runInProcess(args);
     expect(secondRun.exitCode).toBe(0);
     const after = await gateDecisions();
 
@@ -239,18 +230,26 @@ describe('release-gate (spawned bun process, --cwd form)', () => {
   });
 });
 
-describe('release-gate (--filter form)', () => {
-  test.each<[string, number]>([
-    ['passing', 0],
-    ['regressing', 1],
-  ])('exits with the same code as the --cwd form for a %s gate set', async (script, exitCode) => {
-    const gates = await gatesDirectory({
-      [FIXTURE_GATE_ID]: fixtureGateFile(script as 'passing' | 'regressing'),
-    });
-    const args = ['--gates-dir', gates, '--store', storePath];
-    const cwdForm = await spawnGate(...args);
-    expect(cwdForm.exitCode).toBe(exitCode);
-    expect(await spawnFilteredGate(...args)).toBe(exitCode);
+/**
+ * The one test that boots a real `bun` process: the documented
+ * `bun run --filter=@lostgradient/evaluation release-gate` invocation, from the
+ * repository root, is wired to the entry point, and its stdout, stderr and exit
+ * code carry the command's result. Every exit code is asserted in process, so
+ * nothing else in this package pays for a spawn inside the per-test budget.
+ */
+describe('release-gate (spawned bun process, --filter form)', () => {
+  test('exits 0 for a passing gate set through the documented --filter invocation', async () => {
+    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile('passing') });
+
+    const result = await spawnFilteredGate('--gates-dir', gates, '--store', storePath);
+
+    // The filter form prefixes every line with the workspace and script names and
+    // does not keep the two streams apart, so the report and the verdict line are
+    // looked for in both.
+    const output = result.stdout + result.stderr;
+    expect(result.exitCode).toBe(0);
+    expect(output).toContain('"kind": "release-gate-report"');
+    expect(output).toContain('release gate: pass (exit 0)');
   });
 });
 

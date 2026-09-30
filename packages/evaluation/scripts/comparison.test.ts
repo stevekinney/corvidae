@@ -77,13 +77,33 @@ function failure(result: CommandResult): { decision: string; exitCode: number; i
   return JSON.parse(result.stdout) as { decision: string; exitCode: number; issues: string[] };
 }
 
+/** The admission fixtures: each suite's exit code, admission decision, and stderr summary. */
+const FIXTURE_SUITES = [
+  ['fixture-vault-code', 0, 'admit'],
+  ['fixture-negative-control', 1, 'reject'],
+  ['fixture-ungoverned-scratchpad', 1, 'reject'],
+] as const;
+
+/**
+ * The one test that boots a real `bun` process: it proves the `comparison`
+ * script is wired to the entry point and that stdout, stderr and the process
+ * exit code carry the command's result. Every suite's exit code and evidence is
+ * asserted in process below, so nothing else here pays for a spawn inside the
+ * per-test budget.
+ */
 describe('comparison (spawned bun process, --cwd form)', () => {
-  test.each([
-    ['fixture-vault-code', 0, 'admit'],
-    ['fixture-negative-control', 1, 'reject'],
-    ['fixture-ungoverned-scratchpad', 1, 'reject'],
-  ] as const)('%s exits %d: %s', async (suite, exitCode, decision) => {
-    const result = await spawnComparison('--suite', suite);
+  test('fixture-vault-code exits 0: admit', async () => {
+    const result = await spawnComparison('--suite', 'fixture-vault-code');
+    expect(result.exitCode).toBe(0);
+    const evidence = await verifyComparisonEvidence(JSON.parse(result.stdout));
+    expect(evidence.admission.decision).toBe('admit');
+    expect(result.stderr).toContain('comparison: admit (exit 0)');
+  });
+});
+
+describe('runComparisonCommand', () => {
+  test.each(FIXTURE_SUITES)('%s exits %d: %s', async (suite, exitCode, decision) => {
+    const result = await run(['--suite', suite]);
     expect(result.exitCode).toBe(exitCode);
     const evidence = await verifyComparisonEvidence(JSON.parse(result.stdout));
     expect(evidence.admission.decision).toBe(decision);
@@ -91,13 +111,11 @@ describe('comparison (spawned bun process, --cwd form)', () => {
   });
 
   test('is reproducible: two runs from the same recorded seeds print identical evidence', async () => {
-    const first = await spawnComparison('--suite', 'fixture-vault-code');
-    const second = await spawnComparison('--suite', 'fixture-vault-code');
+    const first = await run(['--suite', 'fixture-vault-code']);
+    const second = await run(['--suite', 'fixture-vault-code']);
     expect(second.stdout).toBe(first.stdout);
   });
-});
 
-describe('runComparisonCommand', () => {
   test('prints one evidence document, writes the report beside it, and summarizes on stderr', async () => {
     const report = join(directory, 'reports', 'vault-code.md');
     const result = await run(['--suite', 'fixture-vault-code', '--report', report]);
