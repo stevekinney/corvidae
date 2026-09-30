@@ -22,6 +22,8 @@ artifacts/
 # download, not source.
 .hutch/
 .cottontail-tmp/
+# The main process pre-bundled by `applications/desktop`'s `build:main`.
+.main-bundle/
 .svelte-kit/
 coverage/
 playwright-report/

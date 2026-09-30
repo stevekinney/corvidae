@@ -26,6 +26,10 @@ Electrobun 2 does not distribute its SDK through npm; the `electrobun` package i
 
 Every task that reads Electrobun types depends on `prepare:devkit` in `turbo.json` for that reason — the same shape the SvelteKit application used for `svelte-kit sync`. Dependencies remain Bun's: this workspace's `bun.lock` stays authoritative and Hutch is used only to build.
 
+## The main-process bundle
+
+`build` and `build:stable` bundle the Bun main process with Bun itself (`bun run build:main`, `scripts/bundle-main-process.ts`) into `.main-bundle/index.js`, then run `electrobun build` with `DESKTOP_PREBUNDLED_MAIN=1` so `electrobun.config.ts` points `build.bun.entrypoint` at that file. Electrobun bundles the entrypoint with Cottontail's native `Bun.build`, and on the real main-process graph that bundler segfaults intermittently (COR-1389, [blackboardsh/electrobun#564](https://github.com/blackboardsh/electrobun/issues/564): 12 crashes in 960 isolated runs, none in 960 once Cottontail is handed one pre-bundled file). `dev` keeps the source entrypoint so `electrobun dev --watch` still rebuilds on main-process edits, which means `dev` can still hit the upstream crash; rerun it. `bun run clean` removes `.main-bundle`.
+
 ## Commands
 
 ```bash
