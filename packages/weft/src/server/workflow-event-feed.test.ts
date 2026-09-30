@@ -93,8 +93,24 @@ describe('compareCursor', () => {
     for (let seq = 0; seq < 3; seq += 1) {
       await backend.append(makeEnvelope({ sequence: seq }));
     }
+    const feed = createWorkflowEventFeed(backend);
+    let stored: string | undefined;
+    for await (const envelope of feed.replay({ workflowId: 'wf-1', selector: 'events' })) {
+      stored = envelope.cursor;
+    }
     const tail = await backend.snapshotTailSequence('wf-1', 'events');
-    expect(compareCursor(encodeCursor(tail), encodeCursor(tail))).toBe('at');
+    expect(tail).toBe(2);
+    expect(stored).toBeDefined();
+    expect(compareCursor(stored as string, encodeCursor(tail))).toBe('at');
+    const replayed: number[] = [];
+    for await (const envelope of feed.replay({
+      workflowId: 'wf-1',
+      selector: 'events',
+      fromCursor: stored as string,
+    })) {
+      replayed.push(envelope.sequence);
+    }
+    expect(replayed).toEqual([]);
   });
 
   it("returns 'before' when the first cursor is behind the second", () => {
