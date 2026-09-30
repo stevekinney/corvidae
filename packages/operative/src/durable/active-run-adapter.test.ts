@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
+import { createDiagnosticAgentRun } from '../agent-run';
 import { createChildRunRegistry, dispatchChildRun } from '../child-run';
 import { stopWhen } from '../conditions/index';
 import { createAgent } from '../create-agent';
@@ -54,7 +55,6 @@ import { createManualDurableEngine, spyEngine } from '../test/durable-engine';
 import { createManualCheckpointStore, createMockGenerate, waitForCondition } from '../test/index';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { RunOptions, RunResult } from '../types';
-import { createDiagnosticAgentRun } from '../agent-run';
 import { createDurableActiveRun } from './active-run-create';
 import { createRecoveredRunEventSurface } from './active-run-event-surface';
 import { reattachDurableActiveRun } from './active-run-reattach';
@@ -2887,7 +2887,11 @@ describe('AB-304: durable ActiveRun closed() awaits registered children', () => 
 
       releaseChildTool();
 
-      expect(await closedAcknowledgement).toEqual({ status: 'completed' });
+      // COR-66: a reattached parent reports unknown-effect, never completed.
+      expect(await closedAcknowledgement).toEqual({
+        status: 'unresolved',
+        reason: 'unknown-effect',
+      });
       expect(settledFlag).toBe(true);
     } finally {
       context.engine[Symbol.dispose]();
@@ -4080,7 +4084,11 @@ describe('reattachDurableActiveRun.closed()', () => {
 
       resolveGet({ status: 'cancelled' });
 
-      expect(await closedAcknowledgement).toEqual({ status: 'completed' });
+      // COR-66: a reattached run reports unknown-effect, never completed.
+      expect(await closedAcknowledgement).toEqual({
+        status: 'unresolved',
+        reason: 'unknown-effect',
+      });
     } finally {
       context.engine[Symbol.dispose]();
     }
