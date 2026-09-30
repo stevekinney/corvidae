@@ -172,8 +172,7 @@ export class HistoryTransaction {
     }
     const eventContext = {
       ...context,
-      correlationId:
-        context?.correlationId ?? `${safeNext.id}:revision:${committed.revision}`,
+      correlationId: context?.correlationId ?? `${safeNext.id}:revision:${committed.revision}`,
     };
     hooks.emit(
       'change',
