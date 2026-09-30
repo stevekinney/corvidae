@@ -185,10 +185,18 @@ describe('RestartDialog', () => {
     });
   });
 
-  test('invalidates the workflow detail and list caches after a successful restart', async () => {
+  test('invalidates the detail, list, and every per-run cache after a successful restart', async () => {
     const { client } = fakeClient();
     const queryClient = newQueryClient();
-    queryClient.setQueryData(queryKeys.workflows.detail('reconcile:installation-42'), 'stale');
+    const id = 'reconcile:installation-42';
+    const listKey = ['workflows', 'list', { status: 'completed' }] as const;
+    const timelineKey = ['workflows', 'timeline', id] as const;
+    const checkpointsKey = ['workflows', 'checkpoints', id] as const;
+    const otherRunKey = ['workflows', 'timeline', 'some-other-run'] as const;
+    queryClient.setQueryData(queryKeys.workflows.detail(id), 'stale');
+    for (const key of [listKey, timelineKey, checkpointsKey, otherRunKey]) {
+      queryClient.setQueryData(key, 'stale');
+    }
     const { getByRole, getByLabelText } = render(RestartDialogHarness, {
       props: { client, workflow: workflow(), principal: principal(), queryClient },
     });
@@ -197,11 +205,12 @@ describe('RestartDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Restart workflow' }));
 
     await waitFor(() =>
-      expect(
-        queryClient.getQueryState(queryKeys.workflows.detail('reconcile:installation-42'))
-          ?.isInvalidated,
-      ).toBe(true),
+      expect(queryClient.getQueryState(queryKeys.workflows.detail(id))?.isInvalidated).toBe(true),
     );
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(checkpointsKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(otherRunKey)?.isInvalidated).toBe(false);
   });
 
   test("a 'signalled' outcome (the id belongs to a live run) is not reported as a restart: the dialog stays open with a notice (COR-15)", async () => {

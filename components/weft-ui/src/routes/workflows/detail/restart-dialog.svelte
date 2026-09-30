@@ -144,8 +144,12 @@
       );
     },
     onSuccess: async (result) => {
+      // The engine purges the prior run, so every per-run cache for this id
+      // (detail, timeline, events, checkpoints, finalizer, ...) is stale.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(workflow.id) }),
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey }) => queryKey[0] === 'workflows' && queryKey[2] === workflow.id,
+        }),
         queryClient.invalidateQueries({ queryKey: WORKFLOWS_LIST_KEY_PREFIX }),
       ]);
       if (result.outcome === 'signalled') {
