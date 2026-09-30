@@ -13,7 +13,7 @@ import {
   normalizeAgentRunWorkflowResult,
 } from '../../src/durable/run-workflow-result';
 import { stopWhen } from '../../src/index';
-import { UnsupportedRunResultVersionError } from '../../src/run-envelope';
+import { InvalidRunResultError, UnsupportedRunResultVersionError } from '../../src/run-envelope';
 import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
 
 // Drain Weft's deferred inline-launch queue between tests (see other durable
@@ -64,6 +64,7 @@ describe('durable workflow result migration', () => {
       steps: 1,
       content: '{"answer":"legacy"}',
       finishReason: 'stop-condition',
+      schemaValidation: { success: true },
       output: { answer: 'current' },
     });
 
@@ -99,6 +100,108 @@ describe('durable workflow result migration', () => {
         ),
       ),
     ).toThrow(UnsupportedRunResultVersionError);
+  });
+});
+
+describe('normalizeAgentRunWorkflowResult shape validation', () => {
+  const valid = {
+    schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+    runId: 'run-1',
+    steps: 1,
+    content: 'done',
+    finishReason: 'stop-condition',
+  };
+
+  it('throws InvalidRunResultError for a non-object summary', () => {
+    expect(() => normalizeAgentRunWorkflowResult(null)).toThrow(InvalidRunResultError);
+    expect(() => normalizeAgentRunWorkflowResult('x')).toThrow(InvalidRunResultError);
+  });
+
+  for (const field of ['runId', 'steps', 'content', 'finishReason']) {
+    it(`rejects a summary missing ${field}`, () => {
+      const { [field]: _omitted, ...rest } = valid as Record<string, unknown>;
+      expect(() => normalizeAgentRunWorkflowResult(rest)).toThrow(InvalidRunResultError);
+    });
+  }
+
+  it('rejects wrong primitive types', () => {
+    for (const patch of [
+      { steps: '1' },
+      { steps: Number.NaN },
+      { runId: 7 },
+      { content: null },
+      { finishReason: 3 },
+    ]) {
+      expect(() => normalizeAgentRunWorkflowResult({ ...valid, ...patch })).toThrow(
+        InvalidRunResultError,
+      );
+    }
+  });
+
+  it('rejects an unknown finishReason', () => {
+    expect(() =>
+      normalizeAgentRunWorkflowResult({ ...valid, finishReason: 'exploded' }),
+    ).toThrow(InvalidRunResultError);
+  });
+
+  it('accepts every valid finishReason', () => {
+    for (const finishReason of [
+      'stop-condition',
+      'maximum-steps',
+      'aborted',
+      'error',
+      'elicitation-denied',
+      'budget-exceeded',
+      'tripwire',
+    ]) {
+      expect(normalizeAgentRunWorkflowResult({ ...valid, finishReason }).finishReason).toBe(
+        finishReason,
+      );
+    }
+  });
+
+  it('rejects schemaValidation.success true without output', () => {
+    expect(() =>
+      normalizeAgentRunWorkflowResult({ ...valid, schemaValidation: { success: true } }),
+    ).toThrow(InvalidRunResultError);
+  });
+
+  it('rejects output without schemaValidation', () => {
+    expect(() => normalizeAgentRunWorkflowResult({ ...valid, output: { a: 1 } })).toThrow(
+      InvalidRunResultError,
+    );
+  });
+
+  it('rejects output alongside schemaValidation.success false', () => {
+    expect(() =>
+      normalizeAgentRunWorkflowResult({
+        ...valid,
+        output: { a: 1 },
+        schemaValidation: { success: false, error: 'bad' },
+      }),
+    ).toThrow(InvalidRunResultError);
+  });
+
+  it('rejects a malformed schemaValidation', () => {
+    expect(() =>
+      normalizeAgentRunWorkflowResult({ ...valid, schemaValidation: { success: 'yes' } }),
+    ).toThrow(InvalidRunResultError);
+  });
+
+  it('accepts failed validation without output and optional fields', () => {
+    const summary = normalizeAgentRunWorkflowResult({
+      ...valid,
+      schemaValidation: { success: false, error: 'bad' },
+      wakeupNote: 'n',
+      humanWaitSignal: 's',
+    });
+    expect(summary.schemaValidation?.success).toBe(false);
+  });
+
+  it('still reports version and legacy-field errors first', () => {
+    expect(() => normalizeAgentRunWorkflowResult({ schemaVersion: 1 })).toThrow(
+      UnsupportedRunResultVersionError,
+    );
   });
 });
 
