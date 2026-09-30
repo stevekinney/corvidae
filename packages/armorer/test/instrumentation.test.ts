@@ -871,6 +871,36 @@ describe('COR-96 regression: non-cancelled error fallback never leaks privileged
     expect(span.ended).toBe(true);
   });
 
+  it.each(['timeout', 'internal'])(
+    'forwards the %s category to error.type with the marker in code and message',
+    (category) => {
+      const manualToolbox = createManualToolbox();
+      const span = createSpan();
+      const tracer = {
+        startSpan() {
+          return span;
+        },
+      } as unknown as Tracer;
+      const stop = instrument(manualToolbox as never, { tracer });
+      manualToolbox.dispatch('call', {
+        tool: { identity: { name: 'lookup-no-telemetry' } },
+        call: { id: 'call-1', arguments: {} },
+      });
+      manualToolbox.dispatch('error', {
+        result: {
+          callId: 'call-1',
+          error: { code: `CODE-${MARKER}`, message: `failed: ${MARKER}`, category },
+        },
+      });
+      stop();
+
+      expect(span.attributes['error.type']).toBe(category);
+      expect(containsMarker(span.status)).toBe(false);
+      expect(containsMarker(span.attributes)).toBe(false);
+      expect(containsMarker(span.exceptions)).toBe(false);
+    },
+  );
+
   it("falls back to the literal 'error' type when the result carries no category", () => {
     const manualToolbox = createManualToolbox();
     const span = createSpan();

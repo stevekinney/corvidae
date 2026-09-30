@@ -188,11 +188,13 @@ export function instrumentRun(
       if (generateSpan?.isRecording()) {
         generateSpan.setStatus({
           code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : String(error),
+          // Fixed message: the provider error text may carry privileged content.
+          message: 'Generate failed',
         });
         generateSpan.setAttribute('error.type', error instanceof Error ? error.name : '_OTHER');
         if (error instanceof Error) {
-          generateSpan.recordException(error);
+          // Name only: `recordException` would serialize the message and stack.
+          generateSpan.recordException({ name: error.name });
         }
         generateSpan.setAttribute('operative.generate.duration_ms', durationMilliseconds);
         generateSpan.end();

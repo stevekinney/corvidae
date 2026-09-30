@@ -221,12 +221,9 @@ describe('COR-96 regression: run.error and run.aborted never leak privileged con
     return false;
   }
 
-  // Scoped to the run span: the sibling `generate.error` listener has the
-  // same raw-message pattern but is outside COR-96's delivery boundary.
   function expectNoMarker(tracer: RecordingTracer) {
-    const runSpan = findSpan(tracer, 'invoke_agent');
-    expect(runSpan).toBeDefined();
-    for (const span of [runSpan!]) {
+    expect(findSpan(tracer, 'invoke_agent')).toBeDefined();
+    for (const span of tracer.spans) {
       expect(containsMarker(span.attributes)).toBe(false);
       expect(containsMarker(span.status)).toBe(false);
       expect(span.events.every((event) => !containsMarker(event.attributes))).toBe(true);
