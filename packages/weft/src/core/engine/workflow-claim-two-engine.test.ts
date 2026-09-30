@@ -1468,5 +1468,4 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
       await engineA[Symbol.asyncDispose]();
     }
   });
-
 });
