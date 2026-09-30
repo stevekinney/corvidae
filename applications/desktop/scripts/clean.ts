@@ -10,7 +10,7 @@ import path from 'node:path';
  * Removing it would make the next check re-download the whole SDK.
  */
 const projectRoot = path.dirname(import.meta.dir);
-const removable = ['dist', 'build', 'artifacts', '.cottontail-tmp'];
+const removable = ['dist', 'build', 'artifacts', '.cottontail-tmp', '.main-bundle'];
 
 await Promise.all(
   removable.map((directory) =>
