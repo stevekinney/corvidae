@@ -8474,7 +8474,6 @@ describe('createBureau review queue (AB-20)', () => {
     expect(bureau.listPendingReviews()).toHaveLength(0);
 
     // The run resumed and parked again on the SAME signal, later in time.
-    await Bun.sleep(5);
     emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Second?'));
 
     const reviews = bureau.listPendingReviews();
@@ -8494,6 +8493,45 @@ describe('createBureau review queue (AB-20)', () => {
         principal: 'api-key:reviewer-repark',
       }),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+    bureau.dispose();
+  });
+
+  it('listPendingReviews gives a re-park a distinct id under a frozen clock', async () => {
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      runtime,
+    });
+    spyOn(bureau, 'signalSession').mockImplementation(async () => {});
+
+    const { activeRun, emitter } = createParkedActiveRun();
+    const runId = bureau.store.register(activeRun, 'run-repark-frozen-clock');
+    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'First?'));
+    const [first] = bureau.listPendingReviews();
+    await bureau.resolveReview({
+      id: first!.id,
+      decision: 'approve',
+      principal: 'reviewer-frozen',
+    });
+    expect(bureau.listPendingReviews()).toHaveLength(0);
+
+    // No clock advance and no sleep: both parks carry the identical timestamp.
+    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Second?'));
+    const actions = bureau.store
+      .getRun(runId)!
+      .actions.filter((action) => action.type === HumanWaitParkedEvent.type);
+    expect(actions).toHaveLength(2);
+    expect(actions[1]!.timestamp).toBe(actions[0]!.timestamp);
+
+    const reviews = bureau.listPendingReviews();
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]!.id).not.toBe(first!.id);
+    expect(reviews[0]!.id.split(':')[1]).toBe(runId);
 
     bureau.dispose();
   });
@@ -10167,7 +10205,7 @@ describe('createBureau review queue (AB-20)', () => {
     await bureau.deleteRun(runId);
 
     // A new run REUSES the same run id and produces the exact same review id
-    // (`human-wait:${runId}:human-response:<timestamp>` when parked in the same millisecond). Before the fix, this id was
+    // (`human-wait:${runId}:human-response:0`, the first park ordinal). Before the fix, this id was
     // still in `resolvedReviewIds` from the first run, so it would never
     // surface — after the fix, deleting the first run pruned it.
     const second = createParkedActiveRun();
@@ -10838,7 +10876,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
       const approvalReviewId = `approval:${runId}:call-abort-1`;
-      // The id ends in the park timestamp, so read it from the pending list.
+      // The id ends in the park ordinal, so read it from the pending list.
       const humanWaitReviewId = bureau
         .listPendingReviews()
         .find((review) => review.kind === 'human-wait')!.id;
@@ -11388,7 +11426,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
       const approvalReviewId = `approval:${runId}:call-abort-events-1`;
-      // The id ends in the park timestamp, so read it from the pending list.
+      // The id ends in the park ordinal, so read it from the pending list.
       const humanWaitReviewId = bureau
         .listPendingReviews()
         .find((review) => review.kind === 'human-wait')!.id;

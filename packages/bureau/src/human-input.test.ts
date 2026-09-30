@@ -31,7 +31,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, HumanWaitParkedEvent, stopWhen } from '@lostgradient/operative';
 import {
   createProcessLocalGrantStateStore,
   createTool,
@@ -320,6 +320,71 @@ describe('requestHumanInput park survives a process restart while still parked (
 
       const finalRun = bureauB.getRun(run.id);
       expect(finalRun?.status).toBe('completed');
+      expect(bureauB.listPendingReviews()).toHaveLength(0);
+    } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
+    }
+  });
+});
+
+describe('a resolved human-wait review stays resolved across a restart (COR-106)', () => {
+  it('does not resurface a park whose resolved id was persisted before the crash', async () => {
+    // resolveReview approved the park and persisted its id, then the process
+    // died before the run committed a step past the park. On recovery the
+    // last checkpointed step is still the park, so it is re-synthesized; its
+    // id must equal the persisted one or it would show as pending again.
+    const databasePath = join(
+      tmpdir(),
+      `cor106-human-wait-resolved-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+
+    const bureauA = await createBureau({
+      agents: {},
+      generate: async () => ({
+        content: '',
+        toolCalls: [
+          { id: 'call-1', name: 'requestHumanInput', arguments: { signalName: 'human-response' } },
+        ],
+      }),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    const run = await bureauA.createRun({ message: 'park-me' });
+    await waitForCondition(
+      () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
+      'expected bureau A to park on requestHumanInput before the simulated crash',
+    );
+    const parkedId = bureauA.listPendingReviews()[0]!.id;
+    await bureauA.sessionStore!.update(run.sessionId, (session) => ({
+      ...session!,
+      metadata: { ...session!.metadata, resolvedReviewIds: [parkedId] },
+    }));
+    // Not disposing bureauA: this is the crash.
+
+    const bureauB = await createBureau({
+      agents: {},
+      generate: async () => ({ content: 'resumed', toolCalls: [] }),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    try {
+      // The park must have been reconstructed into the live action log.
+      await waitForCondition(
+        () =>
+          bureauB.store
+            .getRun(run.id)
+            ?.actions.some((action) => action.type === HumanWaitParkedEvent.type) === true,
+        'expected bureau B to reconstruct the park action',
+      );
       expect(bureauB.listPendingReviews()).toHaveLength(0);
     } finally {
       await bureauA.dispose();

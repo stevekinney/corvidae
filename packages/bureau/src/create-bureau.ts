@@ -3483,6 +3483,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * For a run recovered mid-park: the exclusive upper bound on action-log
+   * indexes in which a live `HumanWaitParkedEvent` is still the recovered
+   * dispatch REPLAYING the park `reconstructHumanWaitReviewIfParked` already
+   * recorded (rather than a genuinely new park). `Infinity` until a signal is
+   * delivered; `signalSession` then freezes it at the log length at that
+   * moment, so later parks on the same signal count as new ones.
+   */
+  const humanWaitReplayWindow = new Map<string, number>();
+
+  /**
+   * The 0-based ordinal of the LAST `HumanWaitParkedEvent` in a run's action
+   * log. A reconstructed park carries its durable ordinal in
+   * `detail.parkOrdinal`; live parks count up from the previous park (or 0),
+   * except that a live park replaying a just-reconstructed one, with the same
+   * signal and before any signal was delivered, is the SAME park.
+   */
+  function humanWaitParkOrdinal(
+    runId: string,
+    actions: readonly { type: string; detail: unknown }[],
+  ): number {
+    const replayWindowEnd = humanWaitReplayWindow.get(runId) ?? 0;
+    let ordinal = -1;
+    let previous: { seeded: boolean; signalName: unknown } | undefined;
+    actions.forEach((action, index) => {
+      if (action.type !== HumanWaitParkedEvent.type) return;
+      const detail =
+        action.detail !== null && typeof action.detail === 'object'
+          ? (action.detail as Record<string, unknown>)
+          : undefined;
+      const seeded = detail?.['parkOrdinal'];
+      const signalName = detail?.['signalName'];
+      if (typeof seeded === 'number') {
+        ordinal = seeded;
+      } else if (
+        previous?.seeded === true &&
+        previous.signalName === signalName &&
+        index < replayWindowEnd
+      ) {
+        // Replay of the reconstructed park: same ordinal.
+      } else {
+        ordinal += 1;
+      }
+      previous = { seeded: typeof seeded === 'number', signalName };
+    });
+    return ordinal;
+  }
+
+  /**
    * AB-336 — reconstructs the `human-wait` pending review for a run
    * recovered mid-park.
    *
@@ -3536,12 +3584,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const lastStep = steps[steps.length - 1];
     if (!lastStep) return;
+    // Parks committed to the checkpoint before this one. The reconstructed
+    // action carries the resulting ordinal so the review id matches the one
+    // the pre-crash process minted (and persisted in `resolvedReviewIds`).
+    let priorParks = 0;
+    for (const step of steps) {
+      if (step === lastStep) break;
+      for (const result of step.results) {
+        if (
+          result.toolName === 'requestHumanInput' &&
+          isParkedRequestHumanInputResult(result.result)
+        ) {
+          priorParks++;
+        }
+      }
+    }
     for (const result of lastStep.results) {
       if (result.toolName !== 'requestHumanInput') continue;
       if (!isParkedRequestHumanInputResult(result.result)) continue;
+      humanWaitReplayWindow.set(runId, Number.POSITIVE_INFINITY);
       store.recordAction(runId, HumanWaitParkedEvent.type, {
         signalName: result.result.signalName,
         runId,
+        parkOrdinal: priorParks,
         ...(result.result.prompt !== undefined ? { prompt: result.result.prompt } : {}),
       });
       return;
@@ -6738,6 +6803,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         'CONFLICT',
       );
     }
+    if (humanWaitReplayWindow.has(runId)) {
+      humanWaitReplayWindow.set(runId, store.getRun(runId)?.actions.length ?? 0);
+    }
     await runtime.durable.engine.signal(runId, name, payload);
     // AB-13 — a signal is how a human-wait park is released (directly, or via
     // `resolveReview`'s human-wait approve path). Reacquire the concurrency
@@ -7256,13 +7324,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             : undefined;
         const signalName = detail?.['signalName'];
         if (typeof signalName === 'string' && signalName.length > 0) {
-          // The park timestamp differentiates repeated parks on the same
-          // signal, so a re-park after an earlier park resolved is not
-          // suppressed by the earlier park's `resolvedReviewIds` entry. A
-          // recovered park is re-recorded with a fresh timestamp
-          // (`reconstructHumanWaitReviewIfParked`), so its id changes across
-          // a restart.
-          const id = `human-wait:${runId}:${signalName}:${parkedAction.timestamp}`;
+          // The park ordinal (the nth park of this run, 0-based) differentiates
+          // repeated parks on the same signal, so a re-park after an earlier
+          // park resolved is not suppressed by the earlier park's
+          // `resolvedReviewIds` entry. Unlike a timestamp it is unique under a
+          // frozen clock, and it survives recovery:
+          // `reconstructHumanWaitReviewIfParked` seeds it from the durable
+          // checkpoint's count of prior parks.
+          const id = `human-wait:${runId}:${signalName}:${humanWaitParkOrdinal(runId, runState.actions)}`;
           if (!resolvedReviewIds.has(id)) {
             const promptValue = detail?.['prompt'];
             const prompt = typeof promptValue === 'string' ? promptValue : undefined;
@@ -7928,7 +7997,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (pending) return pending;
     if (!auditTrailInstance) return undefined;
 
-    // Ids are `approval:${runId}:${callId}` / `human-wait:${runId}:${signalName}:${parkedAt}`
+    // Ids are `approval:${runId}:${callId}` / `human-wait:${runId}:${signalName}:${parkOrdinal}`
     // — the run id is always the second colon-delimited segment.
     const [, runId] = id.split(':');
     if (!runId) return undefined;

@@ -849,7 +849,7 @@ export interface PendingToolApprovalReview {
  */
 export interface PendingHumanWaitReview {
   kind: 'human-wait';
-  /** Stable id for this review, e.g. `human-wait:<runId>:<signalName>`. */
+  /** Id for this review, e.g. `human-wait:<runId>:<signalName>:<parkOrdinal>`; distinct per park, stable across restart. */
   id: string;
   runId: string;
   sessionId: string;
