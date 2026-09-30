@@ -221,11 +221,14 @@ function mapOneAnchorThroughTransaction(
   // there. Mapping backward leaves the start before them, so the range would
   // begin with a block separator and read as drifted. When the forward
   // mapping recovers the tracked quote and the backward one does not, prefer it.
+  // Only structural insertions qualify: typed text at `anchor.from` must stay
+  // inside the range, matching the inclusive-boundary behavior at the end.
   if (mappedFrom < mappedTo && newDoc.textBetween(mappedFrom, mappedTo, '\n') !== anchor.quote) {
     const forwardFrom = tr.mapping.map(anchor.from, 1);
     if (
       forwardFrom > mappedFrom &&
       forwardFrom < mappedTo &&
+      newDoc.textBetween(mappedFrom, forwardFrom, '\n').replaceAll('\n', '') === '' &&
       newDoc.textBetween(forwardFrom, mappedTo, '\n') === anchor.quote
     ) {
       mappedFrom = forwardFrom;

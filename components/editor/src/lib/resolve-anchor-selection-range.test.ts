@@ -165,6 +165,37 @@ describe('resolveAnchorSelectionRange (cinder#1304)', () => {
     expect(view.state.doc.textBetween(range.from, range.to, '\n')).toBe('Commented');
   });
 
+  test('text typed at the anchor start extends the anchor, like text typed at its end', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    clock = installFakeClock();
+    editorState = await drainMount(
+      createEditor(container, {
+        initialContent: 'Preface paragraph.\n\nCommented text follows in this paragraph.',
+        plugins: [createAnchorPlugin()],
+      }),
+      clock,
+    );
+    const { view } = editorState;
+    if (!view) throw new Error('view not ready');
+
+    view.dispatch(
+      view.state.tr.setMeta(anchorPluginKey, {
+        type: 'sync',
+        threads: [makeThread()],
+        source: 'external',
+      }),
+    );
+
+    view.dispatch(view.state.tr.insertText('XX', 21));
+    const atStart = resolveAnchorSelectionRange(view, 'thread-shift', { from: 21, to: 30 });
+    expect(view.state.doc.textBetween(atStart.from, atStart.to, '\n')).toBe('XXCommented');
+
+    view.dispatch(view.state.tr.insertText('YY', atStart.to));
+    const atEnd = resolveAnchorSelectionRange(view, 'thread-shift', { from: 21, to: 30 });
+    expect(view.state.doc.textBetween(atEnd.from, atEnd.to, '\n')).toBe('XXCommentedYY');
+  });
+
   test('falls back to the caller-provided range when the plugin has no live entry for the thread', async () => {
     const container = document.createElement('div');
     document.body.append(container);

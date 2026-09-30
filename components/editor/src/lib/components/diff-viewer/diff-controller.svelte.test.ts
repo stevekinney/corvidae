@@ -4,6 +4,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
+import { installFakeClock } from '../../test/fake-clock.js';
 import { mountDiffController } from './diff-controller-test-helpers.svelte.ts';
 import type { DiffControllerOptions } from './diff-controller.svelte.ts';
 
@@ -60,13 +61,18 @@ describe('createDiffController gating after the debounce fires', () => {
   });
 
   test('a document at the debounced threshold waits for the debounce instead of computing at once', async () => {
-    const controller = await mount('a'.repeat(5), { ...small, debounceMs: 50 });
-    expect(controller.state.isStale).toBe(true);
-    expect(controller.state.diffs).toEqual([]);
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    await tick();
-    expect(controller.state.isStale).toBe(false);
-    expect(controller.state.diffs.length).toBeGreaterThan(0);
+    const clock = installFakeClock();
+    try {
+      const controller = await mount('a'.repeat(5), { ...small, debounceMs: 50 });
+      expect(controller.state.isStale).toBe(true);
+      expect(controller.state.diffs).toEqual([]);
+      clock.advance(50);
+      await tick();
+      expect(controller.state.isStale).toBe(false);
+      expect(controller.state.diffs.length).toBeGreaterThan(0);
+    } finally {
+      clock.restore();
+    }
   });
 
   test('a document one unit below the manual threshold is computed after the debounce', async () => {
