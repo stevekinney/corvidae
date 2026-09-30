@@ -16,8 +16,15 @@
    * network failure re-sends the SAME id and converges instead of
    * delivering twice. The fresh run reuses the prior run's `id`, `type`,
    * `input`, and `tags`. This operation is `destructive: true`: the prior
-   * terminal run is purged as part of the replace, and a still-live run is
-   * never displaced (the call faults `Conflict`, rendered below).
+   * terminal run is purged as part of the replace. A still-live run is never
+   * displaced and the call does NOT fault: the engine signals the live run
+   * instead ("Non-terminal targets are still signalled, not replaced",
+   * `StartOrSignalOptions.onTerminalConflict`) and the handle reports
+   * `outcome: 'signalled'`. That happens when the page is stale, another
+   * operator restarted the run first, or a retry's first attempt already
+   * landed. The dialog then does NOT claim a restart: it invalidates the
+   * caches (the signal was delivered) and stays open with an explicit
+   * notice; only `outcome: 'started'` reports success and closes.
    *
    * ## Showing the revision before confirming
    *
@@ -39,6 +46,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type {
     ClientStartOrSignalOptions,
+    StartOrSignalOutcome,
     StartOrSignalSignal,
     WorkflowState,
   } from '@lostgradient/weft';
@@ -58,7 +66,7 @@
      * `startOrSignal` is narrowed to the one string-name shape this dialog
      * calls, past `HttpClient`'s overloaded, registry-generic signature, so
      * a plain test fake can satisfy it; a real `HttpClient` does structurally
-     * (its `ClientHandle` result is assignable to `{ id: string }`).
+     * (its `ClientHandle` result is assignable to `{ id, outcome }`).
      */
     readonly client: {
       startOrSignal(
@@ -66,7 +74,7 @@
         input: unknown,
         signal: StartOrSignalSignal,
         options?: ClientStartOrSignalOptions,
-      ): Promise<{ readonly id: string }>;
+      ): Promise<{ readonly id: string; readonly outcome?: StartOrSignalOutcome | undefined }>;
     } & WorkflowActiveRevisionClient;
     /** The terminal run being restarted. */
     readonly workflow: WorkflowState;
@@ -84,6 +92,8 @@
   let open = $state(true);
   let signalName = $state('');
   let payloadText = $state('{}');
+  /** True once a call resolved `'signalled'`: no restart happened. */
+  let signalledToLiveRun = $state(false);
 
   // One id per dialog open — see the module doc on retry convergence.
   const signalId = `console-restart-${crypto.randomUUID()}`;
@@ -108,7 +118,9 @@
     }
   });
 
-  const canSubmit = $derived(signalName.trim().length > 0 && payloadError === undefined);
+  const canSubmit = $derived(
+    signalName.trim().length > 0 && payloadError === undefined && !signalledToLiveRun,
+  );
 
   const restartMutation = createMutation(() => ({
     mutationFn: () => {
@@ -130,11 +142,15 @@
         },
       );
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(workflow.id) }),
         queryClient.invalidateQueries({ queryKey: ['workflows', 'list'] }),
       ]);
+      if (result.outcome === 'signalled') {
+        signalledToLiveRun = true;
+        return;
+      }
       onRestarted?.();
       open = false;
       onClose();
@@ -200,6 +216,14 @@
         error={payloadError ?? ''}
       />
 
+      {#if signalledToLiveRun}
+        <p class="weft-restart-dialog__notice" role="alert">
+          This run was not restarted: it is already live under this id, so the signal was delivered
+          to it instead. Another operator may have restarted it first, or an earlier attempt already
+          landed. Close this dialog to see its current state.
+        </p>
+      {/if}
+
       {#if restartMutation.isError}
         <p class="weft-restart-dialog__error" role="alert">
           {faultTreatment(restartMutation.error).message}
@@ -251,6 +275,10 @@
   .weft-restart-dialog__hedge {
     color: var(--cinder-text-subtle);
     font-size: var(--cinder-text-2xs);
+  }
+
+  .weft-restart-dialog__notice {
+    font-size: var(--cinder-text-xs);
   }
 
   .weft-restart-dialog__error {

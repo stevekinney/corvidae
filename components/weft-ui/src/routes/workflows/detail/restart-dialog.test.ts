@@ -41,7 +41,10 @@ interface StartOrSignalCall {
 function fakeClient(
   overrides: {
     activeRevision?: () => Promise<unknown>;
-    startOrSignal?: () => Promise<{ readonly id: string }>;
+    startOrSignal?: () => Promise<{
+      readonly id: string;
+      readonly outcome?: 'started' | 'signalled';
+    }>;
   } = {},
 ) {
   const calls: StartOrSignalCall[] = [];
@@ -201,7 +204,62 @@ describe('RestartDialog', () => {
     );
   });
 
-  test('a rejected restart (the id was reused by a live run) renders the fault and stays open', async () => {
+  test("a 'signalled' outcome (the id belongs to a live run) is not reported as a restart: the dialog stays open with a notice (COR-15)", async () => {
+    const { client } = fakeClient({
+      startOrSignal: async () => ({ id: 'reconcile:installation-42', outcome: 'signalled' }),
+    });
+    let restarted = 0;
+    let closed = 0;
+    const queryClient = newQueryClient();
+    queryClient.setQueryData(queryKeys.workflows.detail('reconcile:installation-42'), 'stale');
+    const { getByRole, getByLabelText, findByText } = render(RestartDialogHarness, {
+      props: {
+        client,
+        workflow: workflow(),
+        principal: principal(),
+        queryClient,
+        onRestarted: () => (restarted += 1),
+        onClose: () => (closed += 1),
+      },
+    });
+
+    await fireEvent.input(getByLabelText('Signal name'), { target: { value: 'resync' } });
+    await fireEvent.click(getByRole('button', { name: 'Restart workflow' }));
+
+    expect(await findByText(/was not restarted/)).not.toBeNull();
+    expect(restarted).toBe(0);
+    expect(closed).toBe(0);
+    expect(getByRole('button', { name: 'Restart workflow' }).hasAttribute('disabled')).toBe(true);
+    // The signal did land, so the caches still refresh.
+    expect(
+      queryClient.getQueryState(queryKeys.workflows.detail('reconcile:installation-42'))
+        ?.isInvalidated,
+    ).toBe(true);
+  });
+
+  test("a 'started' outcome reports the restart and closes", async () => {
+    const { client } = fakeClient({
+      startOrSignal: async () => ({ id: 'reconcile:installation-42', outcome: 'started' }),
+    });
+    let restarted = 0;
+    let closed = 0;
+    const { getByRole, getByLabelText } = render(RestartDialogHarness, {
+      props: {
+        client,
+        workflow: workflow(),
+        principal: principal(),
+        queryClient: newQueryClient(),
+        onRestarted: () => (restarted += 1),
+        onClose: () => (closed += 1),
+      },
+    });
+    await fireEvent.input(getByLabelText('Signal name'), { target: { value: 'resync' } });
+    await fireEvent.click(getByRole('button', { name: 'Restart workflow' }));
+    await waitFor(() => expect(restarted).toBe(1));
+    expect(closed).toBe(1);
+  });
+
+  test('a rejected restart renders the fault and stays open', async () => {
     const { client } = fakeClient({
       startOrSignal: async () => {
         throw new HttpClientError(409, 'workflow already exists and is not terminal', {
@@ -228,6 +286,5 @@ describe('RestartDialog', () => {
     expect(await findByText(/already exists/)).not.toBeNull();
     expect(restarted).toBe(0);
     expect(closed).toBe(0);
-    expect(getByRole('button', { name: 'Restart workflow' })).not.toBeNull();
   });
 });

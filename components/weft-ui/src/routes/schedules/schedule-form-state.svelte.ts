@@ -134,6 +134,8 @@ export class ScheduleFormState {
   readonly initialOverlap: ScheduleOverlapPolicy;
   readonly initialJitterText: string;
   readonly initialBackfill: boolean;
+  /** The cadence as loaded, in wire form, so `isDirty` sees a cadence-only edit. */
+  readonly initialCadenceSpec: string;
 
   constructor(init: ScheduleFormInit = {}) {
     this.id = withDefault(init.id, this.id);
@@ -151,6 +153,7 @@ export class ScheduleFormState {
     this.initialOverlap = this.overlap;
     this.initialJitterText = this.jitterText.trim();
     this.initialBackfill = this.backfill;
+    this.initialCadenceSpec = JSON.stringify(scheduleValueToWireSpec(this.cadence));
   }
 
   get errors(): ScheduleFormFieldErrors {
@@ -223,6 +226,7 @@ export class ScheduleFormState {
   /** Whether any editable field differs from what the draft was constructed with. Lets the edit drawer keep an operator's unsaved changes when a background refetch delivers newer server data (COR-15). */
   get isDirty(): boolean {
     return (
+      JSON.stringify(scheduleValueToWireSpec(this.cadence)) !== this.initialCadenceSpec ||
       this.description !== this.initialDescription ||
       this.overlap !== this.initialOverlap ||
       this.jitterText.trim() !== this.initialJitterText ||

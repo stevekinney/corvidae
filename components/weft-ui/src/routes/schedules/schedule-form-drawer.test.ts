@@ -196,6 +196,93 @@ describe('ScheduleFormDrawer — edit', () => {
     }
   });
 
+  test('a background refetch after the schedule fires does not discard an unsaved cadence-only edit, and the edit still saves (COR-15 review)', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'cadence-edit',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    let closed = false;
+    let queryClient: QueryClient | undefined;
+    try {
+      const { container, getByRole } = render(ScheduleFormDrawerHarness, {
+        props: {
+          client,
+          mode: 'edit',
+          scheduleId: 'cadence-edit',
+          onClose: () => (closed = true),
+          onQueryClient: (qc) => (queryClient = qc),
+        },
+      });
+
+      // Edit ONLY the cadence: the hour of the cron expression, 2 -> 5.
+      const hour = await waitFor(() => {
+        const field = container.querySelector('input[id$="cron-field-1-raw"]');
+        if (!(field instanceof HTMLInputElement)) throw new Error('hour field not rendered');
+        return field;
+      });
+      await fireEvent.input(hour, { target: { value: '5' } });
+      await fireEvent.blur(hour);
+
+      // The schedule fires (or a run completes): `updatedAt` moves while the
+      // cadence stays what the server has.
+      const before = await server.engine.getSchedule('cadence-edit');
+      await server.engine.updateSchedule('cadence-edit', '0 2 * * *', {
+        description: 'touched by a fire',
+      });
+      if (queryClient === undefined) throw new Error('queryClient was never captured');
+      await queryClient.invalidateQueries({ queryKey: scheduleDetailQueryKey('cadence-edit') });
+      await waitFor(() => {
+        const cached = queryClient?.getQueryData<{ updatedAt: number }>(
+          scheduleDetailQueryKey('cadence-edit'),
+        );
+        expect(cached?.updatedAt).not.toBe(before?.updatedAt);
+      });
+
+      // The unsaved cadence edit survives the refetch.
+      await fireEvent.click(getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(closed).toBe(true));
+      const saved = await server.engine.getSchedule('cadence-edit');
+      expect(saved?.cronExpression).toBe('0 5 * * *');
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("switching to another schedule while the form is dirty rebuilds the form instead of saving one schedule's edits onto the other (COR-15 review)", async () => {
+    const server = await startLiveSourceTestServer();
+    for (const id of ['switch-a', 'switch-b']) {
+      await server.engine.schedule({
+        workflow: 'inventory-sync-sweep',
+        id,
+        cron: '0 2 * * *',
+        input: {},
+        description: id,
+      });
+    }
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    try {
+      const { getByRole, rerender } = render(ScheduleFormDrawerHarness, {
+        props: { client, mode: 'edit', scheduleId: 'switch-a', onClose: () => {} },
+      });
+      const description = await waitFor(() => getByRole('textbox', { name: 'Description' }));
+      await fireEvent.input(description, { target: { value: 'dirty edit for a' } });
+
+      await rerender({ client, mode: 'edit', scheduleId: 'switch-b', onClose: () => {} });
+      await waitFor(() =>
+        expect(
+          requireElement(getByRole('textbox', { name: 'Description' }), HTMLInputElement).value,
+        ).toBe('switch-b'),
+      );
+    } finally {
+      await server.stop();
+    }
+  });
+
   test('saving edited description, overlap, backfill, and jitter persists them (COR-15)', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({

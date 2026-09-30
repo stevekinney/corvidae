@@ -84,8 +84,11 @@
     const schedule = editDetailQuery.data;
     if (!schedule) return;
     const current = untrack(() => form);
-    if (current !== undefined && builtFromUpdatedAt === schedule.updatedAt) return;
-    if (current !== undefined && current.isDirty) return;
+    // A form built for a different schedule is never kept: saving it would
+    // write that schedule's edits onto this one.
+    const sameSchedule = current !== undefined && current.id === schedule.id;
+    if (sameSchedule && builtFromUpdatedAt === schedule.updatedAt) return;
+    if (sameSchedule && current.isDirty) return;
     builtFromUpdatedAt = schedule.updatedAt;
     form = new ScheduleFormState({
       id: schedule.id,
