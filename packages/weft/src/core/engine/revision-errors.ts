@@ -114,8 +114,10 @@ export type EagerRecoveryRefusalReason =
  *   in a way the policy forbids; `compatibilityReasons` is the ordered list.
  * - `reason: 'persisted-revision-not-installed'` - the durable catalog has no
  *   entry for the run's persisted revision.
- * - `reason: 'registered-revision-unknown'` - this process has no catalog
- *   revision recorded for the registered eager type (fail closed).
+ * - `reason: 'registered-revision-unknown'` - the registered eager type's
+ *   revision cannot be resolved: this process has no catalog revision recorded
+ *   for it, or the recorded revision has no durable catalog entry (fail
+ *   closed). `registeredRevision` is populated when a revision was known.
  *
  * `engine.resume(id)` rejects with it; `engine.recoverAll()` rethrows it and
  * aborts the batch. `RecoverAllOptions.versionMismatchPolicy` does not apply.
@@ -157,7 +159,9 @@ export class EagerRecoveryRevisionRefusedError extends WeftError<'EagerRecoveryR
           ? `registered revision "${details.registeredRevision}" is not compatible with persisted revision "${details.persistedRevision}" (${(details.compatibilityReasons ?? []).join(', ')}).`
           : details.reason === 'persisted-revision-not-installed'
             ? `persisted revision "${details.persistedRevision}" is not installed in the durable catalog.`
-            : `no registered revision is known for the eager type in this process (persisted revision "${details.persistedRevision}").`),
+            : details.registeredRevision === undefined
+              ? `no registered revision is known for the eager type in this process (persisted revision "${details.persistedRevision}").`
+              : `registered revision "${details.registeredRevision}" could not be resolved from the durable catalog (persisted revision "${details.persistedRevision}").`),
     );
     this.workflowId = details.workflowId;
     this.workflowType = details.workflowType;

@@ -11,6 +11,7 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { OWNERSHIP_CLAIM_KEYS } from '../../storage/ownership-keys.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
+import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 
 import { decode, encode } from '../codec.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
@@ -56,16 +57,6 @@ async function refusalOf(promise: Promise<unknown>): Promise<EagerRecoveryRevisi
     });
   }
   return error;
-}
-
-/** Resolves with the rejection reason of `promise`, failing if it fulfils. */
-async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
-  try {
-    await promise;
-  } catch (error) {
-    return error;
-  }
-  throw new Error('Expected the promise to reject');
 }
 
 async function readState(storage: MemoryStorage, id: string): Promise<WorkflowState> {
@@ -417,6 +408,7 @@ describe('eager-type recovery revision policy (COR-13)', () => {
         ),
       );
       expect(refusal.reason).toBe('registered-revision-unknown');
+      expect(refusal.message).toContain('no registered revision is known');
     });
 
     it("refuses with 'registered-revision-unknown' when the registered revision has no catalog entry", async () => {
@@ -443,6 +435,8 @@ describe('eager-type recovery revision policy (COR-13)', () => {
       );
       expect(refusal.reason).toBe('registered-revision-unknown');
       expect(refusal.registeredRevision).toBe('sha256:registered');
+      expect(refusal.message).toContain('"sha256:registered" could not be resolved');
+      expect(refusal.message).not.toContain('no registered revision is known');
     });
 
     it('returns without reading registrations when the state has no revision', async () => {
