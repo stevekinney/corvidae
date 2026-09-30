@@ -147,7 +147,7 @@ The control contract above says how started work is owned. This section defines 
 
 An exported API breaks the rule when it starts long-lived or fire-and-forget asynchronous work and its stop or dispose path does not await what is already in flight. In `applications/`, the same test applies to every entrypoint or server-lifecycle path, meaning any file reachable from the application's documented process-startup entrypoint (for `@lostgradient/desktop`, `applications/desktop/src/bun/index.ts`), not just the top-level file.
 
-An exported API that starts such work and has no stop or dispose path at all also breaks the rule. It is a row in the table, and its execution mode is annotated `(no dispose path)`.
+An exported API that starts such work and has no stop or dispose path at all also breaks the rule. It is a row in the table, and its execution mode is annotated `(no dispose path)`. No current row carries that annotation.
 
 Stopping a timer is not awaiting the work the timer already started. A stop path that only clears a handle, sets a flag, or aborts a signal still leaves the callback's work in flight, so it does not satisfy the rule. Work whose promise is returned to the caller, tracked and drained by the owner (for example through `RuntimeServices` deferred tracking or an awaited in-flight field), or fully synchronous is conformant and is not listed.
 
@@ -160,7 +160,7 @@ Stopping a timer is not awaiting the work the timer already started. A stop path
 
 ### Sweep coverage
 
-Every workspace was swept. These workspaces have no non-conformant path: `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/memory`, `@lostgradient/telephone`, `@lostgradient/testing`, `@lostgradient/tool-protocol`, `@lostgradient/chat`, and `@lostgradient/cinder`. Every other workspace appears in the table below.
+Every workspace was swept. These workspaces have no non-conformant path: `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/markdown`, `@lostgradient/memory`, `@lostgradient/telephone`, `@lostgradient/testing`, `@lostgradient/tool-protocol`, `@lostgradient/chat`, and `@lostgradient/cinder`. Every other workspace appears in the table below.
 
 ### Inventory
 
@@ -185,10 +185,8 @@ Every workspace was swept. These workspaces have no non-conformant path: `@lostg
 | `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 118 |
 | `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 138 |
 | `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 142 |
-| `conversationalist` | `timeout` | ephemeral | `packages/conversationalist/src/compaction-schedule.ts` | 38 |
 | `@lostgradient/evaluation` | `timeout` | ephemeral | `packages/evaluation/src/evaluator.ts` | 114 |
 | `@lostgradient/skills` | `timeout` | ephemeral | `packages/skills/src/discovery/catalog-service.ts` | 278 |
-| `@lostgradient/markdown` | `unawaited-field-promise` (no dispose path) | ephemeral | `packages/markdown/src/rendering/highlighter.ts` | 225 |
 | `@lostgradient/weft` | `interval` | durable | `packages/weft/src/core/scheduler/scheduler-class.ts` | 95 |
 | `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/alerting/alert-manager.ts` | 283 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/serve-internals.ts` | 347 |
@@ -202,6 +200,31 @@ Every workspace was swept. These workspaces have no non-conformant path: `@lostg
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/worker-disconnect-requeue.ts` | 151 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/authentication-bridge.ts` | 430 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/authentication-bridge.ts` | 457 |
+| `@lostgradient/weft` | `interval` | ephemeral | `packages/weft/src/worker/long-poll.ts` | 382 |
+| `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/worker/long-poll.ts` | 421 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/websocket-worker.ts` | 292 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/websocket-worker.ts` | 347 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/websocket-worker.ts` | 492 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/event-broadcasting.ts` | 138 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/event-broadcasting.ts` | 387 |
+| `@lostgradient/weft` | `unawaited-field-promise` | durable | `packages/weft/src/server/runtime/event-broadcasting.ts` | 400 |
+| `@lostgradient/weft` | `timeout` | durable | `packages/weft/src/core/engine/pending-updates.ts` | 84 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/callback-creators-core.ts` | 112 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/lifecycle/checkpoint-launch.ts` | 77 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/lifecycle/resume-body.ts` | 494 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/updates.ts` | 365 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/signals.ts` | 397 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/inline-parking.ts` | 231 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/disposal.ts` | 221 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/second-instance-detector.ts` | 352 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 204 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 208 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 233 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 339 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 368 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 644 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 670 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/cleanup.ts` | 182 |
 | `@lostgradient/editor` | `fire-and-forget-call` | ephemeral | `components/editor/src/lib/editor/attach.ts` | 117 |
 | `@lostgradient/weft-ui` | `timeout` | ephemeral | `components/weft-ui/src/lib/live-source/polling-source.svelte.ts` | 97 |
 
