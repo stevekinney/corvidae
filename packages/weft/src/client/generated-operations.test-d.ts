@@ -19,6 +19,9 @@
  * @module client/generated-operations.test-d
  */
 
+import type { ListPendingAsyncActivitiesInput } from '../server/operations/async-activity.ts';
+import type { GetTaskDiagnosticsInput } from '../server/operations/get-task-diagnostics.ts';
+import type { ListWorkerRegistrationRejectionsInput } from '../server/operations/list-worker-registration-rejections.ts';
 import type { WeftClient } from './interface.ts';
 
 declare const operations: WeftClient['operations'];
@@ -127,3 +130,38 @@ const diagnosticsWithOverrides: DiagnosticsInput = {
   limit: 1,
 };
 void diagnosticsWithOverrides;
+
+// COR-5: the same holds for every operation whose server input schema
+// `.default()`s fields. Each defaulted field is optional in the generated
+// client input and still rejects a wrong type, while the handler-side
+// `z.infer` type keeps the parsed, default-populated shape.
+// @ts-expect-error — a defaulted diagnostics field still rejects a wrong type.
+void operations['weft.tasks.diagnostics']({ operationId: 'op-1', limit: 'many' });
+// @ts-expect-error — a defaulted diagnostics boolean still rejects a wrong type.
+void operations['weft.tasks.diagnostics']({ operationId: 'op-1', includeExpectedDelayed: 'yes' });
+
+void operations['weft.workers.rejections']({});
+void operations['weft.workers.rejections']({ limit: 10 });
+// @ts-expect-error — a defaulted field still rejects a wrong type.
+void operations['weft.workers.rejections']({ limit: '10' });
+
+void operations['weft.workflows.activities.pending.list']({ workflowId: 'workflow-1' });
+void operations['weft.workflows.activities.pending.list']({ workflowId: 'workflow-1', limit: 10 });
+// @ts-expect-error — the required workflowId is still required.
+void operations['weft.workflows.activities.pending.list']({});
+void operations['weft.workflows.activities.pending.list']({
+  workflowId: 'workflow-1',
+  // @ts-expect-error — a defaulted field still rejects a wrong type.
+  limit: '10',
+});
+
+// Handlers receive the parsed shape: the defaulted fields are required there.
+declare const parsedDiagnostics: GetTaskDiagnosticsInput;
+declare const parsedRejections: ListWorkerRegistrationRejectionsInput;
+declare const parsedPending: ListPendingAsyncActivitiesInput;
+const parsedLimits: number[] = [
+  parsedDiagnostics.limit,
+  parsedRejections.limit,
+  parsedPending.limit,
+];
+void parsedLimits;
