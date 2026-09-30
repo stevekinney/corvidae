@@ -228,8 +228,9 @@ export class HistoryTransaction {
 
   subscribe(notify: () => void, lifecycle: ConversationLifecycle): () => void {
     // The conversation can close between getSnapshot() and subscribe(); a
-    // closed store never publishes again, so there is nothing to subscribe to.
-    if (lifecycle !== 'open') return () => {};
+    // disposed store never publishes again, so there is nothing to subscribe
+    // to. A closed store still publishes once more, on dispose, so register.
+    if (lifecycle === 'disposed') return () => {};
     const subscription = { notify };
     this.storeListenersValue.add(subscription);
     let subscribed = true;

@@ -101,6 +101,19 @@ describe('lifecycle state and revisions', () => {
     expect(() => conversation.subscribe(() => {})()).not.toThrow();
   });
 
+  it('notifies a subscriber registered after close when the conversation is disposed', async () => {
+    const conversation = new Conversation(createConversationHistory({ id: 'late-subscriber' }));
+    conversation.getSnapshot();
+    conversation.close();
+    const lifecycles: string[] = [];
+    conversation.subscribe(() => lifecycles.push(conversation.getSnapshot().lifecycle));
+
+    await conversation.dispose();
+
+    expect(lifecycles).toEqual(['disposed']);
+    expect(conversation.getSnapshot().lifecycle).toBe('disposed');
+  });
+
   it('publishes disposal after an earlier close', async () => {
     const conversation = new Conversation(createConversationHistory({ id: 'close-dispose' }));
     const lifecycles: string[] = [];
