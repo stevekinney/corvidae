@@ -35,6 +35,7 @@ import {
   runPromotionSignalCommand,
   workspaceDirectory,
 } from './promotion-signal';
+import { runReleaseGateCommand } from './release-gate';
 
 const PACKAGE_DIRECTORY = join(import.meta.dir, '..');
 const REVISION = '857d7dbf10e51718e77bc484145cd4a95f244afc';
@@ -228,15 +229,51 @@ async function expectRefusalsAppendNothing(
   expect(await records()).toEqual(before);
 }
 
+/**
+ * Runs the committed gate through the command's exported entry point, as
+ * `bun run release-gate --gate <id> --store <store>` would, and returns the
+ * decision it recorded. The gate run is setup, not the behavior under test, so
+ * it stays in this process: spawning it would put a `bun` boot inside the
+ * per-test budget.
+ */
+async function committedGateRun(): Promise<string> {
+  let stdout = '';
+  const exitCode = await runReleaseGateCommand(['--gate', FIXTURE_GATE_ID, '--store', storePath], {
+    output: { stdout: { write: (text: string) => (stdout += text) }, stderr: { write: () => 0 } },
+  });
+  expect(exitCode).toBe(0);
+  return (JSON.parse(stdout) as { recordId: string }).recordId;
+}
+
+/** What `issue` on the committed gate's decision binds, against the checked-out repository. */
+function expectIssuedSignal(report: Report, gateDecisionRecordId: string): void {
+  expect(report.command).toBe('issue');
+  expect(report.signal).toMatchObject({
+    package: {
+      name: '@lostgradient/evaluation',
+      sourceRevision: gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
+    },
+    model: { provider: 'anthropic', model: 'claude-sonnet-4-6', effort: 'medium' },
+    promptVersion: 'fixture-judge-prompt-1',
+    dataset: { id: 'capitals', version: 'capitals-2026-09' },
+    sourceRevision: HEAD,
+    gateDecisionRecordId,
+    overrideRecordIds: [],
+    actor: userInfo().username,
+  });
+}
+
+/**
+ * The one test that boots a real `bun` process: it proves the
+ * `promotion-signal` script is wired to the entry point and that stdout,
+ * stderr and the process exit code carry the command's result, against the
+ * real clock and the checked-out repository. Every exit code the command maps
+ * is asserted in process below, so nothing else here pays for a spawn inside
+ * the per-test budget.
+ */
 describe('promotion-signal (spawned bun process)', () => {
   test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
-    const gate = await spawnScript('release-gate', [
-      '--gate',
-      FIXTURE_GATE_ID,
-      '--store',
-      storePath,
-    ]);
-    expect(gate.exitCode).toBe(0);
+    const gateDecisionRecordId = await committedGateRun();
 
     const issued = await spawnScript('promotion-signal', [
       'issue',
@@ -247,44 +284,48 @@ describe('promotion-signal (spawned bun process)', () => {
     ]);
 
     const report = expectReport(issued, 0, 'issued');
-    expect(report.command).toBe('issue');
-    expect(report.signal).toMatchObject({
-      package: {
-        name: '@lostgradient/evaluation',
-        sourceRevision: gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
-      },
-      model: { provider: 'anthropic', model: 'claude-sonnet-4-6', effort: 'medium' },
-      promptVersion: 'fixture-judge-prompt-1',
-      dataset: { id: 'capitals', version: 'capitals-2026-09' },
-      sourceRevision: HEAD,
-      gateDecisionRecordId: (JSON.parse(gate.stdout) as { recordId: string }).recordId,
-      overrideRecordIds: [],
-      actor: userInfo().username,
-    });
+    expectIssuedSignal(report, gateDecisionRecordId);
     expect(issued.stderr).toContain(`Issued promotion signal "${report.signal!.signalId}"`);
 
-    const verified = await spawnScript('promotion-signal', [
-      'verify',
-      report.signal!.signalId,
-      '--store',
-      storePath,
-    ]);
-    expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
-  });
-
-  test('issue exits 3 for a failing decision and 5 for one recorded at another revision, appending nothing', async () => {
-    // The spawned command reads the real clock, so its decisions are dated on it too.
-    await expectRefusalsAppendNothing(
-      (args) => spawnScript('promotion-signal', args),
-      () => Date.now(),
+    const verified = await runInProcess(
+      ['verify', report.signal!.signalId, '--store', storePath],
+      {},
     );
+    expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
   });
 });
 
 describe('runPromotionSignalCommand', () => {
+  test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
+    const gateDecisionRecordId = await committedGateRun();
+
+    const issued = await runInProcess(
+      ['issue', '--gate', FIXTURE_GATE_ID, '--store', storePath],
+      {},
+    );
+
+    const report = expectReport(issued, 0, 'issued');
+    expectIssuedSignal(report, gateDecisionRecordId);
+    expect(issued.stderr).toContain(`Issued promotion signal "${report.signal!.signalId}"`);
+
+    const verified = await runInProcess(
+      ['verify', report.signal!.signalId, '--store', storePath],
+      {},
+    );
+    expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
+  });
+
+  test('refuses a failing decision with 3 and another revision with 5 on the real clock, appending nothing', async () => {
+    // The real clock, as a person's run reads it: the decisions are dated on it too.
+    await expectRefusalsAppendNothing(
+      (args) => runInProcess(args, {}),
+      () => Date.now(),
+    );
+  });
+
   test('refuses a failing decision with 3 and another revision with 5 however long after `DECIDED_AT` it runs', async () => {
-    // The spawned-process test ran this scenario on the real clock with its
-    // decisions dated at `DECIDED_AT`, and began failing a day later.
+    // A run on the real clock with decisions dated at `DECIDED_AT` began
+    // failing a day later, so this one pins `now` instead.
     const longAfter = Date.parse(DECIDED_AT) + 5 * 365 * 24 * 60 * 60 * 1000;
     await expectRefusalsAppendNothing(
       (args) => runInProcess(args, { now: () => longAfter }),

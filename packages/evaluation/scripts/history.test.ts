@@ -121,12 +121,32 @@ const EXPECTED_COMPARISON = {
   latencyMilliseconds: { baseline: 1000, candidate: 1250, delta: 250 },
 };
 
+/**
+ * The one test that boots a real `bun` process: it proves the `history` script
+ * is wired to the entry point and that a second process reads, with an equal
+ * digest, the record this one wrote. Every other exit code and output is
+ * asserted in process below, so nothing else here pays for a spawn inside the
+ * per-test budget.
+ */
 describe('history (spawned bun process)', () => {
+  test('show reads, in a second process, the record this process wrote, with an equal digest', async () => {
+    const [appended] = await seed(BASELINE);
+
+    const { exitCode, stdout } = await spawnHistory('show', BASELINE.id, '--store', storePath);
+
+    expect(exitCode).toBe(0);
+    const shown = JSON.parse(stdout) as HistoricalRecord;
+    expect(shown.digest).toBe(appended!.digest);
+    expect(shown).toEqual(appended!);
+  });
+});
+
+describe('runHistoryCommand', () => {
   test('list exits 0 and prints one JSON line per record, oldest first', async () => {
     // Appended newest first, so the order printed is the command's own.
     const [candidate, baseline] = await seed(CANDIDATE, BASELINE);
 
-    const { exitCode, stdout } = await spawnHistory('list', '--store', storePath);
+    const { exitCode, stdout } = await runInProcess('list', '--store', storePath);
 
     expect(exitCode).toBe(0);
     const lines = stdout.trimEnd().split('\n');
@@ -159,16 +179,16 @@ describe('history (spawned bun process)', () => {
   });
 
   test('list treats a store that does not exist as an empty history, without creating it', async () => {
-    const { exitCode, stdout } = await spawnHistory('list', '--store', storePath);
+    const { exitCode, stdout } = await runInProcess('list', '--store', storePath);
     expect(exitCode).toBe(0);
     expect(stdout).toBe('');
     expect(existsSync(storePath)).toBe(false);
   });
 
-  test('show reads, in a second process, the record this process wrote, with an equal digest', async () => {
+  test('show prints the record this process wrote, with an equal digest', async () => {
     const [appended] = await seed(BASELINE);
 
-    const { exitCode, stdout } = await spawnHistory('show', BASELINE.id, '--store', storePath);
+    const { exitCode, stdout } = await runInProcess('show', BASELINE.id, '--store', storePath);
 
     expect(exitCode).toBe(0);
     const shown = JSON.parse(stdout) as HistoricalRecord;
@@ -180,12 +200,12 @@ describe('history (spawned bun process)', () => {
     await seed(BASELINE);
     await corrupt(BASELINE.id);
 
-    const unknown = await spawnHistory('show', 'run-never-recorded', '--store', storePath);
+    const unknown = await runInProcess('show', 'run-never-recorded', '--store', storePath);
     expect(unknown.exitCode).toBe(64);
     expect(unknown.stdout).toBe('');
     expect(unknown.stderr).toContain('No historical record "run-never-recorded"');
 
-    const corrupted = await spawnHistory('show', BASELINE.id, '--store', storePath);
+    const corrupted = await runInProcess('show', BASELINE.id, '--store', storePath);
     expect(corrupted.exitCode).toBe(65);
     expect(corrupted.stdout).toBe('');
     expect(corrupted.stderr).toContain(
@@ -196,7 +216,7 @@ describe('history (spawned bun process)', () => {
   test('compare prints per-criterion pass-fraction and mean-score deltas with cost and latency', async () => {
     const [baseline, candidate] = await seed(BASELINE, CANDIDATE);
 
-    const { exitCode, stdout } = await spawnHistory(
+    const { exitCode, stdout } = await runInProcess(
       'compare',
       BASELINE.id,
       CANDIDATE.id,
@@ -211,9 +231,7 @@ describe('history (spawned bun process)', () => {
     expect(comparison['baseline']).toMatchObject({ id: BASELINE.id, digest: baseline!.digest });
     expect(comparison['candidate']).toMatchObject({ id: CANDIDATE.id, digest: candidate!.digest });
   });
-});
 
-describe('runHistoryCommand', () => {
   test('defaults to the package’s ignored .cache store', () => {
     expect(DEFAULT_HISTORY_STORE).toBe(
       join(PACKAGE_DIRECTORY, '.cache', 'evaluation-history.sqlite'),
