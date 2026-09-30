@@ -1120,7 +1120,7 @@
     },
     "@lostgradient/operative": {
       "workspace": "@lostgradient/operative",
-      "version": "0.15.0",
+      "version": "0.15.1",
       "fetchedAt": "2026-09-30",
       "subpaths": [
         ".",
@@ -1158,7 +1158,7 @@
     },
     "@lostgradient/tool-protocol": {
       "workspace": "@lostgradient/tool-protocol",
-      "version": "0.0.1",
+      "version": "0.0.2",
       "fetchedAt": "2026-09-30",
       "subpaths": ["."]
     },
@@ -1203,7 +1203,7 @@
     },
     "armorer": {
       "workspace": "armorer",
-      "version": "2.4.2",
+      "version": "2.4.3",
       "fetchedAt": "2026-09-30",
       "subpaths": [
         ".",
@@ -1230,7 +1230,7 @@
     },
     "conversationalist": {
       "workspace": "conversationalist",
-      "version": "2.1.1",
+      "version": "2.1.2",
       "fetchedAt": "2026-09-30",
       "subpaths": [
         ".",
