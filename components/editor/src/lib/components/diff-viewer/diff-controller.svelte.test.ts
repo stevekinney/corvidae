@@ -3,6 +3,7 @@
  * `string.length` (UTF-16 code units) and both thresholds are inclusive.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
 import { mountDiffController } from './diff-controller-test-helpers.svelte.ts';
 import type { DiffControllerOptions } from './diff-controller.svelte.ts';
 
@@ -42,7 +43,41 @@ describe('createDiffController tier boundaries (default thresholds)', () => {
     expect(controller.state.warning).toContain('debounced');
     expect(controller.state.diffs).toEqual([]);
   });
+});
 
+describe('createDiffController gating after the debounce fires', () => {
+  const small = { manualThreshold: 10, debouncedThreshold: 5, debounceMs: 0 };
+  const settle = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await tick();
+  };
+
+  test('a document at the manual threshold is never computed on its own', async () => {
+    const controller = await mount('a'.repeat(10), small);
+    await settle();
+    expect(controller.state.isStale).toBe(true);
+    expect(controller.state.diffs).toEqual([]);
+  });
+
+  test('a document at the debounced threshold waits for the debounce instead of computing at once', async () => {
+    const controller = await mount('a'.repeat(5), { ...small, debounceMs: 50 });
+    expect(controller.state.isStale).toBe(true);
+    expect(controller.state.diffs).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await tick();
+    expect(controller.state.isStale).toBe(false);
+    expect(controller.state.diffs.length).toBeGreaterThan(0);
+  });
+
+  test('a document one unit below the manual threshold is computed after the debounce', async () => {
+    const controller = await mount('a'.repeat(9), small);
+    await settle();
+    expect(controller.state.isStale).toBe(false);
+    expect(controller.state.diffs.length).toBeGreaterThan(0);
+  });
+});
+
+describe('createDiffController real-time tier', () => {
   test('just below the debounced threshold computes in real time with no warning', async () => {
     const controller = await mount('a'.repeat(19_999));
     expect(controller.state.warning).toBeNull();

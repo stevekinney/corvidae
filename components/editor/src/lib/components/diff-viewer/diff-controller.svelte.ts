@@ -63,8 +63,8 @@ export interface DiffController {
 }
 
 const DEFAULT_OPTIONS: Required<DiffControllerOptions> = {
-  debouncedThreshold: 20_000, // 20KB
-  manualThreshold: 100_000, // 100KB
+  debouncedThreshold: 20_000, // 20,000 UTF-16 code units
+  manualThreshold: 100_000, // 100,000 UTF-16 code units
   debounceMs: 500,
 };
 
