@@ -10,7 +10,7 @@ import { estimateConversationTokens } from './context';
 import { defaultConversationRuntime, type ConversationEnvironment } from './environment';
 import { createOperationCancelledError } from './errors';
 import type { ConversationActionType, ConversationEventDetail } from './events';
-import type { ConversationChangeContext } from './history-events';
+import { compactionCorrelationId, type ConversationChangeContext } from './history-events';
 import type { ConversationHistory } from './types';
 
 type CompactionHooks = {
@@ -37,11 +37,6 @@ type CompactionHooks = {
     attempt: CompactionAttempt,
   ) => boolean;
 };
-
-/** The correlation id every event of one compaction attempt carries. */
-export function compactionCorrelationId(conversationId: string, attemptId: string): string {
-  return `${conversationId}:compaction:${attemptId}`;
-}
 
 /** One attempt's fixed identity, and a way to report on it at any later moment. */
 type AttemptTracker = {

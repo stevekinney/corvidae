@@ -12,7 +12,7 @@ import type {
 } from './events';
 import type { ConversationMutationOptions, ConversationMutationResult } from './history';
 import { createBindAction, type BindAction } from './history-bind';
-import { compactionCorrelationId, compactOwned } from './history-compaction';
+import { compactOwned } from './history-compaction';
 import type { ConversationChangeContext } from './history-events';
 import { createExternalMutationActions } from './history-external-mutations';
 import type { HistoryLifecycle } from './history-lifecycle';
@@ -250,7 +250,6 @@ export function composeConversationActions<T>(hooks: CompositionHooks<T>): Conve
           {
             ...hooks.changeContext(previous, conversation, 'messages.removed'),
             outcome: 'completed',
-            correlationId: compactionCorrelationId(previous.id, attempt.attemptId),
             compaction: attempt,
           },
         ),
