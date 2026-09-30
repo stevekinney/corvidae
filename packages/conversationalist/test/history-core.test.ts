@@ -287,9 +287,19 @@ describe('Conversation core', () => {
     const conversation = new ConversationHistory(createConversation({ id: 'reentrancy' }), {
       plugins: [plugin],
     });
-    const changes: Array<{ ids: number; revision: number; previousIds: number }> = [];
+    const changes: Array<{
+      ids: number;
+      revision: number;
+      previousIds: number;
+      correlationId: string;
+    }> = [];
+    const pushes: Array<{ ids: number; revision: number }> = [];
+    conversation.addEventListener('push', (event) => {
+      pushes.push({ ids: event.conversation.ids.length, revision: event.revision });
+    });
     conversation.addEventListener('change', (event) => {
       changes.push({
+        correlationId: event.correlationId,
         ids: event.conversation.ids.length,
         revision: event.revision,
         previousIds: event.previousConversation.ids.length,
@@ -302,9 +312,11 @@ describe('Conversation core', () => {
     conversation.appendUserMessage('outer write');
 
     expect(changes).toEqual([
-      { ids: 2, revision: 2, previousIds: 1 },
-      { ids: 1, revision: 1, previousIds: 0 },
+      { ids: 2, revision: 2, previousIds: 1, correlationId: 'reentrancy:revision:2' },
+      { ids: 1, revision: 1, previousIds: 0, correlationId: 'reentrancy:revision:1' },
     ]);
+    expect(changes[0]!.correlationId).not.toBe(changes[1]!.correlationId);
+    expect(pushes).toContainEqual({ ids: 1, revision: 1 });
   });
 
   it('keeps the store snapshot referentially stable across non-state events', () => {

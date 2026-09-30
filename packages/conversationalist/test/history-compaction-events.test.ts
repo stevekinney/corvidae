@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { Conversation as ConversationHistory } from '../src/history';
 import { createConversationHistory as createConversation } from '../src/index';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { Message } from '../src/types';
 
 const summarizer = async (messages: Message[]) => `Summary of ${messages.length} messages`;
@@ -89,14 +90,16 @@ describe('compaction event emission', () => {
     history.addEventListener('compaction.started', (event) => started.push(event.correlationId));
     history.addEventListener('compaction.failed', (event) => failed.push(event.correlationId));
 
-    await expect(
-      history.compact(
-        async () => {
-          throw new Error('boom');
-        },
-        { preserveRecentCount: 2 },
+    expect(
+      await rejectionOf(
+        history.compact(
+          async () => {
+            throw new Error('boom');
+          },
+          { preserveRecentCount: 2 },
+        ),
       ),
-    ).rejects.toThrow('boom');
+    ).toMatchObject({ message: 'boom' });
 
     expect(started).toHaveLength(1);
     expect(failed).toEqual(started);
@@ -113,15 +116,17 @@ describe('compaction event emission', () => {
     );
     const controller = new AbortController();
 
-    await expect(
-      history.compact(
-        async (messages: Message[]) => {
-          controller.abort();
-          return `Summary of ${messages.length}`;
-        },
-        { preserveRecentCount: 2, signal: controller.signal },
+    expect(
+      await rejectionOf(
+        history.compact(
+          async (messages: Message[]) => {
+            controller.abort();
+            return `Summary of ${messages.length}`;
+          },
+          { preserveRecentCount: 2, signal: controller.signal },
+        ),
       ),
-    ).rejects.toThrow();
+    ).toMatchObject({ code: 'error:operation-cancelled' });
 
     expect(started).toHaveLength(1);
     expect(cancelled).toEqual(started);
