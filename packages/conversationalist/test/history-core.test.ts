@@ -4,7 +4,9 @@ import { describe, expect, it } from 'bun:test';
 import { estimateConversationTokens } from '../src/context';
 import type { TruncateOptions } from '../src/context-truncation';
 import { truncateToTokenLimit } from '../src/context-truncation';
+import { defineMessagePlugin } from '../src/environment';
 import { Conversation as ConversationHistory } from '../src/history';
+import { HistoryTransaction } from '../src/history-transaction';
 import {
   appendUserMessage,
   createConversationHistory as createConversation,
@@ -278,5 +280,48 @@ describe('Conversation core', () => {
     const history = new ConversationHistory(createConversation());
     expect(history.branchCount).toBe(1);
     expect(history.branchIndex).toBe(0);
+  });
+
+  it('describes the outer mutation in its change event when a plugin listener writes reentrantly', () => {
+    const plugin = defineMessagePlugin({ id: 'reentrant', revision: 1 }, (input) => input);
+    const conversation = new ConversationHistory(createConversation({ id: 'reentrancy' }), {
+      plugins: [plugin],
+    });
+    const changes: Array<{ ids: number; revision: number; previousIds: number }> = [];
+    conversation.addEventListener('change', (event) => {
+      changes.push({
+        ids: event.conversation.ids.length,
+        revision: event.revision,
+        previousIds: event.previousConversation.ids.length,
+      });
+    });
+    conversation.addEventListener('plugin.activated', () => {
+      conversation.appendAssistantMessage('reentrant write');
+    });
+
+    conversation.appendUserMessage('outer write');
+
+    expect(changes[0]).toEqual({ ids: 1, revision: 1, previousIds: 0 });
+  });
+
+  it('keeps the store snapshot referentially stable across non-state events', () => {
+    const transaction = new HistoryTransaction(createConversation({ id: 'stable' }));
+    const first = transaction.getSnapshot('open');
+    transaction.buildEventDetail('plugin.activated', transaction.current, {});
+    expect(transaction.getSnapshot('open')).toBe(first);
+    transaction.setRestoredState(5, transaction.node);
+    const second = transaction.getSnapshot('open');
+    expect(second).not.toBe(first);
+    expect(transaction.getSnapshot('closed')).not.toBe(second);
+  });
+
+  it('returns a callable no-op unsubscribe when subscribing after close', async () => {
+    const transaction = new HistoryTransaction(createConversation({ id: 'closed-sub' }));
+    const unsubscribe = transaction.subscribe(() => {}, 'closed');
+    expect(typeof unsubscribe).toBe('function');
+    expect(() => unsubscribe()).not.toThrow();
+    const conversation = new ConversationHistory(createConversation());
+    await conversation.dispose();
+    expect(() => conversation.subscribe(() => {})()).not.toThrow();
   });
 });
