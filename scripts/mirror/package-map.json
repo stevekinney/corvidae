@@ -16,12 +16,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.8",
+      "lastPublishedVersion": "0.27.9",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.8",
-        "gitHead": "93bc17a70a6cb9bf1f79ae75b52df0379d2edda3",
-        "corvidaeCommit": "08873d03681afbe76c302779b3e33b36ea4aaaba",
+        "version": "0.27.9",
+        "gitHead": "2e9f806b8df7ab2fae31f250cc9aa1cd274cc74b",
+        "corvidaeCommit": "14015cc5db076a2ba1d4a2fbe4e17a4f3a28b30c",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -383,6 +383,7 @@
             "src/core/engine/persisted-data-version.ts",
             "src/core/engine/pinned-schedule-revision-count.ts",
             "src/core/engine/pinned-schedule-revision.ts",
+            "src/core/engine/purge-supersession.ts",
             "src/core/engine/purge-write-tracking.ts",
             "src/core/engine/queries.ts",
             "src/core/engine/registration.ts",
@@ -1167,7 +1168,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "e4b39cbe717ce8b396eae8a08f527d97ff77f3946ef04df1e18f687e7c98b192"
+          "digest": "a6bcc35065b9987c7206aec9db970bd86742c6c5ac04aadb9e9966ce3b1c44c6"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1175,7 +1176,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "169d20f7728fe74da3e073218741aeb9eed4fc845aaa0081269530bea174f1c9"
+          "digest": "ce90e4fb85950f1be72eff3323b71ddc166cde76fd274f44f81dc58d86ae0ac3"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -3698,6 +3699,14 @@
             },
             {
               "path": "package/dist/core/engine/pinned-schedule-revision.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/purge-supersession.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/purge-supersession.js",
               "executable": false
             },
             {
@@ -9101,7 +9110,7 @@
               "executable": false
             }
           ],
-          "digest": "9d6bc56765851eb9b2cb48826d3a581ec7bc9e952254e02a384cb9fc1e597e95"
+          "digest": "fbbbcd7d30dd43fcc829a83c7353764677a68e7aeaade8882363a4f1adad1129"
         }
       }
     },
