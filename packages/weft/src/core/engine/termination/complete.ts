@@ -323,9 +323,13 @@ function notifyCompletionWaiters(
 ): void {
   // Cancel deadline timer - fire-and-forget since the workflow is already
   // terminal and a stale timer firing will see the terminal state and no-op.
-  void callbacks.swallowPromiseRejection(
-    internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
-  );
+  // A superseded run must not cancel: the cancel deletes the durable deadline
+  // timer keys by id, which now belong to the replacement.
+  if (!superseded) {
+    void callbacks.swallowPromiseRejection(
+      internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
+    );
+  }
 
   // Drop in-memory state immediately so the hot path releases engine memory
   // before result delivery. Durable scratch cleanup is handled by the
@@ -359,25 +363,23 @@ function notifyCompletionWaiters(
 }
 
 /**
- * Whether a `onTerminalConflict: 'start-new'` replacement has taken over this
- * id since the terminal commit. Run identity is the durable
- * `workflowExecutionToken`, which start-new reuse changes: comparing status
- * instead would miss a replacement that already committed `completed`. The
- * old run's teardown runs after awaits, so a replacement can be created,
- * parked, or even finished in that window; teardown keyed by workflow id
- * alone would wipe (or settle) the replacement's state. Legacy records with
- * no token on either side fall back to "no longer completed".
+ * Whether a same-engine `onTerminalConflict: 'start-new'` replacement has
+ * taken over this id since the terminal commit. The state teardown protects is
+ * this engine's in-memory state, so supersession is judged by local
+ * generation: the cached checkpoint's `workflowExecutionToken` differs from
+ * the one captured at commit. A replacement started by a different engine
+ * purges only that engine's memory, so this engine's state still belongs to
+ * the old run and the check correctly reads as not superseded. It is
+ * synchronous and reads no storage, so it adds no post-commit failure point.
+ * A missing checkpoint reads as not superseded (the pre-fix behavior).
  */
-async function isSupersededBySameIdRun(
+function isSupersededBySameIdRun(
+  internals: EngineInternals,
   workflowId: string,
   capturedToken: string | undefined,
-  callbacks: TerminationCallbacks,
-): Promise<boolean> {
-  const current = await callbacks.loadWorkflowState(workflowId);
-  if (current === null) return false;
-  if (capturedToken === undefined && current.workflowExecutionToken === undefined) {
-    return current.status !== 'completed';
-  }
+): boolean {
+  const current = internals.checkpoints.get(workflowId);
+  if (current === undefined) return false;
   return current.workflowExecutionToken !== capturedToken;
 }
 
@@ -525,7 +527,8 @@ export async function completeWorkflow(
       // `releaseWorkflowClaimAfterTerminalSettlement`'s doc for why this
       // must not be re-read after the awaits below.
       const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
-      return { duration, claimEpoch, executionToken: updatedState.workflowExecutionToken };
+      const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
+      return { duration, claimEpoch, executionToken };
     },
   );
   if (!completionMetadata) return;
@@ -536,10 +539,10 @@ export async function completeWorkflow(
     workflowId,
     completionMetadata.claimEpoch,
   );
-  const superseded = await isSupersededBySameIdRun(
+  const superseded = isSupersededBySameIdRun(
+    internals,
     workflowId,
     completionMetadata.executionToken,
-    callbacks,
   );
   notifyCompletionWaiters(
     internals,
