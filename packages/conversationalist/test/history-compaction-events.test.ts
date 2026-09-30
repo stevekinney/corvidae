@@ -54,7 +54,7 @@ describe('compaction event emission', () => {
     await history.compact(summarizer, { preserveRecentCount: 2 });
 
     expect(seen['compaction.started']).toHaveLength(1);
-    expect(seen['compaction.completed']).toEqual(seen['compaction.started']!);
+    expect(seen['compaction.completed']).toEqual(seen['compaction.started']);
   });
 
   it('shares one correlationId across started and stale-discarded, distinct per attempt', async () => {
