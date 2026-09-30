@@ -187,6 +187,36 @@ const STRICT_FORBIDDEN_KEYWORDS: ReadonlySet<string> = new Set([
   'additionalItems',
   'unevaluatedItems',
   'unevaluatedProperties',
+  'dependencies',
+  '$dynamicRef',
+  '$recursiveRef',
+]);
+
+/**
+ * Keywords the strict walker understands or that carry inert data (their values
+ * are never schemas). Any other keyword holding an object or an array of
+ * objects may hide a subschema the walker does not visit, so it fails closed.
+ */
+const STRICT_KNOWN_KEYWORDS: ReadonlySet<string> = new Set([
+  'type',
+  'properties',
+  'required',
+  'additionalProperties',
+  'items',
+  'anyOf',
+  '$defs',
+  'definitions',
+  'enum',
+  'const',
+  'default',
+  'examples',
+  'example',
+  'description',
+  'title',
+  'nullable',
+  '$schema',
+  '$id',
+  '$comment',
 ]);
 
 /** Keywords whose value is a map of name to subschema. */
@@ -200,6 +230,21 @@ function isStrictNode(node: unknown): boolean {
   if (!isPlainRecord(node)) return false;
   for (const keyword of Object.keys(node)) {
     if (STRICT_FORBIDDEN_KEYWORDS.has(keyword)) return false;
+  }
+
+  for (const [keyword, value] of Object.entries(node)) {
+    if (STRICT_KNOWN_KEYWORDS.has(keyword)) continue;
+    if (isPlainRecord(value)) return false;
+    if (Array.isArray(value) && value.some(isPlainRecord)) return false;
+  }
+
+  if (
+    node['type'] === undefined &&
+    node['anyOf'] === undefined &&
+    node['enum'] === undefined &&
+    node['const'] === undefined
+  ) {
+    return false;
   }
 
   if (node['additionalProperties'] !== undefined && node['additionalProperties'] !== false) {
@@ -246,7 +291,7 @@ function isStrictNode(node: unknown): boolean {
  * Whether a JSON Schema satisfies OpenAI's structured-outputs strict-mode
  * contract, so `strict: true` can be requested without the API rejecting the
  * schema: every object sets `additionalProperties: false` and lists every
- * property in `required`; no per-type validation keywords; only `anyOf`
+ * property in `required`; the root is an object; no per-type validation keywords; only `anyOf`
  * composition; and no `$ref` (reference resolution is deliberately not
  * attempted, so a schema containing one is reported incompatible).
  *
@@ -254,5 +299,9 @@ function isStrictNode(node: unknown): boolean {
  * not violations: only schema positions are inspected.
  */
 export function isStrictCompatible(schema: Record<string, unknown>): boolean {
+  if (!isPlainRecord(schema)) return false;
+  const type = schema['type'];
+  const rootIsObject = type === 'object' || (Array.isArray(type) && type.includes('object'));
+  if (!rootIsObject) return false;
   return isStrictNode(schema);
 }

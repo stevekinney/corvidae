@@ -164,7 +164,8 @@ describe('toOutputJsonSchema mutation safety', () => {
     delete properties['name'];
     properties['extra'] = { type: 'string' };
     const anyOf = properties['choice']?.['anyOf'] as unknown[] | undefined;
-    anyOf?.push({ type: 'null' });
+    expect(anyOf).toBeDefined();
+    anyOf!.push({ type: 'null' });
     (first['required'] as string[]).push('bogus');
     first['title'] = 'mutated';
 
@@ -178,6 +179,21 @@ describe('toOutputJsonSchema mutation safety', () => {
     const first = toOutputJsonSchema(schema);
     const snapshot = structuredClone(first);
     (first['anyOf'] as unknown[]).push({ type: 'null' });
+    expect(toOutputJsonSchema(schema)).toEqual(snapshot);
+  });
+
+  it('returns a fresh copy of $defs so mutating them never corrupts later calls', () => {
+    type Node = { child?: Node | undefined; value: string };
+    const node: z.ZodType<Node> = z.lazy(() =>
+      z.object({ value: z.string(), child: node.optional() }),
+    );
+    const schema = z.object({ root: node });
+    const first = toOutputJsonSchema(schema);
+    const defs = first['$defs'] as Record<string, Record<string, unknown>> | undefined;
+    expect(defs).toBeDefined();
+    const snapshot = structuredClone(first);
+    for (const key of Object.keys(defs!)) delete defs![key];
+    defs!['Injected'] = { type: 'string' };
     expect(toOutputJsonSchema(schema)).toEqual(snapshot);
   });
 
@@ -211,9 +227,78 @@ describe('isStrictCompatible', () => {
     ).toBe(true);
   });
 
-  it('accepts primitive schemas', () => {
-    expect(isStrictCompatible({ type: 'string' })).toBe(true);
+  it('rejects a non-object root, which OpenAI strict mode does not accept', () => {
+    expect(isStrictCompatible({ type: 'string' })).toBe(false);
+    expect(isStrictCompatible({ anyOf: [strictObject] })).toBe(false);
   });
+
+  it('accepts primitive schemas in nested positions', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { s: { type: 'string' }, e: { enum: ['a', 'b'] }, c: { const: 1 } },
+        required: ['s', 'e', 'c'],
+        additionalProperties: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a typeless subschema', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { a: {} },
+        required: ['a'],
+        additionalProperties: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects unknown keywords that hold subschemas, so the check fails closed', () => {
+    const wrap = (a: Record<string, unknown>) => ({
+      type: 'object',
+      properties: { a },
+      required: ['a'],
+      additionalProperties: false,
+    });
+    expect(
+      isStrictCompatible(wrap({ type: 'string', someFutureKeyword: { type: 'string' } })),
+    ).toBe(false);
+    expect(isStrictCompatible(wrap({ type: 'string', someFutureKeyword: [{ $ref: '#' }] }))).toBe(
+      false,
+    );
+  });
+
+  it('rejects $ref under draft-07 dependencies', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { a: { type: 'string' } },
+        required: ['a'],
+        additionalProperties: false,
+        dependencies: { a: { $ref: '#' } },
+      }),
+    ).toBe(false);
+  });
+
+  for (const keyword of ['$dynamicRef', '$recursiveRef']) {
+    it(`rejects ${keyword} at nested and $defs positions`, () => {
+      expect(
+        isStrictCompatible({
+          type: 'object',
+          properties: { a: { type: 'string', [keyword]: '#x' } },
+          required: ['a'],
+          additionalProperties: false,
+        }),
+      ).toBe(false);
+      expect(
+        isStrictCompatible({
+          ...strictObject,
+          $defs: { X: { type: 'string', [keyword]: '#x' } },
+        }),
+      ).toBe(false);
+    });
+  }
 
   it('rejects an object missing additionalProperties: false', () => {
     const { additionalProperties: _a, ...rest } = strictObject;
