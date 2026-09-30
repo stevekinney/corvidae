@@ -98,9 +98,20 @@ describe('lifecycle state and revisions', () => {
     expect(conversation.lifecycle).toBe('disposed');
     expect(conversation.inFlightOperationCount).toBe(0);
     expect(conversation.current.ids).toHaveLength(8);
-    expect(() => conversation.subscribe(() => {})).toThrow(
-      expect.objectContaining({ code: 'error:conversation-disposed' }),
-    );
+    expect(() => conversation.subscribe(() => {})()).not.toThrow();
+  });
+
+  it('notifies a subscriber registered after close when the conversation is disposed', async () => {
+    const conversation = new Conversation(createConversationHistory({ id: 'late-subscriber' }));
+    conversation.getSnapshot();
+    conversation.close();
+    const lifecycles: string[] = [];
+    conversation.subscribe(() => lifecycles.push(conversation.getSnapshot().lifecycle));
+
+    await conversation.dispose();
+
+    expect(lifecycles).toEqual(['disposed']);
+    expect(conversation.getSnapshot().lifecycle).toBe('disposed');
   });
 
   it('publishes disposal after an earlier close', async () => {
