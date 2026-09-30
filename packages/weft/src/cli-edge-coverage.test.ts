@@ -246,12 +246,13 @@ describe('CLI edge coverage', () => {
       exitCode: 1,
     });
 
-    // Bun's resolver caches directory listings per process. The shared temp directory is large and
-    // already listed by earlier imports, so a module written there later can fail with "Cannot
-    // find module". A directory created for this test has never been listed, so it always resolves.
+    // Bun's resolver caches directory listings per process. A directory that was already listed
+    // (for example by an earlier import from any subdirectory of tmpdir()) is cached, so a module
+    // written there later can fail with "Cannot find module". A directory created for this test
+    // has never been listed, so it always resolves.
     const workflowsDirectory = mkdtempSync(join(tmpdir(), 'weft-cli-edge-workflows-'));
     databasesToDelete.add(workflowsDirectory);
-    const workflowsPath = join(workflowsDirectory, 'workflows.ts');
+    const workflowsPath = join(workflowsDirectory, 'module.ts');
     await Bun.write(
       workflowsPath,
       [
