@@ -37,6 +37,15 @@ function importSubpaths(workspace: ComponentWorkspace): Map<string, string> {
   for (const [subpath, exports] of Object.values(componentExports[workspace])) {
     for (const symbol of exports) symbols.set(symbol, `@lostgradient/${workspace}/${subpath}`);
   }
+  if (workspace === 'editor') {
+    for (const symbol of [
+      'createDiffReviewState',
+      'reduceDiffReviewState',
+      'DiffReviewTargetInput',
+    ]) {
+      symbols.set(symbol, '@lostgradient/editor/diff-review-state');
+    }
+  }
   return symbols;
 }
 

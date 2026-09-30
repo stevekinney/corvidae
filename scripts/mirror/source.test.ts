@@ -65,8 +65,18 @@ test('published component examples use their component subpaths under browser co
       );
       expect(emittedManifest.exports[`./${subpath}`]).toBeDefined();
       expect(examples.import).toBe(specifier);
-      for (const example of examples.examples)
+      for (const example of examples.examples) {
         expect(example.code).toContain(`from '${specifier}'`);
+        if (
+          workspace === 'editor' &&
+          (component === 'diff-review' || component === 'diff-review-comments')
+        ) {
+          expect(example.code).toContain("from '@lostgradient/editor/diff-review-state'");
+          expect(example.code).not.toMatch(
+            /import(?: type)?\s*\{[^}]*\b(?:createDiffReviewState|reduceDiffReviewState|DiffReviewTargetInput)\b[^}]*\}\s*from\s*'@lostgradient\/editor'/,
+          );
+        }
+      }
     }
   }
 });
