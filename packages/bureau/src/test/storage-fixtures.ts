@@ -101,26 +101,38 @@ function trackLifetime(result: unknown, close: () => void): unknown {
     return result;
   }
   if (typeof (result as { then?: unknown }).then === 'function') {
-    (result as PromiseLike<unknown>).then(close, close);
+    try {
+      (result as PromiseLike<unknown>).then(close, close);
+    } catch {
+      // A `then` that throws synchronously must not escape the verb call or
+      // leak the handle; awaiting the value surfaces the failure as usual.
+      close();
+    }
     return result;
   }
   if (typeof (result as Partial<AsyncIterable<unknown>>)[Symbol.asyncIterator] !== 'function') {
     close();
     return result;
   }
-  return new Proxy(result, {
-    get(target, property) {
-      const value: unknown = Reflect.get(target, property, target);
-      if (typeof value !== 'function') return value;
-      if (property === Symbol.asyncIterator) {
-        return () => trackIterator(value.call(target) as AsyncIterator<unknown>, close);
-      }
-      if (property === 'next' || property === 'return' || property === 'throw') {
-        return trackIteratorMethod(target as AsyncIterator<unknown>, property, close);
-      }
-      return value.bind(target);
-    },
+  // A fresh wrapper object (never a Proxy over `result`, whose get-trap
+  // invariants break on frozen iterables). Unwrapped properties fall through
+  // the prototype chain.
+  const source = result as AsyncIterable<unknown> & Partial<AsyncIterator<unknown>>;
+  const wrapper = Object.create(source) as Record<PropertyKey, unknown>;
+  Object.defineProperty(wrapper, Symbol.asyncIterator, {
+    value: () => trackIterator(source[Symbol.asyncIterator](), close),
+    configurable: true,
+    writable: true,
   });
+  for (const method of ['next', 'return', 'throw'] as const) {
+    if (typeof source[method] !== 'function') continue;
+    Object.defineProperty(wrapper, method, {
+      value: trackIteratorMethod(source as AsyncIterator<unknown>, method, close),
+      configurable: true,
+      writable: true,
+    });
+  }
+  return wrapper;
 }
 
 function trackIteratorMethod(

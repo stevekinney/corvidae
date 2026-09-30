@@ -180,6 +180,50 @@ describe('createMemoryStorageFixture', () => {
     expect(fixture.openHandles()).toEqual([]);
   });
 
+  it('openHandles() closes immediately for a synchronous non-thenable object return', () => {
+    const { fixture, storage } = fixtureWithVerb('count', () => ({ n: 1 }));
+
+    expect(storage.count()).toEqual({ n: 1 });
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() closes and still returns the value when a thenable throws in then()', () => {
+    const thenable = {
+      then() {
+        throw new Error('boom');
+      },
+    };
+    const { fixture, storage } = fixtureWithVerb('get', () => thenable);
+
+    expect(storage.get('key')).toBe(thenable);
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() tracks a frozen AsyncIterable without a Proxy invariant error', async () => {
+    const iterable = Object.freeze({
+      [Symbol.asyncIterator]() {
+        let index = 0;
+        return {
+          async next() {
+            index += 1;
+            return index <= 2
+              ? { done: false as const, value: index }
+              : { done: true as const, value: undefined };
+          },
+        };
+      },
+    });
+    const { fixture, storage } = fixtureWithVerb('scan', () => iterable);
+
+    const seen: number[] = [];
+    for await (const value of storage.scan() as AsyncIterable<number>) {
+      seen.push(value);
+      expect(fixture.openHandles()).toEqual(['scan#1']);
+    }
+    expect(seen).toEqual([1, 2]);
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
   function manualIterable() {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
