@@ -1,7 +1,7 @@
 import { assertDefined } from './assert-defined';
 /* eslint-disable @typescript-eslint/no-deprecated -- exercises the deprecated `BudgetExceededEvent` on purpose for its own construction-payload coverage. */
 import { createTool, createToolbox } from 'armorer';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
@@ -18,6 +18,7 @@ import {
   ChildWorkflowProgressEvent,
   ChildWorkflowReattachedEvent,
   ChildWorkflowStartedEvent,
+  COMBINED_OPERATIVE_EVENT_TYPES,
   type OperativeEventType,
   type RunCompletedEvent,
   type RunStartedEvent,
@@ -556,9 +557,18 @@ describe('events', () => {
       });
       const disposed = createRunRecorder(activeRun);
       const control = createRunRecorder(activeRun);
+      const removeSpy = spyOn(activeRun, 'removeEventListener');
       disposed.dispose();
-      // Idempotent.
+      const removalsAfterFirst = removeSpy.mock.calls.length;
+      // Two removals per type: the raw listener loop and the attach() detach.
+      expect(removalsAfterFirst).toBe(2 * COMBINED_OPERATIVE_EVENT_TYPES.length);
+      for (const type of COMBINED_OPERATIVE_EVENT_TYPES) {
+        expect(removeSpy.mock.calls.filter(([calledType]) => calledType === type)).toHaveLength(2);
+      }
+      // Idempotent: the second call removes nothing further.
       disposed.dispose();
+      expect(removeSpy.mock.calls.length).toBe(removalsAfterFirst);
+      removeSpy.mockRestore();
       await activeRun.result;
 
       expect(control.events.length).toBeGreaterThan(0);
