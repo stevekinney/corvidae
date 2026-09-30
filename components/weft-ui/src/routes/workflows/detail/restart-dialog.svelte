@@ -53,6 +53,7 @@
 
   import { faultTreatment } from '../../../lib/faults.ts';
   import { truncateId } from '../../../lib/format/index.ts';
+  import { WORKFLOWS_LIST_KEY_PREFIX } from '../../../lib/live-source/cache-integration.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import {
@@ -145,7 +146,7 @@
     onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(workflow.id) }),
-        queryClient.invalidateQueries({ queryKey: ['workflows', 'list'] }),
+        queryClient.invalidateQueries({ queryKey: WORKFLOWS_LIST_KEY_PREFIX }),
       ]);
       if (result.outcome === 'signalled') {
         signalledToLiveRun = true;
