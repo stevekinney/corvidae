@@ -16,7 +16,7 @@ import { expect, test } from './review-editor-browser-errors.ts';
 
 const MOUNT = '#example-mount-with-comments';
 
-test('Escape dismissal survives a collapsed-then-restored selection, and pointer reselection reopens it', async ({
+test('Escape dismissal survives a collapsed-then-restored selection under Shift, and keyboard or pointer reselection reopens it', async ({
   page,
 }) => {
   await page.clock.install();
@@ -37,19 +37,51 @@ test('Escape dismissal survives a collapsed-then-restored selection, and pointer
   await page.clock.runFor(1000);
   await expect(popover).toHaveCount(0);
 
-  // Collapse the DOM selection, then put the same range back: the shape of
-  // ProseMirror re-writing its stored selection during the focus hand-off.
-  await page.evaluate(() => {
+  // Shift is held through the collapse-and-restore, as it is when a keyboard
+  // selection is being extended. A bare modifier must arm nothing: were it to
+  // arm the release, the collapsed selection settled below would release the
+  // latch and the restored range would reopen the popover.
+  await page.keyboard.down('Shift');
+
+  // Collapse the DOM selection and let it settle, then put the same range
+  // back: the shape of ProseMirror re-writing its stored selection during the
+  // focus hand-off.
+  const selectedLength = await page.evaluate(() => {
     const selection = getSelection();
     if (selection === null || selection.rangeCount === 0) throw new Error('Expected a selection.');
     const range = selection.getRangeAt(0).cloneRange();
+    (window as unknown as { __dismissedRange: Range }).__dismissedRange = range;
     selection.collapseToStart();
     document.dispatchEvent(new Event('selectionchange'));
-    selection.removeAllRanges();
-    selection.addRange(range);
+    return range.toString().length;
+  });
+  await page.clock.runFor(200);
+  await page.evaluate(() => {
+    const selection = getSelection();
+    const range = (window as unknown as { __dismissedRange: Range }).__dismissedRange;
+    selection?.removeAllRanges();
+    selection?.addRange(range);
     document.dispatchEvent(new Event('selectionchange'));
   });
   await page.clock.runFor(200);
+  await expect(popover).toHaveCount(0);
+  await page.keyboard.up('Shift');
+
+  // A keyboard-only reselection of the same range releases the latch too: the
+  // caret moves off the range first, so extending back over it is a genuine
+  // reselection and the popover reopens.
+  await page.keyboard.press('ArrowLeft');
+  await page.clock.runFor(200);
+  await expect(popover).toHaveCount(0);
+  for (let index = 0; index < selectedLength; index += 1) {
+    await page.keyboard.press('Shift+ArrowRight');
+  }
+  await page.clock.runFor(200);
+  await expect(popover).toBeVisible();
+
+  // Dismiss again so the pointer path below starts from a latched selection.
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(1000);
   await expect(popover).toHaveCount(0);
 
   // A deliberate pointer reselection of the same word offers the popover again.
