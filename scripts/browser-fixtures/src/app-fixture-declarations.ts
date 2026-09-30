@@ -172,6 +172,8 @@ export const appFixtureDeclarations = {
   spinner: ['assertion'],
   'stacked-list-item': ['assertion'],
   'statistic-group': ['assertion'],
+  'statistic-group-nested': ['assertion'],
+  'statistic-group-six-cell': ['assertion'],
   'status-dot': ['assertion'],
   surface: ['assertion'],
   'table-of-contents': ['assertion'],
