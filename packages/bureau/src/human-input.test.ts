@@ -386,6 +386,115 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
         'expected bureau B to reconstruct the park action',
       );
       expect(bureauB.listPendingReviews()).toHaveLength(0);
+
+      // Settle the recovered run before disposing, or its aborted-state write
+      // lands after the SQLite handle is finalized.
+      await bureauB.signalSession(run.sessionId, 'human-response');
+      await waitForCondition(
+        () => bureauB.getRun(run.id)?.status === 'completed',
+        'expected bureau B to finish the recovered run before disposal',
+      );
+    } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
+    }
+  });
+
+  it('numbers a re-park after several resolved parks and a mid-step crash past all of them', async () => {
+    const databasePath = join(
+      tmpdir(),
+      `cor106-human-wait-multi-park-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+
+    let aCalls = 0;
+    const bureauA = await createBureau({
+      agents: {},
+      generate: async () => {
+        aCalls++;
+        if (aCalls <= 2) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: `call-${aCalls}`,
+                name: 'requestHumanInput',
+                arguments: { signalName: 'human-response' },
+              },
+            ],
+          };
+        }
+        if (aCalls === 3) return { content: '', toolCalls: [{ name: 'next', arguments: {} }] };
+        return new Promise<never>(() => {}); // the crash
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    const run = await bureauA.createRun({ message: 'park-twice-then-crash' });
+    const resolvedIds: string[] = [];
+    for (let ordinal = 0; ordinal < 2; ordinal++) {
+      await waitForCondition(
+        () =>
+          bureauA
+            .listPendingReviews()
+            .some((review) => review.runId === run.id && !resolvedIds.includes(review.id)),
+        `expected bureau A to park (${ordinal})`,
+      );
+      const pending = bureauA
+        .listPendingReviews()
+        .find((review) => review.runId === run.id && !resolvedIds.includes(review.id))!;
+      expect(pending.id.endsWith(`:human-response:${ordinal}`)).toBe(true);
+      await bureauA.resolveReview({ id: pending.id, decision: 'approve', principal: 'op' });
+      resolvedIds.push(pending.id);
+    }
+    await waitForCondition(() => aCalls === 4, 'expected bureau A to reach the hanging step');
+    // Not disposing bureauA: this is the crash.
+
+    let bCalls = 0;
+    const bureauB = await createBureau({
+      agents: {},
+      generate: async () => {
+        bCalls++;
+        if (bCalls === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call-b',
+                name: 'requestHumanInput',
+                arguments: { signalName: 'human-response' },
+              },
+            ],
+          };
+        }
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    try {
+      await waitForCondition(
+        () => bureauB.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the re-park after recovery to surface as a pending review',
+      );
+      expect(bureauB.getRun(run.id)?.liveness.status).toBe('waiting');
+      const reviews = bureauB.listPendingReviews();
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]!.id.endsWith(':human-response:2')).toBe(true);
+      expect(resolvedIds).not.toContain(reviews[0]!.id);
+
+      await bureauB.resolveReview({ id: reviews[0]!.id, decision: 'approve', principal: 'op' });
+      await waitForCondition(
+        () => bureauB.getRun(run.id)?.status === 'completed',
+        'expected bureau B to finish the recovered run before disposal',
+      );
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
