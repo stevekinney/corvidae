@@ -60,6 +60,13 @@ function decodeCursorOrThrow(cursor: Cursor): number {
   return sequence;
 }
 
+/** Order two cursors by feed position; `'at'` means caught up. Throws on a malformed cursor. */
+export function compareCursor(a: Cursor, b: Cursor): 'before' | 'at' | 'after' {
+  const delta = decodeCursorOrThrow(a) - decodeCursorOrThrow(b);
+  if (delta === 0) return 'at';
+  return delta < 0 ? 'before' : 'after';
+}
+
 // ---------------------------------------------------------------------------
 // Envelope
 // ---------------------------------------------------------------------------
@@ -331,20 +338,6 @@ export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
     const fromCursor = args?.fromCursor;
     const requestedAfter = fromCursor !== undefined ? decodeCursorOrThrow(fromCursor) : -1;
 
-    const unsubscribe = backend.subscribeLive((envelope) => {
-      if (!shouldDeliverEnvelope(envelope, args)) return;
-      if (buffer.length >= bufferSize) {
-        bufferOverflowed = true;
-      } else {
-        buffer.push(envelope);
-      }
-      if (waker) {
-        const fire = waker;
-        waker = null;
-        fire();
-      }
-    });
-
     const wake = () => {
       if (waker) {
         const fire = waker;
@@ -352,6 +345,16 @@ export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
         fire();
       }
     };
+
+    const unsubscribe = backend.subscribeLive((envelope) => {
+      if (!shouldDeliverEnvelope(envelope, args)) return;
+      if (buffer.length >= bufferSize) {
+        bufferOverflowed = true;
+      } else {
+        buffer.push(envelope);
+      }
+      wake();
+    });
 
     const cleanup = () => {
       if (cleanedUp) return;
