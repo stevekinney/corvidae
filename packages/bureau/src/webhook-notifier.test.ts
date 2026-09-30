@@ -994,7 +994,7 @@ describe('createWebhookNotifier', () => {
       // and the derived assessment is 'healthy'.
       expect(notifier.activeDeliverySnapshots()[0]?.assessment).toBe('healthy');
 
-      clock.advance(computeWebhookDeliveryDeadlineMs(5, 1000) + 1);
+      clock.advance(15000 + 1);
 
       const [snapshot] = notifier.activeDeliverySnapshots();
       expect(snapshot?.reachability).toBe('unreachable');
