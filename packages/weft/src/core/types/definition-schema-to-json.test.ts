@@ -91,6 +91,17 @@ describe('definitionSchemaToJsonSchema', () => {
       expect(input['required']).toEqual(['id']);
       expect(output['required']).toEqual(['id', 'limit']);
     });
+
+    it('keeps plain objects closed in both directions', () => {
+      const schema = z.object({ nested: z.object({ id: z.string() }) });
+      for (const direction of ['input', 'output'] as const) {
+        const result = definitionSchemaToJsonSchema(schema, direction);
+        expect(result['additionalProperties']).toBe(false);
+        expect(result).toMatchObject({
+          properties: { nested: { additionalProperties: false } },
+        });
+      }
+    });
   });
 
   describe('Valibot vendor adapter', () => {
