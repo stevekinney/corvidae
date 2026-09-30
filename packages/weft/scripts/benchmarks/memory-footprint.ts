@@ -48,6 +48,13 @@ function loadProcessResourceUsage(): ProcessResourceUsage {
   return cachedProcessResourceUsage;
 }
 
+/** Fills `buffer` with a `rusage_info_v2` record for this process and returns the kernel status. */
+type ResourceUsageCall = (buffer: BigUint64Array) => number;
+
+function callProcessResourceUsage(buffer: BigUint64Array): number {
+  return loadProcessResourceUsage()(process.pid, RUSAGE_INFO_V2, ptr(buffer));
+}
+
 /**
  * Reads the calling process's physical footprint through `proc_pid_rusage`,
  * which returns the same `phys_footprint` ledger value as `task_info` with
@@ -56,8 +63,10 @@ function loadProcessResourceUsage(): ProcessResourceUsage {
  * Throws when the call fails. A benchmark that silently fell back to another
  * measure on macOS would compare readings that are not comparable.
  */
-function readDarwinPhysicalFootprintBytes(): number {
-  const status = loadProcessResourceUsage()(process.pid, RUSAGE_INFO_V2, ptr(rusageBuffer));
+export function readPhysicalFootprintBytes(
+  callResourceUsage: ResourceUsageCall = callProcessResourceUsage,
+): number {
+  const status = callResourceUsage(rusageBuffer);
   if (status !== 0) {
     throw new Error(`proc_pid_rusage failed with status ${status}`);
   }
@@ -65,9 +74,9 @@ function readDarwinPhysicalFootprintBytes(): number {
   return Number(rusageBuffer[PHYSICAL_FOOTPRINT_WORD_INDEX]);
 }
 
-export function readMemoryFootprint(): MemoryReading {
-  if (process.platform === 'darwin') {
-    return { bytes: readDarwinPhysicalFootprintBytes(), measure: 'physical-footprint' };
+export function readMemoryFootprint(platform: NodeJS.Platform = process.platform): MemoryReading {
+  if (platform === 'darwin') {
+    return { bytes: readPhysicalFootprintBytes(), measure: 'physical-footprint' };
   }
 
   return { bytes: process.memoryUsage().rss, measure: 'resident-set-size' };

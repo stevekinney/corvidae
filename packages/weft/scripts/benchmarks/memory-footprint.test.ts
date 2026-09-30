@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { readMemoryFootprint } from './memory-footprint.ts';
+import { readMemoryFootprint, readPhysicalFootprintBytes } from './memory-footprint.ts';
 
 const RETAINED_BYTES = 128 * 1024 * 1024;
 /** Half the allocation: enough to prove the reading tracks retained pages. */
@@ -36,5 +36,29 @@ describe('readMemoryFootprint', () => {
 
     expect(after - before).toBeGreaterThanOrEqual(MINIMUM_OBSERVED_GROWTH_BYTES);
     expect(retained.length).toBe(RETAINED_BYTES);
+  });
+
+  it('falls back to resident set size where the kernel has no footprint ledger', () => {
+    const reading = readMemoryFootprint('linux');
+
+    expect(reading.measure).toBe('resident-set-size');
+    expect(reading.bytes).toBeGreaterThan(0);
+  });
+});
+
+describe('readPhysicalFootprintBytes', () => {
+  it('throws instead of substituting another measure when the kernel call fails', () => {
+    expect(() => readPhysicalFootprintBytes(() => -1)).toThrow(
+      'proc_pid_rusage failed with status -1',
+    );
+  });
+
+  it('reads the footprint from the ninth word of the usage record', () => {
+    const footprint = readPhysicalFootprintBytes((buffer) => {
+      buffer[9] = 123_456_789n;
+      return 0;
+    });
+
+    expect(footprint).toBe(123_456_789);
   });
 });
