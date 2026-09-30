@@ -109,3 +109,21 @@ const sourceState: 'idle' | 'loading' | 'ready' | 'failed' | 'cancelled' = sourc
 void sourceState;
 // @ts-expect-error Source enumeration never exposes a module location.
 void sourceEntry.location;
+
+// COR-116: every `weft.tasks.diagnostics` threshold has a server-side Zod
+// default, so a caller may omit all of them and supply only a filter.
+type DiagnosticsInput = Parameters<(typeof operations)['weft.tasks.diagnostics']>[0];
+
+const diagnosticsOperationIdOnly: DiagnosticsInput = { operationId: 'op-1' };
+void diagnosticsOperationIdOnly;
+
+const diagnosticsWithOverrides: DiagnosticsInput = {
+  operationId: 'op-1',
+  staleQueuedAfterMs: 1,
+  staleHeartbeatAfterMs: 1,
+  retryStormMinimumAttempts: 1,
+  includeExpectedDelayed: true,
+  unadoptedAfterMs: 1,
+  limit: 1,
+};
+void diagnosticsWithOverrides;
