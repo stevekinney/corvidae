@@ -203,7 +203,7 @@ describe('revisioned compaction commits', () => {
 
   it('rejects after summarizing when preserveToolPairs is false and the recent window strands a tool result', async () => {
     // The documented failure mode of `preserveToolPairs: false`: the recent window keeps a
-    // tool result whose call is summarized, so re-appending the kept messages fails after
+    // tool result whose call is summarized, so carrying the kept messages over fails after
     // every chunk has already been summarized.
     const conversation = conversationWithHistory();
     conversation.appendToolCall({ id: 'stranded-call', name: 'lookup', arguments: {} });
