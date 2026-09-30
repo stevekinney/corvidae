@@ -5,6 +5,7 @@ import { dirname, join, normalize } from 'node:path';
 
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
+import { rewritePublishedComponentExamples } from './component-example-imports.ts';
 import {
   additionalSourceRoots,
   applyVersionConstants,
@@ -21,6 +22,62 @@ import { type MirrorTarget } from './target-definitions.ts';
 import { loadTargetOwnedPolicy, writeTransformOutput } from './target-owned.ts';
 
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
+
+test('published component examples use their component subpaths under browser conditions', async () => {
+  const { plan } = committedPlans.cinder;
+  for (const [workspace, components] of [
+    [
+      'chat',
+      [
+        'chat-composer-popover',
+        'chat-conversation-header',
+        'chat-conversation-list',
+        'chat-navigation-rail',
+        'chat-sub-session',
+      ],
+    ],
+    [
+      'editor',
+      ['diff-review', 'diff-review-comments', 'diff-viewer', 'markdown-editor', 'review-editor'],
+    ],
+  ] as const) {
+    const internalManifest = await Bun.file(
+      join(corvidaeRoot, 'components', workspace, 'package.json'),
+    ).json();
+    expect(internalManifest.exports).toEqual({ '.': './src/index.ts' });
+    const manifestContents = plan.files[`packages/${workspace}/package.json`];
+    expect(manifestContents).toBeDefined();
+    const emittedManifest = JSON.parse(
+      typeof manifestContents === 'string'
+        ? manifestContents
+        : new TextDecoder().decode(manifestContents),
+    );
+    for (const component of components) {
+      const subpath = workspace === 'chat' ? component.replace(/^chat-/, '') : component;
+      const specifier = `@lostgradient/${workspace}/${subpath}`;
+      const emitted =
+        plan.source.files[
+          `packages/${workspace}/src/lib/components/${component}/${component}.examples.json`
+        ];
+      expect(emitted).toBeDefined();
+      const examples = JSON.parse(
+        typeof emitted === 'string' ? emitted : new TextDecoder().decode(emitted),
+      );
+      expect(emittedManifest.exports[`./${subpath}`]).toBeDefined();
+      expect(examples.import).toBe(specifier);
+      for (const example of examples.examples)
+        expect(example.code).toContain(`from '${specifier}'`);
+    }
+  }
+});
+
+test('a new public component example refuses emission until its subpath is declared', () => {
+  const path = 'packages/chat/src/lib/components/chat-new-panel/chat-new-panel.examples.json';
+  const source = new TextEncoder().encode(
+    JSON.stringify({ component: 'chat-new-panel', import: '@lostgradient/chat', examples: [] }),
+  );
+  expect(() => rewritePublishedComponentExamples(source, path)).toThrow('declared subpath');
+});
 
 /** Stand up a throwaway tree, hand it to the body, and remove it however the body ends. */
 async function withTree(
@@ -644,12 +701,10 @@ describe('a remapped workspace on disk', () => {
 describe('the committed workspaces', () => {
   /**
    * COR-1284 renamed every corvidae workspace to the name it already publishes under, which made
-   * the source-side rewrite layer COR-1285 deletes a no-op by construction. This is the property
-   * that made it deletable, stated directly against the real emitted trees rather than against a
-   * fixture: every byte `planSource` emits for a real workspace is the byte corvidae itself wrote,
-   * with nothing in between. It replaces COR-1284's `the %s plan rewrites zero module specifiers
-   * as internal`, which asserted the rewrite layer's output was already an identity function; now
-   * that the layer is gone, the only fact left to assert is that emission still is one.
+   * the source-side rewrite layer COR-1285 deletes a no-op by construction. Most source remains
+   * byte-for-byte. Public Chat and Editor example sidecars are the exception: corvidae's private
+   * packages expose one root source entry, while the published browser entries expose individual
+   * components through subpaths. Their emitted form is checked above against those subpaths.
    *
    * Scoped to `plan.source.files` rather than the merged surface, so a manifest, an exports map or
    * a vendored tsconfig — none of which corvidae's own tree carries verbatim, all three legitimately
@@ -657,7 +712,7 @@ describe('the committed workspaces', () => {
    * already excludes them by construction.
    */
   test.each<MirrorTarget>(['cinder', 'weft'])(
-    'the %s plan emits corvidae’s source byte-for-byte',
+    'the %s plan preserves source bytes except published component examples',
     async (target) => {
       const { plan } = committedPlans[target];
       // A declared version constant is the one sanctioned difference: the transform rewrites its
@@ -672,6 +727,13 @@ describe('the committed workspaces', () => {
       );
       const mismatches: string[] = [];
       for (const [path, contents] of Object.entries(plan.source.files)) {
+        if (
+          /^packages\/(chat|editor)\/src\/lib\/components\/([^/]+)\/\2\.examples\.json$/.test(
+            path,
+          ) &&
+          path !== 'packages/chat/src/lib/components/chat/chat.examples.json'
+        )
+          continue;
         const workspace = plan.emitted
           .filter((candidate) => path.startsWith(`${candidate.targetDirectory}/`))
           .toSorted((left, right) => right.targetDirectory.length - left.targetDirectory.length)[0];

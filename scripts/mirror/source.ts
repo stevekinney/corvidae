@@ -1,6 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
+import { rewritePublishedComponentExamples } from './component-example-imports.ts';
 import { formatEmittedFile } from './json-formatting.ts';
 import type { PackageSurfaceEntry } from './package-surface.ts';
 import { isTypeScriptConfiguration } from './target-resolvability.ts';
@@ -611,7 +612,11 @@ async function readInto(
   targetDirectory: string | undefined,
 ): Promise<void> {
   const contents = new Uint8Array(await Bun.file(absolute).arrayBuffer());
-  plan.files[path] = await formatEmittedFile(contents, targetDirectory, path);
+  plan.files[path] = await formatEmittedFile(
+    rewritePublishedComponentExamples(contents, path),
+    targetDirectory,
+    path,
+  );
   const metadata = await stat(absolute);
   if ((metadata.mode & 0o111) !== 0) plan.executable.push(path);
 }
