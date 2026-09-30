@@ -141,6 +141,98 @@ describe('ScheduleFormDrawer — edit', () => {
     }
   });
 
+  test('a background refetch with changed server data does not discard an unsaved revisionPolicy edit, and the edit still saves (COR-15)', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'mid-edit',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    let closed = false;
+    let queryClient: QueryClient | undefined;
+    try {
+      const { getByRole } = render(ScheduleFormDrawerHarness, {
+        props: {
+          client,
+          mode: 'edit',
+          scheduleId: 'mid-edit',
+          onClose: () => (closed = true),
+          onQueryClient: (qc) => (queryClient = qc),
+        },
+      });
+
+      const pinned = await waitFor(() => getByRole('radio', { name: 'Pinned' }));
+      await fireEvent.click(pinned);
+      expect(requireElement(pinned, HTMLInputElement).checked).toBe(true);
+
+      // Another operator edits the description: `updatedAt` moves, so the
+      // refetch delivers a genuinely different `ScheduleSummary` object.
+      await server.engine.updateSchedule('mid-edit', '0 2 * * *', {
+        description: 'edited elsewhere',
+      });
+      if (queryClient === undefined) throw new Error('queryClient was never captured');
+      await queryClient.invalidateQueries({ queryKey: scheduleDetailQueryKey('mid-edit') });
+      await waitFor(() => {
+        const cached = queryClient?.getQueryData<{ description?: string }>(
+          scheduleDetailQueryKey('mid-edit'),
+        );
+        expect(cached?.description).toBe('edited elsewhere');
+      });
+
+      // The operator's unsaved change survives the refetch.
+      expect(requireElement(getByRole('radio', { name: 'Pinned' }), HTMLInputElement).checked).toBe(
+        true,
+      );
+
+      await fireEvent.click(getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(closed).toBe(true));
+      const after = await server.engine.getSchedule('mid-edit');
+      expect(after?.revisionPolicy).toBe('pinned');
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test('saving edited description, overlap, backfill, and jitter persists them (COR-15)', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'all-options',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+      description: 'before',
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    let closed = false;
+    try {
+      const { getByRole } = render(ScheduleFormDrawerHarness, {
+        props: { client, mode: 'edit', scheduleId: 'all-options', onClose: () => (closed = true) },
+      });
+
+      const description = await waitFor(() => getByRole('textbox', { name: 'Description' }));
+      expect(requireElement(description, HTMLInputElement).value).toBe('before');
+      await fireEvent.input(description, { target: { value: 'after' } });
+      await fireEvent.click(getByRole('radio', { name: 'Queue' }));
+      await fireEvent.click(getByRole('switch', { name: 'Backfill missed occurrences' }));
+      await fireEvent.input(getByRole('textbox', { name: 'Jitter' }), { target: { value: '30s' } });
+
+      await fireEvent.click(getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(closed).toBe(true));
+
+      const after = await server.engine.getSchedule('all-options');
+      expect(after?.description).toBe('after');
+      expect(after?.overlap).toBe('queue');
+      expect(after?.backfill).toBe(true);
+      expect(after?.jitterMs).toBe(30_000);
+    } finally {
+      await server.stop();
+    }
+  });
+
   test('a rejected revision-policy save (ambiguous dynamic-source revision, no catalog active pointer) renders a fault instead of silently pinning (review, PR #978)', async () => {
     // `resolveScheduleRevisionForPin()` (engine-side) requires an
     // unambiguous revision for the type being pinned — for a
