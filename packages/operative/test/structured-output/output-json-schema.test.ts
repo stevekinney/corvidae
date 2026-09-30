@@ -237,6 +237,42 @@ describe('isStrictCompatible', () => {
     expect(isStrictCompatible({ ...strictObject, definitions: { X: looseObject } })).toBe(false);
   });
 
+  it('fails closed on $ref and forbidden keywords in every subschema position', () => {
+    const wrap = (a: Record<string, unknown>) => ({
+      type: 'object',
+      properties: { a },
+      required: ['a'],
+      additionalProperties: false,
+    });
+    expect(
+      isStrictCompatible(wrap({ type: 'array', prefixItems: [{ $ref: '#', pattern: 'x' }] })),
+    ).toBe(false);
+    expect(isStrictCompatible(wrap({ additionalProperties: { $ref: '#' } }))).toBe(false);
+    expect(isStrictCompatible(wrap({ additionalProperties: true }))).toBe(false);
+    expect(
+      isStrictCompatible(
+        wrap({
+          type: 'array',
+          items: { type: 'string' },
+          contains: { type: 'string', pattern: 'x' },
+        }),
+      ),
+    ).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, propertyNames: { $ref: '#' } })).toBe(false);
+    expect(isStrictCompatible(wrap({ type: 'array', additionalItems: { type: 'string' } }))).toBe(
+      false,
+    );
+    expect(isStrictCompatible(wrap({ type: 'array', unevaluatedItems: false }))).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, unevaluatedProperties: false })).toBe(false);
+  });
+
+  it('treats an array type containing object as an object type', () => {
+    expect(isStrictCompatible({ type: ['object', 'null'] })).toBe(false);
+    expect(
+      isStrictCompatible({ type: ['object', 'null'], properties: {}, additionalProperties: false }),
+    ).toBe(true);
+  });
+
   it('rejects a property absent from required', () => {
     expect(isStrictCompatible({ ...strictObject, required: ['a'] })).toBe(false);
     const { required: _r, ...noRequired } = strictObject;

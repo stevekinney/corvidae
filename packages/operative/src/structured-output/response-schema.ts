@@ -181,6 +181,12 @@ const STRICT_FORBIDDEN_KEYWORDS: ReadonlySet<string> = new Set([
   'dependentRequired',
   'dependentSchemas',
   'patternProperties',
+  'prefixItems',
+  'contains',
+  'propertyNames',
+  'additionalItems',
+  'unevaluatedItems',
+  'unevaluatedProperties',
 ]);
 
 /** Keywords whose value is a map of name to subschema. */
@@ -196,8 +202,14 @@ function isStrictNode(node: unknown): boolean {
     if (STRICT_FORBIDDEN_KEYWORDS.has(keyword)) return false;
   }
 
+  if (node['additionalProperties'] !== undefined && node['additionalProperties'] !== false) {
+    return false;
+  }
+
+  const type = node['type'];
+  const isObjectType = type === 'object' || (Array.isArray(type) && type.includes('object'));
   const properties = node['properties'];
-  if (node['type'] === 'object' || properties !== undefined) {
+  if (isObjectType || properties !== undefined) {
     if (node['additionalProperties'] !== false) return false;
     const required = node['required'];
     const requiredNames = Array.isArray(required) ? required : [];
