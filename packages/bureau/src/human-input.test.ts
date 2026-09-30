@@ -359,6 +359,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -385,6 +386,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -441,6 +443,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -487,6 +490,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -543,6 +547,7 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -580,6 +585,7 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -623,6 +629,7 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite' as const, path: databasePath },
       durableExecution: true as const,
+      durableOwnership: { ownership: 'none' as const },
       humanInput: true as const,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -706,6 +713,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -744,6 +752,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
