@@ -970,6 +970,31 @@ describe('createRuntimeComposition', () => {
     costAwareStrategy.onUsage({ total: 0 });
   });
 
+  it('treats an empty frontier route as unconfigured for deep conversations', () => {
+    const strategy = createRoutingStrategy({
+      type: 'complexity',
+      simple: 'simple',
+      complex: 'complex',
+      frontier: '',
+      simpleMaxLength: 10,
+    });
+    if (strategy.kind !== 'direct') throw new Error('expected direct strategy');
+
+    const deepConversation = new Conversation();
+    for (let index = 0; index < 11; index += 1) {
+      deepConversation.appendUserMessage(
+        `this prompt is deliberately longer than ten characters ${index}`,
+      );
+      deepConversation.appendAssistantMessage(`response ${index}`);
+    }
+    const decision = strategy.strategy(
+      { conversation: deepConversation, step: 21, toolbox: createToolbox([], { context: {} }) },
+      [],
+    );
+
+    expect(decision).toMatchObject({ route: 'complex' });
+  });
+
   it('applies cache only when configuration and a store are available', () => {
     const generate: GenerateFunction = async () => ({ content: 'fresh', toolCalls: [] });
     const kv = textValueStore(new MemoryStorage());
