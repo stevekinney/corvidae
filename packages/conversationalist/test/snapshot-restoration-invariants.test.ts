@@ -95,6 +95,17 @@ describe('snapshot restoration invariants', () => {
     expect(() => Conversation.from(snapshot)).toThrow(/revision/);
   });
 
+  it('applies the revision chronology check to published nested snapshots', async () => {
+    const fixture: any = await Bun.file(
+      new URL('./fixtures/conversation-snapshot-v2-nested.json', import.meta.url),
+    ).json();
+    expect(() => decodeSnapshot(fixture)).not.toThrow();
+    fixture.root.revision = fixture.controllerRevision;
+    fixture.root.children[0].revision = 0;
+    resign(fixture);
+    expect(() => decodeSnapshot(fixture)).toThrow(/revision/);
+  });
+
   it('persists stream sequences and continues them after restore', () => {
     const source = new Conversation(createConversationHistory({ id: 'sequences' }));
     const messageId = source.appendStreamingMessage('assistant');
