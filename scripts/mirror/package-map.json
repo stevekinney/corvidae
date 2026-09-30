@@ -16,12 +16,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.2",
+      "lastPublishedVersion": "0.27.4",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.2",
-        "gitHead": "9c869f543a5a472903baafdc08a196a469d6c693",
-        "corvidaeCommit": "6671344e0bfda34096cd5a86684bfb598ca0276f",
+        "version": "0.27.4",
+        "gitHead": "7d829d70cc1b09aa8e4edc55e4efdf26db3757a9",
+        "corvidaeCommit": "9491a9fa6b99965fabd15aead682304c9307fd8c",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -335,6 +335,7 @@
             "src/core/engine/lifecycle/recovery-revision-groups.ts",
             "src/core/engine/lifecycle/resume-body.ts",
             "src/core/engine/lifecycle/resume-generation-guard.ts",
+            "src/core/engine/lifecycle/resume-revision-restamp.ts",
             "src/core/engine/lifecycle/resume.ts",
             "src/core/engine/lifecycle/shared.ts",
             "src/core/engine/lifecycle/standalone-claim-acquire.ts",
@@ -1032,6 +1033,7 @@
             "src/storage/http.ts",
             "src/storage/index.ts",
             "src/storage/indexeddb-fault-harness.test-support.ts",
+            "src/storage/indexeddb-scan-page-size.ts",
             "src/storage/indexeddb.ts",
             "src/storage/interface.ts",
             "src/storage/key-encoding.ts",
@@ -1164,7 +1166,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "bd4834e2e058add3b6e1c5b9ded28514bee72446d60c480b6d1ff9ba9179ca5a"
+          "digest": "2ba36d5ec6c861752691a4fb7ef186783331a3246d57994557508ca5bbba502e"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1172,7 +1174,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "572a2cf9aa67d1f6d1f6e7c14e66e72a542f4edce2dc32dd117d598d716f5438"
+          "digest": "362dae70844d41cc9e68d8ddbd6cd83632bda3197074aae1c375054906d07467"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -3319,6 +3321,14 @@
             },
             {
               "path": "package/dist/core/engine/lifecycle/resume-generation-guard.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/resume-revision-restamp.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/resume-revision-restamp.js",
               "executable": false
             },
             {
@@ -8242,6 +8252,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/storage/indexeddb-scan-page-size.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/storage/indexeddb-scan-page-size.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/storage/indexeddb.d.ts",
               "executable": false
             },
@@ -9082,7 +9100,7 @@
               "executable": false
             }
           ],
-          "digest": "f66e769a13432ce3e343aa130e7fea96ef49bee24571ea2cb8d26aba748f60eb"
+          "digest": "511de08ad8ac838f661f351db6b82600418b86ea9aac2265a9fa92411fb4f227"
         }
       }
     },
