@@ -328,7 +328,7 @@ describe('Conversation core', () => {
     const seen: Array<[string, number, number]> = [];
     let wrote = false;
     conversation.addEventListener('plugin.activated', (event) => {
-      seen.push([event.plugin.id, event.conversation.ids.length, event.revision]);
+      seen.push([event.plugin?.id ?? 'none', event.conversation.ids.length, event.revision]);
       if (!wrote) {
         wrote = true;
         conversation.appendAssistantMessage('reentrant write');
