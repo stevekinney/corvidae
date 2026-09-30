@@ -21,10 +21,23 @@ const echoWorkflow = workflow({ name: 'purge-supersession-echo' }).execute(async
 
 let invocation = 0;
 
+let shouldFail = true;
+const flakyWorkflow = workflow({ name: 'purge-supersession-flaky' }).execute(async function* (
+  ctx: WorkflowContext,
+  _input: string,
+) {
+  if (shouldFail) throw new Error('first attempt fails');
+  yield* ctx.waitForSignal('go');
+  return 'ok';
+});
+
 function createEngine(storage: MemoryStorage) {
   return Engine.create({
     storage,
-    workflows: { 'purge-supersession-echo': echoWorkflow },
+    workflows: {
+      'purge-supersession-echo': echoWorkflow,
+      'purge-supersession-flaky': flakyWorkflow,
+    },
     recover: false,
   });
 }
@@ -132,5 +145,37 @@ describe('bulk purge supersession (COR-1388)', () => {
 
     const { deleted } = await purging;
     await expectReplacementSurvives(engine, base, id, replacement, deleted);
+  });
+
+  it('skips a failed run that retryFailedAll reactivates in place between the scan and the purge', async () => {
+    const id = `purge-supersede-retry-${(invocation += 1)}`;
+    const base = new MemoryStorage();
+    let armed = false;
+    const gate = gateStorage(
+      base,
+      (method, args) =>
+        armed && (method === 'has' || method === 'get') && args[0] === KEYS.teardownOwed(id),
+    );
+    await using engine = await createEngine(gate.storage);
+    shouldFail = true;
+    const handle = await engine.start('purge-supersession-flaky', 'OLD', { id, tags: ['retry'] });
+    await handle.result().catch(() => undefined);
+    const failed = await engine.get(id);
+    expect(failed?.status).toBe('failed');
+
+    armed = true;
+    const purging = engine.purge({ status: 'failed' });
+    await gate.reached;
+    shouldFail = false;
+    await engine.retryFailedAll({ tags: ['retry'] });
+    await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    gate.release();
+
+    const { deleted } = await purging;
+    expect(deleted).toBe(0);
+    expect(await base.get(KEYS.workflow(id))).not.toBeNull();
+    const reactivated = await engine.get(id);
+    expect(reactivated?.status).toBe('running');
+    expect(await base.get(KEYS.checkpoint(id))).not.toBeNull();
   });
 });

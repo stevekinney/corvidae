@@ -1,13 +1,10 @@
-import type {
-  BatchOperation,
-  ConditionalBatchCondition,
-} from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import type { WorkflowState } from '../types.ts';
 import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { trackPurgeWrite } from './purge-write-tracking.ts';
-import { decodeWorkflowState } from './validation.ts';
+import { decodeWorkflowState, isTerminalWorkflowStatus } from './validation.ts';
 
 /**
  * Commit the purge batch. `false` means the workflow record moved after it was
@@ -35,13 +32,19 @@ export async function commitPurgeOrExplainLoss(
 }
 
 /**
- * Whether the `wf:<id>` bytes read at purge time are still the run that was
- * scanned. An absent record has no replacement to protect (the commit is fenced
- * on it staying absent); a present one must carry the scanned execution token.
+ * Whether the `wf:<id>` bytes read at purge time are still the terminal run that
+ * was scanned. An absent record has no replacement to protect (the commit is
+ * fenced on it staying absent); a present one must carry the scanned execution
+ * token and still be terminal, because `retryFailedAll` reactivates a failed run
+ * in place under the same token.
  */
 export function isScannedRun(workflowBytes: Uint8Array | null, state: WorkflowState): boolean {
   if (workflowBytes === null) return true;
-  return decodeWorkflowState(workflowBytes).workflowExecutionToken === state.workflowExecutionToken;
+  const current = decodeWorkflowState(workflowBytes);
+  return (
+    current.workflowExecutionToken === state.workflowExecutionToken &&
+    isTerminalWorkflowStatus(current.status)
+  );
 }
 
 function bytesEqual(left: Uint8Array | null, right: Uint8Array | null): boolean {
