@@ -51,6 +51,18 @@ async function runToCompletion(engine: Engine, id: string): Promise<void> {
   await handle.result();
 }
 
+/**
+ * Pins `Date.now()` so the freshness window is measured from a known instant.
+ * Reading the clock instead let a slow first read (host load, coverage
+ * instrumentation) land after the instant the test computed its expiry from,
+ * so the decision had not expired when the test advanced the clock past it.
+ */
+function freezeClock(): number {
+  const frozenAt = Date.now();
+  setSystemTime(frozenAt);
+  return frozenAt;
+}
+
 afterEach(() => {
   setSystemTime();
 });
@@ -131,9 +143,9 @@ describe('workflow visibility index maintenance', () => {
 
   it('starts maintaining once the cached decision expires after a backfill begins', async () => {
     const storage = new MemoryStorage();
+    const startedAt = freezeClock();
     const engine = new Engine({ storage });
     engine.register(noopWorkflow);
-    const startedAt = Date.now();
 
     try {
       await runToCompletion(engine, 'before-1');
@@ -157,9 +169,9 @@ describe('workflow visibility index maintenance', () => {
   it('stops maintaining after the watermark and marker are removed', async () => {
     const storage = new MemoryStorage();
     await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+    const startedAt = freezeClock();
     const engine = new Engine({ storage });
     engine.register(noopWorkflow);
-    const startedAt = Date.now();
 
     try {
       await runToCompletion(engine, 'live-1');
