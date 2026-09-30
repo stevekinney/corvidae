@@ -1120,7 +1120,7 @@
     },
     "@lostgradient/operative": {
       "workspace": "@lostgradient/operative",
-      "version": "0.13.0",
+      "version": "0.15.0",
       "fetchedAt": "2026-09-30",
       "subpaths": [
         ".",
@@ -1230,7 +1230,7 @@
     },
     "conversationalist": {
       "workspace": "conversationalist",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "fetchedAt": "2026-09-30",
       "subpaths": [
         ".",
