@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { OutputSchemaConversionError } from '../../src/errors.ts';
-import { toOutputJsonSchema } from '../../src/structured-output/response-schema.ts';
+import { isStrictCompatible, toOutputJsonSchema } from '../../src/structured-output/response-schema.ts';
 
 describe('toOutputJsonSchema', () => {
   it('converts z.string() to { type: "string" }', () => {
@@ -145,5 +145,165 @@ describe('toOutputJsonSchema', () => {
     const schema = z.date();
     expect(() => toOutputJsonSchema(schema)).toThrow(OutputSchemaConversionError);
     expect(() => toOutputJsonSchema(schema)).toThrow(OutputSchemaConversionError);
+  });
+});
+
+describe('toOutputJsonSchema mutation safety', () => {
+  it('returns a fresh deep copy so caller mutation never corrupts later calls', () => {
+    const schema = z.object({
+      name: z.string(),
+      choice: z.union([z.string(), z.object({ id: z.number() })]),
+    });
+    const first = toOutputJsonSchema(schema);
+    const snapshot = structuredClone(first);
+    const properties = first['properties'] as Record<string, Record<string, unknown>>;
+    delete properties['name'];
+    properties['extra'] = { type: 'string' };
+    const anyOf = properties['choice']?.['anyOf'] as unknown[] | undefined;
+    anyOf?.push({ type: 'null' });
+    (first['required'] as string[]).push('bogus');
+    first['title'] = 'mutated';
+
+    const second = toOutputJsonSchema(schema);
+    expect(second).not.toBe(first);
+    expect(second).toEqual(snapshot);
+  });
+
+  it('returns a fresh copy for the primitive-union normalized branch', () => {
+    const schema = z.union([z.string(), z.number()]);
+    const first = toOutputJsonSchema(schema);
+    const snapshot = structuredClone(first);
+    (first['anyOf'] as unknown[]).push({ type: 'null' });
+    expect(toOutputJsonSchema(schema)).toEqual(snapshot);
+  });
+
+  it('returns distinct objects on cache hits', () => {
+    const schema = z.string();
+    expect(toOutputJsonSchema(schema)).not.toBe(toOutputJsonSchema(schema));
+  });
+});
+
+describe('isStrictCompatible', () => {
+  const strictObject = {
+    type: 'object',
+    properties: { a: { type: 'string' }, b: { type: 'number' } },
+    required: ['a', 'b'],
+    additionalProperties: false,
+  };
+  const looseObject = { type: 'object', properties: {}, required: [] };
+
+  it('accepts a fully strict-compliant schema', () => {
+    expect(isStrictCompatible(strictObject)).toBe(true);
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: {
+          list: { type: 'array', items: strictObject },
+          u: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        },
+        required: ['list', 'u'],
+        additionalProperties: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('accepts primitive schemas', () => {
+    expect(isStrictCompatible({ type: 'string' })).toBe(true);
+  });
+
+  it('rejects an object missing additionalProperties: false', () => {
+    const { additionalProperties: _a, ...rest } = strictObject;
+    expect(isStrictCompatible(rest)).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, additionalProperties: true })).toBe(false);
+  });
+
+  it('rejects nested objects missing additionalProperties: false', () => {
+    expect(
+      isStrictCompatible({
+        ...strictObject,
+        properties: { a: looseObject, b: { type: 'number' } },
+      }),
+    ).toBe(false);
+    expect(isStrictCompatible({ type: 'array', items: looseObject })).toBe(false);
+    expect(isStrictCompatible({ anyOf: [looseObject] })).toBe(false);
+  });
+
+  it('rejects an object inside $defs or definitions without additionalProperties: false', () => {
+    expect(isStrictCompatible({ ...strictObject, $defs: { X: looseObject } })).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, definitions: { X: looseObject } })).toBe(false);
+  });
+
+  it('rejects a property absent from required', () => {
+    expect(isStrictCompatible({ ...strictObject, required: ['a'] })).toBe(false);
+    const { required: _r, ...noRequired } = strictObject;
+    expect(isStrictCompatible(noRequired)).toBe(false);
+  });
+
+  const keywords = [
+    'minLength',
+    'maxLength',
+    'pattern',
+    'format',
+    'minimum',
+    'maximum',
+    'exclusiveMinimum',
+    'exclusiveMaximum',
+    'multipleOf',
+    'minItems',
+    'maxItems',
+    'uniqueItems',
+    'minProperties',
+    'maxProperties',
+    'allOf',
+    'oneOf',
+    'not',
+    'if',
+    'then',
+    'else',
+    'dependentRequired',
+    'dependentSchemas',
+    'patternProperties',
+  ];
+  for (const keyword of keywords) {
+    it(`rejects ${keyword} at the top level, nested, and inside $defs`, () => {
+      const bad = { [keyword]: keyword === 'uniqueItems' ? true : {} };
+      expect(isStrictCompatible({ ...strictObject, ...bad })).toBe(false);
+      expect(
+        isStrictCompatible({
+          ...strictObject,
+          properties: { a: { type: 'string', ...bad }, b: { type: 'number' } },
+        }),
+      ).toBe(false);
+      expect(isStrictCompatible({ ...strictObject, $defs: { X: { type: 'string', ...bad } } })).toBe(
+        false,
+      );
+    });
+  }
+
+  it('rejects $ref anywhere', () => {
+    expect(isStrictCompatible({ ...strictObject, $ref: '#/$defs/X' })).toBe(false);
+    expect(
+      isStrictCompatible({
+        ...strictObject,
+        properties: { a: { $ref: '#/$defs/X' }, b: { type: 'number' } },
+        $defs: { X: { type: 'string' } },
+      }),
+    ).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, $defs: { X: { $ref: '#' } } })).toBe(false);
+  });
+
+  it('does not treat a property NAMED like a keyword as a violation', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { pattern: { type: 'string' }, format: { type: 'string' } },
+        required: ['pattern', 'format'],
+        additionalProperties: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects non-object input', () => {
+    expect(isStrictCompatible(null as never)).toBe(false);
   });
 });
