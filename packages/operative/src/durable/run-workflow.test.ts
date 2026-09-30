@@ -3872,6 +3872,94 @@ describe('durable agentRun workflow', () => {
       }
     });
 
+    it('COR-104: replay reads the steering floor captured at the original run, not the live getAppliedFloor', async () => {
+      const storage = new MemoryStorage();
+      const runId = 'cor-104-steering-snapshot-replay';
+      const desired = { paused: false, configVersion: 3, model: 'durable-model' };
+
+      // Engine A: the floor in effect when the run first executed is 0. Step 0's
+      // generate hangs, so the run is left non-terminal (a crashed process).
+      let generateReached: () => void = () => {};
+      const reached = new Promise<void>((resolve) => {
+        generateReached = resolve;
+      });
+      const toolboxA = continuingToolbox();
+      const servicesA: DurableRunDeps = {
+        toolbox: toolboxA,
+        options: {
+          generate: () => {
+            generateReached();
+            return new Promise<never>(() => {});
+          },
+          toolbox: toolboxA,
+          conversation: createConversationHistory(),
+          stopWhen: noToolCalls(),
+          steering: {
+            sessionId: 'test-session',
+            getDesiredState: () => desired,
+            awaitResume: () => new Promise<void>(() => {}),
+            getAppliedFloor: () => 0,
+          },
+          runId,
+        },
+      };
+      const a = await buildEngine(storage, false);
+      const handle = await a.engine.start(
+        'agentRun',
+        { runId, sessionId: runId, agentName: '', prompt: 'Start' },
+        { id: runId, services: servicesA },
+      );
+      void handle.result().catch(() => {});
+      await reached;
+      await yieldToPortableEventLoop();
+      a.engine[Symbol.dispose]();
+
+      // Engine B: by replay time the live gate reports a floor of 3 (a later
+      // command was applied elsewhere). Replay must still use the original 0, so
+      // configVersion 3 is applied exactly once, as it would have been originally.
+      const events: Event[] = [];
+      const b = await buildEngine(storage, false, () => {
+        const toolboxB = continuingToolbox();
+        return Promise.resolve({
+          status: 'available' as const,
+          services: {
+            toolbox: toolboxB,
+            emitter: {
+              dispatch(event: Event) {
+                events.push(event);
+                return true;
+              },
+            },
+            options: {
+              generate: async () => ({ content: 'done', toolCalls: [] }),
+              toolbox: toolboxB,
+              conversation: createConversationHistory(),
+              stopWhen: noToolCalls(),
+              steering: {
+                sessionId: 'test-session',
+                getDesiredState: () => desired,
+                awaitResume: () => new Promise<void>(() => {}),
+                getAppliedFloor: () => 3,
+              },
+              runId,
+            },
+          } satisfies DurableRunDeps,
+        });
+      });
+      try {
+        const handles = await b.engine.recoverAll();
+        expect(handles.length).toBe(1);
+        await handles[0]!.result();
+        const applied = events.filter(
+          (event): event is SteeringAppliedEvent => event instanceof SteeringAppliedEvent,
+        );
+        expect(applied).toHaveLength(1);
+        expect(applied[0]?.effective.configVersion).toBe(3);
+      } finally {
+        b.engine[Symbol.dispose]();
+      }
+    });
+
     it('a paused steering gate blocks the durable driver at the same runStep boundary, then proceeds once resumed', async () => {
       const { engine } = await buildEngine(new MemoryStorage(), false);
       let paused = true;
