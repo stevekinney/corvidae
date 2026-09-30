@@ -174,6 +174,7 @@ Every workspace was swept. These workspaces have no non-conformant path: `conver
 | `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3743 |
 | `@lostgradient/bureau` | `fire-and-forget-call` | ephemeral | `packages/bureau/src/create-bureau.ts` | 4022 |
 | `@lostgradient/bureau` | `fire-and-forget-call` | ephemeral | `packages/bureau/src/create-bureau.ts` | 4442 |
+| `@lostgradient/bureau` | `interval` | durable | `packages/bureau/src/create-bureau.ts` | 5454 |
 | `@lostgradient/bureau` | `fire-and-forget-call` | ephemeral | `packages/bureau/src/durable-event-history.ts` | 958 |
 | `@lostgradient/operative` | `fire-and-forget-call` | ephemeral | `packages/operative/src/create-run.ts` | 595 |
 | `@lostgradient/operative` | `fire-and-forget-call` | ephemeral | `packages/operative/src/child-signals.ts` | 436 |
