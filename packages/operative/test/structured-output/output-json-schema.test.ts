@@ -364,34 +364,34 @@ describe('isStrictCompatible', () => {
     expect(isStrictCompatible(noRequired)).toBe(false);
   });
 
-  const keywords = [
-    'minLength',
-    'maxLength',
-    'pattern',
-    'format',
-    'minimum',
-    'maximum',
-    'exclusiveMinimum',
-    'exclusiveMaximum',
-    'multipleOf',
-    'minItems',
-    'maxItems',
-    'uniqueItems',
-    'minProperties',
-    'maxProperties',
-    'allOf',
-    'oneOf',
-    'not',
-    'if',
-    'then',
-    'else',
-    'dependentRequired',
-    'dependentSchemas',
-    'patternProperties',
-  ];
-  for (const keyword of keywords) {
+  const keywords: Record<string, unknown> = {
+    minLength: 1,
+    maxLength: 3,
+    pattern: 'x',
+    format: 'email',
+    minimum: 0,
+    maximum: 1,
+    exclusiveMinimum: 0,
+    exclusiveMaximum: 1,
+    multipleOf: 2,
+    minItems: 1,
+    maxItems: 2,
+    uniqueItems: true,
+    minProperties: 1,
+    maxProperties: 2,
+    allOf: [{ type: 'string' }],
+    oneOf: [{ type: 'string' }],
+    not: { type: 'string' },
+    if: { type: 'string' },
+    then: { type: 'string' },
+    else: { type: 'string' },
+    dependentRequired: { a: ['b'] },
+    dependentSchemas: { a: { type: 'string' } },
+    patternProperties: { '^x': { type: 'string' } },
+  };
+  for (const [keyword, value] of Object.entries(keywords)) {
     it(`rejects ${keyword} at the top level, nested, and inside $defs`, () => {
-      const bad = { [keyword]: keyword === 'uniqueItems' ? true : {} };
+      const bad = { [keyword]: value };
       expect(isStrictCompatible({ ...strictObject, ...bad })).toBe(false);
       expect(
         isStrictCompatible({

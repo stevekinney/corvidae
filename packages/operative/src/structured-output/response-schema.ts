@@ -10,7 +10,8 @@ export type ResponseSchemaValidationResult =
 /**
  * Memoizes {@link toOutputJsonSchema} by schema identity. A `ZodType` is an
  * immutable value once constructed, so `z.toJSONSchema` is pure over it —
- * caching is purely an optimization, never a correctness concern. Load-
+ * caching is purely an optimization, never a correctness concern (callers
+ * receive a deep copy of the cached value, so mutating it is safe). Load-
  * bearing for the common per-run path: `createAgent`'s synchronous guard,
  * `createActiveRun`'s synchronous guard, and `buildStepDeps` (called once
  * per run, including every retry) each independently derive the SAME
