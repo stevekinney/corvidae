@@ -213,7 +213,7 @@ export function reattachDurableActiveRun(
   // downgraded here, before `foldTerminalCleanup` runs. The step still runs and
   // its own non-completed outcome still wins. `createDurableActiveRun`'s
   // fresh-run fold is deliberately unchanged.
-  const RECOVERED_COMPLETED_OUTCOME: CleanupAcknowledgement = {
+  const RECOVERED_UNKNOWN_EFFECT_OUTCOME: CleanupAcknowledgement = {
     status: 'unresolved',
     reason: 'unknown-effect',
   };
@@ -225,7 +225,7 @@ export function reattachDurableActiveRun(
       // registered child's own `closed()` must settle before the terminal
       // fold runs, not merely its `result()`.
       await (childRegistry?.awaitChildrenClosed() ?? Promise.resolve());
-      return foldTerminalCleanup(RECOVERED_COMPLETED_OUTCOME, terminalCleanupStep);
+      return foldTerminalCleanup(RECOVERED_UNKNOWN_EFFECT_OUTCOME, terminalCleanupStep);
     }
     // Wait for the SAME cancel attempt abort() fired (never rejects: it is
     // already `.then(cancelSucceeded, cancelFailed)`), then re-read the
@@ -242,7 +242,7 @@ export function reattachDurableActiveRun(
       }
       // AB-304: same children-closed fold-in as the uncancelled branch above.
       await (childRegistry?.awaitChildrenClosed() ?? Promise.resolve());
-      return foldTerminalCleanup(RECOVERED_COMPLETED_OUTCOME, terminalCleanupStep);
+      return foldTerminalCleanup(RECOVERED_UNKNOWN_EFFECT_OUTCOME, terminalCleanupStep);
     } catch (error) {
       return { status: 'unresolved', reason: 'persistence-failed', error };
     }
