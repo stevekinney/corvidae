@@ -22,6 +22,8 @@ import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
 import {
+  CLAIM_RENEW_MS,
+  CLAIM_TTL_MS,
   REMEMBERED_ANSWER,
   SESSION_ID,
   chargeStatus,
@@ -35,22 +37,15 @@ import {
   requestContext,
 } from './process-crash-work-integrity-fixtures';
 
-/**
- * Must match `CLAIM_TTL_MS` / `CLAIM_RENEW_MS` in `process-crash-recovery.test.ts`:
- * the parent derives its claim-lapse wait from the same TTL.
- */
-const CLAIM_TTL_MS = 200;
-const CLAIM_RENEW_MS = 50;
-
 const POLL_ATTEMPTS = 2000;
 const POLL_DELAY_MS = 5;
 
 const scenarioName = process.argv[2];
-/** `unwrapped` builds `charge-then-crash` without idempotency (the COR-1391 control). */
-const variant = process.argv[6];
 const backend = process.argv[3];
 const storagePath = process.argv[4];
 const markerPath = process.argv[5];
+/** `unwrapped` builds `charge-then-crash` without idempotency (the COR-1391 control). */
+const variant = process.argv[6];
 
 if (
   scenarioName === undefined ||
@@ -59,7 +54,7 @@ if (
   markerPath === undefined
 ) {
   process.stderr.write(
-    'usage: process-crash-child <scenario> <sqlite|lmdb> <storagePath> <markerPath>\n',
+    'usage: process-crash-child <scenario> <sqlite|lmdb> <storagePath> <markerPath> [variant]\n',
   );
   process.exit(2);
 }
@@ -267,17 +262,20 @@ async function twoParkedRuns(): Promise<void> {
 async function verify(): Promise<void> {
   const directory = dirname(markerPath as string);
   const { cache, close } = await openIdempotencyCache(directory);
+  const governed = await openGovernedMemory(directory);
   const bureau = await createHarnessBureau({
     backend: backend as 'sqlite' | 'lmdb',
     storagePath: storagePath as string,
     generate: async () => ({ content: 'verify', toolCalls: [] }),
     toolbox: createChargeToolbox(directory, async () => 'ok', { cache, wrap: true }),
+    memory: governed.memory,
   });
   const report = await bureau.waitForRecovery?.();
   const runningRuns = await bureau.listDurableRuns({ status: 'running' });
   const running = runningRuns?.items.length;
   writeMarker({ recoveryOutcome: report?.outcome, running });
   await bureau.shutdown();
+  governed.close();
   await close();
   process.exit(0);
 }

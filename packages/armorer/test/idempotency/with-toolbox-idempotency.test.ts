@@ -3396,3 +3396,29 @@ describe('withToolboxIdempotency across toolbox.extend() (COR-1391)', () => {
     expect(second.result).toBe('charged:order-1');
   });
 });
+
+describe('withToolboxIdempotency settled events (COR-1391)', () => {
+  it('reports the recorded result on the settled event of a deduplicated call', async () => {
+    const charge = createTool({
+      name: 'charge',
+      description: 'charge an order',
+      input: z.object({ orderId: z.string() }),
+      idempotencyKey: (input: unknown) => (input as { orderId: string }).orderId,
+      execute: async ({ orderId }) => `charged:${orderId}`,
+    });
+    const toolbox = withToolboxIdempotency(createToolbox([charge]), {
+      cache: createToolResultCache({ store: createTestStore() }),
+      tenantId: 'settled-tenant',
+    });
+    const settledResults: unknown[] = [];
+    toolbox.addEventListener('settled', (event) => {
+      settledResults.push((event as unknown as { result?: unknown }).result);
+    });
+    const requestContext = createTestRequestContext('settled-tenant');
+    const call = { id: 'call-1', name: 'charge', arguments: { orderId: 'order-1' } };
+    await toolbox.execute(call, { requestContext });
+    const second = await toolbox.execute({ ...call, id: 'call-2' }, { requestContext });
+    expect(second.idempotency?.outcome).toBe('deduped');
+    expect(settledResults).toEqual(['charged:order-1', 'charged:order-1']);
+  });
+});

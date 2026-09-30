@@ -61,8 +61,11 @@ interface Scenario {
   readonly directory: string;
   readonly storagePath: string;
   readonly markerPath: string;
-  /** Registers a disposer that `finally` runs exactly once, last-registered first. */
-  readonly onCleanup: (closer: () => unknown) => void;
+  /**
+   * Registers a disposer that runs exactly once, whether the body calls the returned function
+   * or `finally` does. Disposers run sequentially, last-registered first.
+   */
+  readonly onCleanup: <T>(closer: () => T) => () => T;
 }
 
 async function withScenario(
@@ -71,26 +74,38 @@ async function withScenario(
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-work-integrity-${backend}-`));
   const closers: Array<() => unknown> = [];
+  let bodyError: { error: unknown } | undefined;
   try {
     await body({
       backend,
       directory,
       storagePath: join(directory, 'bureau'),
       markerPath: join(directory, 'marker.json'),
-      onCleanup: (closer) => {
-        let done = false;
-        closers.push(() => {
-          if (done) return undefined;
-          done = true;
-          return closer();
-        });
+      onCleanup: <T>(closer: () => T) => {
+        let result: { value: T } | undefined;
+        const once = () => {
+          result ??= { value: closer() };
+          return result.value;
+        };
+        closers.push(once);
+        return once;
       },
     });
-  } finally {
-    const outcomes = await Promise.allSettled(closers.toReversed().map((closer) => closer()));
-    rmSync(directory, { recursive: true, force: true });
-    for (const outcome of outcomes) expect(outcome.status).toBe('fulfilled');
+  } catch (error) {
+    bodyError = { error };
   }
+  const failures: unknown[] = [];
+  for (const closer of closers.toReversed()) {
+    try {
+      await closer();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  rmSync(directory, { recursive: true, force: true });
+  // A cleanup failure must not mask the body's own error.
+  if (bodyError !== undefined) throw bodyError.error;
+  if (failures.length > 0) throw new AggregateError(failures, 'scenario cleanup failed');
 }
 
 async function spawnChild(
@@ -144,8 +159,10 @@ async function expectVerifyClean(scenario: Scenario): Promise<void> {
   expect(marker.recoveryOutcome).toBe('clean');
 }
 
-async function expectShutdownReleased(bureau: Bureau): Promise<void> {
-  const report = await bureau.shutdown();
+async function expectShutdownReleased(
+  shutdown: () => ReturnType<Bureau['shutdown']>,
+): Promise<void> {
+  const report = await shutdown();
   expect(report.unresolved).toBe(0);
   expect(report.failed).toBe(0);
 }
@@ -178,7 +195,7 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
       wrap ? undefined : 'unwrapped',
     );
     const idempotency = await openIdempotencyCache(scenario.directory);
-    scenario.onCleanup(() => idempotency.close());
+    const closeIdempotency = scenario.onCleanup(() => idempotency.close());
     const stepZeroCalls: number[] = [];
     const generate: GenerateFunction = async ({ step }) => {
       if (step > 0) return { content: 'charged', toolCalls: [] };
@@ -194,13 +211,16 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
         wrap,
       }),
     });
-    scenario.onCleanup(() => bureau.shutdown());
-    return { marker, bureau, idempotency, stepZeroCalls };
+    const shutdown = scenario.onCleanup(() => bureau.shutdown());
+    return { marker, bureau, shutdown, closeIdempotency, stepZeroCalls };
   }
 
   it('does not repeat an idempotent tool effect when a crashed step replays', async () => {
     await withScenario(backend, async (scenario) => {
-      const { marker, bureau, idempotency, stepZeroCalls } = await recoverCharge(scenario, true);
+      const { marker, bureau, shutdown, closeIdempotency, stepZeroCalls } = await recoverCharge(
+        scenario,
+        true,
+      );
       expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
       // Premise: step 0 never committed, so it replayed.
       expect(stepZeroCalls).toHaveLength(1);
@@ -210,12 +230,17 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
         runId: marker.runId,
         type: 'tool.settled',
       });
-      const charges = settled.filter((record) => JSON.stringify(record).includes('charge'));
+      const charges = settled.filter(
+        (record) => (record.detail as { toolName?: string } | undefined)?.toolName === 'charge',
+      );
       expect(charges.length).toBeGreaterThan(0);
-      expect(JSON.stringify(charges)).toContain(`charged:${CHARGE_ORDER_ID}`);
+      // Every settled record, including the replayed (deduplicated) one, carries the result.
+      for (const record of charges) {
+        expect((record.detail as { result?: unknown }).result).toBe(`charged:${CHARGE_ORDER_ID}`);
+      }
 
-      await expectShutdownReleased(bureau);
-      await idempotency.close();
+      await expectShutdownReleased(shutdown);
+      await closeIdempotency();
       await expectVerifyClean(scenario);
 
       // A fresh cache over the same sidecar file sees a completed entry, not an orphaned marker.
@@ -227,14 +252,14 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
 
   it('control: without idempotency the same crash repeats the tool effect', async () => {
     await withScenario(backend, async (scenario) => {
-      const { marker, bureau, stepZeroCalls } = await recoverCharge(scenario, false);
+      const { marker, bureau, shutdown, stepZeroCalls } = await recoverCharge(scenario, false);
       expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
       expect(stepZeroCalls).toHaveLength(1);
       expect(readEffects(scenario.directory)).toEqual([
         `charged ${CHARGE_ORDER_ID}`,
         `charged ${CHARGE_ORDER_ID}`,
       ]);
-      await expectShutdownReleased(bureau);
+      await expectShutdownReleased(shutdown);
     });
   }, 120_000);
 
@@ -245,7 +270,7 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
         'memory-write-then-crash',
       );
       const governed = await openGovernedMemory(scenario.directory);
-      scenario.onCleanup(() => governed.close());
+      const closeGoverned = scenario.onCleanup(() => governed.close());
       const stepZeroCalls: number[] = [];
       const bureau = await createHarnessBureau({
         backend,
@@ -257,7 +282,7 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
         toolbox: createToolbox([createNextTool()]),
         memory: governed.memory,
       });
-      scenario.onCleanup(() => bureau.shutdown());
+      const shutdown = scenario.onCleanup(() => bureau.shutdown());
 
       expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
       expect(stepZeroCalls).toHaveLength(1);
@@ -266,8 +291,8 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
       expect(records).toHaveLength(1);
       expect(records[0]?.metadata['dedupeKey']).toBe(`${marker.runId}:0`);
 
-      await expectShutdownReleased(bureau);
-      governed.close();
+      await expectShutdownReleased(shutdown);
+      closeGoverned();
       await expectVerifyClean(scenario);
     });
   }, 120_000);
@@ -294,7 +319,7 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
         generate,
         toolbox: createToolbox([createNextTool()]),
       });
-      scenario.onCleanup(() => bureau.shutdown());
+      const shutdown = scenario.onCleanup(() => bureau.shutdown());
       await bureau.waitForRecovery?.();
 
       const both = await pollUntil(
@@ -307,6 +332,8 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
       expect(both).toBe(true);
       expect(calls.every((call) => call.step >= 1)).toBe(true);
       const callsBeforeAbort = calls.length;
+      const xMessage = 'crash harness run X';
+      const xCallsBeforeAbort = calls.filter((call) => call.message === xMessage).length;
 
       expect(bureau.abortRun(marker.xRunId).status).toBe('aborting');
       expect(await pollUntil(() => bureau.getRun(marker.xRunId)?.status === 'aborted')).toBe(true);
@@ -340,7 +367,9 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s
         status: 'not-found',
       });
 
-      await expectShutdownReleased(bureau);
+      // Still true after Y finished: nothing re-entered generate for X.
+      expect(calls.filter((call) => call.message === xMessage)).toHaveLength(xCallsBeforeAbort);
+      await expectShutdownReleased(shutdown);
       await expectVerifyClean(scenario);
     });
   }, 120_000);

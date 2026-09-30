@@ -8,6 +8,7 @@ import {
   approvalConsumeSymbol,
   approvalResumeSymbol,
   policyAuthorizationOnlySymbol,
+  policyAuthorizationResultSymbol,
 } from '../internal/approval-resume';
 import type { AnyToolbox } from '../toolbox-interface';
 import type { ToolApprovalAction, ToolCallInput, ToolExecutionResult } from '../types';
@@ -452,7 +453,10 @@ export function withToolboxIdempotency(
     };
   }
 
-  function createPolicyAuthorizationOnlyOptions(executeOptions: unknown): unknown {
+  function createPolicyAuthorizationOnlyOptions(
+    executeOptions: unknown,
+    cachedResult: unknown,
+  ): unknown {
     const hasApprovalResume =
       executeOptions !== undefined &&
       executeOptions !== null &&
@@ -462,6 +466,7 @@ export function withToolboxIdempotency(
       ...(executeOptions as Record<PropertyKey, unknown> | undefined),
     };
     authorizationOnlyOptions[policyAuthorizationOnlySymbol] = true;
+    authorizationOnlyOptions[policyAuthorizationResultSymbol] = cachedResult;
     if (!hasApprovalResume) {
       delete authorizationOnlyOptions[approvalConsumeSymbol];
     }
@@ -493,7 +498,7 @@ export function withToolboxIdempotency(
         ...call,
         arguments: originalArguments,
       },
-      createPolicyAuthorizationOnlyOptions(executeOptions),
+      createPolicyAuthorizationOnlyOptions(executeOptions, cached.result),
     );
     if (authorizationResult.outcome !== 'success' || authorizationResult.error) {
       return authorizationResult;
