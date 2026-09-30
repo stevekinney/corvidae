@@ -158,10 +158,18 @@ export function createRunWorkflow(
         // instance. The checkpoint-store writes below exist only so the ActiveRun
         // adapter can reconstruct the RunResult post-completion; they are not the
         // workflow's own resume mechanism.
-        let cursor: RunCursor = initialCursor(
-          workflowVersion,
-          runDepsFrom(ctx.services).options.steering?.getAppliedFloor?.() ?? 0,
-        );
+        // COR-104: the steering floor is captured ONCE in a memo, so every replay
+        // reads the first run's value instead of the live gate. A run persisted
+        // before the snapshot existed has a stored cursor with no `steeringBoundary`;
+        // its floor is `0`, never a live read. Only a run with no stored cursor yet
+        // (a fresh run, or one that crashed before its first step committed) reads
+        // the live gate.
+        const steeringBoundary = yield* ctx.memo('steeringBoundary', async () => {
+          const stored = await checkpointStore.loadCursor(runId);
+          if (stored !== null) return stored.steeringBoundary ?? 0;
+          return runDepsFrom(ctx.services).options.steering?.getAppliedFloor?.() ?? 0;
+        });
+        let cursor: RunCursor = initialCursor(workflowVersion, steeringBoundary);
         // Seed the conversation on the first run from the run's options + prompt,
         // then persist it so the adapter and any external reader see the transcript.
         const seededConversation = (() => {

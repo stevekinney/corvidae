@@ -98,6 +98,14 @@ export async function prepareStep(
     maybeDispatchSteeringApplied(steeringDesiredState);
   }
 
+  // COR-104: `awaitResumeOrAbort` is a race, and a resume that wins it can be
+  // followed by a cancellation before this step starts doing work. Re-check the
+  // run signal at the resume-to-work boundary so that cancellation ends the run
+  // as aborted instead of being dropped until after a generate call.
+  if (signal?.aborted) {
+    return { kind: 'abort', reason: explicitAbortReason(signal) };
+  }
+
   // AB-64/AB-250 selection boundary: revalidate a previously planned
   // backend selection against the CURRENT catalog/policy/availability
   // snapshot, at the same shared entry point as the steering boundary above

@@ -3960,6 +3960,50 @@ describe('durable agentRun workflow', () => {
       }
     });
 
+    it('COR-104: a run whose persisted cursor predates the snapshot treats the floor as 0, never a live read', async () => {
+      const { engine, checkpointStore } = await buildEngine(new MemoryStorage(), false);
+      const runId = 'cor-104-legacy-cursor';
+      // A cursor written before `steeringBoundary` existed: no such field.
+      await checkpointStore.saveCursor(runId, {
+        step: 0,
+        totalUsage: { prompt: 0, completion: 0, total: 0 },
+        lastContent: '',
+        schemaAttempts: 0,
+        lastAppliedConfigVersion: 0,
+      });
+      const events: Event[] = [];
+      const toolbox = continuingToolbox();
+      const services: DurableRunDeps = {
+        toolbox,
+        emitter: {
+          dispatch(event) {
+            events.push(event);
+            return true;
+          },
+        },
+        options: {
+          generate: async () => ({ content: 'done', toolCalls: [] }),
+          toolbox,
+          conversation: createConversationHistory(),
+          stopWhen: noToolCalls(),
+          steering: {
+            sessionId: 'test-session',
+            getDesiredState: () => ({ paused: false, configVersion: 3 }),
+            awaitResume: () => new Promise<void>(() => {}),
+            getAppliedFloor: () => 3,
+          },
+          runId,
+        },
+      };
+      try {
+        await runToCompletion(engine, { runId }, services);
+        const applied = events.filter((event) => event instanceof SteeringAppliedEvent);
+        expect(applied).toHaveLength(1);
+      } finally {
+        engine[Symbol.dispose]();
+      }
+    });
+
     it('a paused steering gate blocks the durable driver at the same runStep boundary, then proceeds once resumed', async () => {
       const { engine } = await buildEngine(new MemoryStorage(), false);
       let paused = true;
