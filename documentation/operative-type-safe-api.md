@@ -156,7 +156,7 @@ Stopping a timer is not awaiting the work the timer already started. A stop path
 - **Ownership** is the workspace package that owns the code, by its real name: `@lostgradient/*`, or the unscoped `armorer` and `conversationalist`.
 - **Execution mode** is one of `interval`, `timeout`, `fire-and-forget-call`, or `unawaited-field-promise`.
 - **Durability** uses the control contract's vocabulary. `ephemeral` means the work leaves no state that outlives the process. `durable` means abandoning it mid-flight can leave persisted state incomplete or stale.
-- **File** and **line** locate where the work is started, on the commit this inventory was taken from.
+- **File** and **line** locate where the work is started, on base commit `5ec1f80223890fa431a684c687e4333b6b2da103`, the commit this inventory was taken from.
 
 ### Sweep coverage
 
@@ -177,6 +177,7 @@ Every workspace was swept. These workspaces have no non-conformant path: `conver
 | `@lostgradient/bureau` | `fire-and-forget-call` | ephemeral | `packages/bureau/src/durable-event-history.ts` | 958 |
 | `@lostgradient/operative` | `fire-and-forget-call` | ephemeral | `packages/operative/src/create-run.ts` | 595 |
 | `@lostgradient/operative` | `fire-and-forget-call` | ephemeral | `packages/operative/src/child-signals.ts` | 436 |
+| `@lostgradient/operative` | `fire-and-forget-call` | durable | `packages/operative/src/scheduler/create-scheduler.ts` | 507 |
 | `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/create-tool/runtime-execution.ts` | 109 |
 | `armorer` | `fire-and-forget-call` | durable | `packages/armorer/src/idempotency/with-toolbox-idempotency.ts` | 720 |
 | `armorer` | `fire-and-forget-call` | durable | `packages/armorer/src/idempotency/with-toolbox-idempotency.ts` | 791 |
@@ -200,6 +201,8 @@ Every workspace was swept. These workspaces have no non-conformant path: `conver
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/worker-disconnect-requeue.ts` | 151 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/authentication-bridge.ts` | 430 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/authentication-bridge.ts` | 457 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/remote-activity-event-bridges.ts` | 54 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/remote-activity-event-bridges.ts` | 83 |
 | `@lostgradient/weft` | `interval` | ephemeral | `packages/weft/src/worker/long-poll.ts` | 382 |
 | `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/worker/long-poll.ts` | 421 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/websocket-worker.ts` | 292 |
