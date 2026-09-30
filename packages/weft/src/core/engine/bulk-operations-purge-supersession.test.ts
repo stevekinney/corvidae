@@ -21,6 +21,15 @@ const echoWorkflow = workflow({ name: 'purge-supersession-echo' }).execute(async
 
 let invocation = 0;
 
+function createEngine(storage: MemoryStorage) {
+  return Engine.create({
+    storage,
+    workflows: { 'purge-supersession-echo': echoWorkflow },
+    recover: false,
+  });
+}
+type TestEngine = Awaited<ReturnType<typeof createEngine>>;
+
 /** Pause the first storage call matching `matches`, until `release` is called. */
 function gateStorage(
   storage: MemoryStorage,
@@ -47,7 +56,7 @@ function gateStorage(
   return { storage: proxy, reached: reached.promise, release: () => released.resolve() };
 }
 
-async function completeFirstRun(engine: Engine, id: string): Promise<void> {
+async function completeFirstRun(engine: TestEngine, id: string): Promise<void> {
   const handle = await engine.start('purge-supersession-echo', 'OLD', { id });
   await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
   await engine.signal(id, 'go');
@@ -55,7 +64,7 @@ async function completeFirstRun(engine: Engine, id: string): Promise<void> {
 }
 
 async function expectReplacementSurvives(
-  engine: Engine,
+  engine: TestEngine,
   storage: MemoryStorage,
   id: string,
   replacement: { result(): Promise<unknown> },
@@ -64,7 +73,8 @@ async function expectReplacementSurvives(
   expect(deleted).toBe(0);
   expect(await storage.get(KEYS.workflow(id))).not.toBeNull();
   expect(await storage.get(KEYS.checkpoint(id))).not.toBeNull();
-  expect((await engine.get(id))?.status).toBe('running');
+  const summary = await engine.get(id);
+  expect(summary?.status).toBe('running');
   await engine.signal(id, 'go');
   expect(await replacement.result()).toBe('NEW');
 }
@@ -88,11 +98,7 @@ describe('bulk purge supersession (COR-1388)', () => {
       base,
       (method, args) => (method === 'has' || method === 'get') && args[0] === KEYS.teardownOwed(id),
     );
-    await using engine = await Engine.create({
-      storage: gate.storage,
-      workflows: { 'purge-supersession-echo': echoWorkflow },
-      recover: false,
-    });
+    await using engine = await createEngine(gate.storage);
     await completeFirstRun(engine, id);
 
     const purging = engine.purge({ status: 'completed' });
@@ -112,11 +118,7 @@ describe('bulk purge supersession (COR-1388)', () => {
     const id = `purge-supersede-commit-${(invocation += 1)}`;
     const base = new MemoryStorage();
     const gate = gateStorage(base, isPurgeCommit(id));
-    await using engine = await Engine.create({
-      storage: gate.storage,
-      workflows: { 'purge-supersession-echo': echoWorkflow },
-      recover: false,
-    });
+    await using engine = await createEngine(gate.storage);
     await completeFirstRun(engine, id);
 
     const purging = engine.purge({ status: 'completed' });
