@@ -319,6 +319,30 @@ describe('Conversation core', () => {
     expect(pushes).toContainEqual({ ids: 1, revision: 1 });
   });
 
+  it('reports the outer mutation state on every plugin.activated event when a listener writes reentrantly', () => {
+    const first = defineMessagePlugin({ id: 'a', revision: 1 }, (input) => input);
+    const second = defineMessagePlugin({ id: 'b', revision: 1 }, (input) => input);
+    const conversation = new ConversationHistory(createConversation({ id: 'activation' }), {
+      plugins: [first, second],
+    });
+    const seen: Array<[string, number, number]> = [];
+    let wrote = false;
+    conversation.addEventListener('plugin.activated', (event) => {
+      seen.push([event.plugin.id, event.conversation.ids.length, event.revision]);
+      if (!wrote) {
+        wrote = true;
+        conversation.appendAssistantMessage('reentrant write');
+      }
+    });
+
+    conversation.appendUserMessage('outer write');
+
+    expect(seen).toEqual([
+      ['a', 1, 1],
+      ['b', 1, 1],
+    ]);
+  });
+
   it('keeps the store snapshot referentially stable across non-state events', () => {
     const transaction = new HistoryTransaction(createConversation({ id: 'stable' }));
     const first = transaction.getSnapshot('open');

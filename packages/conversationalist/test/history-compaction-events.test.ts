@@ -58,6 +58,23 @@ describe('compaction event emission', () => {
     expect(seen['compaction.completed']).toEqual(seen['compaction.started']);
   });
 
+  it('shares one correlationId across started and completed for a no-op attempt', async () => {
+    const history = new ConversationHistory(createConversation());
+    history.appendUserMessage('only one');
+    const seen: Record<string, string[]> = {};
+    for (const type of ['compaction.started', 'compaction.completed'] as const) {
+      history.addEventListener(type, (event) => {
+        (seen[type] ??= []).push(event.correlationId);
+      });
+    }
+
+    const result = await history.compact(summarizer, { preserveRecentCount: 2 });
+
+    expect(result.outcome).toBe('no-op');
+    expect(seen['compaction.started']).toHaveLength(1);
+    expect(seen['compaction.completed']).toEqual(seen['compaction.started']);
+  });
+
   it('shares one correlationId across started and stale-discarded, distinct per attempt', async () => {
     const history = new ConversationHistory(createConversation());
     for (let i = 0; i < 10; i++) history.appendUserMessage(`Message ${i}`);
