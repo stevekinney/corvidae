@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   createLmdbStorageFixture,
   createMemoryStorageFixture,
@@ -293,7 +294,7 @@ describe('createMemoryStorageFixture', () => {
 
     const iterator = (storage.query() as AsyncIterable<number>)[Symbol.asyncIterator]();
     expect(fixture.openHandles()).toEqual(['query#1']);
-    await expect(iterator.next()).rejects.toThrow('deliberate failure');
+    expect(await throwingRejectionOf(iterator.next())).toThrow('deliberate failure');
     expect(fixture.openHandles()).toEqual([]);
   });
 
@@ -305,7 +306,7 @@ describe('createMemoryStorageFixture', () => {
     const iterator = (storage.scan() as AsyncIterable<number>)[Symbol.asyncIterator]();
     await iterator.next();
     expect(fixture.openHandles()).toEqual(['scan#1']);
-    await expect(iterator.throw?.(new Error('stop'))).rejects.toThrow('stop');
+    expect(await throwingRejectionOf(iterator.throw?.(new Error('stop')))).toThrow('stop');
     expect(fixture.openHandles()).toEqual([]);
   });
 });
