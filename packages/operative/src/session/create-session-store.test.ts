@@ -2464,11 +2464,17 @@ describe('SessionStore outbox claim lease (AB-390)', () => {
   });
 });
 
+function v2KeyFor(id: string): string {
+  let encoded = '';
+  for (let index = 0; index < id.length; index += 1) {
+    encoded += id.charCodeAt(index).toString(16).padStart(4, '0');
+  }
+  return `${BODY_PREFIX}${encoded}`;
+}
+
 describe('duplicate legacy and v2 bodies during summary rebuilds', () => {
   const duplicateId = 'duplicate';
-  const encodedKey = `${BODY_PREFIX}${[...duplicateId]
-    .map((character) => character.charCodeAt(0).toString(16).padStart(4, '0'))
-    .join('')}`;
+  const encodedKey = v2KeyFor(duplicateId);
   const legacyKey = `agent-session:${duplicateId}`;
 
   async function seedDuplicate(backing: BackingStore): Promise<void> {
@@ -2480,12 +2486,7 @@ describe('duplicate legacy and v2 bodies during summary rebuilds', () => {
       encodedKey,
       JSON.stringify(makeSession({ id: duplicateId, agentName: 'canonical-agent' })),
     );
-    await backing.set(
-      `${BODY_PREFIX}${[...'other']
-        .map((character) => character.charCodeAt(0).toString(16).padStart(4, '0'))
-        .join('')}`,
-      JSON.stringify(makeSession({ id: 'other' })),
-    );
+    await backing.set(v2KeyFor('other'), JSON.stringify(makeSession({ id: 'other' })));
     await backing.set(SUMMARY_INDEX_KEY, '[]');
   }
 
@@ -2527,7 +2528,8 @@ describe('duplicate legacy and v2 bodies during summary rebuilds', () => {
     await backing.set(legacyKey, JSON.stringify(makeSession({ id: duplicateId })));
     await backing.set(SUMMARY_INDEX_KEY, '[]');
     const store = createSessionStore(backing);
-    expect((await store.list()).map((summary) => summary.id)).toEqual([duplicateId]);
+    const listed = await store.list();
+    expect(listed.map((summary) => summary.id)).toEqual([duplicateId]);
 
     const mismatched = textValueStore(new MemoryStorage());
     await mismatched.set(encodedKey, JSON.stringify(makeSession({ id: 'someone-else' })));
