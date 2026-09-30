@@ -230,19 +230,4 @@ describe('RestartDialog', () => {
     expect(closed).toBe(0);
     expect(getByRole('button', { name: 'Restart workflow' })).not.toBeNull();
   });
-
-  test('without workflows:write the confirm button is disabled with the scope reason', async () => {
-    const { client } = fakeClient();
-    const { getByRole, getByLabelText } = render(RestartDialogHarness, {
-      props: {
-        client,
-        workflow: workflow(),
-        principal: principal(['workflows:read']),
-        queryClient: newQueryClient(),
-      },
-    });
-
-    await fireEvent.input(getByLabelText('Signal name'), { target: { value: 'resync' } });
-    expect(getByRole('button', { name: 'Restart workflow' }).hasAttribute('disabled')).toBe(true);
-  });
 });

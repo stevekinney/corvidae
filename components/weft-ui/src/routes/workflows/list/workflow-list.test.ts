@@ -121,13 +121,14 @@ describe('WorkflowList', () => {
       activatedAt: 1,
     });
 
-    const { findAllByText, findByText } = render(WorkflowListHarness, {
+    const { findAllByText } = render(WorkflowListHarness, {
       props: { client: realClient(), principal: GRANTED_PRINCIPAL, queryClient: newQueryClient() },
     });
 
-    expect(await findByText('Differs from active')).not.toBeNull();
-    // order-processing: rev-current matches the (shared) scripted pointer;
-    // payment-failing's two pinned rows both differ from it.
+    // order-processing: rev-current matches the (shared) scripted pointer,
+    // rev-old does not; payment-failing's two pinned rows both differ from
+    // it; the legacy row carries no revision and so gets no badge.
+    expect(await findAllByText('Differs from active')).toHaveLength(3);
     expect(await findAllByText('Active')).toHaveLength(1);
     const activeCalls = fetchScript.calls.filter(
       (call) => typeof call.init?.body === 'string' && call.init.body.includes('active.get'),

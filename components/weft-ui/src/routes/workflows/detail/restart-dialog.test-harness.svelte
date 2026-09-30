@@ -10,11 +10,12 @@
 
   import type { Principal } from '../../../lib/scopes.svelte.ts';
   import WorkflowRouteHarness from '../list/workflow-route-harness.test-harness.svelte';
+  import type { ComponentProps } from 'svelte';
+
   import RestartDialog from './restart-dialog.svelte';
-  import type { RestartClient } from './restart-dialog.svelte';
 
   interface Props {
-    client: RestartClient;
+    client: ComponentProps<typeof RestartDialog>['client'];
     workflow: WorkflowState;
     principal: Principal;
     queryClient: QueryClient;

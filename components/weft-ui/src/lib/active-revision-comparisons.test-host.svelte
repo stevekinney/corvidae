@@ -12,7 +12,9 @@
   let { client, rows, enabled }: Props = $props();
 
   const comparisons = createActiveRevisionComparisons({
-    client,
+    get client() {
+      return client;
+    },
     rows: () => rows,
     enabled: () => enabled,
   });

@@ -74,7 +74,7 @@ describe('createActiveRevisionComparisons', () => {
     });
 
     await waitFor(() => expect(getByTestId('row-0').textContent).toBe('stale'));
-    expect(queryClient.getQueryData(queryKeys.catalog.active('alpha'))).toEqual({
+    expect(queryClient.getQueryData<unknown>(queryKeys.catalog.active('alpha'))).toEqual({
       revision: 'rev-a',
       generation: 1,
       activatedAt: 1,

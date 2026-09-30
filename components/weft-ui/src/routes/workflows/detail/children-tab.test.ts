@@ -34,9 +34,14 @@ function page(items: WorkflowSummary[], total = items.length): PaginatedResult<W
   return { items, total, offset: 0, limit: 50 };
 }
 
+/** Active-pointer stub for the fakes below that don't exercise the comparison badge: resolves nothing, so every badge stays hidden. */
+const inertOperations = {
+  'weft.workflows.active.get': async (_input: { name: string }) => null,
+};
+
 describe('ChildrenTab', () => {
   test('shows the empty state when list({ parentWorkflowId }) returns no children', async () => {
-    const client = { list: async () => page([]) };
+    const client = { list: async () => page([]), operations: inertOperations };
 
     const { getByText } = render(ChildrenTabHarness, {
       props: { client, workflow: workflowState() },
@@ -49,6 +54,7 @@ describe('ChildrenTab', () => {
 
   test('renders real child ids as clickable rows, including a detached (non-awaited) child', async () => {
     const client = {
+      operations: inertOperations,
       list: async (filter?: { parentWorkflowId?: string }) => {
         expect(filter?.parentWorkflowId).toBe('wf_1');
         return page([
@@ -73,6 +79,7 @@ describe('ChildrenTab', () => {
 
   test('shows a "+N more" note when the parent has more children than the page limit', async () => {
     const client = {
+      operations: inertOperations,
       list: async () => page([summary({ id: 'wf_child_1' })], 3),
     };
 
@@ -87,6 +94,7 @@ describe('ChildrenTab', () => {
 
   test('no "+N more" note when every child fits on the one page', async () => {
     const client = {
+      operations: inertOperations,
       list: async () => page([summary({ id: 'wf_child_1' })], 1),
     };
 
@@ -105,6 +113,7 @@ describe('ChildrenTab', () => {
       resolve: null,
     };
     const client = {
+      operations: inertOperations,
       list: () =>
         new Promise<PaginatedResult<WorkflowSummary>>((resolve) => {
           pendingList.resolve = resolve;
@@ -126,6 +135,7 @@ describe('ChildrenTab', () => {
 
   test('a child row shows its truncated revision when defined', async () => {
     const client = {
+      operations: inertOperations,
       list: async () =>
         page([summary({ id: 'wf_child_1', revision: 'validate-shipment-rev-abcdefgh' })]),
     };
@@ -142,6 +152,7 @@ describe('ChildrenTab', () => {
 
   test('a child row shows an explicit "Unpinned" label when revision is undefined', async () => {
     const client = {
+      operations: inertOperations,
       list: async () => page([summary({ id: 'wf_child_1' })]),
     };
 
@@ -190,6 +201,7 @@ describe('ChildrenTab', () => {
 
   test('a child row displays its truncated id and relative creation time', async () => {
     const client = {
+      operations: inertOperations,
       list: async () => page([summary({ id: 'wf_child_abcdef0123456789', createdAt: 1_000 })]),
     };
 
