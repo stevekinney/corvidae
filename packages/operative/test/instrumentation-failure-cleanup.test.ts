@@ -7,7 +7,6 @@ import { assertDefined } from './assert-defined';
 
 import { noToolCalls } from '../src/conditions/predicates.ts';
 import { createActiveRun } from '../src/create-run.ts';
-import { AbortAgentRunError } from '../src/errors.ts';
 import { instrumentRun } from '../src/index.ts';
 import type { GenerateResponse, TokenUsage } from '../src/types.ts';
 import { RecordingTracer } from './instrumentation-fixtures';
@@ -50,11 +49,11 @@ describe('instrumentRun failure and cleanup', () => {
     const runSpan = findSpan(tracer, 'invoke_agent')!;
     expect(runSpan).toBeDefined();
     expect(runSpan.status.code).toBe(SpanStatusCode.ERROR);
-    expect(runSpan.status.message).toBe('LLM service unavailable');
+    expect(runSpan.status.message).toBe('Run failed (generate/UNKNOWN)');
     expect(runSpan.attributes['error.type']).toBe('Error');
     expect(runSpan.attributes['operative.error.kind']).toBe('generate');
     expect(runSpan.attributes['operative.error.code']).toBe('UNKNOWN');
-    expect(runSpan.exceptions).toHaveLength(1);
+    expect(runSpan.exceptions).toEqual([{ name: 'Error' }]);
     expect(runSpan.ended).toBe(true);
 
     // All open spans should be swept (ended)
@@ -91,14 +90,14 @@ describe('instrumentRun failure and cleanup', () => {
 
     const runSpan = findSpan(tracer, 'invoke_agent')!;
     expect(runSpan).toBeDefined();
-    expect(runSpan.attributes['operative.abort_reason']).toBe('user cancelled');
+    expect(runSpan.attributes['operative.abort_reason']).toBe('aborted');
     expect(runSpan.attributes['operative.error.kind']).toBe('abort');
     expect(runSpan.attributes['operative.error.code']).toBe('ABORTED');
     expect(runSpan.attributes['error.type']).toBe('AbortAgentRunError');
     expect(runSpan.status.code).toBe(SpanStatusCode.ERROR);
-    expect(runSpan.status.message).toBe('user cancelled');
+    expect(runSpan.status.message).toBe('Run aborted (abort/ABORTED)');
     expect(runSpan.exceptions).toHaveLength(1);
-    expect(runSpan.exceptions[0]).toBeInstanceOf(AbortAgentRunError);
+    expect(runSpan.exceptions[0]).toEqual({ name: 'AbortAgentRunError' });
     expect(runSpan.ended).toBe(true);
 
     // All spans should be ended

@@ -129,7 +129,7 @@ const OPERATIVE_ATTRIBUTE_CLASSIFICATION_TABLE: AttributeClassificationRow[] = [
     callSite: "'run.aborted' listener → runSpan.setAttribute(s)(...)",
     attributeKey:
       'operative.abort_reason / error.type / operative.error.kind / operative.error.code',
-    sourceValue: "reason ?? 'unknown', error.name, error.kind, error.code (category names/codes)",
+    sourceValue: "literal 'aborted' (COR-96: never the caller-supplied reason), error.name, error.kind, error.code (category names/codes)",
     privileged: false,
     treatment: 'emitted',
   },
