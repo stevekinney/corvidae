@@ -15,6 +15,7 @@ import {
 import { stopWhen } from '../../src/index';
 import { InvalidRunResultError, UnsupportedRunResultVersionError } from '../../src/run-envelope';
 import { throwingRejectionOf } from '../../src/testing/promise-outcome.test-support.ts';
+import type { FinishReason } from '../../src/types';
 
 // Drain Weft's deferred inline-launch queue between tests (see other durable
 // suites) — a pending setTimeout(0) inline-launch left by one durable run can
@@ -139,13 +140,13 @@ describe('normalizeAgentRunWorkflowResult shape validation', () => {
   });
 
   it('rejects an unknown finishReason', () => {
-    expect(() =>
-      normalizeAgentRunWorkflowResult({ ...valid, finishReason: 'exploded' }),
-    ).toThrow(InvalidRunResultError);
+    expect(() => normalizeAgentRunWorkflowResult({ ...valid, finishReason: 'exploded' })).toThrow(
+      InvalidRunResultError,
+    );
   });
 
   it('accepts every valid finishReason', () => {
-    for (const finishReason of [
+    const reasons: FinishReason[] = [
       'stop-condition',
       'maximum-steps',
       'aborted',
@@ -153,7 +154,8 @@ describe('normalizeAgentRunWorkflowResult shape validation', () => {
       'elicitation-denied',
       'budget-exceeded',
       'tripwire',
-    ]) {
+    ];
+    for (const finishReason of reasons) {
       expect(normalizeAgentRunWorkflowResult({ ...valid, finishReason }).finishReason).toBe(
         finishReason,
       );
