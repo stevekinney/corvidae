@@ -116,6 +116,7 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash recovery over %s', (ba
         { stdout: 'pipe', stderr: 'pipe' },
       );
       await child.exited;
+      const crashedAt = Date.now();
       const stderr = await new Response(child.stderr).text();
       expect(child.signalCode ?? stderr).toBe('SIGKILL');
       expect(existsSync(markerPath)).toBe(true);
@@ -126,11 +127,17 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash recovery over %s', (ba
       // The dead holder's claim lapses on Weft's own wall clock.
       await new Promise((resolve) => setTimeout(resolve, CLAIM_TTL_MS * 10));
 
-      const [b, c] = await Promise.all([
+      const started = await Promise.allSettled([
         startRacer(backend, storagePath),
         startRacer(backend, storagePath),
       ]);
-      racers.push(b, c);
+      for (const outcome of started) {
+        if (outcome.status === 'fulfilled') racers.push(outcome.value);
+      }
+      for (const outcome of started) {
+        if (outcome.status === 'rejected') throw outcome.reason;
+      }
+      const [b, c] = racers as [Racer, Racer];
 
       for (const racer of racers) {
         const report = await racer.bureau.waitForRecovery?.();
@@ -187,10 +194,17 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash recovery over %s', (ba
       const records = await auditTrail.query({ runId: marker.runId });
       const sequences = records.map((record) => record.sequence);
       expect(new Set(sequences).size).toBe(sequences.length);
-      const postCrash = records.filter(
-        (record) => (record.sequence ?? -1) > marker.maxAuditSequence,
-      );
-      expect(postCrash.length).toBeGreaterThan(0);
+      expect(records.length).toBeGreaterThan(0);
+      for (const record of records) {
+        expect(typeof record.sequence).toBe('number');
+        // Every record above the marker was written after the crash, and none below it was.
+        expect((record.sequence as number) > marker.maxAuditSequence).toBe(
+          record.timestampMs > crashedAt,
+        );
+      }
+      expect(
+        records.filter((record) => (record.sequence as number) > marker.maxAuditSequence).length,
+      ).toBeGreaterThan(0);
 
       // Continuity: no duplicate step record.
       const stepRecords = await auditTrail.query({
@@ -209,17 +223,20 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash recovery over %s', (ba
       if ('outcome' in resumed) {
         throw new Error(`expected a resumable page, got ${JSON.stringify(resumed)}`);
       }
+      expect(resumed.events.length).toBeGreaterThan(0);
       let previous = marker.sessionLastSequence;
       for (const event of resumed.events) {
         expect(event.sequence).toBeGreaterThan(previous);
         previous = event.sequence;
       }
     } finally {
-      for (const racer of racers) {
-        const report = await racer.bureau.shutdown();
-        expect(report.unresolved).toBe(0);
-      }
+      // allSettled never rejects, so the directory is always removed after both shutdowns.
+      const reports = await Promise.allSettled(racers.map((racer) => racer.bureau.shutdown()));
       rmSync(directory, { recursive: true, force: true });
+      for (const report of reports) {
+        expect(report.status).toBe('fulfilled');
+        if (report.status === 'fulfilled') expect(report.value.unresolved).toBe(0);
+      }
     }
   }, 120_000);
 });
