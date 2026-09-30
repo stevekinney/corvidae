@@ -33,13 +33,13 @@ export async function commitPurgeOrExplainLoss(
 
 /**
  * Whether the `wf:<id>` bytes read at purge time are still the terminal run that
- * was scanned. An absent record has no replacement to protect (the commit is
- * fenced on it staying absent); a present one must carry the scanned execution
- * token and still be terminal, because `retryFailedAll` reactivates a failed run
- * in place under the same token.
+ * was scanned. An absent record means another purge already removed the scanned
+ * run. A present one must carry the scanned execution token and still be
+ * terminal, because `retryFailedAll` reactivates a failed run in place under
+ * the same token.
  */
 export function isScannedRun(workflowBytes: Uint8Array | null, state: WorkflowState): boolean {
-  if (workflowBytes === null) return true;
+  if (workflowBytes === null) return false;
   const current = decodeWorkflowState(workflowBytes);
   return (
     current.workflowExecutionToken === state.workflowExecutionToken &&
