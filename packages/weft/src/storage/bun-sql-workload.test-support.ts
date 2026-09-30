@@ -59,7 +59,7 @@ export function selectSQLiteBenchmarkWorkload(
 
 export const benchmarkWorkload = selectSQLiteBenchmarkWorkload(runArchitectureBenchmark);
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   const sorted = values.toSorted((left, right) => left - right);
   return sorted[Math.floor(sorted.length / 2)]!;
 }

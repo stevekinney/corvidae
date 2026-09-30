@@ -11,6 +11,7 @@ import {
   benchmarkWorkload,
   generateCheckpointValue,
   INTEGRITY_WORKLOAD,
+  median,
   runBatchWriteBenchmark,
   selectSQLiteBenchmarkWorkload,
   TARGET_WRITES_PER_SECOND,
@@ -43,6 +44,13 @@ describe('BunSQLiteStorage integrity', () => {
     expect(selectSQLiteBenchmarkWorkload(false)).toEqual(INTEGRITY_WORKLOAD);
     expect(selectSQLiteBenchmarkWorkload(true)).toEqual(ARCHITECTURE_BENCHMARK_WORKLOAD);
     expect(selectSQLiteBenchmarkWorkload(false)).not.toEqual(selectSQLiteBenchmarkWorkload(true));
+  });
+
+  it('takes the median of an unsorted sample set', () => {
+    // The integrity workload runs a single throughput sample, so its own batch-write test never
+    // gives the sort comparator two values to compare; this covers the helper directly.
+    expect(median([30, 10, 20])).toBe(20);
+    expect(median([7])).toBe(7);
   });
 
   it('writes batches and verifies stored data', async () => {
