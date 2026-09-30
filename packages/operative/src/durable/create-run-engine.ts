@@ -101,6 +101,26 @@ export interface CreateRunEngineOptions {
   workflowClaimRenewIntervalMs?: number | undefined;
 
   /**
+   * Clock the engine reads for time-dependent decisions, including workflow
+   * claim expiry, renewal, and takeover under `ownership: 'workflow-lease'`
+   * (default `Date.now`, Weft's own default). Inject a manually advanced clock
+   * to drive claim expiry deterministically, then call
+   * `engine.runMaintenance(now)` with the advanced value.
+   */
+  getNow?: (() => number) | undefined;
+
+  /**
+   * How Weft schedules the first turn of each inline workflow launch. The
+   * default `'event-loop'` defers it behind a real `MessageChannel` (or
+   * `setTimeout(0)`) macrotask. Pass `'manual'` to schedule nothing: a queued
+   * launch then only advances when the caller awaits
+   * `engine.flushInlineLaunches()`, which drains it deterministically, so a test
+   * cannot be starved by macrotask contention. Under `'manual'` any run that is
+   * never flushed never starts. Omitted, Weft's own default applies.
+   */
+  inlineLaunchScheduling?: ('event-loop' | 'manual') | undefined;
+
+  /**
    * Select how Weft's periodic maintenance is driven. The default
    * `'automatic'` profile uses in-process intervals. Use `'manual'` in
    * serverless hosts such as Cloudflare Durable Objects, then call
@@ -370,6 +390,10 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
       : {}),
     ...(options.workflowClaimRenewIntervalMs !== undefined
       ? { workflowClaimRenewInterval: options.workflowClaimRenewIntervalMs }
+      : {}),
+    ...(options.getNow !== undefined ? { getNow: options.getNow } : {}),
+    ...(options.inlineLaunchScheduling !== undefined
+      ? { inlineLaunchScheduling: options.inlineLaunchScheduling }
       : {}),
     ...(options.backgroundTasks !== undefined ? { backgroundTasks: options.backgroundTasks } : {}),
     ...(startScheduler !== undefined ? { startScheduler } : {}),
