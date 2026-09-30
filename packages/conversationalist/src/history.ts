@@ -352,11 +352,21 @@ export class Conversation {
         },
         prepareRestored: () => {
           const conversation = getConversation();
-          const detail = conversation.buildEventDetail('snapshot.restored', conversation.current, {
-            durability: 'snapshot',
-            outcome: 'completed',
-          });
-          return () => conversation.emitConversationEvent('snapshot.restored', detail);
+          // Capture only the state; the sequence is assigned at dispatch so
+          // events keep their monotonic order and disposal leaves no gap.
+          const restored = conversation.current;
+          const revision = conversation.transaction.revision;
+          return () =>
+            conversation.emitConversationEvent(
+              'snapshot.restored',
+              conversation.transaction.buildEventDetailFor(
+                'snapshot.restored',
+                restored,
+                revision,
+                restored,
+                { durability: 'snapshot', outcome: 'completed' },
+              ),
+            );
         },
       }),
     );

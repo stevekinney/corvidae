@@ -92,7 +92,7 @@ describe('snapshot restoration invariants', () => {
     root.revision = 2;
     first.revision = 1;
     resign(snapshot);
-    expect(() => Conversation.from(snapshot)).toThrow(/revision/);
+    expect(() => Conversation.from(snapshot)).toThrow(/precedes its parent/);
   });
 
   it('applies the revision chronology check to published nested snapshots', async () => {
@@ -103,7 +103,7 @@ describe('snapshot restoration invariants', () => {
     fixture.root.revision = fixture.controllerRevision;
     fixture.root.children[0].revision = 0;
     resign(fixture);
-    expect(() => decodeSnapshot(fixture)).toThrow(/revision/);
+    expect(() => decodeSnapshot(fixture)).toThrow(/precedes its parent/);
   });
 
   it('persists stream sequences and continues them after restore', () => {
@@ -147,13 +147,20 @@ describe('snapshot restoration invariants', () => {
     const restored = Conversation.from(snapshot);
     const expectedIds = [...restored.current.ids];
     const details: Array<{ ids: readonly string[]; revision: number }> = [];
-    restored.addEventListener('snapshot.restored', (event) =>
-      details.push({ ids: [...event.conversation.ids], revision: event.revision }),
-    );
+    const sequences: number[] = [];
+    restored.addEventListener('snapshot.restored', (event) => {
+      details.push({ ids: [...event.conversation.ids], revision: event.revision });
+      sequences.push(event.sequence);
+    });
+    restored.addEventListener('change', (event) => sequences.push(event.sequence));
     restored.appendUserMessage('after restore');
 
     await Promise.resolve();
 
     expect(details).toEqual([{ ids: expectedIds, revision: snapshot.controllerRevision }]);
+    expect(sequences).toHaveLength(2);
+    for (let index = 1; index < sequences.length; index += 1) {
+      expect(sequences[index]).toBeGreaterThan(sequences[index - 1] as number);
+    }
   });
 });

@@ -88,14 +88,31 @@ export class HistoryTransaction {
     previousConversation: ConversationHistory,
     context: ConversationChangeContext = {},
   ): ConversationEventDetail {
+    return this.buildEventDetailFor(
+      action,
+      this.current,
+      this.controllerRevision,
+      previousConversation,
+      context,
+    );
+  }
+
+  /** Builds a detail for a captured state, assigning the next sequence at call time. */
+  buildEventDetailFor(
+    action: ConversationActionType,
+    current: ConversationHistory,
+    revision: number,
+    previousConversation: ConversationHistory,
+    context: ConversationChangeContext = {},
+  ): ConversationEventDetail {
     this.cachedStoreSnapshot = undefined;
     this.eventSequenceValue += 1;
     return buildConversationEventDetail(
       action,
-      this.current,
+      current,
       previousConversation,
       context,
-      this.controllerRevision,
+      revision,
       this.eventSequenceValue,
     );
   }
