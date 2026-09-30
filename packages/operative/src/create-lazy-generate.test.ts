@@ -238,18 +238,29 @@ describe('createLazyGenerate', () => {
     });
   });
 
-  it('delegates an abort that fires after loading to the loaded generate function', async () => {
+  it('delegates an abort that fires after the shared load settles to the loaded generate function', async () => {
     const controller = new AbortController();
-    const lazy = createLazyGenerate(async () => async (context) => {
-      controller.abort('mid-generate');
-      if (context.signal?.aborted) throw new Error('generator saw abort');
-      return response;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reasons: unknown[] = [];
+    const lazy = createLazyGenerate(async () => {
+      await gate;
+      return async (context) => {
+        reasons.push(context.signal?.reason);
+        if (context.signal === undefined) controller.abort('late');
+        return response;
+      };
     });
 
-    const error = await expectRejects(lazy(createContext(controller.signal)), {
-      message: 'generator saw abort',
-    });
-    expect(error).not.toBeInstanceOf(AbortAgentRunError);
+    const first = lazy(createContext());
+    const second = lazy(createContext(controller.signal));
+    release();
+
+    await expectResolves(first, response);
+    await expectResolves(second, response);
+    expect(reasons).toEqual([undefined, 'late']);
   });
 
   it('delegates an already-aborted signal to a generate function that has loaded', async () => {
@@ -283,27 +294,29 @@ describe('createLazyGenerate', () => {
   it('releases aborted callers when the loader never settles', async () => {
     const lazy = createLazyGenerate(() => new Promise<GenerateFunction>(() => undefined));
     const refs: WeakRef<AbortSignal>[] = [];
-    const outcomes: Promise<unknown>[] = [];
 
-    const start = (index: number): void => {
-      const controller = new AbortController();
-      const context = createContext(controller.signal);
-      refs.push(new WeakRef(controller.signal));
-      outcomes.push(
-        lazy(context).then(
-          () => 'resolved',
-          (error: unknown) => error,
-        ),
-      );
-      controller.abort(`caller ${index}`);
+    // Callers are built in a separate frame so no stack or register slot of this test still
+    // points at their signals, contexts, or controllers when the collector runs.
+    const startAbortedCallers = async (count: number): Promise<void> => {
+      const outcomes: Promise<unknown>[] = [];
+      for (let index = 0; index < count; index += 1) {
+        const controller = new AbortController();
+        refs.push(new WeakRef(controller.signal));
+        outcomes.push(
+          lazy(createContext(controller.signal)).then(
+            () => 'resolved',
+            (error: unknown) => error,
+          ),
+        );
+        controller.abort(`caller ${index}`);
+      }
+      for (const outcome of await Promise.all(outcomes)) {
+        expect(outcome).toBeInstanceOf(AbortAgentRunError);
+      }
     };
-    for (let index = 0; index < 5; index += 1) start(index);
+    await startAbortedCallers(5);
 
-    for (const outcome of await Promise.all(outcomes)) {
-      expect(outcome).toBeInstanceOf(AbortAgentRunError);
-    }
-    outcomes.length = 0;
-
+    // Yield macrotasks so the frames above are fully unwound before collecting.
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       Bun.gc(true);
