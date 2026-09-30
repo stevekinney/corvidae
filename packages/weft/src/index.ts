@@ -151,7 +151,12 @@ export {
   type ReplayAwareClosableIterable,
 } from './server/operations/event-stream-contracts.ts';
 export type { SchedulingPolicy } from './server/task-queue-types.ts';
-export { createReplayLiveFeed, decodeCursor, encodeCursor } from './server/workflow-event-feed.ts';
+export {
+  compareCursor,
+  createReplayLiveFeed,
+  decodeCursor,
+  encodeCursor,
+} from './server/workflow-event-feed.ts';
 export type {
   Cursor,
   ReplayLiveFeed,

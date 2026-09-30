@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { workflow } from './core/types/workflow-function.ts';
 import type { WorkflowOperation, WorkflowReplay, WorkflowTimelineEntry } from './index.ts';
 import {
+  compareCursor,
   decodeStorageKeyComponent,
   encodeStorageKeyComponent,
   Engine,
@@ -18,6 +19,10 @@ import {
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 
 describe('weft', () => {
+  it('exports compareCursor from the package entrypoint', () => {
+    expect(typeof compareCursor).toBe('function');
+  });
+
   it('exports storage key helpers used by workspace consumers', () => {
     const encoded = encodeStorageKeyComponent('memory:tenant/item');
     expect(encoded).toBe('memory%3Atenant%2Fitem');
