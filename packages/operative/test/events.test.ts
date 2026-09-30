@@ -547,6 +547,26 @@ describe('events', () => {
       expect(types).toContain('tool.settled');
     });
 
+    it('createRunRecorder.dispose stops recording events and steps (COR-86)', async () => {
+      const activeRun = createActiveRun({
+        generate: createMockGenerate([{ content: 'Done.', toolCalls: [] }]),
+        toolbox: createToolbox([]),
+        conversation: new Conversation(),
+        stopWhen: noToolCalls(),
+      });
+      const disposed = createRunRecorder(activeRun);
+      const control = createRunRecorder(activeRun);
+      disposed.dispose();
+      // Idempotent.
+      disposed.dispose();
+      await activeRun.result;
+
+      expect(control.events.length).toBeGreaterThan(0);
+      expect(control.steps.length).toBeGreaterThan(0);
+      expect(disposed.events).toHaveLength(0);
+      expect(disposed.steps).toHaveLength(0);
+    });
+
     it('exercises every steering event type as a valid OperativeEventType', () => {
       const types: OperativeEventType[] = [
         SteeringAcceptedEvent.type,
