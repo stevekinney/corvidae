@@ -1057,7 +1057,6 @@ describe('requireUncoveredLines on corvidae-authored allowances', () => {
     'scripts/benchmarks/workflow-starts-runner.ts',
     'scripts/check-implementation-file-sizes.ts',
     'scripts/generate-operation-client.ts',
-    'scripts/lib/workflow-visibility-backfill.ts',
     'src/cli/api-arguments.ts',
     'src/cli/codegen.ts',
     'src/cli/conformance.ts',

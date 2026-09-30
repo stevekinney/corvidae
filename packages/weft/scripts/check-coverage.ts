@@ -1147,17 +1147,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
   'AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS',
   [
     [
-      'scripts/lib/workflow-visibility-backfill.ts',
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
-        lines: new Set([
-          67, 153, 154, 155, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231,
-        ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/cli/conformance.ts',
       {
         reason:
@@ -1235,7 +1224,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining attribute-tag branches reject decoded value shapes excluded by search-attribute boundary validation.',
         functions: 1,
-        lines: new Set([360, 361, 363]),
+        lines: new Set([367, 368, 370]),
         requireUncoveredLines: true,
       },
     ],

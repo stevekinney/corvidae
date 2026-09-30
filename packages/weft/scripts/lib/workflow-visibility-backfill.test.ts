@@ -35,6 +35,11 @@ class WatermarkProbingStorage extends MemoryStorage {
   }
 }
 
+/** Index rows proper, without the `wf-idx-meta:` control keys the drop leaves alone. */
+function isIndexRow(key: string): boolean {
+  return !key.startsWith('wf-idx-meta:');
+}
+
 describe('runWorkflowVisibilityBackfill', () => {
   it('writes the manifest, index rows, and watermark for a fresh database', async () => {
     using storage = new MemoryStorage();
@@ -270,6 +275,39 @@ describe('runWorkflowVisibilityBackfill', () => {
     expect(messages[0]).toContain('Waiting 60ms');
   });
 
+  it('treats an undecodable saved cursor as no cursor and rebuilds from empty', async () => {
+    using storage = new MemoryStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
+    await storage.put(KEYS.workflowVisibilityStatus('running', 'ghost'), new Uint8Array(0));
+    // 0xc1 is the one byte MessagePack never assigns, so decoding it throws.
+    await storage.put(KEYS.workflowVisibilityMetaCursor(), new Uint8Array([0xc1]));
+
+    const report = await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+
+    expect(report).toEqual({ processed: 1, conflicts: 0, watermarkWritten: true });
+    expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([
+      KEYS.workflowVisibilityStatus('running', 'wf-a'),
+    ]);
+  });
+
+  it('reports progress every checkpointEvery processed workflows', async () => {
+    using storage = new MemoryStorage();
+    for (const id of ['wf-a', 'wf-b', 'wf-c']) {
+      await seedWorkflow(storage, makeWorkflowState({ id }));
+    }
+    const messages: string[] = [];
+
+    await runWorkflowVisibilityBackfill(storage, {
+      settleMilliseconds: 0,
+      checkpointEvery: 2,
+      logger: (message) => messages.push(message),
+    });
+
+    expect(messages.filter((message) => message.startsWith('Processed '))).toEqual([
+      'Processed 2 workflows (last: wf-b)',
+    ]);
+  });
+
   it('refuses to run when the storage backend has no conditionalBatch', async () => {
     const storage = new NoConditionalBatchStorage();
     expect(
@@ -302,6 +340,29 @@ describe('runWorkflowVisibilityDrop', () => {
     ]) {
       expect(await collectKeys(storage, prefix)).toEqual([]);
     }
+  });
+
+  it('sweeps rows in fallbackBatchSize batches when the backend has no deletePrefix', async () => {
+    using storage = new MemoryStorage();
+    for (const id of ['wf-a', 'wf-b', 'wf-c', 'wf-d', 'wf-e']) {
+      await seedWorkflow(storage, makeWorkflowState({ id }));
+    }
+    await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+    const keysBefore = await collectKeys(storage, 'wf-idx-');
+    const rowsBefore = keysBefore.filter(isIndexRow);
+    // RacingStorage does not expose deletePrefix, so the drop takes the scan-and-batch path.
+    const fallbackStorage = new RacingStorage(storage, new Set());
+
+    const report = await runWorkflowVisibilityDrop(fallbackStorage, {
+      fallbackBatchSize: 2,
+      settleMilliseconds: 0,
+    });
+
+    const keysAfter = await collectKeys(storage, 'wf-idx-');
+    const rowsAfter = keysAfter.filter(isIndexRow);
+    expect(rowsBefore).toHaveLength(25);
+    expect(report.rowsDeleted).toBe(rowsBefore.length);
+    expect(rowsAfter).toEqual([]);
   });
 
   it('leaves workflow state untouched', async () => {
