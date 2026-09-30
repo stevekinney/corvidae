@@ -6,7 +6,11 @@ import type {
   ConversationEventDetail,
   ConversationEventType,
 } from './events';
-import { buildConversationEventDetail, type ConversationChangeContext } from './history-events';
+import {
+  buildConversationEventDetail,
+  compactionCorrelationId,
+  type ConversationChangeContext,
+} from './history-events';
 import type { HistoryNode } from './history-tree';
 import { pruneHistoryToDepth } from './history-tree';
 import type { ConversationHistory, MessagePluginIdentity } from './types';
@@ -155,7 +159,11 @@ export class HistoryTransaction {
     }
     const eventContext = {
       ...context,
-      correlationId: context?.correlationId ?? `${safeNext.id}:revision:${committed.revision}`,
+      correlationId:
+        context?.correlationId ??
+        (context?.compaction
+          ? compactionCorrelationId(previousConversation.id, context.compaction.attemptId)
+          : `${safeNext.id}:revision:${committed.revision}`),
     };
     hooks.emit(
       'change',
