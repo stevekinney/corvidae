@@ -9,6 +9,7 @@
 // complete but bureau's own row never lands. Bureau B then recovers the run at
 // boot, finds nothing to reconstruct, and replays straight into the wait.
 
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -41,6 +42,12 @@ function createNextTool() {
 let databaseCounter = 0;
 function databasePathFor(label: string): string {
   return join(tmpdir(), `cor121-${label}-${process.pid}-${databaseCounter++}.sqlite`);
+}
+
+async function removeDatabase(databasePath: string): Promise<void> {
+  await rm(databasePath, { force: true });
+  await rm(`${databasePath}-wal`, { force: true });
+  await rm(`${databasePath}-shm`, { force: true });
 }
 
 function isHumanInputStepPut(key: string, value: Uint8Array): boolean {
@@ -243,6 +250,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
       await bureauA?.dispose();
       intercept.storage[Symbol.dispose]();
       verificationStorage?.[Symbol.dispose]();
+      await removeDatabase(databasePath);
     }
     expect(intercept.disposals()).toBe(1);
     expect(verificationDisposals).toBe(1);
@@ -306,6 +314,7 @@ describe('a reattached run whose first park happens after boot-time reconstructi
     } finally {
       await bureauB?.dispose();
       await bureauA?.dispose();
+      await removeDatabase(databasePath);
     }
   });
 });
@@ -395,6 +404,7 @@ describe('bounded duplicate park events (COR-121)', () => {
     } finally {
       await bureauB?.dispose();
       await bureauA?.dispose();
+      await removeDatabase(databasePath);
     }
   });
 });
@@ -457,6 +467,7 @@ describe('flow-control slot accounting under dual dispatch (COR-121 guard)', () 
       intercept.release();
       await bureau?.dispose();
       intercept.storage[Symbol.dispose]();
+      await removeDatabase(databasePath);
     }
     expect(intercept.disposals()).toBe(1);
   });
