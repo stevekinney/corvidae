@@ -221,9 +221,9 @@ export function reattachDurableActiveRun(
   async function resolveReattachOutcome(): Promise<CleanupAcknowledgement> {
     if (reachability.unreachable) return { status: 'unresolved', reason: 'unreachable' };
     if (abortCancelled === undefined) {
-      // AB-304: matching `createDurableActiveRun`'s identical fold-in — a
-      // registered child's own `closed()` must settle before this
-      // reattached parent reports `completed`, not merely its `result()`.
+      // AB-304: matching `createDurableActiveRun`'s identical ordering — a
+      // registered child's own `closed()` must settle before the terminal
+      // fold runs, not merely its `result()`.
       await (childRegistry?.awaitChildrenClosed() ?? Promise.resolve());
       return foldTerminalCleanup(RECOVERED_COMPLETED_OUTCOME, terminalCleanupStep);
     }

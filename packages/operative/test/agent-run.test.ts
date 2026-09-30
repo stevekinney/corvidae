@@ -435,7 +435,7 @@ describe('createDiagnosticAgentRun()', () => {
       const { activeRun } = createActiveRunWithClosed(downgraded);
       const run = createDiagnosticAgentRun(activeRun);
 
-      expect(await run.closed()).toEqual(downgraded);
+      expect(await run.closed()).toBe(downgraded);
     });
 
     it.each([

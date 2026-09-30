@@ -5004,159 +5004,164 @@ describe('COR-625: durable closed() folds a composer terminal-cleanup step', () 
       context.engine[Symbol.dispose]();
     }
   });
-});
 
-describe('COR-66: a reattached run never asserts completed durability through closed()', () => {
-  const unknownEffect = { status: 'unresolved', reason: 'unknown-effect' } as const;
+  describe('COR-66: a reattached run never asserts completed durability through closed()', () => {
+    const unknownEffect = { status: 'unresolved', reason: 'unknown-effect' } as const;
 
-  function recoveredHandle(runId: string) {
-    return {
-      id: runId,
-      result: () =>
-        Promise.resolve({
-          schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
-          runId,
-          steps: 1,
-          content: 'recovered done',
-          finishReason: 'stop-condition' as const,
-        }),
-    };
-  }
+    function recoveredHandle(runId: string) {
+      return {
+        id: runId,
+        result: () =>
+          Promise.resolve({
+            schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            runId,
+            steps: 1,
+            content: 'recovered done',
+            finishReason: 'stop-condition' as const,
+          }),
+      };
+    }
 
-  it.each([
-    ['no terminalCleanup hook is wired in', undefined],
-    ['the hook reports completed', async () => ({ status: 'completed' }) as const],
-    ['the hook reports not-required', async () => ({ status: 'not-required' }) as const],
-  ])(
-    'reports unresolved/unknown-effect, identically with and without the diagnostic wrapper, when %s',
-    async (_label, terminalCleanup) => {
-      const context = await buildContext();
-      const runId = `cor-66-uncancelled-${terminalCleanup ? 'hook' : 'nohook'}-${_label.length}`;
-      try {
-        const build = (suffix: string) =>
-          reattachDurableActiveRun(
-            {
-              engine: context.engine,
-              checkpointStore: context.checkpointStore,
-              ...(terminalCleanup ? { terminalCleanup } : {}),
-            },
-            { runId: `${runId}-${suffix}`, handle: recoveredHandle(`${runId}-${suffix}`) },
+    it.each([
+      ['no terminalCleanup hook is wired in', undefined],
+      ['the hook reports completed', async () => ({ status: 'completed' }) as const],
+      ['the hook reports not-required', async () => ({ status: 'not-required' }) as const],
+    ])(
+      'reports unresolved/unknown-effect, identically with and without the diagnostic wrapper, when %s',
+      async (_label, terminalCleanup) => {
+        const context = await buildContext();
+        const runId = `cor-66-uncancelled-${terminalCleanup ? 'hook' : 'nohook'}-${_label.length}`;
+        try {
+          const build = (suffix: string) =>
+            reattachDurableActiveRun(
+              {
+                engine: context.engine,
+                checkpointStore: context.checkpointStore,
+                ...(terminalCleanup ? { terminalCleanup } : {}),
+              },
+              { runId: `${runId}-${suffix}`, handle: recoveredHandle(`${runId}-${suffix}`) },
+            );
+          const direct = build('direct');
+          const wrapped = createDiagnosticAgentRun(build('wrapped'));
+
+          await direct.result;
+          const directOutcome = await direct.closed();
+          const wrappedOutcome = await wrapped.closed();
+          // Without a hook, an uncancelled clean recovery takes the
+          // not-required fast path, which is unchanged.
+          expect(directOutcome).toEqual(
+            terminalCleanup ? unknownEffect : { status: 'not-required' },
           );
-        const direct = build('direct');
-        const wrapped = createDiagnosticAgentRun(build('wrapped'));
+          expect(wrappedOutcome).toEqual(directOutcome);
+        } finally {
+          context.engine[Symbol.dispose]();
+        }
+      },
+    );
 
-        await direct.result;
-        const directOutcome = await direct.closed();
-        const wrappedOutcome = await wrapped.closed();
-        // Without a hook, an uncancelled clean recovery takes the
-        // not-required fast path, which is unchanged.
-        expect(directOutcome).toEqual(terminalCleanup ? unknownEffect : { status: 'not-required' });
-        expect(wrappedOutcome).toEqual(directOutcome);
+    it('lets a hook that itself downgrades win over the unknown-effect downgrade', async () => {
+      const context = await buildContext();
+      const runId = 'cor-66-hook-wins';
+      try {
+        const recoveredRun = reattachDurableActiveRun(
+          {
+            engine: context.engine,
+            checkpointStore: context.checkpointStore,
+            terminalCleanup: async () => ({ status: 'unresolved', reason: 'persistence-failed' }),
+          },
+          { runId, handle: recoveredHandle(runId) },
+        );
+        await recoveredRun.result;
+        const outcome = await recoveredRun.closed();
+        expect(outcome).toEqual({ status: 'unresolved', reason: 'persistence-failed' });
+        expect(await createDiagnosticAgentRun(recoveredRun).closed()).toEqual(outcome);
       } finally {
         context.engine[Symbol.dispose]();
       }
-    },
-  );
+    });
 
-  it('lets a hook that itself downgrades win over the unknown-effect downgrade', async () => {
-    const context = await buildContext();
-    const runId = 'cor-66-hook-wins';
-    try {
-      const recoveredRun = reattachDurableActiveRun(
-        {
-          engine: context.engine,
-          checkpointStore: context.checkpointStore,
-          terminalCleanup: async () => ({ status: 'unresolved', reason: 'persistence-failed' }),
-        },
-        { runId, handle: recoveredHandle(runId) },
-      );
-      await recoveredRun.result;
-      const outcome = await recoveredRun.closed();
-      expect(outcome).toEqual({ status: 'unresolved', reason: 'persistence-failed' });
-      expect(await createDiagnosticAgentRun(recoveredRun).closed()).toEqual(outcome);
-    } finally {
-      context.engine[Symbol.dispose]();
-    }
-  });
-
-  it('runs the terminalCleanup step even though the recovered outcome is already downgraded', async () => {
-    const context = await buildContext();
-    const runId = 'cor-66-step-runs';
-    let calls = 0;
-    try {
-      const recoveredRun = reattachDurableActiveRun(
-        {
-          engine: context.engine,
-          checkpointStore: context.checkpointStore,
-          terminalCleanup: async () => {
-            calls += 1;
-            return { status: 'completed' };
-          },
-        },
-        { runId, handle: recoveredHandle(runId) },
-      );
-      await recoveredRun.result;
-      await recoveredRun.closed();
-      expect(calls).toBe(1);
-    } finally {
-      context.engine[Symbol.dispose]();
-    }
-  });
-
-  it('reports unresolved/unknown-effect after a confirmed post-cancel re-read, with and without the wrapper', async () => {
-    const build = async (runId: string) => {
+    it('runs the terminalCleanup step even though the recovered outcome is already downgraded', async () => {
       const context = await buildContext();
-      let rejectResult!: (error: unknown) => void;
-      const handle = {
-        id: runId,
-        result: () =>
-          new Promise<unknown>((_resolve, reject) => {
-            rejectResult = reject;
-          }),
-      };
-      const engine = {
-        cancel: async () => {
-          rejectResult(new Error('cancelled'));
-        },
-        get: async () => ({ status: 'cancelled' }),
-      } as unknown as RegistryAgnosticEngine;
-      const run = reattachDurableActiveRun(
-        { engine, checkpointStore: context.checkpointStore },
-        { runId, handle },
-      );
-      await Promise.resolve();
-      run.abort();
-      await run.result;
-      return { context, run };
-    };
-    const direct = await build('cor-66-cancel-direct');
-    const wrapped = await build('cor-66-cancel-wrapped');
-    try {
-      const directOutcome = await direct.run.closed();
-      expect(directOutcome).toEqual(unknownEffect);
-      expect(await createDiagnosticAgentRun(wrapped.run).closed()).toEqual(directOutcome);
-    } finally {
-      direct.context.engine[Symbol.dispose]();
-      wrapped.context.engine[Symbol.dispose]();
-    }
-  });
+      const runId = 'cor-66-step-runs';
+      let calls = 0;
+      try {
+        const recoveredRun = reattachDurableActiveRun(
+          {
+            engine: context.engine,
+            checkpointStore: context.checkpointStore,
+            terminalCleanup: async () => {
+              calls += 1;
+              return { status: 'completed' };
+            },
+          },
+          { runId, handle: recoveredHandle(runId) },
+        );
+        await recoveredRun.result;
+        await recoveredRun.closed();
+        expect(calls).toBe(1);
+      } finally {
+        context.engine[Symbol.dispose]();
+      }
+    });
 
-  it('leaves the fresh-run path (createDurableActiveRun) reporting completed', async () => {
-    const context = await buildContext();
-    try {
-      const activeRun = createDurableActiveRun(
-        { ...context, terminalCleanup: async () => ({ status: 'completed' }) },
-        {
-          runId: 'cor-66-fresh-unchanged',
-          sessionId: 'cor-66-fresh-unchanged',
-          options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
-          prompt: 'Hello',
-        },
-      );
-      await activeRun.result;
-      expect(await activeRun.closed()).toEqual({ status: 'completed' });
-    } finally {
-      context.engine[Symbol.dispose]();
-    }
+    it('reports unresolved/unknown-effect after a confirmed post-cancel re-read, with and without the wrapper', async () => {
+      const build = async (runId: string) => {
+        const context = await buildContext();
+        let rejectResult!: (error: unknown) => void;
+        const handle = {
+          id: runId,
+          result: () =>
+            new Promise<unknown>((_resolve, reject) => {
+              rejectResult = reject;
+            }),
+        };
+        const engine = {
+          cancel: async () => {
+            rejectResult(new Error('cancelled'));
+          },
+          get: async () => ({ status: 'cancelled' }),
+        } as unknown as RegistryAgnosticEngine;
+        const run = reattachDurableActiveRun(
+          { engine, checkpointStore: context.checkpointStore },
+          { runId, handle },
+        );
+        await Promise.resolve();
+        run.abort();
+        await run.result;
+        return { context, run };
+      };
+      const direct = await build('cor-66-cancel-direct');
+      try {
+        const wrapped = await build('cor-66-cancel-wrapped');
+        try {
+          const directOutcome = await direct.run.closed();
+          expect(directOutcome).toEqual(unknownEffect);
+          expect(await createDiagnosticAgentRun(wrapped.run).closed()).toEqual(directOutcome);
+        } finally {
+          wrapped.context.engine[Symbol.dispose]();
+        }
+      } finally {
+        direct.context.engine[Symbol.dispose]();
+      }
+    });
+
+    it('leaves the fresh-run path (createDurableActiveRun) reporting completed', async () => {
+      const context = await buildContext();
+      try {
+        const activeRun = createDurableActiveRun(
+          { ...context, terminalCleanup: async () => ({ status: 'completed' }) },
+          {
+            runId: 'cor-66-fresh-unchanged',
+            sessionId: 'cor-66-fresh-unchanged',
+            options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+            prompt: 'Hello',
+          },
+        );
+        await activeRun.result;
+        expect(await activeRun.closed()).toEqual({ status: 'completed' });
+      } finally {
+        context.engine[Symbol.dispose]();
+      }
+    });
   });
 });
