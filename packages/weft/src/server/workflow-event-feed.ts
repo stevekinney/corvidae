@@ -338,14 +338,6 @@ export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
     const fromCursor = args?.fromCursor;
     const requestedAfter = fromCursor !== undefined ? decodeCursorOrThrow(fromCursor) : -1;
 
-    const wake = () => {
-      if (waker) {
-        const fire = waker;
-        waker = null;
-        fire();
-      }
-    };
-
     const unsubscribe = backend.subscribeLive((envelope) => {
       if (!shouldDeliverEnvelope(envelope, args)) return;
       if (buffer.length >= bufferSize) {
@@ -353,8 +345,20 @@ export function createReplayLiveFeed<TEnvelope extends SequencedEventEnvelope>(
       } else {
         buffer.push(envelope);
       }
-      wake();
+      if (waker) {
+        const fire = waker;
+        waker = null;
+        fire();
+      }
     });
+
+    const wake = () => {
+      if (waker) {
+        const fire = waker;
+        waker = null;
+        fire();
+      }
+    };
 
     const cleanup = () => {
       if (cleanedUp) return;
