@@ -58,20 +58,22 @@ export interface CreateRunEngineOptions {
 
   /**
    * Single-writer ownership posture over the shared durable store (AB-178).
-   * Defaults to `'none'` — today's behavior: one engine per store, enforced by
-   * infrastructure convention (one replica, a `Recreate` deploy) rather than
-   * the engine itself, exactly as AB-39 recorded.
+   * Defaults to `'workflow-lease'`, so more than one engine can share a store
+   * safely without opting in. Pass `'none'` to opt out: one engine per store,
+   * enforced by infrastructure convention (one replica, a `Recreate` deploy)
+   * rather than the engine itself, as AB-39 recorded.
    *
-   * Pass `'workflow-lease'` to let more than one engine share a store safely:
+   * Under `'workflow-lease'`:
    * Weft claims each workflow for exactly one engine before its generator
    * runs (per-workflow fencing, not a single store-wide lock), so a second
    * engine racing to resume the same workflow fails closed with
    * `WorkflowClaimUnavailableError` instead of double-executing it.
    *
-   * Two things to weigh before opting in:
+   * One thing to weigh:
    * - **Storage requirement.** The backend must support the `conditionalBatch`
-   *   capability. `MemoryStorage` and `SQLiteStorage` both do; verify any
-   *   other backend before enabling this. The same-engine suspend/resume
+   *   capability, and construction throws without it; a backend that lacks it
+   *   must pass `ownership: 'none'`. `MemoryStorage` and `SQLiteStorage` both
+   *   support it; verify any other backend. The same-engine suspend/resume
    *   preemption path is supported under `'workflow-lease'`; the ownership
    *   claim is reacquired after a suspend and remains exclusive to that engine.
    *
@@ -99,6 +101,26 @@ export interface CreateRunEngineOptions {
    * `'workflow-lease'`.
    */
   workflowClaimRenewIntervalMs?: number | undefined;
+
+  /**
+   * Clock the engine reads for time-dependent decisions, including workflow
+   * claim expiry, renewal, and takeover under `ownership: 'workflow-lease'`
+   * (default `Date.now`, Weft's own default). Inject a manually advanced clock
+   * to drive claim expiry deterministically, then call
+   * `engine.runMaintenance(now)` with the advanced value.
+   */
+  getNow?: (() => number) | undefined;
+
+  /**
+   * How Weft schedules the first turn of each inline workflow launch. The
+   * default `'event-loop'` defers it behind a real `MessageChannel` (or
+   * `setTimeout(0)`) macrotask. Pass `'manual'` to schedule nothing: a queued
+   * launch then only advances when the caller awaits
+   * `engine.flushInlineLaunches()`, which drains it deterministically, so a test
+   * cannot be starved by macrotask contention. Under `'manual'` any run that is
+   * never flushed never starts. Omitted, Weft's own default applies.
+   */
+  inlineLaunchScheduling?: ('event-loop' | 'manual') | undefined;
 
   /**
    * Select how Weft's periodic maintenance is driven. The default
@@ -304,13 +326,11 @@ export interface RunEngine {
  * the active-run adapter classifies as `error` (not a deadline timeout).
  *
  * **Multi-process safety (AB-178).** {@link CreateRunEngineOptions.ownership}
- * is host-configurable and defaults to `'none'` to preserve the existing
- * single-engine-by-convention contract for arbitrary storage adapters.
- * Passing `'workflow-lease'` claims every workflow for exactly one engine
- * before its generator runs, so a second engine pointed at the same store
- * fails closed on that workflow instead of double-executing it. Hosts that
- * require multi-engine safety should opt in and provide a
- * `conditionalBatch`-capable storage adapter.
+ * is host-configurable and defaults to `'workflow-lease'`, which claims every
+ * workflow for exactly one engine before its generator runs, so a second
+ * engine pointed at the same store fails closed on that workflow instead of
+ * double-executing it. Construction throws without a `conditionalBatch`-capable
+ * storage adapter; hosts that cannot provide one opt out with `'none'`.
  */
 export async function createRunEngine(options: CreateRunEngineOptions): Promise<RunEngine> {
   const checkpointStore =
@@ -361,15 +381,19 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
   const engine = await Engine.create({
     storage: options.storage,
     recover: options.recover ?? true,
-    // AB-178 — fenced per-workflow ownership remains host-configurable. Keep
-    // `'none'` as the default because the public Storage contract does not
-    // guarantee `conditionalBatch`; hosts requiring multi-engine safety opt in.
-    ownership: options.ownership ?? 'none',
+    // AB-178 — fenced per-workflow ownership is the default. Weft fails fast at
+    // construction when the storage lacks `conditionalBatch`; hosts with such
+    // an adapter must pass `ownership: 'none'` explicitly.
+    ownership: options.ownership ?? 'workflow-lease',
     ...(options.workflowClaimTtlMs !== undefined
       ? { workflowClaimTtl: options.workflowClaimTtlMs }
       : {}),
     ...(options.workflowClaimRenewIntervalMs !== undefined
       ? { workflowClaimRenewInterval: options.workflowClaimRenewIntervalMs }
+      : {}),
+    ...(options.getNow !== undefined ? { getNow: options.getNow } : {}),
+    ...(options.inlineLaunchScheduling !== undefined
+      ? { inlineLaunchScheduling: options.inlineLaunchScheduling }
       : {}),
     ...(options.backgroundTasks !== undefined ? { backgroundTasks: options.backgroundTasks } : {}),
     ...(startScheduler !== undefined ? { startScheduler } : {}),

@@ -4,6 +4,7 @@ import {
   MemoryStorage,
   type Storage,
   textValueStore,
+  workflow,
   type WorkflowServicesResolution,
   type WorkflowServicesResolverInfo,
   yieldToPortableEventLoop,
@@ -23,8 +24,9 @@ import type { GenerateContext, GenerateFunction, SteeringGate } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
 import { createCheckpointStore } from './checkpoint-store';
 import { createRunWorkflow } from './run-workflow';
-import { isAgentRunWorkflowInput } from './run-workflow-input';
+import { type AgentRunWorkflowInput, isAgentRunWorkflowInput } from './run-workflow-input';
 import { normalizeAgentRunWorkflowResult } from './run-workflow-result';
+import { runStepMemo } from './run-workflow-step';
 import { createStorageActivities } from './storage-activities';
 import type { DurableRunDeps } from './types';
 
@@ -133,7 +135,9 @@ function createCursorSaveSignal(checkpointStore: CheckpointStore) {
  * engine's `getNow` from a {@link createManualClock} instance instead of the
  * real wall clock. Returns `waitForCursorSave` ({@link createCursorSaveSignal})
  * alongside `engine`/`checkpointStore` for tests that need to observe a
- * step's commit without polling.
+ * step's commit without polling. Pass `inlineLaunchScheduling: 'manual'`
+ * (COR-207) to schedule no inline-launch macrotask at all; a run started on
+ * that engine only begins once the test awaits `engine.flushInlineLaunches()`.
  */
 async function buildEngine(
   storage: Storage,
@@ -141,6 +145,7 @@ async function buildEngine(
   resolveWorkflowServices?: ServicesResolver,
   version?: string,
   clock?: ManualClock,
+  inlineLaunchScheduling?: 'manual',
 ) {
   const rawCheckpointStore = createCheckpointStore(
     textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -152,6 +157,7 @@ async function buildEngine(
     storage,
     recover,
     ...(clock ? { getNow: clock.getNow } : {}),
+    ...(inlineLaunchScheduling ? { inlineLaunchScheduling } : {}),
     ...(resolveWorkflowServices ? { resolveWorkflowServices } : {}),
     workflows: { agentRun: runWorkflow },
     activities: {
@@ -1151,9 +1157,25 @@ describe('durable agentRun workflow', () => {
         return { content: 'final', toolCalls: [] };
       });
 
-      const { engine } = await buildEngine(storage, false);
+      // COR-207: a 'manual'-scheduled engine, so the launch never waits behind a
+      // real macrotask. `runToCompletion` is left alone; this test drives the
+      // start, the single flush, and the result inline.
+      const { engine } = await buildEngine(
+        storage,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        'manual',
+      );
       try {
-        await runToCompletion(engine, { runId: 'json-run', prompt: 'Hi' }, services);
+        const handle = await engine.start(
+          'agentRun',
+          { runId: 'json-run', prompt: 'Hi', sessionId: 'json-run', agentName: '' },
+          { id: 'json-run', services },
+        );
+        await engine.flushInlineLaunches();
+        await handle.result();
 
         // Read the raw persisted transcript and assert it is plain JSON with no
         // function/prototype-bearing shape — i.e. no Conversation instance was
@@ -3851,6 +3873,250 @@ describe('durable agentRun workflow', () => {
         engine[Symbol.dispose]();
       }
     });
+
+    it('COR-104: replay reads the steering floor captured at the original run, not the live getAppliedFloor', async () => {
+      const storage = new MemoryStorage();
+      const runId = 'cor-104-steering-snapshot-replay';
+      const desired = { paused: false, configVersion: 3, model: 'durable-model' };
+
+      // Engine A: the floor in effect when the run first executed is 0. Step 0's
+      // generate hangs, so the run is left non-terminal (a crashed process).
+      let generateReached: () => void = () => {};
+      const reached = new Promise<void>((resolve) => {
+        generateReached = resolve;
+      });
+      const toolboxA = continuingToolbox();
+      const servicesA: DurableRunDeps = {
+        toolbox: toolboxA,
+        options: {
+          generate: () => {
+            generateReached();
+            return new Promise<never>(() => {});
+          },
+          toolbox: toolboxA,
+          conversation: createConversationHistory(),
+          stopWhen: noToolCalls(),
+          steering: {
+            sessionId: 'test-session',
+            getDesiredState: () => desired,
+            awaitResume: () => new Promise<void>(() => {}),
+            getAppliedFloor: () => 0,
+          },
+          runId,
+        },
+      };
+      const a = await buildEngine(storage, false);
+      const handle = await a.engine.start(
+        'agentRun',
+        { runId, sessionId: runId, agentName: '', prompt: 'Start' },
+        { id: runId, services: servicesA },
+      );
+      void handle.result().catch(() => {});
+      await reached;
+      await yieldToPortableEventLoop();
+      a.engine[Symbol.dispose]();
+
+      // Engine B: by replay time the live gate reports a floor of 3 (a later
+      // command was applied elsewhere). Replay must still use the original 0, so
+      // configVersion 3 is applied exactly once, as it would have been originally.
+      const events: Event[] = [];
+      const b = await buildEngine(storage, false, () => {
+        const toolboxB = continuingToolbox();
+        return Promise.resolve({
+          status: 'available' as const,
+          services: {
+            toolbox: toolboxB,
+            emitter: {
+              dispatch(event: Event) {
+                events.push(event);
+                return true;
+              },
+            },
+            options: {
+              generate: async () => ({ content: 'done', toolCalls: [] }),
+              toolbox: toolboxB,
+              conversation: createConversationHistory(),
+              stopWhen: noToolCalls(),
+              steering: {
+                sessionId: 'test-session',
+                getDesiredState: () => desired,
+                awaitResume: () => new Promise<void>(() => {}),
+                getAppliedFloor: () => 3,
+              },
+              runId,
+            },
+          } satisfies DurableRunDeps,
+        });
+      });
+      try {
+        const handles = await b.engine.recoverAll();
+        expect(handles.length).toBe(1);
+        await handles[0]!.result();
+        const applied = events.filter(
+          (event): event is SteeringAppliedEvent => event instanceof SteeringAppliedEvent,
+        );
+        expect(applied).toHaveLength(1);
+        expect(applied[0]?.effective.configVersion).toBe(3);
+      } finally {
+        b.engine[Symbol.dispose]();
+      }
+    });
+
+    it.each([
+      {
+        name: 'after one committed step (positional-crash regression)',
+        hangOnCall: 2,
+        runId: 'cor-104-legacy-history',
+      },
+      {
+        name: 'with no committed step (no cached accumulators can carry the floor)',
+        hangOnCall: 1,
+        runId: 'cor-104-legacy-history-no-step',
+      },
+    ])(
+      'COR-104: replaying a Weft history recorded before the floor snapshot existed uses floor 0 and completes $name',
+      async ({ hangOnCall, runId }) => {
+        const storage = new MemoryStorage();
+        const desired = { paused: false, configVersion: 3, model: 'durable-model' };
+
+        // Engine A runs a hand-written copy of the pre-change workflow body, so the
+        // recorded Weft history has exactly the operation positions it had before
+        // the floor snapshot: no extra slot ahead of the first `saveConversation`,
+        // whose cached result is `undefined`. The generate call numbered
+        // `hangOnCall` hangs so the run stays non-terminal; with 1 no step commits.
+        const rawStore = createCheckpointStore(
+          textValueStore(storage, { disposeUnderlyingStorage: false }),
+        );
+        const storageActivities = createStorageActivities(rawStore);
+        const zeroAccumulators = {
+          totalUsage: { prompt: 0, completion: 0, total: 0 },
+          lastContent: '',
+          schemaAttempts: 0,
+          lastAppliedConfigVersion: 0,
+        };
+        const legacyWorkflow = workflow({ name: 'agentRun' })
+          .activities(storageActivities)
+          .execute(async function* (ctx, input: AgentRunWorkflowInput) {
+            const seeded = new Conversation(createConversationHistory());
+            seeded.appendUserMessage(input.prompt ?? '');
+            let snapshot = seeded.snapshot();
+            yield* ctx.run('saveConversation', { runId: ctx.workflowId, snapshot });
+            for (let step = 0; step < 2; step++) {
+              const result = yield* runStepMemo(
+                ctx,
+                snapshot,
+                step,
+                zeroAccumulators,
+                ctx.workflowId,
+              );
+              snapshot = result.conversationSnapshot;
+              yield* ctx.run('saveConversation', { runId: ctx.workflowId, snapshot });
+              if (result.record !== null) {
+                yield* ctx.run('recordStep', { runId: ctx.workflowId, record: result.record });
+              }
+              yield* ctx.run('saveCursor', {
+                runId: ctx.workflowId,
+                cursor: { step: step + 1, ...zeroAccumulators },
+              });
+            }
+            return undefined;
+          });
+        const engineA = await Engine.create({
+          storage,
+          recover: false,
+          workflows: { agentRun: legacyWorkflow },
+          activities: storageActivities,
+        });
+        let generateCalls = 0;
+        let secondGenerateReached: () => void = () => {};
+        const reached = new Promise<void>((resolve) => {
+          secondGenerateReached = resolve;
+        });
+        const toolboxA = continuingToolbox();
+        const servicesA: DurableRunDeps = {
+          toolbox: toolboxA,
+          options: {
+            generate: () => {
+              generateCalls++;
+              if (generateCalls < hangOnCall) {
+                return Promise.resolve({
+                  content: 'step 0',
+                  toolCalls: [{ name: 'next', arguments: {} }],
+                });
+              }
+              secondGenerateReached();
+              return new Promise<never>(() => {});
+            },
+            toolbox: toolboxA,
+            conversation: createConversationHistory(),
+            stopWhen: noToolCalls(),
+            steering: {
+              sessionId: 'test-session',
+              getDesiredState: () => desired,
+              awaitResume: () => new Promise<void>(() => {}),
+              getAppliedFloor: () => 0,
+            },
+            runId,
+          },
+        };
+        const handle = await engineA.start(
+          'agentRun',
+          { runId, sessionId: runId, agentName: '', prompt: 'Start' },
+          { id: runId, services: servicesA },
+        );
+        void handle.result().catch(() => {});
+        await reached;
+        await yieldToPortableEventLoop();
+        engineA[Symbol.dispose]();
+        expect(generateCalls).toBe(hangOnCall);
+
+        // Engine B runs the current workflow. The live gate now reports a floor of
+        // 3, but the old history carries no snapshot, so the floor must be 0 and
+        // configVersion 3 must fire `steering.applied` exactly once.
+        const events: Event[] = [];
+        const b = await buildEngine(storage, false, () => {
+          const toolboxB = continuingToolbox();
+          return Promise.resolve({
+            status: 'available' as const,
+            services: {
+              toolbox: toolboxB,
+              emitter: {
+                dispatch(event: Event) {
+                  events.push(event);
+                  return true;
+                },
+              },
+              options: {
+                generate: async () => ({ content: 'done', toolCalls: [] }),
+                toolbox: toolboxB,
+                conversation: createConversationHistory(),
+                stopWhen: noToolCalls(),
+                steering: {
+                  sessionId: 'test-session',
+                  getDesiredState: () => desired,
+                  awaitResume: () => new Promise<void>(() => {}),
+                  getAppliedFloor: () => 3,
+                },
+                runId,
+              },
+            } satisfies DurableRunDeps,
+          });
+        });
+        try {
+          const handles = await b.engine.recoverAll();
+          expect(handles.length).toBe(1);
+          const result = await handles[0]!.result();
+          expect(result).toBeDefined();
+          const applied = events.filter(
+            (event): event is SteeringAppliedEvent => event instanceof SteeringAppliedEvent,
+          );
+          expect(applied).toHaveLength(1);
+          expect(applied[0]?.effective.configVersion).toBe(3);
+        } finally {
+          b.engine[Symbol.dispose]();
+        }
+      },
+    );
 
     it('a paused steering gate blocks the durable driver at the same runStep boundary, then proceeds once resumed', async () => {
       const { engine } = await buildEngine(new MemoryStorage(), false);

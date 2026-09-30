@@ -2,7 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { OutputSchemaConversionError } from '../../src/errors.ts';
-import { toOutputJsonSchema } from '../../src/structured-output/response-schema.ts';
+import {
+  isStrictCompatible,
+  toOutputJsonSchema,
+} from '../../src/structured-output/response-schema.ts';
 
 describe('toOutputJsonSchema', () => {
   it('converts z.string() to { type: "string" }', () => {
@@ -127,11 +130,12 @@ describe('toOutputJsonSchema', () => {
     }
   });
 
-  it('memoizes by schema identity — repeated calls on the same schema return the same object', () => {
+  it('repeated calls on the same schema return equal but distinct objects', () => {
     const schema = z.object({ answer: z.string() });
     const first = toOutputJsonSchema(schema);
     const second = toOutputJsonSchema(schema);
-    expect(second).toBe(first);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
   });
 
   it('does not cross-contaminate two structurally-identical but distinct schema instances', () => {
@@ -145,5 +149,286 @@ describe('toOutputJsonSchema', () => {
     const schema = z.date();
     expect(() => toOutputJsonSchema(schema)).toThrow(OutputSchemaConversionError);
     expect(() => toOutputJsonSchema(schema)).toThrow(OutputSchemaConversionError);
+  });
+});
+
+describe('toOutputJsonSchema mutation safety', () => {
+  it('returns a fresh deep copy so caller mutation never corrupts later calls', () => {
+    const schema = z.object({
+      name: z.string(),
+      choice: z.union([z.string(), z.object({ id: z.number() })]),
+    });
+    const first = toOutputJsonSchema(schema);
+    const snapshot = structuredClone(first);
+    const properties = first['properties'] as Record<string, Record<string, unknown>>;
+    delete properties['name'];
+    properties['extra'] = { type: 'string' };
+    const anyOf = properties['choice']?.['anyOf'] as unknown[] | undefined;
+    expect(anyOf).toBeDefined();
+    anyOf!.push({ type: 'null' });
+    (first['required'] as string[]).push('bogus');
+    first['title'] = 'mutated';
+
+    const second = toOutputJsonSchema(schema);
+    expect(second).not.toBe(first);
+    expect(second).toEqual(snapshot);
+  });
+
+  it('returns a fresh copy for the primitive-union normalized branch', () => {
+    const schema = z.union([z.string(), z.number()]);
+    const first = toOutputJsonSchema(schema);
+    const snapshot = structuredClone(first);
+    (first['anyOf'] as unknown[]).push({ type: 'null' });
+    expect(toOutputJsonSchema(schema)).toEqual(snapshot);
+  });
+
+  it('returns a fresh copy of $defs so mutating them never corrupts later calls', () => {
+    type Node = { child?: Node | undefined; value: string };
+    const node: z.ZodType<Node> = z.lazy(() =>
+      z.object({ value: z.string(), child: node.optional() }),
+    );
+    const schema = z.object({ root: node });
+    const first = toOutputJsonSchema(schema);
+    const defs = first['$defs'] as Record<string, Record<string, unknown>> | undefined;
+    expect(defs).toBeDefined();
+    const snapshot = structuredClone(first);
+    for (const key of Object.keys(defs!)) delete defs![key];
+    defs!['Injected'] = { type: 'string' };
+    expect(toOutputJsonSchema(schema)).toEqual(snapshot);
+  });
+
+  it('returns distinct objects on cache hits', () => {
+    const schema = z.string();
+    expect(toOutputJsonSchema(schema)).not.toBe(toOutputJsonSchema(schema));
+  });
+});
+
+describe('isStrictCompatible', () => {
+  const strictObject = {
+    type: 'object',
+    properties: { a: { type: 'string' }, b: { type: 'number' } },
+    required: ['a', 'b'],
+    additionalProperties: false,
+  };
+  const looseObject = { type: 'object', properties: {}, required: [] };
+
+  it('accepts a fully strict-compliant schema', () => {
+    expect(isStrictCompatible(strictObject)).toBe(true);
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: {
+          list: { type: 'array', items: strictObject },
+          u: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        },
+        required: ['list', 'u'],
+        additionalProperties: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a non-object root, which OpenAI strict mode does not accept', () => {
+    expect(isStrictCompatible({ type: 'string' })).toBe(false);
+    expect(isStrictCompatible({ anyOf: [strictObject] })).toBe(false);
+  });
+
+  it('accepts primitive schemas in nested positions', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { s: { type: 'string' }, e: { enum: ['a', 'b'] }, c: { const: 1 } },
+        required: ['s', 'e', 'c'],
+        additionalProperties: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a typeless subschema', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { a: {} },
+        required: ['a'],
+        additionalProperties: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects unknown keywords that hold subschemas, so the check fails closed', () => {
+    const wrap = (a: Record<string, unknown>) => ({
+      type: 'object',
+      properties: { a },
+      required: ['a'],
+      additionalProperties: false,
+    });
+    expect(
+      isStrictCompatible(wrap({ type: 'string', someFutureKeyword: { type: 'string' } })),
+    ).toBe(false);
+    expect(isStrictCompatible(wrap({ type: 'string', someFutureKeyword: [{ $ref: '#' }] }))).toBe(
+      false,
+    );
+  });
+
+  it('rejects $ref under draft-07 dependencies', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { a: { type: 'string' } },
+        required: ['a'],
+        additionalProperties: false,
+        dependencies: { a: { $ref: '#' } },
+      }),
+    ).toBe(false);
+  });
+
+  for (const keyword of ['$dynamicRef', '$recursiveRef']) {
+    it(`rejects ${keyword} at nested and $defs positions`, () => {
+      expect(
+        isStrictCompatible({
+          type: 'object',
+          properties: { a: { type: 'string', [keyword]: '#x' } },
+          required: ['a'],
+          additionalProperties: false,
+        }),
+      ).toBe(false);
+      expect(
+        isStrictCompatible({
+          ...strictObject,
+          $defs: { X: { type: 'string', [keyword]: '#x' } },
+        }),
+      ).toBe(false);
+    });
+  }
+
+  it('rejects an object missing additionalProperties: false', () => {
+    const { additionalProperties: _a, ...rest } = strictObject;
+    expect(isStrictCompatible(rest)).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, additionalProperties: true })).toBe(false);
+  });
+
+  it('rejects nested objects missing additionalProperties: false', () => {
+    expect(
+      isStrictCompatible({
+        ...strictObject,
+        properties: { a: looseObject, b: { type: 'number' } },
+      }),
+    ).toBe(false);
+    expect(isStrictCompatible({ type: 'array', items: looseObject })).toBe(false);
+    expect(isStrictCompatible({ anyOf: [looseObject] })).toBe(false);
+  });
+
+  it('rejects an object inside $defs or definitions without additionalProperties: false', () => {
+    expect(isStrictCompatible({ ...strictObject, $defs: { X: looseObject } })).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, definitions: { X: looseObject } })).toBe(false);
+  });
+
+  it('fails closed on $ref and forbidden keywords in every subschema position', () => {
+    const wrap = (a: Record<string, unknown>) => ({
+      type: 'object',
+      properties: { a },
+      required: ['a'],
+      additionalProperties: false,
+    });
+    expect(
+      isStrictCompatible(wrap({ type: 'array', prefixItems: [{ $ref: '#', pattern: 'x' }] })),
+    ).toBe(false);
+    expect(isStrictCompatible(wrap({ additionalProperties: { $ref: '#' } }))).toBe(false);
+    expect(isStrictCompatible(wrap({ additionalProperties: true }))).toBe(false);
+    expect(
+      isStrictCompatible(
+        wrap({
+          type: 'array',
+          items: { type: 'string' },
+          contains: { type: 'string', pattern: 'x' },
+        }),
+      ),
+    ).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, propertyNames: { $ref: '#' } })).toBe(false);
+    expect(isStrictCompatible(wrap({ type: 'array', additionalItems: { type: 'string' } }))).toBe(
+      false,
+    );
+    expect(isStrictCompatible(wrap({ type: 'array', unevaluatedItems: false }))).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, unevaluatedProperties: false })).toBe(false);
+  });
+
+  it('treats an array type containing object as an object type', () => {
+    expect(isStrictCompatible({ type: ['object', 'null'] })).toBe(false);
+    expect(
+      isStrictCompatible({ type: ['object', 'null'], properties: {}, additionalProperties: false }),
+    ).toBe(true);
+  });
+
+  it('rejects a property absent from required', () => {
+    expect(isStrictCompatible({ ...strictObject, required: ['a'] })).toBe(false);
+    const { required: _r, ...noRequired } = strictObject;
+    expect(isStrictCompatible(noRequired)).toBe(false);
+  });
+
+  const keywords: Record<string, unknown> = {
+    minLength: 1,
+    maxLength: 3,
+    pattern: 'x',
+    format: 'email',
+    minimum: 0,
+    maximum: 1,
+    exclusiveMinimum: 0,
+    exclusiveMaximum: 1,
+    multipleOf: 2,
+    minItems: 1,
+    maxItems: 2,
+    uniqueItems: true,
+    minProperties: 1,
+    maxProperties: 2,
+    allOf: [{ type: 'string' }],
+    oneOf: [{ type: 'string' }],
+    not: { type: 'string' },
+    if: { type: 'string' },
+    then: { type: 'string' },
+    else: { type: 'string' },
+    dependentRequired: { a: ['b'] },
+    dependentSchemas: { a: { type: 'string' } },
+    patternProperties: { '^x': { type: 'string' } },
+  };
+  for (const [keyword, value] of Object.entries(keywords)) {
+    it(`rejects ${keyword} at the top level, nested, and inside $defs`, () => {
+      const bad = { [keyword]: value };
+      expect(isStrictCompatible({ ...strictObject, ...bad })).toBe(false);
+      expect(
+        isStrictCompatible({
+          ...strictObject,
+          properties: { a: { type: 'string', ...bad }, b: { type: 'number' } },
+        }),
+      ).toBe(false);
+      expect(
+        isStrictCompatible({ ...strictObject, $defs: { X: { type: 'string', ...bad } } }),
+      ).toBe(false);
+    });
+  }
+
+  it('rejects $ref anywhere', () => {
+    expect(isStrictCompatible({ ...strictObject, $ref: '#/$defs/X' })).toBe(false);
+    expect(
+      isStrictCompatible({
+        ...strictObject,
+        properties: { a: { $ref: '#/$defs/X' }, b: { type: 'number' } },
+        $defs: { X: { type: 'string' } },
+      }),
+    ).toBe(false);
+    expect(isStrictCompatible({ ...strictObject, $defs: { X: { $ref: '#' } } })).toBe(false);
+  });
+
+  it('does not treat a property NAMED like a keyword as a violation', () => {
+    expect(
+      isStrictCompatible({
+        type: 'object',
+        properties: { pattern: { type: 'string' }, format: { type: 'string' } },
+        required: ['pattern', 'format'],
+        additionalProperties: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects non-object input', () => {
+    expect(isStrictCompatible(null as never)).toBe(false);
   });
 });

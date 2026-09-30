@@ -252,6 +252,7 @@ describe('requestHumanInput park survives a process restart while still parked (
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -276,6 +277,7 @@ describe('requestHumanInput park survives a process restart while still parked (
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -357,6 +359,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });
@@ -392,6 +395,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       humanInput: true,
       stopWhen: stopWhen.noToolCalls(),
     });

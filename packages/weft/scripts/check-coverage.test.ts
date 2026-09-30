@@ -39,13 +39,14 @@ describe('listCoverageTestFiles', () => {
   /**
    * The measurement benchmarks that `bun run test` excludes are excluded from the coverage shard
    * too, and from the same list: the shard reads the script rather than keeping its own copy, so
-   * the two cannot drift. Pinned against the concrete eight so a script edit that drops one is a
+   * the two cannot drift. Pinned against the concrete list so a script edit that drops one is a
    * visible change here rather than a silently widened shard.
    */
   it('excludes exactly the measurement benchmarks the test script excludes', async () => {
     const excluded = readTestScriptPathIgnorePatterns();
     expect(excluded).toEqual([
       'scripts/benchmarks/activity-completions.test.ts',
+      'scripts/benchmarks/bun-sql.test.ts',
       'scripts/benchmarks/cold-start.test.ts',
       'scripts/benchmarks/load-growth-memory.test.ts',
       'scripts/benchmarks/memory-per-workflow.test.ts',

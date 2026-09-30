@@ -430,6 +430,14 @@ describe('createDiagnosticAgentRun()', () => {
       expect(await run.closed()).toEqual({ status: 'unresolved', reason: 'unknown-effect' });
     });
 
+    it('passes an already-downgraded unknown-effect acknowledgement through unchanged (COR-66: reattach-sourced input)', async () => {
+      const downgraded = { status: 'unresolved', reason: 'unknown-effect' } as const;
+      const { activeRun } = createActiveRunWithClosed(downgraded);
+      const run = createDiagnosticAgentRun(activeRun);
+
+      expect(await run.closed()).toBe(downgraded);
+    });
+
     it.each([
       ['not-required', { status: 'not-required' }],
       ['failed', { status: 'failed', error: new Error('teardown failed') }],

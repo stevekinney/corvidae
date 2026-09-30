@@ -6,6 +6,7 @@ import {
   textValueStore,
   workflow,
   WorkflowClaimUnavailableError,
+  WorkflowStartedEvent,
   yieldToPortableEventLoop,
   type WorkflowLogRecord,
   type WorkflowStatus,
@@ -742,15 +743,10 @@ async function isParkedRunning(handle: { snapshot: () => Promise<{ status: strin
 }
 
 describe('createRunEngine ownership (AB-178)', () => {
-  it('defaults ownership to "none" (unchanged single-writer-by-convention posture)', async () => {
+  it('defaults ownership to "workflow-lease" (fenced multi-process safety without opting in)', async () => {
     // No explicit `ownership` passed — spy on the underlying `Engine.create`
-    // call to prove `createRunEngine` still passes `'none'` by default,
-    // rather than silently changing to `'workflow-lease'`. Asserting the
-    // literal option passed to weft is deterministic; racing two live
-    // engines against the same workflow under the (intentionally
-    // unfenced) default posture is exactly the uncoordinated scenario AB-39
-    // describes as "outside the contract entirely" and is not something a
-    // test should assert a specific outcome for.
+    // call to prove `createRunEngine` passes `'workflow-lease'` by default.
+    // Asserting the literal option passed to weft is deterministic.
     const engineCreateSpy = spyOn(Engine, 'create');
     try {
       const { engine } = await createRunEngine({
@@ -760,7 +756,7 @@ describe('createRunEngine ownership (AB-178)', () => {
       });
       try {
         expect(engineCreateSpy).toHaveBeenCalledTimes(1);
-        expect(engineCreateSpy.mock.calls[0]?.[0]).toMatchObject({ ownership: 'none' });
+        expect(engineCreateSpy.mock.calls[0]?.[0]).toMatchObject({ ownership: 'workflow-lease' });
       } finally {
         engine[Symbol.dispose]();
       }
@@ -815,11 +811,7 @@ describe('createRunEngine ownership (AB-178)', () => {
     }
   });
 
-  // AB-330: the crash-and-adopt test (waits out a real workflow-lease claim
-  // TTL — weft's getNow is not injectable, so this needs a genuine
-  // real-clock wait) moved to `create-run-engine-crash-and-adopt.test.ts`,
-  // isolating the real-runtime exemption from this otherwise-deterministic
-  // file.
+  // The crash-and-adopt test lives in `create-run-engine-crash-and-adopt.test.ts`.
 
   it('resumes on the same workflow-lease engine and retains exclusivity', async () => {
     const storage = new MemoryStorage();
@@ -857,6 +849,88 @@ describe('createRunEngine ownership (AB-178)', () => {
     } finally {
       a.engine[Symbol.dispose]();
       b.engine[Symbol.dispose]();
+    }
+  });
+});
+
+describe('createRunEngine inline-launch scheduling (COR-207)', () => {
+  it('forwards inlineLaunchScheduling to Engine.create when it is set', async () => {
+    const engineCreateSpy = spyOn(Engine, 'create');
+    try {
+      const { engine } = await createRunEngine({
+        storage: new MemoryStorage(),
+        runWorkflow: makeProbeWorkflow(),
+        recover: false,
+        inlineLaunchScheduling: 'manual',
+      });
+      try {
+        expect(engineCreateSpy).toHaveBeenCalledTimes(1);
+        expect(engineCreateSpy.mock.calls[0]?.[0]).toMatchObject({
+          inlineLaunchScheduling: 'manual',
+        });
+      } finally {
+        engine[Symbol.dispose]();
+      }
+    } finally {
+      engineCreateSpy.mockRestore();
+    }
+  });
+
+  it('leaves inlineLaunchScheduling out of the Engine.create options when it is omitted', async () => {
+    const engineCreateSpy = spyOn(Engine, 'create');
+    try {
+      const { engine } = await createRunEngine({
+        storage: new MemoryStorage(),
+        runWorkflow: makeProbeWorkflow(),
+        recover: false,
+      });
+      try {
+        expect(engineCreateSpy).toHaveBeenCalledTimes(1);
+        const receivedOptions = engineCreateSpy.mock.calls[0]?.[0];
+        expect(receivedOptions).toBeDefined();
+        expect(Object.hasOwn(receivedOptions ?? {}, 'inlineLaunchScheduling')).toBe(false);
+      } finally {
+        engine[Symbol.dispose]();
+      }
+    } finally {
+      engineCreateSpy.mockRestore();
+    }
+  });
+
+  it('does not begin the first turn under manual scheduling until flushInlineLaunches drains it', async () => {
+    const { engine } = await createRunEngine({
+      storage: new MemoryStorage(),
+      runWorkflow: makeProbeWorkflow(),
+      recover: false,
+      inlineLaunchScheduling: 'manual',
+    });
+
+    try {
+      const runId = 'cor-207-manual-probe';
+      const startedRunIds: string[] = [];
+      engine.addEventListener(WorkflowStartedEvent.type, (event) => {
+        if (event.workflowId === runId) startedRunIds.push(event.workflowId);
+      });
+
+      const handle = await engine.start('agentRun', { value: 21 }, { id: runId });
+      expect(handle.id).toBe(runId);
+
+      // Under 'manual' nothing is scheduled at all, so no number of event-loop
+      // turns can dispatch the first turn; the fixed count is immaterial.
+      await yieldToPortableEventLoop();
+      await yieldToPortableEventLoop();
+
+      expect(startedRunIds).toHaveLength(0);
+      const snapshotBeforeFlush = await handle.snapshot();
+      expect(snapshotBeforeFlush).not.toBeNull();
+      expect(TERMINAL_STATUSES.has(snapshotBeforeFlush!.status)).toBe(false);
+
+      await engine.flushInlineLaunches();
+
+      expect(startedRunIds).toEqual([runId]);
+      expect(await handle.result()).toEqual({ doubled: 42 });
+    } finally {
+      engine[Symbol.dispose]();
     }
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { classifyError } from '../src/errors';
+import { AbortAgentRunError, classifyError } from '../src/errors';
 import { ToolCallParseError } from '../src/providers/errors';
 
 describe('classifyError', () => {
@@ -188,5 +188,11 @@ describe('classifyError', () => {
     expect(classified.category).toBe('model-output');
     expect(classified.retryable).toBe(false);
     expect(classified.provider).toBe('openai');
+  });
+
+  it('classifies AbortAgentRunError as a non-retryable cancellation', () => {
+    const classified = classifyError(new AbortAgentRunError('cancelled', 'reason'));
+    expect(classified.category).toBe('timeout');
+    expect(classified.retryable).toBe(false);
   });
 });

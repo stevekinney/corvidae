@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { z } from 'zod';
 
+import { createDiagnosticAgentRun } from '../agent-run';
 import { createChildRunRegistry, dispatchChildRun } from '../child-run';
 import { stopWhen } from '../conditions/index';
 import { createAgent } from '../create-agent';
@@ -131,6 +132,27 @@ async function buildContextWithHistoryLimit(maxEvents: number) {
     runWorkflow,
     recover: false,
     history: { maxEvents },
+  });
+  return { engine, checkpointStore };
+}
+
+/**
+ * Build a durable context whose engine schedules nothing for its inline launch
+ * queue (COR-207). A run started on it only begins once the test awaits
+ * `engine.flushInlineLaunches()`, so no real macrotask can starve the launch.
+ * A test using this helper that never flushes hangs by design.
+ */
+async function buildContextWithManualInlineLaunch() {
+  const storage = new MemoryStorage();
+  const checkpointStore = createCheckpointStore(
+    textValueStore(storage, { disposeUnderlyingStorage: false }),
+  );
+  const runWorkflow = createRunWorkflow(checkpointStore);
+  const { engine } = await createRunEngine({
+    storage,
+    runWorkflow,
+    recover: false,
+    inlineLaunchScheduling: 'manual',
   });
   return { engine, checkpointStore };
 }
@@ -1232,8 +1254,8 @@ describe('createRun with durable routing', () => {
   // assertion could not have been made: both runs would have observed the
   // SAME real clock regardless of what `runtime` either caller supplied.
   it('two durable runs with two manual runtimes (different origins/seeds) carry disjoint ids and origin-derived timestamps', async () => {
-    const contextA = await buildContext();
-    const contextB = await buildContext();
+    const contextA = await buildContextWithManualInlineLaunch();
+    const contextB = await buildContextWithManualInlineLaunch();
     try {
       const runtimeA = createManualRuntimeServices({
         origin: '2021-01-01T00:00:00.000Z',
@@ -1291,6 +1313,15 @@ describe('createRun with durable routing', () => {
       const startedB: ToolStartedBubbleEvent[] = [];
       runA.addEventListener('tool.started', (e) => startedA.push(e));
       runB.addEventListener('tool.started', (e) => startedB.push(e));
+
+      // Both engines are 'manual': the launches only enqueue until drained. Wait
+      // for each initial durable record, then drain each engine's queue once.
+      expect(runA.durablyStarted).toBeDefined();
+      expect(runB.durablyStarted).toBeDefined();
+      await runA.durablyStarted;
+      await runB.durablyStarted;
+      await contextA.engine.flushInlineLaunches();
+      await contextB.engine.flushInlineLaunches();
 
       const [resultA, resultB] = await Promise.all([runA.result, runB.result]);
 
@@ -2856,7 +2887,11 @@ describe('AB-304: durable ActiveRun closed() awaits registered children', () => 
 
       releaseChildTool();
 
-      expect(await closedAcknowledgement).toEqual({ status: 'completed' });
+      // COR-66: a reattached parent reports unknown-effect, never completed.
+      expect(await closedAcknowledgement).toEqual({
+        status: 'unresolved',
+        reason: 'unknown-effect',
+      });
       expect(settledFlag).toBe(true);
     } finally {
       context.engine[Symbol.dispose]();
@@ -4049,7 +4084,11 @@ describe('reattachDurableActiveRun.closed()', () => {
 
       resolveGet({ status: 'cancelled' });
 
-      expect(await closedAcknowledgement).toEqual({ status: 'completed' });
+      // COR-66: a reattached run reports unknown-effect, never completed.
+      expect(await closedAcknowledgement).toEqual({
+        status: 'unresolved',
+        reason: 'unknown-effect',
+      });
     } finally {
       context.engine[Symbol.dispose]();
     }
@@ -4964,5 +5003,165 @@ describe('COR-625: durable closed() folds a composer terminal-cleanup step', () 
     } finally {
       context.engine[Symbol.dispose]();
     }
+  });
+
+  describe('COR-66: a reattached run never asserts completed durability through closed()', () => {
+    const unknownEffect = { status: 'unresolved', reason: 'unknown-effect' } as const;
+
+    function recoveredHandle(runId: string) {
+      return {
+        id: runId,
+        result: () =>
+          Promise.resolve({
+            schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            runId,
+            steps: 1,
+            content: 'recovered done',
+            finishReason: 'stop-condition' as const,
+          }),
+      };
+    }
+
+    it.each([
+      ['no terminalCleanup hook is wired in', undefined],
+      ['the hook reports completed', async () => ({ status: 'completed' }) as const],
+      ['the hook reports not-required', async () => ({ status: 'not-required' }) as const],
+    ])(
+      'reports unresolved/unknown-effect, identically with and without the diagnostic wrapper, when %s',
+      async (_label, terminalCleanup) => {
+        const context = await buildContext();
+        const runId = `cor-66-uncancelled-${terminalCleanup ? 'hook' : 'nohook'}-${_label.length}`;
+        try {
+          const build = (suffix: string) =>
+            reattachDurableActiveRun(
+              {
+                engine: context.engine,
+                checkpointStore: context.checkpointStore,
+                ...(terminalCleanup ? { terminalCleanup } : {}),
+              },
+              { runId: `${runId}-${suffix}`, handle: recoveredHandle(`${runId}-${suffix}`) },
+            );
+          const direct = build('direct');
+          const wrapped = createDiagnosticAgentRun(build('wrapped'));
+
+          await direct.result;
+          const directOutcome = await direct.closed();
+          const wrappedOutcome = await wrapped.closed();
+          // Without a hook, an uncancelled clean recovery takes the
+          // not-required fast path, which is unchanged.
+          expect(directOutcome).toEqual(
+            terminalCleanup ? unknownEffect : { status: 'not-required' },
+          );
+          expect(wrappedOutcome).toEqual(directOutcome);
+        } finally {
+          context.engine[Symbol.dispose]();
+        }
+      },
+    );
+
+    it('lets a hook that itself downgrades win over the unknown-effect downgrade', async () => {
+      const context = await buildContext();
+      const runId = 'cor-66-hook-wins';
+      try {
+        const recoveredRun = reattachDurableActiveRun(
+          {
+            engine: context.engine,
+            checkpointStore: context.checkpointStore,
+            terminalCleanup: async () => ({ status: 'unresolved', reason: 'persistence-failed' }),
+          },
+          { runId, handle: recoveredHandle(runId) },
+        );
+        await recoveredRun.result;
+        const outcome = await recoveredRun.closed();
+        expect(outcome).toEqual({ status: 'unresolved', reason: 'persistence-failed' });
+        expect(await createDiagnosticAgentRun(recoveredRun).closed()).toEqual(outcome);
+      } finally {
+        context.engine[Symbol.dispose]();
+      }
+    });
+
+    it('runs the terminalCleanup step even though the recovered outcome is already downgraded', async () => {
+      const context = await buildContext();
+      const runId = 'cor-66-step-runs';
+      let calls = 0;
+      try {
+        const recoveredRun = reattachDurableActiveRun(
+          {
+            engine: context.engine,
+            checkpointStore: context.checkpointStore,
+            terminalCleanup: async () => {
+              calls += 1;
+              return { status: 'completed' };
+            },
+          },
+          { runId, handle: recoveredHandle(runId) },
+        );
+        await recoveredRun.result;
+        await recoveredRun.closed();
+        expect(calls).toBe(1);
+      } finally {
+        context.engine[Symbol.dispose]();
+      }
+    });
+
+    it('reports unresolved/unknown-effect after a confirmed post-cancel re-read, with and without the wrapper', async () => {
+      const build = async (runId: string) => {
+        const context = await buildContext();
+        let rejectResult!: (error: unknown) => void;
+        const handle = {
+          id: runId,
+          result: () =>
+            new Promise<unknown>((_resolve, reject) => {
+              rejectResult = reject;
+            }),
+        };
+        const engine = {
+          cancel: async () => {
+            rejectResult(new Error('cancelled'));
+          },
+          get: async () => ({ status: 'cancelled' }),
+        } as unknown as RegistryAgnosticEngine;
+        const run = reattachDurableActiveRun(
+          { engine, checkpointStore: context.checkpointStore },
+          { runId, handle },
+        );
+        await Promise.resolve();
+        run.abort();
+        await run.result;
+        return { context, run };
+      };
+      const direct = await build('cor-66-cancel-direct');
+      try {
+        const wrapped = await build('cor-66-cancel-wrapped');
+        try {
+          const directOutcome = await direct.run.closed();
+          expect(directOutcome).toEqual(unknownEffect);
+          expect(await createDiagnosticAgentRun(wrapped.run).closed()).toEqual(directOutcome);
+        } finally {
+          wrapped.context.engine[Symbol.dispose]();
+        }
+      } finally {
+        direct.context.engine[Symbol.dispose]();
+      }
+    });
+
+    it('leaves the fresh-run path (createDurableActiveRun) reporting completed', async () => {
+      const context = await buildContext();
+      try {
+        const activeRun = createDurableActiveRun(
+          { ...context, terminalCleanup: async () => ({ status: 'completed' }) },
+          {
+            runId: 'cor-66-fresh-unchanged',
+            sessionId: 'cor-66-fresh-unchanged',
+            options: runOptions(async () => ({ content: 'done', toolCalls: [] })),
+            prompt: 'Hello',
+          },
+        );
+        await activeRun.result;
+        expect(await activeRun.closed()).toEqual({ status: 'completed' });
+      } finally {
+        context.engine[Symbol.dispose]();
+      }
+    });
   });
 });

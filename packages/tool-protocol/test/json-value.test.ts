@@ -47,6 +47,31 @@ describe('assertJSONValue / isJSONValue (AB-18)', () => {
     expect(isJSONValue(withExtra)).toBe(false);
   });
 
+  test('rejects a dense array carrying a non-enumerable non-index property', () => {
+    const dense: unknown[] = [1, 2];
+    expect(Object.keys(dense).length).toBe(dense.length);
+    Object.defineProperty(dense, 'foo', { value: 'hidden', enumerable: false });
+    expect(Object.keys(dense).length).toBe(dense.length);
+    expect(isJSONValue(dense)).toBe(false);
+    expect(() => assertJSONValue(dense)).toThrow(/Non-enumerable own property/);
+  });
+
+  test('rejects a dense array carrying a symbol-keyed property', () => {
+    const dense: unknown[] = [1, 2];
+    expect(Object.keys(dense).length).toBe(dense.length);
+    (dense as unknown as Record<symbol, unknown>)[Symbol('hidden')] = 'x';
+    expect(Object.keys(dense).length).toBe(dense.length);
+    expect(isJSONValue(dense)).toBe(false);
+    expect(() => assertJSONValue(dense)).toThrow(/Symbol-keyed property/);
+  });
+
+  test('accepts a plain dense array with only index properties', () => {
+    const dense = [1, 'two', [3]];
+    expect(Object.keys(dense).length).toBe(dense.length);
+    expect(() => assertJSONValue(dense)).not.toThrow();
+    expect(isJSONValue(dense)).toBe(true);
+  });
+
   test('rejects a Date, Map, Set, and class instance (non-plain prototype)', () => {
     class Point {
       x = 1;

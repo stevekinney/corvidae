@@ -3,12 +3,11 @@ import { describe, expect, it } from 'bun:test';
 import { createManualRuntimeServices } from '../src/manual-runtime-services';
 
 /**
- * Split out of `manual-runtime-services.test.ts` (AB-292) so the
- * `scripts/determinism-manifest.json` `realRuntimeExemptions` entry this
- * file needs — measuring real `performance.now()` to prove `advance()`
- * consumes no real wall-clock time — covers only this one assertion rather
- * than the whole `createManualRuntimeServices` suite. A future real-timer
- * regression anywhere else in that suite still gets caught by the gate.
+ * Split out of `manual-runtime-services.test.ts` (AB-292) so the one test that
+ * arms a real 60-second timer sits in its own file. It proves `advance()`
+ * consumes no real time: if a real timer backed the 60-second virtual advance,
+ * the test would exceed the per-test budget and fail, so no reading of the
+ * clock is needed.
  */
 describe('createManualRuntimeServices', () => {
   describe('timers', () => {
@@ -19,14 +18,9 @@ describe('createManualRuntimeServices', () => {
         fired = true;
       }, 60_000);
 
-      const started = performance.now();
       await runtime.advance(60_000);
-      const elapsed = performance.now() - started;
 
       expect(fired).toBe(true);
-      // A 60-second virtual advance must not take anywhere close to 60
-      // real seconds — proves no real timer is backing it.
-      expect(elapsed).toBeLessThan(1000);
     });
   });
 });

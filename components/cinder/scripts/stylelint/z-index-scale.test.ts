@@ -3,30 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'bun:test';
 import stylelint from 'stylelint';
 
-const ruleName = 'cinder/z-index-scale';
-const pluginPath = fileURLToPath(new URL('./z-index-scale.mjs', import.meta.url));
+import { lint, pluginPath, ruleName, warnings } from './z-index-scale.test-support';
+
 const fallbackAnalysisPath = fileURLToPath(
   new URL('./z-index-fallback-analysis.mjs', import.meta.url),
 );
 const valueAnalysisPath = fileURLToPath(new URL('./z-index-value-analysis.mjs', import.meta.url));
-
-async function lint(css: string) {
-  return stylelint.lint({
-    code: css,
-    config: {
-      plugins: [pluginPath],
-      rules: { [ruleName]: true },
-    },
-  });
-}
-
-function warnings(result: Awaited<ReturnType<typeof stylelint.lint>>) {
-  return result.results
-    .flatMap((file) => file.warnings ?? [])
-    .filter((warning) => {
-      return warning.rule === ruleName;
-    });
-}
 
 function sourceLocation(value: string, index: number) {
   let line = 1;
@@ -50,12 +32,14 @@ function sourceLocation(value: string, index: number) {
 
 describe('cinder/z-index-scale', () => {
   // WALL-CLOCK POLICY: these wide/pathological-input tests exist to prove the
-  // analyzer completes without a combinatorial blowup, not to bound latency.
+  // analyzer terminates without a combinatorial blowup, not to bound latency.
   // They originally asserted 2000ms budgets, which produced five real CI
-  // flakes in one night (between 2015 ms and 5843 ms under runner load, every rerun green).
-  // The linearity PROPERTY is proven by the dedicated N-vs-2N scaling tests
-  // in this file; each site below keeps a generous 30s ceiling purely as a
-  // hang guard.
+  // flakes in one night (between 2015 ms and 5843 ms under runner load, every rerun green),
+  // and the 30s elapsed-time assertions that replaced them still measured host load,
+  // so no test in this file reads a clock. Each site below keeps only its per-test
+  // timeout as a hang guard. The linearity PROPERTY is proven by the N-vs-2N scaling tests
+  // in scripts/benchmarks/z-index-scale.bench.ts, run by `bun run test:benchmarks`
+  // outside the default gate.
   test('every hang-guard test declares a per-test timeout above its 30s ceiling', async () => {
     // COR-1334: without its own timeout, bun's five-second default fires long before a 30s hang
     // guard can, quietly turning the test into the latency assertion this policy exists to
@@ -1797,7 +1781,6 @@ describe('cinder/z-index-scale', () => {
     for (let depth = 0; depth < 1_000; depth += 1)
       nestedFallback = `var(--item-layer-${depth}, ${nestedFallback})`;
 
-    const startedAt = performance.now();
     const result = await lint(`
       .fixture {
         /* cinder-z-index-local: repeated wrappers must reuse unresolved classification. */
@@ -1806,8 +1789,7 @@ describe('cinder/z-index-scale', () => {
     `);
 
     expect(warnings(result)).toEqual([]);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('scans deeply nested calc chains without recursion or overflow', async () => {
@@ -1829,7 +1811,6 @@ describe('cinder/z-index-scale', () => {
 
   test('leaves long invalid unary-sign chains unresolved without excessive work', async () => {
     const unarySigns = '-'.repeat(50_000);
-    const startedAt = performance.now();
     const result = await lint(`
       .fixture {
         /* cinder-z-index-local: invalid generated syntax can remain unused. */
@@ -1838,8 +1819,7 @@ describe('cinder/z-index-scale', () => {
     `);
 
     expect(warnings(result)).toEqual([]);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('bounds associative symbolic identity normalization', async () => {
@@ -1848,15 +1828,13 @@ describe('cinder/z-index-scale', () => {
     );
     const terms = Array.from({ length: 2_000 }, (_, index) => `max(1em, ${index}px) / 1rem`);
     const expression = `calc(${terms.join(' + ')})`;
-    const startedAt = performance.now();
 
     expect(analyzeStaticLayerValue(expression)).toEqual({
       classification: 'too-complex',
       resultType: 'too-complex',
     });
     expect(haveCompatibleStaticDivisionTypes('0', expression)).toBe(true);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('bounds variadic symbolic identity normalization', async () => {
@@ -1864,14 +1842,12 @@ describe('cinder/z-index-scale', () => {
     const arguments_ = Array.from({ length: 140_000 }, (_, index) =>
       index % 2 === 0 ? '1em' : '1rem',
     );
-    const startedAt = performance.now();
 
     expect(analyzeStaticLayerValue(`max(${arguments_.join(',')})`)).toEqual({
       classification: 'too-complex',
       resultType: 'too-complex',
     });
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('merges wide progress degree maps without quadratic cloning', async () => {
@@ -1880,12 +1856,10 @@ describe('cinder/z-index-scale', () => {
       { length: 20_000 },
       (_, index) => `progress(var(--runtime-${index}), 0, 1)`,
     );
-    const startedAt = performance.now();
     const result = bannedFallback(`calc(${progressTerms.join(' + ')} + ${progressTerms[0]})`);
 
     expect(result === undefined || result.reason === 'too-complex').toBe(true);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test.each([
@@ -1925,7 +1899,6 @@ describe('cinder/z-index-scale', () => {
 
   test('reduces wide min, max, and hypot fallbacks without argument-limit bypasses', async () => {
     const repeatedArguments = 130_000;
-    const startedAt = performance.now();
     for (const [functionName, repeatedValue] of [
       ['min', '10000'],
       ['max', '0'],
@@ -1944,8 +1917,7 @@ describe('cinder/z-index-scale', () => {
       expect(warning?.text).toContain('Offending expression:');
       expect(warning?.text).toContain('…');
     }
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('bounds cumulative work for mixed substitution and calc nesting', async () => {
@@ -2031,7 +2003,6 @@ describe('cinder/z-index-scale', () => {
       { length: 8_000 },
       (_, index) => `var(--item-layer-${index}, -1)`,
     ).join(' + ');
-    const startedAt = performance.now();
     const result = await lint(`
       .fixture {
         /* cinder-z-index-local: exhausted generated analysis must fail closed promptly. */
@@ -2040,19 +2011,16 @@ describe('cinder/z-index-scale', () => {
     `);
 
     expect(warnings(result)).toHaveLength(1);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('bounds exact rational growth in a long decimal product', async () => {
     const { bannedFallback } = await import(fallbackAnalysisPath);
     const product = Array.from({ length: 5_000 }, () => '1.001').join(' * ');
-    const startedAt = performance.now();
     const result = bannedFallback(`var(--outer, calc(${product}))`);
 
     expect(result?.reason).toBe('too-complex');
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('indexes wide additive terms without rescanning every fallback child', async () => {
@@ -2061,102 +2029,9 @@ describe('cinder/z-index-scale', () => {
       'var(--item-layer, -1) * 1px',
       ...Array.from({ length: 32_000 }, (_, index) => `var(--runtime-${index}) * 1px`),
     ];
-    const startedAt = performance.now();
 
-    bannedFallback(`calc(${terms.join(' + ')})`);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
-  }, 35_000);
-
-  test('bounds static max-floor scans with an unresolved wide sibling set', async () => {
-    // This used to assert an absolute 2000ms wall-clock budget, the same
-    // mis-specification its neighbor below had: it flaked twice in CI at
-    // 2048ms under runner load (rerun-green both times) while the property
-    // it needs to prove is that the max-floor scan stays linear in the
-    // sibling count. Same protocol as the neighbor: fastest-of-3 trials at
-    // N and 2N, ratio bound 4x, generous absolute ceiling only as a hang
-    // guard.
-    const buildCss = (siblingCount: number) => {
-      const siblings = Array.from(
-        { length: siblingCount },
-        (_, index) => `var(--item-layer-${index}, -1)`,
-      ).join(', ');
-      return `
-        .fixture {
-          /* cinder-z-index-local: unresolved generated max arguments must fail closed promptly. */
-          z-index: max(var(--runtime), ${siblings});
-        }
-      `;
-    };
-    const fastestLintTime = async (siblingCount: number) => {
-      const css = buildCss(siblingCount);
-      let fastest = Number.POSITIVE_INFINITY;
-      for (let trial = 0; trial < 3; trial += 1) {
-        const startedAt = performance.now();
-        const result = await lint(css);
-        fastest = Math.min(fastest, performance.now() - startedAt);
-        expect(warnings(result)).toHaveLength(1);
-      }
-      return fastest;
-    };
-
-    const baselineSiblingCount = 32_000;
-    const timeAtBaseline = await fastestLintTime(baselineSiblingCount);
-    const timeAtDoubled = await fastestLintTime(baselineSiblingCount * 2);
-
-    expect(timeAtBaseline).toBeLessThan(30_000);
-    expect(timeAtDoubled).toBeLessThan(30_000);
-    expect(timeAtDoubled).toBeLessThan(timeAtBaseline * 4);
-  }, 35_000);
-
-  test('builds wide clamp placeholders in linear time', async () => {
-    // This used to assert an absolute wall-clock budget (2000ms), which
-    // flaked in CI under load -- three real failures at 2015ms, 2028ms,
-    // and 2034ms, each passing cleanly on rerun -- and could equally
-    // false-fail locally on a busy machine. The property this test
-    // actually needs to prove is that placeholder generation scales
-    // linearly with the sibling count, not that any one run completes
-    // within some fixed latency, so measure at N and 2N and assert the
-    // doubled input takes less than 4x as long: comfortably above the
-    // ~2x a linear algorithm should show (measured locally at N = 16,000
-    // across ten runs: 1.74x-2.40x), but tight enough to still catch an
-    // O(n^2) regression. Each measurement takes the fastest of 3 trials to
-    // reduce scheduling noise (a slowdown can only inflate a trial, never
-    // deflate it below the true minimum), and N is sized so a single
-    // trial comfortably clears ~150ms even on a loaded machine, keeping
-    // fixed per-lint overhead from dominating the measurement. A generous
-    // absolute ceiling remains only to catch an outright hang.
-    const buildCss = (siblingCount: number) => {
-      const siblings = Array.from(
-        { length: siblingCount },
-        (_, index) => `var(--item-layer-${index}, -1)`,
-      ).join(' + ');
-      return `
-          .fixture {
-            /* cinder-z-index-local: static clamp bounds keep every generated fallback safe. */
-            z-index: clamp(0, calc(var(--runtime) + ${siblings}), 1);
-          }
-        `;
-    };
-    const fastestLintTime = async (siblingCount: number) => {
-      const css = buildCss(siblingCount);
-      let fastest = Number.POSITIVE_INFINITY;
-      for (let trial = 0; trial < 3; trial += 1) {
-        const startedAt = performance.now();
-        const result = await lint(css);
-        fastest = Math.min(fastest, performance.now() - startedAt);
-        expect(warnings(result)).toEqual([]);
-      }
-      return fastest;
-    };
-
-    const baselineSiblingCount = 16_000;
-    const timeAtBaseline = await fastestLintTime(baselineSiblingCount);
-    const timeAtDoubled = await fastestLintTime(baselineSiblingCount * 2);
-
-    expect(timeAtBaseline).toBeLessThan(30_000);
-    expect(timeAtDoubled).toBeLessThan(30_000);
-    expect(timeAtDoubled).toBeLessThan(timeAtBaseline * 4);
+    expect(() => bannedFallback(`calc(${terms.join(' + ')})`)).not.toThrow();
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('reuses parenthesis indexes across nested bound checks', async () => {
@@ -2166,7 +2041,6 @@ describe('cinder/z-index-scale', () => {
         `var(--outer-${depth}, ` +
         `max(0, var(--bad-${depth}, -1), var(--runtime-${depth}), ${nestedValue}))`;
 
-    const startedAt = performance.now();
     const result = await lint(`
       .fixture {
         /* cinder-z-index-local: nested static floors keep each negative fallback safe. */
@@ -2175,14 +2049,12 @@ describe('cinder/z-index-scale', () => {
     `);
 
     expect(warnings(result)).toEqual([]);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('unwraps deeply nested calc containers in linear time for safe-bound analysis', async () => {
     const depth = 16_000;
     const nestedValue = `${'calc('.repeat(depth)}max(var(--runtime), var(--inner, -1), 0)${')'.repeat(depth)}`;
-    const startedAt = performance.now();
     const result = await lint(`
       .fixture {
         /* cinder-z-index-local: the static max floor keeps the negative fallback safe. */
@@ -2191,20 +2063,17 @@ describe('cinder/z-index-scale', () => {
     `);
 
     expect(warnings(result)).toEqual([]);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('indexes nearest math parents for deeply nested unresolved substitutions', async () => {
     const { bannedFallback } = await import(fallbackAnalysisPath);
     const depth = 16_000;
     const nestedRuntime = `${'calc('.repeat(depth)}var(--runtime)${')'.repeat(depth)}`;
-    const startedAt = performance.now();
     const result = bannedFallback(`var(--outer, calc(hypot(1px, ${nestedRuntime}) / 1px))`);
 
     expect(result?.reason).toBe('too-complex');
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('indexes typed hypot parents across wide additive expressions', async () => {
@@ -2213,16 +2082,13 @@ describe('cinder/z-index-scale', () => {
       { length: 8_000 },
       (_, index) => `hypot(1px, var(--runtime-${index})) / 1px`,
     );
-    const startedAt = performance.now();
     const result = bannedFallback(`var(--outer, calc(${terms.join(' + ')}))`);
 
     expect(result?.reason).toBe('too-complex');
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('keeps exact-bound typed hypot workloads as too-complex warnings', async () => {
-    const startedAt = performance.now();
     const terms = Array.from(
       { length: 2_048 },
       (_, index) => `hypot(1px, var(--runtime-${index})) / 1px`,
@@ -2237,8 +2103,7 @@ describe('cinder/z-index-scale', () => {
 
     expect(warning).toBeDefined();
     expect(warning?.text).toContain('too complex to verify safely');
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('bounds typed hypot parents cumulatively across fallback frames', async () => {
@@ -2252,13 +2117,11 @@ describe('cinder/z-index-scale', () => {
       );
       fallback = `var(--outer-${frameIndex}, calc(${terms.join(' + ')} + ${fallback}))`;
     }
-    const startedAt = performance.now();
     const result = bannedFallback(fallback);
 
     expect(runtimeIndex).toBe(2_048);
     expect(result?.reason).toBe('too-complex');
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('indexes wide sibling CSS if() groups in linear time', async () => {
@@ -2267,23 +2130,19 @@ describe('cinder/z-index-scale', () => {
       { length: 16_000 },
       (_, index) => `if(style(--condition-${index}: yes): var(--runtime-${index}); else: 1)`,
     );
-    const startedAt = performance.now();
     const result = bannedFallback(`var(--outer, calc(${terms.join(' + ')}))`);
 
     expect(result?.reason).toBe('too-complex');
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('indexes wide sibling random() groups in linear time', async () => {
     const { bannedFallback } = await import(fallbackAnalysisPath);
     const terms = Array.from({ length: 40_000 }, () => 'random(0, 1)');
-    const startedAt = performance.now();
     const result = bannedFallback(`var(--outer, calc(${terms.join(' + ')}))`);
 
     expect(result?.reason).toBe('too-complex');
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('correlates wide repeated custom-property reads in linear time', async () => {
@@ -2292,18 +2151,15 @@ describe('cinder/z-index-scale', () => {
       { length: 4_000 },
       () => 'var(--runtime, 9999) - var(--runtime, 9999)',
     );
-    const startedAt = performance.now();
     const result = bannedFallback(`var(--outer, calc(${terms.join(' + ')}))`);
 
     expect(result === undefined || result.reason === 'too-complex').toBe(true);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('keeps sliced literal source ranges lazy for long escaped dimensions', async () => {
     const { normalizeCssEscapesForInspection } = await import(valueAnalysisPath);
     const value = `1\\g${'a'.repeat(500_000)}`;
-    const startedAt = performance.now();
     const normalized = normalizeCssEscapesForInspection(value);
 
     expect(normalized.value).toBe('1\uE000');
@@ -2311,15 +2167,13 @@ describe('cinder/z-index-scale', () => {
       { start: 0, end: 1 },
       { start: 1, end: value.length },
     ]);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('bounds nested zero-product factor analysis with unresolved runtime substitutions', async () => {
     let nestedProduct = 'var(--runtime)';
     for (let index = 0; index < 4_000; index += 1)
       nestedProduct = `var(--item-${index}, -1) * (${nestedProduct})`;
-    const startedAt = performance.now();
     const result = await lint(`
       .fixture {
         /* cinder-z-index-local: generated products must fail closed without quadratic scans. */
@@ -2328,8 +2182,7 @@ describe('cinder/z-index-scale', () => {
     `);
 
     expect(warnings(result)).toHaveLength(1);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test('follows CSS integer rounding for negative half values', async () => {
@@ -4649,15 +4502,15 @@ describe('cinder/z-index-scale', () => {
     for (let index = 0; index < 3_000; index += 1)
       fallback = `var(--outer-${index}, rgb(var(--runtime-${index}) ${fallback} + 0))`;
 
-    const startedAt = performance.now();
-    await lint(`
+    const result = await lint(`
       .fixture {
         /* cinder-z-index-local: generated fallbacks must remain bounded. */
         z-index: ${fallback};
       }
     `);
-    // Hang guard only — see the wall-clock policy note above the first perf test.
-    expect(performance.now() - startedAt).toBeLessThan(30_000);
+
+    expect(result.results).toHaveLength(1);
+    // Hang guard only — the per-test timeout below is the ceiling; see the wall-clock policy note above.
   }, 35_000);
 
   test.each([

@@ -6,9 +6,10 @@
   "description": "An Electrobun desktop chat room backed by Operative and Cinder.",
   "scripts": {
     "architecture:check": "bun scripts/check-architecture.ts",
-    "build": "bun run prepare:devkit && bun run build:renderer && electrobun build --env=dev",
+    "build": "bun run prepare:devkit && bun run build:renderer && bun run build:main && DESKTOP_PREBUNDLED_MAIN=1 electrobun build --env=dev",
+    "build:main": "bun scripts/bundle-main-process.ts",
     "build:renderer": "vite build",
-    "build:stable": "bun run prepare:devkit && bun run build:renderer && electrobun build --env=stable",
+    "build:stable": "bun run prepare:devkit && bun run build:renderer && bun run build:main && DESKTOP_PREBUNDLED_MAIN=1 electrobun build --env=stable",
     "clean": "bun scripts/clean.ts",
     "dev": "bun run prepare:devkit && bun run build:renderer && electrobun dev --watch",
     "dev:renderer": "bun run prepare:devkit && vite --port 5173",

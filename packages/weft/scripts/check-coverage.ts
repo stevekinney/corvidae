@@ -436,7 +436,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'The optional Valibot converter resolution failure is exercised without the dependency in a child process whose hits are not merged into parent Bun LCOV.',
-        lines: new Set([172, 173, 174, 177, 178]),
+        lines: new Set([189, 190, 191, 194, 195]),
         requireUncoveredLines: true,
       },
     ],
