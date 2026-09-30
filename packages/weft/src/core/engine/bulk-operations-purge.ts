@@ -209,6 +209,7 @@ export function clearPurgedWorkflowInMemoryState(
 ): void {
   const workflowId = state.id;
   forgetCommittedCheckpointBytes(internals, workflowId);
+  const inMemoryCheckpoint = internals.checkpoints.get(workflowId);
   internals.checkpoints.delete(workflowId);
   internals.heartbeatDetails.delete(workflowId);
   internals.lastHeartbeatDetailsByStep.delete(workflowId);
@@ -221,7 +222,12 @@ export function clearPurgedWorkflowInMemoryState(
   internals.eventLogHeads.delete(workflowId);
   internals.workflowVersionTuples.delete(workflowId);
   internals.handleCache.delete(workflowId);
-  settleAndForgetPurgedResultWaiter(internals, state);
+  if (
+    inMemoryCheckpoint === undefined ||
+    inMemoryCheckpoint.workflowExecutionToken === state.workflowExecutionToken
+  ) {
+    settleAndForgetPurgedResultWaiter(internals, state);
+  }
   internals.workflowHeaders.delete(workflowId);
   internals.workflowNestingDepths.delete(workflowId);
   internals.workflowTypeByWorkflowId.delete(workflowId);
@@ -237,6 +243,11 @@ export function clearPurgedWorkflowInMemoryState(
  * cross-engine result poll stops, and a same-id `start-new` terminal path skips
  * settlement for a superseded run (COR-1383). Settling an already-settled waiter
  * is a no-op, so this composes with a terminal path that captured it earlier.
+ *
+ * The caller skips this when the in-memory checkpoint belongs to a different run
+ * than `state`: a bulk purge works from a scanned snapshot, so a same-id
+ * `start-new` can commit between the scan and the purge, and the waiter in the
+ * map is then the replacement's. Settling it would hand it the old run's outcome.
  */
 function settleAndForgetPurgedResultWaiter(internals: EngineInternals, state: WorkflowState): void {
   const waiter = internals.resultResolvers.get(state.id);
