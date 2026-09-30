@@ -103,6 +103,8 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
           return status !== undefined && status !== 'running';
         });
 
+        expect(bureauB.getRun(run.id)?.status).toBe('completed');
+
         const asOwner = await bureauB.eventHistory(
           { kind: 'run', id: run.id },
           { principal: 'alice' },
@@ -112,7 +114,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
             `expected a page for the owning principal, got ${JSON.stringify(asOwner)}`,
           );
         }
-        expect(asOwner.events.map((event) => event.kind)).toContain('run.completed');
+        expect(asOwner.events.map((event) => event.kind)).toEqual(['run.completed']);
 
         const asStranger = await bureauB.eventHistory(
           { kind: 'run', id: run.id },
@@ -126,7 +128,16 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         if ('outcome' in trusted) {
           throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
         }
-        expect(trusted.events.map((event) => event.kind)).toContain('run.completed');
+        expect(trusted.events.map((event) => event.kind)).toEqual(['run.completed']);
+
+        // A run id the recovered bureau never registered has no status;
+        // a trusted caller reading it gets an empty page, not another run's
+        // events.
+        expect(bureauB.getRun('run-that-never-existed')).toBeUndefined();
+        expect(await bureauB.eventHistory({ kind: 'run', id: 'run-that-never-existed' })).toEqual({
+          events: [],
+          hasMore: false,
+        });
       } finally {
         bureauB.dispose();
       }
