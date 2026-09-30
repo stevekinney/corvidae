@@ -319,6 +319,7 @@ function notifyCompletionWaiters(
   result: unknown,
   duration: number,
   callbacks: TerminationCallbacks,
+  superseded: boolean,
 ): void {
   // Cancel deadline timer - fire-and-forget since the workflow is already
   // terminal and a stale timer firing will see the terminal state and no-op.
@@ -329,9 +330,12 @@ function notifyCompletionWaiters(
   // Drop in-memory state immediately so the hot path releases engine memory
   // before result delivery. Durable scratch cleanup is handled by the
   // persisted terminal-cleanup timer written in the same state batch above.
-  const resolver = internals.resultResolvers.get(workflowId);
+  // A superseded run's in-memory state, and any result waiter now registered
+  // under this id, belong to the same-id replacement: leave both alone. The
+  // old run's own waiter was already settled when the replacement purged it.
+  const resolver = superseded ? undefined : internals.resultResolvers.get(workflowId);
   try {
-    cleanupTerminalWorkflowImmediately(internals, workflowId, callbacks);
+    if (!superseded) cleanupTerminalWorkflowImmediately(internals, workflowId, callbacks);
 
     const event = new WorkflowCompletedEvent(workflowId, result, duration);
     callbacks.dispatchEvent(event);
@@ -347,8 +351,23 @@ function notifyCompletionWaiters(
     if (resolver) resolver.resolve(result);
     throw completionError;
   } finally {
-    internals.resultResolvers.delete(workflowId);
+    if (!superseded) internals.resultResolvers.delete(workflowId);
   }
+}
+
+/**
+ * Whether a `onTerminalConflict: 'start-new'` replacement has taken over this
+ * id since the terminal commit: the durable record is then no longer the
+ * completed one this run wrote. The old run's teardown runs after awaits, so a
+ * replacement can be created and parked in that window; teardown keyed by
+ * workflow id alone would wipe the replacement's parked state.
+ */
+async function isSupersededBySameIdRun(
+  workflowId: string,
+  callbacks: TerminationCallbacks,
+): Promise<boolean> {
+  const current = await callbacks.loadWorkflowState(workflowId);
+  return current !== null && current.status !== 'completed';
 }
 
 /**
@@ -506,7 +525,15 @@ export async function completeWorkflow(
     workflowId,
     completionMetadata.claimEpoch,
   );
-  notifyCompletionWaiters(internals, workflowId, result, completionMetadata.duration, callbacks);
+  const superseded = await isSupersededBySameIdRun(workflowId, callbacks);
+  notifyCompletionWaiters(
+    internals,
+    workflowId,
+    result,
+    completionMetadata.duration,
+    callbacks,
+    superseded,
+  );
 }
 
 export async function failWorkflow(
