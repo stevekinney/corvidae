@@ -129,7 +129,7 @@ describe('provider helper coverage', () => {
     expect(toOpenAIResponseFormat({ type: 'json' })).toEqual({ type: 'json_object' });
     expect(toOpenAIResponseFormat({ type: 'json_schema', schema: { type: 'object' } })).toEqual({
       type: 'json_schema',
-      json_schema: { name: 'response', schema: { type: 'object' }, strict: true },
+      json_schema: { name: 'response', schema: { type: 'object' }, strict: false },
     });
     expect(
       toOpenAIResponseFormat({
@@ -139,7 +139,18 @@ describe('provider helper coverage', () => {
       }),
     ).toEqual({
       type: 'json_schema',
-      json_schema: { name: 'answer', schema: { type: 'object' }, strict: true },
+      json_schema: { name: 'answer', schema: { type: 'object' }, strict: false },
+    });
+
+    const strictSchema = {
+      type: 'object',
+      properties: { a: { type: 'string' } },
+      required: ['a'],
+      additionalProperties: false,
+    };
+    expect(toOpenAIResponseFormat({ type: 'json_schema', schema: strictSchema })).toEqual({
+      type: 'json_schema',
+      json_schema: { name: 'response', schema: strictSchema, strict: true },
     });
 
     expect(toGeminiResponseFormat({ type: 'text' })).toBeUndefined();
