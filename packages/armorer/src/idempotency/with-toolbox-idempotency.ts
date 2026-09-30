@@ -1036,6 +1036,16 @@ export function withToolboxIdempotency(
           return executeWithCache(input, originalExecute, executeOptions);
         };
       }
+      if (prop === 'extend') {
+        // `extend()` returns a fresh toolbox built from the raw target, so
+        // without re-wrapping it the clone would silently drop idempotency.
+        // Bureau clones its base toolbox once per run this way (COR-1391).
+        return (...entries: unknown[]) =>
+          withToolboxIdempotency(
+            (target.extend as (...arguments_: unknown[]) => AnyToolbox).apply(target, entries),
+            options,
+          );
+      }
       if (prop === 'resumeApproval' || prop === 'resolveApproval') {
         // Keep approval resumption bound to this proxy so the toolbox's
         // internal execute call is intercepted by the idempotency wrapper,

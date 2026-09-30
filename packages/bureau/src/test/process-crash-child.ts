@@ -274,7 +274,8 @@ async function verify(): Promise<void> {
     toolbox: createChargeToolbox(directory, async () => 'ok', { cache, wrap: true }),
   });
   const report = await bureau.waitForRecovery?.();
-  const running = (await bureau.listDurableRuns({ status: 'running' }))?.items.length;
+  const runningRuns = await bureau.listDurableRuns({ status: 'running' });
+  const running = runningRuns?.items.length;
   writeMarker({ recoveryOutcome: report?.outcome, running });
   await bureau.shutdown();
   await close();

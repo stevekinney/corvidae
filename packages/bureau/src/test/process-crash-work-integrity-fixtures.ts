@@ -24,6 +24,7 @@ import {
 import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { type Storage, resolveStorage, textValueStore } from '@lostgradient/weft';
 import {
+  type AnyToolbox,
   type ToolRequestContext,
   type ToolResultCache,
   createTool,
@@ -116,7 +117,7 @@ export function createChargeTool(directory: string) {
     name: 'charge',
     description: 'charge an order',
     input: z.object({ orderId: z.string() }),
-    idempotencyKey: (input: { orderId: string }) => input.orderId,
+    idempotencyKey: (input: unknown) => (input as { orderId: string }).orderId,
     execute: async (input: { orderId: string }) => {
       appendFileSync(effectsLogPath(directory), `charged ${input.orderId}\n`, 'utf8');
       return `charged:${input.orderId}`;
@@ -189,7 +190,7 @@ export interface HarnessBureauOptions {
   readonly backend: Backend;
   readonly storagePath: string;
   readonly generate: GenerateFunction;
-  readonly toolbox: ReturnType<typeof createToolbox>;
+  readonly toolbox: AnyToolbox;
   readonly memory?: GovernedMemory;
 }
 
