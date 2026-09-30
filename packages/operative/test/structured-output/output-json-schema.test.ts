@@ -2,7 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { OutputSchemaConversionError } from '../../src/errors.ts';
-import { isStrictCompatible, toOutputJsonSchema } from '../../src/structured-output/response-schema.ts';
+import {
+  isStrictCompatible,
+  toOutputJsonSchema,
+} from '../../src/structured-output/response-schema.ts';
 
 describe('toOutputJsonSchema', () => {
   it('converts z.string() to { type: "string" }', () => {
@@ -127,11 +130,12 @@ describe('toOutputJsonSchema', () => {
     }
   });
 
-  it('memoizes by schema identity — repeated calls on the same schema return the same object', () => {
+  it('repeated calls on the same schema return equal but distinct objects', () => {
     const schema = z.object({ answer: z.string() });
     const first = toOutputJsonSchema(schema);
     const second = toOutputJsonSchema(schema);
-    expect(second).toBe(first);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
   });
 
   it('does not cross-contaminate two structurally-identical but distinct schema instances', () => {
@@ -274,9 +278,9 @@ describe('isStrictCompatible', () => {
           properties: { a: { type: 'string', ...bad }, b: { type: 'number' } },
         }),
       ).toBe(false);
-      expect(isStrictCompatible({ ...strictObject, $defs: { X: { type: 'string', ...bad } } })).toBe(
-        false,
-      );
+      expect(
+        isStrictCompatible({ ...strictObject, $defs: { X: { type: 'string', ...bad } } }),
+      ).toBe(false);
     });
   }
 
