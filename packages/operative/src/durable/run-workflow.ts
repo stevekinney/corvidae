@@ -184,9 +184,15 @@ export function createRunWorkflow(
         // `saveConversation` activity, not in a new replay slot: Weft keys
         // operations by position, so adding a step ahead of this one would shift
         // every slot of a history recorded before this change. The activity echoes
-        // the floor it was given; on replay the cached first result is returned
-        // and the live gate is never consulted. A pre-change history cached
-        // `undefined` here, so its floor is `0`, never a live read.
+        // the floor it was given and Weft caches that result, so on replay the
+        // FIRST run's value is what `capturedFloor` receives. The live gate is
+        // still called on replay, though: the `steeringBoundary` argument below
+        // is evaluated on every run of this generator, and only its value is
+        // discarded in favour of the cached result. Weft exposes no public
+        // replay flag to skip the call, so `getAppliedFloor` must stay safe to
+        // call during replay (a getter that throws after recovery would crash
+        // it). A pre-change history cached `undefined` here, so its floor is
+        // `0`, never a live read.
         const capturedFloor = yield* ctx.run('saveConversation', {
           runId,
           snapshot,

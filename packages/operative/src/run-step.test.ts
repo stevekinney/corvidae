@@ -539,7 +539,9 @@ describe('runStep: AB-67 steering boundary read', () => {
 
     // Resume releases the waiter (resume wins the race inside
     // awaitResumeOrAbort), then the cancel lands before the step transitions into
-    // doing work.
+    // doing work. The two microtask ticks below position the abort inside that
+    // window; if `awaitResumeOrAbort` changes how many ticks it takes, this must
+    // be retuned (the `generateCalls` assertion fails against the unfixed code).
     gate.setDesiredState({ paused: false, configVersion: 2 });
     await Promise.resolve();
     await Promise.resolve();

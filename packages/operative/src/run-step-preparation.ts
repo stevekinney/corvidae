@@ -47,8 +47,8 @@ export async function prepareStep(
       // Strictly greater, not merely unequal (review finding, PR #430 —
       // Codex P2, "Do not seed a run above its visible steering version"):
       // `RunState.lastAppliedConfigVersion` is seeded from the gate's
-      // SESSION-WIDE `getAppliedFloor()` (`executeLoop`/`run-workflow.ts`'s
-      // `initialCursor`), which can already exceed a brand-new run's own
+      // SESSION-WIDE `getAppliedFloor()` (`executeLoop`, or the first
+      // `saveConversation` result in `run-workflow.ts`), which can already exceed a brand-new run's own
       // VISIBLE `configVersion` when a differently-scoped command (a pause
       // bound to a different, earlier run) advanced the floor past this
       // run's own identity-only baseline. An unequal-only comparison would
