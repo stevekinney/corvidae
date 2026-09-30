@@ -11,6 +11,7 @@ import {
   reduceConsume,
   reduceRelease,
   reduceRenew,
+  type CasSlot,
   type LockRecord,
   type TokenBucketRecord,
 } from './concurrency.ts';
@@ -654,7 +655,7 @@ describe('token-bucket reducer', () => {
         current = reduced.record;
         results.push(reduced.result);
       }
-      return { record: current as TokenBucketRecord, results };
+      return { record: current, results };
     };
     expect(run()).toEqual(run());
   });
@@ -696,8 +697,10 @@ describe('DurableRateLimiter', () => {
 
   it('drives a generator-flavoured slot', () => {
     let stored: TokenBucketRecord | undefined;
-    const slot = {
-      get: () => stored,
+    const slot: CasSlot<TokenBucketRecord, Generator<unknown, TokenBucketRecord, unknown>> = {
+      get: () => {
+        throw new Error('unused');
+      },
       update(updater: (current: TokenBucketRecord | undefined) => TokenBucketRecord) {
         return (function* () {
           stored = updater(stored);
