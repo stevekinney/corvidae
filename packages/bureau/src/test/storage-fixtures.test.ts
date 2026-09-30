@@ -20,6 +20,14 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+interface VerbStorage {
+  get(key: string): unknown;
+  count(): unknown;
+  scan(): unknown;
+  keys(): unknown;
+  query(): unknown;
+}
+
 describe('createMemoryStorageFixture', () => {
   it('returns an owned Storage instance (AB-322: not a bare configuration) with no path', () => {
     const fixture = createMemoryStorageFixture();
@@ -122,7 +130,7 @@ describe('createMemoryStorageFixture', () => {
           },
         }),
     });
-    return { fixture, storage: fixture.configuration as unknown as Record<string, Function> };
+    return { fixture, storage: fixture.configuration as unknown as VerbStorage };
   }
 
   /** A thenable that is not a native Promise and settles only when told to. */
@@ -147,7 +155,7 @@ describe('createMemoryStorageFixture', () => {
     expect(manual.thenable instanceof Promise).toBe(false);
     const { fixture, storage } = fixtureWithVerb('get', () => manual.thenable);
 
-    storage.get!('key');
+    storage.get('key');
     expect(fixture.openHandles()).toEqual(['get#1']);
 
     manual.resolve(null);
@@ -158,7 +166,7 @@ describe('createMemoryStorageFixture', () => {
     const manual = manualThenable();
     const { fixture, storage } = fixtureWithVerb('get', () => manual.thenable);
 
-    storage.get!('key');
+    storage.get('key');
     expect(fixture.openHandles()).toEqual(['get#1']);
 
     manual.reject(new Error('deliberate failure'));
@@ -168,7 +176,7 @@ describe('createMemoryStorageFixture', () => {
   it('openHandles() still closes a genuinely synchronous return immediately', () => {
     const { fixture, storage } = fixtureWithVerb('count', () => 3);
 
-    expect(storage.count!()).toBe(3);
+    expect(storage.count()).toBe(3);
     expect(fixture.openHandles()).toEqual([]);
   });
 
@@ -206,7 +214,7 @@ describe('createMemoryStorageFixture', () => {
 
     const seen: number[] = [];
     const iteration = (async () => {
-      for await (const value of storage.scan!() as AsyncIterable<number>) seen.push(value);
+      for await (const value of storage.scan() as AsyncIterable<number>) seen.push(value);
     })();
     expect(fixture.openHandles()).toEqual(['scan#1']);
 
@@ -221,7 +229,7 @@ describe('createMemoryStorageFixture', () => {
     release();
     const { fixture, storage } = fixtureWithVerb('keys', () => iterable);
 
-    for await (const value of storage.keys!() as AsyncIterable<number>) {
+    for await (const value of storage.keys() as AsyncIterable<number>) {
       expect(value).toBe(1);
       expect(fixture.openHandles()).toEqual(['keys#1']);
       break;
@@ -239,7 +247,7 @@ describe('createMemoryStorageFixture', () => {
     };
     const { fixture, storage } = fixtureWithVerb('query', () => failing);
 
-    const iterator = (storage.query!() as AsyncIterable<number>)[Symbol.asyncIterator]();
+    const iterator = (storage.query() as AsyncIterable<number>)[Symbol.asyncIterator]();
     expect(fixture.openHandles()).toEqual(['query#1']);
     await expect(iterator.next()).rejects.toThrow('deliberate failure');
     expect(fixture.openHandles()).toEqual([]);
@@ -250,10 +258,10 @@ describe('createMemoryStorageFixture', () => {
     release();
     const { fixture, storage } = fixtureWithVerb('scan', () => iterable);
 
-    const iterator = (storage.scan!() as AsyncIterable<number>)[Symbol.asyncIterator]();
+    const iterator = (storage.scan() as AsyncIterable<number>)[Symbol.asyncIterator]();
     await iterator.next();
     expect(fixture.openHandles()).toEqual(['scan#1']);
-    await expect(iterator.throw!(new Error('stop'))).rejects.toThrow('stop');
+    await expect(iterator.throw?.(new Error('stop'))).rejects.toThrow('stop');
     expect(fixture.openHandles()).toEqual([]);
   });
 });
