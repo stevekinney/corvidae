@@ -4,7 +4,7 @@
   // A fenced but unparseable front-matter block: `owner: [` is an unterminated flow sequence.
   // Same document as `review-editor-mounted-controls.test.ts`.
   let value = $state('---\nowner: [\n---\n\n# Malformed\n');
-  let editor = $state<ReviewEditor>();
+  let editor = $state<ReturnType<typeof ReviewEditor>>();
   let exported = $state('');
 </script>
 
