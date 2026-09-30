@@ -330,23 +330,32 @@ describe('requestHumanInput park survives a process restart while still parked (
 
 describe('a resolved human-wait review stays resolved across a restart (COR-106)', () => {
   it('does not resurface a park whose resolved id was persisted before the crash', async () => {
-    // resolveReview approved the park and persisted its id, then the process
-    // died before the run committed a step past the park. On recovery the
-    // last checkpointed step is still the park, so it is re-synthesized; its
-    // id must equal the persisted one or it would show as pending again.
+    // resolveReview delivered the signal and persisted the park's id, then the
+    // process died before the run committed a step past the park. On recovery
+    // the last checkpointed step is still the park, so it is re-synthesized;
+    // its id must equal the persisted one or it would show as pending again.
     const databasePath = join(
       tmpdir(),
       `cor106-human-wait-resolved-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
     );
 
+    let aCalls = 0;
     const bureauA = await createBureau({
       agents: {},
-      generate: async () => ({
-        content: '',
-        toolCalls: [
-          { id: 'call-1', name: 'requestHumanInput', arguments: { signalName: 'human-response' } },
-        ],
-      }),
+      generate: async () => {
+        aCalls++;
+        if (aCalls > 1) return new Promise<never>(() => {}); // the crash
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'call-1',
+              name: 'requestHumanInput',
+              arguments: { signalName: 'human-response' },
+            },
+          ],
+        };
+      },
       toolbox: createEmptyToolbox(),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
@@ -360,6 +369,10 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
       'expected bureau A to park on requestHumanInput before the simulated crash',
     );
     const parkedId = bureauA.listPendingReviews()[0]!.id;
+    // The real delivery: the signal reaches the engine, so the resumed run
+    // moves on to its next (never-completing) step.
+    await bureauA.signalSession(run.sessionId, 'human-response');
+    await waitForCondition(() => aCalls === 2, 'expected bureau A to resume past the park');
     await bureauA.sessionStore!.update(run.sessionId, (session) => ({
       ...session!,
       metadata: { ...session!.metadata, resolvedReviewIds: [parkedId] },
@@ -389,7 +402,6 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
 
       // Settle the recovered run before disposing, or its aborted-state write
       // lands after the SQLite handle is finalized.
-      await bureauB.signalSession(run.sessionId, 'human-response');
       await waitForCondition(
         () => bureauB.getRun(run.id)?.status === 'completed',
         'expected bureau B to finish the recovered run before disposal',
@@ -495,6 +507,93 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
         () => bureauB.getRun(run.id)?.status === 'completed',
         'expected bureau B to finish the recovered run before disposal',
       );
+    } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
+    }
+  });
+});
+
+describe('a re-park after a resolved park and a crash before the next commit (COR-106)', () => {
+  it('surfaces the re-park on the same signal instead of hiding it behind the resolved id', async () => {
+    const databasePath = join(
+      tmpdir(),
+      `cor106-human-wait-resume-crash-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+
+    let aCalls = 0;
+    const bureauA = await createBureau({
+      agents: {},
+      generate: async () => {
+        aCalls++;
+        if (aCalls === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call-1',
+                name: 'requestHumanInput',
+                arguments: { signalName: 'human-response' },
+              },
+            ],
+          };
+        }
+        return new Promise<never>(() => {}); // the crash, before the next step commits
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    const run = await bureauA.createRun({ message: 'park-resume-crash' });
+    await waitForCondition(
+      () => bureauA.listPendingReviews().some((review) => review.runId === run.id),
+      'expected bureau A to park',
+    );
+    const first = bureauA.listPendingReviews()[0]!;
+    expect(first.id.endsWith(':human-response:0')).toBe(true);
+    await bureauA.resolveReview({ id: first.id, decision: 'approve', principal: 'op' });
+    await waitForCondition(() => aCalls === 2, 'expected bureau A to resume into the hanging step');
+    // Not disposing bureauA: this is the crash.
+
+    let bCalls = 0;
+    const bureauB = await createBureau({
+      agents: {},
+      generate: async () => {
+        bCalls++;
+        if (bCalls === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call-b',
+                name: 'requestHumanInput',
+                arguments: { signalName: 'human-response' },
+              },
+            ],
+          };
+        }
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    try {
+      await waitForCondition(
+        () => bureauB.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the re-park after recovery to surface as a pending review',
+      );
+      expect(bureauB.getRun(run.id)?.liveness.status).toBe('waiting');
+      const reviews = bureauB.listPendingReviews();
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]!.id.endsWith(':human-response:1')).toBe(true);
+      expect(reviews[0]!.id).not.toBe(first.id);
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();

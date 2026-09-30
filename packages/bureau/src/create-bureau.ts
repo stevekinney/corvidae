@@ -3625,6 +3625,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         parkOrdinal: priorParks,
         ...(result.result.prompt !== undefined ? { prompt: result.result.prompt } : {}),
       });
+      // Its signal was already delivered (and the review resolved) by the dead
+      // process, which this process has no boundary for. Without one, the
+      // recovered run's re-park on the same signal would merge into this
+      // record and reuse the resolved id.
+      if (resolvedReviewIds.has(`human-wait:${runId}:${result.result.signalName}:${priorParks}`)) {
+        markHumanWaitSignalDelivered(runId);
+      }
       return;
     }
   }
@@ -7710,7 +7717,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // local closure function) so this is the exact same call surface a
         // caller could make directly — one seam, not two ways to do the same
         // thing.
-        markHumanWaitSignalDelivered(review.runId);
         await bureau.signalSession(review.sessionId, review.signalName, input.payload);
       } else {
         // AB-46: `input.decision` is `'deny'` or `'reject'`. A `human-wait`
@@ -7724,7 +7730,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           input.decision === 'reject'
             ? { __abRejected: true, reason: input.reason }
             : { __abDenied: true, ...(input.reason !== undefined ? { reason: input.reason } : {}) };
-        markHumanWaitSignalDelivered(review.runId);
         await bureau.signalSession(review.sessionId, review.signalName, denialPayload);
       }
     } catch (error) {

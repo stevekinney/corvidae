@@ -7882,6 +7882,27 @@ describe('createBureau session signal authority revalidation', () => {
  * caller in this monorepo yet wires that tool into a real durable run (a
  * separate, tracked gap — see the AB-20 PR description).
  */
+/** Parks on `human-response` on its first two calls, then settles. */
+function createRepeatedHumanWaitGenerate(): GenerateFunction {
+  let calls = 0;
+  return async () => {
+    calls++;
+    if (calls <= 2) {
+      return {
+        content: '',
+        toolCalls: [
+          {
+            id: `call-${calls}`,
+            name: 'requestHumanInput',
+            arguments: { signalName: 'human-response' },
+          },
+        ],
+      };
+    }
+    return { content: 'done', toolCalls: [] };
+  };
+}
+
 function createParkedActiveRun(): {
   activeRun: ActiveRun;
   emitter: CompletableEventTarget<CombinedOperativeEventMap>;
@@ -8448,92 +8469,101 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('listPendingReviews gives a re-park on the same signal a distinct id after the first resolves', async () => {
+    const generate = createRepeatedHumanWaitGenerate();
     const bureau = await createBureau({
       agents: {},
-      generate: createMockGenerate(),
+      generate,
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
-    spyOn(bureau, 'signalSession').mockImplementation(async () => {});
 
-    const { activeRun, emitter } = createParkedActiveRun();
-    const runId = bureau.store.register(activeRun, 'run-repark-human-wait');
-    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'First?'));
+    try {
+      const run = await bureau.createRun({ message: 'park-twice' });
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the first park',
+      );
+      const [first] = bureau.listPendingReviews();
+      expect(first!.id.split(':')[1]).toBe(run.id);
 
-    const [first] = bureau.listPendingReviews();
-    expect(first).toBeDefined();
-    expect(first!.id.split(':')[1]).toBe(runId);
-
-    await bureau.resolveReview({
-      id: first!.id,
-      decision: 'approve',
-      principal: 'api-key:reviewer-repark',
-      payload: { approved: true },
-    });
-    expect(bureau.listPendingReviews()).toHaveLength(0);
-
-    // The run resumed and parked again on the SAME signal, later in time.
-    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Second?'));
-
-    const reviews = bureau.listPendingReviews();
-    expect(reviews).toHaveLength(1);
-    const [second] = reviews;
-    expect(second!.kind).toBe('human-wait');
-    expect(second!.id).not.toBe(first!.id);
-    expect(second!.id.split(':')[1]).toBe(runId);
-    if (second!.kind !== 'human-wait') throw new Error('unreachable');
-    expect(second!.prompt).toBe('Second?');
-
-    // The stale first id is retired: resolving it is NOT_FOUND.
-    await expect(
-      bureau.resolveReview({
+      await bureau.resolveReview({
         id: first!.id,
         decision: 'approve',
         principal: 'api-key:reviewer-repark',
-      }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+        payload: { approved: true },
+      });
 
-    bureau.dispose();
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.id !== first!.id),
+        'expected the re-park on the same signal to surface',
+      );
+      const reviews = bureau.listPendingReviews();
+      expect(reviews).toHaveLength(1);
+      const [second] = reviews;
+      expect(second!.kind).toBe('human-wait');
+      expect(second!.id).not.toBe(first!.id);
+      expect(second!.id.split(':')[1]).toBe(run.id);
+
+      // The stale first id is retired: resolving it is NOT_FOUND.
+      await expect(
+        bureau.resolveReview({
+          id: first!.id,
+          decision: 'approve',
+          principal: 'api-key:reviewer-repark',
+        }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    } finally {
+      bureau.dispose();
+    }
   });
 
   it('listPendingReviews gives a re-park a distinct id under a frozen clock', async () => {
     const runtime = createManualRuntimeServices();
     const bureau = await createBureau({
       agents: {},
-      generate: createMockGenerate(),
+      generate: createRepeatedHumanWaitGenerate(),
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
       runtime,
     });
-    spyOn(bureau, 'signalSession').mockImplementation(async () => {});
 
-    const { activeRun, emitter } = createParkedActiveRun();
-    const runId = bureau.store.register(activeRun, 'run-repark-frozen-clock');
-    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'First?'));
-    const [first] = bureau.listPendingReviews();
-    await bureau.resolveReview({
-      id: first!.id,
-      decision: 'approve',
-      principal: 'reviewer-frozen',
-    });
-    expect(bureau.listPendingReviews()).toHaveLength(0);
+    try {
+      const run = await bureau.createRun({ message: 'park-twice-frozen' });
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the first park',
+      );
+      const [first] = bureau.listPendingReviews();
+      await bureau.resolveReview({
+        id: first!.id,
+        decision: 'approve',
+        principal: 'reviewer-frozen',
+      });
 
-    // No clock advance and no sleep: both parks carry the identical timestamp.
-    emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Second?'));
-    const actions = bureau.store
-      .getRun(runId)!
-      .actions.filter((action) => action.type === HumanWaitParkedEvent.type);
-    expect(actions).toHaveLength(2);
-    expect(actions[1]!.timestamp).toBe(actions[0]!.timestamp);
+      // No clock advance and no sleep: both parks carry the identical timestamp.
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.id !== first!.id),
+        'expected the re-park on the same signal to surface',
+      );
+      const actions = bureau.store
+        .getRun(run.id)!
+        .actions.filter((action) => action.type === HumanWaitParkedEvent.type);
+      expect(actions.length).toBeGreaterThanOrEqual(2);
+      expect(actions.at(-1)!.timestamp).toBe(actions[0]!.timestamp);
 
-    const reviews = bureau.listPendingReviews();
-    expect(reviews).toHaveLength(1);
-    expect(reviews[0]!.id).not.toBe(first!.id);
-    expect(reviews[0]!.id.split(':')[1]).toBe(runId);
-
-    bureau.dispose();
+      const reviews = bureau.listPendingReviews();
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]!.id).not.toBe(first!.id);
+      expect(reviews[0]!.id.split(':')[1]).toBe(run.id);
+    } finally {
+      bureau.dispose();
+    }
   });
 
   it('resolveReview approve resumes a tool-approval and executes the tool for real', async () => {
