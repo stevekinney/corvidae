@@ -617,34 +617,57 @@ describe('bureau.children over a durable bureau', () => {
   });
 
   it('records child.aborted in the audit trail for a running child when the bureau is disposed under the default ownership', async () => {
-    const bureau = await createBureau({
-      agents: hangingAgents(),
-      storage: { type: 'memory' },
-      durableExecution: true,
-      onDiagnostic,
-    });
+    const path = databasePath('disposed-audit');
+    try {
+      const bureau = await createBureau({
+        agents: hangingAgents(),
+        storage: { type: 'sqlite', path },
+        durableExecution: true,
+        onDiagnostic,
+      });
 
-    const parent = bureau.run('planner', 'plan');
-    const parentRunId = await startedDurableRun(bureau);
-    expect(
-      await bureau.children.dispatch({
-        parentRunId,
-        agentName: 'worker',
-        input: 'work',
-        childRunId: 'disposed-child',
-        parentCancellation: 'detach',
-      }),
-    ).toMatchObject({ outcome: 'started' });
-    parent.abort('done');
-    await parent.result();
+      const parent = bureau.run('planner', 'plan');
+      const parentRunId = await startedDurableRun(bureau);
+      expect(
+        await bureau.children.dispatch({
+          parentRunId,
+          agentName: 'worker',
+          input: 'work',
+          childRunId: 'disposed-child',
+          parentCancellation: 'detach',
+        }),
+      ).toMatchObject({ outcome: 'started' });
+      parent.abort('done');
+      await parent.result();
 
-    await bureau.dispose();
-    await yieldToPortableEventLoop();
+      await bureau.dispose();
+      await yieldToPortableEventLoop();
 
-    expect(diagnostics.filter((diagnostic) => diagnostic.message.includes('audit trail'))).toEqual(
-      [],
-    );
-    expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'child-topology')).toEqual([]);
+      expect(
+        diagnostics.filter((diagnostic) => diagnostic.message.includes('audit trail')),
+      ).toEqual([]);
+      expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'child-topology')).toEqual([]);
+
+      const second = await createBureau({
+        agents: hangingAgents(),
+        storage: { type: 'sqlite', path },
+        durableExecution: true,
+        onDiagnostic,
+      });
+      try {
+        const aborted = (await second.auditTrail?.query({ runId: 'disposed-child' }))?.filter(
+          (record) => record.type === 'child.aborted',
+        );
+        expect(aborted).toHaveLength(1);
+        expect(
+          await second.children.get({ parentRunId, childRunId: 'disposed-child' }),
+        ).toMatchObject({ status: 'aborted' });
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await removeDatabase(path);
+    }
   });
 
   it('runs a createLazyAgent parent and child durably, as it does createAgent ones', async () => {

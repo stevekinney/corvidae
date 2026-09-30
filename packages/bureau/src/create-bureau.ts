@@ -8347,8 +8347,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       maintenanceAdmissionClosed = true;
       // COR-772 — land every child-settlement write the run teardown above
       // produced before the audit trail and storage below go away. Only
-      // writes already under way are awaited, never a child's own result, so
-      // a child that ignores its abort cannot hold shutdown open.
+      // writes already under way are awaited here, not a child's own result.
+      // The bounded wait on child results for 'abort' shutdown comes below, so
+      // a child that ignores its abort costs at most that bound.
       await childTopology.drain();
       // Land terminal session saves already under way before the outbox
       // drain await and `backgroundShutdownController.abort()` below: a save
