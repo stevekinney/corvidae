@@ -943,6 +943,74 @@ describe('runSync in pull-request mode', () => {
 });
 
 describe('the foreign-commit guard', () => {
+  test('recognizes a squash that dropped provenance only when its pull-request head has the same tree', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-'));
+    const remote = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-remote-'));
+    try {
+      await git(remote, 'init', '--bare', '--quiet');
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      await git(root, 'remote', 'add', 'origin', remote);
+      const path = 'packages/weft/src/version.ts';
+      const ownership = {
+        policy: await loadTargetOwnedPolicy(),
+        target: 'weft' as const,
+        transform: { files: new Set([path]), prefixes: [] },
+      };
+      await Bun.write(join(root, path), "export const VERSION = '0.27.0';\n");
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+      const baseOutput = await git(root, 'rev-parse', 'HEAD');
+      const base = baseOutput.trim();
+
+      await Bun.write(join(root, path), "export const VERSION = '0.27.1';\n");
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Sync weft from corvidae\n\n${provenanceTrailer}: ${'b'.repeat(40)}`,
+      );
+      await git(root, 'push', '--quiet', 'origin', 'HEAD:refs/pull/123/head');
+      await git(root, 'reset', '--hard', base);
+      await Bun.write(join(root, path), "export const VERSION = '0.27.1';\n");
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Sync weft from corvidae (#123)');
+      await Bun.write(join(root, 'README.md'), '# Release notes\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Document release');
+      expect(await findForeignCommits(root, ownership)).toEqual([]);
+
+      const releaseOutput = await git(root, 'rev-parse', 'HEAD');
+      const release = releaseOutput.trim();
+      await Bun.write(join(root, path), "export const VERSION = '0.27.2';\n");
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Sync weft from corvidae\n\n${provenanceTrailer}: ${'c'.repeat(40)}`,
+      );
+      await git(root, 'push', '--quiet', 'origin', 'HEAD:refs/pull/124/head');
+      await git(root, 'reset', '--hard', release);
+      await Bun.write(join(root, path), "export const VERSION = '0.27.3';\n");
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Sync weft from corvidae (#124)');
+      const foreign = await findForeignCommits(root, ownership);
+      expect(foreign.map(({ subject }) => subject)).toEqual(['Sync weft from corvidae (#124)']);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(remote, { recursive: true, force: true });
+    }
+  });
+
   test('recognizes a GitHub squash merge with co-author metadata after mirror provenance', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-squash-provenance-'));
     try {
