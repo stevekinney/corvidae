@@ -683,6 +683,88 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
   });
 });
 
+describe('parallel same-signal parks keep review ids stable across a restart (COR-106)', () => {
+  it('reconstructs no phantom review after two parallel same-signal calls, a re-park, and a crash', async () => {
+    const databasePath = join(
+      tmpdir(),
+      `cor106-parallel-park-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+    const call = (id: string) => ({
+      id,
+      name: 'requestHumanInput',
+      arguments: { signalName: 'human-response' },
+    });
+    let aCalls = 0;
+    const bureauA = await createBureau({
+      agents: {},
+      generate: async () => {
+        aCalls++;
+        if (aCalls === 1) return { content: '', toolCalls: [call('a1'), call('a2')] };
+        if (aCalls === 2) return { content: '', toolCalls: [call('a3')] };
+        return new Promise<never>(() => {}); // step 3 hangs: the crash
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const run = await bureauA.createRun({ message: 'parallel-park-crash' });
+    const pendingA = (): string[] =>
+      bureauA
+        .listPendingReviews()
+        .filter((review) => review.runId === run.id)
+        .map((review) => review.id);
+    await waitForCondition(() => pendingA().length === 1, 'expected the first park');
+    const first = pendingA()[0]!;
+    expect(first.endsWith(':human-response:0')).toBe(true);
+    await bureauA.resolveReview({ id: first, decision: 'approve', principal: 'op' });
+    await waitForCondition(
+      () => pendingA().length === 1 && pendingA()[0] !== first,
+      'expected the re-park to surface',
+    );
+    const second = pendingA()[0]!;
+    expect(second.endsWith(':human-response:1')).toBe(true);
+    await bureauA.resolveReview({ id: second, decision: 'approve', principal: 'op' });
+    await waitForCondition(() => aCalls >= 3, 'expected the run to resume into step 3');
+    // Not disposing bureauA: this is the crash.
+
+    let bCalls = 0;
+    let releaseNextStep: () => void = () => {};
+    const nextStepGate = new Promise<void>((resolve) => {
+      releaseNextStep = resolve;
+    });
+    const bureauB = await createBureau({
+      agents: {},
+      generate: async () => {
+        bCalls++;
+        await nextStepGate;
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      await waitForCondition(() => bCalls >= 1, 'expected the recovered run to reach step 3');
+      // Let any replayed park marker land before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(bureauB.getRun(run.id)?.status).toBe('running');
+      expect(bureauB.listPendingReviews().filter((review) => review.runId === run.id)).toEqual([]);
+    } finally {
+      releaseNextStep();
+      await waitForCondition(
+        () => bureauB.getRun(run.id)?.status === 'completed',
+        'expected bureau B to finish the recovered run before disposal',
+      );
+      await bureauA.dispose();
+      await bureauB.dispose();
+    }
+  });
+});
+
 describe('a run recovered mid-step whose replay reaches requestHumanInput actually parks (AB-336)', () => {
   it('does not loop past requestHumanInput on a recovered dispatch — the recovery-path toolbox reconstruction wires it in', async () => {
     // THE ROOT-CAUSE PROOF: unlike the other recovery test above (which
