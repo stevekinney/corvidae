@@ -101,6 +101,15 @@ export interface CreateRunEngineOptions {
   workflowClaimRenewIntervalMs?: number | undefined;
 
   /**
+   * Clock the engine reads for time-dependent decisions, including workflow
+   * claim expiry, renewal, and takeover under `ownership: 'workflow-lease'`
+   * (default `Date.now`, Weft's own default). Inject a manually advanced clock
+   * to drive claim expiry deterministically, then call
+   * `engine.runMaintenance(now)` with the advanced value.
+   */
+  getNow?: (() => number) | undefined;
+
+  /**
    * Select how Weft's periodic maintenance is driven. The default
    * `'automatic'` profile uses in-process intervals. Use `'manual'` in
    * serverless hosts such as Cloudflare Durable Objects, then call
@@ -371,6 +380,7 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
     ...(options.workflowClaimRenewIntervalMs !== undefined
       ? { workflowClaimRenewInterval: options.workflowClaimRenewIntervalMs }
       : {}),
+    ...(options.getNow !== undefined ? { getNow: options.getNow } : {}),
     ...(options.backgroundTasks !== undefined ? { backgroundTasks: options.backgroundTasks } : {}),
     ...(startScheduler !== undefined ? { startScheduler } : {}),
     ...(options.schedulerPollIntervalMs !== undefined
