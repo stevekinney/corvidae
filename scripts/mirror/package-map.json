@@ -16,12 +16,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.6",
+      "lastPublishedVersion": "0.27.8",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.6",
-        "gitHead": "070d67296e13b98a34c7c7f6e5e8bd5010751796",
-        "corvidaeCommit": "deba6a30ff22da429e8efc316f5432efac58900a",
+        "version": "0.27.8",
+        "gitHead": "93bc17a70a6cb9bf1f79ae75b52df0379d2edda3",
+        "corvidaeCommit": "08873d03681afbe76c302779b3e33b36ea4aaaba",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -1014,6 +1014,7 @@
             "src/storage/auto.ts",
             "src/storage/block-optional-storage-drivers.test-support.ts",
             "src/storage/bounded-ndjson-response.ts",
+            "src/storage/bun-sql-workload.test-support.ts",
             "src/storage/bun-sql.ts",
             "src/storage/byte-encoding.ts",
             "src/storage/capabilities.ts",
@@ -1166,7 +1167,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "4e2a8e1c49a65be882c1781a2e58348d37c47f71392abd8074a4cf43bbc27a45"
+          "digest": "e4b39cbe717ce8b396eae8a08f527d97ff77f3946ef04df1e18f687e7c98b192"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1174,7 +1175,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "b52445758751c9c296a47e7942a829c6249c63f8f6822770a97c77e75b2f78e8"
+          "digest": "169d20f7728fe74da3e073218741aeb9eed4fc845aaa0081269530bea174f1c9"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -9100,7 +9101,7 @@
               "executable": false
             }
           ],
-          "digest": "40c18149526d2366125f228ed755c672d48d44a936615e84dcc387d66d2679ce"
+          "digest": "9d6bc56765851eb9b2cb48826d3a581ec7bc9e952254e02a384cb9fc1e597e95"
         }
       }
     },
