@@ -19,7 +19,10 @@ import { markPurgeWriteFailures, trackPurgeWrite } from './purge-write-tracking.
 import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
-import { buildExternalTerminalRotationFragment } from './storage-io.ts';
+import {
+  buildExternalTerminalRotationFragment,
+  deriveWorkflowResultFromState,
+} from './storage-io.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { foldWorkflowGenerationBumpForPurge } from './workflow-generation-fence.ts';
 import { buildWorkflowVisibilityIndexTransition } from './workflow-indexes.ts';
@@ -158,7 +161,7 @@ export async function purgeWorkflow(
       (write) => trackPurgeWrite(internals, write),
     ),
   );
-  clearPurgedWorkflowInMemoryState(internals, state.id, cleanupWaiters);
+  clearPurgedWorkflowInMemoryState(internals, state, cleanupWaiters);
 }
 
 /**
@@ -201,9 +204,10 @@ export async function collectWorkflowPurgeDeleteOperations(
  */
 export function clearPurgedWorkflowInMemoryState(
   internals: EngineInternals,
-  workflowId: string,
+  state: WorkflowState,
   cleanupWaiters: CleanupWaiters,
 ): void {
+  const workflowId = state.id;
   forgetCommittedCheckpointBytes(internals, workflowId);
   internals.checkpoints.delete(workflowId);
   internals.heartbeatDetails.delete(workflowId);
@@ -217,11 +221,32 @@ export function clearPurgedWorkflowInMemoryState(
   internals.eventLogHeads.delete(workflowId);
   internals.workflowVersionTuples.delete(workflowId);
   internals.handleCache.delete(workflowId);
-  internals.resultResolvers.delete(workflowId);
+  settleAndForgetPurgedResultWaiter(internals, state);
   internals.workflowHeaders.delete(workflowId);
   internals.workflowNestingDepths.delete(workflowId);
   internals.workflowTypeByWorkflowId.delete(workflowId);
   cleanupWaiters(workflowId);
+}
+
+/**
+ * Settle the purged run's pending `result()` waiter with that run's OWN terminal
+ * outcome, then drop it. Purge only ever removes a terminal record, and the
+ * terminal state is durable before the purge runs, so `state` is exactly what the
+ * waiter would have been settled with had the terminal path reached it first. A
+ * plain delete would strand the waiter forever: once it leaves the map the
+ * cross-engine result poll stops, and a same-id `start-new` terminal path skips
+ * settlement for a superseded run (COR-1383). Settling an already-settled waiter
+ * is a no-op, so this composes with a terminal path that captured it earlier.
+ */
+function settleAndForgetPurgedResultWaiter(internals: EngineInternals, state: WorkflowState): void {
+  const waiter = internals.resultResolvers.get(state.id);
+  if (waiter === undefined) return;
+  internals.resultResolvers.delete(state.id);
+  try {
+    waiter.resolve(deriveWorkflowResultFromState(state));
+  } catch (error) {
+    waiter.reject(error);
+  }
 }
 
 function buildWorkflowIndexDeleteOperations(

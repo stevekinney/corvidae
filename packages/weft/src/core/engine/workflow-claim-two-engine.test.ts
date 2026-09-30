@@ -1596,7 +1596,7 @@ describe('COR-1386: a start-new purge settles the old run result waiter with the
   /** Fold the settlement of `promise` into a value so a hang is observable without a timeout pass condition. */
   function trackSettlement(promise: Promise<unknown>): { readonly state: () => string } {
     let outcome = 'pending';
-    promise.then(
+    void promise.then(
       (value) => {
         outcome = `resolved:${String(value)}`;
       },
@@ -1650,7 +1650,8 @@ describe('COR-1386: a start-new purge settles the old run result waiter with the
 
     await engineA.signal(id, 'go');
     await reached.promise;
-    expect(await statusOf(engineA, id)).toBe('completed');
+    const committedSummary = await engineA.get(id);
+    expect(committedSummary?.status).toBe('completed');
 
     const replacement = await engineA.start('claim-race-echo', 'NEW', {
       id,
