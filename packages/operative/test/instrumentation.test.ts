@@ -208,3 +208,82 @@ describe('instrumentRun', () => {
     expect(generateSpan.attributes['operative.usage.total_tokens']).toBe(15);
   });
 });
+
+describe('COR-96 regression: run.error and run.aborted never leak privileged content', () => {
+  const MARKER = 'PRIVILEGED-MARKER-9b2e40';
+
+  function containsMarker(value: unknown): boolean {
+    if (typeof value === 'string') return value.includes(MARKER);
+    if (Array.isArray(value)) return value.some(containsMarker);
+    if (value && typeof value === 'object') {
+      return Object.values(value as Record<string, unknown>).some(containsMarker);
+    }
+    return false;
+  }
+
+  function expectNoMarker(tracer: RecordingTracer) {
+    expect(findSpan(tracer, 'invoke_agent')).toBeDefined();
+    for (const span of tracer.spans) {
+      expect(containsMarker(span.attributes)).toBe(false);
+      expect(containsMarker(span.status)).toBe(false);
+      expect(span.events.every((event) => !containsMarker(event.attributes))).toBe(true);
+      // A recorded exception must carry no message or stack at all.
+      expect(
+        span.exceptions.some(
+          (exception) => containsMarker(exception) || (exception as Error).message !== undefined,
+        ),
+      ).toBe(false);
+    }
+  }
+
+  it('redacts a marker in the run error message (run.error)', async () => {
+    const tracer = new RecordingTracer();
+    const activeRun = createActiveRun({
+      generate: async () => {
+        throw new Error(`provider payload: ${MARKER}`);
+      },
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+    });
+
+    const unsubscribe = instrumentRun(activeRun, { tracer });
+    await activeRun.result;
+    activeRun.complete();
+    unsubscribe();
+
+    expectNoMarker(tracer);
+    const runSpan = findSpan(tracer, 'invoke_agent')!;
+    expect(runSpan.status.message).toBe('Run failed (generate/UNKNOWN)');
+    expect(runSpan.attributes['operative.error.kind']).toBe('generate');
+  });
+
+  it('redacts a marker in the abort reason and the abort error message (run.aborted)', async () => {
+    const tracer = new RecordingTracer();
+    const generateStarted = Promise.withResolvers<void>();
+    const generateCanFinish = Promise.withResolvers<void>();
+    const activeRun = createActiveRun({
+      generate: async () => {
+        generateStarted.resolve();
+        await generateCanFinish.promise;
+        return textResponse('unreachable');
+      },
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+    });
+
+    const unsubscribe = instrumentRun(activeRun, { tracer });
+    await generateStarted.promise;
+    activeRun.abort(`cancelled because ${MARKER}`);
+    generateCanFinish.resolve();
+    await activeRun.result;
+    activeRun.complete();
+    unsubscribe();
+
+    expectNoMarker(tracer);
+    const runSpan = findSpan(tracer, 'invoke_agent')!;
+    expect(runSpan.attributes['operative.abort_reason']).toBe('aborted');
+    expect(runSpan.status.message).toBe('Run aborted (abort/ABORTED)');
+  });
+});

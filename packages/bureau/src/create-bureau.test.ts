@@ -2847,7 +2847,7 @@ describe('createBureau', () => {
           ...session!.metadata,
           resolvedReviewIds: [
             `approval:${run.id}:recovered-approval`,
-            `human-wait:${run.id}:recovered-signal`,
+            `human-wait:${run.id}:recovered-signal:0`,
           ],
         },
       }));
@@ -7871,6 +7871,27 @@ describe('createBureau session signal authority revalidation', () => {
   });
 });
 
+/** Parks on `human-response` on its first two calls, then settles. */
+function createRepeatedHumanWaitGenerate(): GenerateFunction {
+  let calls = 0;
+  return async () => {
+    calls++;
+    if (calls <= 2) {
+      return {
+        content: '',
+        toolCalls: [
+          {
+            id: `call-${calls}`,
+            name: 'requestHumanInput',
+            arguments: { signalName: 'human-response' },
+          },
+        ],
+      };
+    }
+    return { content: 'done', toolCalls: [] };
+  };
+}
+
 // ── AB-20: review queue ──────────────────────────────────────────────
 
 /**
@@ -8445,6 +8466,106 @@ describe('createBureau review queue (AB-20)', () => {
     expect(bureau.listPendingReviews()).toHaveLength(0);
 
     bureau.dispose();
+  });
+
+  it('listPendingReviews gives a re-park on the same signal a distinct id after the first resolves', async () => {
+    const generate = createRepeatedHumanWaitGenerate();
+    const bureau = await createBureau({
+      agents: {},
+      generate,
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    });
+
+    try {
+      const run = await bureau.createRun({ message: 'park-twice' });
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the first park',
+      );
+      const [first] = bureau.listPendingReviews();
+      expect(first!.id.split(':')[1]).toBe(run.id);
+
+      await bureau.resolveReview({
+        id: first!.id,
+        decision: 'approve',
+        principal: 'api-key:reviewer-repark',
+        payload: { approved: true },
+      });
+
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.id !== first!.id),
+        'expected the re-park on the same signal to surface',
+      );
+      const reviews = bureau.listPendingReviews();
+      expect(reviews).toHaveLength(1);
+      const [second] = reviews;
+      expect(second!.kind).toBe('human-wait');
+      expect(second!.id).not.toBe(first!.id);
+      expect(second!.id.split(':')[1]).toBe(run.id);
+
+      // The stale first id is retired: resolving it is NOT_FOUND.
+      expect(
+        await rejectionOf(
+          bureau.resolveReview({
+            id: first!.id,
+            decision: 'approve',
+            principal: 'api-key:reviewer-repark',
+          }),
+        ),
+      ).toMatchObject({ code: 'NOT_FOUND' });
+    } finally {
+      bureau.dispose();
+    }
+  });
+
+  it('listPendingReviews gives a re-park a distinct id under a frozen clock', async () => {
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau({
+      agents: {},
+      generate: createRepeatedHumanWaitGenerate(),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      humanInput: true,
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      runtime,
+    });
+
+    try {
+      const run = await bureau.createRun({ message: 'park-twice-frozen' });
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the first park',
+      );
+      const [first] = bureau.listPendingReviews();
+      await bureau.resolveReview({
+        id: first!.id,
+        decision: 'approve',
+        principal: 'reviewer-frozen',
+      });
+
+      // No clock advance and no sleep: both parks carry the identical timestamp.
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.id !== first!.id),
+        'expected the re-park on the same signal to surface',
+      );
+      const actions = bureau.store
+        .getRun(run.id)!
+        .actions.filter((action) => action.type === HumanWaitParkedEvent.type);
+      expect(actions.length).toBeGreaterThanOrEqual(2);
+      expect(actions.at(-1)!.timestamp).toBe(actions[0]!.timestamp);
+
+      const reviews = bureau.listPendingReviews();
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]!.id).not.toBe(first!.id);
+      expect(reviews[0]!.id.split(':')[1]).toBe(run.id);
+    } finally {
+      bureau.dispose();
+    }
   });
 
   it('resolveReview approve resumes a tool-approval and executes the tool for real', async () => {
@@ -10116,7 +10237,7 @@ describe('createBureau review queue (AB-20)', () => {
     await bureau.deleteRun(runId);
 
     // A new run REUSES the same run id and produces the exact same review id
-    // (`human-wait:${runId}:human-response`). Before the fix, this id was
+    // (`human-wait:${runId}:human-response:0`, the first park ordinal). Before the fix, this id was
     // still in `resolvedReviewIds` from the first run, so it would never
     // surface — after the fix, deleting the first run pruned it.
     const second = createParkedActiveRun();
@@ -10787,7 +10908,11 @@ describe('createBureau review lifecycle (AB-46)', () => {
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
       const approvalReviewId = `approval:${runId}:call-abort-1`;
-      const humanWaitReviewId = `human-wait:${runId}:human-response`;
+      // The id ends in the park ordinal, so read it from the pending list.
+      const humanWaitReviewId = bureau
+        .listPendingReviews()
+        .find((review) => review.kind === 'human-wait')!.id;
+      expect(humanWaitReviewId.startsWith(`human-wait:${runId}:human-response:`)).toBe(true);
       expect(
         bureau
           .listPendingReviews()
@@ -11333,7 +11458,11 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
       const approvalReviewId = `approval:${runId}:call-abort-events-1`;
-      const humanWaitReviewId = `human-wait:${runId}:human-response`;
+      // The id ends in the park ordinal, so read it from the pending list.
+      const humanWaitReviewId = bureau
+        .listPendingReviews()
+        .find((review) => review.kind === 'human-wait')!.id;
+      expect(humanWaitReviewId.startsWith(`human-wait:${runId}:human-response:`)).toBe(true);
 
       bureau.abortRun(runId);
       await pollUntil(() => bureau.listPendingReviews().length === 0);

@@ -6,6 +6,7 @@ import {
   Conversation,
   createConversationHistory as createConversation,
 } from '../src';
+import { defineMessagePlugin } from '../src/environment';
 import { createPIIRedactionPlugin, redactPii } from '../src/plugins/pii-redaction';
 import type { MessageInput } from '../src/types';
 import { getOrderedMessages } from '../src/utilities/message-store';
@@ -154,5 +155,32 @@ describe('redactPii', () => {
     // This should fail because the plugin changes the callId to 'invalid-id'
     // If it doesn't fail, it means validation happened before the plugin.
     expect(action).toThrow(/tool result references non-existent tool-call: invalid-id/);
+  });
+});
+
+describe('plugin activation accounting', () => {
+  it('does not strand earlier activations when a later plugin in the pipeline throws', () => {
+    const first = defineMessagePlugin({ id: 'first', revision: 1 }, (input) => input);
+    let shouldFail = true;
+    const conditional = defineMessagePlugin({ id: 'conditional', revision: 1 }, (input) => {
+      if (shouldFail) throw new Error('conditional failed');
+      return input;
+    });
+    const conversation = new Conversation(createConversation({ id: 'stranded' }), {
+      plugins: [first, conditional],
+    });
+    const activated: string[] = [];
+    conversation.addEventListener('plugin.activated', (event) => {
+      activated.push(event.plugin?.id ?? 'none');
+    });
+
+    expect(() => conversation.appendUserMessage('fails')).toThrow('conditional failed');
+    expect(activated).toEqual(['first', 'conditional']);
+
+    shouldFail = false;
+    activated.length = 0;
+    conversation.appendUserMessage('succeeds');
+    // Both plugins already activated once; nothing stale may be re-announced.
+    expect(activated).toEqual([]);
   });
 });
