@@ -10,6 +10,7 @@ import { decode, encode } from '../../src/core/codec.ts';
 import { decodeWorkflowState } from '../../src/core/engine/validation.ts';
 import {
   WORKFLOW_VISIBILITY_INDEX_VERSION,
+  WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS,
   buildWorkflowVisibilityIndexOperations,
   decodeWorkflowVisibilityManifest,
 } from '../../src/core/engine/workflow-indexes.ts';
@@ -31,6 +32,16 @@ const VISIBILITY_INDEX_PREFIXES = [
   'wf-idx-manifest:',
 ];
 
+/**
+ * How long a run waits after announcing a change to whether engines must write
+ * index rows (the `wf-idx-meta:building` marker going up, or the watermark and
+ * marker coming down) before it depends on that change. Engines re-read the
+ * decision at most every {@link WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS}, so
+ * twice that window covers the cache age plus the read itself.
+ */
+export const WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS =
+  2 * WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS;
+
 export type BackfillReport = {
   processed: number;
   conflicts: number;
@@ -51,7 +62,22 @@ export type WorkflowVisibilityBackfillOptions = {
   logger?: BackfillLogger;
   checkpointEvery?: number;
   onWatermarkWritten?: () => void;
+  /**
+   * Milliseconds to wait, after writing the `wf-idx-meta:building` marker, for
+   * running engines to notice it and start writing index rows. Defaults to
+   * {@link WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS}; pass `0` only
+   * when no engine can be running against the storage.
+   */
+  settleMilliseconds?: number;
 };
+
+async function settle(milliseconds: number, logger: BackfillLogger, reason: string): Promise<void> {
+  if (milliseconds <= 0) return;
+  logger(`Waiting ${milliseconds}ms for running engines to ${reason}.`);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
 
 function isTopLevelWorkflowKey(key: string): boolean {
   const idPart = key.slice(3);
@@ -93,6 +119,28 @@ export async function runWorkflowVisibilityBackfill(
     );
   }
 
+  // Announce first. From here on, every engine that re-reads the marker writes
+  // index rows with the workflow state, so a workflow created or changed after
+  // the cursor passed it is already indexed. The marker goes up BEFORE the
+  // watermark comes down so an engine never sees neither. Engines that skipped
+  // index writes while the watermark was stale may have left stale or orphaned
+  // rows, so a run with no saved cursor rebuilds from empty (readers already
+  // take the scan path because the watermark is gone); a resumed run keeps its
+  // own rows.
+  const resumeCursor = await loadCursor(storage);
+  await storage.put(KEYS.workflowVisibilityMetaBuilding(), encode(Date.now()));
+  await storage.delete(KEYS.workflowVisibilityMetaVersion());
+  await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
+  await settle(
+    options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
+    logger,
+    'observe the backfill marker and start writing index rows',
+  );
+  if (resumeCursor === undefined) {
+    const cleared = await sweepVisibilityIndexRows(storage, logger, 500);
+    logger(`Cleared ${cleared} pre-existing index rows before the rebuild.`);
+  }
+
   const { processed, conflicts } = await backfillWorkflowRows(storage, logger, checkpointEvery);
 
   if (conflicts > 0) {
@@ -102,9 +150,10 @@ export async function runWorkflowVisibilityBackfill(
     return { processed, conflicts, watermarkWritten: false };
   }
 
-  // Advance the watermark and clear the cursor atomically. The engine
-  // either sees the new index version with no in-progress marker, or it
-  // sees neither — never the partial state.
+  // Advance the watermark, clear the cursor and lower the building marker
+  // atomically. The engine either sees the new index version with no
+  // in-progress marker, or it sees neither — never the partial state — and it
+  // keeps writing index rows either way because the watermark is now current.
   await storage.batch([
     {
       type: 'put',
@@ -117,6 +166,7 @@ export async function runWorkflowVisibilityBackfill(
       value: encode(Date.now()),
     },
     { type: 'delete', key: KEYS.workflowVisibilityMetaCursor() },
+    { type: 'delete', key: KEYS.workflowVisibilityMetaBuilding() },
   ]);
   options.onWatermarkWritten?.();
 
@@ -191,23 +241,14 @@ async function indexWorkflow(
 }
 
 /**
- * Drop every visibility-index row plus the watermark. Order is
- * load-bearing: the watermark goes first so the engine immediately
- * falls back to the slow path while the rows are being swept, then the
- * rows themselves are removed, then the cursor is cleared. Reversing
- * this order would leave a window where the engine trusts a watermark
- * for indexes that no longer exist.
+ * Delete every visibility-index row (not the meta keys) and return how many
+ * were removed.
  */
-export async function runWorkflowVisibilityDrop(
+async function sweepVisibilityIndexRows(
   storage: Storage,
-  options: { logger?: BackfillLogger; fallbackBatchSize?: number } = {},
-): Promise<DropReport> {
-  const logger = options.logger ?? (() => undefined);
-  const fallbackBatchSize = options.fallbackBatchSize ?? 500;
-
-  await storage.delete(KEYS.workflowVisibilityMetaVersion());
-  await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
-
+  logger: BackfillLogger,
+  fallbackBatchSize: number,
+): Promise<number> {
   let rowsDeleted = 0;
   for (const prefix of VISIBILITY_INDEX_PREFIXES) {
     if (storage.deletePrefix !== undefined) {
@@ -230,7 +271,40 @@ export async function runWorkflowVisibilityDrop(
       rowsDeleted += toDelete.length;
     }
   }
+  return rowsDeleted;
+}
 
+/**
+ * Drop every visibility-index row plus the watermark. Order is
+ * load-bearing: the watermark and the building marker go first so the
+ * engine immediately falls back to the slow path and, once it re-reads them,
+ * stops writing index rows; the script waits that out, then the rows
+ * themselves are removed, then the cursor is cleared. Reversing this order
+ * would leave a window where the engine trusts a watermark for indexes that
+ * no longer exist, or writes rows back behind the sweep.
+ */
+export async function runWorkflowVisibilityDrop(
+  storage: Storage,
+  options: {
+    logger?: BackfillLogger;
+    fallbackBatchSize?: number;
+    /** See {@link WorkflowVisibilityBackfillOptions.settleMilliseconds}. */
+    settleMilliseconds?: number;
+  } = {},
+): Promise<DropReport> {
+  const logger = options.logger ?? (() => undefined);
+  const fallbackBatchSize = options.fallbackBatchSize ?? 500;
+
+  await storage.delete(KEYS.workflowVisibilityMetaVersion());
+  await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
+  await storage.delete(KEYS.workflowVisibilityMetaBuilding());
+  await settle(
+    options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
+    logger,
+    'observe the drop and stop writing index rows',
+  );
+
+  const rowsDeleted = await sweepVisibilityIndexRows(storage, logger, fallbackBatchSize);
   await storage.delete(KEYS.workflowVisibilityMetaCursor());
   return { rowsDeleted };
 }

@@ -44,7 +44,7 @@
 
 import { KEYS } from '../../../storage/interface.ts';
 import { resolveWorkflowWorkerStartBinding } from '../../../worker/versioning-policy.ts';
-import { deserializeCheckpoint, serializeCheckpoint } from '../../checkpoint.ts';
+import { deserializeCheckpoint } from '../../checkpoint.ts';
 import { encode } from '../../codec.ts';
 import { assertPayloadWithinLimit } from '../../payload-size.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../../scheduler.ts';
@@ -54,7 +54,6 @@ import {
 } from '../../start-workflow-validation.ts';
 import type { Checkpoint, StartWorkflowOptions, WorkflowState } from '../../types.ts';
 import { releaseInFlightStart } from '../catalog-removal.ts';
-import { rememberCommittedCheckpointBytes } from '../checkpoint-commit-snapshots.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import { commitFencedEngineWrite } from '../fenced-write.ts';
 import type { WorkflowHandle } from '../handles.ts';
@@ -62,7 +61,10 @@ import type { EngineInternals } from '../internals.ts';
 import { selectPersistedWorkflowStartHeaders } from '../state-utilities.ts';
 import { loadWorkflowState, runSerializedWorkflowStateWrite } from '../storage-io.ts';
 import { buildWorkflowConcurrencyStartOperations } from '../workflow-concurrency.ts';
-import { buildWorkflowVisibilityIndexTransition } from '../workflow-indexes.ts';
+import {
+  refreshWorkflowVisibilityMaintenance,
+  visibilityIndexOperations,
+} from '../workflow-visibility-maintenance.ts';
 import { createWorkflowVersionTuple, workflowVersionTupleFromState } from './persist.ts';
 import { reprovideRecoveredServices } from './recovered-services.ts';
 import {
@@ -268,7 +270,6 @@ export async function prepareWorkflow(
         : undefined;
 
     internals.checkpoints.set(workflowId, checkpoint);
-    rememberCommittedCheckpointBytes(internals, workflowId, serializeCheckpoint(checkpoint));
     setWorkflowStartHeaders(internals, workflowId, workflowStartHeaders, callbacks);
     internals.workflowVersionTuples.set(workflowId, versionTuple);
 
@@ -473,13 +474,15 @@ async function commitPendingToRunning(
     ...(executionDeadline !== undefined && { executionDeadline }),
   };
 
+  const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+  if (visibilityMaintenance !== undefined) await visibilityMaintenance;
   const operations = [
     {
       type: 'put' as const,
       key: KEYS.workflow(workflowId),
       value: encode(nextRunningState),
     },
-    ...buildWorkflowVisibilityIndexTransition(workflowId, latestState, nextRunningState).batchOps,
+    ...visibilityIndexOperations(internals, workflowId, latestState, nextRunningState),
     ...(executionDeadline !== undefined
       ? buildTimerBatchOperations({
           id: `deadline:${workflowId}`,

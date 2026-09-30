@@ -22,8 +22,11 @@ import { createTerminalCleanupTimerId } from './state-utilities.ts';
 import { buildExternalTerminalRotationFragment } from './storage-io.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { foldWorkflowGenerationBumpForPurge } from './workflow-generation-fence.ts';
-import { buildWorkflowVisibilityIndexTransition } from './workflow-indexes.ts';
 import { getWorkflowRetentionDeadline } from './workflow-retention-deadline.ts';
+import {
+  refreshWorkflowVisibilityMaintenance,
+  visibilityIndexOperations,
+} from './workflow-visibility-maintenance.ts';
 
 export const TERMINAL_CLEANUP_DELAY_MS = 60_000;
 export type PurgeParameters = {
@@ -183,9 +186,9 @@ export async function collectWorkflowPurgeDeleteOperations(
   const deleteOperations = buildWorkflowIndexDeleteOperations(state, attributeBytes);
   const deleteKeys = await collectWorkflowPurgeDeleteKeys(internals, state);
   appendKeyDeleteOperations(deleteOperations, deleteKeys);
-  deleteOperations.push(
-    ...buildWorkflowVisibilityIndexTransition(workflowId, state, null).batchOps,
-  );
+  const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+  if (visibilityMaintenance !== undefined) await visibilityMaintenance;
+  deleteOperations.push(...visibilityIndexOperations(internals, workflowId, state, null));
   return deleteOperations;
 }
 

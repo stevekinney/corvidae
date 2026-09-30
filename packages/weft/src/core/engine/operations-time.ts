@@ -20,7 +20,10 @@ import {
 } from './sleep-timer-acknowledgements.ts';
 import { type TimeOperationCallbacks } from './time-operation-callbacks.ts';
 import { commitWithWorkflowClaimFold, prepareWorkflowClaimFold } from './workflow-claim-fold.ts';
-import { buildWorkflowVisibilityIndexTransition } from './workflow-indexes.ts';
+import {
+  refreshWorkflowVisibilityMaintenance,
+  visibilityIndexOperations,
+} from './workflow-visibility-maintenance.ts';
 
 type SleepOperation = Extract<ContextOperationRequest, { type: 'sleep' }>;
 
@@ -223,14 +226,15 @@ export async function startDelayedWorkflow(
         ...(executionDeadline !== undefined && { executionDeadline }),
       };
 
+      const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+      if (visibilityMaintenance !== undefined) await visibilityMaintenance;
       const operations: BatchOperation[] = [
         {
           type: 'put',
           key: KEYS.workflow(entry.workflowId),
           value: encode(nextRunningState),
         },
-        ...buildWorkflowVisibilityIndexTransition(entry.workflowId, latestState, nextRunningState)
-          .batchOps,
+        ...visibilityIndexOperations(internals, entry.workflowId, latestState, nextRunningState),
       ];
       if (executionDeadline !== undefined) {
         operations.push(

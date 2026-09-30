@@ -1,6 +1,13 @@
-import { decode as msgpackDecode, encode as msgpackEncode } from '@msgpack/msgpack';
+import { Encoder, decode as msgpackDecode } from '@msgpack/msgpack';
 
 import { extensionCodec, replaceUndefined } from './extension-codec.ts';
+
+// One reusable encoder. `msgpack.encode()` constructs a fresh `Encoder` and its 2 KiB backing
+// buffer on every call, which is a measurable share of the workflow-start admission path
+// (two encodes per start), and returns a view into that buffer rather than an exact-size copy.
+// `Encoder#encode` returns an exact-size copy and clones itself when re-entered (an extension
+// encoder that calls back into `encode`), so sharing one instance is safe.
+const sharedEncoder = new Encoder({ extensionCodec });
 
 // Public API
 // ---------------------------------------------------------------------------
@@ -23,7 +30,7 @@ import { extensionCodec, replaceUndefined } from './extension-codec.ts';
  */
 export function encode(value: unknown): Uint8Array {
   const preprocessed = replaceUndefined(value, new Set());
-  return msgpackEncode(preprocessed, { extensionCodec });
+  return sharedEncoder.encode(preprocessed);
 }
 
 /**

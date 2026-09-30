@@ -38,7 +38,10 @@ import {
   type TeardownClaim,
 } from '../state-utilities.ts';
 import { releaseWorkflowConcurrencySlot } from '../workflow-concurrency.ts';
-import { buildWorkflowVisibilityIndexTransition } from '../workflow-indexes.ts';
+import {
+  refreshWorkflowVisibilityMaintenance,
+  visibilityIndexOperations,
+} from '../workflow-visibility-maintenance.ts';
 import {
   cleanupTerminalWorkflowImmediately,
   cleanupTerminalWorkflowSynchronously,
@@ -306,15 +309,16 @@ function buildBaseCompletionOperations(
   previousState: WorkflowState,
   updatedState: WorkflowState,
 ): BatchOperation[] {
-  const visibilityIndexOperations = buildWorkflowVisibilityIndexTransition(
+  const visibilityOperations = visibilityIndexOperations(
+    internals,
     workflowId,
     previousState,
     updatedState,
-  ).batchOps;
+  );
   const operations: BatchOperation[] = [
     ...buildTerminalWorkflowIndexOperations(previousState, updatedState),
     { type: 'put', key: KEYS.workflow(workflowId), value: encode(updatedState) },
-    ...visibilityIndexOperations,
+    ...visibilityOperations,
   ];
   const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
   if (pendingTimelineOperation) {
@@ -486,6 +490,8 @@ export async function completeWorkflow(
         return null;
       }
 
+      const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+      if (visibilityMaintenance !== undefined) await visibilityMaintenance;
       const now = normalizeStorageTimestamp(
         internals.options.getNow(),
         'Workflow completion timestamp',

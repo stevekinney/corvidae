@@ -6,7 +6,9 @@ import {
   type ConditionalBatchCondition,
 } from '../../../storage/interface.ts';
 import { AtomicStateConflictError } from '../../atomic-state.ts';
+import { serializeCheckpoint } from '../../checkpoint.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../../types.ts';
+import { rememberCommittedCheckpointBytes } from '../checkpoint-commit-snapshots.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import {
   commitFencedEngineWrite,
@@ -21,9 +23,11 @@ import {
   type WorkflowClaimFold,
 } from '../workflow-claim-fold.ts';
 import type { WorkflowConcurrencyStartOperations } from '../workflow-concurrency.ts';
+import { refreshWorkflowVisibilityMaintenance } from '../workflow-visibility-maintenance.ts';
 import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
 import { buildStartBatchOperations } from './start-batch.ts';
 import { StartIdempotencyRaceLostError } from './start-commit-errors.ts';
+import { tagStartConditions, type TaggedStartCondition } from './start-condition-tags.ts';
 import { attributeLostStartPreconditionOrRetry } from './start-precondition-attribution.ts';
 
 /**
@@ -41,17 +45,6 @@ export type BuildIdempotentStartOperations = (workflowId: string) => {
 };
 
 const WORKFLOW_CONCURRENCY_ADMISSION_MAX_ATTEMPTS = 5;
-
-type TaggedStartCondition = {
-  source:
-    | 'workflow-concurrency'
-    | 'start-precondition'
-    | 'duplicate-id'
-    | 'duplicate-id-generation'
-    | 'worker-start-override'
-    | 'catalog-entry';
-  condition: ConditionalBatchCondition;
-};
 
 /**
  * Admission-time defense against the WFT-17 catalog-removal/start race
@@ -286,43 +279,6 @@ async function hasCatalogEntryConflict(
   return false;
 }
 
-function tagStartPreconditions(
-  conditions: ConditionalBatchCondition[] | undefined,
-): TaggedStartCondition[] {
-  return (conditions ?? []).map((condition) => ({
-    source: 'start-precondition' as const,
-    condition,
-  }));
-}
-
-/** Separate `source` tags (not merged) so a WFT-153 generation-only conflict is distinguishable from an ordinary value conflict. Both undefined together (generated id), or both defined. */
-function tagDuplicateIdConditions(
-  condition: ConditionalBatchCondition | undefined,
-  generationCondition: ConditionalBatchCondition | undefined,
-): TaggedStartCondition[] {
-  const tagged: TaggedStartCondition[] = [];
-  if (condition !== undefined) tagged.push({ source: 'duplicate-id', condition });
-  if (generationCondition !== undefined) {
-    tagged.push({ source: 'duplicate-id-generation', condition: generationCondition });
-  }
-  return tagged;
-}
-
-function tagWorkflowConcurrencyConditions(
-  conditions: ConditionalBatchCondition[],
-): TaggedStartCondition[] {
-  return conditions.map((condition) => ({
-    source: 'workflow-concurrency' as const,
-    condition,
-  }));
-}
-
-function tagWorkerStartOverrideConditions(
-  conditions: ConditionalBatchCondition[] | undefined,
-): TaggedStartCondition[] {
-  return (conditions ?? []).map((condition) => ({ source: 'worker-start-override', condition }));
-}
-
 function mergeAdditionalStartOperations(
   additional: BatchOperation[] | undefined,
   idempotent: BatchOperation[] | undefined,
@@ -374,6 +330,15 @@ export async function buildAndCommitStartBatch(
   buildIdempotentStartOperations: BuildIdempotentStartOperations | undefined,
 ): Promise<void> {
   const { internals, workflowId, state, checkpoint, registration, options } = context;
+  // Prime the checkpoint-bytes CAS baseline synchronously, before this function's first
+  // await (WFT-21, Codex review round 5, P1; mirrors `resume.ts`'s own set+remember
+  // pairing) — without it this generation's first checkpoint commit carries no
+  // `expectedSerialized`, leaving it unfenced against a concurrent `start-new`
+  // replacement. A failed start's rollback calls `forgetCommittedCheckpointBytes()`, so
+  // nothing stale leaks. The same bytes go into the create batch, so the initial
+  // checkpoint is serialized once per start rather than once per consumer.
+  const serializedCheckpoint = serializeCheckpoint(checkpoint);
+  rememberCommittedCheckpointBytes(internals, workflowId, serializedCheckpoint);
   const maxAttempts =
     context.buildWorkflowConcurrencyStartOperations === undefined
       ? 1
@@ -398,6 +363,8 @@ export async function buildAndCommitStartBatch(
       ? await buildCatalogEntryStartPrecondition(internals, state)
       : undefined;
 
+    const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+    if (visibilityMaintenance !== undefined) await visibilityMaintenance;
     const startOperations = buildStartBatchOperations(
       internals,
       workflowId,
@@ -414,17 +381,16 @@ export async function buildAndCommitStartBatch(
       ),
       context.callbacks,
       context.purgeDeleteOperations,
+      serializedCheckpoint,
     );
-    const conditions = [
-      ...tagStartPreconditions(idempotent?.conditions),
-      ...tagDuplicateIdConditions(
-        context.duplicateIdCondition,
-        context.duplicateIdGenerationCondition,
-      ),
-      ...tagWorkflowConcurrencyConditions(workflowConcurrency?.conditions ?? []),
-      ...tagWorkerStartOverrideConditions(context.additionalStartConditions),
-      ...(catalogEntryPrecondition === undefined ? [] : [catalogEntryPrecondition]),
-    ];
+    const conditions = tagStartConditions({
+      idempotency: idempotent?.conditions,
+      duplicateId: context.duplicateIdCondition,
+      duplicateIdGeneration: context.duplicateIdGenerationCondition,
+      workflowConcurrency: workflowConcurrency?.conditions,
+      workerStartOverride: context.additionalStartConditions,
+      catalogEntry: catalogEntryPrecondition,
+    });
     // ADR 0002 row `startWorkflow`/`buildAndCommitStartBatch`: claim-acquiring for
     // an ordinary start, but the delayed `startAt`/`startAfter` create batch is
     // intentionally external — its `pending` row has no owner yet, and the
