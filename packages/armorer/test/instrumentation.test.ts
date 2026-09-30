@@ -209,7 +209,7 @@ describe('instrument', () => {
     expect(startedSpans[0]?.options?.links).toBe(spanLinks);
     expect(startedSpans[0]?.span.status).toEqual({
       code: SpanStatusCode.ERROR,
-      message: 'lookup failed',
+      message: 'Tool call failed',
     });
     expect(startedSpans[0]?.span.ended).toBe(true);
   });
@@ -376,7 +376,7 @@ describe('instrument', () => {
     manualToolbox.dispatch('error', {
       result: {
         callId: 'error',
-        error: { code: 'BROKEN', message: 'broken' },
+        error: { code: 'BROKEN', message: 'broken', category: 'error' },
       },
     });
     manualToolbox.dispatch('error', {
@@ -388,8 +388,8 @@ describe('instrument', () => {
     stop();
 
     expect(successSpan.ended).toBe(true);
-    expect(errorSpan.status).toEqual({ code: SpanStatusCode.ERROR, message: 'broken' });
-    expect(errorSpan.attributes['error.type']).toBe('BROKEN');
+    expect(errorSpan.status).toEqual({ code: SpanStatusCode.ERROR, message: 'Tool call failed' });
+    expect(errorSpan.attributes['error.type']).toBe('error');
     expect(errorSpan.ended).toBe(true);
     expect(nonRecordingSpan.ended).toBe(false);
   });
@@ -642,9 +642,24 @@ const ARMORER_ATTRIBUTE_CLASSIFICATION_TABLE: AttributeClassificationRow[] = [
   {
     callSite: "'error' fallback listener, non-cancelled case → span.setAttribute(key, value)",
     attributeKey: 'error.type',
-    sourceValue: 'result.error.code (a category code, not error content)',
+    sourceValue: "result.error.category ?? 'error' (a closed-set category name, not error content)",
     privileged: false,
     treatment: 'emitted',
+  },
+  {
+    callSite: "'error' fallback listener, non-cancelled case → span.setAttribute(key, value)",
+    attributeKey: 'error.type (from result.error.code)',
+    sourceValue: 'result.error.code — a tool-defined, unbounded-cardinality code',
+    privileged: true,
+    treatment: 'omitted',
+  },
+  {
+    callSite: "'error' fallback listener, non-cancelled case → span.setStatus",
+    attributeKey: 'status.message',
+    sourceValue:
+      'result.error.message — the tool\'s own error message, privileged-by-derivation; replaced with the fixed string "Tool call failed"',
+    privileged: true,
+    treatment: 'omitted',
   },
   {
     callSite:
@@ -806,5 +821,102 @@ describe('AB-230 regression: privileged fixture values never reach a span attrib
     expect(cancelledErrorInstance?.span.attributes['armorer.tool.cancellation_category']).toBe(
       'cancelled',
     );
+  });
+});
+
+describe('COR-96 regression: non-cancelled error fallback never leaks privileged content', () => {
+  const MARKER = 'PRIVILEGED-MARKER-a71d5c';
+
+  function containsMarker(value: unknown): boolean {
+    if (typeof value === 'string') return value.includes(MARKER);
+    if (Array.isArray(value)) return value.some(containsMarker);
+    if (value && typeof value === 'object') {
+      return Object.values(value as Record<string, unknown>).some(containsMarker);
+    }
+    return false;
+  }
+
+  it('keeps a marker in result.error.message and result.error.code off every span surface', () => {
+    const manualToolbox = createManualToolbox();
+    const span = createSpan();
+    const tracer = {
+      startSpan() {
+        return span;
+      },
+    } as unknown as Tracer;
+    const stop = instrument(manualToolbox as never, { tracer });
+
+    manualToolbox.dispatch('call', {
+      tool: { identity: { name: 'lookup-no-telemetry' } },
+      call: { id: 'call-1', arguments: {} },
+    });
+    manualToolbox.dispatch('error', {
+      result: {
+        callId: 'call-1',
+        error: {
+          code: `CODE-${MARKER}`,
+          message: `failed on input: ${MARKER}`,
+          category: 'error',
+        },
+      },
+    });
+    stop();
+
+    expect(containsMarker(span.status)).toBe(false);
+    expect(containsMarker(span.attributes)).toBe(false);
+    expect(span.events.every((event) => !containsMarker(event.attributes))).toBe(true);
+    expect(containsMarker(span.exceptions)).toBe(false);
+    expect(span.status?.code).toBe(SpanStatusCode.ERROR);
+    expect(span.attributes['error.type']).toBe('error');
+    expect(span.ended).toBe(true);
+  });
+
+  it.each(['timeout', 'internal'])(
+    'forwards the %s category to error.type with the marker in code and message',
+    (category) => {
+      const manualToolbox = createManualToolbox();
+      const span = createSpan();
+      const tracer = {
+        startSpan() {
+          return span;
+        },
+      } as unknown as Tracer;
+      const stop = instrument(manualToolbox as never, { tracer });
+      manualToolbox.dispatch('call', {
+        tool: { identity: { name: 'lookup-no-telemetry' } },
+        call: { id: 'call-1', arguments: {} },
+      });
+      manualToolbox.dispatch('error', {
+        result: {
+          callId: 'call-1',
+          error: { code: `CODE-${MARKER}`, message: `failed: ${MARKER}`, category },
+        },
+      });
+      stop();
+
+      expect(span.attributes['error.type']).toBe(category);
+      expect(containsMarker(span.status)).toBe(false);
+      expect(containsMarker(span.attributes)).toBe(false);
+      expect(containsMarker(span.exceptions)).toBe(false);
+    },
+  );
+
+  it("falls back to the literal 'error' type when the result carries no category", () => {
+    const manualToolbox = createManualToolbox();
+    const span = createSpan();
+    const tracer = {
+      startSpan() {
+        return span;
+      },
+    } as unknown as Tracer;
+    const stop = instrument(manualToolbox as never, { tracer });
+    manualToolbox.dispatch('call', {
+      tool: { identity: { name: 'x' } },
+      call: { id: 'call-1', arguments: {} },
+    });
+    manualToolbox.dispatch('error', { result: { callId: 'call-1' } });
+    stop();
+    expect(span.attributes['error.type']).toBe('error');
+    expect(span.status).toEqual({ code: SpanStatusCode.ERROR, message: 'Tool call failed' });
   });
 });
