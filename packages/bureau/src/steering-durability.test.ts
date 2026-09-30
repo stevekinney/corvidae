@@ -98,9 +98,21 @@ describe('durable steering', () => {
       const recovered: PersistedSteeringCommand[] = [];
       await recoverSteeringCommands(mailboxAfter, (command) => recovered.push(command));
 
-      expect(recovered.map((command) => [command.id, command.requestedValue])).toEqual([
-        ['cmd-1', { target: 'model', override: 'first' }],
-        ['cmd-2', { target: 'model', override: 'second' }],
+      expect(recovered).toEqual([
+        {
+          id: 'cmd-1',
+          sessionId: 'session-1',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'first' },
+          requestedAt: '2026-09-19T00:00:00.000Z',
+        },
+        {
+          id: 'cmd-2',
+          sessionId: 'session-1',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'second' },
+          requestedAt: '2026-09-19T00:00:00.000Z',
+        },
       ]);
 
       mailboxAfter.dispose();
@@ -129,7 +141,15 @@ describe('durable steering', () => {
 
       const recovered: PersistedSteeringCommand[] = [];
       await recoverSteeringCommands(mailbox, (command) => recovered.push(command));
-      expect(recovered).toHaveLength(1);
+      expect(recovered).toEqual([
+        {
+          id: 'cmd-1',
+          sessionId: 'session-1',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+          requestedAt: '2026-09-19T00:00:00.000Z',
+        },
+      ]);
 
       mailbox.dispose();
       storage[Symbol.dispose]();
@@ -244,7 +264,7 @@ describe('durable steering crash safety', () => {
       const storage = await resolveStorage(fixture.configuration);
       const mailbox = createSteeringMailbox(storage, 'session-1');
       const persisted = await persistSteeringCommand(mailbox, steeringCommand());
-      expect(persisted.persisted).toBe(true);
+      if (!persisted.persisted) throw new Error('expected the command to persist');
 
       expect(
         await throwingRejectionOf(
@@ -254,13 +274,13 @@ describe('durable steering crash safety', () => {
         ),
       ).toThrow('replay failed');
 
-      // Not acknowledged, so still durably present. the receipt is
+      // Not acknowledged, so still durably present. The receipt is
       // still `claimed` (its lease has not expired, so a second `claim()`
       // sees nothing claimable) rather than gone — the record survived the
       // failed replay, which is the whole guarantee.
       const receipts = await mailbox.list();
       expect(receipts).toHaveLength(1);
-      expect(receipts[0]?.commandId).toBe(persisted.persisted ? persisted.commandId : undefined);
+      expect(receipts[0]?.commandId).toBe(persisted.commandId);
       expect(receipts[0]?.state).toBe('claimed');
       expect(await mailbox.claim()).toEqual({ status: 'empty' });
 

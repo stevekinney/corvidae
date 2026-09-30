@@ -115,6 +115,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
           );
         }
         expect(asOwner.events.map((event) => event.kind)).toEqual(['run.completed']);
+        expect(asOwner.hasMore).toBe(false);
 
         const asStranger = await bureauB.eventHistory(
           { kind: 'run', id: run.id },
@@ -129,6 +130,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
           throw new Error(`expected a page for a trusted caller, got ${JSON.stringify(trusted)}`);
         }
         expect(trusted.events.map((event) => event.kind)).toEqual(['run.completed']);
+        expect(trusted.hasMore).toBe(false);
 
         // A run id the recovered bureau never registered has no status;
         // a trusted caller reading it gets an empty page, not another run's
