@@ -370,17 +370,6 @@ export class DurableRateLimiter {
 
 /**
  * Result of {@link DurableRateLimiter.tryConsume}, mirroring the slot's flavour.
- *
- * @example
- * ```ts
- * import type { ConsumeWithSlot } from '@lostgradient/weft';
- *
- * const result: ConsumeWithSlot<Promise<unknown>> = Promise.resolve({
- *   consumed: true,
- *   retryAfterMs: 0,
- * });
- * void result;
- * ```
  */
 export type ConsumeWithSlot<R> =
   R extends Promise<unknown>

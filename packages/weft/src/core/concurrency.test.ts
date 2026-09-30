@@ -638,6 +638,14 @@ describe('token-bucket reducer', () => {
     expect(two.record).toEqual({ tokens: 3, lastRefillAt: 12_000 });
   });
 
+  it('clamps a clock that moves backwards instead of removing tokens', () => {
+    const empty = reduceConsume({ tokens: 0, lastRefillAt: 10_000 }, { ...config, now: 9_500 });
+    expect(empty.record).toEqual({ tokens: 0, lastRefillAt: 10_000 });
+    expect(empty.result).toEqual({ consumed: false, retryAfterMs: 1_500 });
+    const stocked = reduceConsume({ tokens: 3, lastRefillAt: 10_000 }, { ...config, now: 8_000 });
+    expect(stocked.record).toEqual({ tokens: 2, lastRefillAt: 10_000 });
+  });
+
   it('computes retryAfterMs from the remainder of the current interval', () => {
     const start: TokenBucketRecord = { tokens: 0, lastRefillAt: 10_000 };
     const { result } = reduceConsume(start, { ...config, now: 10_250 });
