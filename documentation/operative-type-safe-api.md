@@ -229,6 +229,13 @@ Every workspace was swept. These workspaces have no non-conformant path: `conver
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 644 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/complete.ts` | 670 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/termination/cleanup.ts` | 182 |
+| `@lostgradient/weft` | `interval` | durable | `packages/weft/src/core/engine/index.ts` | 908 |
+| `@lostgradient/weft` | `interval` | durable | `packages/weft/src/core/engine/workflow-claim-renewal-interval.ts` | 296 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/checkpoint-io.ts` | 451 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/core/engine/checkpoint-io.ts` | 533 |
+| `@lostgradient/weft` | `timeout` | durable | `packages/weft/src/core/outbox-runner.ts` | 333 |
+| `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/server/runtime/authentication-bridge.ts` | 327 |
+| `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/server/runtime/authentication-bridge.ts` | 350 |
 | `@lostgradient/editor` | `fire-and-forget-call` | ephemeral | `components/editor/src/lib/editor/attach.ts` | 117 |
 | `@lostgradient/weft-ui` | `timeout` | ephemeral | `components/weft-ui/src/lib/live-source/polling-source.svelte.ts` | 97 |
 
