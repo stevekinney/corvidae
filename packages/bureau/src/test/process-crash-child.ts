@@ -14,12 +14,26 @@
  * point for further crash scenarios.
  */
 import { writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 import { stopWhen } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
+import {
+  REMEMBERED_ANSWER,
+  SESSION_ID,
+  chargeStatus,
+  chargeToolCalls,
+  createChargeToolbox,
+  createHarnessBureau,
+  firstUserMessage,
+  openGovernedMemory,
+  openIdempotencyCache,
+  readEffects,
+  requestContext,
+} from './process-crash-work-integrity-fixtures';
 
 /**
  * Must match `CLAIM_TTL_MS` / `CLAIM_RENEW_MS` in `process-crash-recovery.test.ts`:
@@ -32,6 +46,8 @@ const POLL_ATTEMPTS = 2000;
 const POLL_DELAY_MS = 5;
 
 const scenarioName = process.argv[2];
+/** `unwrapped` builds `charge-then-crash` without idempotency (the COR-1391 control). */
+const variant = process.argv[6];
 const backend = process.argv[3];
 const storagePath = process.argv[4];
 const markerPath = process.argv[5];
@@ -140,8 +156,137 @@ async function parkAfterStepZero(): Promise<void> {
   );
 }
 
+function writeMarker(marker: Record<string, unknown>): void {
+  writeFileSync(markerPath as string, JSON.stringify(marker), 'utf8');
+}
+
+function killSelf(): never {
+  // No `dispose()` / `shutdown()`, deliberately.
+  process.kill(process.pid, 'SIGKILL');
+  return undefined as never;
+}
+
+/** COR-1391: step 0's tools ran and the idempotency cache recorded them, then SIGKILL. */
+async function chargeThenCrash(): Promise<void> {
+  const directory = dirname(markerPath as string);
+  const { cache, store } = await openIdempotencyCache(directory);
+  let runId: string | undefined;
+  const toolbox = createChargeToolbox(
+    directory,
+    async () => {
+      await pollUntil('one charge effect and its completed cache entry', async () => {
+        if (readEffects(directory).length !== 1) return false;
+        return variant === 'unwrapped' ? true : (await chargeStatus(store, cache)) === 'completed';
+      });
+      await pollUntil('the run id', () => runId !== undefined);
+      writeMarker({ runId });
+      return killSelf();
+    },
+    { cache, wrap: variant !== 'unwrapped' },
+  );
+  const bureau = await createHarnessBureau({
+    backend: backend as 'sqlite' | 'lmdb',
+    storagePath: storagePath as string,
+    generate: async () => ({ content: 'charging', toolCalls: chargeToolCalls }),
+    toolbox,
+  });
+  const run = await bureau.createRun({
+    message: 'crash harness charge',
+    principal: 'alice',
+    sessionId: SESSION_ID,
+    requestContext: requestContext(),
+  });
+  runId = run.id;
+  await new Promise<never>(() => {});
+}
+
+/** COR-1391: the governed-memory record write resolves, then SIGKILL before the memo commits. */
+async function memoryWriteThenCrash(): Promise<void> {
+  const directory = dirname(markerPath as string);
+  let runId: string | undefined;
+  const { memory } = await openGovernedMemory(directory, (storage) => {
+    const original = storage.conditionalBatch?.bind(storage);
+    if (original === undefined) throw new Error('child: memory storage lacks conditionalBatch');
+    return new Proxy(storage, {
+      get(target, property) {
+        if (property === 'conditionalBatch') {
+          return async (...args: Parameters<typeof original>) => {
+            const applied = await original(...args);
+            if (applied && args[1].some((operation) => operation.type === 'put')) {
+              await pollUntil('the run id', () => runId !== undefined);
+              writeMarker({ runId, sessionId: SESSION_ID });
+              killSelf();
+            }
+            return applied;
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  });
+  const bureau = await createHarnessBureau({
+    backend: backend as 'sqlite' | 'lmdb',
+    storagePath: storagePath as string,
+    generate: async () => ({ content: REMEMBERED_ANSWER, toolCalls: [] }),
+    toolbox: createToolbox([createNextTool()]),
+    memory,
+  });
+  const run = await bureau.createRun({
+    message: 'crash harness memory',
+    principal: 'alice',
+    sessionId: SESSION_ID,
+    requestContext: requestContext(),
+  });
+  runId = run.id;
+  await new Promise<never>(() => {});
+}
+
+/** COR-1391: two runs park mid-step-1; both ids are recorded, then SIGKILL. */
+async function twoParkedRuns(): Promise<void> {
+  const reachedStepOne = new Set<string>();
+  const bureau = await createHarnessBureau({
+    backend: backend as 'sqlite' | 'lmdb',
+    storagePath: storagePath as string,
+    generate: async (context) => {
+      if (context.step === 0) {
+        return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+      }
+      reachedStepOne.add(firstUserMessage(context));
+      return new Promise<never>(() => {});
+    },
+    toolbox: createToolbox([createNextTool()]),
+  });
+  const x = await bureau.createRun({ message: 'crash harness run X', principal: 'alice' });
+  const y = await bureau.createRun({ message: 'crash harness run Y', principal: 'alice' });
+  await pollUntil('both runs to invoke generate at step 1', () => reachedStepOne.size === 2);
+  writeMarker({ xRunId: x.id, yRunId: y.id });
+}
+
+/** COR-1391: a non-crashing boot over the recovered, shut-down store. */
+async function verify(): Promise<void> {
+  const directory = dirname(markerPath as string);
+  const { cache, close } = await openIdempotencyCache(directory);
+  const bureau = await createHarnessBureau({
+    backend: backend as 'sqlite' | 'lmdb',
+    storagePath: storagePath as string,
+    generate: async () => ({ content: 'verify', toolCalls: [] }),
+    toolbox: createChargeToolbox(directory, async () => 'ok', { cache, wrap: true }),
+  });
+  const report = await bureau.waitForRecovery?.();
+  const running = (await bureau.listDurableRuns({ status: 'running' }))?.items.length;
+  writeMarker({ recoveryOutcome: report?.outcome, running });
+  await bureau.shutdown();
+  await close();
+  process.exit(0);
+}
+
 const scenarios: Record<string, () => Promise<void>> = {
   'park-after-step-0': parkAfterStepZero,
+  'charge-then-crash': chargeThenCrash,
+  'memory-write-then-crash': memoryWriteThenCrash,
+  'two-parked-runs': twoParkedRuns,
+  verify,
 };
 
 const scenario = scenarios[scenarioName];
