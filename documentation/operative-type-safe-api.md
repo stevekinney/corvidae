@@ -139,6 +139,72 @@ Cleanup acknowledgement describes cleanup, not optimistic rollback. An external 
 
 Bureau's `detachBestEffortPromise()` is reserved for detached wake-ups and cleanup triggers whose result is not the lifecycle acknowledgement. It observes and diagnoses a rejection without turning that fire-and-forget path into an unhandled rejection. Callers needing a truthful lifecycle result use `result()` and `closed()` instead.
 
+## Started-work inventory
+
+The control contract above says how started work is owned. This section defines the rule for work that is not, and records where the workspace breaks it today.
+
+### The unowned-background-work rule
+
+An exported API breaks the rule when it starts long-lived or fire-and-forget asynchronous work and its stop or dispose path does not await what is already in flight. In `applications/`, the same test applies to every entrypoint or server-lifecycle path, meaning any file reachable from the application's documented process-startup entrypoint (for `@lostgradient/desktop`, `applications/desktop/src/bun/index.ts`), not just the top-level file.
+
+An exported API that starts such work and has no stop or dispose path at all also breaks the rule. It is a row in the table, and its execution mode is annotated `(no dispose path)`.
+
+Stopping a timer is not awaiting the work the timer already started. A stop path that only clears a handle, sets a flag, or aborts a signal still leaves the callback's work in flight, so it does not satisfy the rule. Work whose promise is returned to the caller, tracked and drained by the owner (for example through `RuntimeServices` deferred tracking or an awaited in-flight field), or fully synchronous is conformant and is not listed.
+
+### Table columns
+
+- **Ownership** is the workspace package that owns the code, by its real name: `@lostgradient/*`, or the unscoped `armorer` and `conversationalist`.
+- **Execution mode** is one of `interval`, `timeout`, `fire-and-forget-call`, or `unawaited-field-promise`.
+- **Durability** uses the control contract's vocabulary. `ephemeral` means the work leaves no state that outlives the process. `durable` means abandoning it mid-flight can leave persisted state incomplete or stale.
+- **File** and **line** locate where the work is started, on the commit this inventory was taken from.
+
+### Sweep coverage
+
+Every workspace was swept. These workspaces have no non-conformant path: `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/memory`, `@lostgradient/telephone`, `@lostgradient/testing`, `@lostgradient/tool-protocol`, `@lostgradient/chat`, and `@lostgradient/cinder`. Every other workspace appears in the table below.
+
+### Inventory
+
+| Ownership | Execution mode | Durability | File | Line |
+| --- | --- | --- | --- | --- |
+| `@lostgradient/desktop` | `fire-and-forget-call` | ephemeral | `applications/desktop/src/bun/chat/chat-runs.ts` | 108 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3283 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3337 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3403 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3706 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3743 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | ephemeral | `packages/bureau/src/create-bureau.ts` | 4022 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | ephemeral | `packages/bureau/src/create-bureau.ts` | 4442 |
+| `@lostgradient/bureau` | `fire-and-forget-call` | ephemeral | `packages/bureau/src/durable-event-history.ts` | 958 |
+| `@lostgradient/operative` | `fire-and-forget-call` | ephemeral | `packages/operative/src/create-run.ts` | 595 |
+| `@lostgradient/operative` | `fire-and-forget-call` | ephemeral | `packages/operative/src/child-signals.ts` | 436 |
+| `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/create-tool/runtime-execution.ts` | 109 |
+| `armorer` | `fire-and-forget-call` | durable | `packages/armorer/src/idempotency/with-toolbox-idempotency.ts` | 720 |
+| `armorer` | `fire-and-forget-call` | durable | `packages/armorer/src/idempotency/with-toolbox-idempotency.ts` | 791 |
+| `armorer` | `fire-and-forget-call` | durable | `packages/armorer/src/idempotency/with-toolbox-idempotency.ts` | 818 |
+| `armorer` | `fire-and-forget-call` | durable | `packages/armorer/src/idempotency/with-toolbox-idempotency.ts` | 876 |
+| `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 118 |
+| `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 138 |
+| `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 142 |
+| `conversationalist` | `timeout` | ephemeral | `packages/conversationalist/src/compaction-schedule.ts` | 38 |
+| `@lostgradient/evaluation` | `timeout` | ephemeral | `packages/evaluation/src/evaluator.ts` | 114 |
+| `@lostgradient/skills` | `timeout` | ephemeral | `packages/skills/src/discovery/catalog-service.ts` | 278 |
+| `@lostgradient/markdown` | `unawaited-field-promise` (no dispose path) | ephemeral | `packages/markdown/src/rendering/highlighter.ts` | 225 |
+| `@lostgradient/weft` | `interval` | durable | `packages/weft/src/core/scheduler/scheduler-class.ts` | 95 |
+| `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/alerting/alert-manager.ts` | 283 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/serve-internals.ts` | 347 |
+| `@lostgradient/weft` | `interval` | durable | `packages/weft/src/server/serve-internals.ts` | 473 |
+| `@lostgradient/weft` | `interval` | durable | `packages/weft/src/server/serve-internals.ts` | 484 |
+| `@lostgradient/weft` | `timeout` | durable | `packages/weft/src/core/outbox.ts` | 210 |
+| `@lostgradient/weft` | `timeout` | durable | `packages/weft/src/service-worker/scheduler.ts` | 242 |
+| `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/core/engine/reviews.ts` | 470 |
+| `@lostgradient/weft` | `timeout` | durable | `packages/weft/src/server/runtime/task-dispatch.ts` | 72 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/long-poll-drain.ts` | 41 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/worker-disconnect-requeue.ts` | 151 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/authentication-bridge.ts` | 430 |
+| `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/runtime/authentication-bridge.ts` | 457 |
+| `@lostgradient/editor` | `fire-and-forget-call` | ephemeral | `components/editor/src/lib/editor/attach.ts` | 117 |
+| `@lostgradient/weft-ui` | `timeout` | ephemeral | `components/weft-ui/src/lib/live-source/polling-source.svelte.ts` | 97 |
+
 ## Session input admission
 
 Operative exports the session-input record and outcome types. Bureau implements `submitSessionInput(sessionId, request)` with pre-admission checks in order: an unauthorized caller or unknown session receives `not-found`; an authorized caller naming a terminal session receives `session-terminal`; every other request receives `unsupported-capability` with reason `durable-mailbox-unavailable`. The method creates no record and consumes no identifier. Its `admitted`, `replayed`, `conflict`, and `backlog-exhausted` outcomes are currently unreachable.
