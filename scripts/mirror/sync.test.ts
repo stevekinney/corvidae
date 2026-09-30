@@ -1003,8 +1003,14 @@ describe('the foreign-commit guard', () => {
       await Bun.write(join(root, path), "export const VERSION = '0.27.3';\n");
       await git(root, 'add', '-A');
       await git(root, 'commit', '--quiet', '-m', 'Sync weft from corvidae (#124)');
+      await Bun.write(join(root, path), "export const VERSION = '0.27.4';\n");
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Sync weft from corvidae (#125)');
       const foreign = await findForeignCommits(root, ownership);
-      expect(foreign.map(({ subject }) => subject)).toEqual(['Sync weft from corvidae (#124)']);
+      expect(foreign.map(({ subject }) => subject)).toEqual([
+        'Sync weft from corvidae (#125)',
+        'Sync weft from corvidae (#124)',
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
       await rm(remote, { recursive: true, force: true });
