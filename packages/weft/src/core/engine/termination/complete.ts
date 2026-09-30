@@ -339,7 +339,10 @@ function notifyCompletionWaiters(
 
     const event = new WorkflowCompletedEvent(workflowId, result, duration);
     callbacks.dispatchEvent(event);
-    callbacks.forwardEventToHandle(workflowId, event);
+    // The handle cached under this id now belongs to the replacement; a
+    // terminal event forwarded to it would complete its observables and
+    // iterators while it is still running.
+    if (!superseded) callbacks.forwardEventToHandle(workflowId, event);
 
     callbacks.broadcast({ type: 'workflow:completed', workflowId });
 
@@ -357,17 +360,25 @@ function notifyCompletionWaiters(
 
 /**
  * Whether a `onTerminalConflict: 'start-new'` replacement has taken over this
- * id since the terminal commit: the durable record is then no longer the
- * completed one this run wrote. The old run's teardown runs after awaits, so a
- * replacement can be created and parked in that window; teardown keyed by
- * workflow id alone would wipe the replacement's parked state.
+ * id since the terminal commit. Run identity is the durable
+ * `workflowExecutionToken`, which start-new reuse changes: comparing status
+ * instead would miss a replacement that already committed `completed`. The
+ * old run's teardown runs after awaits, so a replacement can be created,
+ * parked, or even finished in that window; teardown keyed by workflow id
+ * alone would wipe (or settle) the replacement's state. Legacy records with
+ * no token on either side fall back to "no longer completed".
  */
 async function isSupersededBySameIdRun(
   workflowId: string,
+  capturedToken: string | undefined,
   callbacks: TerminationCallbacks,
 ): Promise<boolean> {
   const current = await callbacks.loadWorkflowState(workflowId);
-  return current !== null && current.status !== 'completed';
+  if (current === null) return false;
+  if (capturedToken === undefined && current.workflowExecutionToken === undefined) {
+    return current.status !== 'completed';
+  }
+  return current.workflowExecutionToken !== capturedToken;
 }
 
 /**
@@ -514,7 +525,7 @@ export async function completeWorkflow(
       // `releaseWorkflowClaimAfterTerminalSettlement`'s doc for why this
       // must not be re-read after the awaits below.
       const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
-      return { duration, claimEpoch };
+      return { duration, claimEpoch, executionToken: updatedState.workflowExecutionToken };
     },
   );
   if (!completionMetadata) return;
@@ -525,7 +536,11 @@ export async function completeWorkflow(
     workflowId,
     completionMetadata.claimEpoch,
   );
-  const superseded = await isSupersededBySameIdRun(workflowId, callbacks);
+  const superseded = await isSupersededBySameIdRun(
+    workflowId,
+    completionMetadata.executionToken,
+    callbacks,
+  );
   notifyCompletionWaiters(
     internals,
     workflowId,

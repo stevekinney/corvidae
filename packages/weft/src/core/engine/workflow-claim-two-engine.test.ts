@@ -75,6 +75,15 @@ const claimRaceRecoveryWorkflow = workflow({ name: 'claim-race-recovery' }).exec
   },
 );
 
+/** Parks on a signal, then returns its own input, so two runs of one id have distinct durable results. */
+const claimRaceEchoWorkflow = workflow({ name: 'claim-race-echo' }).execute(async function* (
+  ctx: WorkflowContext,
+  input: string,
+) {
+  yield* ctx.waitForSignal('go');
+  return input;
+});
+
 type ClaimWorkflows = Record<
   string,
   typeof claimRaceStartWorkflow | typeof claimRaceRecoveryWorkflow
@@ -1284,5 +1293,85 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
 
     await engineA.signal(id, 'go');
     expect(await replacement.result()).toBe('ran');
+  });
+
+  it('gated release on both runs: a replacement that already completed keeps its own result and handle', async () => {
+    const id = `terminal-teardown-both-gated-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    await using engineA = await Engine.create({
+      storage,
+      workflows: { 'claim-race-echo': claimRaceEchoWorkflow },
+      ownership: 'workflow-lease',
+      workflowClaimTtl: '1m',
+      workflowClaimRenewInterval: '5s',
+      recover: false,
+      backgroundTasks: 'manual',
+    });
+
+    const holderKey = KEYS.workflowOwnerHolder(id);
+    const gates = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+    const reached = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+    let releasesSeen = 0;
+    const gatedRegistryStorage = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch') {
+          return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+            if (operations.some((op) => op.type === 'delete' && op.key === holderKey)) {
+              const index = releasesSeen++;
+              const gate = gates[index];
+              if (gate) {
+                reached[index]?.resolve();
+                await gate.promise;
+              }
+            }
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    installClaimRegistry(engineA, 'engine-a', gatedRegistryStorage);
+
+    await engineA.start('claim-race-echo', 'OLD', { id });
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+    let replacementTerminalEvents = 0;
+    let replacement: Awaited<ReturnType<typeof engineA.start>>;
+    await engineA.signal(id, 'go');
+    await reached[0]!.promise;
+
+    replacement = await engineA.start('claim-race-echo', 'NEW', {
+      id,
+      onTerminalConflict: 'start-new',
+    });
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    replacement.addEventListener('workflow:completed', () => {
+      replacementTerminalEvents++;
+    });
+    const replacementResult = replacement.result();
+
+    // The replacement commits `completed` while its own claim release is still gated.
+    await engineA.signal(id, 'go');
+    await reached[1]!.promise;
+    const committed = await engineA.get(id);
+    expect(committed?.status).toBe('completed');
+    expect(replacementTerminalEvents).toBe(0);
+
+    // Open the old run's gate: it must recognize the replacement by run identity, not status.
+    const oldRunSettled = Promise.withResolvers<void>();
+    engineA.addEventListener('workflow:completed', (event) => {
+      if ((event as Event & { workflowId?: string }).workflowId === id) oldRunSettled.resolve();
+    });
+    gates[0]!.resolve();
+    await oldRunSettled.promise;
+
+    // Neither the old run's result nor its terminal event may reach the replacement.
+    expect(replacementTerminalEvents).toBe(0);
+    gates[1]!.resolve();
+    expect(await replacementResult).toBe('NEW');
+    await waitForCondition(async () => replacementTerminalEvents === 1, {
+      label: 'replacement own completion event',
+    });
   });
 });
