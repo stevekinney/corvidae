@@ -264,6 +264,8 @@ describe('recover() — reattach failure and initial state', () => {
       });
       const closedAfterCommit = await recovered!.closed();
       expect(closedAfterCommit.status).not.toBe('failed');
+      // COR-66: a recovered run never asserts completed durability.
+      expect(closedAfterCommit.status).not.toBe('completed');
       expect(await recovered!.closed()).toBe(closedAfterCommit);
       const persisted = await baseStore.load(sessionId);
       const messages = Object.values(persisted!.conversationHistory.messages);
