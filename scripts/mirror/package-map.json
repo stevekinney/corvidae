@@ -383,6 +383,7 @@
             "src/core/engine/persisted-data-version.ts",
             "src/core/engine/pinned-schedule-revision-count.ts",
             "src/core/engine/pinned-schedule-revision.ts",
+            "src/core/engine/purge-supersession.ts",
             "src/core/engine/purge-write-tracking.ts",
             "src/core/engine/queries.ts",
             "src/core/engine/registration.ts",
