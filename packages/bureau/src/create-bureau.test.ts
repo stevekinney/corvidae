@@ -51,6 +51,7 @@ import {
   SCHEDULER_ORIGIN_TAG,
   SchedulerTaskCompletedEvent,
   SchedulerTaskFailedEvent,
+  SchedulerTaskLookupError,
   ScheduleSkippedEvent,
   startDurableRunResult,
   StepCompletedEvent,
@@ -21603,5 +21604,120 @@ describe('bureau:pending-approval-persist idempotency under crash replay (COR-12
 
     expect(overrides.size).toBe(0);
     expect(persistCalls).toBe(0);
+  });
+});
+
+describe('COR-636: scheduler task locator', () => {
+  it('resolves a settled task from its receipt taskId alone', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([{ content: 'located', toolCalls: [] }]),
+      scheduler: { enabled: true, idleDelay: 1 },
+      toolbox: createEmptyToolbox(),
+    });
+
+    try {
+      const { taskId } = await bureau.submitSchedulerTask({
+        message: 'Locate me',
+        priority: 'background',
+      });
+
+      const result = await bureau.awaitSchedulerTask(taskId);
+      expect(result?.content).toBe('located');
+      expect(bureau.locateSchedulerTask(taskId)).toEqual({
+        status: 'terminal',
+        outcome: { status: 'fulfilled', value: result },
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('reports expired and then not-found on a manual runtime with a finite retention window', async () => {
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([{ content: 'expiring', toolCalls: [] }]),
+      scheduler: { enabled: true, retentionWindowMs: 50 },
+      toolbox: createEmptyToolbox(),
+      runtime,
+    });
+
+    try {
+      const { taskId } = await bureau.submitSchedulerTask({
+        message: 'Expire me',
+        priority: 'background',
+      });
+      await bureau.awaitSchedulerTask(taskId);
+      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
+
+      await runtime.advance(50);
+      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'expired' });
+      const expired = await bureau.awaitSchedulerTask(taskId).catch((error: unknown) => error);
+      expect(expired).toBeInstanceOf(SchedulerTaskLookupError);
+      expect(expired).toMatchObject({ reason: 'expired' });
+
+      await runtime.advance(50);
+      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'not-found' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('reports not-found for an unknown id and rejects awaitSchedulerTask with a lookup error', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      scheduler: { enabled: true },
+      toolbox: createEmptyToolbox(),
+    });
+
+    try {
+      expect(bureau.locateSchedulerTask('unknown-task')).toEqual({ status: 'not-found' });
+      const rejection = await bureau
+        .awaitSchedulerTask('unknown-task')
+        .catch((error: unknown) => error);
+      expect(rejection).toBeInstanceOf(SchedulerTaskLookupError);
+      expect(rejection).toMatchObject({ taskId: 'unknown-task', reason: 'not-found' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('throws NOT_CONFIGURED synchronously when the scheduler is not enabled', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+    });
+
+    try {
+      for (const call of [
+        () => bureau.locateSchedulerTask('any'),
+        () => bureau.awaitSchedulerTask('any'),
+      ]) {
+        try {
+          call();
+          throw new Error('expected a synchronous BureauError');
+        } catch (error) {
+          expect(error).toBeInstanceOf(BureauError);
+          expect((error as BureauError).code).toBe('NOT_CONFIGURED');
+        }
+      }
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('rejects an invalid retentionWindowMs from createBureau, naming the option', async () => {
+    const rejection = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      scheduler: { enabled: true, retentionWindowMs: 0 },
+      toolbox: createEmptyToolbox(),
+    }).catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toContain('retentionWindowMs');
   });
 });

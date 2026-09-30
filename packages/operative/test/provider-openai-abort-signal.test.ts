@@ -22,6 +22,7 @@ import {
 } from '../src/providers/test/mock-clients.ts';
 import type {
   OpenAIChatCompletionChunk,
+  OpenAIChatCompletionCreateRequest,
   OpenAIRequestOptions,
   OpenAIStreamingClient,
 } from '../src/providers/types.ts';
@@ -100,10 +101,10 @@ function createStalledStreamingClient(): OpenAIStreamingClient & {
     chat: {
       completions: {
         create(
-          params: Record<string, unknown>,
+          params: OpenAIChatCompletionCreateRequest,
           options?: OpenAIRequestOptions,
         ): AsyncIterable<OpenAIChatCompletionChunk> {
-          bodySignals.push(params['signal']);
+          bodySignals.push((params as unknown as Record<string, unknown>)['signal']);
           const signal = options?.signal;
           return (async function* () {
             yield {

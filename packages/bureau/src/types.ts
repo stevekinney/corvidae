@@ -25,9 +25,11 @@ import type {
   LivenessSnapshot,
   RunFrame,
   RunReport,
+  RunResult,
   Scheduler,
   SchedulerPriority,
   SchedulerState,
+  SchedulerTaskLocation,
   SelectionPlan,
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
@@ -212,6 +214,13 @@ export interface StreamingConfiguration extends Pick<EnhancedStreamingOptions, '
 export interface SchedulerConfiguration {
   enabled?: boolean;
   idleDelay?: number;
+  /**
+   * How long a settled scheduler task stays resolvable through
+   * `locateSchedulerTask` / `awaitSchedulerTask` before it expires (and one
+   * window later is forgotten). Finite and greater than zero; unset keeps
+   * outcomes indefinitely. Forwarded unchanged to `createScheduler`.
+   */
+  retentionWindowMs?: number;
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────
@@ -1197,6 +1206,19 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   createRun(request: CreateRunRequest): Promise<RunSummary>;
   submitSchedulerTask(request: SubmitSchedulerTaskRequest): Promise<SubmitSchedulerTaskResponse>;
+  /**
+   * Resolve a scheduler receipt's `taskId` to `in-progress`, `terminal` (with the
+   * settled outcome), `expired`, or `not-found`. Throws `BureauError`
+   * (`NOT_CONFIGURED`) synchronously when the scheduler is not enabled.
+   */
+  locateSchedulerTask(taskId: string): SchedulerTaskLocation;
+  /**
+   * Await a scheduler task's settlement through its receipt `taskId`. Rejects
+   * with `SchedulerTaskLookupError` for an expired or unknown id. Throws
+   * `BureauError` (`NOT_CONFIGURED`) synchronously when the scheduler is not
+   * enabled.
+   */
+  awaitSchedulerTask(taskId: string): Promise<RunResult | null>;
   listRuns(status?: string): RunSummary[];
   getRun(id: string): RunDetail | undefined;
 

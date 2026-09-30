@@ -2285,6 +2285,10 @@ export async function createRuntimeComposition(
           generate: schedulerGenerate,
           toolbox: fallbackToolbox,
           idleDelay: options.scheduler?.idleDelay ?? 1000,
+          retentionWindowMs: options.scheduler?.retentionWindowMs,
+          // The composed runtime, so idle/wake and retention timers are
+          // deterministic under a manual runtime.
+          runtime: runtimeServices,
           // When a durable engine is composed, preemptable scheduler tasks run as
           // durable workflows and a preemption SUSPENDS the run (preserving its
           // checkpoint) rather than aborting it — a requeue resumes from the last

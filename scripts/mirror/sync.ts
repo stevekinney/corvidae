@@ -278,6 +278,48 @@ async function readHistory(directory: string): Promise<CommitRecord[]> {
     });
 }
 
+/** Recover provenance when GitHub's squash button omitted the App's trailer entirely. */
+async function pullRequestSquashProvenance(
+  directory: string,
+  { sha, subject }: CommitRecord,
+  target: string,
+): Promise<string> {
+  const prefix = `Sync ${target} from corvidae (#`;
+  if (!subject.startsWith(prefix) || !subject.endsWith(')')) return '';
+  const number = subject.slice(prefix.length, -1);
+  if (!/^[1-9][0-9]*$/.test(number)) return '';
+
+  // The remote pull-request ref supplies the original App commit. Matching the complete tree
+  // proves that GitHub's untrailered squash has exactly the bytes the App proposed; a subject
+  // alone, an author name, or a similar-looking diff would not establish that ownership.
+  const fetched = await tryGit(
+    directory,
+    'fetch',
+    '--quiet',
+    '--no-tags',
+    'origin',
+    `refs/pull/${number}/head`,
+  );
+  if (fetched.exitCode !== 0) return '';
+  const originalSubjectOutput = await git(directory, 'log', '-1', '--format=%s', 'FETCH_HEAD');
+  const originalSubject = originalSubjectOutput.trim();
+  if (originalSubject !== `Sync ${target} from corvidae`) return '';
+  const originalTreeOutput = await git(directory, 'rev-parse', 'FETCH_HEAD^{tree}');
+  const squashTreeOutput = await git(directory, 'rev-parse', `${sha}^{tree}`);
+  const originalTree = originalTreeOutput.trim();
+  const squashTree = squashTreeOutput.trim();
+  if (originalTree !== squashTree) return '';
+  const trailerOutput = await git(
+    directory,
+    'log',
+    '-1',
+    `--format=%(trailers:key=${provenanceTrailer},valueonly)`,
+    'FETCH_HEAD',
+  );
+  const trailer = trailerOutput.trim();
+  return /^[0-9a-f]{40}$/.test(trailer) ? trailer : '';
+}
+
 /**
  * Commits the mirror did not author, newest first.
  *
@@ -298,6 +340,12 @@ export async function findForeignCommits(
   ownership?: ForeignCommitOwnership,
 ): Promise<ForeignCommit[]> {
   const history = await readHistory(directory);
+  if (ownership !== undefined) {
+    for (const commit of history) {
+      if (!commit.provenance)
+        commit.provenance = await pullRequestSquashProvenance(directory, commit, ownership.target);
+    }
+  }
   const newestMirrored = history.findIndex((commit) => commit.provenance.length > 0);
   if (newestMirrored === -1) return [];
   const mirrorCommit = history[newestMirrored]!.sha;

@@ -1379,7 +1379,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           "Bun reports the catch clause's own line as missed although the surrounding failWorkflowForRecoveryHook call and this catch's own handleCleanupError body both show real hit counts — the same brace-line attribution artifact documented for catalog-removal.ts's exhaustiveness guard. Also reports one enclosing closure as missed for the same reason. (WFT-134 split this file's contents out of `resume.ts`, where this allowance's key/line previously lived at line 102, into this new file at line 112, to keep `resume.ts` under the implementation-file-size ceiling once the WFT-134 claim-release wrapping was added there.)",
         functions: 1,
-        lines: new Set([112]),
+        lines: new Set([115]),
         requireUncoveredLines: true,
       },
     ],
