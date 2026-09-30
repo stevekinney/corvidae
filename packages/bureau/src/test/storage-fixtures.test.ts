@@ -317,7 +317,7 @@ describe('createMemoryStorageFixture', () => {
     }
     const { fixture, storage } = fixtureWithVerb('scan', () => generate());
 
-    const iterator = storage.scan() as unknown as AsyncGenerator<number>;
+    const iterator = storage.scan() as AsyncGenerator<number>;
     expect(fixture.openHandles()).toEqual(['scan#1']);
     const first = await iterator.next();
     expect(first.value).toBe(1);
@@ -333,7 +333,7 @@ describe('createMemoryStorageFixture', () => {
     }
     const { fixture, storage } = fixtureWithVerb('keys', () => generate());
 
-    const iterator = storage.keys() as unknown as AsyncGenerator<number>;
+    const iterator = storage.keys() as AsyncGenerator<number>;
     await iterator.next();
     expect(fixture.openHandles()).toEqual(['keys#1']);
     expect(await throwingRejectionOf(iterator.throw(new Error('stop')))).toThrow('stop');
