@@ -1378,6 +1378,7 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
       label: 'replacement own completion event',
     });
   });
+
   /** Gate engine A's claim release, which runs after the terminal commit and before teardown. */
   async function createGatedCrossEngine(id: string) {
     const storage = new MemoryStorage();
