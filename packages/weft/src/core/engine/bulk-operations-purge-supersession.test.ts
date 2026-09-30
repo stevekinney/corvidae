@@ -104,6 +104,28 @@ function isPurgeCommit(id: string) {
 }
 
 describe('bulk purge supersession (COR-1388)', () => {
+  it('does not count a scanned run removed by another purge', async () => {
+    const id = `purge-supersede-removed-${(invocation += 1)}`;
+    const base = new MemoryStorage();
+    const gate = gateStorage(
+      base,
+      (method, args) => (method === 'has' || method === 'get') && args[0] === KEYS.teardownOwed(id),
+    );
+    await using firstEngine = await createEngine(gate.storage);
+    await using secondEngine = await createEngine(base);
+    await completeFirstRun(firstEngine, id);
+
+    const firstPurge = firstEngine.purge({ status: 'completed' });
+    await gate.reached;
+    const secondResult = await secondEngine.purge({ status: 'completed' });
+    expect(secondResult.deleted).toBe(1);
+    gate.release();
+
+    const firstResult = await firstPurge;
+    expect(firstResult.deleted).toBe(0);
+    expect(await base.get(KEYS.workflow(id))).toBeNull();
+  });
+
   it('skips a same-id start-new replacement that commits between the scan and the purge', async () => {
     const id = `purge-supersede-scan-${(invocation += 1)}`;
     const base = new MemoryStorage();
