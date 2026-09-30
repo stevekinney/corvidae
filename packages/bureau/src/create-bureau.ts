@@ -7256,7 +7256,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             : undefined;
         const signalName = detail?.['signalName'];
         if (typeof signalName === 'string' && signalName.length > 0) {
-          const id = `human-wait:${runId}:${signalName}`;
+          // The park timestamp differentiates repeated parks on the same
+          // signal, so a re-park after an earlier park resolved is not
+          // suppressed by the earlier park's `resolvedReviewIds` entry. A
+          // recovered park is re-recorded with a fresh timestamp
+          // (`reconstructHumanWaitReviewIfParked`), so its id changes across
+          // a restart.
+          const id = `human-wait:${runId}:${signalName}:${parkedAction.timestamp}`;
           if (!resolvedReviewIds.has(id)) {
             const promptValue = detail?.['prompt'];
             const prompt = typeof promptValue === 'string' ? promptValue : undefined;
@@ -7922,7 +7928,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (pending) return pending;
     if (!auditTrailInstance) return undefined;
 
-    // Ids are `approval:${runId}:${callId}` / `human-wait:${runId}:${signalName}`
+    // Ids are `approval:${runId}:${callId}` / `human-wait:${runId}:${signalName}:${parkedAt}`
     // — the run id is always the second colon-delimited segment.
     const [, runId] = id.split(':');
     if (!runId) return undefined;

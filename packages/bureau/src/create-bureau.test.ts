@@ -10167,7 +10167,7 @@ describe('createBureau review queue (AB-20)', () => {
     await bureau.deleteRun(runId);
 
     // A new run REUSES the same run id and produces the exact same review id
-    // (`human-wait:${runId}:human-response`). Before the fix, this id was
+    // (`human-wait:${runId}:human-response:<timestamp>` when parked in the same millisecond). Before the fix, this id was
     // still in `resolvedReviewIds` from the first run, so it would never
     // surface — after the fix, deleting the first run pruned it.
     const second = createParkedActiveRun();
@@ -10838,7 +10838,11 @@ describe('createBureau review lifecycle (AB-46)', () => {
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
       const approvalReviewId = `approval:${runId}:call-abort-1`;
-      const humanWaitReviewId = `human-wait:${runId}:human-response`;
+      // The id ends in the park timestamp, so read it from the pending list.
+      const humanWaitReviewId = bureau
+        .listPendingReviews()
+        .find((review) => review.kind === 'human-wait')!.id;
+      expect(humanWaitReviewId.startsWith(`human-wait:${runId}:human-response:`)).toBe(true);
       expect(
         bureau
           .listPendingReviews()
@@ -11384,7 +11388,11 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       emitter.dispatchEvent(new HumanWaitParkedEvent('human-response', runId, 'Approve?'));
 
       const approvalReviewId = `approval:${runId}:call-abort-events-1`;
-      const humanWaitReviewId = `human-wait:${runId}:human-response`;
+      // The id ends in the park timestamp, so read it from the pending list.
+      const humanWaitReviewId = bureau
+        .listPendingReviews()
+        .find((review) => review.kind === 'human-wait')!.id;
+      expect(humanWaitReviewId.startsWith(`human-wait:${runId}:human-response:`)).toBe(true);
 
       bureau.abortRun(runId);
       await pollUntil(() => bureau.listPendingReviews().length === 0);
