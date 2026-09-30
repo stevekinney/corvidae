@@ -1481,6 +1481,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -1519,6 +1520,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -1993,6 +1995,7 @@ describe('createBureau', () => {
         // dispatches entirely through the catalog agent's own composition.
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       bureauA.run('echo', 'Recover me');
@@ -2023,6 +2026,7 @@ describe('createBureau', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -2078,6 +2082,7 @@ describe('createBureau', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       bureauA.run('echo', 'Recover me');
@@ -2097,6 +2102,7 @@ describe('createBureau', () => {
         agents: {},
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -2146,6 +2152,7 @@ describe('createBureau', () => {
         },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       bureauA.run('echo', 'Recover me');
@@ -2172,6 +2179,7 @@ describe('createBureau', () => {
         agents: { echo: nonResolvingAgent },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -2383,6 +2391,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -2424,6 +2433,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -2484,6 +2494,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
         workflowVersion: 'v1',
       });
@@ -2513,6 +2524,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
         // Different version than bureau A stamped — simulates a deploy that
         // shipped while this run was in flight.
@@ -2629,6 +2641,7 @@ describe('createBureau', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -2668,6 +2681,7 @@ describe('createBureau', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -2716,6 +2730,7 @@ describe('createBureau', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -2762,6 +2777,7 @@ describe('createBureau', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -2819,6 +2835,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -2871,6 +2888,7 @@ describe('createBureau', () => {
           toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
           stopWhen: stopWhen.noToolCalls(),
         });
       } finally {
@@ -2938,6 +2956,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
       const run = await bureauA.createRun({ message: 'Recover with a tool' });
@@ -2967,6 +2986,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
       bureauB.addEventListener('action', (event) => {
@@ -3027,6 +3047,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3057,6 +3078,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3118,6 +3140,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3152,6 +3175,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3217,6 +3241,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3246,6 +3271,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3302,6 +3328,7 @@ describe('createBureau', () => {
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3325,6 +3352,7 @@ describe('createBureau', () => {
         agents: {},
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -6411,6 +6439,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
     try {
       const run = await bureau.createRun({ message: 'Wait for a signal', principal: 'alice' });
@@ -7645,6 +7674,7 @@ describe('createBureau session signal/update/query with terminal sessions', () =
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
 
     const run = await bureau.createRun({ message: 'Complete me' });
@@ -7667,6 +7697,7 @@ describe('createBureau session signal/update/query with terminal sessions', () =
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
 
     const run = await bureau.createRun({ message: 'Complete me' });
@@ -8151,6 +8182,7 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
     try {
       expect(
@@ -8763,6 +8795,7 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -8781,6 +8814,7 @@ describe('createBureau review queue (AB-20)', () => {
         toolbox: createEmptyToolbox(),
         storage,
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
 
@@ -8849,6 +8883,7 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       recoverAll: () => Promise<unknown[]>;
@@ -8863,6 +8898,7 @@ describe('createBureau review queue (AB-20)', () => {
         toolbox: createEmptyToolbox(),
         storage,
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
       try {
         expect(recoverAllSpy).not.toHaveBeenCalled();
@@ -8904,6 +8940,7 @@ describe('createBureau review queue (AB-20)', () => {
       toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       requestAuthorityValidator: () => true,
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
@@ -9000,6 +9037,7 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
           stopWhen: stopWhen.noToolCalls(),
         });
         const run = await bureauA.createRun({ message: 'Recover me' });
@@ -9013,6 +9051,7 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
         });
         const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
           recoverAll: (options: unknown) => Promise<unknown[]>;
@@ -9045,6 +9084,7 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
           stopWhen: stopWhen.noToolCalls(),
         });
 
@@ -9079,6 +9119,7 @@ describe('createBureau review queue (AB-20)', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
       const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
         recoverAll: () => Promise<unknown[]>;
@@ -9098,6 +9139,7 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createEmptyToolbox(),
           storage: { type: 'memory' },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
         });
         try {
           const report = await bureau.waitForRecovery?.();
@@ -9178,6 +9220,7 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
           stopWhen: stopWhen.noToolCalls(),
         });
         const run = await bureauA.createRun({ message: 'Recover me' });
@@ -9189,6 +9232,7 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createEmptyToolbox(),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
         });
         const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
           list: (filter: unknown) => Promise<unknown>;
@@ -9213,6 +9257,7 @@ describe('createBureau review queue (AB-20)', () => {
           toolbox: createToolbox([createNextTool()]),
           storage: { type: 'sqlite', path: databasePath },
           durableExecution: true,
+          durableOwnership: { ownership: 'none' },
           stopWhen: stopWhen.noToolCalls(),
         });
 
@@ -9396,6 +9441,7 @@ describe('createBureau review queue (AB-20)', () => {
         toolbox: createNeedsApprovalToolbox(approvalSecret, charges),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -9466,6 +9512,7 @@ describe('createBureau review queue (AB-20)', () => {
         ),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
         onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       });
@@ -12302,6 +12349,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         wakeup: true,
         durableBackgroundTasks: 'manual',
         stopWhen: stopWhen.toolCalled('scheduleWakeup'),
@@ -12348,6 +12396,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         wakeup: true,
         durableBackgroundTasks: 'manual',
         stopWhen: stopWhen.noToolCalls(),
@@ -12782,6 +12831,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -12804,6 +12854,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       onlineEvals: {
         judges: [
           {
@@ -13075,6 +13126,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -13100,6 +13152,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       shutdownTimeoutSleep: sleep,
     });
 
@@ -13223,6 +13276,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
       [Symbol.asyncDispose]: () => Promise<void>;
@@ -13249,6 +13303,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         toolbox: createEmptyToolbox(),
         storage: { type: 'memory' },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
       await bureau.dispose();
 
@@ -14805,6 +14860,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       stopWhen: stopWhen.noToolCalls(),
     });
 
@@ -14824,6 +14880,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -14964,6 +15021,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       stopWhen: stopWhen.noToolCalls(),
     });
 
@@ -14979,6 +15037,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -21011,6 +21070,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       stopWhen: stopWhen.noToolCalls(),
     });
     const enginePrototype = Object.getPrototypeOf(probe.durable!.engine) as {
@@ -21069,6 +21129,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
       toolbox: createEmptyToolbox(),
       storage,
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       checkpointRetention: { keepLast: 1 },
     });
     try {

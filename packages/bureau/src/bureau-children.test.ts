@@ -576,6 +576,7 @@ describe('bureau.children over a durable bureau', () => {
       agents: hangingAgents(),
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       onDiagnostic,
     });
 
@@ -625,6 +626,7 @@ describe('bureau.children over a durable bureau', () => {
       agents: { planner: lazyHanging('planner'), worker: lazyHanging('worker') },
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       onDiagnostic,
     });
 
@@ -684,6 +686,7 @@ describe('bureau.children over a durable bureau', () => {
       },
       storage: { type: 'memory' },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       onDiagnostic,
     });
 
@@ -760,6 +763,7 @@ describe('bureau.children across a process restart', () => {
       },
       storage: { type: 'sqlite', path },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       onDiagnostic,
       children: { signals: { worker: proceedSignals }, delegation },
     });
@@ -819,6 +823,7 @@ describe('bureau.children across a process restart', () => {
         },
         storage: { type: 'sqlite', path },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         onDiagnostic,
         children: { signals: { worker: proceedSignals }, delegation },
       });
@@ -861,6 +866,7 @@ describe('bureau.children across a process restart', () => {
         agents: {},
         storage: { type: 'sqlite', path },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         onDiagnostic,
       });
       try {
@@ -900,6 +906,7 @@ describe('bureau.children across a process restart', () => {
         },
         storage: { type: 'sqlite', path },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         onDiagnostic,
         children: { delegation },
       });
@@ -942,6 +949,7 @@ describe('bureau.children across a process restart', () => {
         },
         storage: { type: 'sqlite', path },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         onDiagnostic,
         // A different secret: every grant signed under the old one fails verification.
         children: { delegation: { secret: 'rotated-without-migration' } },

@@ -70,6 +70,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
       toolbox: createToolbox([createNextTool()]),
       storage: { type: 'lmdb', path: databasePath },
       durableExecution: true,
+      durableOwnership: { ownership: 'none' },
       stopWhen: stopWhen.noToolCalls(),
     });
 
@@ -90,6 +91,7 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'lmdb', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 

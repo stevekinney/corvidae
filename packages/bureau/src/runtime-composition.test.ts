@@ -1857,9 +1857,10 @@ describe('createRuntimeComposition durable execution', () => {
 
   it('threads durableOwnership (AB-178) into the durable engine', async () => {
     // The composition forwards BureauOptions.durableOwnership into
-    // createRunEngine — every other test in this file omits it, so
-    // createRunEngine's own default of `ownership: 'none'` applies there.
-    // This test proves the opt-in path reaches the engine: passing
+    // createRunEngine — most other tests in this file omit it, so
+    // createRunEngine's own default of `ownership: 'workflow-lease'` applies
+    // there (tests that simulate a crash opt out with 'none'). This test
+    // proves an explicit value reaches the engine: passing
     // 'workflow-lease' with a short claim TTL builds successfully. Fencing
     // behavior itself (two-engine contention, crash-and-adopt) is already
     // covered at the operative layer (`create-run-engine.test.ts`); this
@@ -3121,6 +3122,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -3171,6 +3173,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -3512,6 +3515,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -3574,6 +3578,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
       saveConcurrentUpdate = async () => {
@@ -3652,6 +3657,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -3697,6 +3703,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -3769,6 +3776,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -3846,6 +3854,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4003,6 +4012,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4059,6 +4069,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4113,6 +4124,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4168,6 +4180,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4237,6 +4250,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4293,6 +4307,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4351,6 +4366,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4421,6 +4437,7 @@ describe('createRuntimeComposition durable execution', () => {
         skills: { catalog: skillCatalog },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4482,6 +4499,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4559,6 +4577,7 @@ describe('createRuntimeComposition durable execution', () => {
         skills: { catalog: skillCatalog },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4610,6 +4629,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4687,6 +4707,7 @@ describe('createRuntimeComposition durable execution', () => {
         skills: { catalog: skillCatalog },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4738,6 +4759,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4817,6 +4839,7 @@ describe('createRuntimeComposition durable execution', () => {
         skills: { catalog: skillCatalog },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4867,6 +4890,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -4929,6 +4953,7 @@ describe('createRuntimeComposition durable execution', () => {
         skills: { catalog: skillCatalog },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 
@@ -4978,6 +5003,7 @@ describe('createRuntimeComposition durable execution', () => {
         toolbox: createToolbox([], { context: {} }),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
       });
 
       try {
@@ -5037,6 +5063,7 @@ describe('createRuntimeComposition durable execution', () => {
         skills: { catalog: skillCatalog },
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
+        durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
       });
 

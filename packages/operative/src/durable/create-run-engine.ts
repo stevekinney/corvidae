@@ -58,11 +58,12 @@ export interface CreateRunEngineOptions {
 
   /**
    * Single-writer ownership posture over the shared durable store (AB-178).
-   * Defaults to `'none'` — today's behavior: one engine per store, enforced by
-   * infrastructure convention (one replica, a `Recreate` deploy) rather than
-   * the engine itself, exactly as AB-39 recorded.
+   * Defaults to `'workflow-lease'`, so more than one engine can share a store
+   * safely without opting in. Pass `'none'` to opt out: one engine per store,
+   * enforced by infrastructure convention (one replica, a `Recreate` deploy)
+   * rather than the engine itself, as AB-39 recorded.
    *
-   * Pass `'workflow-lease'` to let more than one engine share a store safely:
+   * Under `'workflow-lease'`:
    * Weft claims each workflow for exactly one engine before its generator
    * runs (per-workflow fencing, not a single store-wide lock), so a second
    * engine racing to resume the same workflow fails closed with
@@ -324,9 +325,7 @@ export interface RunEngine {
  * the active-run adapter classifies as `error` (not a deadline timeout).
  *
  * **Multi-process safety (AB-178).** {@link CreateRunEngineOptions.ownership}
- * is host-configurable and defaults to `'none'` to preserve the existing
- * single-engine-by-convention contract for arbitrary storage adapters.
- * Passing `'workflow-lease'` claims every workflow for exactly one engine
+ * is host-configurable and defaults to `'workflow-lease'`, which claims every workflow for exactly one engine
  * before its generator runs, so a second engine pointed at the same store
  * fails closed on that workflow instead of double-executing it. Hosts that
  * require multi-engine safety should opt in and provide a
@@ -381,10 +380,10 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
   const engine = await Engine.create({
     storage: options.storage,
     recover: options.recover ?? true,
-    // AB-178 — fenced per-workflow ownership remains host-configurable. Keep
-    // `'none'` as the default because the public Storage contract does not
-    // guarantee `conditionalBatch`; hosts requiring multi-engine safety opt in.
-    ownership: options.ownership ?? 'none',
+    // AB-178 — fenced per-workflow ownership is the default. Weft fails fast at
+    // construction when the storage lacks `conditionalBatch`; hosts with such
+    // an adapter must pass `ownership: 'none'` explicitly.
+    ownership: options.ownership ?? 'workflow-lease',
     ...(options.workflowClaimTtlMs !== undefined
       ? { workflowClaimTtl: options.workflowClaimTtlMs }
       : {}),
