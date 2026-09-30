@@ -11,13 +11,33 @@
  * this fixture run, so replacing it again is safe anywhere in the run order.
  */
 import { expect, test } from './auth-fixtures.ts';
+import { E2E_API_KEY } from './e2e-constants.ts';
 
 const WORKFLOW_ID = 'nightly-reconciliation-demo';
+
+/** The lineage stamp of the current run: changes whenever a fresh run replaces it. */
+async function readReplacement(
+  request: import('@playwright/test').APIRequestContext,
+): Promise<string> {
+  const response = await request.get(`/api/v1/workflows/${WORKFLOW_ID}`, {
+    headers: { authorization: `Bearer ${E2E_API_KEY}` },
+  });
+  expect(response.ok()).toBe(true);
+  const state = (await response.json()) as {
+    restartedFrom?: { workflowExecutionToken?: string; replacedAt?: string | number };
+  };
+  const { workflowExecutionToken, replacedAt } = state.restartedFrom ?? {};
+  expect(workflowExecutionToken).toBeTruthy();
+  return `${workflowExecutionToken}@${replacedAt}`;
+}
 
 test('operator restarts a completed run, seeing the revision it will select first', async ({
   page,
   checkA11y,
 }) => {
+  // The fixture already restarted this id once, so the lineage chips exist
+  // before any click; the stamp is what tells the two runs apart.
+  const stampBefore = await readReplacement(page.request);
   await page.goto(`/workflows/${WORKFLOW_ID}`);
   await expect(
     page.getByRole('heading', { level: 1, name: 'nightly-reconciliation' }),
@@ -43,8 +63,9 @@ test('operator restarts a completed run, seeing the revision it will select firs
   await confirm.click();
   await expect(dialog).not.toBeVisible();
 
-  // Same id, fresh run: the header settles back to a terminal state and the
-  // lineage panel still shows the continuation chain.
+  // Same id, fresh run: the server's lineage stamp changed, so a new run
+  // replaced the prior one, and the panel still shows the continuation chain.
+  await expect.poll(() => readReplacement(page.request)).not.toBe(stampBefore);
   await expect(page.getByText('Continuation chain · same workflow id')).toBeVisible();
   await expect(page.getByText('Previous run')).toBeVisible();
   await checkA11y('workflow detail — after restart');

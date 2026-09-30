@@ -57,6 +57,9 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await checkA11y('schedules — edit slide-over (all options editable)');
 
   await drawer.getByLabel('Description').fill('Edited by the e2e flow');
+  const backfill = drawer.getByRole('switch', { name: 'Backfill missed occurrences' });
+  await expect(backfill).not.toBeChecked();
+  await backfill.click();
   await overlap.getByRole('radio', { name: /Queue/i }).click();
   await drawer.getByLabel('Jitter').fill('30s');
   await drawer
@@ -79,6 +82,7 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await expect(overlap.getByRole('radio', { name: /Queue/i })).toBeChecked();
   await expect(drawer.getByLabel('Jitter')).toHaveValue('30s');
   await expect(drawer.getByLabel('Description')).toHaveValue('Edited by the e2e flow');
+  await expect(backfill).toBeChecked();
 
   await drawer.getByRole('button', { name: 'Save changes' }).click();
   await expect(drawer).not.toBeVisible();
@@ -88,6 +92,16 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await expect(page.getByText('Overlap policy: Queue')).toBeVisible();
   await expect(page.getByText('±30000ms')).toBeVisible();
   await checkA11y('schedule detail — edited options persisted');
+
+  // The detail page renders neither description nor backfill, so reopen the
+  // drawer (rebuilt from the server's copy) to prove both reached the server.
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit' }).click();
+  const reopened = page.getByRole('dialog', { name: 'Edit schedule' });
+  await expect(reopened).toBeVisible();
+  await expect(reopened.getByLabel('Description')).toHaveValue('Edited by the e2e flow');
+  await expect(reopened.getByRole('switch', { name: 'Backfill missed occurrences' })).toBeChecked();
+  await expect(reopened.getByLabel('Jitter')).toHaveValue('30000ms');
 });
 
 test('the schedule edit drawer is usable across supported widths and themes', async ({ page }) => {
