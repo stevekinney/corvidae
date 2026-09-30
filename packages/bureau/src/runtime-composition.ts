@@ -1143,7 +1143,9 @@ export function createRoutingStrategy(configuration: RoutingConfiguration): Rout
             if (useSimple) return 'simple';
 
             const useFrontier =
-              configuration.frontier !== undefined && signals.conversationDepth > 20;
+              configuration.frontier !== undefined &&
+              configuration.frontier !== '' &&
+              signals.conversationDepth > 20;
             return useFrontier ? 'frontier' : 'complex';
           },
         }),
