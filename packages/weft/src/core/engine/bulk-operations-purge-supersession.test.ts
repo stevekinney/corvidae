@@ -147,6 +147,31 @@ describe('bulk purge supersession (COR-1388)', () => {
     await expectReplacementSurvives(engine, base, id, replacement, deleted);
   });
 
+  it('skips a same-id start-new replacement that commits between the purge read and its generation read', async () => {
+    const id = `purge-supersede-generation-${(invocation += 1)}`;
+    const base = new MemoryStorage();
+    let armed = false;
+    const gate = gateStorage(
+      base,
+      (method, args) => armed && method === 'get' && args[0] === KEYS.workflowGeneration(id),
+    );
+    await using engine = await createEngine(gate.storage);
+    await completeFirstRun(engine, id);
+
+    armed = true;
+    const purging = engine.purge({ status: 'completed' });
+    await gate.reached;
+    const replacement = await engine.start('purge-supersession-echo', 'NEW', {
+      id,
+      onTerminalConflict: 'start-new',
+    });
+    await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    gate.release();
+
+    const { deleted } = await purging;
+    await expectReplacementSurvives(engine, base, id, replacement, deleted);
+  });
+
   it('skips a failed run that retryFailedAll reactivates in place between the scan and the purge', async () => {
     const id = `purge-supersede-retry-${(invocation += 1)}`;
     const base = new MemoryStorage();

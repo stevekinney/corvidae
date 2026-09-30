@@ -344,7 +344,8 @@ async function runBulkDeletion(
 
     for (const deletionResult of deletionResults) {
       if (deletionResult.status === 'fulfilled') {
-        // `false` is a run superseded by a same-id start-new after the load: skipped, not deleted.
+        // `false` is a run that moved after the load (start-new replacement, retry reactivation,
+        // or a concurrent purge): skipped, not deleted.
         if (deletionResult.value) deleted += 1;
       } else {
         deletionErrors.push(deletionResult.reason);
