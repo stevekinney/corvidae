@@ -110,6 +110,152 @@ describe('createMemoryStorageFixture', () => {
     expect((caught as Error).message).toBe('deliberate failure');
     expect(fixture.openHandles()).toEqual([]);
   });
+
+  /** A fixture whose `verb` is replaced by `replacement`, through `wrapStorage`. */
+  function fixtureWithVerb(verb: string, replacement: (...args: unknown[]) => unknown) {
+    const fixture = createMemoryStorageFixture({
+      wrapStorage: (storage) =>
+        new Proxy(storage, {
+          get(target, property, receiver) {
+            if (property !== verb) return Reflect.get(target, property, receiver);
+            return replacement;
+          },
+        }),
+    });
+    return { fixture, storage: fixture.configuration as unknown as Record<string, Function> };
+  }
+
+  /** A thenable that is not a native Promise and settles only when told to. */
+  function manualThenable() {
+    let onFulfilled: ((value: unknown) => void) | undefined;
+    let onRejected: ((reason: unknown) => void) | undefined;
+    const thenable = {
+      then(resolve?: (value: unknown) => void, reject?: (reason: unknown) => void) {
+        onFulfilled = resolve;
+        onRejected = reject;
+      },
+    };
+    return {
+      thenable,
+      resolve: (value: unknown) => onFulfilled?.(value),
+      reject: (reason: unknown) => onRejected?.(reason),
+    };
+  }
+
+  it('openHandles() keeps a non-native thenable open until it resolves', () => {
+    const manual = manualThenable();
+    expect(manual.thenable instanceof Promise).toBe(false);
+    const { fixture, storage } = fixtureWithVerb('get', () => manual.thenable);
+
+    storage.get!('key');
+    expect(fixture.openHandles()).toEqual(['get#1']);
+
+    manual.resolve(null);
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() keeps a non-native thenable open until it rejects', () => {
+    const manual = manualThenable();
+    const { fixture, storage } = fixtureWithVerb('get', () => manual.thenable);
+
+    storage.get!('key');
+    expect(fixture.openHandles()).toEqual(['get#1']);
+
+    manual.reject(new Error('deliberate failure'));
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() still closes a genuinely synchronous return immediately', () => {
+    const { fixture, storage } = fixtureWithVerb('count', () => 3);
+
+    expect(storage.count!()).toBe(3);
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  function manualIterable() {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const iterable: AsyncIterable<number> = {
+      [Symbol.asyncIterator]() {
+        let index = 0;
+        return {
+          async next() {
+            await gate;
+            index += 1;
+            return index <= 2
+              ? { done: false as const, value: index }
+              : { done: true as const, value: undefined };
+          },
+          async return() {
+            return { done: true as const, value: undefined };
+          },
+          async throw(error?: unknown) {
+            throw error;
+          },
+        };
+      },
+    };
+    return { iterable, release };
+  }
+
+  it('openHandles() keeps an AsyncIterable open until iteration is exhausted', async () => {
+    const { iterable, release } = manualIterable();
+    const { fixture, storage } = fixtureWithVerb('scan', () => iterable);
+
+    const seen: number[] = [];
+    const iteration = (async () => {
+      for await (const value of storage.scan!() as AsyncIterable<number>) seen.push(value);
+    })();
+    expect(fixture.openHandles()).toEqual(['scan#1']);
+
+    release();
+    await iteration;
+    expect(seen).toEqual([1, 2]);
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() keeps an AsyncIterable open until the consumer breaks out (return())', async () => {
+    const { iterable, release } = manualIterable();
+    release();
+    const { fixture, storage } = fixtureWithVerb('keys', () => iterable);
+
+    for await (const value of storage.keys!() as AsyncIterable<number>) {
+      expect(value).toBe(1);
+      expect(fixture.openHandles()).toEqual(['keys#1']);
+      break;
+    }
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() clears an AsyncIterable whose iteration throws', async () => {
+    const failing: AsyncIterable<number> = {
+      [Symbol.asyncIterator]: () => ({
+        next: async () => {
+          throw new Error('deliberate failure');
+        },
+      }),
+    };
+    const { fixture, storage } = fixtureWithVerb('query', () => failing);
+
+    const iterator = (storage.query!() as AsyncIterable<number>)[Symbol.asyncIterator]();
+    expect(fixture.openHandles()).toEqual(['query#1']);
+    await expect(iterator.next()).rejects.toThrow('deliberate failure');
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() clears an AsyncIterable when the consumer calls throw()', async () => {
+    const { iterable, release } = manualIterable();
+    release();
+    const { fixture, storage } = fixtureWithVerb('scan', () => iterable);
+
+    const iterator = (storage.scan!() as AsyncIterable<number>)[Symbol.asyncIterator]();
+    await iterator.next();
+    expect(fixture.openHandles()).toEqual(['scan#1']);
+    await expect(iterator.throw!(new Error('stop'))).rejects.toThrow('stop');
+    expect(fixture.openHandles()).toEqual([]);
+  });
 });
 
 describe('createSqliteStorageFixture', () => {
