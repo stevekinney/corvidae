@@ -309,6 +309,36 @@ describe('createMemoryStorageFixture', () => {
     expect(await throwingRejectionOf(iterator.throw?.(new Error('stop')))).toThrow('stop');
     expect(fixture.openHandles()).toEqual([]);
   });
+
+  it('openHandles() tracks next()/return() called directly on an iterator-shaped result', async () => {
+    async function* generate(): AsyncGenerator<number> {
+      yield 1;
+      yield 2;
+    }
+    const { fixture, storage } = fixtureWithVerb('scan', () => generate());
+
+    const iterator = storage.scan() as unknown as AsyncGenerator<number>;
+    expect(fixture.openHandles()).toEqual(['scan#1']);
+    const first = await iterator.next();
+    expect(first.value).toBe(1);
+    expect(fixture.openHandles()).toEqual(['scan#1']);
+    await iterator.return(undefined);
+    expect(fixture.openHandles()).toEqual([]);
+  });
+
+  it('openHandles() clears an iterator-shaped result when throw() is called directly', async () => {
+    async function* generate(): AsyncGenerator<number> {
+      yield 1;
+      yield 2;
+    }
+    const { fixture, storage } = fixtureWithVerb('keys', () => generate());
+
+    const iterator = storage.keys() as unknown as AsyncGenerator<number>;
+    await iterator.next();
+    expect(fixture.openHandles()).toEqual(['keys#1']);
+    expect(await throwingRejectionOf(iterator.throw(new Error('stop')))).toThrow('stop');
+    expect(fixture.openHandles()).toEqual([]);
+  });
 });
 
 describe('createSqliteStorageFixture', () => {
