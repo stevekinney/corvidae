@@ -68,6 +68,19 @@ describe('package-surface.json', () => {
     }
   });
 
+  test('keeps Editor golden fixtures and build-cache markers out of the public allowlist', async () => {
+    const surface = await loadPackageSurface();
+    const files = surface.packages['@lostgradient/editor']?.files;
+    expect(Array.isArray(files)).toBe(true);
+    if (!Array.isArray(files)) return;
+    expect(filesCoverPath(files, 'dist/export/__fixtures__/diff-review/empty-review.json')).toBe(
+      false,
+    );
+    expect(filesCoverPath(files, 'dist/.build-input-hash')).toBe(false);
+    expect(filesCoverPath(files, 'dist/diff-review-state/fixtures.js')).toBe(true);
+    expect(filesCoverPath(files, 'dist/diff-review-state/fixtures.d.ts')).toBe(true);
+  });
+
   test('exports every Weft package subpath emitted by worker codegen', async () => {
     const packageSurface = await loadPackageSurface();
     const entry = packageSurface.packages['@lostgradient/weft'];
