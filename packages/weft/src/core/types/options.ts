@@ -556,6 +556,7 @@ export interface EngineOptions<TServices = unknown> {
  * The two modes are mutually exclusive by construction, not two independent
  * flags that could both be set — replacing the pre-COR-152
  * local-Worker-only `activityExecution` shape.
+ *
  * Revoke a generated worker URL after the engine's worker pool is disposed.
  *
  * @example
