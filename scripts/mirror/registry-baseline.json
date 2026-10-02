@@ -1120,8 +1120,8 @@
     },
     "@lostgradient/operative": {
       "workspace": "@lostgradient/operative",
-      "version": "0.15.1",
-      "fetchedAt": "2026-09-30",
+      "version": "0.15.2",
+      "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
         "./anthropic",
