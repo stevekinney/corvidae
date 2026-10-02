@@ -373,6 +373,8 @@ export interface ForeignCommitOwnership {
    * COR-1190's ruling), which the transform reads for presence and never writes.
    */
   targetOwnedFiles?: ReadonlySet<string> | undefined;
+  /** Transform-owned manifest values freshly computed from the trusted source for this clone. */
+  generatedManifestKeys?: ReadonlyMap<string, Readonly<Record<string, unknown>>> | undefined;
   /**
    * What this sync's plan writes, prunes and retires. A path outside all three is one the sync
    * leaves exactly as it is, so a hand change to it cannot be clobbered and is the target's own
@@ -434,7 +436,14 @@ async function isTargetOwnedDelta(
   directory: string,
   parent: string,
   sha: string,
-  { policy, target, targetOwnedFiles, versionConstantPaths, transform }: ForeignCommitOwnership,
+  {
+    policy,
+    target,
+    targetOwnedFiles,
+    versionConstantPaths,
+    generatedManifestKeys,
+    transform,
+  }: ForeignCommitOwnership,
 ): Promise<boolean> {
   // `--no-renames`: a rename is judged as the deletion of its old path plus the addition of its
   // new one, so moving an emitted file out of the sync's reach is still a deletion the sync would
@@ -465,8 +474,15 @@ async function isTargetOwnedDelta(
     if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
     const before = await git(directory, 'show', `${parent}:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);
+    const afterManifest = JSON.parse(after) as Record<string, unknown>;
+    const generated = generatedManifestKeys?.get(path);
     for (const key of changedTopLevelKeys(before, after)) {
-      if (transformOwnedKeys.has(key)) return false;
+      if (
+        transformOwnedKeys.has(key) &&
+        (generated === undefined ||
+          JSON.stringify(afterManifest[key]) !== JSON.stringify(generated[key]))
+      )
+        return false;
     }
   }
   return true;
@@ -510,6 +526,16 @@ export async function foreignCommitOwnership(options: {
     policy,
     target: options.target,
     targetOwnedFiles: await declaredBuildInputs(options.target),
+    generatedManifestKeys: new Map(
+      Object.entries(plan.files)
+        .filter(
+          ([path, contents]) => basename(path) === 'package.json' && typeof contents === 'string',
+        )
+        .map(([path, contents]) => [
+          path,
+          JSON.parse(contents as string) as Record<string, unknown>,
+        ]),
+    ),
     versionConstantPaths: new Map(
       plan.published.flatMap((entry) => {
         const declared = versionConstants[entry.workspace];

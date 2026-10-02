@@ -943,6 +943,54 @@ describe('runSync in pull-request mode', () => {
 });
 
 describe('the foreign-commit guard', () => {
+  test('accepts a mixed target commit only when its generated manifest keys match the trusted plan', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-mixed-manifest-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      const path = 'packages/editor/package.json';
+      const original = { name: '@lostgradient/editor', version: '0.15.0', files: ['dist'] };
+      const generated = {
+        ...original,
+        files: ['dist', '!src/**/*.test.ts', '!src/**/__tests__/**'],
+      };
+      await Bun.write(join(root, path), `${JSON.stringify(original)}\n`);
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+
+      await Bun.write(join(root, path), `${JSON.stringify(generated)}\n`);
+      await Bun.write(
+        join(root, 'packages/editor/scripts/check-weight.ts'),
+        'export const limit = 550;\n',
+      );
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Correct Editor packaging and budget');
+      const ownership = {
+        policy: await loadTargetOwnedPolicy(),
+        target: 'cinder',
+        transform: { files: new Set([path]), prefixes: [] },
+        generatedManifestKeys: new Map([[path, generated]]),
+      };
+      expect(await findForeignCommits(root, ownership)).toEqual([]);
+
+      const unexpected = { ...generated, files: ['dist', '!src/**'] };
+      await Bun.write(join(root, path), `${JSON.stringify(unexpected)}\n`);
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Change generated files unexpectedly');
+      const foreign = await findForeignCommits(root, ownership);
+      expect(foreign.map(({ subject }) => subject)).toEqual([
+        'Change generated files unexpectedly',
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('recognizes a squash that dropped provenance only when its pull-request head has the same tree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-'));
     const remote = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-remote-'));
