@@ -4,8 +4,8 @@
   "packages": {
     "@lostgradient/chat": {
       "workspace": "@lostgradient/chat",
-      "version": "0.14.0",
-      "fetchedAt": "2026-09-30",
+      "version": "0.15.0",
+      "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
         "./composer-popover",
@@ -43,8 +43,8 @@
     },
     "@lostgradient/cinder": {
       "workspace": "@lostgradient/cinder",
-      "version": "0.26.2",
-      "fetchedAt": "2026-09-30",
+      "version": "0.26.3",
+      "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
         "./access-gate",
@@ -1043,19 +1043,30 @@
     "@lostgradient/cryptography": {
       "workspace": "@lostgradient/cryptography",
       "version": "0.0.1",
-      "fetchedAt": "2026-09-30",
+      "fetchedAt": "2026-10-02",
       "subpaths": ["."]
     },
     "@lostgradient/editor": {
       "workspace": "@lostgradient/editor",
-      "version": "0.14.0",
-      "fetchedAt": "2026-09-30",
+      "version": "0.15.0",
+      "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
         "./anchor-decorations",
         "./anchoring",
         "./comments",
         "./comments/types",
+        "./diff-review",
+        "./diff-review-comments",
+        "./diff-review-comments/examples",
+        "./diff-review-comments/schema",
+        "./diff-review-comments/styles",
+        "./diff-review-comments/variables",
+        "./diff-review-state",
+        "./diff-review/examples",
+        "./diff-review/schema",
+        "./diff-review/styles",
+        "./diff-review/variables",
         "./diff-viewer",
         "./diff-viewer/examples",
         "./diff-viewer/schema",
@@ -1084,19 +1095,19 @@
     "@lostgradient/embeddings": {
       "workspace": "@lostgradient/embeddings",
       "version": "0.0.1",
-      "fetchedAt": "2026-09-30",
+      "fetchedAt": "2026-10-02",
       "subpaths": ["."]
     },
     "@lostgradient/lifecycle": {
       "workspace": "@lostgradient/lifecycle",
       "version": "0.0.2",
-      "fetchedAt": "2026-09-30",
+      "fetchedAt": "2026-10-02",
       "subpaths": ["."]
     },
     "@lostgradient/markdown": {
       "workspace": "@lostgradient/markdown",
-      "version": "0.5.0",
-      "fetchedAt": "2026-09-30",
+      "version": "0.6.0",
+      "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
         "./diff",
@@ -1159,7 +1170,7 @@
     "@lostgradient/tool-protocol": {
       "workspace": "@lostgradient/tool-protocol",
       "version": "0.0.2",
-      "fetchedAt": "2026-09-30",
+      "fetchedAt": "2026-10-02",
       "subpaths": ["."]
     },
     "@lostgradient/weft": {
@@ -1204,7 +1215,7 @@
     "armorer": {
       "workspace": "armorer",
       "version": "2.4.3",
-      "fetchedAt": "2026-09-30",
+      "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
         "./adapters/anthropic",
@@ -1231,7 +1242,7 @@
     "conversationalist": {
       "workspace": "conversationalist",
       "version": "2.1.2",
-      "fetchedAt": "2026-09-30",
+      "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
         "./adapters/anthropic",
