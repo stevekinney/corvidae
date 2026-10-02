@@ -8,6 +8,7 @@
  * SQLite file.
  */
 import type { DurableEventEnvelope } from '@lostgradient/operative';
+import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { goalTransitionId } from './goal-state';
@@ -219,14 +220,23 @@ describe('who may read a goal history', () => {
 
   it('hides the retention gap from a stranger too', async () => {
     const bureau = await owned();
+    // Advance the feed's retention floor so a cursor before it is genuinely a gap.
+    const storage = await resolveStorage({ type: 'sqlite', path: database.path });
+    cleanups.push(() => storage[Symbol.dispose]());
+    await createFleetEventFeed(storage).retain({ beforeSequence: 2 });
+    const options = { since: '0' };
 
-    // A cursor from before the retention floor would be a gap for the owner; for a
-    // stranger it must still be the not-found answer, never retention metadata.
+    const owner = await bureau.eventHistory(
+      { kind: 'goal', id: 'g1' },
+      { ...options, principal: 'alice' },
+    );
     const stranger = await bureau.eventHistory(
       { kind: 'goal', id: 'g1' },
-      { principal: 'bob', since: '0' },
+      { ...options, principal: 'bob' },
     );
 
+    // The owner really is told about the gap; the stranger learns nothing, not even that.
+    expect(owner).toMatchObject({ outcome: 'gap', firstRetainedSequence: 2 });
     expect(stranger).toEqual({ outcome: 'not-found' });
   });
 

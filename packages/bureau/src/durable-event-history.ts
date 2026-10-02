@@ -29,6 +29,13 @@
  * `FleetEventFeed` writer/reader in the package, so there was no existing
  * convention to adopt instead.
  *
+ * One exception to that encoding (COR-851): a `'goal'` owner is encoded as
+ * `bureau-goal-audit:${id}`, not `goal:${id}`. `goal:${id}` is the id of the
+ * goal's controller workflow, and Weft deletes every fleet event carrying a
+ * workflow's id when it purges that workflow, so a controller replaced by a
+ * restart (or retired by retention) would erase the goal's audit history. See
+ * `GOAL_OWNER_WORKFLOW_PREFIX`.
+ *
  * Producer wiring (AB-311's coordinator amendment, 2026-09-03; widened by
  * AB-320, 2026-09-03): `createDurableEventProducer` below sinks the
  * run/session/schedule-fire durability rows AB-87's matrix classifies as
