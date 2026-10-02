@@ -1825,6 +1825,25 @@ describe('WorkerExecutionStrategy', () => {
       expect(mockPool.discard).not.toHaveBeenCalled();
     });
 
+    it('still releases the worker when the cancel message cannot be sent', async () => {
+      setup(1, { discardOnCancel: true });
+      await parkOneAndActivateAnother('wf-parked', 'wf-retired');
+      const worker = firstWorker();
+      messages.length = 0;
+      worker.postMessage.mockImplementation(() => {
+        throw new Error('worker channel closed');
+      });
+
+      // The failed send is reported to the caller (abandonment contains it), but
+      // the worker is released and nothing else on it is disturbed.
+      expect(() => strategy.retireWorkflow('wf-retired')).toThrow('worker channel closed');
+
+      expect(messages).toEqual([]);
+      expect(worker.terminate).not.toHaveBeenCalled();
+      expect(mockPool.discard).not.toHaveBeenCalled();
+      expect(mockPool.release).toHaveBeenCalledTimes(2);
+    });
+
     it('does nothing when no worker is assigned', () => {
       setup();
       strategy.retireWorkflow('wf-nonexistent');

@@ -45,7 +45,12 @@ export function abandonWorkflowAfterCheckpointConflict(
   if (internals.checkpointConflicts.has(workflowId)) return;
   // Read before release: the run's identity lives in the in-memory checkpoint.
   const workflowExecutionToken = workflowExecutionTokenForWorkflow(internals, workflowId);
-  internals.strategy.retireWorkflow(workflowId);
+  try {
+    internals.strategy.retireWorkflow(workflowId);
+  } catch {
+    // A retirement that cannot reach the execution (a closed worker channel)
+    // must not stop the local cleanup below, which is what settles result().
+  }
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.durableInlineOperations.delete(workflowId);
   releaseAbandonedWorkflowMemory(internals, workflowId, callbacks);
@@ -58,7 +63,25 @@ export function abandonWorkflowAfterCheckpointConflict(
     waiter.reject(error);
   }
 
-  process.emitWarning(new WeftWorkflowCheckpointConflictWarning(workflowId));
+  emitCheckpointConflictWarning(new WeftWorkflowCheckpointConflictWarning(workflowId));
+}
+
+type WarningProcess = { emitWarning?: (warning: Error) => void } | null | undefined;
+
+/**
+ * Emit the operator warning without assuming a Node-style runtime: `process` is
+ * not a global in browser or Service Worker builds, where two engines can still
+ * share one IndexedDB store, so fall back to `console.warn` there.
+ */
+export function emitCheckpointConflictWarning(
+  warning: WeftWorkflowCheckpointConflictWarning,
+  runtimeProcess: WarningProcess = (globalThis as { process?: WarningProcess }).process,
+): void {
+  if (typeof runtimeProcess?.emitWarning === 'function') {
+    runtimeProcess.emitWarning(warning);
+    return;
+  }
+  console.warn(warning);
 }
 
 /**

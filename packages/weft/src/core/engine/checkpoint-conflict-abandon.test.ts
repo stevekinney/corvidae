@@ -9,7 +9,7 @@
  * conditional batch loses. After that point the wrapper records every write the
  * losing engine attempts.
  */
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
@@ -22,6 +22,7 @@ import { activity, workflow, type WorkflowContext, type WorkflowState } from '..
 import { clearPurgedWorkflowInMemoryState } from './bulk-operations-purge.ts';
 import {
   abandonWorkflowAfterCheckpointConflict,
+  emitCheckpointConflictWarning,
   persistCheckpointAbandoningOnConflict,
 } from './checkpoint-conflict-abandon.ts';
 import {
@@ -365,6 +366,51 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
 
     expect(retired).toEqual(['worker-run']);
     expect(cancelled).toEqual([]);
+  });
+
+  it('finishes abandoning when the strategy cannot retire the execution', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const activeStrategy = internals.strategy;
+    internals.strategy = new Proxy(activeStrategy, {
+      get(target, property) {
+        if (property === 'retireWorkflow') {
+          return () => {
+            throw new Error('worker channel closed');
+          };
+        }
+        const original: unknown = Reflect.get(target, property, target);
+        return typeof original === 'function' ? original.bind(target) : original;
+      },
+    });
+    const pending = getWorkflowResultPromise(internals, 'unreachable-run');
+    const conflict = new WorkflowCheckpointConflictError('unreachable-run');
+    const warning = collectConflictWarnings();
+    try {
+      abandonWorkflowAfterCheckpointConflict(internals, conflict, { swallowPromiseRejection });
+      await warning.received;
+    } finally {
+      warning.stop();
+      internals.strategy = activeStrategy;
+    }
+
+    expect(await rejectionOf(pending)).toBe(conflict);
+    expect(internals.checkpointConflicts.get('unreachable-run')?.error).toBe(conflict);
+    expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual(['unreachable-run']);
+  });
+
+  it('warns through console.warn where the runtime has no process.emitWarning', () => {
+    const warning = new WeftWorkflowCheckpointConflictWarning('browser-run');
+    const consoleWarn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      emitCheckpointConflictWarning(warning, null);
+      expect(consoleWarn).toHaveBeenCalledWith(warning);
+    } finally {
+      consoleWarn.mockRestore();
+    }
+    const emitted: Error[] = [];
+    emitCheckpointConflictWarning(warning, { emitWarning: (value) => emitted.push(value) });
+    expect(emitted).toEqual([warning]);
   });
 
   it('rethrows a persist failure that is not a checkpoint conflict without abandoning', async () => {

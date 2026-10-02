@@ -253,6 +253,49 @@ describe('checkpoint commit compare-and-swap guard', () => {
     ).toBeInstanceOf(WorkflowCheckpointConflictError);
   });
 
+  it('classifies a lost commit as a conflict when the follow-up checkpoint read fails', async () => {
+    const initialCheckpoint = createCheckpoint('checkpoint-workflow', '1', 1_000);
+    const { workflowId } = initialCheckpoint;
+    const readFailure = new Error('storage read unavailable');
+    let commitLost = false;
+    class ReadFailsAfterLossStorage extends MemoryStorage {
+      override async conditionalBatch(
+        conditions: ConditionalBatchCondition[],
+        operations: BatchOperation[],
+      ): Promise<boolean> {
+        const applied = await super.conditionalBatch(conditions, operations);
+        if (!applied) commitLost = true;
+        return applied;
+      }
+      override async get(key: string): Promise<Uint8Array | null> {
+        if (commitLost && key === KEYS.checkpoint(workflowId)) throw readFailure;
+        return super.get(key);
+      }
+    }
+    const storage = new ReadFailsAfterLossStorage();
+    const internals = createCheckpointInternals(storage, initialCheckpoint);
+    rememberRecoveredCheckpoint(internals, initialCheckpoint);
+    await storage.put(
+      KEYS.checkpoint(workflowId),
+      serializeCheckpoint({ ...initialCheckpoint, step: 1, createdAt: 2_000 }),
+    );
+
+    const reason = await rejectionOf(
+      persistCheckpoint(
+        internals,
+        workflowId,
+        checkpointOperation,
+        serializeCheckpointBuffer({ ...initialCheckpoint, step: 1, createdAt: 3_000 }),
+        createPersistCallbacks(),
+      ),
+    );
+
+    // The compare-and-swap already lost, so an unclassifiable loss must stay on
+    // the write-free conflict path rather than surface as an ordinary failure.
+    expect(reason).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect((reason as Error).cause).toBe(readFailure);
+  });
+
   it('keeps the generic lost-race error when the batch had no checkpoint condition to lose', async () => {
     const storage = new CountingConditionalBatchStorage();
     const initialCheckpoint = createCheckpoint('checkpoint-workflow', '1', 1_000);

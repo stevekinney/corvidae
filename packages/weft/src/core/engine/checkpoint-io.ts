@@ -502,7 +502,15 @@ async function throwCheckpointCommitLoss(
   workflowId: string,
   commit: CheckpointCommit,
 ): Promise<never> {
-  if (await checkpointBytesChangedUnderWriter(internals, workflowId, commit)) {
+  let checkpointChanged: boolean;
+  try {
+    checkpointChanged = await checkpointBytesChangedUnderWriter(internals, workflowId, commit);
+  } catch (readError) {
+    // The compare-and-swap already lost. If the loss cannot be classified it
+    // must stay on the write-free conflict path, never fail the run normally.
+    throw new WorkflowCheckpointConflictError(workflowId, { cause: readError });
+  }
+  if (checkpointChanged) {
     throw new WorkflowCheckpointConflictError(workflowId);
   }
   throw new Error(

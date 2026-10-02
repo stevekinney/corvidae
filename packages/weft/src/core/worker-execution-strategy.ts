@@ -265,10 +265,9 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
   }
 
   /**
-   * Retire a stale execution without disturbing any other workflow: always the
-   * cooperative path, even under `discardOnCancel`, because discarding the worker
-   * durably fails every workflow parked on it. Safe because abandonment happens
-   * only while the worker is idle, awaiting the reply to the turn that lost.
+   * Retire a stale execution without disturbing other workflows: always the
+   * cooperative path, since discarding the worker fails every workflow parked on
+   * it. Abandonment happens only while the worker awaits the turn that lost.
    */
   retireWorkflow(workflowId: string): void {
     this.#cancelWorkflow(workflowId, false);
@@ -299,8 +298,11 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
         message.protocolVersion = WORKER_PROTOCOL_VERSION;
       }
 
-      worker.postMessage(message);
-      this.#releaseActiveWorker(workflowId);
+      try {
+        worker.postMessage(message);
+      } finally {
+        this.#releaseActiveWorker(workflowId);
+      }
       return;
     }
 
