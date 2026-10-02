@@ -150,7 +150,7 @@ describe('surface parity', () => {
   test('cinder is regenerated to the full published surface, not a subset', () => {
     const { plan } = committedPlans.cinder;
     const result = plan.parity.find((entry) => entry.publicName === '@lostgradient/cinder');
-    expect(result?.baselineVersion).toBe('0.26.2');
+    expect(result?.baselineVersion).toBe('0.26.3');
     expect(result?.missing).toEqual([]);
     expect(result?.added).toEqual([]);
   });
