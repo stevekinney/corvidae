@@ -400,11 +400,6 @@ export async function performResumeAfterClaimAcquired(
   onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'],
   skipEagerRevisionCheck?: boolean,
 ): Promise<WorkflowHandle> {
-  // A local resume means this engine is driving the run again, so a loss it
-  // recorded earlier no longer applies. Drop it before the pre-checks below,
-  // or `failWorkflow` would skip a legitimate failure they raise.
-  internals.checkpointConflicts.delete(workflowId);
-
   // Load terminal-cleanup tracking BEFORE anything below that can commit a
   // terminal failure for this run: ensures `workflowsNeedingTerminalCleanup`
   // is populated before such a `failWorkflow()` commits a proper token.

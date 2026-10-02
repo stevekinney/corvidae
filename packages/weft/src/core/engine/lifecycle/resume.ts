@@ -109,6 +109,11 @@ export async function resumeWorkflowFromStorage(
   const acquireResult = await acquireStandaloneClaimBeforeResume(internals, workflowId);
   recordFreshClaimEpoch(acquireResult, options?.freshClaimTracker);
 
+  // A local resume means this engine is driving the run again, so a checkpoint
+  // loss it recorded earlier no longer applies. Drop it before the recovery
+  // pre-checks, or `failWorkflow` would skip a legitimate failure they raise.
+  internals.checkpointConflicts.delete(workflowId);
+
   try {
     return await performResumeAfterClaimAcquired(
       internals,
