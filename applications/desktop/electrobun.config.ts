@@ -42,8 +42,11 @@ export default {
     // HMR owns renderer rebuilds in development; watching Vite's output would
     // restart the application on every one of them.
     watchIgnore: ['dist/**'],
-    mac: { bundleCEF: false },
-    linux: { bundleCEF: false },
-    win: { bundleCEF: false },
+    // Rendered from `assets/icon.svg` by `scripts/generate-icon.ts`. Without
+    // `icons`, Electrobun looks for `icon.iconset` at the project root and warns
+    // on every macOS build when it is missing.
+    mac: { bundleCEF: false, icons: 'assets/icon.iconset' },
+    linux: { bundleCEF: false, icon: 'assets/icon.iconset/icon_512x512@2x.png' },
+    win: { bundleCEF: false, icon: 'assets/icon.iconset/icon_512x512@2x.png' },
   },
 } satisfies ElectrobunConfig;

@@ -13,6 +13,7 @@
     "clean": "bun scripts/clean.ts",
     "dev": "bun run prepare:devkit && bun run build:renderer && electrobun dev --watch",
     "dev:renderer": "bun run prepare:devkit && vite --port 5173",
+    "generate:icon": "bun scripts/generate-icon.ts",
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "prepare:devkit": "HUTCH_NO_UPDATE_CHECK=1 electrobun prepare",
