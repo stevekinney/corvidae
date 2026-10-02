@@ -11,6 +11,7 @@ import {
   GoalAttemptStartedEvent,
   GoalAttemptValidatedEvent,
   GoalFeedbackRecordedEvent,
+  GoalRetryingEvent,
 } from './events';
 import {
   createFixtureArtifact,
@@ -1335,7 +1336,10 @@ describe('abort', () => {
     expect(runSpy).toHaveBeenCalledTimes(1);
     const seen = types(await events);
     expect(seen.filter((type) => type === 'goal.attempt.started')).toHaveLength(1);
-    expect(seen).toContain('goal.retrying');
+    // goal.retrying is only announced once the next attempt opens, so a goal
+    // canceled while that attempt's session is still resolving never announces it.
+    expect(seen).not.toContain('goal.retrying');
+    expect(seen).toContain('goal.canceled');
   });
 
   it('honors an outer signal aborted during the run, with one cancellation request', async () => {
@@ -1595,7 +1599,198 @@ describe('abort', () => {
     });
   });
 
-  it('ignores a validator result that lands after an attempt abort already moved the goal on', async () => {
+  /** Every goal.retrying must be immediately followed by the goal.attempt.started it promised. */
+  function retryingIsFollowedByAttemptStarted(events: readonly GoalRunEvent[]): boolean {
+    return events.every((event, index) => {
+      if (event.type !== 'goal.retrying') return true;
+      const following = events[index + 1];
+      return (
+        following instanceof GoalAttemptStartedEvent &&
+        event instanceof GoalRetryingEvent &&
+        following.attemptId === event.nextAttemptId
+      );
+    });
+  }
+
+  it('does not announce goal.retrying when the duration bound elapses while the next session resolves', async () => {
+    const fixture = createFixture();
+    const gate = deferred<void>();
+    const entered = deferred<void>();
+    const original = fixture.session.fork.bind(fixture.session);
+    await fixture.session.run('baseline').result();
+    spyOn(fixture.session, 'fork').mockImplementation(async (forkOptions) => {
+      entered.resolve();
+      await gate.promise;
+      return original(forkOptions);
+    });
+    const run = startGoal(
+      goalOptions(fixture, scriptedValidator([failing()]), {
+        retryPolicy: RETRY_ON_FAIL,
+        conversationPolicy: { kind: 'fork-from-baseline', throughRun: 0 },
+        budget: { maximumAttempts: 3, maximumTotalDurationMs: 1000 },
+      }),
+    );
+    const events = collect(run);
+    await entered.promise;
+    expect(run.status()).toBe('retrying');
+    await fixture.runtime.advance(1000);
+    const result = await run.result();
+    gate.resolve();
+    await yieldToPortableEventLoop();
+    expect(result).toMatchObject({
+      status: 'exhausted',
+      terminalReason: 'aggregate-budget-exceeded',
+    });
+    const seen = await events;
+    expect(types(seen)).not.toContain('goal.retrying');
+    expect(types(seen)).toContain('goal.exhausted');
+    expect(retryingIsFollowedByAttemptStarted(seen)).toBe(true);
+  });
+
+  it('does not announce goal.retrying when the conversation policy rejects while the next session resolves', async () => {
+    const fixture = createFixture();
+    const gate = deferred<void>();
+    const entered = deferred<void>();
+    await fixture.session.run('baseline').result();
+    spyOn(fixture.session, 'fork').mockImplementation(async () => {
+      entered.resolve();
+      await gate.promise;
+      throw new Error('fork refused');
+    });
+    const run = startGoal(
+      goalOptions(fixture, scriptedValidator([failing()]), {
+        retryPolicy: RETRY_ON_FAIL,
+        conversationPolicy: { kind: 'fork-from-baseline', throughRun: 0 },
+      }),
+    );
+    const events = collect(run);
+    await entered.promise;
+    expect(run.status()).toBe('retrying');
+    gate.resolve();
+    const result = await run.result();
+    expect(result).toMatchObject({ status: 'failed', terminalReason: 'attempt-run-failed' });
+    const seen = await events;
+    expect(types(seen)).not.toContain('goal.retrying');
+    expect(types(seen)).toContain('goal.failed');
+    expect(retryingIsFollowedByAttemptStarted(seen)).toBe(true);
+  });
+
+  it('follows every goal.retrying with the goal.attempt.started it announced', async () => {
+    const fixture = createFixture();
+    const { events } = await runToEnd(
+      goalOptions(fixture, scriptedValidator([failing(), failing(), PASS]), {
+        retryPolicy: RETRY_ON_FAIL,
+      }),
+    );
+    expect(types(events).filter((type) => type === 'goal.retrying')).toHaveLength(2);
+    expect(retryingIsFollowedByAttemptStarted(events)).toBe(true);
+  });
+
+  it('carries the prior input feedback into the next attempt after a mid-validation abort on the continue policy', async () => {
+    const fixture = createFixture();
+    const runSpy = spyOn(fixture.session, 'run');
+    const reached = deferred<void>();
+    const validator = scriptedValidator([
+      failing(true, 'PRIOR-FEEDBACK'),
+      parkedValidatorStep(reached),
+      PASS,
+    ]);
+    const run = startGoal(
+      goalOptions(fixture, validator, {
+        retryPolicy: RETRY_ON_FAIL,
+        budget: { maximumAttempts: 4, maximumTotalSteps: 1000 },
+      }),
+    );
+    await reached.promise;
+    expect(run.attempts()).toHaveLength(2);
+    run.abortAttempt();
+    const result = await run.result();
+    expect(result.status).toBe('succeeded');
+    expect(run.attempts().map((attempt) => attempt.status)).toEqual([
+      'failed',
+      'aborted',
+      'passed',
+    ]);
+    expect(runSpy.mock.calls.map(([input]) => input)).toEqual([
+      'achieve the goal',
+      'PRIOR-FEEDBACK',
+      'PRIOR-FEEDBACK',
+    ]);
+  });
+
+  it('applies an abortAttempt that targets the nextAttemptId announced by goal.retrying', async () => {
+    const fixture = createFixture();
+    const runSpy = spyOn(fixture.session, 'run');
+    const validator = scriptedValidator([failing(), PASS]);
+    let run: GoalRun | undefined;
+    const emitter = {
+      dispatchEvent: (event: Event): boolean => {
+        if (event instanceof GoalRetryingEvent && event.priorAttemptId === announcedFirst()) {
+          run?.abortAttempt({ attemptId: event.nextAttemptId });
+        }
+        return true;
+      },
+    };
+    const announcedFirst = (): string | undefined => run?.attempts()[0]?.attemptId;
+    run = startGoal(
+      goalOptions(fixture, validator, {
+        retryPolicy: RETRY_ON_FAIL,
+        budget: { maximumAttempts: 4, maximumTotalSteps: 1000 },
+        emitter: emitter as never,
+      }),
+    );
+    const events = collect(run);
+    const result = await run.result();
+    expect(result).toMatchObject({ status: 'succeeded', terminalReason: 'validator-passed' });
+    expect(run.attempts().map((attempt) => attempt.status)).toEqual([
+      'failed',
+      'aborted',
+      'passed',
+    ]);
+    // The aborted attempt never ran: one run for attempt 0 and one for attempt 2.
+    expect(runSpy).toHaveBeenCalledTimes(2);
+    expect(validator.calls).toHaveLength(2);
+    const seen = await events;
+    expect(retryingIsFollowedByAttemptStarted(seen)).toBe(true);
+    expect(types(seen).filter((type) => type === 'goal.retrying')).toHaveLength(2);
+  });
+
+  it('lets a late abortAttempt win over a missing cost estimate', async () => {
+    const fixture = createFixture();
+    const original = fixture.session.run.bind(fixture.session);
+    let run: GoalRun | undefined;
+    spyOn(fixture.session, 'run').mockImplementation((input) => {
+      const real = original(input);
+      return new Proxy(real, {
+        get(target, key) {
+          if (key === 'result') {
+            return async () => {
+              const settled = await target.result();
+              run?.abortAttempt();
+              return settled;
+            };
+          }
+          const value: unknown = Reflect.get(target, key);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    });
+    const validator = scriptedValidator([PASS]);
+    run = startGoal(
+      goalOptions(fixture, validator, { budget: { maximumAttempts: 1, maximumTotalCostUsd: 1 } }),
+    );
+    const result = await run.result();
+    expect(result).toMatchObject({ status: 'exhausted', terminalReason: 'attempt-limit-reached' });
+    expect(run.attempts()[0]?.status).toBe('aborted');
+    expect(validator.calls).toHaveLength(0);
+  });
+
+  // Covers the `settled` guard inside runValidator: once abortAttempt() cancels the
+  // validator, its later result is discarded there and never reaches the goal. The
+  // `status !== 'evaluating'` guard in evaluate() is a separate, defensive check
+  // against the goal ending between the validator settling and evaluate()
+  // resuming; no ordering of public calls isolates it, so it has no dedicated test.
+  it('discards a validator result that lands after abortAttempt already canceled that validator', async () => {
     const fixture = createFixture();
     const reached = deferred<void>();
     const late = deferred<ValidatorOutcome>();

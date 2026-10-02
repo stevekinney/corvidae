@@ -728,6 +728,50 @@ describe('events', () => {
       }
     });
 
+    // Own enumerable keys, nested included, that would carry raw validator data.
+    const FORBIDDEN_PAYLOAD_KEYS = new Set(['evidence', 'feedback', 'cause']);
+    function forbiddenKeysOf(value: unknown, path = ''): string[] {
+      if (typeof value !== 'object' || value === null) return [];
+      return Object.entries(value).flatMap(([key, nested]) => [
+        ...(FORBIDDEN_PAYLOAD_KEYS.has(key) ? [`${path}${key}`] : []),
+        ...forbiddenKeysOf(nested, `${path}${key}.`),
+      ]);
+    }
+
+    it('declares no evidence, raw feedback, or cause field on any goal event class', () => {
+      // Every class the registry lists under goal.* is constructed above.
+      expect(goalEvents.map((event) => event.type).toSorted()).toEqual(
+        OPERATIVE_EVENT_TYPES.filter((type) => type.startsWith('goal.')).toSorted(),
+      );
+      const withValidatorError = new GoalFailedEvent({
+        goalRunId: 'g',
+        terminalReason: 'validator-infrastructure-error',
+        validatorError: { kind: 'execute', code: 'C', message: 'm' },
+      });
+      for (const event of [...goalEvents, withValidatorError]) {
+        expect(forbiddenKeysOf(event)).toEqual([]);
+      }
+      // The only free-text feedback field is the digest.
+      expect(Object.keys(goalEvents[3] ?? {})).toContain('feedbackDigest');
+    });
+
+    it('would catch an evidence, feedback, or cause field if one were added', () => {
+      class LeakyEvent extends Event {
+        readonly goalRunId = 'g';
+        readonly evidence = [{ source: 's', detail: 'd' }];
+        readonly feedback = 'raw';
+        readonly validatorError = { kind: 'execute', code: 'C', message: 'm', cause: new Error() };
+        constructor() {
+          super('goal.leaky');
+        }
+      }
+      expect(forbiddenKeysOf(new LeakyEvent()).toSorted()).toEqual([
+        'evidence',
+        'feedback',
+        'validatorError.cause',
+      ]);
+    });
+
     it('carries goalRunId on every event and attemptId on the attempt-scoped ones', () => {
       for (const event of goalEvents) expect(event).toHaveProperty('goalRunId', 'g');
       const attemptScoped = [

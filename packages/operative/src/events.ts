@@ -1918,6 +1918,13 @@ export type GoalEventTerminalReason =
   | 'attempt-run-failed'
   | 'goal-canceled';
 
+/**
+ * Emitted when the goal is constructed, so `GoalRun.status()` is still
+ * `'pending'` when it fires. COR-638's table lists `pending -> running` for this
+ * event; the move to `running` happens when the first attempt opens and is
+ * announced by `goal.attempt.started`. It is the first event on every path,
+ * including a goal canceled or rejected before any attempt runs.
+ */
 export class GoalStartedEvent extends Event {
   static readonly type = 'goal.started' as const;
   readonly goalRunId: string;
@@ -1986,6 +1993,12 @@ export class GoalFeedbackRecordedEvent extends Event {
   }
 }
 
+/**
+ * Emitted once the next attempt's session is resolved and the attempt is open,
+ * so it is always followed by that attempt's `goal.attempt.started`. The only
+ * exception is an explicit goal abort issued from a listener to this event,
+ * which ends the goal as `canceled` first.
+ */
 export class GoalRetryingEvent extends Event {
   static readonly type = 'goal.retrying' as const;
   readonly goalRunId: string;

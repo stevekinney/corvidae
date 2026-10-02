@@ -290,8 +290,11 @@ export interface GoalRun extends AsyncIterable<GoalRunEvent> {
    * action, so it needs no `retryOn` entry: the attempt is recorded
    * `'aborted'` (mid-run its inner run finishes `'aborted'` and is never
    * validated; mid-validation the validator is canceled through its signal),
-   * and the goal then starts the next attempt, announced by `goal.retrying`,
-   * while attempt and aggregate-budget headroom remain. With none left it ends
+   * and the goal then starts the next attempt, announced by `goal.retrying`
+   * once that attempt opens, while attempt and aggregate-budget headroom remain.
+   * Calling it from a `goal.retrying` listener with that event's `nextAttemptId`
+   * aborts the attempt that just opened before its run starts, and the same
+   * retry-or-exhaust rule applies. An id that was never announced is a no-op. With none left it ends
    * `exhausted` as `attempt-limit-reached` or `aggregate-budget-exceeded`.
    * An inner run that ends `'aborted'` for any other reason is still an
    * attempt failure (`failed`/`attempt-run-failed`).
@@ -608,6 +611,11 @@ type FailedReason = Extract<
 type AttemptDirective =
   { readonly next: 'retry'; readonly feedback: string | undefined } | { readonly next: 'stop' };
 
+/** The prior attempt a retried attempt follows; `goal.retrying` names it once the next attempt opens. */
+interface RetryOf {
+  readonly priorAttemptId: string;
+}
+
 const STOP: AttemptDirective = { next: 'stop' };
 
 const OPERATOR_ABORT_DETAIL =
@@ -881,6 +889,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     index: number,
     attemptId: string,
     session: SessionHandle,
+    retryOf: RetryOf | undefined,
   ): MutableAttempt => {
     const attempt: MutableAttempt = {
       attemptId,
@@ -897,7 +906,25 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     };
     attempts.push(attempt);
     attemptController = new AbortController();
+    liveRun = undefined;
     transition('running');
+    // `goal.retrying` is announced only here, once the next attempt's session is
+    // resolved and the attempt is open, so it is always followed by that
+    // attempt's `goal.attempt.started`. A goal that ends while the session is
+    // still resolving (duration bound, rejected conversation policy) therefore
+    // never announces a retry it did not make. The one exception is an explicit
+    // goal abort from a `goal.retrying` listener, which ends the goal as
+    // `canceled` before `goal.attempt.started` is flushed.
+    if (retryOf !== undefined) {
+      emit(
+        new GoalRetryingEvent({
+          goalRunId,
+          priorAttemptId: retryOf.priorAttemptId,
+          nextAttemptId: attemptId,
+        }),
+      );
+      if (isTerminal()) return attempt;
+    }
     pendingAttemptStart = () =>
       emit(
         new GoalAttemptStartedEvent({
@@ -937,11 +964,10 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     attempt: MutableAttempt,
     feedback: string | undefined,
     announce: () => void,
-    announceRetrying: () => void,
     failureDetail?: string,
   ): AttemptDirective => {
-    // An exhausted goal starts no further attempt, so `goal.retrying` (which
-    // promises a following attempt) is never announced on these branches.
+    // `goal.retrying` is not emitted here: it waits for the next attempt to open
+    // (see openAttempt), so an exhausted or failed goal never announces a retry.
     if (budgetExceeded()) {
       finishGoal('exhausted', 'aggregate-budget-exceeded', {
         beforeTerminalEvent: announce,
@@ -957,14 +983,14 @@ export function startGoal(options: StartGoalOptions): GoalRun {
       return STOP;
     }
     transition('retrying');
-    announceRetrying();
+    announce();
     return { next: 'retry', feedback: attempt.feedback ?? feedback };
   };
 
   const applyOutcome = (
     attempt: MutableAttempt,
     outcome: ValidatorOutcome,
-    nextAttemptId: string,
+    inputFeedback: string | undefined,
   ): AttemptDirective => {
     const announce = (): void => {
       emit(
@@ -985,10 +1011,6 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         );
       }
     };
-    const announceRetrying = (): void => {
-      announce();
-      emit(new GoalRetryingEvent({ goalRunId, priorAttemptId: attempt.attemptId, nextAttemptId }));
-    };
     const stopWith = (
       next: GoalRunTerminalStatus,
       reason: GoalRunTerminalReason,
@@ -1003,7 +1025,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         return stopWith('succeeded', 'validator-passed');
       case 'fail':
         return outcome.retryable && retryOn.has('validator-fail-retryable')
-          ? decideRetryOrExhaust(attempt, outcome.feedback, announce, announceRetrying)
+          ? decideRetryOrExhaust(attempt, outcome.feedback, announce)
           : stopWith('failed', 'validator-fail-non-retryable');
       case 'error':
         return stopWith('failed', 'validator-infrastructure-error', {
@@ -1011,7 +1033,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         });
       case 'unavailable':
         return retryOn.has('validator-unavailable')
-          ? decideRetryOrExhaust(attempt, undefined, announce, announceRetrying)
+          ? decideRetryOrExhaust(attempt, undefined, announce)
           : stopWith('failed', 'validator-infrastructure-error', {
               validatorError: outcome.error,
               failureDetail: outcome.reason,
@@ -1020,16 +1042,12 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         // An operator abortAttempt() needs no retryOn entry; a validator that
         // reports `canceled` on its own still does.
         if (operatorAborted.has(attempt.attemptId)) {
-          return decideRetryOrExhaust(
-            attempt,
-            undefined,
-            announce,
-            announceRetrying,
-            OPERATOR_ABORT_DETAIL,
-          );
+          // Same carry-forward as the running-abort path: the aborted attempt
+          // produced no verdict, so the next one resumes from the input it had.
+          return decideRetryOrExhaust(attempt, inputFeedback, announce, OPERATOR_ABORT_DETAIL);
         }
         return retryOn.has('validator-canceled')
-          ? decideRetryOrExhaust(attempt, undefined, announce, announceRetrying)
+          ? decideRetryOrExhaust(attempt, undefined, announce)
           : stopWith('failed', 'validator-infrastructure-error', {
               failureDetail: 'The validator was canceled.',
             });
@@ -1048,7 +1066,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
   const evaluate = async (
     attempt: MutableAttempt,
     result: RunResult,
-    nextAttemptId: string,
+    inputFeedback: string | undefined,
   ): Promise<AttemptDirective> => {
     transition('evaluating');
     attempt.status = 'evaluating';
@@ -1066,7 +1084,9 @@ export function startGoal(options: StartGoalOptions): GoalRun {
       ),
     );
     // Late settlement: the goal ended, or left `evaluating`, while the
-    // validator ran. Nothing is applied.
+    // validator ran. Nothing is applied. `settled` is only defined when the
+    // validator won the race, so the status check is a defensive guard for the
+    // goal ending between the validator settling and this continuation running.
     if (settled === undefined || status !== 'evaluating') return STOP;
     const { startedAt, completedAt } = settled.value;
     // An abortAttempt() that landed after the validator settled but before this
@@ -1078,14 +1098,14 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     attempt.feedback = outcome.kind === 'fail' ? outcome.feedback : undefined;
     attempt.status = attemptStatusFor(outcome);
     attempt.completedAt = completedAt;
-    return applyOutcome(attempt, outcome, nextAttemptId);
+    return applyOutcome(attempt, outcome, inputFeedback);
   };
 
   const executeAttempt = async (
     index: number,
     attemptId: string,
-    nextAttemptId: string,
     feedback: string | undefined,
+    retryOf: RetryOf | undefined,
   ): Promise<AttemptDirective> => {
     let session: SessionHandle | undefined;
     try {
@@ -1098,7 +1118,15 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     }
     if (session === undefined || isTerminal()) return STOP;
 
-    const attempt = openAttempt(index, attemptId, session);
+    const attempt = openAttempt(index, attemptId, session, retryOf);
+    if (isTerminal()) return STOP;
+    if (operatorAborted.has(attemptId)) {
+      // abortAttempt() named this attempt from a `goal.retrying` listener, before
+      // its run existed: skip running it and apply the same retry-or-exhaust rule.
+      attempt.status = 'aborted';
+      attempt.completedAt = runtime.clock.nowISO();
+      return decideRetryOrExhaust(attempt, feedback, () => {}, OPERATOR_ABORT_DETAIL);
+    }
     let agentRun: AgentRun;
     try {
       agentRun = session.run(attemptInput(index, feedback));
@@ -1134,14 +1162,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         // The operator ended this attempt alone: skip validation and move on.
         attempt.status = 'aborted';
         attempt.completedAt = runtime.clock.nowISO();
-        return decideRetryOrExhaust(
-          attempt,
-          feedback,
-          () => {},
-          () =>
-            emit(new GoalRetryingEvent({ goalRunId, priorAttemptId: attemptId, nextAttemptId })),
-          OPERATOR_ABORT_DETAIL,
-        );
+        return decideRetryOrExhaust(attempt, feedback, () => {}, OPERATOR_ABORT_DETAIL);
       }
       return failAttempt(
         attempt,
@@ -1149,24 +1170,30 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         aborted ? 'aborted' : 'failed',
       );
     }
-    if (budget.maximumTotalCostUsd !== undefined && result.costEstimate === undefined) {
+    // An operator abort that landed after the run finished still wins: the
+    // attempt is not validated, so there is no cost to account and nothing to fail.
+    if (
+      budget.maximumTotalCostUsd !== undefined &&
+      result.costEstimate === undefined &&
+      !operatorAborted.has(attemptId)
+    ) {
       return failAttempt(
         attempt,
         'maximumTotalCostUsd is set but the attempt reported no costEstimate, so its cost cannot be accounted.',
       );
     }
-    return evaluate(attempt, result, nextAttemptId);
+    return evaluate(attempt, result, feedback);
   };
 
   const runGoal = async (): Promise<void> => {
     let feedback: string | undefined;
-    let attemptId = runtime.identifiers.next('goal-attempt');
+    let retryOf: RetryOf | undefined;
     for (let index = 0; !isTerminal(); index += 1) {
-      const nextAttemptId = runtime.identifiers.next('goal-attempt');
-      const directive = await executeAttempt(index, attemptId, nextAttemptId, feedback);
+      const attemptId = runtime.identifiers.next('goal-attempt');
+      const directive = await executeAttempt(index, attemptId, feedback, retryOf);
       if (directive.next === 'stop') return;
       feedback = directive.feedback;
-      attemptId = nextAttemptId;
+      retryOf = { priorAttemptId: attemptId };
     }
   };
 
@@ -1254,7 +1281,9 @@ export function startGoal(options: StartGoalOptions): GoalRun {
   // ---- start -----------------------------------------------------------------------
 
   // `goal.started` is the first event on every path, including a goal canceled
-  // or rejected before any attempt runs: the goal exists from this point.
+  // or rejected before any attempt runs: the goal exists from this point. It is
+  // emitted at construction, while `status()` is still 'pending'; the contract
+  // table's pending -> running edge is realized by `goal.attempt.started`.
   emit(new GoalStartedEvent({ goalRunId, goalIdentity: { ...options.identity } }));
 
   if (goalSignal.aborted) {
