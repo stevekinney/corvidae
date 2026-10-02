@@ -16,12 +16,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.10",
+      "lastPublishedVersion": "0.27.11",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.10",
-        "gitHead": "eed5c6dc51141031cf37ce37863e3429f27742c3",
-        "corvidaeCommit": "145a1bdb230827fd749700bedfb2858b80dab644",
+        "version": "0.27.11",
+        "gitHead": "4572b7cdaa90a5056fbc2933bca8aa7bf8e06ca1",
+        "corvidaeCommit": "d734e8d8b11a26d82db56e5494e3e1a8b64d9aca",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -146,6 +146,7 @@
             "src/client/local.ts",
             "src/client/open-event-subscription.ts",
             "src/client/operation-client-runtime.ts",
+            "src/client/root-barrel-client-type-surface.test-d.ts",
             "src/client/schedule-list-search-params.ts",
             "src/client/search-params.ts",
             "src/client/sse-event-stream.ts",
@@ -1169,7 +1170,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "494c30799e2fd478068c693b737b47ec7ae4e30e8909975b8db72fdeeb3ca3bb"
+          "digest": "b614fbd47be9952bd2df1b2d6b97c90b41aabd851d56ba9fcf73c04fb489ecfd"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1177,7 +1178,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "56279777a11d91c38d0b4de0269f15d1dc3fed297eb2bb23f103ba82a4e30cdf"
+          "digest": "c4e84a761bacbfd26209e59b521e8fe61e193871e8be88c06a6de263db3262c9"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -9119,7 +9120,7 @@
               "executable": false
             }
           ],
-          "digest": "51f14bd9cd7dddeee08788b1bbb41abb10412791dd6c660e79da51b1f812e3ec"
+          "digest": "0c459f338183bcec81fce82c3068cce9089f77ae6b83206464f3b9946108d61a"
         }
       }
     },
