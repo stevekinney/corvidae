@@ -52,7 +52,9 @@ export const CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES = [
       'and their siblings) lives here as one public import surface with runnable @example JSDoc ' +
       'per field — splitting would scatter one import contract across multiple subpaths. ' +
       'WFT-21 pushed it over the ceiling by ~19 lines documenting ' +
-      'ForkOptions.revision; the file was already at 498/500 lines before that addition.',
+      'ForkOptions.revision; the file was already at 498/500 lines before that addition. ' +
+      'COR-1281 raised its single-file lint ceiling for a complete two-mode ' +
+      'ActivityExecutionOptions example, not for new logic.',
   },
   {
     path: 'src/client/client-contract.test-support.ts',
