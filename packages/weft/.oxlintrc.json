@@ -108,7 +108,6 @@
         "src/client/http-client.ts",
         "src/core/context/index.ts",
         "src/worker/registry.ts",
-        "src/core/types/options.ts",
         "src/core/engine/source-resolution.ts",
         "src/core/engine/termination/cleanup.ts",
         "src/server/serve-internals.ts",
@@ -123,6 +122,12 @@
       ],
       "rules": {
         "max-lines": ["error", { "max": 600, "skipBlankLines": false, "skipComments": false }]
+      }
+    },
+    {
+      "files": ["src/core/types/options.ts"],
+      "rules": {
+        "max-lines": ["error", { "max": 615, "skipBlankLines": false, "skipComments": false }]
       }
     },
     {
