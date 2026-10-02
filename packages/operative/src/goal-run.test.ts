@@ -1,3 +1,4 @@
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
@@ -5,7 +6,7 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { noToolCalls } from './conditions/predicates';
-import { GoalConfigurationError, VALIDATOR_ERROR_KINDS } from './errors';
+import { BudgetExceededError, GoalConfigurationError, VALIDATOR_ERROR_KINDS } from './errors';
 import {
   GoalAttemptStartedEvent,
   GoalAttemptValidatedEvent,
@@ -657,6 +658,32 @@ describe('retry policy', () => {
     expect(stopped.run.attempts()).toHaveLength(1);
   });
 
+  it('resends the validator feedback after a fail, and the original prompt after a non-fail retry', async () => {
+    const failed = createFixture();
+    const failedSpy = spyOn(failed.session, 'run');
+    await runToEnd(
+      goalOptions(failed, scriptedValidator([failing(true, 'FIX THE THING'), PASS]), {
+        retryPolicy: RETRY_ON_FAIL,
+      }),
+    );
+    expect(failedSpy.mock.calls.map(([input]) => input)).toEqual([
+      'achieve the goal',
+      'FIX THE THING',
+    ]);
+
+    const unavailableFixture = createFixture();
+    const unavailableSpy = spyOn(unavailableFixture.session, 'run');
+    await runToEnd(
+      goalOptions(unavailableFixture, scriptedValidator([unavailable, PASS]), {
+        retryPolicy: { retryOn: ['validator-unavailable'] },
+      }),
+    );
+    expect(unavailableSpy.mock.calls.map(([input]) => input)).toEqual([
+      'achieve the goal',
+      'achieve the goal',
+    ]);
+  });
+
   it('carries the validator error on a failed unavailable outcome', async () => {
     const fixture = createFixture();
     const { result } = await runToEnd(goalOptions(fixture, scriptedValidator([unavailable])));
@@ -768,6 +795,9 @@ describe('malformed validator output', () => {
     expect(validator.signals[0]?.aborted).toBe(true);
     expect(fixture.runtime.pendingTimers()).toEqual([]);
     never.resolve(PASS);
+    await yieldToPortableEventLoop();
+    expect(run.status()).toBe('failed');
+    expect(run.attempts()[0]?.validation?.outcome.kind).toBe('error');
   });
 
   it('clears the validator timeout on normal completion', async () => {
@@ -789,7 +819,20 @@ describe('terminal reasons', () => {
     );
     expect(result).toMatchObject({ status: 'exhausted', terminalReason: 'attempt-limit-reached' });
     expect(runSpy).toHaveBeenCalledTimes(2);
-    expect(types(events).at(-1)).toBe('goal.exhausted');
+    // goal.retrying promises a following attempt, so the exhausting attempt
+    // never announces one.
+    expect(types(events)).toEqual([
+      'goal.started',
+      'goal.attempt.started',
+      'goal.attempt.validated',
+      'goal.feedback.recorded',
+      'goal.retrying',
+      'goal.attempt.started',
+      'goal.attempt.validated',
+      'goal.feedback.recorded',
+      'goal.exhausted',
+    ]);
+    expect(events.at(-1)).toMatchObject({ terminalReason: 'attempt-limit-reached' });
   });
 
   it.each([
@@ -800,7 +843,7 @@ describe('terminal reasons', () => {
     async (_name, bound) => {
       const fixture = createFixture();
       const runSpy = spyOn(fixture.session, 'run');
-      const { result } = await runToEnd(
+      const { result, events } = await runToEnd(
         goalOptions(fixture, scriptedValidator([failing()]), {
           retryPolicy: RETRY_ON_FAIL,
           budget: { maximumAttempts: 5, ...bound },
@@ -811,6 +854,14 @@ describe('terminal reasons', () => {
         terminalReason: 'aggregate-budget-exceeded',
       });
       expect(runSpy).toHaveBeenCalledTimes(1);
+      expect(types(events)).toEqual([
+        'goal.started',
+        'goal.attempt.started',
+        'goal.attempt.validated',
+        'goal.feedback.recorded',
+        'goal.exhausted',
+      ]);
+      expect(events.at(-1)).toMatchObject({ terminalReason: 'aggregate-budget-exceeded' });
     },
   );
 
@@ -868,6 +919,64 @@ describe('terminal reasons', () => {
     expect(result.usage.durationMs).toBe(1000);
     expect(validator.calls).toHaveLength(0);
     expect(run.attempts()[0]?.status).toBe('aborted');
+  });
+
+  it('exhausts when the duration bound elapses before the first attempt opens', async () => {
+    const fixture = createFixture();
+    const runSpy = spyOn(fixture.session, 'run');
+    const run = startGoal(
+      goalOptions(fixture, scriptedValidator([PASS]), {
+        budget: { maximumAttempts: 3, maximumTotalDurationMs: 1000 },
+      }),
+    );
+    expect(run.status()).toBe('pending');
+    await fixture.runtime.advance(1000);
+    const result = await run.result();
+    expect(result).toMatchObject({
+      status: 'exhausted',
+      terminalReason: 'aggregate-budget-exceeded',
+    });
+    expect(run.attempts()).toEqual([]);
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(types(await collect(run))).toEqual(['goal.started', 'goal.exhausted']);
+  });
+
+  it('exhausts between attempts once the duration is spent, without relying on the timer', async () => {
+    const fixture = createFixture();
+    const inertTimers = {
+      ...fixture.runtime.timers,
+      setTimeout: () => ({}),
+      clearTimeout: () => {},
+    };
+    const runtime = { ...fixture.runtime, timers: inertTimers } as never;
+    const validator = scriptedValidator([
+      async () => {
+        await fixture.runtime.advance(1000);
+        return failing();
+      },
+    ]);
+    const { result, run } = await runToEnd(
+      goalOptions(fixture, validator, {
+        runtime,
+        retryPolicy: RETRY_ON_FAIL,
+        budget: { maximumAttempts: 3, maximumTotalDurationMs: 1000 },
+      }),
+    );
+    expect(result).toMatchObject({
+      status: 'exhausted',
+      terminalReason: 'aggregate-budget-exceeded',
+    });
+    expect(run.attempts()).toHaveLength(1);
+  });
+
+  it('clears the duration timer once the goal is terminal', async () => {
+    const fixture = createFixture();
+    await runToEnd(
+      goalOptions(fixture, scriptedValidator([PASS]), {
+        budget: { maximumAttempts: 1, maximumTotalDurationMs: 60_000 },
+      }),
+    );
+    expect(fixture.runtime.pendingTimers()).toEqual([]);
   });
 
   it('reports the aggregate budget first when both limits are crossed on one attempt', async () => {
@@ -1035,6 +1144,9 @@ describe('inner run finish reasons', () => {
     const { result, run, events } = await runToEnd(goalOptions(looping, validator));
     expect(run.attempts()[0]).toMatchObject({ finishReason: 'maximum-steps', status: 'failed' });
     expect(result).toMatchObject({ status: 'failed', terminalReason: 'attempt-run-failed' });
+    // The failed attempt still counts against the aggregate budget.
+    expect(result.usage.steps).toBeGreaterThan(0);
+    expect(result.usage.steps).toBe(run.attempts()[0]?.usage.steps ?? -1);
     expect(validator.calls).toHaveLength(0);
     expect(types(events)).not.toContain('goal.attempt.validated');
   });
@@ -1048,6 +1160,20 @@ describe('inner run finish reasons', () => {
   });
 
   it('surfaces a per-attempt budget as the inner run own budget-exceeded finish', async () => {
+    const fixture = createFixture({
+      generate: async () => {
+        throw new BudgetExceededError('per-attempt budget spent');
+      },
+    });
+    const validator = scriptedValidator([PASS]);
+    const { result, run } = await runToEnd(goalOptions(fixture, validator));
+    expect(run.attempts()[0]).toMatchObject({ finishReason: 'budget-exceeded', status: 'failed' });
+    expect(result).toMatchObject({ status: 'failed', terminalReason: 'attempt-run-failed' });
+    expect(result.failureDetail).toContain('budget-exceeded');
+    expect(validator.calls).toHaveLength(0);
+  });
+
+  it('adds no per-attempt budget field to the goal budget', async () => {
     const fixture = createFixture();
     const { run } = await runToEnd(goalOptions(fixture, scriptedValidator([PASS])));
     expect('maximumSteps' in (run.budget() as object)).toBe(false);
@@ -1072,11 +1198,20 @@ describe('inner run finish reasons', () => {
 describe('abort', () => {
   it('cancels mid-generation without ever calling the validator', async () => {
     const reached = deferred<void>();
-    const fixture = createFixture({ generate: createBlockingGenerate(reached) });
+    const blocking = createBlockingGenerate(reached);
+    let generationSignal: AbortSignal | undefined;
+    const fixture = createFixture({
+      generate: (context) => {
+        generationSignal = context.signal;
+        return blocking(context);
+      },
+    });
     const validator = scriptedValidator([PASS]);
     const run = startGoal(goalOptions(fixture, validator));
     await reached.promise;
+    expect(generationSignal?.aborted).toBe(false);
     run.abort('operator stop');
+    expect(generationSignal?.aborted).toBe(true);
     const result = await run.result();
     expect(result).toMatchObject({ status: 'canceled', terminalReason: 'goal-canceled' });
     expect(validator.calls).toHaveLength(0);
@@ -1084,6 +1219,30 @@ describe('abort', () => {
     expect(types(await collect(run))).toEqual([
       'goal.started',
       'goal.attempt.started',
+      'goal.cancellation-requested',
+      'goal.canceled',
+    ]);
+  });
+
+  it('opens the stream with goal.started even when canceled before any attempt', async () => {
+    const fixture = createFixture();
+    const run = startGoal(
+      goalOptions(fixture, scriptedValidator([PASS]), { signal: AbortSignal.abort('early') }),
+    );
+    expect(types(await collect(run))).toEqual([
+      'goal.started',
+      'goal.cancellation-requested',
+      'goal.canceled',
+    ]);
+  });
+
+  it('opens the stream with goal.started when aborted before the first attempt opens', async () => {
+    const fixture = createFixture();
+    const run = startGoal(goalOptions(fixture, scriptedValidator([PASS])));
+    expect(run.status()).toBe('pending');
+    run.abort('right away');
+    expect(types(await collect(run))).toEqual([
+      'goal.started',
       'goal.cancellation-requested',
       'goal.canceled',
     ]);
@@ -1222,19 +1381,36 @@ describe('abort', () => {
     expect(request && 'principal' in request ? request.principal : undefined).toBe('steve');
   });
 
-  it('aborts one running attempt without canceling the goal', async () => {
+  it('aborts a running attempt only when the target names it, and records it aborted', async () => {
     const reached = deferred<void>();
-    const fixture = createFixture({ generate: createBlockingGenerate(reached) });
+    const blocking = createBlockingGenerate(reached);
+    let generationSignal: AbortSignal | undefined;
+    const fixture = createFixture({
+      generate: (context) => {
+        generationSignal = context.signal;
+        return blocking(context);
+      },
+    });
     const validator = scriptedValidator([PASS]);
     const run = startGoal(goalOptions(fixture, validator, { retryPolicy: RETRY_ON_FAIL }));
     await reached.promise;
-    run.abortAttempt({ attemptId: 'not-the-current-attempt' });
+    const attemptId = run.currentAttempt()?.attemptId;
+    expect(attemptId).toBeDefined();
+
+    run.abortAttempt({ attemptId: 'not-the-current-attempt' }, 'wrong target');
+    await yieldToPortableEventLoop();
+    expect(generationSignal?.aborted).toBe(false);
     expect(run.status()).toBe('running');
-    run.abortAttempt({}, 'one attempt');
-    run.abortAttempt({}, 'again');
+
+    run.abortAttempt({ attemptId }, 'one attempt');
+    run.abortAttempt({ attemptId }, 'again');
     const result = await run.result();
-    expect(run.attempts()[0]?.finishReason).toBe('aborted');
+    expect(generationSignal?.aborted).toBe(true);
+    // A mid-run abort is not a stop condition: the attempt ends aborted, is
+    // never validated, and (COR-638) goes straight to the attempt's failure.
+    expect(run.attempts()[0]).toMatchObject({ finishReason: 'aborted', status: 'aborted' });
     expect(result).toMatchObject({ status: 'failed', terminalReason: 'attempt-run-failed' });
+    expect(result.failureDetail).toContain('abortAttempt');
     expect(validator.calls).toHaveLength(0);
   });
 
@@ -1277,16 +1453,24 @@ describe('abort', () => {
     const run = startGoal(
       goalOptions(fixture, validator, { retryPolicy: { retryOn: ['validator-canceled'] } }),
     );
+    const events = collect(run);
     await reached.promise;
     run.abortAttempt();
-    await run.result();
+    const result = await run.result();
+    expect(result.status).toBe('succeeded');
     const usageAfter = run.usage();
-    late.resolve(failing());
-    late.resolve(PASS);
+    const attemptsAfter = run.attempts();
+    // A non-retryable failure landing late would end the goal if it were applied.
+    late.resolve(failing(false));
     await yieldToPortableEventLoop();
+    expect(run.status()).toBe('succeeded');
     expect(run.usage()).toEqual(usageAfter);
-    expect(run.attempts()).toHaveLength(2);
+    expect(run.attempts()).toEqual(attemptsAfter);
     expect(run.attempts()[0]?.validation?.outcome).toEqual({ kind: 'canceled' });
+    expect(run.attempts()[0]?.feedback).toBeUndefined();
+    const seen = await events;
+    expect(seen.filter((event) => event.type === 'goal.attempt.validated')).toHaveLength(2);
+    expect(types(seen)).not.toContain('goal.feedback.recorded');
   });
 });
 
@@ -1343,6 +1527,56 @@ describe('events', () => {
     expect(recorded?.feedbackDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(run.attempts())).toContain('SECRET-SENTINEL');
     expect(run.attempts()[0]?.feedback).toBe('FEEDBACK-SENTINEL');
+  });
+
+  it('carries the terminal reason and the exact feedback digest from a real run', async () => {
+    const fixture = createFixture();
+    const { events } = await runToEnd(
+      goalOptions(fixture, scriptedValidator([failing(false, 'try harder')])),
+    );
+    const recorded = events.find(
+      (event): event is GoalFeedbackRecordedEvent => event instanceof GoalFeedbackRecordedEvent,
+    );
+    expect(recorded?.feedbackDigest).toBe(sha256HexSync('try harder'));
+    expect(events.at(-1)).toMatchObject({
+      type: 'goal.failed',
+      terminalReason: 'validator-fail-non-retryable',
+    });
+  });
+
+  it('reports the real run id of the wrapped run even when another run reserves first', async () => {
+    const fixture = createFixture();
+    const other = fixture.session.run('concurrent work');
+    const { run, events } = await runToEnd(goalOptions(fixture, scriptedValidator([PASS])));
+    await other.result();
+    const started = events.find(
+      (event): event is GoalAttemptStartedEvent => event instanceof GoalAttemptStartedEvent,
+    );
+    expect(started?.runId).toBeDefined();
+    expect(started?.runId).toBe(run.attempts()[0]?.runId);
+    const stored = await fixture.session.getSession();
+    expect(stored.runs.map((reference) => reference.runId)).toContain(started?.runId ?? '');
+  });
+
+  it('keeps a validator error cause off the live event while the result retains it', async () => {
+    const fixture = createFixture();
+    const error = {
+      kind: 'execute',
+      code: 'BOOM',
+      message: 'validator crashed',
+      cause: { secret: 'CAUSE-SENTINEL' },
+    } as const;
+    const { result, events } = await runToEnd(
+      goalOptions(fixture, scriptedValidator([{ kind: 'error', error }])),
+    );
+    expect(JSON.stringify(events)).not.toContain('CAUSE-SENTINEL');
+    const failed = events.at(-1);
+    expect(failed && 'validatorError' in failed ? failed.validatorError : undefined).toEqual({
+      kind: 'execute',
+      code: 'BOOM',
+      message: 'validator crashed',
+    });
+    expect(result.validatorError?.cause).toEqual({ secret: 'CAUSE-SENTINEL' });
   });
 
   it('dispatches attempt.validated after leaving evaluating and before the terminal event', async () => {
@@ -1422,7 +1656,7 @@ describe('closed()', () => {
       const run = await start();
       await run.result();
       const first = await run.closed();
-      expect(['not-required', 'completed']).toContain(first.status);
+      expect(first).toEqual({ status: 'not-required' });
       expect(await run.closed()).toBe(first);
       expect(await run.closed()).toEqual(first);
     },
@@ -1433,10 +1667,81 @@ describe('closed()', () => {
     const fixture = createFixture({ generate: createBlockingGenerate(reached) });
     const run = startGoal(goalOptions(fixture, scriptedValidator([PASS])));
     await reached.promise;
-    const closing = run.closed();
+    let settled = false;
+    const closing = run.closed().then((acknowledgement) => {
+      settled = true;
+      return acknowledgement;
+    });
+    await yieldToPortableEventLoop();
+    expect(settled).toBe(false);
     run.abort();
     const acknowledgement = await closing;
-    expect(['not-required', 'completed']).toContain(acknowledgement.status);
+    expect(settled).toBe(true);
+    expect(acknowledgement.status).not.toBe('unresolved');
+  });
+
+  it('stays pending when called before the first inner run exists', async () => {
+    const reached = deferred<void>();
+    const fixture = createFixture({ generate: createBlockingGenerate(reached) });
+    const run = startGoal(goalOptions(fixture, scriptedValidator([PASS])));
+    let settled = false;
+    const closing = run.closed().then(() => {
+      settled = true;
+    });
+    await yieldToPortableEventLoop();
+    expect(settled).toBe(false);
+    run.abort();
+    await closing;
+  });
+
+  it.each([
+    [[{ status: 'completed' }, { status: 'not-required' }], { status: 'completed' }],
+    [[{ status: 'not-required' }, { status: 'not-required' }], { status: 'not-required' }],
+    [
+      [{ status: 'completed' }, { status: 'unresolved', reason: 'unknown-effect' }],
+      { status: 'unresolved', reason: 'unknown-effect' },
+    ],
+    [
+      [
+        { status: 'unresolved', reason: 'unknown-effect' },
+        { status: 'failed', error: 'x' },
+      ],
+      { status: 'unresolved', reason: 'unknown-effect' },
+    ],
+    [[{ status: 'completed' }, { status: 'failed', error: 'x' }], { status: 'failed', error: 'x' }],
+  ] as const)(
+    'aggregates the inner acknowledgements %j into %j',
+    async (acknowledgements, expected) => {
+      const fixture = createFixture();
+      const original = fixture.session.run.bind(fixture.session);
+      let next = 0;
+      spyOn(fixture.session, 'run').mockImplementation((input) => {
+        const agentRun = original(input);
+        const acknowledgement = acknowledgements[next++];
+        agentRun.closed = async () => acknowledgement as never;
+        return agentRun;
+      });
+      const run = startGoal(
+        goalOptions(fixture, scriptedValidator([failing(), PASS]), { retryPolicy: RETRY_ON_FAIL }),
+      );
+      await run.result();
+      expect(run.attempts()).toHaveLength(2);
+      expect(await run.closed()).toEqual(expected);
+    },
+  );
+
+  it('reports a rejecting inner closed() as a failed acknowledgement', async () => {
+    const fixture = createFixture();
+    const original = fixture.session.run.bind(fixture.session);
+    spyOn(fixture.session, 'run').mockImplementation((input) => {
+      const agentRun = original(input);
+      agentRun.closed = () => Promise.reject(new Error('cleanup exploded'));
+      return agentRun;
+    });
+    const run = startGoal(goalOptions(fixture, scriptedValidator([PASS])));
+    await run.result();
+    const acknowledgement = await run.closed();
+    expect(acknowledgement.status).toBe('failed');
   });
 
   it('bounds only the calling wait with its own signal', async () => {

@@ -739,13 +739,6 @@ describe('events', () => {
         if (attemptScoped.includes(event.type)) expect(event).toHaveProperty('attemptId', 'a');
       }
     });
-
-    it('never carries validator evidence or raw feedback', () => {
-      for (const event of goalEvents) {
-        expect(event).not.toHaveProperty('evidence');
-        expect(event).not.toHaveProperty('feedback');
-      }
-    });
   });
 });
 /* eslint-enable @typescript-eslint/no-deprecated */

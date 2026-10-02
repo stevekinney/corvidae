@@ -23,7 +23,7 @@
  */
 
 import { sha256HexSync } from '@lostgradient/cryptography';
-import type { RuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
+import type { RuntimeServices, Subscription, TypedEventTarget } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { AgentRun } from './agent-run';
@@ -51,7 +51,6 @@ import {
   type ConversationPolicy,
 } from './fresh-attempt/conversation-policy';
 import type { SessionHandle } from './session/session-handle-types';
-import { deriveRunId } from './session/session-handle-types';
 import type { CleanupAcknowledgement, ClosedOptions, FinishReason, RunResult } from './types';
 
 // ---------------------------------------------------------------------------
@@ -285,7 +284,16 @@ export interface GoalRun extends AsyncIterable<GoalRunEvent> {
   result(): Promise<GoalRunResult>;
   /** Cancels the whole goal. Idempotent. */
   abort(reason?: string): void;
-  /** Aborts one attempt only. Idempotent; a finished or unknown attempt is a no-op. */
+  /**
+   * Aborts one attempt only. Idempotent; a finished or unknown attempt is a
+   * no-op. The goal itself is not canceled, but what follows depends on the
+   * phase. Mid-run, the inner run finishes `'aborted'`, which is not a
+   * `'stop-condition'`: the attempt is recorded `'aborted'`, validation never
+   * runs, and the goal fails as `attempt-run-failed` (COR-638: any other
+   * `FinishReason` goes straight to that attempt's failure). Mid-validation,
+   * the validator outcome is `canceled`, which retries only when
+   * `validator-canceled` is declared in the retry policy.
+   */
   abortAttempt(target?: GoalAttemptTarget, reason?: string): void;
   /**
    * Resolves once the goal is terminal and every inner run has acknowledged
@@ -310,9 +318,16 @@ const TERMINAL_STATUSES: readonly GoalRunStatus[] = [
 /**
  * Every legal edge. A terminal status has no outgoing edge, and `canceled` is
  * reachable from every non-terminal status.
+ *
+ * Beyond the contract's main path, two edges cover a goal that ends before any
+ * attempt runs: `pending -> failed` (rejected up front as
+ * `unsupported-validation`) and `pending -> exhausted` (the aggregate duration
+ * bound elapsed before the first attempt opened). `running -> failed` and
+ * `running -> exhausted` cover an attempt that cannot reach the validator and
+ * a duration bound that elapses mid-attempt.
  */
 export const GOAL_RUN_TRANSITIONS: Readonly<Record<GoalRunStatus, readonly GoalRunStatus[]>> = {
-  pending: ['running', 'failed', 'canceled'],
+  pending: ['running', 'exhausted', 'failed', 'canceled'],
   running: ['evaluating', 'exhausted', 'failed', 'canceled'],
   evaluating: ['succeeded', 'retrying', 'exhausted', 'failed', 'canceled'],
   retrying: ['running', 'exhausted', 'failed', 'canceled'],
@@ -625,6 +640,12 @@ export function startGoal(options: StartGoalOptions): GoalRun {
   let attemptController: AbortController | undefined;
   let liveRun: AgentRun | undefined;
   let durationTimer: unknown;
+  /**
+   * `goal.attempt.started` waits for the wrapped run's real id, which the
+   * session reserves asynchronously. Whatever else is emitted first flushes it,
+   * so it can never be overtaken by a later event of the same attempt.
+   */
+  let pendingAttemptStart: (() => void) | undefined;
   let settleResult: (result: GoalRunResult) => void = () => {};
   let markTerminated: () => void = () => {};
 
@@ -637,7 +658,14 @@ export function startGoal(options: StartGoalOptions): GoalRun {
 
   const isTerminal = (): boolean => TERMINAL_STATUSES.includes(status);
 
+  const flushAttemptStart = (): void => {
+    const announce = pendingAttemptStart;
+    pendingAttemptStart = undefined;
+    announce?.();
+  };
+
   const emit = (event: GoalRunEvent): void => {
+    flushAttemptStart();
     feed.push(event);
     options.emitter?.dispatchEvent(event);
   };
@@ -711,7 +739,16 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     return new GoalFailedEvent({
       goalRunId,
       terminalReason: reason as FailedReason,
-      validatorError: extras.validatorError,
+      // The live event never carries `cause`: it can hold arbitrary validator
+      // internals, which the contract keeps off live and telemetry events.
+      validatorError:
+        extras.validatorError === undefined
+          ? undefined
+          : {
+              kind: extras.validatorError.kind,
+              code: extras.validatorError.code,
+              message: extras.validatorError.message,
+            },
     });
   };
 
@@ -820,8 +857,12 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     return options.prompt;
   };
 
-  const failAttempt = (attempt: MutableAttempt, detail: string): AttemptDirective => {
-    attempt.status = 'failed';
+  const failAttempt = (
+    attempt: MutableAttempt,
+    detail: string,
+    attemptStatus: 'failed' | 'aborted' = 'failed',
+  ): AttemptDirective => {
+    attempt.status = attemptStatus;
     attempt.completedAt = runtime.clock.nowISO();
     finishGoal('failed', 'attempt-run-failed', { failureDetail: detail });
     return STOP;
@@ -831,12 +872,11 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     index: number,
     attemptId: string,
     session: SessionHandle,
-    runId: string | undefined,
   ): MutableAttempt => {
     const attempt: MutableAttempt = {
       attemptId,
       attemptIndex: index,
-      runId,
+      runId: undefined,
       sessionId: session.id,
       startedAt: runtime.clock.nowISO(),
       completedAt: undefined,
@@ -848,15 +888,31 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     };
     attempts.push(attempt);
     attemptController = new AbortController();
-    const wasPending = status === 'pending';
     transition('running');
-    if (wasPending) {
-      emit(new GoalStartedEvent({ goalRunId, goalIdentity: { ...options.identity } }));
-    }
-    emit(new GoalAttemptStartedEvent({ goalRunId, attemptId, attemptIndex: index, runId }));
+    pendingAttemptStart = () =>
+      emit(
+        new GoalAttemptStartedEvent({
+          goalRunId,
+          attemptId,
+          attemptIndex: index,
+          runId: attempt.runId,
+        }),
+      );
     return attempt;
   };
 
+  /** Adopts the wrapped run's real id the moment its session has reserved one. */
+  const adoptRunId = (attempt: MutableAttempt, observedId: string): void => {
+    if (attempt.runId !== undefined || !observedId.startsWith(`${attempt.sessionId}:`)) return;
+    attempt.runId = observedId;
+    flushAttemptStart();
+  };
+
+  /**
+   * A fork or fresh session that lands after the goal is terminal is simply
+   * ignored: `SessionHandle` has no dispose or delete verb, the new handle owns
+   * no live run, and `closed()` accounts for runs only.
+   */
   const resolveSession = async (index: number): Promise<SessionHandle | undefined> => {
     if (index === 0 || options.conversationPolicy.kind === 'continue') return options.session;
     const applied = await untilTerminal(
@@ -868,30 +924,24 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     return applied?.value;
   };
 
-  const peekRunId = async (session: SessionHandle): Promise<string | undefined> => {
-    try {
-      const stored = await session.getSession();
-      return deriveRunId(session.id, stored.runs.length);
-    } catch {
-      return undefined;
-    }
-  };
-
   const decideRetryOrExhaust = (
     attempt: MutableAttempt,
     feedback: string | undefined,
-    beforeTerminalEvent: () => void,
+    announce: () => void,
+    announceRetrying: () => void,
   ): AttemptDirective => {
+    // An exhausted goal starts no further attempt, so `goal.retrying` (which
+    // promises a following attempt) is never announced on these branches.
     if (budgetExceeded()) {
-      finishGoal('exhausted', 'aggregate-budget-exceeded', { beforeTerminalEvent });
+      finishGoal('exhausted', 'aggregate-budget-exceeded', { beforeTerminalEvent: announce });
       return STOP;
     }
     if (attempts.length >= budget.maximumAttempts) {
-      finishGoal('exhausted', 'attempt-limit-reached', { beforeTerminalEvent });
+      finishGoal('exhausted', 'attempt-limit-reached', { beforeTerminalEvent: announce });
       return STOP;
     }
     transition('retrying');
-    beforeTerminalEvent();
+    announceRetrying();
     return { next: 'retry', feedback: attempt.feedback ?? feedback };
   };
 
@@ -937,7 +987,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         return stopWith('succeeded', 'validator-passed');
       case 'fail':
         return outcome.retryable && retryOn.has('validator-fail-retryable')
-          ? decideRetryOrExhaust(attempt, outcome.feedback, announceRetrying)
+          ? decideRetryOrExhaust(attempt, outcome.feedback, announce, announceRetrying)
           : stopWith('failed', 'validator-fail-non-retryable');
       case 'error':
         return stopWith('failed', 'validator-infrastructure-error', {
@@ -945,14 +995,14 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         });
       case 'unavailable':
         return retryOn.has('validator-unavailable')
-          ? decideRetryOrExhaust(attempt, undefined, announceRetrying)
+          ? decideRetryOrExhaust(attempt, undefined, announce, announceRetrying)
           : stopWith('failed', 'validator-infrastructure-error', {
               validatorError: outcome.error,
               failureDetail: outcome.reason,
             });
       case 'canceled':
         return retryOn.has('validator-canceled')
-          ? decideRetryOrExhaust(attempt, undefined, announceRetrying)
+          ? decideRetryOrExhaust(attempt, undefined, announce, announceRetrying)
           : stopWith('failed', 'validator-infrastructure-error', {
               failureDetail: 'The validator was canceled.',
             });
@@ -1016,10 +1066,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     }
     if (session === undefined || isTerminal()) return STOP;
 
-    const runId = await peekRunId(session);
-    if (isTerminal()) return STOP;
-
-    const attempt = openAttempt(index, attemptId, session, runId);
+    const attempt = openAttempt(index, attemptId, session);
     let agentRun: AgentRun;
     try {
       agentRun = session.run(attemptInput(index, feedback));
@@ -1030,12 +1077,19 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     liveRun = agentRun;
 
     let settled: { value: RunResult } | undefined;
+    let snapshotSubscription: Subscription | undefined;
     try {
+      snapshotSubscription = agentRun.subscribeSnapshot((snapshot) =>
+        adoptRunId(attempt, snapshot.id),
+      );
       settled = await untilTerminal(agentRun.result());
     } catch (thrown) {
       if (isTerminal()) return STOP;
       return failAttempt(attempt, `The inner run rejected: ${messageOf(thrown)}`);
+    } finally {
+      snapshotSubscription?.unsubscribe();
     }
+    adoptRunId(attempt, agentRun.snapshot().id);
     if (settled === undefined || isTerminal()) return STOP;
 
     const { value: result } = settled;
@@ -1043,7 +1097,14 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     accountUsage(attempt, result);
     // Only 'stop-condition' hands off to the validator.
     if (result.finishReason !== 'stop-condition') {
-      return failAttempt(attempt, `The inner run finished with ${result.finishReason}.`);
+      const aborted = result.finishReason === 'aborted';
+      return failAttempt(
+        attempt,
+        aborted && attemptController?.signal.aborted === true
+          ? 'The attempt was aborted with abortAttempt() before it reached a stop condition, so it was not validated.'
+          : `The inner run finished with ${result.finishReason}.`,
+        aborted ? 'aborted' : 'failed',
+      );
     }
     if (budget.maximumTotalCostUsd !== undefined && result.costEstimate === undefined) {
       return failAttempt(
@@ -1148,6 +1209,10 @@ export function startGoal(options: StartGoalOptions): GoalRun {
 
   // ---- start -----------------------------------------------------------------------
 
+  // `goal.started` is the first event on every path, including a goal canceled
+  // or rejected before any attempt runs: the goal exists from this point.
+  emit(new GoalStartedEvent({ goalRunId, goalIdentity: { ...options.identity } }));
+
   if (goalSignal.aborted) {
     onGoalAbort();
     return handle;
@@ -1158,7 +1223,6 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     options.requireDeterministicValidation === true &&
     validator.determinism !== 'deterministic'
   ) {
-    emit(new GoalStartedEvent({ goalRunId, goalIdentity: { ...options.identity } }));
     finishGoal('failed', 'unsupported-validation', {
       failureDetail: 'The validator cannot supply the deterministic evidence this goal requires.',
     });
