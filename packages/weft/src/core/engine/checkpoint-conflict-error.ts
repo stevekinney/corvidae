@@ -70,6 +70,13 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
  * the workflow on the losing engine means re-resuming it from the winner's
  * checkpoint, which this error does not do for you.
  *
+ * The rejection is scoped to the run that was lost. A `result()` call made after
+ * the loss rejects only while storage still identifies that run; if the winner
+ * finished it and started another under the same id, the call resolves against
+ * the current run. A handle whose `result()` already rejected keeps that
+ * outcome, including after `engine.resume()`: use the handle `resume()` returns
+ * (or a later `engine.getHandle()`), which observes the resumed run.
+ *
  * @example
  * ```ts
  * import { WorkflowCheckpointConflictError } from '@lostgradient/weft';

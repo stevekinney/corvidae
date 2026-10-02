@@ -27,7 +27,11 @@ import {
   DEFAULT_WORKER_REALM_READY_TIMEOUT_MS,
   WORKER_PROTOCOL_VERSION,
 } from './worker-protocol.ts';
-import { isWorkerRealmReadyMessage, WorkerRealmReadiness } from './worker-realm-readiness.ts';
+import {
+  buildWorkerRealmReadiness,
+  isWorkerRealmReadyMessage,
+  type WorkerRealmReadiness,
+} from './worker-realm-readiness.ts';
 import {
   WorkerTurnWatchdog,
   type WorkerTurnTimeoutResolverForTesting,
@@ -85,7 +89,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
       this.#requireProtocolVersion,
       this.#turnWatchdog,
     );
-    this.#realmReadiness = WorkerExecutionStrategy.#buildRealmReadiness(
+    this.#realmReadiness = buildWorkerRealmReadiness(
       requireRealmReady,
       getExpectedWorkflowTypes,
       realmReadyTimeoutMs,
@@ -261,13 +265,10 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
   }
 
   /**
-   * Retire a stale execution this engine must stop driving without disturbing
-   * any other workflow. Always the cooperative path (a `cancel` message to the
-   * worker, then the worker returns to the pool), even under `discardOnCancel`:
-   * discarding terminates the worker and durably fails every other workflow
-   * parked on it, which is wrong for a run the engine is walking away from
-   * because another engine owns it. Safe because abandonment only happens while
-   * the worker is idle, awaiting the engine's reply to the turn that lost.
+   * Retire a stale execution without disturbing any other workflow: always the
+   * cooperative path, even under `discardOnCancel`, because discarding the worker
+   * durably fails every workflow parked on it. Safe because abandonment happens
+   * only while the worker is idle, awaiting the reply to the turn that lost.
    */
   retireWorkflow(workflowId: string): void {
     this.#cancelWorkflow(workflowId, false);
@@ -493,24 +494,5 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
       // Observe the unawaited handler turn so rejections never become process noise.
       void result.catch(() => {});
     }
-  }
-
-  static #buildRealmReadiness(
-    requireRealmReady: boolean,
-    getExpectedWorkflowTypes: (() => readonly string[]) | undefined,
-    timeoutMs: number,
-    maxProtocolMessageBytes: number | undefined,
-  ): WorkerRealmReadiness | null {
-    if (!requireRealmReady) return null;
-    if (!getExpectedWorkflowTypes) {
-      throw new Error(
-        'WorkerExecutionStrategyOptions.getExpectedWorkflowTypes is required when requireRealmReady is true',
-      );
-    }
-    return new WorkerRealmReadiness({
-      getExpectedWorkflowTypes,
-      timeoutMs,
-      maxProtocolMessageBytes,
-    });
   }
 }

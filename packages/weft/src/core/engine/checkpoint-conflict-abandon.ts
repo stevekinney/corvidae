@@ -4,7 +4,7 @@ import {
 } from './checkpoint-conflict-error.ts';
 import { dropQueuedInlineWorkflowStart } from './inline-launch-queue.ts';
 import type { EngineInternals } from './internals.ts';
-import { swallowPromiseRejection } from './strategy-helpers.ts';
+import { swallowPromiseRejection, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
 import {
   releaseAbandonedWorkflowMemory,
   type TerminationCallbacks,
@@ -43,13 +43,15 @@ export function abandonWorkflowAfterCheckpointConflict(
 ): void {
   const { workflowId } = error;
   if (internals.checkpointConflicts.has(workflowId)) return;
+  // Read before release: the run's identity lives in the in-memory checkpoint.
+  const workflowExecutionToken = workflowExecutionTokenForWorkflow(internals, workflowId);
   internals.strategy.retireWorkflow(workflowId);
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.durableInlineOperations.delete(workflowId);
   releaseAbandonedWorkflowMemory(internals, workflowId, callbacks);
   internals.workflowClaimRegistry?.forgetLocalClaim(workflowId);
 
-  internals.checkpointConflicts.set(workflowId, error);
+  internals.checkpointConflicts.set(workflowId, { error, workflowExecutionToken });
   const waiter = internals.resultResolvers.get(workflowId);
   if (waiter !== undefined) {
     internals.resultResolvers.delete(workflowId);

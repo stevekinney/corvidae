@@ -103,7 +103,7 @@ export const GUARDED_FIELDS: readonly GuardedField[] = [
       'src/core/engine/index.ts',
       'src/core/engine/disposal.ts',
     ],
-    declarationSites: [{ file: 'src/core/engine/internals.ts', line: 209 }],
+    declarationSites: [{ file: 'src/core/engine/internals.ts', line: 211 }],
     rationale:
       "internals.ts declares the field itself (EngineInternals' own type) at its one audited line, " +
       'registration.ts writes it (engine.register()), activity-resolution.ts reads it as the ' +

@@ -42,7 +42,7 @@ import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import type { RecoveredWorkflowInfo } from './lifecycle/shared.ts';
 
 import type { ActivityHeartbeatKey } from './activity-heartbeat-tracking.ts';
-import type { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
+import type { CheckpointConflictRecord } from './checkpoint-conflict-record.ts';
 import type {
   PendingTimelineEntry,
   QueuedInlineWorkflowExecutionStart,
@@ -114,10 +114,12 @@ export interface EngineInternals {
    * its compare-and-swap race to another engine over the same store, keyed by
    * `workflowId`. Consulted by `result()` so a call made after the loss rejects
    * with the same error instead of waiting on a generator that is gone. An
-   * entry is removed when this engine launches the workflow again, and on
-   * terminal cleanup, purge, and disposal (see `adoptLaunchCheckpoint`).
+   * entry applies only while storage still identifies the lost run's
+   * `workflowExecutionToken`, and is removed when this engine launches the
+   * workflow again, and on terminal cleanup, purge, and disposal (see
+   * `adoptLaunchCheckpoint`).
    */
-  checkpointConflicts: Map<string, WorkflowCheckpointConflictError>;
+  checkpointConflicts: Map<string, CheckpointConflictRecord>;
   signalWaiters: Map<string, () => void>;
   signalWaitersByWorkflow: Map<string, TrackedWaiterKeys>;
   /**

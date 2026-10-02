@@ -138,7 +138,7 @@ async function readState(base: Storage): Promise<WorkflowState> {
 
 async function runRace(
   base: Storage,
-  scenario: 'winner-completes' | 'resume-after-loss' = 'winner-completes',
+  scenario: 'winner-completes' | 'resume-after-loss' | 'winner-starts-new-run' = 'winner-completes',
 ): Promise<void> {
   const race = createRace(base);
   const warning = observeCheckpointConflictWarning();
@@ -199,14 +199,43 @@ async function runRace(
       return;
     }
 
+    if (scenario === 'winner-starts-new-run') {
+      // The winner finishes the lost run, then starts a different run under the
+      // same id. The loser never observes either, so its recorded loss must not
+      // reject a fresh handle for the new run: it resolves from durable state.
+      await engineA.signal(workflowId, 'go', 'X');
+      expect(await engineA.getHandle(workflowId).result()).toBe('s1:s2:s3:X');
+      await engineA.start('conflict-workflow', null, {
+        id: workflowId,
+        onTerminalConflict: 'start-new',
+      });
+      await engineA.signal(workflowId, 'go', 'Z');
+      await waitForCondition(
+        async () => {
+          const state = await readState(base);
+          return state.status === 'completed';
+        },
+        { label: 'replacement run completed on the winner' },
+      );
+      const handleForReplacementRun = new WorkflowHandle(workflowId, internals.engine);
+      expect(await handleForReplacementRun.result()).toBe('s1:s2:s3:Z');
+      expect(internals.checkpointConflicts.has(workflowId)).toBe(false);
+      expect(race.writesByBAfterLoss).toEqual([]);
+      return;
+    }
+
     // The loser later takes the run over for real: the winner pauses it, this
     // engine resumes it from the winner's checkpoint and drives it to completion
     // without anyone asking for result() mid-run. The recorded loss must not
     // outlive that local resume, or the run's real outcome would be masked by the
     // old conflict once terminal cleanup drops the in-memory checkpoint.
     await engineA.suspend(workflowId);
-    await engineB.resume(workflowId);
+    const resumedHandle = await engineB.resume(workflowId);
     expect(internals.checkpointConflicts.has(workflowId)).toBe(false);
+    // The handle that observed the loss keeps reporting it; resume() hands back
+    // a different handle that observes the resumed run.
+    expect(resumedHandle).not.toBe(loser);
+    expect(await rejectionOf(loser.result())).toBeInstanceOf(WorkflowCheckpointConflictError);
     await engineB.signal(workflowId, 'go', 'Y');
     await waitForCondition(
       async () => {
@@ -216,8 +245,8 @@ async function runRace(
       { label: 'resumed run completed on the former loser' },
     );
     expect(internals.checkpoints.has(workflowId)).toBe(false);
-    const freshHandleAfterResume = new WorkflowHandle(workflowId, internals.engine);
-    expect(await freshHandleAfterResume.result()).toBe('s1:s2:s3:Y');
+    expect(await resumedHandle.result()).toBe('s1:s2:s3:Y');
+    expect(engineB.getHandle(workflowId)).toBe(resumedHandle);
   } finally {
     warning.stop();
     await engineB?.[Symbol.asyncDispose]();
@@ -234,6 +263,10 @@ describe('checkpoint compare-and-swap loss under ownership none', () => {
     const { BunSQLiteStorage } = await import('../../storage/bun-sql.ts');
     using storage = new BunSQLiteStorage(':memory:');
     await runRace(storage);
+  });
+
+  it('does not reject a fresh handle for a different run the winner started under the same id', async () => {
+    await runRace(new MemoryStorage(), 'winner-starts-new-run');
   });
 
   it('does not reject a later local run of the workflow with the old loss (resume after loss)', async () => {

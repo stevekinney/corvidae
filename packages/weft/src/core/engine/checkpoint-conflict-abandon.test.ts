@@ -28,7 +28,9 @@ import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
+import { clearCheckpointConflictForResume } from './checkpoint-conflict-record.ts';
 import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
+import { getWorkflowResultPromise } from './handle-result.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { workflowFeedListenerKey } from './state-utilities.ts';
@@ -188,7 +190,7 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
 
     expect(holdsState('lost').some(Boolean)).toBe(false);
     expect(holdsState('bystander').every(Boolean)).toBe(true);
-    expect(internals.checkpointConflicts.get('lost')).toBe(error);
+    expect(internals.checkpointConflicts.get('lost')?.error).toBe(error);
     expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual(['lost']);
     // The winner owns the durable task behind a pending async activity.
     expect(remoteCancellations).toEqual([]);
@@ -380,6 +382,65 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
   });
 });
 
+describe('result() after a recorded checkpoint loss', () => {
+  const conflictRecord = (workflowId: string, workflowExecutionToken: string | undefined) => ({
+    error: new WorkflowCheckpointConflictError(workflowId),
+    workflowExecutionToken,
+  });
+
+  it('keeps reporting the loss when storage cannot be read', async () => {
+    const storage = new MemoryStorage();
+    await using engine = new Engine({ storage });
+    const internals = getInternals(engine);
+    const record = conflictRecord('unreadable', 'lost-run');
+    internals.checkpointConflicts.set('unreadable', record);
+    internals.storage = new Proxy(storage, {
+      get(target, property) {
+        if (property === 'get') return () => Promise.reject(new Error('storage unavailable'));
+        const original: unknown = Reflect.get(target, property, target);
+        return typeof original === 'function' ? original.bind(target) : original;
+      },
+    });
+
+    expect(await rejectionOf(getWorkflowResultPromise(internals, 'unreadable'))).toBe(record.error);
+    expect(internals.checkpointConflicts.get('unreadable')).toBe(record);
+  });
+
+  it('drops a loss that storage shows belongs to a run that is gone, then resolves normally', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpointConflicts.set('replaced', conflictRecord('replaced', 'lost-run'));
+
+    const reason = await rejectionOf(getWorkflowResultPromise(internals, 'replaced'));
+
+    expect((reason as Error).message).toContain('not found in storage');
+    expect(internals.checkpointConflicts.has('replaced')).toBe(false);
+  });
+
+  it('defers to a local launch that cleared the loss while storage was being read', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpointConflicts.set('relaunched', conflictRecord('relaunched', 'lost-run'));
+    const pending = getWorkflowResultPromise(internals, 'relaunched');
+    internals.checkpointConflicts.delete('relaunched');
+
+    const reason = await rejectionOf(pending);
+
+    expect((reason as Error).message).toContain('not found in storage');
+  });
+
+  it('clears a loss for resume with and without a cached handle', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpointConflicts.set('uncached', conflictRecord('uncached', undefined));
+    clearCheckpointConflictForResume(internals, 'uncached');
+    expect(internals.checkpointConflicts.has('uncached')).toBe(false);
+
+    clearCheckpointConflictForResume(internals, 'never-recorded');
+    expect(internals.checkpointConflicts.size).toBe(0);
+  });
+});
+
 describe('a checkpoint conflict raised outside the generator checkpoint message', () => {
   it('abandons at the durableActivity retry-sleep persist without delivering the error to user code', async () => {
     const base = new MemoryStorage();
@@ -502,11 +563,11 @@ describe('a checkpoint conflict raised outside the generator checkpoint message'
     expect(internals.checkpoints.has('abandoned-child-parent')).toBe(false);
   });
 
-  it('rejects a parent that awaits an already-abandoned child immediately, and still surfaces other child failures', async () => {
+  it('rejects a parent that awaits an already-abandoned child, and still surfaces other child failures', async () => {
     const storage = new MemoryStorage();
     await using engine = new Engine({ storage });
     const internals = getInternals(engine);
-    const warning = collectConflictWarnings();
+    const warning = collectConflictWarnings(2);
     abandonWorkflowAfterCheckpointConflict(
       internals,
       new WorkflowCheckpointConflictError('earlier-child'),
@@ -519,12 +580,14 @@ describe('a checkpoint conflict raised outside the generator checkpoint message'
       'earlier-child',
       'late-parent',
     );
-    // The parent is abandoned and its view of the child never settles.
-    expect(await Promise.race([parentView, Promise.resolve('pending')])).toBe('pending');
+    // The loss is checked against storage before it is reported, so the parent
+    // is abandoned once that read lands; its view of the child never settles.
+    await warning.received;
     warning.stop();
+    expect(await Promise.race([parentView, Promise.resolve('pending')])).toBe('pending');
 
-    expect(internals.checkpointConflicts.get('late-parent')?.cause).toBe(
-      internals.checkpointConflicts.get('earlier-child'),
+    expect(internals.checkpointConflicts.get('late-parent')?.error.cause).toBe(
+      internals.checkpointConflicts.get('earlier-child')?.error,
     );
 
     // A child that merely failed is not a conflict: the parent still sees it.

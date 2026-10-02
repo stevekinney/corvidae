@@ -108,7 +108,8 @@ describe('RevisionRealmExecutionStrategy', () => {
         input: 'input',
         checkpoint: new ArrayBuffer(0),
       });
-      expect((await acquisitions[0])?.ok).toBe(true);
+      const acquisition = await acquisitions[0];
+      expect(acquisition?.ok).toBe(true);
 
       strategy.retireWorkflow('wf-realm-retire');
       await flushMicrotasks();

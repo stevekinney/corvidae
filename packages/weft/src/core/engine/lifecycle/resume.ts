@@ -15,6 +15,7 @@
  */
 
 import { KEYS } from '../../../storage/interface.ts';
+import { clearCheckpointConflictForResume } from '../checkpoint-conflict-record.ts';
 import type { WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import { decodeWorkflowState } from '../validation.ts';
@@ -112,7 +113,7 @@ export async function resumeWorkflowFromStorage(
   // A local resume means this engine is driving the run again, so a checkpoint
   // loss it recorded earlier no longer applies. Drop it before the recovery
   // pre-checks, or `failWorkflow` would skip a legitimate failure they raise.
-  internals.checkpointConflicts.delete(workflowId);
+  clearCheckpointConflictForResume(internals, workflowId);
 
   try {
     return await performResumeAfterClaimAcquired(
