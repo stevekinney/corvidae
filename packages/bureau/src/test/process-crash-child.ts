@@ -17,7 +17,6 @@ import { writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { createCheckpointStore, stopWhen } from '@lostgradient/operative';
-import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -294,13 +293,13 @@ async function humanWaitParked(): Promise<void> {
   await pollUntil('the run to surface its human-wait review', () =>
     bureau.listPendingReviews().some((review) => review.runId === run.id),
   );
-  const inspector = await resolveStorage({
-    type: backend as 'sqlite' | 'lmdb',
-    path: storagePath as string,
-  });
-  const checkpoints = createCheckpointStore(
-    textValueStore(inspector, { disposeUnderlyingStorage: false }),
-  );
+  // Read through the Bureau's own store: a second handle on a live LMDB path
+  // can deadlock against the Bureau's (see `storage-fixtures.ts`).
+  if (bureau.kv === undefined) {
+    process.stderr.write('child: the bureau has no durable key-value store\n');
+    process.exit(4);
+  }
+  const checkpoints = createCheckpointStore(bureau.kv);
   await pollUntil('the run cursor to advance past the parked step', async () => {
     const cursor = await checkpoints.loadCursor(run.id);
     return cursor !== null && cursor.step >= 1;
