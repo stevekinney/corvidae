@@ -9134,12 +9134,12 @@
       "name": "@lostgradient/operative",
       "basis": "settled",
       "reason": "Already published under this name.",
-      "lastPublishedVersion": "0.15.2",
+      "lastPublishedVersion": "0.15.3",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.15.2",
-        "gitHead": "bbd77a871a7f66b3a1ffb9f3a48a265b191744e7",
-        "corvidaeCommit": "f4fed8dac99afd095fef7fb4aece0308e9d6df67",
+        "version": "0.15.3",
+        "gitHead": "52f0f7bb32fcdfaac229d1c54e548d53b661ecf3",
+        "corvidaeCommit": "ec9af3eb9bd548d39b9fede75a1f9db4adc4bdf3",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -9252,6 +9252,7 @@
             "src/generate-middleware.ts",
             "src/generation-profile.ts",
             "src/generation-selection-record.ts",
+            "src/goal-run.ts",
             "src/guardrails/create-guardrails.ts",
             "src/guardrails/index.ts",
             "src/guardrails/input-guardrail.ts",
@@ -9429,7 +9430,7 @@
             "src/toolbox-event-forwarding.ts",
             "src/types.ts"
           ],
-          "digest": "2382228486ec1bad23763cc0f730088b1ba50d65bc2faf6f44cd30fdf509bb08"
+          "digest": "06ebffc23a8f4df9e4945427422d063964b11d2e78ddc06f892ab69029d14cf4"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -9437,7 +9438,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "d1842ab55263621dd1c884f206b1856ce0c07e440a965c9890aba62532cef803"
+          "digest": "2010e25078d32f4fcbded891cce880f31835784db4647c15e423213d38f8374c"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -9451,27 +9452,35 @@
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-BH3r-Cqy.d.ts",
+              "path": "package/dist/anthropic-BZX6taJT.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-BPvFonii.d.cts",
+              "path": "package/dist/anthropic-C2jYIJoy.js",
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-Bp4kJ-o4.d.ts",
+              "path": "package/dist/anthropic-C2jYIJoy.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-CJPpztCT.js",
+              "path": "package/dist/anthropic-CfUe2NCc.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-CJPpztCT.js.map",
+              "path": "package/dist/anthropic-CxqqNj57.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/anthropic-C_rQgHGE.d.cts",
+              "path": "package/dist/anthropic-CxqqNj57.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-DCbtUmWD.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/anthropic-DXBMF6tp.d.ts",
               "executable": false
             },
             {
@@ -9488,14 +9497,6 @@
             },
             {
               "path": "package/dist/anthropic-sdk-DOmHeoPc.cjs.map",
-              "executable": false
-            },
-            {
-              "path": "package/dist/anthropic-zLRhQSAt.cjs",
-              "executable": false
-            },
-            {
-              "path": "package/dist/anthropic-zLRhQSAt.cjs.map",
               "executable": false
             },
             {
@@ -9563,6 +9564,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/classify-error-BQOXqOTT.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/classify-error-BQOXqOTT.cjs.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/classify-error-DNKdPgdJ.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/classify-error-DNKdPgdJ.js.map",
+              "executable": false
+            },
+            {
               "path": "package/dist/conditions-Y5MJ2Lma.js",
               "executable": false
             },
@@ -9611,19 +9628,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/durable-GEGK5_eU.js",
+              "path": "package/dist/durable-BfQQE4WR.js",
               "executable": false
             },
             {
-              "path": "package/dist/durable-GEGK5_eU.js.map",
+              "path": "package/dist/durable-BfQQE4WR.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/durable-y732c0B_.cjs",
+              "path": "package/dist/durable-CRH2Zqd3.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/durable-y732c0B_.cjs.map",
+              "path": "package/dist/durable-CRH2Zqd3.cjs.map",
               "executable": false
             },
             {
@@ -9659,27 +9676,27 @@
               "executable": false
             },
             {
+              "path": "package/dist/errors-63HSAUIr.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-63HSAUIr.js.map",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-BHIemfRF.cjs",
+              "executable": false
+            },
+            {
+              "path": "package/dist/errors-BHIemfRF.cjs.map",
+              "executable": false
+            },
+            {
               "path": "package/dist/errors-Bwl-G3Lw.cjs",
               "executable": false
             },
             {
               "path": "package/dist/errors-Bwl-G3Lw.cjs.map",
-              "executable": false
-            },
-            {
-              "path": "package/dist/errors-Cu5mwlLP.js",
-              "executable": false
-            },
-            {
-              "path": "package/dist/errors-Cu5mwlLP.js.map",
-              "executable": false
-            },
-            {
-              "path": "package/dist/errors-DfbEpvuE.cjs",
-              "executable": false
-            },
-            {
-              "path": "package/dist/errors-DfbEpvuE.cjs.map",
               "executable": false
             },
             {
@@ -9691,23 +9708,35 @@
               "executable": false
             },
             {
-              "path": "package/dist/fallover-B4KF8k-a.cjs",
+              "path": "package/dist/fallover-B3TqyU2D.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/fallover-B4KF8k-a.cjs.map",
+              "path": "package/dist/fallover-B3TqyU2D.cjs.map",
               "executable": false
             },
             {
-              "path": "package/dist/fallover-CAWJtJ6M.js",
+              "path": "package/dist/fallover-CXs9N2zW.js",
               "executable": false
             },
             {
-              "path": "package/dist/fallover-CAWJtJ6M.js.map",
+              "path": "package/dist/fallover-CXs9N2zW.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/gemini-DJfXAhrc.d.cts",
+              "path": "package/dist/gemini-BrmwnPb9.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-CmJcuOen.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-D6onupbq.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/gemini-DC6Pxl7x.d.cts",
               "executable": false
             },
             {
@@ -9716,10 +9745,6 @@
             },
             {
               "path": "package/dist/gemini-DOcv_Xnu.d.ts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/gemini-Pk5sh5pB.d.cts",
               "executable": false
             },
             {
@@ -9739,14 +9764,6 @@
               "executable": false
             },
             {
-              "path": "package/dist/gemini-b94yWCU6.d.ts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/gemini-cjfgE4xg.d.ts",
-              "executable": false
-            },
-            {
               "path": "package/dist/gemini.cjs",
               "executable": false
             },
@@ -9763,19 +9780,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/guardrails-DUS9wEkB.cjs",
+              "path": "package/dist/guardrails-Cp0plDaM.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/guardrails-DUS9wEkB.cjs.map",
+              "path": "package/dist/guardrails-Cp0plDaM.cjs.map",
               "executable": false
             },
             {
-              "path": "package/dist/guardrails-dWJPC2xU.js",
+              "path": "package/dist/guardrails-D7gtpebf.js",
               "executable": false
             },
             {
-              "path": "package/dist/guardrails-dWJPC2xU.js.map",
+              "path": "package/dist/guardrails-D7gtpebf.js.map",
               "executable": false
             },
             {
@@ -9795,59 +9812,67 @@
               "executable": false
             },
             {
-              "path": "package/dist/index-52FSQGbz.d.ts",
+              "path": "package/dist/index-0dYnPL06.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-B0eTEoap.d.ts",
+              "path": "package/dist/index-46YGwbmM.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-B2AT6SND.d.ts",
+              "path": "package/dist/index-5yKnu0x6.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-B419Mu9X.d.cts",
+              "path": "package/dist/index-B7Q6XVzg.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-BWF5pGvD.d.ts",
+              "path": "package/dist/index-BGXffFMV.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-BhyIUTlr.d.cts",
+              "path": "package/dist/index-BKMNi0FZ.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-BkfF3m5c.d.cts",
+              "path": "package/dist/index-BPlayhau.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-BlWtXflz.d.cts",
+              "path": "package/dist/index-BSgeX_vW.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-Boa4S-hq.d.ts",
+              "path": "package/dist/index-BTKWNS1r.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-C3XbS28b.d.cts",
+              "path": "package/dist/index-BdEUYUc7.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-CIAO90MP.d.cts",
+              "path": "package/dist/index-CBTcjlsC.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-CORamqCd.d.cts",
+              "path": "package/dist/index-CDw4vQNF.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-CUtmF51Q.d.cts",
+              "path": "package/dist/index-CFEeECja.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-Ckvp4BQg.d.ts",
+              "path": "package/dist/index-CUi0PYSu.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-CYbh8IV5.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-Cp2byBI5.d.ts",
               "executable": false
             },
             {
@@ -9855,19 +9880,7 @@
               "executable": false
             },
             {
-              "path": "package/dist/index-CwlJYGOg.d.cts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/index-D-ToqV3R.d.ts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/index-D1Tlwk_N.d.ts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/index-D1fqKKLA.d.cts",
+              "path": "package/dist/index-D8tj9rsi.d.cts",
               "executable": false
             },
             {
@@ -9875,35 +9888,39 @@
               "executable": false
             },
             {
-              "path": "package/dist/index-DYQ9clFR.d.cts",
+              "path": "package/dist/index-DCFHUbca.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-DbXb4Pcs.d.ts",
+              "path": "package/dist/index-DMFnYCoG.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-DiVyyyYN.d.ts",
+              "path": "package/dist/index-DMO9PLbo.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-DkvKsIrr.d.ts",
+              "path": "package/dist/index-DVB4PJcZ.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/index-DtruDswl.d.ts",
+              "path": "package/dist/index-DeIxNBRX.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-H5Jw2z6i.d.ts",
+              "path": "package/dist/index-DmRNvs_O.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-iLOaEryq.d.cts",
+              "path": "package/dist/index-DwPel0VA.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/index-nfJSE17G.d.cts",
+              "path": "package/dist/index-m-2SEgss.d.cts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/index-o32gadLD.d.ts",
               "executable": false
             },
             {
@@ -10011,11 +10028,15 @@
               "executable": false
             },
             {
-              "path": "package/dist/openai-BDVUAhtq.d.ts",
+              "path": "package/dist/openai-98BtIAK2.d.cts",
               "executable": false
             },
             {
-              "path": "package/dist/openai-CZ6njK2F.d.cts",
+              "path": "package/dist/openai-B7DcHq8K.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/openai-Bk4QaewG.d.ts",
               "executable": false
             },
             {
@@ -10027,11 +10048,7 @@
               "executable": false
             },
             {
-              "path": "package/dist/openai-W6L5c6GN.d.cts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/openai-kv95JJGe.d.ts",
+              "path": "package/dist/openai-DgMg4xwT.d.cts",
               "executable": false
             },
             {
@@ -10051,19 +10068,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/providers-BB3WFWTI.cjs",
+              "path": "package/dist/providers-BZYtD99w.js",
               "executable": false
             },
             {
-              "path": "package/dist/providers-BB3WFWTI.cjs.map",
+              "path": "package/dist/providers-BZYtD99w.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/providers-BSTRxFKe.js",
+              "path": "package/dist/providers-C_Sb4q26.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/providers-BSTRxFKe.js.map",
+              "path": "package/dist/providers-C_Sb4q26.cjs.map",
               "executable": false
             },
             {
@@ -10451,35 +10468,35 @@
               "executable": false
             },
             {
-              "path": "package/dist/response-format-adapters-HoGuYbL6.cjs",
+              "path": "package/dist/response-format-adapters-CIi0c3au.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/response-format-adapters-HoGuYbL6.cjs.map",
+              "path": "package/dist/response-format-adapters-CIi0c3au.cjs.map",
               "executable": false
             },
             {
-              "path": "package/dist/response-format-adapters-Z23tyIX2.js",
+              "path": "package/dist/response-format-adapters-DYBuGpK8.js",
               "executable": false
             },
             {
-              "path": "package/dist/response-format-adapters-Z23tyIX2.js.map",
+              "path": "package/dist/response-format-adapters-DYBuGpK8.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/response-schema-eBEaXx8n.js",
+              "path": "package/dist/response-schema-BlbfO-OD.js",
               "executable": false
             },
             {
-              "path": "package/dist/response-schema-eBEaXx8n.js.map",
+              "path": "package/dist/response-schema-BlbfO-OD.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/response-schema-sBApVhNv.cjs",
+              "path": "package/dist/response-schema-OGrZvqSe.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/response-schema-sBApVhNv.cjs.map",
+              "path": "package/dist/response-schema-OGrZvqSe.cjs.map",
               "executable": false
             },
             {
@@ -10531,19 +10548,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-C4KZsCue.js",
+              "path": "package/dist/run-workflow-D2vRdixE.js",
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-C4KZsCue.js.map",
+              "path": "package/dist/run-workflow-D2vRdixE.js.map",
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-DwOnDDdh.cjs",
+              "path": "package/dist/run-workflow-UTcQN9T1.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/run-workflow-DwOnDDdh.cjs.map",
+              "path": "package/dist/run-workflow-UTcQN9T1.cjs.map",
               "executable": false
             },
             {
@@ -10627,19 +10644,19 @@
               "executable": false
             },
             {
-              "path": "package/dist/test-Ckxg-Gnp.cjs",
+              "path": "package/dist/test-BRDH1PmB.cjs",
               "executable": false
             },
             {
-              "path": "package/dist/test-Ckxg-Gnp.cjs.map",
+              "path": "package/dist/test-BRDH1PmB.cjs.map",
               "executable": false
             },
             {
-              "path": "package/dist/test-DDQfCx99.js",
+              "path": "package/dist/test-CeZ0nSr3.js",
               "executable": false
             },
             {
-              "path": "package/dist/test-DDQfCx99.js.map",
+              "path": "package/dist/test-CeZ0nSr3.js.map",
               "executable": false
             },
             {
@@ -10675,11 +10692,11 @@
               "executable": false
             },
             {
-              "path": "package/dist/types-BpO4ssaY.d.cts",
+              "path": "package/dist/types-BgkL4zHj.d.ts",
               "executable": false
             },
             {
-              "path": "package/dist/types-IrwIdNtq.d.ts",
+              "path": "package/dist/types-BvGY9v7V.d.cts",
               "executable": false
             },
             {
@@ -10695,7 +10712,7 @@
               "executable": false
             }
           ],
-          "digest": "b096311a838c76d458ce6c384ea27c324149cf0401bc2181d3a74bf93fe417a0"
+          "digest": "bbe091a4e2f21451c2c0271fbcbde58b80004b897fb544d059a443ac28b1ac61"
         }
       }
     },

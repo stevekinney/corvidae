@@ -980,7 +980,7 @@ The thresholds are exported constants, fixed from a corpus of ten hand-written s
 
 #### What fresh attempts do not do
 
-- **Operative never produces an artifact.** No code in this workspace turns a failed run into a handoff, and no shipped controller chooses a policy for you; the managed-goal controller that will (COR-634) is not built. The host writes the draft, including its summaries.
+- **Operative never produces an artifact.** No code in this workspace turns a failed run into a handoff, and no shipped controller chooses a policy for you; the in-memory goal controller `startGoal()` (COR-634) accepts a `fresh-from-artifact` conversation policy but does not produce the artifact. The host writes the draft, including its summaries.
 - **Policies are opt-in.** `applyConversationPolicy` is the only function that reads a `ConversationPolicy`. A run started any other way continues its conversation.
 - **Operative stores neither epochs nor publisher lists.** Keep the producing run's sealed epoch (the sealer's `current()` right after that run ends, before another run seals a newer one) and the actors allowed to publish for it, and serve them from `resolveFreshAttemptSource`. A handle without a resolver rejects every artifact as `unauthorized`. Neither the validator nor the store checks that the epoch a resolver returns really belongs to that run.
 - **Carry-forward context is an allowlist of source identities, not content.** A fresh conversation receives no source's text. Its instructions come from the `instructions` you pass, and its tools and generation settings from the handle's `runOptions`.
