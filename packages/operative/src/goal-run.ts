@@ -129,6 +129,11 @@ export interface ValidatorIdentity {
   readonly version: string;
 }
 
+/**
+ * The in-memory record keeps `detail` (and `ValidatorError.cause`) exactly as
+ * the validator supplied them, so neither is guaranteed JSON-safe. A durable
+ * layer must project both to a JSON-safe form itself before persisting.
+ */
 export interface ValidatorEvidence {
   readonly source: string;
   readonly detail: unknown;
@@ -562,6 +567,8 @@ function createEventFeed<T extends object>() {
         },
         async return(): Promise<IteratorResult<T>> {
           returned = true;
+          // Wake every pending next() so it observes `returned` and resolves done.
+          wake();
           return { value: undefined, done: true };
         },
       };
@@ -634,6 +641,28 @@ const STOP: AttemptDirective = { next: 'stop' };
 const OPERATOR_ABORT_DETAIL =
   'The attempt was aborted with abortAttempt(), so it was not validated and no further attempt could start.';
 
+/**
+ * Detaches a recorded outcome from the validator's own objects and freezes it,
+ * so neither the validator nor a caller can rewrite recorded history. `detail`
+ * and `cause` values stay as the validator supplied them.
+ */
+function freezeOutcome(outcome: ValidatorOutcome): ValidatorOutcome {
+  const freezeEvidence = (evidence: readonly ValidatorEvidence[]): readonly ValidatorEvidence[] =>
+    Object.freeze(evidence.map((item) => Object.freeze({ ...item })));
+  const freezeError = (error: ValidatorError): ValidatorError => Object.freeze({ ...error });
+  switch (outcome.kind) {
+    case 'pass':
+    case 'fail':
+      return Object.freeze({ ...outcome, evidence: freezeEvidence(outcome.evidence) });
+    case 'error':
+      return Object.freeze({ ...outcome, error: freezeError(outcome.error) });
+    case 'unavailable':
+      return Object.freeze({ ...outcome, error: freezeError(outcome.error) });
+    default:
+      return Object.freeze({ ...outcome });
+  }
+}
+
 function snapshotAttempt(attempt: MutableAttempt): GoalAttemptRecord {
   return { ...attempt, usage: { ...attempt.usage } };
 }
@@ -647,7 +676,14 @@ export function startGoal(options: StartGoalOptions): GoalRun {
 
   const runtime = options.runtime ?? createDefaultRuntimeServices();
   const goalRunId = options.goalRunId ?? runtime.identifiers.next('goal-run');
-  const { budget, validator, retryPolicy } = options;
+  const { validator, retryPolicy } = options;
+  // Snapshot the validated configuration once: the caller keeps its own objects,
+  // and mutating them after start must not bypass validation.
+  const budget: GoalBudget = Object.freeze({ ...options.budget });
+  const conversationPolicy: ConversationPolicy = Object.freeze({
+    ...options.conversationPolicy,
+  });
+  const { prompt, instructions } = options;
   const retryOn = new Set<GoalRetryableReason>(retryPolicy?.retryOn ?? []);
   const startedMonotonic = runtime.monotonic.now();
 
@@ -881,13 +917,13 @@ export function startGoal(options: StartGoalOptions): GoalRun {
   // ---- one attempt -----------------------------------------------------------
 
   const attemptInput = (index: number, feedback: string | undefined): string => {
-    if (index === 0) return options.prompt;
-    const policy = options.conversationPolicy;
-    if (policy.kind === 'continue') return feedback ?? options.prompt;
+    if (index === 0) return prompt;
+    const policy = conversationPolicy;
+    if (policy.kind === 'continue') return feedback ?? prompt;
     if (policy.kind === 'fork-from-baseline' && feedback !== undefined) {
-      return `${options.prompt}\n\n${feedback}`;
+      return `${prompt}\n\n${feedback}`;
     }
-    return options.prompt;
+    return prompt;
   };
 
   const failAttempt = (
@@ -966,11 +1002,11 @@ export function startGoal(options: StartGoalOptions): GoalRun {
    * no live run, and `closed()` accounts for runs only.
    */
   const resolveSession = async (index: number): Promise<SessionHandle | undefined> => {
-    if (index === 0 || options.conversationPolicy.kind === 'continue') return options.session;
+    if (index === 0 || conversationPolicy.kind === 'continue') return options.session;
     const applied = await untilTerminal(
       applyConversationPolicy(options.session, {
-        policy: options.conversationPolicy,
-        instructions: options.instructions ?? '',
+        policy: conversationPolicy,
+        instructions: instructions ?? '',
       }),
     );
     return applied?.value;
@@ -1049,7 +1085,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         });
       case 'unavailable':
         return retryOn.has('validator-unavailable')
-          ? decideRetryOrExhaust(attempt, undefined, announce)
+          ? decideRetryOrExhaust(attempt, inputFeedback, announce)
           : stopWith('failed', 'validator-infrastructure-error', {
               validatorError: outcome.error,
               failureDetail: outcome.reason,
@@ -1063,7 +1099,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
           return decideRetryOrExhaust(attempt, inputFeedback, announce, OPERATOR_ABORT_DETAIL);
         }
         return retryOn.has('validator-canceled')
-          ? decideRetryOrExhaust(attempt, undefined, announce)
+          ? decideRetryOrExhaust(attempt, inputFeedback, announce)
           : stopWith('failed', 'validator-infrastructure-error', {
               failureDetail: 'The validator was canceled.',
             });
@@ -1110,7 +1146,12 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     const outcome: ValidatorOutcome = operatorAborted.has(attempt.attemptId)
       ? { kind: 'canceled' }
       : settled.value.outcome;
-    attempt.validation = { identity: { ...validator.identity }, startedAt, completedAt, outcome };
+    attempt.validation = Object.freeze({
+      identity: Object.freeze({ ...validator.identity }),
+      startedAt,
+      completedAt,
+      outcome: freezeOutcome(outcome),
+    });
     attempt.feedback = outcome.kind === 'fail' ? outcome.feedback : undefined;
     attempt.status = attemptStatusFor(outcome);
     attempt.completedAt = completedAt;

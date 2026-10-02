@@ -685,6 +685,52 @@ describe('retry policy', () => {
     ]);
   });
 
+  it.each([
+    ['validator-unavailable', unavailable],
+    ['validator-canceled', { kind: 'canceled' }],
+  ] as const)(
+    'carries the prior feedback past a %p outcome under the continue policy',
+    async (reason, outcome) => {
+      const fixture = createFixture();
+      const runSpy = spyOn(fixture.session, 'run');
+      await runToEnd(
+        goalOptions(fixture, scriptedValidator([failing(true, 'F1'), outcome, PASS]), {
+          retryPolicy: { retryOn: ['validator-fail-retryable', reason] },
+          budget: { maximumAttempts: 5, maximumTotalSteps: 1000 },
+        }),
+      );
+      expect(runSpy.mock.calls.map(([input]) => input)).toEqual(['achieve the goal', 'F1', 'F1']);
+    },
+  );
+
+  it('records validation as a frozen copy detached from the validator objects', async () => {
+    const fixture = createFixture();
+    const evidence = [{ source: 'unit', detail: 'ok' }];
+    const error = { kind: 'execute', code: 'X', message: 'm' } as const;
+    const validator = scriptedValidator([
+      { kind: 'unavailable', reason: 'r', error },
+      { kind: 'pass', evidence },
+    ]);
+    const { run, result } = await runToEnd(
+      goalOptions(fixture, validator, { retryPolicy: { retryOn: ['validator-unavailable'] } }),
+    );
+    evidence.push({ source: 'late', detail: 'mutation' });
+    const [first, second] = run.attempts();
+    const passOutcome = second?.validation?.outcome;
+    expect(passOutcome?.kind === 'pass' ? passOutcome.evidence : undefined).toEqual([
+      { source: 'unit', detail: 'ok' },
+    ]);
+    expect(Object.isFrozen(second?.validation?.outcome)).toBe(true);
+    expect(Object.isFrozen(passOutcome?.kind === 'pass' ? passOutcome.evidence : undefined)).toBe(
+      true,
+    );
+    const firstOutcome = first?.validation?.outcome;
+    expect(
+      Object.isFrozen(firstOutcome?.kind === 'unavailable' ? firstOutcome.error : undefined),
+    ).toBe(true);
+    expect(result.attempts[1]?.validation?.outcome).toEqual(passOutcome);
+  });
+
   it('carries the validator error on a failed unavailable outcome', async () => {
     const fixture = createFixture();
     const { result } = await runToEnd(goalOptions(fixture, scriptedValidator([unavailable])));
@@ -1954,6 +2000,39 @@ describe('events', () => {
 // ---------------------------------------------------------------------------
 // AC10: cleanup
 // ---------------------------------------------------------------------------
+
+describe('event feed return()', () => {
+  it('resolves a pending next() when return() is called', async () => {
+    const fixture = createFixture();
+    const gate = deferred<ValidatorOutcome>();
+    const run = startGoal(goalOptions(fixture, scriptedValidator([() => gate.promise])));
+    const iterator = run[Symbol.asyncIterator]();
+    for (;;) {
+      const step = await iterator.next();
+      if (step.done || step.value.type === 'goal.attempt.started') break;
+    }
+    const pending = iterator.next();
+    await yieldToPortableEventLoop();
+    await iterator.return?.();
+    expect(await pending).toEqual({ value: undefined, done: true });
+    gate.resolve(PASS);
+    await run.result();
+  });
+});
+
+describe('configuration snapshot', () => {
+  it('ignores mutation of the caller budget after startGoal', async () => {
+    const fixture = createFixture();
+    const budget = { maximumAttempts: 1, maximumTotalSteps: 1000 };
+    const validator = scriptedValidator([failing(true)]);
+    const run = startGoal(goalOptions(fixture, validator, { budget, retryPolicy: RETRY_ON_FAIL }));
+    budget.maximumAttempts = 50;
+    const result = await run.result();
+    expect(result).toMatchObject({ status: 'exhausted', terminalReason: 'attempt-limit-reached' });
+    expect(run.attempts()).toHaveLength(1);
+    expect(run.budget().maximumAttempts).toBe(1);
+  });
+});
 
 describe('closed()', () => {
   const TERMINALS: readonly [string, () => Promise<GoalRun>][] = [

@@ -33,7 +33,10 @@ export type ValidatorErrorKind = (typeof VALIDATOR_ERROR_KINDS)[number];
 
 /**
  * Plain data describing why a validator could not produce a verdict. Not an
- * `Error`: it travels inside a `ValidatorOutcome` and must stay serializable.
+ * `Error`: it travels inside a `ValidatorOutcome`. The in-memory record keeps
+ * the raw `cause` exactly as thrown, so it is not guaranteed JSON-safe; a
+ * durable layer must project `cause` (and `ValidatorEvidence.detail`) to a
+ * JSON-safe form itself before persisting it.
  */
 export interface ValidatorError {
   readonly kind: ValidatorErrorKind;
