@@ -694,3 +694,37 @@ describe('at-least-once tool re-execution on simulated crash — a crashed mid-s
     }
   });
 });
+
+describe('GoalRun public surface (COR-634)', () => {
+  it('exports startGoal, the validator error kinds, the configuration error, and the goal events', async () => {
+    const api = await import('@lostgradient/operative');
+    expect(typeof api.startGoal).toBe('function');
+    expect([...api.VALIDATOR_ERROR_KINDS]).toEqual([
+      'load',
+      'contract',
+      'execute',
+      'timeout',
+      'output',
+    ]);
+    expect(new api.GoalConfigurationError('missing-validator', 'm')).toBeInstanceOf(Error);
+    for (const name of [
+      'GoalStartedEvent',
+      'GoalAttemptStartedEvent',
+      'GoalAttemptValidatedEvent',
+      'GoalFeedbackRecordedEvent',
+      'GoalRetryingEvent',
+      'GoalSucceededEvent',
+      'GoalExhaustedEvent',
+      'GoalFailedEvent',
+      'GoalCancellationRequestedEvent',
+      'GoalCanceledEvent',
+    ] as const) {
+      expect(typeof api[name]).toBe('function');
+    }
+  });
+
+  it('does not export a goal.recovered event or any durable goal surface', async () => {
+    const api = await import('@lostgradient/operative');
+    expect(Object.keys(api)).not.toContain('GoalRecoveredEvent');
+  });
+});
