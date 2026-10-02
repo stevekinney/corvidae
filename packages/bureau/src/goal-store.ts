@@ -158,9 +158,27 @@ export interface GoalStore {
   close(goalRunId: string, at: string): Promise<GoalControlResult>;
 }
 
+/** What a write left behind, as the store's observer sees it. */
+export type GoalStoreObservation =
+  | { readonly kind: 'created'; readonly record: GoalState }
+  /** Applied, or answered `duplicate`: either way `record` is the transition's post-state. */
+  | { readonly kind: 'transitioned'; readonly record: GoalState }
+  | { readonly kind: 'controller-restarted'; readonly record: GoalState };
+
 export interface GoalStoreOptions {
   /** Called once per unreadable key encountered. Defaults to a no-op. */
   readonly onCorrupt?: ((key: string) => void) | undefined;
+  /**
+   * Awaited after a creation, an applied or duplicate transition, or a
+   * controller restart, before the call returns. A `duplicate` is observed too,
+   * so a controller that replays a commit whose first run died before this ran
+   * gives the observer another chance. It must be idempotent and must not
+   * throw: an error is routed to `onObserverError` and never changes the
+   * result, because the record is the truth.
+   */
+  readonly observe?: ((observation: GoalStoreObservation) => Promise<void> | void) | undefined;
+  /** Called with whatever `observe` threw. Defaults to a no-op. */
+  readonly onObserverError?: ((error: unknown) => void) | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +202,16 @@ export function createGoalStore(
   options: GoalStoreOptions = {},
 ): GoalStore {
   const onCorrupt = options.onCorrupt ?? (() => {});
+  const onObserverError = options.onObserverError ?? (() => {});
+
+  async function notify(observation: GoalStoreObservation): Promise<void> {
+    if (options.observe === undefined) return;
+    try {
+      await options.observe(observation);
+    } catch (error) {
+      onObserverError(error);
+    }
+  }
 
   async function read(key: string): Promise<Stored> {
     const raw = await kv.get(key);
@@ -302,7 +330,10 @@ export function createGoalStore(
         [{ key, expectedValue: null }],
         [{ type: 'set', key, value: JSON.stringify(state) }],
       );
-      if (committed) return { status: 'created', record: state };
+      if (committed) {
+        await notify({ kind: 'created', record: state });
+        return { status: 'created', record: state };
+      }
       const existing = await get(state.goalRunId);
       return existing === undefined ? { status: 'duplicate' } : { status: 'duplicate', existing };
     },
@@ -312,13 +343,17 @@ export function createGoalStore(
       const stored = await Promise.all(keys.map((key) => read(key)));
       return stored.flatMap((entry) => (entry.kind === 'found' ? [entry.record] : []));
     },
-    applyTransition(request) {
-      return mutate<GoalTransitionResult>(
+    async applyTransition(request) {
+      const result = await mutate<GoalTransitionResult>(
         request.goalRunId,
         (current) => evaluateTransition(request, current),
         (record) => ({ status: 'stale', record }),
         (record) => ({ status: 'applied', record }),
       );
+      if (result.status === 'applied' || result.status === 'duplicate') {
+        await notify({ kind: 'transitioned', record: result.record });
+      }
+      return result;
     },
     requestCancellation(goalRunId, marker, now) {
       return control(goalRunId, (current) => {
@@ -327,8 +362,8 @@ export function createGoalStore(
         return { outcome: 'write', next: { ...current, cancellation: marker, updatedAt: now } };
       });
     },
-    recordControllerRestart(goalRunId, now) {
-      return control(goalRunId, (current) =>
+    async recordControllerRestart(goalRunId, now) {
+      const result = await control(goalRunId, (current) =>
         isTerminal(current.status)
           ? refuse(current, 'terminal')
           : {
@@ -340,6 +375,10 @@ export function createGoalStore(
               },
             },
       );
+      if (result.status === 'updated') {
+        await notify({ kind: 'controller-restarted', record: result.record });
+      }
+      return result;
     },
     close(goalRunId, at) {
       return control(goalRunId, (current) => {

@@ -8911,6 +8911,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
+    // COR-851 — a goal's events are as private as the goal itself. The same
+    // rule `bureau.goals.get` applies: omitting `principal` is a trusted call,
+    // and a mismatch reads as `not-found`. A goal that cannot be read at all
+    // (never created, or unreadable) fails closed for the same reason a run
+    // with unverifiable ownership does, so its id cannot be probed. Goal ids
+    // are never reused and a goal is closed, not deleted, so the owner read
+    // here cannot change under the page read below, and a goal owner has no
+    // deletion marker. Checked before anything else, so neither a gap nor an
+    // owner-write wait is observable to a caller who may not see the goal.
+    if (
+      owner.kind === 'goal' &&
+      principal !== undefined &&
+      (await goalsComposition.goals.get(owner.id, { principal })) === undefined
+    ) {
+      return { outcome: 'not-found' };
+    }
+
     // AB-372 (Codex review findings, PR #580 — see the running history in
     // this comment for why each earlier shape of this check was
     // insufficient) — session authorization is checked TWICE, deliberately,
@@ -9202,6 +9219,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     cancelRun: cancelDurableRun,
     isClosing: () => shutdownPromise !== undefined,
     diagnose,
+    eventHistory: eventHistoryInstance,
   });
 
   const bureau: Bureau<D> = {

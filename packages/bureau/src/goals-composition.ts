@@ -20,6 +20,8 @@ import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@
 
 import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
 import type { GoalAttemptStart } from './bureau-catalog-dispatch';
+import type { DurableEventHistory } from './durable-event-history';
+import { createGoalEventRecorder, projectGoalHistory } from './goal-event-projection';
 import { createAttemptForwarder } from './goal-forwarder';
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
 import { goalWorkflowId } from './goal-state';
@@ -44,6 +46,8 @@ export interface GoalsCompositionDependencies {
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
   readonly isClosing: () => boolean;
   readonly diagnose: DiagnosticSink;
+  /** Where a goal's audit events are recorded; absent when the bureau has no persistent history. */
+  readonly eventHistory?: Pick<DurableEventHistory, 'record'> | undefined;
 }
 
 export interface GoalsComposition {
@@ -58,7 +62,19 @@ export interface GoalsComposition {
 
 export function composeBureauGoals(dependencies: GoalsCompositionDependencies): GoalsComposition {
   const { runtimeServices, host, agentCatalog, getDurable, diagnose } = dependencies;
+  const recordEvents =
+    dependencies.eventHistory === undefined
+      ? undefined
+      : createGoalEventRecorder(dependencies.eventHistory, diagnose);
   const store = createGoalStore(dependencies.kv ?? textValueStore(new MemoryStorage()), {
+    ...(recordEvents === undefined ? {} : { observe: recordEvents }),
+    onObserverError: (error) =>
+      diagnose({
+        level: 'error',
+        scope: 'goals',
+        message: '[bureau] A goal event projection failed.',
+        cause: error,
+      }),
     onCorrupt: (key) =>
       diagnose({
         level: 'error',
@@ -125,7 +141,21 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       const record = await store.get(workflowId.slice('goal:'.length));
       return record !== undefined && goalWorkflowId(record.goalRunId) === workflowId;
     },
-    recoverAtBoot: () => goals.recover(),
+    async recoverAtBoot() {
+      // Close the window between a write and its projection before anything
+      // else can change a record: a crash there left a transition unrecorded.
+      if (recordEvents !== undefined) {
+        await projectGoalHistory(await store.list(), recordEvents).catch((error: unknown) =>
+          diagnose({
+            level: 'error',
+            scope: 'goals',
+            message: '[bureau] Could not re-project goal events at boot.',
+            cause: error,
+          }),
+        );
+      }
+      return goals.recover();
+    },
     drain: () => forwarder.drain(),
   };
 }

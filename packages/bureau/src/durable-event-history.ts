@@ -626,8 +626,21 @@ export class UnsupportedDurableEventSchemaVersionError extends Error {
   }
 }
 
+/**
+ * A goal's events are stored under a workflow id of their own, never
+ * `goal:<id>`. That string is the id of the goal's controller workflow, and
+ * Weft deletes every fleet event carrying a workflow's id when it purges that
+ * workflow: replacing a terminal controller (`onTerminalConflict: 'start-new'`
+ * on a restart) or retiring an old one would silently erase the goal's audit
+ * history. Nothing parses the encoded id back into a kind, so this is the one
+ * place the difference lives.
+ */
+const GOAL_OWNER_WORKFLOW_PREFIX = 'bureau-goal-audit:';
+
 function encodeOwner(owner: DurableEventOwner): string {
-  return `${owner.kind}:${owner.id}`;
+  return owner.kind === 'goal'
+    ? `${GOAL_OWNER_WORKFLOW_PREFIX}${owner.id}`
+    : `${owner.kind}:${owner.id}`;
 }
 
 /**
@@ -648,6 +661,7 @@ export function deletionMarkerKindFor(ownerKind: DurableEventOwner['kind']): str
     case 'run':
       return 'run.removed';
     case 'schedule':
+    case 'goal':
       return undefined;
   }
 }
