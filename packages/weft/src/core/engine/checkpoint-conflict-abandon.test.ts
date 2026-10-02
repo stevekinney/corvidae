@@ -323,19 +323,25 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(await readStatus(storage, 'recovered-run')).toBe('failed');
   });
 
-  it('cancels the workflow through the active execution strategy, not only the inline one', async () => {
+  it('retires the workflow through the active execution strategy and never cancels it', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const internals = getInternals(engine);
     // Worker and revision-realm engines run with no inline strategy; the
     // active strategy is the one that owns the workflow's execution.
     const inlineStrategy = internals.inlineStrategy;
     const activeStrategy = internals.strategy;
+    const retired: string[] = [];
     const cancelled: string[] = [];
     internals.inlineStrategy = null;
     internals.strategy = new Proxy(activeStrategy, {
       get(target, property) {
+        // Real cancellation can discard a worker and fail its other workflows;
+        // an abandoned run must take the non-failing retire path instead.
         if (property === 'cancelWorkflow') {
           return (workflowId: string) => cancelled.push(workflowId);
+        }
+        if (property === 'retireWorkflow') {
+          return (workflowId: string) => retired.push(workflowId);
         }
         const original: unknown = Reflect.get(target, property, target);
         return typeof original === 'function' ? original.bind(target) : original;
@@ -355,7 +361,8 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
       internals.inlineStrategy = inlineStrategy;
     }
 
-    expect(cancelled).toEqual(['worker-run']);
+    expect(retired).toEqual(['worker-run']);
+    expect(cancelled).toEqual([]);
   });
 
   it('rethrows a persist failure that is not a checkpoint conflict without abandoning', async () => {

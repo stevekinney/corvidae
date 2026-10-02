@@ -257,6 +257,23 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
   }
 
   cancelWorkflow(workflowId: string): void {
+    this.#cancelWorkflow(workflowId, this.#discardOnCancel);
+  }
+
+  /**
+   * Retire a stale execution this engine must stop driving without disturbing
+   * any other workflow. Always the cooperative path (a `cancel` message to the
+   * worker, then the worker returns to the pool), even under `discardOnCancel`:
+   * discarding terminates the worker and durably fails every other workflow
+   * parked on it, which is wrong for a run the engine is walking away from
+   * because another engine owns it. Safe because abandonment only happens while
+   * the worker is idle, awaiting the engine's reply to the turn that lost.
+   */
+  retireWorkflow(workflowId: string): void {
+    this.#cancelWorkflow(workflowId, false);
+  }
+
+  #cancelWorkflow(workflowId: string, discardWorker: boolean): void {
     // Terminal for this strategy's own bookkeeping even though a stray
     // message can still arrive after — the cleared turn watchdog below
     // fails the guard's turn-match check regardless.
@@ -264,7 +281,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
     const worker = this.#ownership.getActiveWorker(workflowId);
     if (worker) {
       this.#ownership.markCancelled(workflowId);
-      if (this.#discardOnCancel) {
+      if (discardWorker) {
         this.#faultHandler.discardWorkerAndFailWorkflows(worker, {
           targetWorkflowId: workflowId,
           skipTarget: true,
@@ -291,7 +308,7 @@ export class WorkerExecutionStrategy implements ExecutionStrategy {
 
     this.#ownership.markCancelled(workflowId);
     this.#ownership.deleteParked(workflowId);
-    if (this.#discardOnCancel) {
+    if (discardWorker) {
       this.#faultHandler.discardWorkerAndFailWorkflows(parkedWorker, {
         targetWorkflowId: workflowId,
         skipTarget: true,
