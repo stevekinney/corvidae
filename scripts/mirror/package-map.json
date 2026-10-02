@@ -9134,12 +9134,12 @@
       "name": "@lostgradient/operative",
       "basis": "settled",
       "reason": "Already published under this name.",
-      "lastPublishedVersion": "0.15.1",
+      "lastPublishedVersion": "0.15.2",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.15.1",
-        "gitHead": "4bc274ff12cb9057017a2db4d488886e4fbc5164",
-        "corvidaeCommit": "73fbaabc92ae85c074cd9fc1ddec0ba609a7e8d2",
+        "version": "0.15.2",
+        "gitHead": "bbd77a871a7f66b3a1ffb9f3a48a265b191744e7",
+        "corvidaeCommit": "f4fed8dac99afd095fef7fb4aece0308e9d6df67",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -9433,11 +9433,11 @@
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "3889b2272062aa9bb2ecc18603d3cb897d01d4644692511e2bad602e1847a0c8"
+          "digest": "262bed8e3f9f31abfd2c6966a988e783f75c7f1b464ca60f8c8fcf4b86939f2b"
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "24d85e0e51ba41f30fe4436d2503f406e6eb7f68663f30a59812b4338a2df3e2"
+          "digest": "d1842ab55263621dd1c884f206b1856ce0c07e440a965c9890aba62532cef803"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -10695,7 +10695,7 @@
               "executable": false
             }
           ],
-          "digest": "c10e7cc051381b2a331b2b982ad664c3ee9473c0d8be94c5c23fd78575eecb0d"
+          "digest": "b096311a838c76d458ce6c384ea27c324149cf0401bc2181d3a74bf93fe417a0"
         }
       }
     },
