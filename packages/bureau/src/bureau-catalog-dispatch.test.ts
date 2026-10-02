@@ -6,8 +6,15 @@
  * an identifier another run already holds before it starts anything.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, stopWhen } from '@lostgradient/operative';
-import { describe, expect, it } from 'bun:test';
+import {
+  createAgent,
+  createCheckpointStore,
+  createRunEngine,
+  createRunWorkflow,
+  stopWhen,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createCatalogDispatcher } from './bureau-catalog-dispatch';
 import type { RuntimeComposition } from './runtime-composition';
@@ -102,5 +109,59 @@ describe('createCatalogDispatcher — startChildRun', () => {
     expect(() => dispatcher.startChildRun({ ...start, agentName: 'nobody' })).toThrow(
       expect.objectContaining({ code: 'NOT_FOUND' }),
     );
+  });
+});
+
+describe('createCatalogDispatcher — startGoalAttemptRun', () => {
+  const disposers: Array<() => void> = [];
+  afterEach(() => {
+    for (const dispose of disposers.splice(0)) dispose();
+  });
+  const attempt = { agentName: 'worker', input: 'work', runId: 'goal-g1-a0' };
+
+  it("settles durablyStarted only once the attempt's workflow is in the engine", async () => {
+    const storage = new MemoryStorage();
+    const checkpointStore = createCheckpointStore(
+      textValueStore(storage, { disposeUnderlyingStorage: false }),
+    );
+    const { engine } = await createRunEngine({
+      storage,
+      runWorkflow: createRunWorkflow(checkpointStore),
+      recover: false,
+    });
+    disposers.push(() => engine[Symbol.dispose]());
+    const runtime = {
+      durable: { engine, checkpointStore },
+      createBureauInvariantHooks: () => undefined,
+      claimCatalogRunRecoveryRecord: async () => true,
+      persistCatalogRunRecoveryRecord: async () => {},
+    } as unknown as RuntimeComposition;
+
+    const started = createDispatcher(false, { runtime }).startGoalAttemptRun(attempt);
+    // The handle is deferred: the workflow does not exist when it is returned.
+    expect(await engine.get(attempt.runId)).toBeNull();
+
+    await started.durablyStarted;
+
+    expect(await engine.get(attempt.runId)).not.toBeNull();
+    await started.run.result();
+  });
+
+  it('rejects durablyStarted with what stopped the start, so no goal waits on a run that never existed', async () => {
+    const runtime = {
+      ...durableRuntime(true),
+      claimCatalogRunRecoveryRecord: async () => {
+        throw new Error('recovery record write failed');
+      },
+    } as unknown as RuntimeComposition;
+
+    const started = createDispatcher(false, { runtime }).startGoalAttemptRun(attempt);
+
+    expect(
+      await started.durablyStarted.then(
+        () => undefined,
+        (error: unknown) => error,
+      ),
+    ).toEqual(expect.objectContaining({ message: 'recovery record write failed' }));
   });
 });
