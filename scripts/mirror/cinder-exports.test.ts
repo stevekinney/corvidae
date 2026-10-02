@@ -260,6 +260,26 @@ describe('generateCinderSurface', () => {
 });
 
 describe('computeFiles', () => {
+  test('excludes Svelte test sources and declarations without excluding components', () => {
+    const exclusions = STATIC_FILES_GLOBS.filter((pattern) => pattern.startsWith('!')).map(
+      (pattern) => new Bun.Glob(pattern.slice(1)),
+    );
+    const isExcluded = (path: string) => exclusions.some((pattern) => pattern.match(path));
+
+    for (const path of [
+      'src/components/button/button.test.svelte',
+      'src/components/button/button.spec.svelte',
+      'src/components/button/button-test.svelte',
+      'dist/components/button/button.test.svelte.d.ts',
+      'dist/components/button/button.spec.svelte.d.ts',
+      'dist/components/button/button-test.svelte.d.ts',
+    ]) {
+      expect(isExcluded(path)).toBe(true);
+    }
+    expect(isExcluded('src/components/button/button.svelte')).toBe(false);
+    expect(isExcluded('dist/components/button/button.svelte.d.ts')).toBe(false);
+  });
+
   test('ships root source imports but excludes test-only component helpers', () => {
     expect(STATIC_FILES_GLOBS).toContain('src/exports/**/*.ts');
     expect(STATIC_FILES_GLOBS).toContain('!src/components/**/*-test-helpers.ts');

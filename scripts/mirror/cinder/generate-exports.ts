@@ -483,6 +483,9 @@ function collectLegacyEntries(
  */
 export const STATIC_FILES_GLOBS: readonly string[] = [
   'dist',
+  '!dist/**/*.test.svelte.d.ts',
+  '!dist/**/*.spec.svelte.d.ts',
+  '!dist/**/*-test.svelte.d.ts',
   'src/index.ts',
   'src/exports/**/*.ts',
   'src/schema-types.ts',
@@ -495,6 +498,9 @@ export const STATIC_FILES_GLOBS: readonly string[] = [
   '!src/components/**/*.spec.ts',
   '!src/components/**/*.type-test.ts',
   '!src/components/**/*.type-test.svelte',
+  '!src/components/**/*.test.svelte',
+  '!src/components/**/*.spec.svelte',
+  '!src/components/**/*-test.svelte',
   '!src/components/**/*.fixture.ts',
   '!src/components/**/*-fixture.ts',
   '!src/components/**/*-fixtures.ts',
