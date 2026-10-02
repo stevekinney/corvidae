@@ -24,6 +24,8 @@ import { createBureau } from '../create-bureau';
 import {
   CLAIM_RENEW_MS,
   CLAIM_TTL_MS,
+  HUMAN_WAIT_PROMPT,
+  HUMAN_WAIT_SIGNAL,
   REMEMBERED_ANSWER,
   SESSION_ID,
   chargeStatus,
@@ -258,6 +260,36 @@ async function twoParkedRuns(): Promise<void> {
   writeMarker({ xRunId: x.id, yRunId: y.id });
 }
 
+/**
+ * COR-1409: a run parks on `requestHumanInput`, and the process dies the moment
+ * its review is visible. That is before the step-boundary commits are
+ * guaranteed to have landed, so the recoverer sees either the boot-found park
+ * or COR-121's replay-reached one, depending on how far the backend got.
+ */
+async function humanWaitParked(): Promise<void> {
+  const bureau = await createHarnessBureau({
+    backend: backend as 'sqlite' | 'lmdb',
+    storagePath: storagePath as string,
+    generate: async () => ({
+      content: '',
+      toolCalls: [
+        {
+          id: 'call-park',
+          name: 'requestHumanInput',
+          arguments: { signalName: HUMAN_WAIT_SIGNAL, prompt: HUMAN_WAIT_PROMPT },
+        },
+      ],
+    }),
+    toolbox: createToolbox([]),
+    humanInput: true,
+  });
+  const run = await bureau.createRun({ message: 'crash harness park', principal: 'alice' });
+  await pollUntil('the run to surface its human-wait review', () =>
+    bureau.listPendingReviews().some((review) => review.runId === run.id),
+  );
+  writeMarker({ runId: run.id });
+}
+
 /** COR-1391: a non-crashing boot over the recovered, shut-down store. */
 async function verify(): Promise<void> {
   const directory = dirname(markerPath as string);
@@ -285,6 +317,7 @@ const scenarios: Record<string, () => Promise<void>> = {
   'charge-then-crash': chargeThenCrash,
   'memory-write-then-crash': memoryWriteThenCrash,
   'two-parked-runs': twoParkedRuns,
+  'human-wait-parked': humanWaitParked,
   verify,
 };
 
