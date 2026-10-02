@@ -81,6 +81,33 @@ describe('package-surface.json', () => {
     expect(filesCoverPath(files, 'dist/diff-review-state/fixtures.d.ts')).toBe(true);
   });
 
+  test('excludes Editor test harness declarations without dropping exported declarations', async () => {
+    const surface = await loadPackageSurface();
+    const editor = surface.packages['@lostgradient/editor'];
+    expect(editor).toBeDefined();
+    if (editor === undefined) return;
+    const files = editor.files;
+    expect(Array.isArray(files)).toBe(true);
+    if (!Array.isArray(files)) return;
+    for (const name of ['bindable', 'onewaysync', 'reactive-props']) {
+      expect(
+        filesCoverPath(
+          files,
+          `dist/components/markdown-editor/markdown-editor-${name}-harness.svelte.d.ts`,
+        ),
+      ).toBe(false);
+    }
+    expect(filesCoverPath(files, 'dist/components/markdown-editor/index.d.ts')).toBe(true);
+    expect(filesCoverPath(files, 'dist/components/markdown-editor/mode-control.svelte.d.ts')).toBe(
+      true,
+    );
+    const resolved = resolveSurface({
+      entry: editor,
+      packageRoot: join(corvidaeRoot, 'components/editor'),
+    });
+    expect(resolved.exports['./markdown-editor']).toBeDefined();
+  });
+
   test('exports every Weft package subpath emitted by worker codegen', async () => {
     const packageSurface = await loadPackageSurface();
     const entry = packageSurface.packages['@lostgradient/weft'];
