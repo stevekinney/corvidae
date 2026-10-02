@@ -323,6 +323,41 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(await readStatus(storage, 'recovered-run')).toBe('failed');
   });
 
+  it('cancels the workflow through the active execution strategy, not only the inline one', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    // Worker and revision-realm engines run with no inline strategy; the
+    // active strategy is the one that owns the workflow's execution.
+    const inlineStrategy = internals.inlineStrategy;
+    const activeStrategy = internals.strategy;
+    const cancelled: string[] = [];
+    internals.inlineStrategy = null;
+    internals.strategy = new Proxy(activeStrategy, {
+      get(target, property) {
+        if (property === 'cancelWorkflow') {
+          return (workflowId: string) => cancelled.push(workflowId);
+        }
+        const original: unknown = Reflect.get(target, property, target);
+        return typeof original === 'function' ? original.bind(target) : original;
+      },
+    });
+    const warning = collectConflictWarnings();
+    try {
+      abandonWorkflowAfterCheckpointConflict(
+        internals,
+        new WorkflowCheckpointConflictError('worker-run'),
+        { swallowPromiseRejection },
+      );
+      await warning.received;
+    } finally {
+      warning.stop();
+      internals.strategy = activeStrategy;
+      internals.inlineStrategy = inlineStrategy;
+    }
+
+    expect(cancelled).toEqual(['worker-run']);
+  });
+
   it('rethrows a persist failure that is not a checkpoint conflict without abandoning', async () => {
     const storage = new MemoryStorage();
     await using engine = new Engine({ storage });

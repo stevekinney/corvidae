@@ -43,7 +43,7 @@ export function abandonWorkflowAfterCheckpointConflict(
 ): void {
   const { workflowId } = error;
   if (internals.checkpointConflicts.has(workflowId)) return;
-  internals.inlineStrategy?.cancelWorkflow(workflowId);
+  internals.strategy.cancelWorkflow(workflowId);
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.durableInlineOperations.delete(workflowId);
   releaseAbandonedWorkflowMemory(internals, workflowId, callbacks);
