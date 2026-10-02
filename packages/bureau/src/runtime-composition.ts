@@ -89,6 +89,7 @@ import {
   type ToolPolicy,
 } from '@lostgradient/skills';
 import {
+  type AnyWorkflowDefinition,
   type ConditionalTextValueStore,
   decode,
   deserializeCheckpoint,
@@ -1200,6 +1201,13 @@ export type RuntimeCompositionDependencies = {
    * private mutation backdoor.
    */
   createSessionStore?: typeof createSessionStore;
+  /**
+   * COR-851 — the durable `goalRun` workflow, registered on the durable engine
+   * beside `agentRun`. `createBureau` supplies it; the engine is built before
+   * the goal store and the agent catalog exist, so the workflow's ports are
+   * bound after composition (see `createGoalWorkflowHost`).
+   */
+  goalWorkflow?: AnyWorkflowDefinition;
 };
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
@@ -1852,8 +1860,12 @@ export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'>;
 
 export async function createRuntimeComposition(
   options: RuntimeCompositionOptions,
-  dependencies: RuntimeCompositionDependencies = defaultRuntimeCompositionDependencies,
+  suppliedDependencies: Partial<RuntimeCompositionDependencies> = {},
 ): Promise<RuntimeComposition> {
+  const dependencies: RuntimeCompositionDependencies = {
+    ...defaultRuntimeCompositionDependencies,
+    ...suppliedDependencies,
+  };
   const maximumSteps = options.maximumSteps ?? DEFAULT_MAXIMUM_STEPS;
   const systemPrompt = options.systemPrompt;
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
@@ -2022,6 +2034,9 @@ export async function createRuntimeComposition(
       backgroundTasks: options.durableBackgroundTasks ?? 'automatic',
       startScheduler: options.durableBackgroundTasks !== 'manual',
       resolveWorkflowServices: resolveRunServices,
+      ...(dependencies.goalWorkflow === undefined
+        ? {}
+        : { goalWorkflow: dependencies.goalWorkflow }),
       ...(effectiveObservability !== undefined ? { observability: effectiveObservability } : {}),
       ...(effectiveOnLog ? { onLog: effectiveOnLog } : {}),
       // durableGuardrails is a Pick of these exact CreateRunEngineOptions fields, so

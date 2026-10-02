@@ -28,7 +28,7 @@ import type { RuntimeServices, Subscription, TypedEventTarget } from '@lostgradi
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import type { AgentRun } from './agent-run';
-import { toValidatorError, type ValidatorError } from './errors';
+import type { ValidatorError } from './errors';
 import {
   GoalAttemptStartedEvent,
   GoalAttemptValidatedEvent,
@@ -57,7 +57,6 @@ import {
   decideRunFinish,
   freezeValidatorOutcome,
   isFailedReason,
-  normalizeValidatorOutcome,
   OPERATOR_ABORT_DETAIL,
   stripValidatorErrorCause,
   TERMINAL_STATUS_BY_REASON,
@@ -78,6 +77,7 @@ import {
   type ValidatorOutcome,
   type ValidatorResult,
 } from './goal-decision';
+import { executeValidator } from './goal-validator-execution';
 import type { SessionHandle } from './session/session-handle-types';
 import type { CleanupAcknowledgement, ClosedOptions, FinishReason, RunResult } from './types';
 
@@ -508,56 +508,11 @@ export function startGoal(options: StartGoalOptions): GoalRun {
   const runValidator = (
     input: ValidatorInput,
     signal: AbortSignal,
-  ): Promise<{ outcome: ValidatorOutcome; startedAt: string; completedAt: string }> => {
-    const startedAt = runtime.clock.nowISO();
-    return new Promise((resolve) => {
-      let settled = false;
-      let timer: unknown;
-      const validatorController = new AbortController();
-      const validatorSignal = AbortSignal.any([signal, validatorController.signal]);
-
-      const finish = (outcome: ValidatorOutcome): void => {
-        if (settled) return;
-        settled = true;
-        if (timer !== undefined) runtime.timers.clearTimeout(timer);
-        signal.removeEventListener('abort', onAbort);
-        resolve({ outcome, startedAt, completedAt: runtime.clock.nowISO() });
-      };
-      const onAbort = (): void => finish({ kind: 'canceled' });
-
-      if (signal.aborted) {
-        finish({ kind: 'canceled' });
-        return;
-      }
-      signal.addEventListener('abort', onAbort, { once: true });
-      if (options.validatorTimeoutMs !== undefined) {
-        timer = runtime.timers.setTimeout(() => {
-          finish({
-            kind: 'error',
-            error: {
-              kind: 'timeout',
-              code: 'VALIDATOR_TIMEOUT',
-              message: `The validator did not settle within ${options.validatorTimeoutMs}ms.`,
-            },
-          });
-          validatorController.abort('validator-timeout');
-        }, options.validatorTimeoutMs);
-      }
-      const fail = (thrown: unknown): void =>
-        finish({
-          kind: 'error',
-          error: toValidatorError(thrown, { kind: 'execute', code: 'VALIDATOR_THREW' }),
-        });
-      try {
-        Promise.resolve(validator.validate(input, validatorSignal)).then(
-          (value) => finish(normalizeValidatorOutcome(value)),
-          fail,
-        );
-      } catch (thrown) {
-        fail(thrown);
-      }
+  ): Promise<{ outcome: ValidatorOutcome; startedAt: string; completedAt: string }> =>
+    executeValidator(validator, input, signal, {
+      timeoutMs: options.validatorTimeoutMs,
+      runtime,
     });
-  };
 
   // ---- one attempt -----------------------------------------------------------
 

@@ -72,7 +72,7 @@ export function decisionContextFor(view: GoalWorkflowView, nowMs: number): GoalD
  * the evaluated attempt's own input forward, so folding the recorded attempts
  * reproduces exactly what the in-memory controller threaded through its loop.
  */
-export function inputFeedbackFor(
+export function goalInputFeedbackFor(
   attempts: readonly ViewAttempt[],
   attemptIndex: number,
 ): string | undefined {
@@ -339,7 +339,7 @@ export function buildValidationDecision(
  * `aborted` in the same transition, because once a cancellation marker is
  * present the store accepts no other write.
  */
-export function buildForcedFinish(
+export function buildGoalForcedFinish(
   view: GoalWorkflowView,
   identifiers: GoalWorkflowIdentifiers,
   nowMs: number,

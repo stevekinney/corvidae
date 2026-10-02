@@ -9,6 +9,7 @@
 import { KEYS } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   crashAndAdopt,
   createGoalEngine,
@@ -39,10 +40,10 @@ describe('createGoalWorkflow ownership', () => {
       const handle = await startGoalWorkflow(a);
       await pollUntil(attemptRunning(harness, 0));
 
-      await expect(startGoalWorkflow(a)).rejects.toThrow();
-      await expect(startGoalWorkflow(b)).rejects.toThrow();
+      expect(await throwingRejectionOf(startGoalWorkflow(a))).toThrow();
+      expect(await throwingRejectionOf(startGoalWorkflow(b))).toThrow();
       // The claim is a lease: until it lapses, no other engine may run the generator.
-      await expect(b.engine.resume(GOAL_WORKFLOW_ID)).rejects.toThrow();
+      expect(await throwingRejectionOf(b.engine.resume(GOAL_WORKFLOW_ID))).toThrow();
 
       await finishAttempt(a, 0);
       const result = (await handle.result()) as GoalWorkflowResult;
@@ -118,7 +119,7 @@ describe('createGoalWorkflow guards', () => {
     const a = await createGoalEngine(harness);
     try {
       const handle = await startGoalWorkflow(a);
-      await expect(handle.result()).rejects.toThrow('refused 5 times in a row');
+      expect(await throwingRejectionOf(handle.result())).toThrow('refused 5 times in a row');
       expect(harness.world.startedRuns).toHaveLength(1);
     } finally {
       a.engine[Symbol.dispose]();
@@ -131,7 +132,9 @@ describe('createGoalWorkflow guards', () => {
     const a = await createGoalEngine(harness);
     try {
       const handle = await startGoalWorkflow(a);
-      await expect(handle.result()).rejects.toThrow('was rejected: illegal-transition');
+      expect(await throwingRejectionOf(handle.result())).toThrow(
+        'was rejected: illegal-transition',
+      );
       expect(harness.world.calls.filter((call) => call.startsWith('commit'))).toHaveLength(1);
     } finally {
       a.engine[Symbol.dispose]();
@@ -167,7 +170,7 @@ describe('createGoalWorkflow guards', () => {
           signalId: `spurious-${index}`,
         });
       }
-      await expect(handle.result()).rejects.toThrow('without anything to do');
+      expect(await throwingRejectionOf(handle.result())).toThrow('without anything to do');
       expect(harness.world.transitions.map((transition) => transition.to)).toEqual(['running']);
     } finally {
       a.engine[Symbol.dispose]();

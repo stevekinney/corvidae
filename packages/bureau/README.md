@@ -21,6 +21,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The Audit Trail](#the-audit-trail)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
+  - [Durable goals (COR-851)](#durable-goals-cor-851)
   - [Governed memory (COR-41)](#governed-memory-cor-41)
 - [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog)
   - [`createSupervisor` and `createAgentDiscoveryTool`](#createsupervisor-and-createagentdiscoverytool)
@@ -124,6 +125,7 @@ Every field except `agents` is optional.
 | --- | --- | --- |
 | `agents` | `AgentDefinitions` (`D`) | **Required.** The typed agent catalog, exposed as `bureau.agents` and dispatched by name through `bureau.run`. Pass `{}` for a bureau that doesn't use it. |
 | `children` | `{ signals?: { [agentName]?: ChildSignalContract }; delegation?: { secret; policyVersion?; defaultTimeToLiveMilliseconds? } }` | COR-772—configuration for `bureau.children`. `signals` registers each child agent's typed signal contract (contracts are code, so they are configured rather than persisted); `delegation` turns on signed COR-336 delegation grants. An empty `secret` or a non-positive lifetime is a `BAD_REQUEST` at construction. See [Parent-child topology](#parent-child-topology-cor-772). |
+| `validators` | `readonly Validator[]` | COR-851—the validators durable goals may name. A goal stores only a validator's identity (name and version); the executable is registered here and resolved by that exact identity every time it runs, including after a restart. Two validators with the same name and version fail `createBureau`. See [Durable goals](#durable-goals-cor-851). |
 | `generate` **(deprecated)** | `GenerateFunction` | Escape hatch: supply your own generate function directly, bypassing provider resolution entirely. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `generate`. |
 | `provider` **(deprecated)** | `ProviderConfiguration` | Resolve a single provider (`'anthropic' \| 'openai' \| 'gemini'`) to a generate function. Agent-owned now—deprecated, not removed, per AB-242; resolve the provider into a `GenerateFunction` and pass it as `createAgent`'s `generate` instead. |
 | `providers` / `routing` **(deprecated)** | `ProviderRouteConfiguration[]` / `RoutingConfiguration` | Resolve multiple named providers with fallover or step-based routing between them. Agent-owned now—deprecated, not removed, per AB-242; resolve the fallback/routing behavior into a `GenerateFunction` and pass it as `createAgent`'s `generate` instead. |
@@ -178,6 +180,7 @@ The most commonly used members:
 | `run(name, input, options?)` | `AgentRun<...>` | Synchronous dispatch to a named catalog agent. |
 | `memory` | `GovernedMemory \| undefined` | COR-41—the governed memory passed as `BureauOptions.memory`, for host-side reads, legal holds, retention sweeps, deletions, and deletion propagation under the host's own authority. See [Governed memory](#governed-memory-cor-41). |
 | `children` | `BureauChildren` | COR-772—dispatch a catalog agent as the child of a run this bureau knows, then `list`/`get`/`wait`/`signal`/`cancel` it by its stable identifier, including after a restart. See [Parent-child topology](#parent-child-topology-cor-772). |
+| `goals` | `BureauGoals` | COR-851—create a durable goal, then `get`/`list`/`active`/`cancel`/`close` it and `recover` every unfinished one after a restart. Needs a durable engine. See [Durable goals](#durable-goals-cor-851). |
 | `createRun(request)` **(deprecated)** | `Promise<RunSummary>` | Create and start a run against a session. Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
 | `submitSchedulerTask(request)` | `Promise<SubmitSchedulerTaskResponse>` | Queue a task on the in-process scheduler. |
 | `locateSchedulerTask(taskId)` | `SchedulerTaskLocation` | Resolve a receipt's `taskId` to `in-progress`, `terminal` (with a `PromiseSettledResult` outcome), `expired`, or `not-found`. Synchronous; throws `BureauError` (`NOT_CONFIGURED`) when the scheduler is not enabled. In-process and in-memory only: a restart loses it. |
@@ -409,6 +412,45 @@ await bureau.dispose();
 `src/bureau-children-guide.test.ts` runs this example, and the lifecycle example in the [multi-agent guide](../../documentation/multi-agent-lifecycle.md#durable-example), asserting each commented result. Aborting `root` cascades to `lead` and then to `helper`, because both use the default `'cascade'` policy.
 
 Not supported: observing a child's signal `events` (Bureau only sends signals; a child's `emit` buffers until it is refused as `buffer-full`), replaying signals that were unacknowledged when a process died, messaging between siblings or any peer (communication is parent-mediated only, per COR-807), and recovering a process-local child, which recovery records as `'failed'`. Bureau children are not registered in the parent `AgentRun`'s `ChildRunRegistry`, so the parent's `children()` and `closed()` do not see them.
+
+### Durable goals (COR-851)
+
+`bureau.goals` runs one goal across attempts and keeps it across a process restart. An attempt is one durable run of a catalog agent, followed by one validator execution that decides whether the goal is met; the attempt is the retry unit, and the decisions (when to retry, when a budget is spent, which terminal reason a goal ends with) are the same ones the in-memory `startGoal` controller makes, because both call the same pure functions.
+
+```ts
+const bureau = await createBureau({
+  agents: { worker },
+  validators: [testsPass], // identity: { name: 'tests-pass', version: '1' }
+  storage: { type: 'sqlite', path: './bureau.sqlite' },
+  durableExecution: true,
+});
+
+const created = await bureau.goals.create({
+  agentName: 'worker',
+  prompt: 'Make the failing tests pass.',
+  identity: { name: 'fix-tests', version: '1' },
+  validator: { name: 'tests-pass', version: '1' },
+  bounds: { maximumAttempts: 3, maximumTotalDurationMs: 600_000 },
+  retryPolicy: { retryOn: ['validator-fail-retryable'] },
+  goalRunId: 'fix-tests-1',
+});
+// { outcome: 'created', goal, controller: { status: 'started' } }
+
+await bureau.goals.active('fix-tests-1'); // { kind: 'attempt', runId: 'goal-fix-tests-1-a0', ... }
+await bureau.goals.cancel('fix-tests-1'); // { outcome: 'canceled', goal }
+```
+
+Three things hold a goal together. Its record (`GoalState`, in Bureau's key-value store) is the truth: every transition is a revision compare-and-swap, and a controller transition carries a sequence number and an id, so a replayed or duplicated commit is recognized and a late one is refused. Its controller is a Weft workflow named `goalRun`, one per goal under the id `goal:<goalRunId>`, which Weft's workflow lease fences to a single engine; it holds no state of its own and re-reads the record before every decision. Each attempt is a durable run under the deterministic id `goal-<goalRunId>-a<n>`, so a restart that repeats a start finds the run instead of starting another.
+
+`create` writes the record before it starts the controller, and refuses before writing anything when the agent is unknown or cannot run durably, when the validator is not registered at that exact name and version (`validator-missing`, `validator-version-mismatch`), or when the budget, retry policy, or objective breaks COR-638's rules. A goal that requires deterministic validation but names a stochastic validator is created already `failed` with `unsupported-validation`, and no controller starts. Passing the same `goalRunId` with the same request answers `existing`; a different request under it answers `conflict`.
+
+`cancel` is an answer about durable state, not about a request having been sent. It writes a cancellation marker to the record first (after which the store accepts no transition but `canceled`), wakes the controller, cancels the controller's workflow, stops the attempt's run, commits `canceled` from the host, and then reads everything back once. `canceled` means the record, the controller's workflow, its finalizer, and the attempt's run all read as finished; anything else is `cancellation-pending` and names what was not (`goal-record`, `controller`, `finalizer`, `attempt-run`). Mailbox and Outbox settlement are not part of this: a goal is a workflow plus a child run, so the acknowledgement is the workflow's own, and remote-activity ledger cancellation is out of scope.
+
+`recover` (also run once at boot, after Weft resumes workflows) makes the world agree with each unfinished goal's record. It starts a controller that was never started, restarts one that ended abnormally from the record (up to `MAXIMUM_CONTROLLER_RESTARTS`, counted in the record's `controllerRestarts`, after which the goal is reported `unrecoverable` and left as it is), completes a cancellation whose marker was written but never acted on, and reconciles the attempt a running goal is waiting on: an attempt whose run already ended has its signal sent again under a stable id, one still running gets a forwarder, and one that never started is started. A goal interrupted by shutdown is deliberately left unfinished for the next process; its attempt's run is not aborted by `shutdown()`.
+
+Each attempt is a fresh durable run, not another turn in one conversation. A retry's prompt is the objective followed by the validator's feedback; `fresh-from-artifact` carries no feedback. The in-memory controller's session-based `continue` and `fork-from-baseline` policies need a live session and are not available here. The validator is the same `Validator` interface as in memory and receives a `RunResult` rebuilt from the attempt's checkpoint. A validator can run twice if the process dies while it executes, and only the first committed decision counts, so a validator should be safe to run again. Validation evidence is stored inline, projected to JSON and capped at 64 KiB per attempt (an oversized outcome keeps its verdict and replaces each evidence detail with its size). The objective is capped at 64 KiB and refused above it.
+
+Not supported: durable audit events and `goal.recovered` (the in-memory events do not yet reach `eventHistory`), `retry-now`, pause and resume, goals on an ephemeral bureau (`create` answers `durable-unavailable`), and the Bureau test harness's `startManagedGoal`.
 
 ### Session commit outbox (AB-389)
 

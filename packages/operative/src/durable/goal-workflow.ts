@@ -130,14 +130,14 @@ import {
 } from './goal-workflow-ports';
 import {
   buildEvaluationStarted,
-  buildForcedFinish,
+  buildGoalForcedFinish,
   buildOpenAttempt,
   buildRunFinishDecision,
   buildStartFailure,
   buildValidationDecision,
   currentAttemptOf,
   decisionContextFor,
-  inputFeedbackFor,
+  goalInputFeedbackFor,
   isAttemptInFlight,
   isDeadlineElapsed,
   isTerminalStatus,
@@ -235,12 +235,12 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
       attemptId: identifiers.attemptId(view.goalRunId, attemptIndex),
       runId: identifiers.attemptRunId(view.goalRunId, attemptIndex),
     });
-    return yield* commit(ctx, buildForcedFinish(view, identifiers, nowMs, decision));
+    return yield* commit(ctx, buildGoalForcedFinish(view, identifiers, nowMs, decision));
   }
 
   function* openAttempt(ctx: GoalContext, view: GoalWorkflowView, nowMs: number): Segment {
     const attemptIndex = view.attempts.length;
-    const feedback = inputFeedbackFor(view.attempts, attemptIndex);
+    const feedback = goalInputFeedbackFor(view.attempts, attemptIndex);
     const started = yield* ctx.run(activities.startAttempt, {
       goalRunId: view.goalRunId,
       attemptIndex,
@@ -297,7 +297,7 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
       finishReason: finished.finishReason,
       operatorAborted: false,
       costEstimateReported: finished.costUsd !== undefined,
-      feedback: inputFeedbackFor(fresh.attempts, attempt.attemptIndex),
+      feedback: goalInputFeedbackFor(fresh.attempts, attempt.attemptIndex),
     });
     if (resolution.kind === 'decision') {
       return yield* commit(
@@ -339,7 +339,7 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
     }
     const decision = decideOutcome(decisionContextFor(fresh, reread.nowMs), {
       outcome: result.outcome,
-      inputFeedback: inputFeedbackFor(fresh.attempts, attempt.attemptIndex),
+      inputFeedback: goalInputFeedbackFor(fresh.attempts, attempt.attemptIndex),
       operatorAborted: false,
     });
     return yield* commit(

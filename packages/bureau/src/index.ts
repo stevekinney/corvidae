@@ -92,6 +92,43 @@ export {
   RunRemovedEvent,
 } from './events';
 export type { BureauEventMap, RecoveredRunVerdict, RecoveryRejectionReason } from './events';
+export { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
+export {
+  GOAL_OBJECTIVE_MAXIMUM_BYTES,
+  GOAL_STATE_SCHEMA_VERSION,
+  GOAL_VALIDATION_MAXIMUM_BYTES,
+  GoalObjectiveTooLargeError,
+} from './goal-state';
+export type {
+  ActiveGoalWork,
+  DurableGoalAttempt,
+  DurableGoalAttemptStatus,
+  DurableGoalAttemptUsage,
+  DurableGoalUsage,
+  DurableGoalValidation,
+  GoalCancellationMarker,
+  GoalObjective,
+  GoalState,
+  GoalTransitionRecord,
+} from './goal-state';
+export type {
+  BureauGoalActiveWork,
+  BureauGoalAttemptRecovery,
+  BureauGoalCancelOptions,
+  BureauGoalCancelOutcome,
+  BureauGoalCancellationWait,
+  BureauGoalCloseOutcome,
+  BureauGoalControllerStart,
+  BureauGoalCreateOutcome,
+  BureauGoalCreateRejectionCode,
+  BureauGoalListOptions,
+  BureauGoalQuery,
+  BureauGoalRecoveryEntry,
+  BureauGoalRecoveryOutcome,
+  BureauGoalRecoveryReport,
+  BureauGoalRequest,
+  BureauGoals,
+} from './goal-types';
 export {
   leaseEvidenceFromLostHealth,
   projectEngineLeaseSnapshot,

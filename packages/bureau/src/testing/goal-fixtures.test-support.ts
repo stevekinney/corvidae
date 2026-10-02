@@ -1,0 +1,213 @@
+/**
+ * COR-851 — shared fixtures for the `bureau.goals` tests.
+ *
+ * The restart tests follow `bureau-children.test.ts`: bureau A runs until a
+ * durable step is in flight and then "dies" (its generate never resolves and it
+ * is deliberately not disposed), and bureau B boots over the same SQLite file
+ * with `ownership: 'none'`, so there is no claim to wait out. Everything B
+ * knows about A's goals it learns from storage.
+ */
+
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import {
+  createAgent,
+  type GenerateFunction,
+  type GoalBudget,
+  stopWhen,
+  type Validator,
+  type ValidatorInput,
+  type ValidatorOutcome,
+} from '@lostgradient/operative';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
+
+import type { GoalState } from '../goal-state';
+import type { BureauGoalRequest } from '../goal-types';
+import type { Bureau, BureauDiagnostic } from '../types';
+
+let databaseCounter = 0;
+
+export interface TestDatabase {
+  readonly path: string;
+  remove(): Promise<void>;
+}
+
+export function createTestDatabase(label: string): TestDatabase {
+  const path = join(tmpdir(), `bureau-goals-${label}-${process.pid}-${databaseCounter++}.sqlite`);
+  return {
+    path,
+    async remove() {
+      await rm(path, { force: true });
+      await rm(`${path}-wal`, { force: true });
+      await rm(`${path}-shm`, { force: true });
+    },
+  };
+}
+
+export async function pollUntil(
+  check: () => boolean | Promise<boolean>,
+  attempts = 1000,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await check()) return true;
+    // A tiny real delay: SQLite's completion callbacks starve under a zero-delay loop.
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await yieldToPortableEventLoop();
+  }
+  return check();
+}
+
+export interface Latch {
+  readonly promise: Promise<void>;
+  release(): void;
+}
+
+export function createLatch(): Latch {
+  let release: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
+/** Collects diagnostics instead of printing them. */
+export function createDiagnostics() {
+  const collected: BureauDiagnostic[] = [];
+  return {
+    onDiagnostic: (diagnostic: BureauDiagnostic): void => {
+      collected.push(diagnostic);
+    },
+    all: () => [...collected],
+    scope: (scope: string) => collected.filter((diagnostic) => diagnostic.scope === scope),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Agents
+// ---------------------------------------------------------------------------
+
+/** Never answers, but stops when its run is aborted, as a real provider call does. */
+export const hangUntilAborted: GenerateFunction = ({ signal }) =>
+  new Promise((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+  });
+
+/** Never answers and never stops: the run of a process that died. */
+export const hangForever: GenerateFunction = () => new Promise(() => {});
+
+export function workerAgent(generate: GenerateFunction, name = 'worker') {
+  return createAgent({ name, generate, stopWhen: stopWhen.noToolCalls() });
+}
+
+/** Answers with `content` and records every prompt it was given. */
+export function answering(content: string, prompts: string[] = []): GenerateFunction {
+  return ({ conversation }) => {
+    const last = conversation.getMessages().at(-1);
+    prompts.push(typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content));
+    return Promise.resolve({ content, toolCalls: [] });
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Validators
+// ---------------------------------------------------------------------------
+
+export const CHECK = { name: 'check', version: '1' } as const;
+
+export interface CheckValidatorOptions {
+  readonly version?: string;
+  readonly determinism?: Validator['determinism'];
+  /** Runs before the verdict; a latch here parks the goal in `evaluating`. */
+  readonly before?: (input: ValidatorInput) => Promise<void> | void;
+  readonly calls?: ValidatorInput[];
+}
+
+/** Passes when the attempt's content says `done`; otherwise fails retryably with feedback. */
+export function createCheckValidator(options: CheckValidatorOptions = {}): Validator {
+  return {
+    identity: { name: CHECK.name, version: options.version ?? CHECK.version },
+    determinism: options.determinism ?? 'deterministic',
+    async validate(input): Promise<ValidatorOutcome> {
+      options.calls?.push(input);
+      await options.before?.(input);
+      return input.result.content.includes('done')
+        ? {
+            kind: 'pass',
+            evidence: [{ source: 'check', detail: { content: input.result.content } }],
+          }
+        : { kind: 'fail', feedback: 'say done', evidence: [], retryable: true };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Requests
+// ---------------------------------------------------------------------------
+
+export const GOAL_BOUNDS: GoalBudget = { maximumAttempts: 3, maximumTotalSteps: 100 };
+
+export function goalRequest(
+  overrides: Partial<BureauGoalRequest<'worker'>> = {},
+): BureauGoalRequest<'worker'> {
+  return {
+    agentName: 'worker',
+    prompt: 'work',
+    identity: { name: 'goal', version: '1' },
+    validator: CHECK,
+    bounds: GOAL_BOUNDS,
+    retryPolicy: { retryOn: ['validator-fail-retryable'] },
+    goalRunId: 'g1',
+    ...overrides,
+  };
+}
+
+export const TERMINAL_STATUSES = ['succeeded', 'exhausted', 'failed', 'canceled'] as const;
+
+/** The goal's status, or `undefined` when there is no such goal. */
+export async function goalStatus(
+  bureau: Bureau,
+  goalRunId = 'g1',
+): Promise<GoalState['status'] | undefined> {
+  const goal = await bureau.goals.get(goalRunId);
+  return goal?.status;
+}
+
+/** The engine's own status for a durable workflow, or `undefined` when there is none. */
+export async function workflowStatus(
+  bureau: Bureau,
+  workflowId: string,
+): Promise<string | undefined> {
+  const state = await bureau.getDurableRun(workflowId);
+  return state?.status;
+}
+
+/** The ids of the durable workflows whose id starts with `prefix`. */
+export async function durableIds(bureau: Bureau, prefix: string): Promise<string[]> {
+  const page = await bureau.listDurableRuns();
+  return (page?.items ?? []).filter((item) => item.id.startsWith(prefix)).map((item) => item.id);
+}
+
+/** Every goal id `bureau.goals.list` answers for. */
+export async function listedIds(
+  bureau: Bureau,
+  options?: Parameters<Bureau['goals']['list']>[0],
+): Promise<string[]> {
+  const goals = await bureau.goals.list(options);
+  return goals.map((goal) => goal.goalRunId);
+}
+
+/** The status of each attempt a goal has recorded. */
+export async function attemptStatuses(bureau: Bureau, goalRunId = 'g1'): Promise<string[]> {
+  const goal = await bureau.goals.get(goalRunId);
+  return (goal?.attempts ?? []).map((attempt) => attempt.status);
+}
+
+/** The last message the model was shown, as text. */
+export function lastPromptOf(conversation: {
+  getMessages(): readonly { content: unknown }[];
+}): string {
+  const content = conversation.getMessages().at(-1)?.content;
+  return typeof content === 'string' ? content : JSON.stringify(content);
+}

@@ -256,11 +256,14 @@ export {
   GoalSucceededEvent,
 } from './events';
 export {
+  ATTEMPT_RUN_FAILURE_DETAIL,
   GOAL_RUN_TRANSITIONS,
   TERMINAL_STATUSES,
   TERMINAL_STATUS_BY_REASON,
   canTransitionGoalRun,
   decideAttemptRunFailure,
+  decideCancellation,
+  decideDeterminismRequirement,
   decideOutcome,
   decideRetryOrExhaust,
   decideRunFinish,
@@ -309,6 +312,8 @@ export type {
   Validator,
   ValidatorInput,
 } from './goal-run';
+export { executeValidator } from './goal-validator-execution';
+export type { ValidatorExecution, ValidatorExecutionOptions } from './goal-validator-execution';
 // COR-1354 — fresh-attempt handoff artifacts and conversation policies
 export { createFreshAttemptArtifactStore } from './fresh-attempt/artifact-store';
 export type {

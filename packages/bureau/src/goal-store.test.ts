@@ -36,6 +36,7 @@ import {
   type GoalTransitionRequest,
   type GoalTransitionResult,
 } from './goal-store';
+import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 const GOAL = 'goal-1';
 
@@ -278,13 +279,15 @@ describe('createGoalStore create, get, and list', () => {
     const { store } = setup();
     const state = createGoalState(input());
 
-    await expect(store.create({ ...state, revision: 2 })).rejects.toThrow(InvalidGoalStateError);
-    await expect(store.create({ ...state, status: 'running' })).rejects.toThrow(
+    expect(await throwingRejectionOf(store.create({ ...state, revision: 2 }))).toThrow(
       InvalidGoalStateError,
     );
-    await expect(store.create({ ...state, schemaVersion: 2 } as never)).rejects.toThrow(
+    expect(await throwingRejectionOf(store.create({ ...state, status: 'running' }))).toThrow(
       InvalidGoalStateError,
     );
+    expect(
+      await throwingRejectionOf(store.create({ ...state, schemaVersion: 2 } as never)),
+    ).toThrow(InvalidGoalStateError);
     expect(await store.list()).toEqual([]);
   });
 

@@ -49,6 +49,17 @@ export interface CatalogDispatcherDependencies {
   readonly onDurableRunAborted: (runId: string, reason: string) => void;
 }
 
+/**
+ * COR-851 — one goal attempt: a durable catalog run under the attempt's
+ * deterministic run id, started by Bureau's goal port.
+ */
+export interface GoalAttemptStart {
+  readonly agentName: string;
+  readonly input: string;
+  readonly runId: string;
+  readonly principal?: string | undefined;
+}
+
 export function createCatalogDispatcher({
   agentCatalog,
   runtime,
@@ -71,6 +82,7 @@ export function createCatalogDispatcher({
     name: string,
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
+  startGoalAttemptRun: (start: GoalAttemptStart) => AgentRun<unknown, boolean>;
 } {
   function trackCatalogRun(handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> {
     catalogRuns.add(handle);
@@ -104,6 +116,14 @@ export function createCatalogDispatcher({
      * recovery record only where no other run already holds them.
      */
     runIdOverride?: string,
+    /**
+     * COR-851 — a goal attempt's id and recovery record are a deterministic
+     * function of the goal, so a claim already holding this id is the same
+     * attempt's own claim from a start that died before the workflow existed.
+     * The record is rewritten with identical content and the start continues
+     * from it, rather than refusing as a child with a taken id would.
+     */
+    goalAttempt = false,
   ): AgentRun<unknown, boolean> {
     const durable = runtime.durable;
     if (!durable) {
@@ -265,7 +285,10 @@ export function createCatalogDispatcher({
       if (runIdOverride === undefined) {
         await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
       } else if (!(await runtime.claimCatalogRunRecoveryRecord(runId, recoveryRecord))) {
-        throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
+        if (!goalAttempt) {
+          throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
+        }
+        await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
       }
       const activeRun = createActiveRun(
         resolvedOptions,
@@ -417,7 +440,12 @@ export function createCatalogDispatcher({
         return undefined;
       }),
     );
-    return trackCatalogRun(guardedRun);
+    // A goal attempt is deliberately left out of `catalogRuns`. Shutdown aborts
+    // every tracked run, and an attempt aborted by shutdown would end `aborted`
+    // for good: its goal would read that as the attempt failing. Untracked, the
+    // run is left to the engine's disposal, which is a crash for the next
+    // process to recover, and the goal waits for it.
+    return goalAttempt ? guardedRun : trackCatalogRun(guardedRun);
   }
 
   function prepareCatalogRunContext(
@@ -546,6 +574,42 @@ export function createCatalogDispatcher({
   }
 
   /**
+   * COR-851 — starts one goal attempt as a durable catalog run under the
+   * attempt's own deterministic id. Never falls back to an in-process run: a
+   * goal attempt with no workflow behind it is one no restart could find, so
+   * an agent that cannot run durably is refused here.
+   */
+  function startGoalAttemptRun(start: GoalAttemptStart): AgentRun<unknown, boolean> {
+    if (getShutdownPromise()) {
+      throw createBureauError('Cannot start a goal attempt: bureau is disposed', 'CONFLICT');
+    }
+    const agent = agentCatalog.find(start.agentName);
+    if (!agent) {
+      throw createBureauError(`Unknown agent "${start.agentName}"`, 'NOT_FOUND');
+    }
+    if (!runtime.durable || !hasDefinitionResolver(agent)) {
+      throw createBureauError(
+        `Agent "${start.agentName}" cannot run durably, so it cannot run a goal attempt`,
+        'CONFLICT',
+      );
+    }
+    const context: AgentRunContext = {
+      agentName: start.agentName,
+      ...(start.principal === undefined ? {} : { principal: start.principal }),
+    };
+    return runDurableCatalogAgent(
+      start.agentName,
+      start.input,
+      undefined,
+      context,
+      start.principal,
+      agent,
+      start.runId,
+      true,
+    );
+  }
+
+  /**
    * COR-1277 — the agent this non-durable dispatch actually runs: the catalog
    * agent itself when nothing can be composed onto it, and otherwise a
    * one-shot synthetic agent carrying Bureau's invariant tier in front of the
@@ -659,5 +723,5 @@ export function createCatalogDispatcher({
     };
   }
 
-  return { runAgent, planChildRun, startChildRun };
+  return { runAgent, planChildRun, startChildRun, startGoalAttemptRun };
 }

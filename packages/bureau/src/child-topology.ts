@@ -113,6 +113,7 @@ import type {
   BureauChildTerminalStatus,
   ChildTopologyStore,
 } from './child-topology-store';
+import { principalAllows } from './principal-allows';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
 // ---------------------------------------------------------------------------
@@ -441,10 +442,6 @@ function settlementFromRunResult(
       reason,
     }),
   };
-}
-
-function principalAllows(requested: string | undefined, owner: string | undefined): boolean {
-  return requested === undefined || owner === undefined || requested === owner;
 }
 
 function exceedsSwitch(

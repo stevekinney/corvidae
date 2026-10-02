@@ -169,6 +169,10 @@ import {
   RunRegisteredEvent,
   RunRemovedEvent,
 } from './events';
+import { createGoalWorkflowHost } from './goal-ports';
+import type { BureauGoals } from './goal-types';
+import { createGoalValidatorCatalog } from './goal-validator-catalog';
+import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
 import { createModelCatalogService } from './model-catalog-refresh';
 import { createModelPolicyPlanner } from './model-policy';
@@ -1296,7 +1300,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `createRuntimeComposition`'s own `options.runtime ?? createDefaultRuntimeServices()`
   // resolution (its contract for direct, non-Bureau callers) picks up this
   // SAME instance rather than minting a second default one.
-  const runtime = await createRuntimeComposition({ ...options, runtime: runtimeServices });
+  // COR-851 — the goal controller's workflow is registered on the durable
+  // engine this call builds; its ports are bound once the goal control plane
+  // exists below.
+  const goalWorkflowHost = createGoalWorkflowHost();
+  // Built first: two validators registered under one name and version are a
+  // startup error, and it should fail before the durable engine exists.
+  const goalValidatorCatalog = createGoalValidatorCatalog(options.validators);
+  const runtime = await createRuntimeComposition(
+    { ...options, runtime: runtimeServices },
+    { goalWorkflow: goalWorkflowHost.workflow },
+  );
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
   // terminal `schedule.completed`/`schedule.failed` has nowhere else to
@@ -4336,6 +4350,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // cancel it).
         if (await runtime.isCatalogRecoveredRun(handle.id)) continue;
 
+        // COR-851: a goal's controller workflow carries `{ goalRunId }`, not an
+        // agent run's input, so the classification below would read it as a
+        // foreign run and cancel it. The goal control plane recovers it instead
+        // (`goals.recover`, below), by what the goal's own record says.
+        if (await goalsComposition.ownsWorkflow(handle.id)) continue;
+
         const readError = 'error' in rest ? rest.error : undefined;
         if (readError !== undefined) {
           diagnose({
@@ -4567,6 +4587,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `reconcileRecovery()` diagnoses each child's failure itself and
       // never rejects, so it cannot mask the error this `finally` follows.
       await childTopology.reconcileRecovery();
+      // COR-851 — every unfinished goal, now that its controller and its
+      // attempt's run have both been resumed by `recoverAll()` above. Recovery
+      // reports what it could not do rather than throwing.
+      const goalRecovery = await goalsComposition.recoverAtBoot();
+      for (const failure of goalRecovery.failures) {
+        currentRecoveryPerRunFailures?.push({
+          runId: failure.goalRunId,
+          reason: failure.reason,
+        });
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not recover goal "${failure.goalRunId}": ${failure.reason}`,
+        });
+      }
     }
 
     const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
@@ -8434,6 +8469,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // The bounded wait on child results for 'abort' shutdown comes below, so
       // a child that ignores its abort costs at most that bound.
       await childTopology.drain();
+      // COR-851 — land every goal signal already being sent. A goal interrupted
+      // by shutdown is deliberately left non-terminal for the next process.
+      await goalsComposition.drain();
       // Land terminal session saves already under way before the outbox
       // drain await and `backgroundShutdownController.abort()` below: a save
       // committing after that abort leaves its `session.saved` entry
@@ -9043,7 +9081,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return page;
   }
 
-  const { runAgent, planChildRun, startChildRun } = createCatalogDispatcher({
+  const { runAgent, planChildRun, startChildRun, startGoalAttemptRun } = createCatalogDispatcher({
     agentCatalog,
     runtime,
     runtimeServices,
@@ -9150,6 +9188,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     delegation: options.children?.delegation,
   });
 
+  // COR-851 — durable goals: the control plane over the goal store, its
+  // controller workflow's ports, and the attempt forwarder.
+  const goalsComposition = composeBureauGoals({
+    catalog: goalValidatorCatalog,
+    kv: runtime.kv,
+    runtimeServices,
+    host: goalWorkflowHost,
+    agentCatalog,
+    getDurable: () => runtime.durable,
+    planAgent: planChildRun,
+    startAttemptRun: startGoalAttemptRun,
+    cancelRun: cancelDurableRun,
+    isClosing: () => shutdownPromise !== undefined,
+    diagnose,
+  });
+
   const bureau: Bureau<D> = {
     id: bureauId,
     eventFeed,
@@ -9173,6 +9227,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // The topology is keyed by plain runtime strings; `D` only narrows which
     // agent names a caller may pass, exactly as `run` above.
     children: childTopology.children as BureauChildren<AgentNames<D>>,
+    goals: goalsComposition.goals as BureauGoals<AgentNames<D>>,
     get auditTrail(): AuditTrail | undefined {
       return auditTrailInstance;
     },
