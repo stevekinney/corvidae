@@ -561,7 +561,7 @@ export interface EngineOptions<TServices = unknown> {
  *
  * @example
  * ```ts
- * import { createActivityWorkerEntryUrl, type ActivityExecutionOptions } from '@lostgradient/weft';
+ * import { createActivityWorkerEntryUrl, revokeActivityWorkerEntryUrl, type ActivityExecutionOptions } from '@lostgradient/weft';
  *
  * const workerUrl = createActivityWorkerEntryUrl(new Map([['charge', (amount: unknown) => Number(amount)]]));
  * const worker: ActivityExecutionOptions = {
@@ -577,6 +577,8 @@ export interface EngineOptions<TServices = unknown> {
  *   retryPolicy: { maxAttempts: 3, initialBackoff: 1_000, backoffMultiplier: 2, maxBackoff: 30_000 },
  * };
  * void [worker, remote];
+ * // After disposing the engine configured with `worker`:
+ * revokeActivityWorkerEntryUrl(workerUrl);
  * ```
  */
 export type ActivityExecutionOptions =
