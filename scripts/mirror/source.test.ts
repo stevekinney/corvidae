@@ -89,6 +89,29 @@ test('a new public component example refuses emission until its subpath is decla
   expect(() => rewritePublishedComponentExamples(source, path)).toThrow('declared subpath');
 });
 
+test('published component examples retain multiline imports while routing public types', () => {
+  const source = new TextEncoder().encode(
+    JSON.stringify({
+      component: 'review-editor',
+      import: '@lostgradient/editor',
+      examples: [
+        {
+          code: '<script lang="ts">\n  import {\n    ReviewEditor,\n    type Thread,\n  } from \'@lostgradient/editor\';\n</script>\n',
+        },
+      ],
+    }),
+  );
+  const output = rewritePublishedComponentExamples(
+    source,
+    'packages/editor/src/lib/components/review-editor/review-editor.examples.json',
+  );
+  const published = JSON.parse(new TextDecoder().decode(output));
+  expect(published.import).toBe('@lostgradient/editor/review-editor');
+  expect(published.examples[0].code).toContain(
+    "import {\n    ReviewEditor,\n    type Thread,\n  } from '@lostgradient/editor/review-editor';",
+  );
+});
+
 /** Stand up a throwaway tree, hand it to the body, and remove it however the body ends. */
 async function withTree(
   files: Record<string, string>,

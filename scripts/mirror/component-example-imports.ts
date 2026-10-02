@@ -18,7 +18,7 @@ const componentExports = {
     'diff-review-comments': ['diff-review-comments', ['DiffReviewComments']],
     'diff-viewer': ['diff-viewer', ['DiffViewer', 'DiffViewerAnnotationSelection']],
     'markdown-editor': ['markdown-editor', ['MarkdownEditor', 'EditorMode', 'MarkdownEditorProps']],
-    'review-editor': ['review-editor', ['ReviewEditor']],
+    'review-editor': ['review-editor', ['ReviewEditor', 'Thread']],
   },
 } as const;
 
@@ -79,6 +79,12 @@ function rewriteCodeImports(
         groups.set(specifier, group);
       }
       if (groups.size === 1 && groups.has(packageName)) return original;
+      if (groups.size === 1) {
+        const [specifier] = groups.keys();
+        if (specifier !== undefined) {
+          return original.replace(`${quote}${packageName}${quote}`, `${quote}${specifier}${quote}`);
+        }
+      }
       return [...groups]
         .map(
           ([specifier, items]) =>
@@ -129,10 +135,11 @@ export function rewritePublishedComponentExamples(contents: Uint8Array, path: st
       throw new Error(`${path}: example code is missing`);
     const code = rewriteCodeImports(example['code'], packageName, symbols);
     if (
-      !publicSymbols.some(
-        (symbol) => code.includes(`{ ${symbol}`) || code.includes(`, ${symbol}`),
-      ) ||
-      !code.includes(`from '${expectedImport}'`)
+      !publicSymbols.some((symbol) =>
+        new RegExp(
+          `import(?: type)?\\s*\\{[^}]*\\b${symbol}\\b[^}]*\\}\\s*from\\s*'${expectedImport}'`,
+        ).test(code),
+      )
     ) {
       throw new Error(`${path}: example does not import ${component} from ${expectedImport}`);
     }
