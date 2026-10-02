@@ -42,6 +42,7 @@ import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
 import type { RecoveredWorkflowInfo } from './lifecycle/shared.ts';
 
 import type { ActivityHeartbeatKey } from './activity-heartbeat-tracking.ts';
+import type { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import type {
   PendingTimelineEntry,
   QueuedInlineWorkflowExecutionStart,
@@ -108,6 +109,15 @@ export interface EngineInternals {
   handleCache: Map<string, { ref: WeakRef<WorkflowHandle>; unregisterToken: object }>;
   finalizationRegistry: FinalizationRegistry<string>;
   resultResolvers: Map<string, WorkflowResultWaiter>;
+  /**
+   * Workflows this engine stopped driving because their checkpoint commit lost
+   * its compare-and-swap race to another engine over the same store, keyed by
+   * `workflowId`. Consulted by `result()` so a call made after the loss rejects
+   * with the same error instead of waiting on a generator that is gone. An
+   * entry is stale — and ignored — once this engine holds an in-memory
+   * checkpoint for the workflow again, which every local start or resume sets.
+   */
+  checkpointConflicts: Map<string, WorkflowCheckpointConflictError>;
   signalWaiters: Map<string, () => void>;
   signalWaitersByWorkflow: Map<string, TrackedWaiterKeys>;
   /**

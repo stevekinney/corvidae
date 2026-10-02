@@ -22,6 +22,7 @@ import {
   getCommittedCheckpointBytes,
   rememberCommittedCheckpointBytes,
 } from './checkpoint-commit-snapshots.ts';
+import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
 import {
   attachTransientCheckpointReplayPayload,
@@ -415,11 +416,13 @@ async function commitCheckpoint(
   // checkpoint-CAS/side-effect condition would bypass the fence and let a deposed
   // zombie's write land unconditioned. Under `ownership: 'none'` it is a
   // byte-for-byte no-op (plain batch when no conditions, conditionalBatch otherwise).
-  await commitFencedEngineWrite(internals, workflowId, commit.operations, conditions, () => {
-    return new Error(
-      `Checkpoint commit for workflow "${workflowId}" lost its CAS race against a newer checkpoint.`,
-    );
-  });
+  await commitFencedEngineWrite(
+    internals,
+    workflowId,
+    commit.operations,
+    conditions,
+    () => new WorkflowCheckpointConflictError(workflowId),
+  );
   if (pendingSideEffects !== undefined) {
     clearPendingAtomicWorkflowCommitSideEffects(internals, workflowId);
   }

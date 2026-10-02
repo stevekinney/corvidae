@@ -34,6 +34,19 @@ export function getWorkflowResultPromise(
     return existingWaiter.promise;
   }
 
+  // This engine lost a checkpoint compare-and-swap race for the workflow and
+  // stopped driving it. Nothing local will ever settle a fresh waiter, so reject
+  // up front — unless a later local start or resume made the entry stale.
+  const conflict = internals.checkpointConflicts.get(workflowId);
+  if (conflict !== undefined) {
+    if (!internals.checkpoints.has(workflowId)) {
+      const rejected = Promise.reject(conflict);
+      void rejected.catch(() => {});
+      return rejected;
+    }
+    internals.checkpointConflicts.delete(workflowId);
+  }
+
   // A result() call after disposal would otherwise register a fresh waiter in a
   // map the torn-down engine can never settle (the bootstrap returns without
   // resolving for a still-running workflow). Reject up front instead of leaking

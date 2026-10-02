@@ -362,6 +362,11 @@ export {
   type WorkflowRevisionDiagnostics,
 } from './catalog-removal.ts';
 export {
+  WeftWorkflowCheckpointConflictWarning,
+  WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME,
+  WorkflowCheckpointConflictError,
+} from './checkpoint-conflict-error.ts';
+export {
   DynamicWorkflowSourceUnavailableError,
   WorkflowSourceNotRegisteredError,
 } from './dynamic-source-errors.ts';
@@ -771,6 +776,7 @@ export class Engine<
     getInternals(this).disposed = false;
     getInternals(this).handleCache = new Map();
     getInternals(this).resultResolvers = new Map();
+    getInternals(this).checkpointConflicts = new Map();
     getInternals(this).signalWaiters = new Map();
     getInternals(this).signalWaitersByWorkflow = new Map();
     getInternals(this).conditionWaiters = new Map();

@@ -1,0 +1,91 @@
+import { WeftError } from '../weft-error.ts';
+
+/**
+ * `name` of the operator warning emitted when a workflow's checkpoint commit
+ * loses its compare-and-swap race against a newer checkpoint written by
+ * another engine over the same store, and this engine therefore stops driving
+ * that workflow. Unlike {@link EngineDeposedError}, no ownership claim is
+ * involved: `ownership: 'none'` has none, so the lost write is the only
+ * evidence that a second engine advanced the same workflow.
+ *
+ * @example
+ * ```ts
+ * import { WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME } from '@lostgradient/weft';
+ *
+ * process.on('warning', (warning) => {
+ *   if (warning.name === WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME) {
+ *     console.error('another engine advanced a workflow this one was driving', warning.message);
+ *   }
+ * });
+ * ```
+ */
+export const WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME = 'WeftWorkflowCheckpointConflictWarning';
+
+/**
+ * Operator diagnostic for a workflow this engine stopped driving because its
+ * checkpoint commit lost a compare-and-swap race (see
+ * {@link WorkflowCheckpointConflictError}). Carries the affected `workflowId` as
+ * a real field — emitted as the warning object itself, like
+ * {@link WeftWorkflowClaimLostWarning}, so consumers read `warning.workflowId`
+ * instead of parsing the message.
+ *
+ * @example
+ * ```ts
+ * import { WeftWorkflowCheckpointConflictWarning } from '@lostgradient/weft';
+ *
+ * process.on('warning', (warning) => {
+ *   if (warning instanceof WeftWorkflowCheckpointConflictWarning) {
+ *     console.error('stopped driving workflow:', warning.workflowId);
+ *   }
+ * });
+ * ```
+ */
+export class WeftWorkflowCheckpointConflictWarning extends Error {
+  readonly workflowId: string;
+
+  constructor(workflowId: string) {
+    super(
+      `workflow "${workflowId}" lost a checkpoint compare-and-swap race: another writer advanced its ` +
+        'checkpoint over the same store. This engine stops driving that workflow and writes nothing ' +
+        'further; the rest of its workflows are unaffected.',
+    );
+    this.name = WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME;
+    this.workflowId = workflowId;
+  }
+}
+
+/**
+ * Thrown when a workflow's checkpoint commit loses its compare-and-swap race
+ * against a newer checkpoint that another writer over the same store already
+ * wrote — typically a second live engine driving the same durable workflow. Weft
+ * supports one engine per store without an ownership mode, so the engine that
+ * loses stops driving the workflow rather than overwriting the winner's
+ * progress; it writes nothing durable on the way out, because the winning
+ * engine owns the workflow's checkpoint, terminal state, and record.
+ *
+ * `handle.result()` on the losing engine rejects with this error. Recovering
+ * the workflow on the losing engine means re-resuming it from the winner's
+ * checkpoint, which this error does not do for you.
+ *
+ * @example
+ * ```ts
+ * import { WorkflowCheckpointConflictError } from '@lostgradient/weft';
+ *
+ * function lostToAnotherEngine(error: unknown): boolean {
+ *   return error instanceof WorkflowCheckpointConflictError;
+ * }
+ * ```
+ */
+export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpointConflictError'> {
+  readonly workflowId: string;
+
+  constructor(workflowId: string) {
+    super(
+      'WorkflowCheckpointConflictError',
+      `Checkpoint commit for workflow "${workflowId}" lost its CAS race against a newer checkpoint: ` +
+        'another writer over the same store advanced this workflow. This engine stops driving it ' +
+        'and writes nothing further; the winning writer owns its durable state.',
+    );
+    this.workflowId = workflowId;
+  }
+}
