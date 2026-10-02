@@ -286,13 +286,15 @@ export interface GoalRun extends AsyncIterable<GoalRunEvent> {
   abort(reason?: string): void;
   /**
    * Aborts one attempt only. Idempotent; a finished or unknown attempt is a
-   * no-op. The goal itself is not canceled, but what follows depends on the
-   * phase. Mid-run, the inner run finishes `'aborted'`, which is not a
-   * `'stop-condition'`: the attempt is recorded `'aborted'`, validation never
-   * runs, and the goal fails as `attempt-run-failed` (COR-638: any other
-   * `FinishReason` goes straight to that attempt's failure). Mid-validation,
-   * the validator outcome is `canceled`, which retries only when
-   * `validator-canceled` is declared in the retry policy.
+   * no-op. The goal itself is not canceled. This is an explicit operator
+   * action, so it needs no `retryOn` entry: the attempt is recorded
+   * `'aborted'` (mid-run its inner run finishes `'aborted'` and is never
+   * validated; mid-validation the validator is canceled through its signal),
+   * and the goal then starts the next attempt, announced by `goal.retrying`,
+   * while attempt and aggregate-budget headroom remain. With none left it ends
+   * `exhausted` as `attempt-limit-reached` or `aggregate-budget-exceeded`.
+   * An inner run that ends `'aborted'` for any other reason is still an
+   * attempt failure (`failed`/`attempt-run-failed`).
    */
   abortAttempt(target?: GoalAttemptTarget, reason?: string): void;
   /**
@@ -324,11 +326,13 @@ const TERMINAL_STATUSES: readonly GoalRunStatus[] = [
  * `unsupported-validation`) and `pending -> exhausted` (the aggregate duration
  * bound elapsed before the first attempt opened). `running -> failed` and
  * `running -> exhausted` cover an attempt that cannot reach the validator and
- * a duration bound that elapses mid-attempt.
+ * a duration bound that elapses mid-attempt. `running -> retrying` covers an
+ * operator `abortAttempt()` mid-run, which skips validation and moves on to
+ * the next attempt.
  */
 export const GOAL_RUN_TRANSITIONS: Readonly<Record<GoalRunStatus, readonly GoalRunStatus[]>> = {
   pending: ['running', 'exhausted', 'failed', 'canceled'],
-  running: ['evaluating', 'exhausted', 'failed', 'canceled'],
+  running: ['evaluating', 'retrying', 'exhausted', 'failed', 'canceled'],
   evaluating: ['succeeded', 'retrying', 'exhausted', 'failed', 'canceled'],
   retrying: ['running', 'exhausted', 'failed', 'canceled'],
   succeeded: [],
@@ -606,6 +610,9 @@ type AttemptDirective =
 
 const STOP: AttemptDirective = { next: 'stop' };
 
+const OPERATOR_ABORT_DETAIL =
+  'The attempt was aborted with abortAttempt(), so it was not validated and no further attempt could start.';
+
 function snapshotAttempt(attempt: MutableAttempt): GoalAttemptRecord {
   return { ...attempt, usage: { ...attempt.usage } };
 }
@@ -638,6 +645,8 @@ export function startGoal(options: StartGoalOptions): GoalRun {
   let totalTokens = 0;
   let totalCostUsd: number | undefined;
   let attemptController: AbortController | undefined;
+  /** Attempts the operator ended with `abortAttempt()`, as opposed to any other abort. */
+  const operatorAborted = new Set<string>();
   let liveRun: AgentRun | undefined;
   let durationTimer: unknown;
   /**
@@ -929,15 +938,22 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     feedback: string | undefined,
     announce: () => void,
     announceRetrying: () => void,
+    failureDetail?: string,
   ): AttemptDirective => {
     // An exhausted goal starts no further attempt, so `goal.retrying` (which
     // promises a following attempt) is never announced on these branches.
     if (budgetExceeded()) {
-      finishGoal('exhausted', 'aggregate-budget-exceeded', { beforeTerminalEvent: announce });
+      finishGoal('exhausted', 'aggregate-budget-exceeded', {
+        beforeTerminalEvent: announce,
+        failureDetail,
+      });
       return STOP;
     }
     if (attempts.length >= budget.maximumAttempts) {
-      finishGoal('exhausted', 'attempt-limit-reached', { beforeTerminalEvent: announce });
+      finishGoal('exhausted', 'attempt-limit-reached', {
+        beforeTerminalEvent: announce,
+        failureDetail,
+      });
       return STOP;
     }
     transition('retrying');
@@ -1001,6 +1017,17 @@ export function startGoal(options: StartGoalOptions): GoalRun {
               failureDetail: outcome.reason,
             });
       case 'canceled':
+        // An operator abortAttempt() needs no retryOn entry; a validator that
+        // reports `canceled` on its own still does.
+        if (operatorAborted.has(attempt.attemptId)) {
+          return decideRetryOrExhaust(
+            attempt,
+            undefined,
+            announce,
+            announceRetrying,
+            OPERATOR_ABORT_DETAIL,
+          );
+        }
         return retryOn.has('validator-canceled')
           ? decideRetryOrExhaust(attempt, undefined, announce, announceRetrying)
           : stopWith('failed', 'validator-infrastructure-error', {
@@ -1041,7 +1068,12 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     // Late settlement: the goal ended, or left `evaluating`, while the
     // validator ran. Nothing is applied.
     if (settled === undefined || status !== 'evaluating') return STOP;
-    const { outcome, startedAt, completedAt } = settled.value;
+    const { startedAt, completedAt } = settled.value;
+    // An abortAttempt() that landed after the validator settled but before this
+    // continuation ran still wins: the attempt was operator-aborted.
+    const outcome: ValidatorOutcome = operatorAborted.has(attempt.attemptId)
+      ? { kind: 'canceled' }
+      : settled.value.outcome;
     attempt.validation = { identity: { ...validator.identity }, startedAt, completedAt, outcome };
     attempt.feedback = outcome.kind === 'fail' ? outcome.feedback : undefined;
     attempt.status = attemptStatusFor(outcome);
@@ -1098,11 +1130,22 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     // Only 'stop-condition' hands off to the validator.
     if (result.finishReason !== 'stop-condition') {
       const aborted = result.finishReason === 'aborted';
+      if (aborted && operatorAborted.has(attempt.attemptId)) {
+        // The operator ended this attempt alone: skip validation and move on.
+        attempt.status = 'aborted';
+        attempt.completedAt = runtime.clock.nowISO();
+        return decideRetryOrExhaust(
+          attempt,
+          feedback,
+          () => {},
+          () =>
+            emit(new GoalRetryingEvent({ goalRunId, priorAttemptId: attemptId, nextAttemptId })),
+          OPERATOR_ABORT_DETAIL,
+        );
+      }
       return failAttempt(
         attempt,
-        aborted && attemptController?.signal.aborted === true
-          ? 'The attempt was aborted with abortAttempt() before it reached a stop condition, so it was not validated.'
-          : `The inner run finished with ${result.finishReason}.`,
+        `The inner run finished with ${result.finishReason}.`,
         aborted ? 'aborted' : 'failed',
       );
     }
@@ -1135,6 +1178,7 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     if (target?.attemptId !== undefined && target.attemptId !== attempt.attemptId) return;
     if (attempt.status !== 'running' && attempt.status !== 'evaluating') return;
     if (attemptController === undefined || attemptController.signal.aborted) return;
+    operatorAborted.add(attempt.attemptId);
     attemptController.abort(reason);
     liveRun?.abort(reason);
   };
