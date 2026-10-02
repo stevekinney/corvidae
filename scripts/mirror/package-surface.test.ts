@@ -98,9 +98,12 @@ describe('package-surface.json', () => {
       ).toBe(false);
     }
     expect(filesCoverPath(files, 'dist/components/markdown-editor/index.d.ts')).toBe(true);
-    expect(filesCoverPath(files, 'dist/components/markdown-editor/mode-control.svelte.d.ts')).toBe(
-      true,
-    );
+    expect(
+      filesCoverPath(
+        files,
+        'dist/components/markdown-editor/markdown-editor-mode-control.svelte.d.ts',
+      ),
+    ).toBe(true);
     const resolved = resolveSurface({
       entry: editor,
       packageRoot: join(corvidaeRoot, 'components/editor'),
