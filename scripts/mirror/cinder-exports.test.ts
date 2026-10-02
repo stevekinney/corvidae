@@ -270,9 +270,13 @@ describe('computeFiles', () => {
       'src/components/button/button.test.svelte',
       'src/components/button/button.spec.svelte',
       'src/components/button/button-test.svelte',
+      'src/components/button/button.fixture.svelte',
+      'src/components/button/button-keyboard-harness.svelte',
       'dist/components/button/button.test.svelte.d.ts',
       'dist/components/button/button.spec.svelte.d.ts',
       'dist/components/button/button-test.svelte.d.ts',
+      'dist/components/button/button.fixture.svelte.d.ts',
+      'dist/components/button/button-keyboard-harness.svelte.d.ts',
     ]) {
       expect(isExcluded(path)).toBe(true);
     }
@@ -287,6 +291,7 @@ describe('computeFiles', () => {
       '!src/components/**/*-test.svelte',
       '!src/components/**/*fixture*.svelte',
       '!src/components/**/_*-test-harness.svelte',
+      '!src/components/**/*harness*.svelte',
     ]) {
       expect(STATIC_FILES_GLOBS.indexOf(exclusion)).toBeGreaterThan(svelteFilesIndex);
     }
