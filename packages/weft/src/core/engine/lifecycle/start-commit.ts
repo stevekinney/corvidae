@@ -24,6 +24,7 @@ import {
 import type { WorkflowConcurrencyStartOperations } from '../workflow-concurrency.ts';
 import { refreshWorkflowVisibilityMaintenance } from '../workflow-visibility-maintenance.ts';
 import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
+import { buildWorkflowGenerationBumpOperation } from '../workflow-generation-fence.ts';
 import { buildStartBatchOperations } from './start-batch.ts';
 import { StartIdempotencyRaceLostError } from './start-commit-errors.ts';
 import { tagStartConditions, type TaggedStartCondition } from './start-condition-tags.ts';
@@ -287,6 +288,22 @@ function mergeAdditionalStartOperations(
     : [...(additional ?? []), ...idempotent];
 }
 
+/**
+ * The `wf-gen:<id>` bump an explicit-id create writes in its own batch
+ * (COR-1387), from the SAME bytes `duplicateIdGenerationCondition` pins, so
+ * the row exists for every id ever started with a caller-supplied id and a
+ * purge can skip ids that only ever ran under a generated UUID. Empty for a
+ * generated id (no condition) and for a `'start-new'` restart, whose
+ * `purgeDeleteOperations` already carry the bump.
+ */
+function buildExplicitCreateGenerationOperations(
+  context: StartBatchContext,
+): BatchOperation[] | undefined {
+  const condition = context.duplicateIdGenerationCondition;
+  if (condition === undefined || context.purgeDeleteOperations !== undefined) return undefined;
+  return [buildWorkflowGenerationBumpOperation(context.workflowId, condition.expectedValue)];
+}
+
 export type StartBatchContext = {
   internals: EngineInternals;
   workflowId: string;
@@ -370,7 +387,10 @@ export async function buildAndCommitStartBatch(
       context.delayedStartTimer,
       context.persistedWorkflowStartHeaders,
       mergeAdditionalStartOperations(
-        context.additionalStartOperations,
+        mergeAdditionalStartOperations(
+          context.additionalStartOperations,
+          buildExplicitCreateGenerationOperations(context),
+        ),
         mergeAdditionalStartOperations(idempotent?.operations, workflowConcurrency?.operations),
       ),
       context.callbacks,
