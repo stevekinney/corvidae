@@ -23,15 +23,17 @@ import type { FreshAttemptSourceResolver } from './fresh-attempt/validate';
 import {
   canTransitionGoalRun,
   GOAL_RUN_TRANSITIONS,
+  type GoalRunStatus,
+  type GoalRunTerminalReason,
+  type ValidatorOutcome,
+} from './goal-decision';
+import {
   startGoal,
   type GoalRun,
   type GoalRunEvent,
-  type GoalRunStatus,
-  type GoalRunTerminalReason,
   type StartGoalOptions,
   type Validator,
   type ValidatorInput,
-  type ValidatorOutcome,
 } from './goal-run';
 import { createSessionStore } from './session/create-session-store';
 import { createSessionHandle } from './session/session-handle';
