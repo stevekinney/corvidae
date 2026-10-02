@@ -14,7 +14,8 @@
  *
  * - `transition()` is the only writer of `status`, and it rejects every edge
  *   out of a terminal status.
- * - Every `await` resumes through `isLive()`, so a validator or inner run that
+ * - Every `await` is wrapped in `untilTerminal()` and re-checked with
+ *   `isTerminal()` when it resumes, so a validator or inner run that
  *   settles after the goal left `evaluating`, was canceled, or ended is
  *   ignored rather than applied a second time.
  *
@@ -44,6 +45,7 @@ import {
   GoalRetryingEvent,
   GoalStartedEvent,
   GoalSucceededEvent,
+  type GoalEventTerminalReason,
   type OperativeEventMap,
 } from './events';
 import {
@@ -120,15 +122,7 @@ export type GoalRunTerminalStatus = Extract<
  * reason for that case, and `validator-infrastructure-error` would misstate
  * it.
  */
-export type GoalRunTerminalReason =
-  | 'validator-passed'
-  | 'attempt-limit-reached'
-  | 'aggregate-budget-exceeded'
-  | 'validator-fail-non-retryable'
-  | 'validator-infrastructure-error'
-  | 'unsupported-validation'
-  | 'attempt-run-failed'
-  | 'goal-canceled';
+export type GoalRunTerminalReason = GoalEventTerminalReason;
 
 export interface ValidatorIdentity {
   readonly name: string;
@@ -608,6 +602,25 @@ type FailedReason = Extract<
   | 'attempt-run-failed'
 >;
 
+/**
+ * The terminal status each reason belongs to. Typed as a total `Record`, so a
+ * reason added to `GoalEventTerminalReason` fails to compile until it is
+ * placed here.
+ */
+const TERMINAL_STATUS_BY_REASON: Readonly<Record<GoalRunTerminalReason, GoalRunTerminalStatus>> = {
+  'validator-passed': 'succeeded',
+  'attempt-limit-reached': 'exhausted',
+  'aggregate-budget-exceeded': 'exhausted',
+  'validator-fail-non-retryable': 'failed',
+  'validator-infrastructure-error': 'failed',
+  'unsupported-validation': 'failed',
+  'attempt-run-failed': 'failed',
+  'goal-canceled': 'canceled',
+};
+
+const isFailedReason = (reason: GoalRunTerminalReason): reason is FailedReason =>
+  TERMINAL_STATUS_BY_REASON[reason] === 'failed';
+
 type AttemptDirective =
   { readonly next: 'retry'; readonly feedback: string | undefined } | { readonly next: 'stop' };
 
@@ -753,9 +766,12 @@ export function startGoal(options: StartGoalOptions): GoalRun {
         terminalReason: reason === 'attempt-limit-reached' ? reason : 'aggregate-budget-exceeded',
       });
     }
+    if (!isFailedReason(reason)) {
+      throw new Error(`Goal terminal reason '${reason}' does not belong to status 'failed'.`);
+    }
     return new GoalFailedEvent({
       goalRunId,
-      terminalReason: reason as FailedReason,
+      terminalReason: reason,
       // The live event never carries `cause`: it can hold arbitrary validator
       // internals, which the contract keeps off live and telemetry events.
       validatorError:
