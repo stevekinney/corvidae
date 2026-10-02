@@ -516,6 +516,37 @@ describe('the attempt behind a running goal', () => {
     expect(goal.attempts).toHaveLength(1);
   });
 
+  it('is started again when the controller recorded it as running but its run was never created', async () => {
+    database = createTestDatabase('never-created');
+    let steps = 0;
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: {
+        worker: workerAgent(() => {
+          steps += 1;
+          return Promise.resolve({ content: 'done', toolCalls: [] });
+        }),
+      },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+    // The start returned its handle and the controller committed `running`, then the
+    // process died before the run's workflow existed.
+    const view = await inspection();
+    await seedRunning(view);
+    expect(await workflowStatus(bureau, 'goal-g1-a0')).toBeUndefined();
+
+    expect(await bureau.goals.recover('g1')).toMatchObject({
+      goals: [{ goalRunId: 'g1', outcome: 'started', attempt: 'run-started' }],
+    });
+
+    const goal = await ended(bureau);
+    expect(goal).toMatchObject({ status: 'succeeded' });
+    expect(goal.attempts.map((attempt) => attempt.runId)).toEqual(['goal-g1-a0']);
+    expect(steps).toBe(1);
+  });
+
   it('is started from the claim a start left behind when it died before the workflow existed', async () => {
     database = createTestDatabase('claim');
     let steps = 0;
