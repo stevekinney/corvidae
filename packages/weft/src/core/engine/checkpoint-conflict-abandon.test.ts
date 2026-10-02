@@ -278,6 +278,51 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(reads).toEqual([]);
   });
 
+  it('fails a once-abandoned workflow durably when a later local resume fails before launching it', async () => {
+    const storage = new MemoryStorage();
+    const parked = workflow({ name: 'abandoned-then-recovered' }).execute(async function* (
+      ctx: WorkflowContext,
+    ) {
+      yield* ctx.waitForSignal('continue');
+      return 'completed';
+    });
+    const firstEngine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'abandoned-then-recovered': parked },
+    });
+    await firstEngine.start('abandoned-then-recovered', null, { id: 'recovered-run' });
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if ((await storage.get(KEYS.checkpoint('recovered-run'))) !== null) break;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    await firstEngine[Symbol.asyncDispose]();
+
+    await using engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'abandoned-then-recovered': parked },
+    });
+    const warning = collectConflictWarnings();
+    abandonWorkflowAfterCheckpointConflict(
+      getInternals(engine),
+      new WorkflowCheckpointConflictError('recovered-run'),
+      { swallowPromiseRejection },
+    );
+    await warning.received;
+    warning.stop();
+
+    // The recovery hook is a pre-check that runs before the workflow is
+    // launched, so its failure is this engine's own, legitimate terminal outcome.
+    await engine.recoverAll({
+      onRecoveredWorkflow: () => {
+        throw new Error('live surface unavailable');
+      },
+    });
+
+    expect(await readStatus(storage, 'recovered-run')).toBe('failed');
+  });
+
   it('rethrows a persist failure that is not a checkpoint conflict without abandoning', async () => {
     const storage = new MemoryStorage();
     await using engine = new Engine({ storage });
