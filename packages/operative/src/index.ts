@@ -257,6 +257,7 @@ export {
 } from './events';
 export {
   GOAL_RUN_TRANSITIONS,
+  TERMINAL_STATUSES,
   TERMINAL_STATUS_BY_REASON,
   canTransitionGoalRun,
   decideAttemptRunFailure,
@@ -270,7 +271,10 @@ export {
   projectValidatorResult,
   stripValidatorErrorCause,
   toJsonSafe,
+  validateBudget,
+  validateConversationPolicy,
   validateGoalConfiguration,
+  validateRetryPolicy,
 } from './goal-decision';
 export type {
   GoalBudget,
