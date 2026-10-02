@@ -16,7 +16,8 @@
 import { writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { stopWhen } from '@lostgradient/operative';
+import { createCheckpointStore, stopWhen } from '@lostgradient/operative';
+import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -261,10 +262,16 @@ async function twoParkedRuns(): Promise<void> {
 }
 
 /**
- * COR-1409: a run parks on `requestHumanInput`, and the process dies the moment
- * its review is visible. That is before the step-boundary commits are
- * guaranteed to have landed, so the recoverer sees either the boot-found park
- * or COR-121's replay-reached one, depending on how far the backend got.
+ * COR-1409: a run parks on `requestHumanInput`, and the process dies once the
+ * park is durable.
+ *
+ * The review becomes visible as soon as the tool dispatches its park event,
+ * which happens while the step memo carrying the pending wait is still being
+ * committed. A process killed in that window was never durably parked: its
+ * successor rightly re-runs the step. So the child waits until the run's cursor
+ * has advanced past step 0, which the workflow commits only after that memo and
+ * the step record. COR-121's in-process test covers the narrower window where
+ * the memo landed and the step record did not.
  */
 async function humanWaitParked(): Promise<void> {
   const bureau = await createHarnessBureau({
@@ -287,6 +294,17 @@ async function humanWaitParked(): Promise<void> {
   await pollUntil('the run to surface its human-wait review', () =>
     bureau.listPendingReviews().some((review) => review.runId === run.id),
   );
+  const inspector = await resolveStorage({
+    type: backend as 'sqlite' | 'lmdb',
+    path: storagePath as string,
+  });
+  const checkpoints = createCheckpointStore(
+    textValueStore(inspector, { disposeUnderlyingStorage: false }),
+  );
+  await pollUntil('the run cursor to advance past the parked step', async () => {
+    const cursor = await checkpoints.loadCursor(run.id);
+    return cursor !== null && cursor.step >= 1;
+  });
   writeMarker({ runId: run.id });
 }
 

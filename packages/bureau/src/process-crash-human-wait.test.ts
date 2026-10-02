@@ -6,8 +6,8 @@
  * `human-wait-replay-park.test.ts`) simulate the crash by never disposing the
  * first Bureau. That leaves a second live engine on the store, which is not a
  * crash and, over LMDB, is a race of its own (COR-118, COR-1408). Here the
- * child SIGKILLs itself the moment its review is visible, so the recoverer
- * shares nothing with it but the bytes it left on disk.
+ * child SIGKILLs itself once its park is durable, so the recoverer shares
+ * nothing with it but the bytes it left on disk.
  *
  * The one real-time wait is the claim-lapse wait, derived from the claim TTL
  * exactly as `process-crash-recovery.test.ts` does. Every other wait is
@@ -118,9 +118,15 @@ describe.each(['sqlite', 'lmdb'] as const)(
           }),
         ).toBe(true);
       } finally {
-        const shutdown = await recoverer?.shutdown();
+        // allSettled never rejects, so the directory is always removed after shutdown.
+        const reports = await Promise.allSettled(
+          recoverer === undefined ? [] : [recoverer.shutdown()],
+        );
         rmSync(directory, { recursive: true, force: true });
-        if (shutdown !== undefined) expect(shutdown.unresolved).toBe(0);
+        for (const report of reports) {
+          expect(report.status).toBe('fulfilled');
+          if (report.status === 'fulfilled') expect(report.value.unresolved).toBe(0);
+        }
       }
     }, 120_000);
   },
