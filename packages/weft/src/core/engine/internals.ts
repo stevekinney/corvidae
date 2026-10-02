@@ -114,8 +114,8 @@ export interface EngineInternals {
    * its compare-and-swap race to another engine over the same store, keyed by
    * `workflowId`. Consulted by `result()` so a call made after the loss rejects
    * with the same error instead of waiting on a generator that is gone. An
-   * entry is stale — and ignored — once this engine holds an in-memory
-   * checkpoint for the workflow again, which every local start or resume sets.
+   * entry is removed when this engine launches the workflow again, and on
+   * terminal cleanup, purge, and disposal (see `adoptLaunchCheckpoint`).
    */
   checkpointConflicts: Map<string, WorkflowCheckpointConflictError>;
   signalWaiters: Map<string, () => void>;

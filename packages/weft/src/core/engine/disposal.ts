@@ -181,6 +181,7 @@ export function disposeEngine(
   internals.durableInlineOperations.clear();
   internals.sleepTimersFiredWithoutResolver.clear();
   internals.checkpoints.clear();
+  internals.checkpointConflicts.clear();
   internals.pendingExecutionStateOwnerId = undefined;
   internals.pendingParentWorkflowId = undefined;
   internals.pendingParentWorkflowExecutionToken = undefined;

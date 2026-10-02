@@ -1,3 +1,4 @@
+import { abandonParentOfAbandonedChild } from './checkpoint-conflict-abandon.ts';
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { EngineDisposedError } from './errors.ts';
 import { WorkflowHandle } from './handles.ts';
@@ -36,15 +37,13 @@ export function getWorkflowResultPromise(
 
   // This engine lost a checkpoint compare-and-swap race for the workflow and
   // stopped driving it. Nothing local will ever settle a fresh waiter, so reject
-  // up front — unless a later local start or resume made the entry stale.
+  // up front. A later local start or resume of the workflow clears the entry,
+  // as do terminal cleanup, purge, and disposal.
   const conflict = internals.checkpointConflicts.get(workflowId);
   if (conflict !== undefined) {
-    if (!internals.checkpoints.has(workflowId)) {
-      const rejected = Promise.reject(conflict);
-      void rejected.catch(() => {});
-      return rejected;
-    }
-    internals.checkpointConflicts.delete(workflowId);
+    const rejected = Promise.reject(conflict);
+    void rejected.catch(() => {});
+    return rejected;
   }
 
   // A result() call after disposal would otherwise register a fresh waiter in a
@@ -99,7 +98,12 @@ export function getGeneratorOwnedWorkflowResultPromise(
   return fenceResultOnParentGeneration(
     internals,
     parentWorkflowId,
-    getWorkflowResultPromise(internals, workflowId),
+    abandonParentOfAbandonedChild(
+      internals,
+      workflowId,
+      parentWorkflowId,
+      getWorkflowResultPromise(internals, workflowId),
+    ),
   );
 }
 

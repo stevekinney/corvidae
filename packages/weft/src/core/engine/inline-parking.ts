@@ -1,7 +1,6 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { hasExposedAccessors, hasUpdateHandlers } from '../context/context-presence.ts';
 import type { WorkerOutboundMessage, WorkflowState } from '../types.ts';
-import { abandonWorkflowAfterCheckpointConflict } from './checkpoint-conflict-abandon.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
 import type { EngineInternals } from './internals.ts';
@@ -272,16 +271,11 @@ export async function handleStrategyMessage(
     //
     // A checkpoint commit that lost its compare-and-swap race means another
     // engine over the same store already advanced this workflow and owns its
-    // durable state. This engine stops driving it and settles its local handle,
-    // but writes nothing: failing the workflow here would overwrite the winner.
-    if (error instanceof WorkflowCheckpointConflictError) {
-      abandonWorkflowAfterCheckpointConflict(
-        internals,
-        error,
-        callbacks.createTerminationCallbacks(),
-      );
-      return;
-    }
+    // durable state. `commitCheckpoint` already abandoned the run where it
+    // detected the loss (this engine stops driving it and settles its local
+    // handle); all that is left is to write nothing: failing the workflow here
+    // would overwrite the winner.
+    if (error instanceof WorkflowCheckpointConflictError) return;
     if (!(error instanceof CheckpointEncodingError)) throw error;
     await failWorkflowFromTermination(
       internals,

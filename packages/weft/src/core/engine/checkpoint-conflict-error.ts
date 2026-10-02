@@ -63,7 +63,10 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
  * progress; it writes nothing durable on the way out, because the winning
  * engine owns the workflow's checkpoint, terminal state, and record.
  *
- * `handle.result()` on the losing engine rejects with this error. Recovering
+ * `handle.result()` on the losing engine rejects with this error. A parent
+ * workflow on the losing engine that was awaiting a child this engine abandoned
+ * is itself abandoned and rejects with its own instance of this error, whose
+ * `cause` is the child's. Recovering
  * the workflow on the losing engine means re-resuming it from the winner's
  * checkpoint, which this error does not do for you.
  *
@@ -79,12 +82,13 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
 export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpointConflictError'> {
   readonly workflowId: string;
 
-  constructor(workflowId: string) {
+  constructor(workflowId: string, options?: ErrorOptions) {
     super(
       'WorkflowCheckpointConflictError',
       `Checkpoint commit for workflow "${workflowId}" lost its CAS race against a newer checkpoint: ` +
         'another writer over the same store advanced this workflow. This engine stops driving it ' +
         'and writes nothing further; the winning writer owns its durable state.',
+      options,
     );
     this.workflowId = workflowId;
   }

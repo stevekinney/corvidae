@@ -573,6 +573,11 @@ export async function failWorkflow(
   callbacks: TerminationCallbacks,
   failureCategory: FailureCategory = 'system',
 ): Promise<void> {
+  // This engine abandoned the run after losing a checkpoint compare-and-swap
+  // race; the winning engine owns its durable state, so a failure surfacing
+  // from anything still unwinding here must not write a terminal state over it.
+  // Launching the workflow locally again clears the record.
+  if (internals.checkpointConflicts.has(workflowId)) return;
   const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
   const attributes = attributeBytes
     ? (decode(attributeBytes) as Record<string, SearchAttributeValue>)

@@ -5,6 +5,7 @@ import { encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../scheduler.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../types.ts';
+import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
@@ -307,7 +308,7 @@ export async function startDelayedWorkflow(
     internals.workflowsNeedingTerminalCleanup.add(entry.workflowId);
   }
 
-  internals.checkpoints.set(entry.workflowId, checkpoint);
+  adoptLaunchCheckpoint(internals, entry.workflowId, checkpoint);
   internals.workflowVersionTuples.set(
     entry.workflowId,
     callbacks.workflowVersionTupleFromState(runningState),

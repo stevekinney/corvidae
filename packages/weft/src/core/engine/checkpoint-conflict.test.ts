@@ -13,7 +13,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred, waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { Engine } from '../engine.ts';
@@ -136,7 +136,10 @@ async function readState(base: Storage): Promise<WorkflowState> {
   return decode(bytes!) as WorkflowState;
 }
 
-async function runRace(base: Storage): Promise<void> {
+async function runRace(
+  base: Storage,
+  scenario: 'winner-completes' | 'resume-after-loss' = 'winner-completes',
+): Promise<void> {
   const race = createRace(base);
   const warning = observeCheckpointConflictWarning();
   const engineA = await Engine.create({
@@ -186,20 +189,35 @@ async function runRace(base: Storage): Promise<void> {
     expect(race.writesByBAfterLoss).toEqual([]);
     expect(await base.get(workflowRecordKey)).toEqual(recordBeforeRace);
 
-    // The winner is unharmed: it still takes the signal and completes the run.
-    await engineA.signal(workflowId, 'go', 'X');
-    expect(await engineA.getHandle(workflowId).result()).toBe('s1:s2:s3:X');
-    const stateAfterCompletion = await readState(base);
-    expect(stateAfterCompletion.status).toBe('completed');
-    expect(race.writesByBAfterLoss).toEqual([]);
+    if (scenario === 'winner-completes') {
+      // The winner is unharmed: it still takes the signal and completes the run.
+      await engineA.signal(workflowId, 'go', 'X');
+      expect(await engineA.getHandle(workflowId).result()).toBe('s1:s2:s3:X');
+      const stateAfterCompletion = await readState(base);
+      expect(stateAfterCompletion.status).toBe('completed');
+      expect(race.writesByBAfterLoss).toEqual([]);
+      return;
+    }
 
-    // A later local start or resume of the id holds an in-memory checkpoint
-    // again; the recorded loss is then stale and must not reject its result().
-    internals.checkpoints.set(workflowId, {} as never);
-    const freshHandleAfterRestart = new WorkflowHandle(workflowId, internals.engine);
-    expect(await freshHandleAfterRestart.result()).toBe('s1:s2:s3:X');
+    // The loser later takes the run over for real: the winner pauses it, this
+    // engine resumes it from the winner's checkpoint and drives it to completion
+    // without anyone asking for result() mid-run. The recorded loss must not
+    // outlive that local resume, or the run's real outcome would be masked by the
+    // old conflict once terminal cleanup drops the in-memory checkpoint.
+    await engineA.suspend(workflowId);
+    await engineB.resume(workflowId);
     expect(internals.checkpointConflicts.has(workflowId)).toBe(false);
-    internals.checkpoints.delete(workflowId);
+    await engineB.signal(workflowId, 'go', 'Y');
+    await waitForCondition(
+      async () => {
+        const state = await readState(base);
+        return state.status === 'completed';
+      },
+      { label: 'resumed run completed on the former loser' },
+    );
+    expect(internals.checkpoints.has(workflowId)).toBe(false);
+    const freshHandleAfterResume = new WorkflowHandle(workflowId, internals.engine);
+    expect(await freshHandleAfterResume.result()).toBe('s1:s2:s3:Y');
   } finally {
     warning.stop();
     await engineB?.[Symbol.asyncDispose]();
@@ -216,5 +234,9 @@ describe('checkpoint compare-and-swap loss under ownership none', () => {
     const { BunSQLiteStorage } = await import('../../storage/bun-sql.ts');
     using storage = new BunSQLiteStorage(':memory:');
     await runRace(storage);
+  });
+
+  it('does not reject a later local run of the workflow with the old loss (resume after loss)', async () => {
+    await runRace(new MemoryStorage(), 'resume-after-loss');
   });
 });

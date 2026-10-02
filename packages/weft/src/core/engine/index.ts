@@ -364,7 +364,6 @@ export {
 export {
   WeftWorkflowCheckpointConflictWarning,
   WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME,
-  WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
 export {
   DynamicWorkflowSourceUnavailableError,
@@ -390,6 +389,7 @@ export {
   PersistedDataIncompatibleError,
   StartOrSignalConflictError,
   WorkflowAlreadyExistsError,
+  WorkflowCheckpointConflictError,
   WorkflowConcurrencyLimitExceededError,
   WorkflowNotFoundError,
   WorkflowNotRegisteredError,

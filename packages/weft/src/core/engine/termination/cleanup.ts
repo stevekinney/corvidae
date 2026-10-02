@@ -206,8 +206,16 @@ export function cleanupWaiters(
   cleanupConditionWaiters(internals, workflowId);
   cleanupReviewEscalations(internals, workflowId, callbacks);
 
-  // Release the per-workflow coordinated-update delivery-claim set so it cannot
-  // leak one entry per completed workflow on a long-lived engine.
+  releaseWorkflowBookkeeping(internals, workflowId);
+}
+
+/**
+ * Drop the per-workflow bookkeeping that outlives the waiters: the coordinated-
+ * update delivery-claim set (so it cannot leak one entry per completed workflow
+ * on a long-lived engine), nesting depth, headers, the credential-bearing
+ * `services` closures, and the type lookup. Purely in-memory.
+ */
+function releaseWorkflowBookkeeping(internals: EngineInternals, workflowId: string): void {
   internals.deliveredPendingUpdateIds.delete(workflowId);
   internals.workflowNestingDepths.delete(workflowId);
   internals.workflowHeaders.delete(workflowId);
@@ -367,7 +375,36 @@ export function cleanupTerminalWorkflowMemory(
   callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection' | 'dispatchEvent'>,
 ): void {
   settleSleepTimerAcknowledgements(internals, workflowId, 'terminal');
+  releaseWorkflowExecutionMemory(internals, workflowId, (token) => {
+    // Acceptance criterion 10: best-effort ask a `serve()`d server to
+    // request cancellation of the matching durable task. Fired for every
+    // discarded token regardless of origin — see
+    // `RemoteActivityCancellationRequestedEvent`'s doc comment for why
+    // that is safe for an ordinary (non-remote) `ctx.completeAsync()` token.
+    callbacks.dispatchEvent(new RemoteActivityCancellationRequestedEvent(token, workflowId));
+  });
+  cleanupWaiters(internals, workflowId, callbacks);
+}
+
+/**
+ * Release every purely in-memory per-workflow map entry that a run holds while
+ * it executes: the committed-checkpoint snapshot, in-memory checkpoint,
+ * heartbeat details, pending async activities, event-log head, pending timeline
+ * entry, staged atomic side effects, parked-inline marker and retained context,
+ * version tuple, cancel handlers, feed listeners, and any recorded checkpoint
+ * conflict. Never touches storage and never calls a waiter, so it is shared by
+ * terminal cleanup and by abandoning a run to another engine.
+ *
+ * `onDiscardedAsyncActivity` receives the token of each pending async activity
+ * dropped here; omit it where the durable task is not this engine's to cancel.
+ */
+export function releaseWorkflowExecutionMemory(
+  internals: EngineInternals,
+  workflowId: string,
+  onDiscardedAsyncActivity?: (token: string) => void,
+): void {
   internals.workflowsNeedingTerminalCleanup.delete(workflowId);
+  internals.checkpointConflicts.delete(workflowId);
   forgetCommittedCheckpointBytes(internals, workflowId);
   internals.checkpoints.delete(workflowId);
   internals.heartbeatDetails.delete(workflowId);
@@ -375,12 +412,7 @@ export function cleanupTerminalWorkflowMemory(
   for (const [token, pending] of internals.pendingAsyncActivities) {
     if (pending.workflowId === workflowId) {
       internals.pendingAsyncActivities.delete(token);
-      // Acceptance criterion 10: best-effort ask a `serve()`d server to
-      // request cancellation of the matching durable task. Fired for every
-      // discarded token regardless of origin — see
-      // `RemoteActivityCancellationRequestedEvent`'s doc comment for why
-      // that is safe for an ordinary (non-remote) `ctx.completeAsync()` token.
-      callbacks.dispatchEvent(new RemoteActivityCancellationRequestedEvent(token, workflowId));
+      onDiscardedAsyncActivity?.(token);
     }
   }
   internals.eventLogHeads.delete(workflowId);
@@ -405,7 +437,26 @@ export function cleanupTerminalWorkflowMemory(
   // matches the other maps above and prevents unbounded growth.
   internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'events'));
   internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'tokens'));
-  cleanupWaiters(internals, workflowId, callbacks);
+}
+
+/**
+ * Release a run this engine stopped driving because another engine owns it
+ * (see `abandonWorkflowAfterCheckpointConflict`). Like
+ * {@link evictSuspendedWorkflowWaiters}, waiters are evicted without being
+ * resolved — the durable status is still the winner's `running`, so a woken
+ * operation loop has nothing backstopping it — and nothing is written. Unlike
+ * suspend it also drops the per-run `services`, headers, and the rest of the
+ * in-memory execution state, and it does not ask a remote server to cancel
+ * pending async activities, whose durable tasks belong to the winner.
+ */
+export function releaseAbandonedWorkflowMemory(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
+): void {
+  evictSuspendedWorkflowWaiters(internals, workflowId, callbacks);
+  releaseWorkflowExecutionMemory(internals, workflowId);
+  releaseWorkflowBookkeeping(internals, workflowId);
 }
 
 export function cleanupTerminalWorkflowImmediately(
