@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3145"/>
+      <stop offset="1" stop-color="#11141d"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS icon grid: an 824 px body inset 100 px from each edge. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#background)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)"/>
+  <!-- A "C" monogram opening to the right, with an amber eye in its mouth. -->
+  <path d="M 653.4 343.5 A 220 220 0 1 0 653.4 680.5" fill="none" stroke="#eef1f7" stroke-width="110" stroke-linecap="round"/>
+  <circle cx="712" cy="512" r="46" fill="#f2b33d"/>
+</svg>

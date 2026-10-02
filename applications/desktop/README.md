@@ -30,6 +30,10 @@ Every task that reads Electrobun types depends on `prepare:devkit` in `turbo.jso
 
 `build` and `build:stable` bundle the Bun main process with Bun itself (`bun run build:main`, `scripts/bundle-main-process.ts`) into `.main-bundle/index.js`, then run `electrobun build` with `DESKTOP_PREBUNDLED_MAIN=1` so `electrobun.config.ts` points `build.bun.entrypoint` at that file. Electrobun bundles the entrypoint with Cottontail's native `Bun.build`, and on the real main-process graph that bundler segfaults intermittently (COR-1389, [blackboardsh/electrobun#564](https://github.com/blackboardsh/electrobun/issues/564): 12 crashes in 960 isolated runs, none in 960 once Cottontail is handed one pre-bundled file). `dev` keeps the source entrypoint so `electrobun dev --watch` still rebuilds on main-process edits, which means `dev` can still hit the upstream crash; rerun it. `bun run clean` removes `.main-bundle`.
 
+## The application icon
+
+`assets/icon.svg` is the icon's source. `bun run generate:icon` renders it with Inkscape into `assets/icon.iconset`, whose PNGs are committed so a build never needs Inkscape. `electrobun.config.ts` points the macOS build at the iconset, which Electrobun converts to `.icns` with `iconutil`, and hands the 1024 px PNG to the Linux and Windows builds.
+
 ## Commands
 
 ```bash
