@@ -1131,7 +1131,7 @@
     },
     "@lostgradient/operative": {
       "workspace": "@lostgradient/operative",
-      "version": "0.15.2",
+      "version": "0.15.3",
       "fetchedAt": "2026-10-02",
       "subpaths": [
         ".",
