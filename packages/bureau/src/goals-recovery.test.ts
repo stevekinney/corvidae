@@ -623,6 +623,32 @@ describe('two bureaus recovering the same goal', () => {
   });
 });
 
+describe('a create that died between recording the goal and starting its controller', () => {
+  it('is healed by repeating it, which starts the controller and finishes the goal', async () => {
+    database = createTestDatabase('repeat-create');
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+    const view = await inspection();
+    // The record is there; the process died before the controller was started.
+    await view.store.create(pendingGoal());
+    expect(await workflowStatus(bureau, 'goal:g1')).toBeUndefined();
+
+    const repeated = await bureau.goals.create(goalRequest());
+
+    expect(repeated).toMatchObject({
+      outcome: 'existing',
+      controller: { status: 'started' },
+      goal: { goalRunId: 'g1' },
+    });
+    expect(await ended(bureau)).toMatchObject({ status: 'succeeded' });
+  });
+});
+
 describe('a controller that ends abnormally while its goal is unfinished', () => {
   async function bootForPoison() {
     database = createTestDatabase('poison');

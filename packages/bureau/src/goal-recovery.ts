@@ -36,15 +36,17 @@
 
 import { GOAL_CANCEL_SIGNAL, goalInputFeedbackFor } from '@lostgradient/operative';
 
+import { unfinishedAfterCancellation } from './goal-cancellation';
 import {
   attemptToStop,
   commitCancellation,
+  enforceDeterminism,
   type GoalControlDependencies,
   startController,
   TERMINAL_CONTROLLER_STATUSES,
 } from './goal-controller';
 import { goalIdentifiers } from './goal-ports';
-import { type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
+import { cancelSignalId, type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type {
   BureauGoalAttemptRecovery,
   BureauGoalRecoveryEntry,
@@ -85,24 +87,43 @@ async function completeCancellation(
     }
     marked = outcome.record;
   }
-  const stopped = await cancelRun(attemptToStop(marked).runId).catch((error: unknown) => ({
-    status: 'failed' as const,
-    error,
-  }));
-  if (stopped.status === 'failed') {
-    diagnose({
-      level: 'error',
-      scope: 'goals',
-      message: `[bureau] Could not stop the attempt of goal "${record.goalRunId}" while completing its cancellation: ${describe(stopped.error)}`,
-      cause: stopped.error,
-    });
+  const runIds = [attemptToStop(marked).runId, marked.attempts.at(-1)?.runId].filter(
+    (runId, index, all): runId is string => runId !== undefined && all.indexOf(runId) === index,
+  );
+  for (const runId of runIds) {
+    const stopped = await cancelRun(runId).catch((error: unknown) => ({
+      status: 'failed' as const,
+      error,
+    }));
+    if (stopped.status === 'failed') {
+      diagnose({
+        level: 'error',
+        scope: 'goals',
+        message: `[bureau] Could not stop run "${runId}" of goal "${record.goalRunId}" while completing its cancellation: ${describe(stopped.error)}`,
+        cause: stopped.error,
+      });
+    }
   }
   const committed = await commitCancellation(store, marked, clock.now());
-  return committed.status === 'applied' ||
-    committed.status === 'duplicate' ||
-    committed.status === 'not-needed'
+  if (
+    committed.status !== 'applied' &&
+    committed.status !== 'duplicate' &&
+    committed.status !== 'not-needed'
+  ) {
+    return { outcome: 'running', detail: `cancellation commit: ${committed.status}` };
+  }
+  // The record says `canceled`; whether the world agrees is a separate read, the
+  // same one `cancel()` answers from. A run that could not be stopped keeps the
+  // goal pending here rather than being reported done.
+  const awaiting = await unfinishedAfterCancellation(
+    dependencies.getEngine(),
+    record.goalRunId,
+    runIds,
+    true,
+  );
+  return awaiting.length === 0
     ? { outcome: 'canceled' }
-    : { outcome: 'running', detail: `cancellation commit: ${committed.status}` };
+    : { outcome: 'cancellation-pending', detail: `Still waiting on: ${awaiting.join(', ')}.` };
 }
 
 async function recoverController(
@@ -116,6 +137,11 @@ async function recoverController(
   }
   const { goalRunId } = record;
   const state = await engine.get(goalWorkflowId(goalRunId));
+  if (state === null || state.status === 'failed' || state.status === 'timed-out') {
+    // A controller is about to be started for a goal nothing has run yet.
+    const ended = await enforceDeterminism(dependencies, record);
+    if (ended !== undefined) return { outcome: 'unsupported-validation' };
+  }
   if (state === null) {
     return {
       outcome:
@@ -132,7 +158,7 @@ async function recoverController(
           goalWorkflowId(goalRunId),
           GOAL_CANCEL_SIGNAL,
           {},
-          { signalId: `cancel:${goalRunId}` },
+          { signalId: cancelSignalId(goalRunId) },
         )
         .catch(() => undefined);
     }
@@ -156,8 +182,20 @@ async function recoverController(
       detail: `The controller ended ${state.status} and has already been restarted ${record.controllerRestarts} times.`,
     };
   }
-  const counted = await store.recordControllerRestart(goalRunId, clock.nowISO());
+  // The count is a compare-and-swap on the value this recovery read, so of
+  // several recoveries that saw the same ended controller exactly one is
+  // counted, and only that one starts a replacement. A restart counted but
+  // never started (a crash between the two) is spent: the bound errs toward
+  // giving up, never toward a second controller.
+  const counted = await store.recordControllerRestart(
+    goalRunId,
+    clock.nowISO(),
+    record.controllerRestarts,
+  );
   if (counted.status === 'rejected') return { outcome: 'already-terminal' };
+  if (counted.status === 'stale') {
+    return { outcome: 'running', detail: 'Another recovery is restarting the controller.' };
+  }
   if (counted.status !== 'updated') {
     return { outcome: 'unrecoverable', detail: `restart count: ${counted.status}` };
   }
@@ -215,7 +253,13 @@ export async function recoverGoal(
   if (controller.outcome === 'unrecoverable' || controller.outcome === 'already-terminal') {
     return { goalRunId, ...controller };
   }
-  if (controller.outcome === 'canceled') return { goalRunId, ...controller };
+  if (
+    controller.outcome === 'canceled' ||
+    controller.outcome === 'cancellation-pending' ||
+    controller.outcome === 'unsupported-validation'
+  ) {
+    return { goalRunId, ...controller };
+  }
   const attempt = await recoverAttempt(dependencies, record).catch((error: unknown) => ({
     attempt: 'failed' as const,
     detail: describe(error),
@@ -233,13 +277,15 @@ export async function recoverGoal(
 /** The boot sweep: every goal that is not terminal. */
 export async function recoverEveryGoal(
   dependencies: GoalControlDependencies,
+  /** Narrows the sweep to the goals the caller may see; every goal when omitted. */
+  allows: (record: GoalState) => boolean = () => true,
 ): Promise<BureauGoalRecoveryReport> {
   const goals: BureauGoalRecoveryEntry[] = [];
   const failures: { goalRunId: string; reason: string }[] = [];
   let records: GoalState[];
   try {
     const stored = await dependencies.store.list();
-    records = stored.filter((record) => !isTerminalGoalStatus(record.status));
+    records = stored.filter((record) => !isTerminalGoalStatus(record.status) && allows(record));
   } catch (error) {
     return { goals, failures: [{ goalRunId: '*', reason: describe(error) }] };
   }

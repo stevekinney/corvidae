@@ -461,6 +461,21 @@ describe('the goal event projection', () => {
       expect(await events()).toEqual(before);
     });
 
+    it('repairs only the creation and the current transition, so an earlier lost projection stays lost', async () => {
+      // The record keeps no transition history, so there is nothing to re-project
+      // a superseded transition from. This pins that limit rather than hiding it.
+      const plain = createGoalStore(textValueStore(new MemoryStorage()));
+      await plain.create(newGoal());
+      await toEvaluating(plain);
+      const repaired = await setup();
+
+      await projectGoalHistory(await plain.list(), repaired.recorder);
+
+      const recorded = summary(await repaired.events());
+      expect(recorded).toContain('goal.started');
+      expect(recorded).not.toContain('goal.attempt.started');
+    });
+
     it('does not change a commit when the observer throws', async () => {
       const diagnostics: unknown[] = [];
       const store = createGoalStore(textValueStore(new MemoryStorage()), {

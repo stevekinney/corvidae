@@ -152,8 +152,17 @@ export interface GoalStore {
     marker: GoalCancellationMarker,
     now: string,
   ): Promise<GoalControlResult>;
-  /** Increments `controllerRestarts`. A terminal goal is `rejected`. */
-  recordControllerRestart(goalRunId: string, now: string): Promise<GoalControlResult>;
+  /**
+   * Increments `controllerRestarts`. A terminal goal is `rejected`. With
+   * `expectedCount`, the increment is a compare-and-swap on the count: a record
+   * already at another count is `stale`, so of several recoveries that observed
+   * the same ended controller, exactly one is counted and may restart it.
+   */
+  recordControllerRestart(
+    goalRunId: string,
+    now: string,
+    expectedCount?: number,
+  ): Promise<GoalControlResult>;
   /** Sets `closedAt` once. A non-terminal goal is `rejected`. */
   close(goalRunId: string, at: string): Promise<GoalControlResult>;
 }
@@ -362,18 +371,20 @@ export function createGoalStore(
         return { outcome: 'write', next: { ...current, cancellation: marker, updatedAt: now } };
       });
     },
-    async recordControllerRestart(goalRunId, now) {
+    async recordControllerRestart(goalRunId, now, expectedCount) {
       const result = await control(goalRunId, (current) =>
         isTerminal(current.status)
           ? refuse(current, 'terminal')
-          : {
-              outcome: 'write',
-              next: {
-                ...current,
-                controllerRestarts: current.controllerRestarts + 1,
-                updatedAt: now,
+          : expectedCount !== undefined && current.controllerRestarts !== expectedCount
+            ? { outcome: 'done', result: { status: 'stale', record: current } }
+            : {
+                outcome: 'write',
+                next: {
+                  ...current,
+                  controllerRestarts: current.controllerRestarts + 1,
+                  updatedAt: now,
+                },
               },
-            },
       );
       if (result.status === 'updated') {
         await notify({ kind: 'controller-restarted', record: result.record });

@@ -35,7 +35,7 @@ import {
   type RunOptions,
 } from '@lostgradient/operative';
 
-import { goalWorkflowId, isTerminalGoalStatus } from './goal-state';
+import { attemptSignalId, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type { GoalStore } from './goal-store';
 import type { DiagnosticSink } from './types';
 
@@ -83,9 +83,6 @@ export interface AttemptForwarder {
 
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-
-export const attemptSignalId = (goalRunId: string, attemptIndex: number): string =>
-  `attempt-terminal:${goalRunId}:${attemptIndex}`;
 
 export function createAttemptForwarder(
   dependencies: AttemptForwarderDependencies,
@@ -165,10 +162,11 @@ export function createAttemptForwarder(
   /** Waits for the attempt's run to end by whatever means this process has. */
   async function untilEnded(target: AttemptTarget, live: AgentRun<unknown, boolean> | undefined) {
     try {
-      if (live !== undefined) {
-        await live.result();
-        return;
-      }
+      // The live handle settles on operative's own event, which is not proof the
+      // engine's terminal write has committed, so it is never trusted alone: the
+      // engine's handle is awaited as well. The run is durably started by the
+      // time anything is watched, so the engine has a workflow to hand back.
+      if (live !== undefined) await live.result();
       await getDurable()?.engine.getHandle(target.runId).result();
     } catch {
       // A cancelled, failed, or timed-out workflow rejects its handle; its

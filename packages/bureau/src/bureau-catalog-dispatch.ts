@@ -60,6 +60,18 @@ export interface GoalAttemptStart {
   readonly principal?: string | undefined;
 }
 
+/**
+ * A goal attempt's run, and the moment its engine workflow is durably there.
+ * The run handle is deferred: its agent resolution, recovery-record write, and
+ * engine start all happen after it is returned. `durablyStarted` settles when
+ * they have, and rejects with whatever stopped them, so a caller can tell
+ * "the run exists" from "a start is under way".
+ */
+export interface GoalAttemptRun {
+  readonly run: AgentRun<unknown, boolean>;
+  readonly durablyStarted: Promise<void>;
+}
+
 export function createCatalogDispatcher({
   agentCatalog,
   runtime,
@@ -82,7 +94,7 @@ export function createCatalogDispatcher({
     name: string,
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
-  startGoalAttemptRun: (start: GoalAttemptStart) => AgentRun<unknown, boolean>;
+  startGoalAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
 } {
   function trackCatalogRun(handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> {
     catalogRuns.add(handle);
@@ -124,6 +136,11 @@ export function createCatalogDispatcher({
      * from it, rather than refusing as a child with a taken id would.
      */
     goalAttempt = false,
+    /** COR-851 — settled with the durable start's own outcome; see {@link GoalAttemptRun}. */
+    durableStart?: {
+      readonly resolve: () => void;
+      readonly reject: (error: unknown) => void;
+    },
   ): AgentRun<unknown, boolean> {
     const durable = runtime.durable;
     if (!durable) {
@@ -327,8 +344,27 @@ export function createCatalogDispatcher({
     // swallows or alters `resolveDurableAgent`'s own result/rejection.
     const trackDispatchSettlement = async (): Promise<RunnableAgent<unknown, boolean>> => {
       try {
-        return await resolveDurableAgent();
+        const resolved = await resolveDurableAgent();
+        if (durableStart !== undefined) {
+          // No active run means the agent fell back to a direct run, which no
+          // restart could find; a goal attempt must never end up there.
+          if (dispatchedActiveRun === undefined) {
+            durableStart.reject(
+              createBureauError(
+                `Agent "${name}" did not run durably, so it cannot run a goal attempt`,
+                'CONFLICT',
+              ),
+            );
+          } else {
+            (dispatchedActiveRun.durablyStarted ?? Promise.resolve()).then(
+              durableStart.resolve,
+              durableStart.reject,
+            );
+          }
+        }
+        return resolved;
       } catch (error) {
+        durableStart?.reject(error);
         // AB-241: `resolveDurableAgent`'s `AgentContractError` fallback
         // (above) already deletes `runAttribution` for the abandoned
         // `runId` on ITS OWN success path (a `return`, not a throw). Any
@@ -579,7 +615,7 @@ export function createCatalogDispatcher({
    * goal attempt with no workflow behind it is one no restart could find, so
    * an agent that cannot run durably is refused here.
    */
-  function startGoalAttemptRun(start: GoalAttemptStart): AgentRun<unknown, boolean> {
+  function startGoalAttemptRun(start: GoalAttemptStart): GoalAttemptRun {
     if (getShutdownPromise()) {
       throw createBureauError('Cannot start a goal attempt: bureau is disposed', 'CONFLICT');
     }
@@ -597,7 +633,15 @@ export function createCatalogDispatcher({
       agentName: start.agentName,
       ...(start.principal === undefined ? {} : { principal: start.principal }),
     };
-    return runDurableCatalogAgent(
+    let resolveStart!: () => void;
+    let rejectStart!: (error: unknown) => void;
+    const durablyStarted = new Promise<void>((resolve, reject) => {
+      resolveStart = resolve;
+      rejectStart = reject;
+    });
+    // The caller awaits it, but a start that throws below never reaches that await.
+    durablyStarted.catch(() => undefined);
+    const run = runDurableCatalogAgent(
       start.agentName,
       start.input,
       undefined,
@@ -606,7 +650,9 @@ export function createCatalogDispatcher({
       agent,
       start.runId,
       true,
+      { resolve: resolveStart, reject: rejectStart },
     );
+    return { run, durablyStarted };
   }
 
   /**

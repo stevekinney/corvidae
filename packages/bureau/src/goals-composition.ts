@@ -10,7 +10,7 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
-  type AgentRun,
+  type CleanupAcknowledgement,
   type DurableActiveRunContext,
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
@@ -19,7 +19,7 @@ import {
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
-import type { GoalAttemptStart } from './bureau-catalog-dispatch';
+import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
 import type { DurableEventHistory } from './durable-event-history';
 import { createGoalEventRecorder, projectGoalHistory } from './goal-event-projection';
 import { createAttemptForwarder } from './goal-forwarder';
@@ -42,8 +42,10 @@ export interface GoalsCompositionDependencies {
   readonly planAgent: (
     agentName: string,
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
-  readonly startAttemptRun: (start: GoalAttemptStart) => AgentRun<unknown, boolean>;
+  readonly startAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
+  /** Applies checkpoint retention to a terminal controller workflow; see `BureauGoalsDependencies`. */
+  readonly cleanupController: (workflowId: string) => Promise<CleanupAcknowledgement>;
   readonly isClosing: () => boolean;
   readonly diagnose: DiagnosticSink;
   /** Where a goal's audit events are recorded; absent when the bureau has no persistent history. */
@@ -128,6 +130,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     diagnose,
     getEngine: () => getDurable()?.engine,
     cancelRun: dependencies.cancelRun,
+    cleanupController: dependencies.cleanupController,
     forwarder,
     startAttempt: (request) => ports.startAttempt(request),
     isClosing: dependencies.isClosing,
@@ -142,8 +145,12 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       return record !== undefined && goalWorkflowId(record.goalRunId) === workflowId;
     },
     async recoverAtBoot() {
-      // Close the window between a write and its projection before anything
-      // else can change a record: a crash there left a transition unrecorded.
+      // Close the window between a goal's latest write and its projection: a
+      // crash there left that transition unrecorded. This repairs each record's
+      // creation and current transition only. Weft recovers a controller at
+      // engine boot, before this runs, so a replayed controller can commit one
+      // more transition first, and a projection lost before that one is not
+      // recoverable: the record keeps no history to re-project it from.
       if (recordEvents !== undefined) {
         await projectGoalHistory(await store.list(), recordEvents).catch((error: unknown) =>
           diagnose({

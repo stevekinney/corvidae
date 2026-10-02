@@ -72,6 +72,12 @@ export function goalRecordKey(goalRunId: string): string {
   return `${GOAL_RECORD_KEY_PREFIX}${encodeURIComponent(goalRunId)}`;
 }
 
+/** The id the `cancel` signal is sent under; stable, so a re-send is delivered once. */
+export const cancelSignalId = (goalRunId: string): string => `cancel:${goalRunId}`;
+/** The id an attempt's ending is signalled under; stable, so a re-send is delivered once. */
+export const attemptSignalId = (goalRunId: string, attemptIndex: number): string =>
+  `attempt-terminal:${goalRunId}:${attemptIndex}`;
+
 /** The Weft workflow that owns this goal; an explicit id makes a duplicate start refusable. */
 export const goalWorkflowId = (goalRunId: string): string => `goal:${goalRunId}`;
 export const goalTransitionId = (goalRunId: string, seq: number): string => `${goalRunId}:t${seq}`;
@@ -92,7 +98,6 @@ export interface GoalObjective {
   readonly agentName: string;
   readonly prompt: string;
   readonly instructions?: string | undefined;
-  readonly baselineSessionId?: string | undefined;
 }
 
 export interface DurableGoalAttemptUsage {
@@ -224,6 +229,17 @@ export class GoalObjectiveTooLargeError extends Error {
     this.name = 'GoalObjectiveTooLargeError';
     this.byteLength = byteLength;
     this.maximumBytes = maximumBytes;
+  }
+}
+
+/** The goal id cannot be used to name the workflows and signals a goal is made of. */
+export class GoalRunIdError extends Error {
+  readonly reason: 'control-character' | 'too-long';
+
+  constructor(reason: GoalRunIdError['reason'], message: string) {
+    super(message);
+    this.name = 'GoalRunIdError';
+    this.reason = reason;
   }
 }
 
@@ -556,11 +572,10 @@ function isIdentity(value: unknown): value is GoalIdentity {
 function isObjective(value: unknown): value is GoalObjective {
   return (
     isPlainRecord(value) &&
-    hasExactKeys(value, ['agentName', 'prompt', 'instructions', 'baselineSessionId']) &&
+    hasExactKeys(value, ['agentName', 'prompt', 'instructions']) &&
     isNonEmptyString(value['agentName']) &&
     isString(value['prompt']) &&
     isOptionalString(value['instructions']) &&
-    isOptionalString(value['baselineSessionId']) &&
     objectiveByteLength(value as unknown as GoalObjective) <= GOAL_OBJECTIVE_MAXIMUM_BYTES
   );
 }
@@ -749,6 +764,40 @@ export interface CreateGoalStateInput {
   readonly now: string;
 }
 
+/** Weft refuses a signal id over this many bytes and a workflow id over this many characters. */
+const WEFT_IDENTIFIER_LIMIT = 128;
+const identifierEncoder = new TextEncoder();
+
+/**
+ * A goal's id names its controller workflow (`goal:<id>`), each attempt's run
+ * (`goal-<id>-a<n>`), and the signals sent to the controller
+ * (`attempt-terminal:<id>:<n>`, `cancel:<id>`). Weft refuses any of them past
+ * its limit, and a refused signal never arrives: the goal would park forever.
+ * So the id is checked against every one of them, at the last attempt the
+ * goal's own bound allows, before anything is written.
+ */
+function validateGoalRunId(goalRunId: string, maximumAttempts: number): void {
+  // eslint-disable-next-line no-control-regex -- Weft's own workflow-id rule is exactly these.
+  if (/[\u0000-\u001f\u007f]/.test(goalRunId)) {
+    throw new GoalRunIdError(
+      'control-character',
+      'The goal id must not contain control characters.',
+    );
+  }
+  const last = Math.max(0, maximumAttempts - 1);
+  const signals = [attemptSignalId(goalRunId, last), cancelSignalId(goalRunId)];
+  const workflows = [goalWorkflowId(goalRunId), goalAttemptRunId(goalRunId, last)];
+  if (
+    signals.some((id) => identifierEncoder.encode(id).byteLength > WEFT_IDENTIFIER_LIMIT) ||
+    workflows.some((id) => id.length > WEFT_IDENTIFIER_LIMIT)
+  ) {
+    throw new GoalRunIdError(
+      'too-long',
+      `The goal id is too long: the identifiers derived from it must fit Weft's ${WEFT_IDENTIFIER_LIMIT}-byte limit.`,
+    );
+  }
+}
+
 const zeroUsage: DurableGoalUsage = { attempts: 0, steps: 0, tokens: 0, durationMs: 0 };
 
 /**
@@ -761,6 +810,7 @@ const zeroUsage: DurableGoalUsage = { attempts: 0, steps: 0, tokens: 0, duration
  */
 export function createGoalState(input: CreateGoalStateInput): GoalState {
   validateBudget(input.bounds);
+  validateGoalRunId(input.goalRunId, input.bounds.maximumAttempts);
   validateRetryPolicy(input.retryPolicy);
   validateConversationPolicy(input.conversationPolicy, input.objective.instructions);
   const objectiveBytes = objectiveByteLength(input.objective);

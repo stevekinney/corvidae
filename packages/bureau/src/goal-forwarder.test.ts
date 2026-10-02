@@ -22,8 +22,8 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
-import { attemptSignalId, createAttemptForwarder } from './goal-forwarder';
-import { createGoalState } from './goal-state';
+import { createAttemptForwarder } from './goal-forwarder';
+import { attemptSignalId, createGoalState } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { pollUntil } from './testing/goal-fixtures.test-support';
 import type { BureauDiagnostic } from './types';
@@ -221,6 +221,29 @@ describe('createAttemptForwarder', () => {
       name: 'attempt-terminal:0',
       payload: { finishReason: 'aborted' },
     });
+  });
+
+  it('waits for the engine to record the ending when the live handle settles first', async () => {
+    const { durable, sent, forwarder, engine } = await world();
+    const release = Promise.withResolvers<void>();
+    createActiveRun(
+      options(async () => {
+        await release.promise;
+        return { content: 'done', toolCalls: [] };
+      }),
+      { ...durable, runId: target.runId, prompt: 'go' },
+    );
+    await pollUntil(async () => (await engine.get(target.runId)) !== null);
+
+    // The in-process handle settles on an event, which is not proof the engine's
+    // terminal write has committed; here it settles while the run is still going.
+    forwarder.watch(target, { result: () => Promise.resolve({}) } as never);
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    expect(sent).toEqual([]);
+
+    release.resolve();
+    await pollUntil(() => sent.length === 1);
+    expect(sent[0]).toMatchObject({ payload: { finishReason: 'stop-condition' } });
   });
 
   it('sends nothing once the goal has ended, has been canceled, or the bureau is closing', async () => {

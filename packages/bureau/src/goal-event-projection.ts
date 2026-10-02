@@ -27,7 +27,7 @@
  * - a workflow activity replayed after a crash re-commits its transition, the
  *   store answers `duplicate`, and the observer runs again;
  * - boot recovery re-projects every record's creation and current transition,
- *   which closes the window between a write and its projection;
+ *   which closes the window between the latest write and its projection;
  * - the host's own cancellation commit and a controller's commit of the same
  *   transition both project, and only one event results.
  *

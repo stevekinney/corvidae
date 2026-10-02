@@ -9217,6 +9217,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     planAgent: planChildRun,
     startAttemptRun: startGoalAttemptRun,
     cancelRun: cancelDurableRun,
+    // Not the memoized, audited step runs get: that records a run's cleanup
+    // under a run id, and a goal's controller is not a run. Pruning is
+    // idempotent, so asking again on every `close()` is safe.
+    cleanupController: classifyTerminalCheckpointCleanup,
     isClosing: () => shutdownPromise !== undefined,
     diagnose,
     eventHistory: eventHistoryInstance,

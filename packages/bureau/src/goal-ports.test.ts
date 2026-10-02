@@ -50,13 +50,8 @@ describe('attemptPromptFor', () => {
     { kind: 'continue', index: 0, feedback: 'ignored', expected: 'work' },
     { kind: 'continue', index: 1, feedback: undefined, expected: 'work' },
     { kind: 'continue', index: 1, feedback: 'say done', expected: 'work\n\nsay done' },
-    { kind: 'fork-from-baseline', index: 2, feedback: 'say done', expected: 'work\n\nsay done' },
-    { kind: 'fresh-from-artifact', index: 1, feedback: 'say done', expected: 'work' },
   ] as const)('$kind attempt $index with feedback $feedback is "$expected"', (row) => {
-    const conversationPolicy = { kind: row.kind } as never;
-    expect(attemptPromptFor({ objective, conversationPolicy }, row.index, row.feedback)).toBe(
-      row.expected,
-    );
+    expect(attemptPromptFor({ objective }, row.index, row.feedback)).toBe(row.expected);
   });
 });
 
@@ -202,7 +197,7 @@ describe('startAttempt', () => {
     const { ports, watched } = await world({
       startAttemptRun: (start) => {
         starts.push(start);
-        return live as never;
+        return { run: live as never, durablyStarted: Promise.resolve() };
       },
     });
 
@@ -279,6 +274,108 @@ describe('startAttempt', () => {
     expect(await throwingRejectionOf(broken.ports.startAttempt(startRequest()))).toThrow(
       'storage is down',
     );
+  });
+
+  it("does not answer until the attempt's workflow is durably started", async () => {
+    const started = Promise.withResolvers<void>();
+    const { ports, watched } = await world({
+      startAttemptRun: () => ({
+        run: { marker: 'live' } as never,
+        durablyStarted: started.promise,
+      }),
+    });
+
+    const answer = ports.startAttempt(startRequest());
+    let answered = false;
+    void answer.then(() => {
+      answered = true;
+    });
+    // Drain every microtask the start could use to answer early.
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    expect(answered).toBe(false);
+    expect(watched).toEqual([]);
+
+    started.resolve();
+    expect(await answer).toEqual({ status: 'started', sessionId: 'goal-g1-a0' });
+    expect(watched).toHaveLength(1);
+  });
+
+  it('fails the activity when the workflow could not be started, instead of leaving the goal waiting for it', async () => {
+    const { ports, watched } = await world({
+      startAttemptRun: () => ({
+        run: {} as never,
+        durablyStarted: Promise.reject(new Error('recovery record write failed')),
+      }),
+    });
+
+    expect(await throwingRejectionOf(ports.startAttempt(startRequest()))).toThrow(
+      'recovery record write failed',
+    );
+    expect(watched).toEqual([]);
+  });
+
+  it('adopts the run when the deferred start failed because a concurrent start created it', async () => {
+    const racer = await world({
+      startAttemptRun: () => ({
+        run: {} as never,
+        durablyStarted: Promise.reject(new Error('Run "goal-g1-a0" already exists')),
+      }),
+    });
+    createActiveRun(
+      agentOptions(() => new Promise(() => {})),
+      { ...racer.durable, runId: 'goal-g1-a0', prompt: 'work' },
+    );
+    const original = racer.engine.get.bind(racer.engine);
+    await pollUntil(async () => (await original('goal-g1-a0')) !== null);
+    let reads = 0;
+    racer.engine.get = (id: string) =>
+      id === 'goal-g1-a0' && reads++ === 0 ? Promise.resolve(null) : original(id);
+
+    expect(await racer.ports.startAttempt(startRequest())).toEqual({
+      status: 'adopted',
+      sessionId: 'goal-g1-a0',
+    });
+  });
+
+  it('starts nothing for a goal whose cancellation is already recorded', async () => {
+    let starts = 0;
+    const { ports, store, watched } = await world({
+      startAttemptRun: () => {
+        starts += 1;
+        return { run: {} as never, durablyStarted: Promise.resolve() };
+      },
+    });
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+
+    const outcome = await ports.startAttempt(startRequest());
+
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect((outcome as { detail: string }).detail).toContain('canceled');
+    expect(starts).toBe(0);
+    expect(watched).toEqual([]);
+  });
+
+  it('stops the run it just created when a cancellation was recorded while it was starting', async () => {
+    const started = Promise.withResolvers<void>();
+    const stopped: string[] = [];
+    const { ports, store, watched } = await world({
+      startAttemptRun: () => ({ run: {} as never, durablyStarted: started.promise }),
+      cancelRun: (runId) => {
+        stopped.push(runId);
+        return Promise.resolve({ status: 'requested' });
+      },
+    });
+
+    const answer = ports.startAttempt(startRequest());
+    // The canceller wrote its marker while the workflow was still being created.
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    started.resolve();
+
+    const outcome = await answer;
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect((outcome as { detail: string }).detail).toContain('canceled');
+    expect(stopped).toEqual(['goal-g1-a0']);
+    expect(watched).toEqual([]);
   });
 
   it('fails the attempt, not the controller, when the agent is gone or cannot run durably', async () => {

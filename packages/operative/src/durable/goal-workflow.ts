@@ -68,7 +68,9 @@
  *
  * evaluating
  *   V   runValidator                       at-least-once: a crash here re-runs it
- *   L2  loadGoalState                      re-read: the marker, the status, and the clock
+ *   L2  loadGoalState                      re-read: the marker and the status (the aggregate
+ *                                          duration is enforced by the decision itself, from
+ *                                          the clock reading this read returns)
  *       marker set or status moved -> nothing more; the next L handles it
  *   C   commitTransition -> <decision>     the verdict and the decision, together
  * ```

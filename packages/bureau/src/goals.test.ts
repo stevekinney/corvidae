@@ -129,7 +129,12 @@ describe('bureau.goals', () => {
     expect(await workflowStatus(bureau, 'goal:g1')).toBe('completed');
 
     const closed = await bureau.goals.close('g1');
-    expect(closed).toMatchObject({ outcome: 'closed', goal: { status: 'succeeded' } });
+    // The default retention keeps every checkpoint, so there is nothing to clean up.
+    expect(closed).toMatchObject({
+      outcome: 'closed',
+      goal: { status: 'succeeded' },
+      cleanup: { status: 'not-required' },
+    });
     const closedAt = closed.outcome === 'closed' ? closed.goal.closedAt : undefined;
     expect(typeof closedAt).toBe('string');
     expect(await bureau.goals.close('g1')).toMatchObject({ outcome: 'closed', goal: { closedAt } });
@@ -193,6 +198,71 @@ describe('bureau.goals', () => {
       });
       expect(await bureau.goals.list()).toHaveLength(1);
     });
+
+    it('does not show another principal the goal that its id collides with', async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+      await bureau.goals.create(goalRequest({ principal: 'alice', prompt: 'private prompt' }));
+
+      const intruder = await bureau.goals.create(
+        goalRequest({ principal: 'mallory', prompt: 'private prompt' }),
+      );
+      const owner = await bureau.goals.create(
+        goalRequest({ principal: 'alice', prompt: 'another prompt' }),
+      );
+
+      // It learns the id is taken, and nothing about what holds it.
+      expect(intruder).toEqual({ outcome: 'conflict' });
+      expect(owner).toMatchObject({
+        outcome: 'conflict',
+        goal: { objective: { prompt: 'private prompt' } },
+      });
+    });
+
+    it('refuses a goal id that a signal could never be delivered under', async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+
+      expect(await bureau.goals.create(goalRequest({ goalRunId: 'g'.repeat(200) }))).toMatchObject({
+        outcome: 'rejected',
+        code: 'invalid-goal-run-id',
+      });
+      expect(await bureau.goals.create(goalRequest({ goalRunId: 'line\nbreak' }))).toMatchObject({
+        outcome: 'rejected',
+        code: 'invalid-goal-run-id',
+      });
+      expect(await bureau.goals.list()).toEqual([]);
+    });
+
+    it.each([
+      { kind: 'fork-from-baseline', throughRun: 1 },
+      { kind: 'fresh-from-artifact', artifact: { kind: 'handoff' } },
+    ] as const)(
+      'refuses the $kind conversation policy, which a durable goal cannot honor',
+      async (policy) => {
+        const { bureau } = await boot({
+          agents: { worker: workerAgent(hangUntilAborted) },
+          validators: [createCheckValidator()],
+        });
+
+        const outcome = await bureau.goals.create(
+          goalRequest({
+            conversationPolicy: policy as never,
+            instructions: 'approved instructions',
+          }),
+        );
+
+        expect(outcome).toMatchObject({
+          outcome: 'rejected',
+          code: 'unsupported-conversation-policy',
+        });
+        expect(await bureau.goals.list()).toEqual([]);
+      },
+    );
 
     it('refuses a validator that is missing or registered at another version, before writing anything', async () => {
       const { bureau } = await boot({
@@ -347,8 +417,13 @@ describe('bureau.goals', () => {
       expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('cancelled');
       expect(['completed', 'cancelled']).toContain((await workflowStatus(bureau, 'goal:g1')) ?? '');
 
-      // Idempotent: a repeat answers from the record and changes nothing.
-      expect(await bureau.goals.cancel('g1')).toMatchObject({ outcome: 'already-terminal' });
+      // Idempotent: a repeat reads everything back again and changes nothing. It
+      // answers `canceled`, not `already-terminal`, because the record being
+      // `canceled` was never the whole of what `cancel()` answers for.
+      expect(await bureau.goals.cancel('g1')).toMatchObject({
+        outcome: 'canceled',
+        goal: { status: 'canceled' },
+      });
       expect(await bureau.goals.get('g1')).toEqual(goal);
       expect(diagnostics.scope('goals')).toEqual([]);
     });
@@ -422,6 +497,14 @@ describe('bureau.goals', () => {
         failures: [],
       });
 
+      // The sweep honors the principal too: it neither recovers nor names a goal the caller cannot see.
+      const sweptByMallory = await bureau.goals.recover(undefined, { principal: 'mallory' });
+      expect(sweptByMallory.goals.map((entry) => entry.goalRunId)).toEqual(['g3']);
+      const sweptByAlice = await bureau.goals.recover(undefined, { principal: 'alice' });
+      expect(sweptByAlice.goals.map((entry) => entry.goalRunId).toSorted()).toEqual(['g1', 'g3']);
+      const swept = await bureau.goals.recover();
+      expect(swept.goals.map((entry) => entry.goalRunId).toSorted()).toEqual(['g1', 'g2', 'g3']);
+
       // A principal sees its own goals and the ones that have no owner.
       expect(await listedIds(bureau, { principal: 'alice' })).toEqual(['g1', 'g3']);
       // Omitting the principal is a trusted, internal call.
@@ -429,6 +512,48 @@ describe('bureau.goals', () => {
       // And the denied cancel changed nothing.
       const untouched = await bureau.goals.get('g1');
       expect(untouched?.cancellation).toBeUndefined();
+    });
+  });
+
+  describe('close', () => {
+    it("acknowledges the pruning of the controller's checkpoint history, each time it is asked", async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
+        validators: [createCheckValidator()],
+        checkpointRetention: { keepLast: 1 },
+      });
+      await bureau.goals.create(goalRequest());
+      await finished(bureau);
+
+      const first = await bureau.goals.close('g1');
+      const again = await bureau.goals.close('g1');
+
+      expect(first).toMatchObject({ outcome: 'closed', cleanup: { status: 'completed' } });
+      expect(again).toMatchObject({ outcome: 'closed', cleanup: { status: 'completed' } });
+    });
+
+    it('has nothing to clean up for a goal that ended without a controller', async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator({ determinism: 'stochastic' })],
+        checkpointRetention: { keepLast: 1 },
+      });
+      await bureau.goals.create(goalRequest({ requireDeterministicValidation: true }));
+
+      expect(await bureau.goals.close('g1')).toMatchObject({
+        outcome: 'closed',
+        cleanup: { status: 'not-required' },
+      });
+    });
+
+    it('does not close a goal that is still running', async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+      await bureau.goals.create(goalRequest());
+
+      expect(await bureau.goals.close('g1')).toMatchObject({ outcome: 'not-terminal' });
     });
   });
 

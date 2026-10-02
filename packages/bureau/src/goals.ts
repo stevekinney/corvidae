@@ -16,17 +16,23 @@
  */
 
 import {
-  decideDeterminismRequirement,
+  type CleanupAcknowledgement,
   GoalConfigurationError,
   type GoalRunStatus,
 } from '@lostgradient/operative';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { cancelGoal } from './goal-cancellation';
-import { type GoalControlDependencies, startController } from './goal-controller';
-import { goalIdentifiers } from './goal-ports';
+import { ensureController, type GoalControlDependencies } from './goal-controller';
 import { recoverEveryGoal, recoverGoal } from './goal-recovery';
-import { createGoalState, GoalObjectiveTooLargeError, type GoalState } from './goal-state';
+import {
+  createGoalState,
+  GoalObjectiveTooLargeError,
+  GoalRunIdError,
+  type GoalState,
+  goalWorkflowId,
+  isTerminalGoalStatus,
+} from './goal-state';
 import type {
   BureauGoalActiveWork,
   BureauGoalCancelOptions,
@@ -38,16 +44,19 @@ import type {
   BureauGoalRequest,
   BureauGoals,
 } from './goal-types';
-import type { GoalValidatorCatalog } from './goal-validator-catalog';
 import { principalAllows } from './principal-allows';
 
 export interface BureauGoalsDependencies extends GoalControlDependencies {
-  readonly catalog: GoalValidatorCatalog;
   readonly runtime: Pick<RuntimeServices, 'identifiers'>;
   /** `undefined` when the catalog has no agent by this name. */
   readonly planAgent: (
     agentName: string,
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
+  /**
+   * Applies the bureau's checkpoint retention to a terminal controller
+   * workflow's history and says truthfully how it went. Never rejects.
+   */
+  readonly cleanupController: (workflowId: string) => Promise<CleanupAcknowledgement>;
 }
 
 const describe = (error: unknown): string =>
@@ -71,8 +80,7 @@ function configurationOf(state: GoalState): string {
 export function createBureauGoals<TName extends string = string>(
   dependencies: BureauGoalsDependencies,
 ): BureauGoals<TName> {
-  const { store, catalog, runtime, clock, diagnose, getEngine, planAgent, isClosing } =
-    dependencies;
+  const { store, catalog, runtime, clock, getEngine, planAgent, isClosing } = dependencies;
 
   async function authorized(
     goalRunId: string,
@@ -114,6 +122,15 @@ export function createBureauGoals<TName extends string = string>(
         `Agent "${request.agentName}" cannot run durably, so it cannot run a goal attempt.`,
       );
     }
+    // A durable goal has no live conversation to fork and no artifact handoff,
+    // so only `continue` is honored; the others are refused, never run as it.
+    const policy = request.conversationPolicy?.kind ?? 'continue';
+    if (policy !== 'continue') {
+      return rejected(
+        'unsupported-conversation-policy',
+        `A durable goal supports only the "continue" conversation policy, not "${policy}".`,
+      );
+    }
     const resolution = catalog.resolve(request.validator);
     if (!resolution.ok) {
       return resolution.reason === 'missing'
@@ -152,6 +169,7 @@ export function createBureauGoals<TName extends string = string>(
       if (error instanceof GoalObjectiveTooLargeError) {
         return rejected('objective-too-large', error.message);
       }
+      if (error instanceof GoalRunIdError) return rejected('invalid-goal-run-id', error.message);
       if (error instanceof GoalConfigurationError) {
         return rejected('invalid-configuration', `${error.reason}: ${error.message}`);
       }
@@ -166,52 +184,25 @@ export function createBureauGoals<TName extends string = string>(
           `The record stored for goal "${goalRunId}" is unreadable.`,
         );
       }
-      return configurationOf(created.existing) === configurationOf(state)
-        ? { outcome: 'existing', goal: created.existing }
-        : { outcome: 'conflict', goal: created.existing };
+      const { existing } = created;
+      if (configurationOf(existing) !== configurationOf(state)) {
+        // A request from a different principal has no claim on what is stored.
+        return principalAllows(request.principal, existing.principal)
+          ? { outcome: 'conflict', goal: existing }
+          : { outcome: 'conflict' };
+      }
+      if (isTerminalGoalStatus(existing.status)) return { outcome: 'existing', goal: existing };
+      // The first call may have died between recording the goal and starting
+      // its controller; repeating it is how a caller heals that.
+      const ensured = await ensureController(dependencies, existing);
+      return { outcome: 'existing', goal: ensured.goal, controller: ensured.controller };
     }
 
     // COR-638: a validator that cannot supply the evidence a goal demands ends
-    // it as `failed`/`unsupported-validation` before any attempt runs. There is
-    // nothing for a controller to do, so none is started.
-    const unsupported = decideDeterminismRequirement(
-      state.requireDeterministicValidation,
-      resolution.entry.descriptor.determinism,
-    );
-    if (unsupported?.kind === 'fail') {
-      const ended = await store.applyTransition({
-        goalRunId,
-        seq: 1,
-        transitionId: goalIdentifiers.transitionId(goalRunId, 1),
-        to: 'failed',
-        at: clock.nowISO(),
-        cause: `fail: ${unsupported.reason}`,
-        terminalReason: unsupported.reason,
-        ...(unsupported.failureDetail === undefined
-          ? {}
-          : { failureDetail: unsupported.failureDetail }),
-      });
-      const goal =
-        ended.status === 'applied' || ended.status === 'duplicate' ? ended.record : state;
-      return { outcome: 'created', goal, controller: { status: 'not-needed' } };
-    }
-
-    try {
-      await startController(engine, goalRunId, false);
-      return { outcome: 'created', goal: state, controller: { status: 'started' } };
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'goals',
-        message: `[bureau] Goal "${goalRunId}" was recorded but its controller did not start; recover() starts it: ${describe(error)}`,
-        cause: error,
-      });
-      return {
-        outcome: 'created',
-        goal: state,
-        controller: { status: 'start-failed', reason: describe(error) },
-      };
-    }
+    // it `failed`/`unsupported-validation` before any attempt runs, and the
+    // same check guards every other place a controller is started.
+    const ensured = await ensureController(dependencies, state);
+    return { outcome: 'created', goal: ensured.goal, controller: ensured.controller };
   }
 
   async function list(options?: BureauGoalListOptions): Promise<GoalState[]> {
@@ -279,7 +270,11 @@ export function createBureauGoals<TName extends string = string>(
     query?: BureauGoalQuery,
   ): Promise<BureauGoalRecoveryReport> {
     try {
-      if (goalRunId === undefined) return await recoverEveryGoal(dependencies);
+      if (goalRunId === undefined) {
+        return await recoverEveryGoal(dependencies, (record) =>
+          principalAllows(query?.principal, record.principal),
+        );
+      }
       if ((await authorized(goalRunId, query)) === undefined) {
         return { goals: [{ goalRunId, outcome: 'not-found' }], failures: [] };
       }
@@ -301,7 +296,11 @@ export function createBureauGoals<TName extends string = string>(
     switch (closed.status) {
       case 'updated':
       case 'unchanged':
-        return { outcome: 'closed', goal: closed.record };
+        return {
+          outcome: 'closed',
+          goal: closed.record,
+          cleanup: await cleanUp(goalRunId),
+        };
       case 'rejected':
         return { outcome: 'not-terminal', goal: closed.record };
       case 'stale':
@@ -309,6 +308,18 @@ export function createBureauGoals<TName extends string = string>(
       case 'missing':
       case 'corrupt':
         return { outcome: 'not-found' };
+    }
+  }
+
+  /** The controller's workflow history, pruned under the bureau's retention; `not-required` with no controller. */
+  async function cleanUp(goalRunId: string): Promise<CleanupAcknowledgement> {
+    const workflowId = goalWorkflowId(goalRunId);
+    try {
+      const controller = await getEngine()?.get(workflowId);
+      if (controller === null || controller === undefined) return { status: 'not-required' };
+      return await dependencies.cleanupController(workflowId);
+    } catch (error) {
+      return { status: 'failed', error };
     }
   }
 

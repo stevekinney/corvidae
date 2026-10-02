@@ -6,112 +6,19 @@
  * for can be left unfinished in turn, and the answer is `cancellation-pending`
  * naming exactly that.
  */
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { cancelGoal } from './goal-cancellation';
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
-import { createGoalState, goalAttemptId, goalAttemptRunId, goalTransitionId } from './goal-state';
-import { createGoalStore, type GoalStore } from './goal-store';
-import type { GoalEngine } from './goal-types';
-import type { BureauDiagnostic } from './types';
-
-const NOW = '2026-10-02T12:00:00.000Z';
-
-async function runningGoal(): Promise<GoalStore> {
-  const store = createGoalStore(textValueStore(new MemoryStorage()));
-  await store.create(
-    createGoalState({
-      goalRunId: 'g1',
-      identity: { name: 'goal', version: '1' },
-      objective: { agentName: 'worker', prompt: 'work' },
-      validator: { name: 'check', version: '1' },
-      conversationPolicy: { kind: 'continue' },
-      bounds: { maximumAttempts: 2, maximumTotalSteps: 10 },
-      now: NOW,
-    }),
-  );
-  const attemptId = goalAttemptId('g1', 0);
-  const runId = goalAttemptRunId('g1', 0);
-  await store.applyTransition({
-    goalRunId: 'g1',
-    seq: 1,
-    transitionId: goalTransitionId('g1', 1),
-    to: 'running',
-    at: NOW,
-    cause: 'attempt 0 started',
-    attempt: {
-      attemptId,
-      attemptIndex: 0,
-      runId,
-      sessionId: runId,
-      startedAt: NOW,
-      usage: { steps: 0, tokens: 0 },
-      status: 'running',
-    },
-    usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
-    active: { kind: 'attempt', attemptId, runId, startedAt: NOW },
-  });
-  return store;
-}
-
-interface Script {
-  /** Statuses `engine.get` answers, by workflow id. A missing key is `null`. */
-  readonly workflows: Record<string, string>;
-  readonly finalizer?: { status: string } | null;
-  /** Runs inside `engine.cancel`, before it settles. */
-  readonly onCancel?: () => Promise<void>;
-  readonly cancelThrows?: boolean;
-}
-
-function scriptedEngine(script: Script) {
-  const calls: string[] = [];
-  const engine = {
-    get: (id: string) => {
-      const status = script.workflows[id];
-      return Promise.resolve(status === undefined ? null : { id, status });
-    },
-    signal: (id: string, name: string) => {
-      calls.push(`signal:${id}:${name}`);
-      return Promise.resolve();
-    },
-    cancel: async (id: string) => {
-      calls.push(`cancel:${id}`);
-      await script.onCancel?.();
-      if (script.cancelThrows === true) throw new Error('engine unavailable');
-    },
-    getFinalizerStatus: () => Promise.resolve(script.finalizer ?? null),
-  } as unknown as GoalEngine;
-  return { engine, calls };
-}
-
-function dependencies(
-  store: GoalStore,
-  engine: GoalEngine,
-  extra: Partial<GoalControlDependencies> = {},
-) {
-  const diagnostics: BureauDiagnostic[] = [];
-  const stopped: string[] = [];
-  const control: GoalControlDependencies = {
-    store,
-    clock: { now: () => Date.parse(NOW), nowISO: () => NOW },
-    diagnose: (diagnostic) => diagnostics.push(diagnostic),
-    getEngine: () => engine,
-    cancelRun: (runId) => {
-      stopped.push(runId);
-      return Promise.resolve({ status: 'requested' });
-    },
-    forwarder: {
-      watch: () => {},
-      reconcile: () => Promise.resolve('not-needed'),
-      drain: () => Promise.resolve(),
-    },
-    startAttempt: () => Promise.reject(new Error('never starts an attempt')),
-    isClosing: () => false,
-    ...extra,
-  };
-  return { control, diagnostics, stopped };
-}
+import { goalTransitionId } from './goal-state';
+import type { GoalStore } from './goal-store';
+import {
+  dependencies,
+  NOW,
+  runningGoal,
+  type Script,
+  scriptedEngine,
+} from './testing/goal-control-fixtures.test-support';
 
 const settled = { 'goal:g1': 'cancelled', 'goal-g1-a0': 'cancelled' };
 
@@ -213,10 +120,17 @@ describe('cancelGoal', () => {
     expect(record?.attempts.map((attempt) => attempt.status)).toEqual(['aborted']);
   });
 
-  it('changes nothing for a goal that has already ended', async () => {
+  it('changes nothing for a goal that ended for a reason other than cancellation', async () => {
     const store = await runningGoal();
-    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
-    await commitCancellation(store, (await store.get('g1'))!, Date.parse(NOW));
+    await store.applyTransition({
+      goalRunId: 'g1',
+      seq: 2,
+      transitionId: goalTransitionId('g1', 2),
+      to: 'failed',
+      at: NOW,
+      cause: 'attempt run failed',
+      terminalReason: 'attempt-run-failed',
+    });
     const ended = (await store.get('g1'))!;
     const { engine, calls } = scriptedEngine({ workflows: settled });
     const { control, stopped } = dependencies(store, engine);
@@ -227,5 +141,69 @@ describe('cancelGoal', () => {
     expect(calls).toEqual([]);
     expect(stopped).toEqual([]);
     expect(await store.get('g1')).toEqual(ended);
+  });
+
+  describe('a goal whose cancellation is already committed', () => {
+    async function canceledGoal(): Promise<GoalStore> {
+      const store = await runningGoal();
+      await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+      await commitCancellation(store, (await store.get('g1'))!, Date.parse(NOW));
+      return store;
+    }
+
+    it('is still pending while the attempt it could not stop is running, and finishes the job when asked again', async () => {
+      const store = await canceledGoal();
+      const workflows: Record<string, string> = { ...settled, 'goal-g1-a0': 'running' };
+      const { engine, calls } = scriptedEngine({ workflows });
+      const failing = dependencies(store, engine, {
+        cancelRun: () => Promise.resolve({ status: 'failed', error: new Error('engine busy') }),
+      });
+      const ended = (await store.get('g1'))!;
+
+      // The record says `canceled`, but the run is not read back as stopped.
+      expect(await cancelGoal(failing.control, ended, {})).toMatchObject({
+        outcome: 'cancellation-pending',
+        awaiting: ['attempt-run'],
+      });
+
+      // The retry stops the run, and only then is the answer `canceled`.
+      const retry = dependencies(store, engine, {
+        cancelRun: (runId) => {
+          workflows[runId] = 'cancelled';
+          return Promise.resolve({ status: 'requested' });
+        },
+      });
+      expect(await cancelGoal(retry.control, ended, {})).toMatchObject({ outcome: 'canceled' });
+      // Its controller had already ended, so there was nothing to signal or cancel.
+      expect(calls).toEqual([]);
+      expect(await store.get('g1')).toEqual(ended);
+    });
+
+    it('stops the run of the attempt that was in flight, not only the next one', async () => {
+      const store = await canceledGoal();
+      const { engine } = scriptedEngine({ workflows: settled });
+      const { control, stopped } = dependencies(store, engine);
+
+      await cancelGoal(control, (await store.get('g1'))!, {});
+
+      expect(stopped).toEqual(['goal-g1-a1', 'goal-g1-a0']);
+    });
+  });
+
+  it('says nothing was recorded when the marker write lost the race too many times', async () => {
+    const store = await runningGoal();
+    const record = (await store.get('g1'))!;
+    const contended: GoalStore = {
+      ...store,
+      requestCancellation: () => Promise.resolve({ status: 'stale', record }),
+    };
+    const { engine, calls } = scriptedEngine({ workflows: settled });
+    const { control, stopped } = dependencies(contended, engine);
+
+    const outcome = await cancelGoal(control, record, {});
+
+    expect(outcome).toEqual({ outcome: 'contended', goal: record });
+    expect(calls).toEqual([]);
+    expect(stopped).toEqual([]);
   });
 });

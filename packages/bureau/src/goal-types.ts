@@ -11,6 +11,7 @@
  */
 
 import type {
+  CleanupAcknowledgement,
   GoalBudget,
   GoalConversationPolicy,
   GoalIdentity,
@@ -36,13 +37,18 @@ export interface BureauGoalRequest<TName extends string = string> {
   /** The catalog agent that runs each attempt. It must be able to run durably. */
   readonly agentName: TName;
   readonly prompt: string;
-  /** Required by the `fresh-from-artifact` conversation policy. */
+  /** Stored with the objective. Only the `fresh-from-artifact` policy needs it, and a durable goal refuses that policy. */
   readonly instructions?: string | undefined;
   readonly identity: GoalIdentity;
   /** Resolved from `BureauOptions.validators` by exact name and version. */
   readonly validator: ValidatorIdentity;
   readonly bounds: GoalBudget;
-  /** Defaults to `{ kind: 'continue' }`. */
+  /**
+   * Defaults to `{ kind: 'continue' }`, which is the only policy a durable goal
+   * supports: each attempt is a fresh durable run whose prompt carries the
+   * validator's feedback. The other policies are rejected as
+   * `unsupported-conversation-policy`.
+   */
   readonly conversationPolicy?: GoalConversationPolicy | undefined;
   readonly retryPolicy?: GoalRetryPolicy | undefined;
   readonly validatorTimeoutMs?: number | undefined;
@@ -67,6 +73,20 @@ export type BureauGoalCreateRejectionCode =
   | 'validator-version-mismatch'
   /** COR-638's budget, retry-policy, or conversation-policy rules refused the request. */
   | 'invalid-configuration'
+  /**
+   * `fork-from-baseline` and `fresh-from-artifact` need a live conversation to
+   * fork or an artifact handoff that a durable goal has no way to carry, so a
+   * durable goal accepts only `continue`. Refused rather than silently run as
+   * something else.
+   */
+  | 'unsupported-conversation-policy'
+  /**
+   * The goal id cannot name the workflows and signals a goal is made of: it has
+   * a control character, or an identifier derived from it would pass Weft's
+   * 128-byte limit (an over-long signal id is never delivered, so the goal
+   * would wait forever).
+   */
+  | 'invalid-goal-run-id'
   | 'objective-too-large'
   /** The record stored under this id cannot be read. */
   | 'record-unreadable';
@@ -85,10 +105,23 @@ export type BureauGoalCreateOutcome =
       readonly goal: GoalState;
       readonly controller: BureauGoalControllerStart;
     }
-  /** The id already names this exact request. Nothing was written. */
-  | { readonly outcome: 'existing'; readonly goal: GoalState }
-  /** The id already names a different request. Nothing was written. */
-  | { readonly outcome: 'conflict'; readonly goal: GoalState }
+  /**
+   * The id already names this exact request. Nothing was written, but a goal
+   * that is not terminal is made sure to have its controller (a create that
+   * died between recording the goal and starting it is healed by repeating
+   * it); `controller` says how that stood.
+   */
+  | {
+      readonly outcome: 'existing';
+      readonly goal: GoalState;
+      readonly controller?: BureauGoalControllerStart | undefined;
+    }
+  /**
+   * The id already names a different request. Nothing was written. `goal` is
+   * present only for a caller who may read that goal: a different principal's
+   * request learns that the id is taken and nothing else.
+   */
+  | { readonly outcome: 'conflict'; readonly goal?: GoalState | undefined }
   | {
       readonly outcome: 'rejected';
       readonly code: BureauGoalCreateRejectionCode;
@@ -131,8 +164,19 @@ export type BureauGoalActiveWork =
     };
 
 export type BureauGoalCloseOutcome =
-  /** `closedAt` is set. The goal record and its workflow stay inspectable. */
-  | { readonly outcome: 'closed'; readonly goal: GoalState }
+  /**
+   * `closedAt` is set. The goal record and its workflow stay inspectable.
+   * `cleanup` is the truthful result of applying the bureau's checkpoint
+   * retention to the controller workflow's history: `not-required` when the
+   * policy keeps everything or the goal never had a controller, `completed`
+   * once pruned, and `unresolved` or `failed` when it could not be, which
+   * `close()` again retries.
+   */
+  | {
+      readonly outcome: 'closed';
+      readonly goal: GoalState;
+      readonly cleanup: CleanupAcknowledgement;
+    }
   | { readonly outcome: 'not-terminal'; readonly goal: GoalState }
   /** Lost the write to concurrent writers too many times in a row; call again. */
   | { readonly outcome: 'contended'; readonly goal: GoalState }
@@ -169,8 +213,22 @@ export type BureauGoalCancellationWait =
  *   goal will end `canceled` and no controller transition can overtake it, but
  *   the read-back found something in `awaiting` still unfinished. Call
  *   `recover()` or `cancel()` again; both are idempotent.
- * - `already-terminal`: the goal had already ended; nothing was changed.
+ * - `already-terminal`: the goal had already ended for a reason other than
+ *   cancellation; nothing was changed. A goal that ended `canceled` is never
+ *   answered this way: its controller and attempt run are stopped again and
+ *   read back, so a retry after `cancellation-pending` finishes the job and
+ *   answers `canceled` or `cancellation-pending` like the first call did.
+ * - `contended`: the marker could not be written because concurrent writers
+ *   won the compare-and-swap every time the store retried. Nothing was
+ *   recorded and nothing will cancel the goal; call `cancel()` again.
  * - `not-found`: no such goal, or one this principal does not own.
+ *
+ * What `canceled` does not say: a validator that was executing when the goal
+ * was canceled is not told to stop. Durable validation runs with a signal that
+ * never aborts (a shutdown is a crash for the next process to recover, not a
+ * verdict), so it runs to completion and its verdict is discarded, because the
+ * record accepts no transition but `canceled` once the marker is set. A
+ * validator with side effects must therefore tolerate being run to completion.
  */
 export type BureauGoalCancelOutcome =
   | { readonly outcome: 'canceled'; readonly goal: GoalState }
@@ -180,6 +238,7 @@ export type BureauGoalCancelOutcome =
       readonly awaiting: readonly BureauGoalCancellationWait[];
     }
   | { readonly outcome: 'already-terminal'; readonly goal: GoalState }
+  | { readonly outcome: 'contended'; readonly goal: GoalState }
   | { readonly outcome: 'not-found' };
 
 // ---------------------------------------------------------------------------
@@ -197,7 +256,14 @@ export type BureauGoalCancelOutcome =
  * - `running`: a controller is alive, under this engine or another; recovery
  *   only reconciled the attempt behind it.
  * - `canceled`: an operator's cancellation (or an engine-level cancel of the
- *   controller) was completed by committing `canceled`.
+ *   controller) was completed by committing `canceled`, and a fresh read found
+ *   the controller and the attempt's run terminal.
+ * - `cancellation-pending`: `canceled` was committed, but the read found the
+ *   controller, its finalizer, or the attempt's run not yet terminal (see
+ *   `detail`); `cancel()` or `recover()` again finishes it.
+ * - `unsupported-validation`: the goal had not started, and its validator cannot
+ *   supply the deterministic evidence it requires, so recovery ended it
+ *   `failed`/`unsupported-validation` without starting a controller.
  * - `already-terminal`, `not-found`: nothing to do.
  * - `unrecoverable`: the controller has already been restarted the maximum
  *   number of times. The goal is left exactly as it is; no terminal reason is
@@ -208,6 +274,8 @@ export type BureauGoalRecoveryOutcome =
   | 'restarted'
   | 'running'
   | 'canceled'
+  | 'cancellation-pending'
+  | 'unsupported-validation'
   | 'already-terminal'
   | 'not-found'
   | 'unrecoverable';
@@ -243,7 +311,8 @@ export interface BureauGoalRecoveryReport {
 export interface BureauGoals<TName extends string = string> {
   /**
    * Persists the goal, then starts its controller. The record is written
-   * first, so a crash between the two is healed by `recover()`.
+   * first, so a crash between the two is healed by `recover()` or by repeating
+   * this call with the same id.
    */
   create(request: BureauGoalRequest<TName>): Promise<BureauGoalCreateOutcome>;
   get(goalRunId: string, query?: BureauGoalQuery): Promise<GoalState | undefined>;
@@ -253,10 +322,11 @@ export interface BureauGoals<TName extends string = string> {
   active(goalRunId: string, query?: BureauGoalQuery): Promise<BureauGoalActiveWork | undefined>;
   cancel(goalRunId: string, options?: BureauGoalCancelOptions): Promise<BureauGoalCancelOutcome>;
   /**
-   * One goal when an id is named, otherwise the boot sweep over every goal that
-   * is not terminal. Idempotent, and never throws.
+   * One goal when an id is named, otherwise the sweep over every goal that is
+   * not terminal and that the principal may see (all of them when it is
+   * omitted). Idempotent, and never throws.
    */
   recover(goalRunId?: string, query?: BureauGoalQuery): Promise<BureauGoalRecoveryReport>;
-  /** Terminal goals only. */
+  /** Terminal goals only. Idempotent; each call re-applies the checkpoint retention. */
   close(goalRunId: string, query?: BureauGoalQuery): Promise<BureauGoalCloseOutcome>;
 }

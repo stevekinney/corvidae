@@ -12,7 +12,9 @@ import { MemoryStorage, textValueStore, WEFT_RESERVED_KEY_PREFIXES } from '@lost
 import { describe, expect, it } from 'bun:test';
 
 import {
+  attemptSignalId,
   boundValidationOutcome,
+  cancelSignalId,
   createGoalState,
   type CreateGoalStateInput,
   type DurableGoalAttempt,
@@ -24,6 +26,7 @@ import {
   goalDecisionId,
   GoalObjectiveTooLargeError,
   goalRecordKey,
+  GoalRunIdError,
   type GoalState,
   goalTransitionId,
   goalWorkflowId,
@@ -242,6 +245,58 @@ describe('createGoalState', () => {
         }),
       ),
     ).not.toThrow();
+  });
+
+  describe('the goal id', () => {
+    const encoder = new TextEncoder();
+    /** Weft refuses a signal id over 128 bytes and a workflow id over 128 characters. */
+    const derivedIdentifiers = (goalRunId: string, maximumAttempts: number): string[] => {
+      const last = maximumAttempts - 1;
+      return [
+        attemptSignalId(goalRunId, last),
+        cancelSignalId(goalRunId),
+        goalWorkflowId(goalRunId),
+        goalAttemptRunId(goalRunId, last),
+      ];
+    };
+
+    it('accepts the longest id whose every derived signal and workflow id still fits', () => {
+      for (const maximumAttempts of [1, 3, 10, 1000]) {
+        let longest = '';
+        for (let length = 1; length <= 200; length += 1) {
+          const candidate = 'g'.repeat(length);
+          try {
+            createGoalState(
+              input({ goalRunId: candidate, bounds: { maximumAttempts, maximumTotalTokens: 1 } }),
+            );
+          } catch (error) {
+            expect(error).toBeInstanceOf(GoalRunIdError);
+            break;
+          }
+          longest = candidate;
+        }
+        expect(longest.length).toBeGreaterThan(80);
+        for (const identifier of derivedIdentifiers(longest, maximumAttempts)) {
+          expect(encoder.encode(identifier).byteLength).toBeLessThanOrEqual(128);
+        }
+        // One byte more would push a derived identifier past Weft's limit.
+        const over = `${longest}g`;
+        expect(
+          derivedIdentifiers(over, maximumAttempts).some(
+            (identifier) => encoder.encode(identifier).byteLength > 128,
+          ),
+        ).toBe(true);
+      }
+    });
+
+    it('rejects an id with a control character, which Weft refuses in a workflow id', () => {
+      expect(() => createGoalState(input({ goalRunId: 'a\nb' }))).toThrow(GoalRunIdError);
+    });
+
+    it('counts bytes, not characters', () => {
+      expect(() => createGoalState(input({ goalRunId: 'é'.repeat(60) }))).toThrow(GoalRunIdError);
+      expect(() => createGoalState(input({ goalRunId: 'é'.repeat(20) }))).not.toThrow();
+    });
   });
 
   it('omits unset optional fields from the stored JSON', () => {
@@ -973,6 +1028,19 @@ describe('createGoalStore control-plane writes', () => {
       status: 'updated',
       record: { controllerRestarts: 2, revision: 3 },
     });
+  });
+
+  it('counts a restart against an expected count, so only one of two racing recoveries is counted', async () => {
+    const { store } = setup();
+    await created(store);
+
+    const first = await store.recordControllerRestart(GOAL, at(), 0);
+    const second = await store.recordControllerRestart(GOAL, at(), 0);
+
+    expect(first).toMatchObject({ status: 'updated', record: { controllerRestarts: 1 } });
+    expect(second).toMatchObject({ status: 'stale', record: { controllerRestarts: 1 } });
+    const stored = await store.get(GOAL);
+    expect(stored?.controllerRestarts).toBe(1);
   });
 
   it('closes a terminal goal once and refuses to close a live one', async () => {
