@@ -235,12 +235,12 @@ describe('parseLcov', () => {
           'SF:scripts/generate-operation-client.ts',
           'FNF:0',
           'FNH:0',
-          'DA:312,1',
+          'DA:325,1',
           'end_of_record',
         ].join('\n'),
       ),
     ).toThrow(
-      'Coverage allowance for scripts/generate-operation-client.ts:312 points at a covered line',
+      'Coverage allowance for scripts/generate-operation-client.ts:325 points at a covered line',
     );
   });
 
