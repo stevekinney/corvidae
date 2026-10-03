@@ -267,25 +267,84 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
 
   it('refuses to fail an abandoned workflow durably, until the engine launches it again', async () => {
     const storage = new MemoryStorage();
-    await using engine = new Engine({ storage });
+    const parked = workflow({ name: 'refused-failure' }).execute(async function* (
+      ctx: WorkflowContext,
+    ) {
+      yield* ctx.waitForSignal('continue');
+      return 'completed';
+    });
+    await using engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'refused-failure': parked },
+    });
+    await engine.start('refused-failure', null, { id: 'refused-failure' });
     const internals = getInternals(engine);
     const warning = collectConflictWarnings();
-    abandonWorkflowAfterCheckpointConflict(internals, new WorkflowCheckpointConflictError('gone'), {
-      swallowPromiseRejection,
-    });
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('refused-failure', {
+        workflowExecutionToken: workflowExecutionTokenForWorkflow(internals, 'refused-failure'),
+      }),
+      { swallowPromiseRejection },
+    );
+    await warning.received;
     warning.stop();
-    const reads: string[] = [];
+    const writes: string[] = [];
     internals.storage = new Proxy(storage, {
       get(target, property) {
         const original: unknown = Reflect.get(target, property, target);
-        if (typeof original === 'function') reads.push(String(property));
+        if (
+          ['put', 'delete', 'deletePrefix', 'batch', 'conditionalBatch'].includes(String(property))
+        ) {
+          writes.push(String(property));
+        }
         return typeof original === 'function' ? original.bind(target) : original;
       },
     });
 
-    await failWorkflow(internals, 'gone', new Error('late failure'), {} as never);
+    await failWorkflow(
+      internals,
+      'refused-failure',
+      new Error('late failure'),
+      new Proxy({}, { get: () => () => {} }) as never,
+    );
+    internals.storage = storage;
 
-    expect(reads).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(await readStatus(storage, 'refused-failure')).toBe('running');
+  });
+
+  it('still fails a later generation under an id whose earlier generation was abandoned', async () => {
+    const storage = new MemoryStorage();
+    const parked = workflow({ name: 'later-generation' }).execute(async function* (
+      ctx: WorkflowContext,
+    ) {
+      yield* ctx.waitForSignal('continue');
+      return 'completed';
+    });
+    await using engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'later-generation': parked },
+    });
+    await engine.start('later-generation', null, { id: 'later-generation' });
+    const internals = getInternals(engine);
+    // The loss recorded here belongs to a different generation than the one in
+    // storage, as when a delayed start is failing before it launches.
+    internals.checkpointConflicts.set('later-generation', {
+      error: new WorkflowCheckpointConflictError('later-generation'),
+      workflowExecutionToken: 'abandoned-generation',
+    });
+
+    await failWorkflow(
+      internals,
+      'later-generation',
+      new Error('pre-launch failure'),
+      new Proxy({}, { get: () => () => {} }) as never,
+    );
+
+    expect(await readStatus(storage, 'later-generation')).toBe('failed');
   });
 
   it('drops a failure already in flight when the run is abandoned before its terminal commit', async () => {

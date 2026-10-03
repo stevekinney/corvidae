@@ -573,11 +573,6 @@ export async function failWorkflow(
   callbacks: TerminationCallbacks,
   failureCategory: FailureCategory = 'system',
 ): Promise<void> {
-  // This engine abandoned the run after losing a checkpoint compare-and-swap
-  // race; the winning engine owns its durable state, so a failure surfacing
-  // from anything still unwinding here must not write a terminal state over it.
-  // Launching the workflow locally again clears the record.
-  if (internals.checkpointConflicts.has(workflowId)) return;
   const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
   const attributes = attributeBytes
     ? (decode(attributeBytes) as Record<string, SearchAttributeValue>)
@@ -613,8 +608,19 @@ export async function failWorkflow(
       // resume whose services are unavailable can fail the run (the fail path runs
       // before the suspended→running flip) instead of stranding it 'suspended'.
       allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
-      // Rechecked after the reads above: abandonment can land while they await.
-      skipCommitIf: () => internals.checkpointConflicts.has(workflowId),
+      // This engine abandoned the run after losing a checkpoint compare-and-swap
+      // race; the winning engine owns its durable state, so a failure surfacing
+      // from anything still unwinding here must not write a terminal state over it.
+      // Scoped to the lost generation by comparing it with the durable state this
+      // write would replace: a later generation under the same id (a delayed start
+      // failing before it launches) is not the run that was lost. Evaluated after
+      // the last read, so an abandonment that lands while the reads await still wins.
+      skipCommitIf: (state) => {
+        const conflict = internals.checkpointConflicts.get(workflowId);
+        return (
+          conflict !== undefined && conflict.workflowExecutionToken === state.workflowExecutionToken
+        );
+      },
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
