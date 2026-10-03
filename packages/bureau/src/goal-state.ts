@@ -21,6 +21,7 @@
  * value.
  */
 
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type FinishReason,
   freshAttemptHandoffArtifactSchema,
@@ -947,6 +948,185 @@ function isTerminalPairing(value: PlainRecord): boolean {
   return isGoalRunTerminalReason(reason) && TERMINAL_STATUS_BY_REASON[reason] === status;
 }
 
+const TERMINAL_EVENT_KIND: Readonly<Partial<Record<GoalRunStatus, string>>> = {
+  succeeded: 'goal.succeeded',
+  exhausted: 'goal.exhausted',
+  failed: 'goal.failed',
+  canceled: 'goal.canceled',
+};
+
+/** Each kind's place in a transition's events: started, then validated, then the terminal event. */
+const TRANSITION_EVENT_RANK: Readonly<Record<string, number>> = {
+  'goal.attempt.started': 0,
+  'goal.attempt.validated': 1,
+  'goal.succeeded': 2,
+  'goal.exhausted': 2,
+  'goal.failed': 2,
+  'goal.canceled': 2,
+};
+
+const VALIDATOR_OUTCOME_KINDS: readonly string[] = [
+  'pass',
+  'fail',
+  'error',
+  'unavailable',
+  'canceled',
+  'indeterminate',
+];
+
+const hasAllKeys = (value: PlainRecord, required: readonly string[]): boolean =>
+  required.every((key) => Object.hasOwn(value, key));
+
+/** The validator error a `goal.failed` event names, exactly as the projection derives it. */
+function expectedValidatorError(
+  record: PlainRecord,
+): { kind: string; code: string; message: string } | undefined {
+  if (record['terminalReason'] !== 'validator-infrastructure-error') return undefined;
+  const attempts = record['attempts'] as readonly DurableGoalAttempt[];
+  const outcome = attempts.at(-1)?.validation?.outcome;
+  if (outcome === undefined || (outcome.kind !== 'error' && outcome.kind !== 'unavailable')) {
+    return undefined;
+  }
+  const { kind, code, message } = outcome.error;
+  return { kind, code, message };
+}
+
+function isAttemptStartedPayload(record: PlainRecord, payload: PlainRecord): boolean {
+  if (
+    !hasAllKeys(payload, ['goalRunId', 'attemptId', 'attemptIndex', 'runId']) ||
+    !hasExactKeys(payload, ['goalRunId', 'attemptId', 'attemptIndex', 'runId'])
+  ) {
+    return false;
+  }
+  const attempts = record['attempts'] as readonly DurableGoalAttempt[];
+  const attempt = isNonNegativeInteger(payload['attemptIndex'])
+    ? attempts[payload['attemptIndex']]
+    : undefined;
+  return (
+    attempt !== undefined &&
+    attempt.attemptId === payload['attemptId'] &&
+    attempt.runId === payload['runId']
+  );
+}
+
+function isAttemptValidatedPayload(record: PlainRecord, payload: PlainRecord): boolean {
+  const keys = ['goalRunId', 'attemptId', 'validatorIdentity', 'outcomeKind', 'feedbackDigest'];
+  if (!hasAllKeys(payload, keys.slice(0, 4)) || !hasExactKeys(payload, keys)) return false;
+  const attempts = record['attempts'] as readonly DurableGoalAttempt[];
+  const attempt = attempts.find((candidate) => candidate.attemptId === payload['attemptId']);
+  const outcomeKind = payload['outcomeKind'];
+  if (attempt === undefined || !isString(outcomeKind)) return false;
+  if (!VALIDATOR_OUTCOME_KINDS.includes(outcomeKind)) return false;
+  if (!isValidatorIdentity(payload['validatorIdentity'])) return false;
+  const digest = payload['feedbackDigest'];
+  if (outcomeKind !== 'fail') return digest === undefined;
+  if (!isString(digest) || !/^[0-9a-f]{64}$/.test(digest)) return false;
+  // A recorded verdict is the one this event reports.
+  const recorded = attempt.validation?.outcome;
+  if (recorded === undefined) return true;
+  return recorded.kind === 'fail' && sha256HexSync(recorded.feedback) === digest;
+}
+
+function isTerminalPayload(record: PlainRecord, kind: string, payload: PlainRecord): boolean {
+  if (
+    !hasAllKeys(payload, ['goalRunId', 'terminalReason']) ||
+    !hasExactKeys(payload, ['goalRunId', 'terminalReason', 'validatorError']) ||
+    payload['terminalReason'] !== record['terminalReason']
+  ) {
+    return false;
+  }
+  const expected = kind === 'goal.failed' ? expectedValidatorError(record) : undefined;
+  const named = payload['validatorError'];
+  if (expected === undefined) return named === undefined;
+  return (
+    isPlainRecord(named) &&
+    hasExactKeys(named, ['kind', 'code', 'message']) &&
+    named['kind'] === expected.kind &&
+    named['code'] === expected.code &&
+    named['message'] === expected.message
+  );
+}
+
+function isEventPayloadGenuine(record: PlainRecord, event: GoalAuditEvent): boolean {
+  const payload = event.payload as PlainRecord;
+  if (payload['goalRunId'] !== record['goalRunId']) return false;
+  switch (event.kind) {
+    case 'goal.attempt.started':
+      return isAttemptStartedPayload(record, payload);
+    case 'goal.attempt.validated':
+      return isAttemptValidatedPayload(record, payload);
+    default:
+      return isTerminalPayload(record, event.kind, payload);
+  }
+}
+
+/**
+ * A transition's audit entry holds only the events that transition can imply,
+ * in the order the projection derives them, under the dedupe key it derives,
+ * about this goal's own attempts. Only the goal's latest transition is still
+ * described by the record itself, so it must carry exactly the events that
+ * transition implies, no more and no fewer; an earlier one can only be held to
+ * what any transition could have produced (a terminal event never: a terminal
+ * status has no outgoing edge).
+ */
+function isTransitionEntryGenuine(record: PlainRecord, entry: GoalAuditEntry): boolean {
+  const goalRunId = record['goalRunId'] as string;
+  const isLatest = entry.seq === record['transitionSeq'];
+  let previousRank = -1;
+  for (const event of entry.events) {
+    const rank = TRANSITION_EVENT_RANK[event.kind];
+    if (rank === undefined || rank <= previousRank) return false;
+    previousRank = rank;
+    if (event.dedupeKey !== `${goalRunId}:${entry.seq}`) return false;
+    if (
+      rank === 2 &&
+      (!isLatest || event.kind !== TERMINAL_EVENT_KIND[record['status'] as GoalRunStatus])
+    ) {
+      return false;
+    }
+    if (!isEventPayloadGenuine(record, event)) return false;
+  }
+  if (!isLatest) return true;
+  const transition = record['currentTransition'] as GoalTransitionRecord;
+  const attempts = record['attempts'] as readonly DurableGoalAttempt[];
+  const expected: string[] = [];
+  if (transition.to === 'running' && attempts.length > 0) expected.push('goal.attempt.started');
+  if (transition.from === 'evaluating' && attempts.at(-1)?.validation !== undefined) {
+    expected.push('goal.attempt.validated');
+  }
+  if (record['terminalReason'] !== undefined) {
+    const terminal = TERMINAL_EVENT_KIND[record['status'] as GoalRunStatus];
+    if (terminal !== undefined) expected.push(terminal);
+  }
+  return (
+    expected.length === entry.events.length &&
+    expected.every((kind, index) => entry.events[index]?.kind === kind)
+  );
+}
+
+/** A counted restart's entry holds the one `goal.recovered` event the restart implies. */
+function isRestartEntryGenuine(
+  record: PlainRecord,
+  entry: GoalAuditEntry,
+  ordinal: number,
+): boolean {
+  const goalRunId = record['goalRunId'] as string;
+  const [event, ...rest] = entry.events;
+  if (event === undefined || rest.length > 0 || event.kind !== 'goal.recovered') return false;
+  if (event.dedupeKey !== `${goalRunId}:${entry.seq}:restart-${ordinal}`) return false;
+  const payload = event.payload as PlainRecord;
+  const keys = ['goalRunId', 'controllerRestarts', 'status', 'transitionSeq'];
+  return (
+    hasAllKeys(payload, keys) &&
+    hasExactKeys(payload, keys) &&
+    payload['goalRunId'] === goalRunId &&
+    payload['controllerRestarts'] === ordinal &&
+    payload['transitionSeq'] === entry.seq &&
+    isGoalRunStatus(payload['status']) &&
+    (entry.seq !== record['transitionSeq'] || payload['status'] === record['status'])
+  );
+}
+
 /**
  * The log holds exactly one entry per committed transition (seq 1 through
  * `transitionSeq`, in order) and one per counted restart (1 through
@@ -966,9 +1146,11 @@ function isAuditLogConsistent(value: PlainRecord): boolean {
     if (entry.transitionId === goalRestartId(goalRunId, restarts + 1)) {
       if (entry.seq !== transitions) return false;
       restarts += 1;
+      if (!isRestartEntryGenuine(value, entry, restarts)) return false;
     } else if (entry.transitionId === goalTransitionId(goalRunId, transitions + 1)) {
       if (entry.seq !== transitions + 1) return false;
       transitions += 1;
+      if (!isTransitionEntryGenuine(value, entry)) return false;
     } else {
       return false;
     }

@@ -213,6 +213,166 @@ describe('the goal record decoder', () => {
     expect(isGoalState(record)).toBe(false);
   });
 
+  describe('the audit log must be what the transitions and restarts that wrote it imply', () => {
+    type Entries = Array<{ events: Array<Record<string, any>>; transitionId: string }>;
+    const entriesOf = (record: Record<string, unknown>) => record['auditLog'] as Entries;
+    const eventOfKind = (record: Record<string, unknown>, kind: string) => {
+      for (const entry of entriesOf(record)) {
+        const found = entry.events.find((event) => event['kind'] === kind);
+        if (found !== undefined) return found;
+      }
+      throw new Error(`no ${kind} event`);
+    };
+
+    const corruptions: Array<[string, string, Mutation]> = [
+      [
+        'succeeded',
+        'a kind no goal event has',
+        (r) => (eventOfKind(r, 'goal.succeeded')['kind'] = 'goal.bogus'),
+      ],
+      [
+        'succeeded',
+        'a terminal event of another status (a failed event on a succeeded goal)',
+        (r) => (eventOfKind(r, 'goal.succeeded')['kind'] = 'goal.failed'),
+      ],
+      [
+        'succeeded',
+        'a succeeded event on an earlier, non-terminal transition',
+        (r) => {
+          const terminal = eventOfKind(r, 'goal.succeeded');
+          entriesOf(r)[0]?.events.push({ ...terminal, dedupeKey: `${GOAL}:1` });
+        },
+      ],
+      [
+        'running',
+        'a succeeded event on a running transition',
+        (r) => {
+          const last = entriesOf(r).at(-1);
+          last?.events.push({
+            kind: 'goal.succeeded',
+            payload: { goalRunId: GOAL, terminalReason: 'validator-passed' },
+            dedupeKey: `${GOAL}:1`,
+            at: STARTED,
+          });
+        },
+      ],
+      [
+        'succeeded',
+        'an event naming another goal',
+        (r) => (eventOfKind(r, 'goal.succeeded')['payload']['goalRunId'] = 'goal-other'),
+      ],
+      [
+        'succeeded',
+        'a forged dedupe key',
+        (r) => (eventOfKind(r, 'goal.succeeded')['dedupeKey'] = `${GOAL}:0`),
+      ],
+      [
+        'succeeded',
+        'a terminal reason the record does not hold',
+        (r) =>
+          (eventOfKind(r, 'goal.succeeded')['payload']['terminalReason'] = 'attempt-limit-reached'),
+      ],
+      [
+        'succeeded',
+        'a payload with a field the event never carries',
+        (r) => (eventOfKind(r, 'goal.succeeded')['payload']['extra'] = 1),
+      ],
+      [
+        'succeeded',
+        'a terminal event missing from the final transition',
+        (r) => (entriesOf(r).at(-1)!.events = []),
+      ],
+      [
+        'running',
+        'a started event for an attempt the record does not hold',
+        (r) => (eventOfKind(r, 'goal.attempt.started')['payload']['attemptIndex'] = 7),
+      ],
+      [
+        'running',
+        'a started event naming another run',
+        (r) => (eventOfKind(r, 'goal.attempt.started')['payload']['runId'] = 'goal-other-a0'),
+      ],
+      [
+        'retrying',
+        'a validated event with a feedback digest that is not a digest',
+        (r) => {
+          const validated = {
+            kind: 'goal.attempt.validated',
+            payload: {
+              goalRunId: GOAL,
+              attemptId: goalAttemptId(GOAL, 0),
+              validatorIdentity: VALIDATOR,
+              outcomeKind: 'fail',
+              feedbackDigest: 'not-a-digest',
+            },
+            dedupeKey: `${GOAL}:3`,
+            at: STARTED,
+          };
+          entriesOf(r)
+            .find((entry) => entry.transitionId === goalTransitionId(GOAL, 3))
+            ?.events.push(validated);
+        },
+      ],
+      [
+        'running',
+        'a restart event for another restart count',
+        (r) => {
+          r['controllerRestarts'] = 1;
+          entriesOf(r).push({
+            seq: 1,
+            transitionId: `${GOAL}:restart-1`,
+            events: [
+              {
+                kind: 'goal.recovered',
+                payload: {
+                  goalRunId: GOAL,
+                  controllerRestarts: 2,
+                  status: 'running',
+                  transitionSeq: 1,
+                },
+                dedupeKey: `${GOAL}:1:restart-1`,
+                at: STARTED,
+              },
+            ],
+          } as never);
+        },
+      ],
+    ];
+
+    it.each(corruptions)('treats a %s goal with %s as corrupt', async (status, _name, mutate) => {
+      const every = await records();
+      const base = every[status] as GoalState;
+      const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
+      mutate(record);
+      expect(isGoalState(record)).toBe(false);
+    });
+
+    it('still decodes a goal whose log holds a genuine restart entry', async () => {
+      const every = await records();
+      const base = every['running'] as GoalState;
+      const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
+      record['controllerRestarts'] = 1;
+      entriesOf(record).push({
+        seq: 1,
+        transitionId: `${GOAL}:restart-1`,
+        events: [
+          {
+            kind: 'goal.recovered',
+            payload: {
+              goalRunId: GOAL,
+              controllerRestarts: 1,
+              status: 'running',
+              transitionSeq: 1,
+            },
+            dedupeKey: `${GOAL}:1:restart-1`,
+            at: STARTED,
+          },
+        ],
+      } as never);
+      expect(isGoalState(record)).toBe(true);
+    });
+  });
+
   describe("the ids derived from the record's own goal", () => {
     const OTHER = 'goal-other';
     const rewrite = (record: Record<string, unknown>, index: number, change: object) => {

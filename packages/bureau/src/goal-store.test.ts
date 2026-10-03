@@ -1600,7 +1600,20 @@ describe('the audit transition log', () => {
     const entries = Array.from({ length: GOAL_AUDIT_LOG_MAXIMUM_ENTRIES }, (_, index) => ({
       seq: 0,
       transitionId: `goal-1:restart-${index + 1}`,
-      events: [],
+      // What a counted restart really writes, so the log decodes as genuine.
+      events: [
+        {
+          kind: 'goal.recovered',
+          payload: {
+            goalRunId: GOAL,
+            controllerRestarts: index + 1,
+            status: 'pending',
+            transitionSeq: 0,
+          },
+          dedupeKey: `${GOAL}:0:restart-${index + 1}`,
+          at: base.updatedAt,
+        },
+      ],
     }));
     await kv.set(
       key,
