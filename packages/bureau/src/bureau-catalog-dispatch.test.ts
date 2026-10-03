@@ -656,6 +656,36 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       expect(result.costEstimate?.totalCost).toBeCloseTo(2, 5);
     });
 
+    it('releases an execution’s share when its own durable start rejects, so the retry’s later failure deletes the entry', async () => {
+      const { dispatcher, engine, runAttribution } = await world(
+        priced({ model: 'm', pricing: PRICING(1) }, []),
+      );
+      let startCalls = 0;
+      let openSecond: () => void = () => {};
+      const secondMayFail = new Promise<void>((resolve) => {
+        openSecond = resolve;
+      });
+      engine.start = async () => {
+        startCalls += 1;
+        if (startCalls === 2) await secondMayFail;
+        throw new Error(`durable start ${startCalls} rejected`);
+      };
+
+      const first = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      const second = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      expect(await settle(first)).toEqual(
+        expect.objectContaining({ message: 'durable start 1 rejected' }),
+      );
+      // The second execution still holds the entry.
+      expect(runAttribution.has(attempt.runId)).toBe(true);
+
+      openSecond();
+      expect(await settle(second)).toEqual(
+        expect.objectContaining({ message: 'durable start 2 rejected' }),
+      );
+      expect(runAttribution.has(attempt.runId)).toBe(false);
+    });
+
     it('adopts the claim of an execution whose workflow already exists', async () => {
       const ran: string[] = [];
       const { dispatcher, records, writes, engine } = await world(

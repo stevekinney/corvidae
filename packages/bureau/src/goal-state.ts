@@ -1019,12 +1019,22 @@ function isAttemptValidatedPayload(record: PlainRecord, payload: PlainRecord): b
   if (!VALIDATOR_OUTCOME_KINDS.includes(outcomeKind)) return false;
   if (!isValidatorIdentity(payload['validatorIdentity'])) return false;
   const digest = payload['feedbackDigest'];
+  const recorded = attempt.validation;
+  // A recorded verdict is the one this event reports, whatever its kind.
+  if (recorded !== undefined) {
+    const identity = payload['validatorIdentity'];
+    if (
+      recorded.outcome.kind !== outcomeKind ||
+      recorded.identity.name !== identity.name ||
+      recorded.identity.version !== identity.version
+    ) {
+      return false;
+    }
+  }
   if (outcomeKind !== 'fail') return digest === undefined;
   if (!isString(digest) || !/^[0-9a-f]{64}$/.test(digest)) return false;
-  // A recorded verdict is the one this event reports.
-  const recorded = attempt.validation?.outcome;
   if (recorded === undefined) return true;
-  return recorded.kind === 'fail' && sha256HexSync(recorded.feedback) === digest;
+  return recorded.outcome.kind === 'fail' && sha256HexSync(recorded.outcome.feedback) === digest;
 }
 
 function isTerminalPayload(record: PlainRecord, kind: string, payload: PlainRecord): boolean {

@@ -224,6 +224,18 @@ describe('the goal record decoder', () => {
       throw new Error(`no ${kind} event`);
     };
 
+    const passedValidationEvent = (record: Record<string, unknown>) => {
+      for (const entry of entriesOf(record)) {
+        const found = entry.events.find(
+          (event) =>
+            event['kind'] === 'goal.attempt.validated' &&
+            event['payload']['outcomeKind'] === 'pass',
+        );
+        if (found !== undefined) return found;
+      }
+      throw new Error('no passing validated event');
+    };
+
     const corruptions: Array<[string, string, Mutation]> = [
       [
         'succeeded',
@@ -312,6 +324,20 @@ describe('the goal record decoder', () => {
             .find((entry) => entry.transitionId === goalTransitionId(GOAL, 3))
             ?.events.push(validated);
         },
+      ],
+      [
+        'succeeded',
+        'a validated event whose outcome kind differs from the recorded verdict',
+        (r) => (passedValidationEvent(r)['payload']['outcomeKind'] = 'error'),
+      ],
+      [
+        'succeeded',
+        'a validated event naming another validator than the recorded one',
+        (r) =>
+          (passedValidationEvent(r)['payload']['validatorIdentity'] = {
+            name: 'forged@bureau',
+            version: '9.9.9',
+          }),
       ],
       [
         'running',

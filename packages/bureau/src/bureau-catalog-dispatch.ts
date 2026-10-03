@@ -566,7 +566,12 @@ export function createCatalogDispatcher({
           } else {
             (dispatchedActiveRun.durablyStarted ?? Promise.resolve()).then(
               durableStart.resolve,
-              durableStart.reject,
+              (error: unknown) => {
+                // A start that never committed holds no workflow this share
+                // protects; the retry, if any, keeps its own.
+                releaseAttribution();
+                durableStart.reject(error);
+              },
             );
           }
         }
