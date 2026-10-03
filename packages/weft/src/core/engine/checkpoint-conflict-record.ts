@@ -66,3 +66,16 @@ export async function resultAfterCheckpointConflict(
   if (recorded === conflict) internals.checkpointConflicts.delete(workflowId);
   return resolveCurrent();
 }
+
+/**
+ * Whether `state` is the durable run this engine abandoned after losing its
+ * checkpoint compare-and-swap race, so a terminal write over it must be skipped.
+ */
+export function isAbandonedGeneration(
+  internals: EngineInternals,
+  workflowId: string,
+  state: { readonly workflowExecutionToken?: string | undefined },
+): boolean {
+  const conflict = internals.checkpointConflicts.get(workflowId);
+  return conflict !== undefined && conflict.workflowExecutionToken === state.workflowExecutionToken;
+}

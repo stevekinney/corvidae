@@ -98,7 +98,7 @@ export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpoi
 
   constructor(
     workflowId: string,
-    options?: ErrorOptions & { readonly workflowExecutionToken?: string },
+    options?: ErrorOptions & { readonly workflowExecutionToken?: string | undefined },
   ) {
     super(
       'WorkflowCheckpointConflictError',
