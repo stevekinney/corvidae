@@ -78,6 +78,9 @@ const unmarked: CatalogRunRecoveryLoad = {
 };
 const missing: CatalogRunRecoveryLoad = { status: 'missing' };
 
+/** The goal's own agent and principal, as the goal record names them. */
+const goalOwner = () => Promise.resolve({ agentName: 'worker', principal: undefined });
+
 const ownController: FakeWorkflow = {
   type: GOAL_WORKFLOW_TYPE,
   input: { goalRunId: 'g1' },
@@ -96,7 +99,7 @@ const foreignControllers: Record<string, FakeWorkflow> = {
 describe('createOwnedGoalEngine', () => {
   it("passes the goal's own controller through untouched", async () => {
     const { engine, calls } = fakeEngine({ 'goal:g1': ownController });
-    const owned = createOwnedGoalEngine(engine, () => Promise.resolve(missing));
+    const owned = createOwnedGoalEngine(engine, () => Promise.resolve(missing), goalOwner);
 
     const own = await owned.get('goal:g1');
     expect(own?.status).toBe('running');
@@ -110,7 +113,7 @@ describe('createOwnedGoalEngine', () => {
     'hides %s at the controller id, and refuses to signal, resume, cancel, or replace it',
     async (_label, workflow) => {
       const { engine, calls } = fakeEngine({ 'goal:g1': workflow });
-      const owned = createOwnedGoalEngine(engine, () => Promise.resolve(missing));
+      const owned = createOwnedGoalEngine(engine, () => Promise.resolve(missing), goalOwner);
 
       expect(await owned.get('goal:g1')).toBeNull();
       expect(await owned.getFinalizerStatus('goal:g1')).toBeNull();
@@ -137,7 +140,7 @@ describe('createOwnedGoalEngine', () => {
 
   it('starts a controller where nothing holds the id', async () => {
     const { engine, calls } = fakeEngine({});
-    const owned = createOwnedGoalEngine(engine, () => Promise.resolve(missing));
+    const owned = createOwnedGoalEngine(engine, () => Promise.resolve(missing), goalOwner);
     await owned.start(GOAL_WORKFLOW_TYPE, { goalRunId: 'g1' }, { id: 'goal:g1' });
     expect(calls).toEqual(['start:goal:g1']);
   });
@@ -149,8 +152,10 @@ describe('createOwnedGoalEngine', () => {
       'ordinary-run': { type: 'agentRun', input: {}, status: 'running' },
     });
     const records: Record<string, CatalogRunRecoveryLoad> = {};
-    const owned = createOwnedGoalEngine(engine, (runId) =>
-      Promise.resolve(records[runId] ?? missing),
+    const owned = createOwnedGoalEngine(
+      engine,
+      (runId) => Promise.resolve(records[runId] ?? missing),
+      goalOwner,
     );
 
     expect(await owned.get(id)).toBeNull();
@@ -173,13 +178,17 @@ describe('an unreadable run record is unknown, never foreign or absent', () => {
     const id = goalAttemptRunId('g1', 0);
     const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
     let faults = 1;
-    const owned = createOwnedGoalEngine(engine, () => {
-      if (faults > 0) {
-        faults -= 1;
-        return Promise.resolve({ status: 'read-error', error: new Error('storage is down') });
-      }
-      return Promise.resolve(marked('g1', 0));
-    });
+    const owned = createOwnedGoalEngine(
+      engine,
+      () => {
+        if (faults > 0) {
+          faults -= 1;
+          return Promise.resolve({ status: 'read-error', error: new Error('storage is down') });
+        }
+        return Promise.resolve(marked('g1', 0));
+      },
+      goalOwner,
+    );
 
     const failure = await owned.get(id).then(
       () => undefined,
@@ -205,6 +214,7 @@ describe('an unreadable run record is unknown, never foreign or absent', () => {
         }
         return Promise.resolve(marked('g1', 0));
       },
+      goalOwner,
     );
     const id = goalAttemptRunId('g1', 0);
 
@@ -244,7 +254,7 @@ describe('a present but invalid run record is corrupt, never absent', () => {
 
   it('makes the owned engine throw a typed, non-retryable error instead of hiding the run', async () => {
     const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
-    const owned = createOwnedGoalEngine(engine, corrupt);
+    const owned = createOwnedGoalEngine(engine, corrupt, goalOwner);
     const failure = await owned.get(id).then(
       () => undefined,
       (error: unknown) => error,
@@ -256,10 +266,14 @@ describe('a present but invalid run record is corrupt, never absent', () => {
 
   it('makes the canceller fail with the typed error and cancel nothing', async () => {
     const stopped: string[] = [];
-    const cancel = createOwnedRunCanceller((runId) => {
-      stopped.push(runId);
-      return Promise.resolve({ status: 'requested' });
-    }, corrupt);
+    const cancel = createOwnedRunCanceller(
+      (runId) => {
+        stopped.push(runId);
+        return Promise.resolve({ status: 'requested' });
+      },
+      corrupt,
+      goalOwner,
+    );
     const outcome = await cancel(id);
     expect(outcome).toMatchObject({ status: 'failed' });
     expect((outcome as { error: unknown }).error).toBeInstanceOf(GoalCorruptOwnershipRecordError);
@@ -291,6 +305,7 @@ describe('createOwnedRunCanceller', () => {
         return Promise.resolve({ status: 'requested' });
       },
       (runId) => Promise.resolve(records[runId] ?? missing),
+      goalOwner,
     );
 
     expect(await cancel(id)).toEqual({ status: 'requested' });
@@ -305,8 +320,106 @@ describe('createOwnedRunCanceller', () => {
     const cancel = createOwnedRunCanceller(
       () => Promise.reject(new Error('unreachable')),
       () => Promise.resolve({ status: 'read-error', error: new Error('storage is down') }),
+      goalOwner,
     );
     expect(await cancel('goal-g1-a0')).toMatchObject({ status: 'failed' });
+  });
+});
+
+describe("a run is the goal's only when its recovery record names the goal's own agent and principal", () => {
+  const id = goalAttemptRunId('g1', 0);
+  const recordFor = (overrides: {
+    agentName?: string;
+    principal?: string;
+  }): CatalogRunRecoveryLoad => ({
+    status: 'found',
+    record: {
+      schemaVersion: 1,
+      agentName: overrides.agentName ?? 'worker',
+      definitionRevision: 1,
+      input: 'work',
+      ...(overrides.principal === undefined ? {} : { principal: overrides.principal }),
+      goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+    },
+  });
+  const ownedBy = (agentName: string, principal: string | undefined) => () =>
+    Promise.resolve({ agentName, principal });
+  const impostors: Array<[string, CatalogRunRecoveryLoad]> = [
+    ['another agent', recordFor({ agentName: 'intruder' })],
+    ['another principal', recordFor({ principal: 'mallory' })],
+    ['a principal where the goal has none', recordFor({ principal: 'alice' })],
+  ];
+
+  for (const [name, load] of impostors) {
+    it(`hides a goal-named run started by ${name} from the owned engine`, async () => {
+      const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+      const owned = createOwnedGoalEngine(engine, () => Promise.resolve(load), goalOwner);
+      expect(await owned.get(id)).toBeNull();
+    });
+
+    it(`does not cancel a goal-named run started by ${name}`, async () => {
+      const stopped: string[] = [];
+      const cancel = createOwnedRunCanceller(
+        (runId) => {
+          stopped.push(runId);
+          return Promise.resolve({ status: 'requested' });
+        },
+        () => Promise.resolve(load),
+        goalOwner,
+      );
+      expect(await cancel(id)).toEqual({ status: 'not-found' });
+      expect(stopped).toEqual([]);
+    });
+  }
+
+  it("shows and cancels the run when agent and principal both match the goal's", async () => {
+    const stopped: string[] = [];
+    const load = recordFor({ principal: 'alice' });
+    const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+    const owner = ownedBy('worker', 'alice');
+    const owned = createOwnedGoalEngine(engine, () => Promise.resolve(load), owner);
+    const cancel = createOwnedRunCanceller(
+      (runId) => {
+        stopped.push(runId);
+        return Promise.resolve({ status: 'requested' });
+      },
+      () => Promise.resolve(load),
+      owner,
+    );
+    const visible = await owned.get(id);
+    expect(visible?.status).toBe('running');
+    expect(await cancel(id)).toEqual({ status: 'requested' });
+    expect(stopped).toEqual([id]);
+  });
+
+  it('treats a run as foreign when the goal that marked it cannot be found', async () => {
+    const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+    const unknownGoal = () => Promise.resolve(undefined);
+    const owned = createOwnedGoalEngine(engine, () => Promise.resolve(recordFor({})), unknownGoal);
+    expect(await owned.get(id)).toBeNull();
+    const cancel = createOwnedRunCanceller(
+      () => Promise.reject(new Error('unreachable')),
+      () => Promise.resolve(recordFor({})),
+      unknownGoal,
+    );
+    expect(await cancel(id)).toEqual({ status: 'not-found' });
+  });
+
+  it('reports a goal record that cannot be read as a failure, not as foreign', async () => {
+    const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+    const broken = () => Promise.reject(new Error('storage is down'));
+    const owned = createOwnedGoalEngine(engine, () => Promise.resolve(recordFor({})), broken);
+    const failure = await owned.get(id).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect((failure as Error).message).toBe('storage is down');
+    const cancel = createOwnedRunCanceller(
+      () => Promise.reject(new Error('unreachable')),
+      () => Promise.resolve(recordFor({})),
+      broken,
+    );
+    expect(await cancel(id)).toMatchObject({ status: 'failed' });
   });
 });
 

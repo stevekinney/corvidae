@@ -29,6 +29,7 @@ import {
   createOwnedGoalEngine,
   createOwnedRunCanceller,
   GoalCorruptOwnershipRecordError,
+  type GoalOwnerResolver,
   GoalOwnershipUnknownError,
   type RunRecordReader,
 } from './goal-ownership';
@@ -87,16 +88,6 @@ export interface GoalsComposition {
 
 export function composeBureauGoals(dependencies: GoalsCompositionDependencies): GoalsComposition {
   const { runtimeServices, host, diagnose, readRunRecord } = dependencies;
-  // Everything but the start-attempt port, which must tell an absent id from a
-  // foreign one, sees the engine through the goal's ownership checks: a
-  // workflow or run the goal does not own does not exist to it.
-  const getDurable = (): ReturnType<typeof dependencies.getDurable> => {
-    const durable = dependencies.getDurable();
-    return durable === undefined
-      ? undefined
-      : { ...durable, engine: createOwnedGoalEngine(durable.engine, readRunRecord) };
-  };
-  const cancelRun = createOwnedRunCanceller(dependencies.cancelRun, readRunRecord);
   const fenceAttempt = (record: GoalState, attemptIndex: number): Promise<GoalAttemptClaimFence> =>
     dependencies.fenceClaim(
       goalAttemptRunId(record.goalRunId, attemptIndex),
@@ -129,6 +120,33 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       }),
   });
   const { catalog } = dependencies;
+
+  // Everything but the start-attempt port, which must tell an absent id from a
+  // foreign one, sees the engine through the goal's ownership checks: a
+  // workflow or run the goal does not own does not exist to it.
+  // Who owns a goal is what its own record says, so a run that merely carries
+  // a marker naming the goal is the goal's only if it was started as the goal's
+  // agent and principal. A goal that cannot be read owns nothing.
+  const resolveGoalOwner: GoalOwnerResolver = async (goalRunId) => {
+    const record = await store.get(goalRunId);
+    return record === undefined
+      ? undefined
+      : { agentName: record.objective.agentName, principal: record.principal };
+  };
+  const getDurable = (): ReturnType<typeof dependencies.getDurable> => {
+    const durable = dependencies.getDurable();
+    return durable === undefined
+      ? undefined
+      : {
+          ...durable,
+          engine: createOwnedGoalEngine(durable.engine, readRunRecord, resolveGoalOwner),
+        };
+  };
+  const cancelRun = createOwnedRunCanceller(
+    dependencies.cancelRun,
+    readRunRecord,
+    resolveGoalOwner,
+  );
 
   /**
    * The cost estimation an attempt's run was started with, for a goal with a

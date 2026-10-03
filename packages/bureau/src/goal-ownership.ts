@@ -12,7 +12,8 @@
  *
  * - A run is the goal's when its catalog recovery record carries
  *   `goalAttempt: { goalRunId, attemptIndex }` that reproduces the run's id, and
- *   names the goal's agent and principal.
+ *   names the agent and principal of the goal that marker names (read from the
+ *   goal's own record, never from the run's marker).
  * - A controller is the goal's when its workflow type is the goal workflow and
  *   its input names the goal.
  * - A session is checked by `goal-conversation.ts` against the `goalRunId` and
@@ -163,14 +164,43 @@ export function isOwnController(
   );
 }
 
-/** Whether a goal-namespaced run's record proves the id is the one that goal's attempt produces. */
-function isGoalNamedRun(load: CatalogRunRecoveryLoad, runId: string): boolean {
-  return (
-    load.status === 'found' &&
-    load.record.goalAttempt !== undefined &&
-    goalAttemptRunId(load.record.goalAttempt.goalRunId, load.record.goalAttempt.attemptIndex) ===
-      runId
-  );
+/**
+ * The agent and principal a goal runs its attempts as, which are what a run
+ * must have been started with to be the goal's own. Read from the goal's record
+ * by id, so a run's own marker cannot vouch for itself.
+ */
+export interface GoalOwner {
+  readonly agentName: string;
+  readonly principal: string | undefined;
+}
+
+/**
+ * Looks up the owner of the goal a run's marker names; `undefined` when no
+ * readable goal has that id. A lookup that fails rejects, which is a fault to
+ * retry and never a verdict.
+ */
+export type GoalOwnerResolver = (goalRunId: string) => Promise<GoalOwner | undefined>;
+
+/**
+ * The one test for whether a goal-namespaced run is a goal's own, shared by the
+ * owned engine and the owned canceller so the two cannot disagree. A run's
+ * record is the goal's when its marker reproduces the run's id and the goal the
+ * marker names exists and is the one that started the run: the same goal id and
+ * attempt index, and the same agent and principal ({@link isOwnAttemptRecord}).
+ * An id that merely reproduces is not enough, since another agent or principal
+ * can hold a goal's deterministic id.
+ */
+async function isOwnedGoalRun(
+  load: CatalogRunRecoveryLoad,
+  runId: string,
+  resolveGoalOwner: GoalOwnerResolver,
+): Promise<boolean> {
+  if (load.status !== 'found') return false;
+  const marker = load.record.goalAttempt;
+  if (marker === undefined) return false;
+  if (goalAttemptRunId(marker.goalRunId, marker.attemptIndex) !== runId) return false;
+  const owner = await resolveGoalOwner(marker.goalRunId);
+  return owner !== undefined && isOwnAttemptRecord(load.record, { ...marker, ...owner });
 }
 
 /**
@@ -183,6 +213,7 @@ function isGoalNamedRun(load: CatalogRunRecoveryLoad, runId: string): boolean {
 export function createOwnedGoalEngine<E extends GoalEngine>(
   engine: E,
   readRunRecord: RunRecordReader,
+  resolveGoalOwner: GoalOwnerResolver,
 ): E {
   const isController = (id: string): boolean => id.startsWith(CONTROLLER_PREFIX);
   const ownedController = async (id: string): Promise<boolean> => {
@@ -205,7 +236,7 @@ export function createOwnedGoalEngine<E extends GoalEngine>(
         if (load.status === 'read-error') throw new GoalOwnershipUnknownError(id, load.error);
         // Present but invalid: not absent, and not retryable.
         if (load.status === 'corrupt') throw new GoalCorruptOwnershipRecordError(id);
-        return isGoalNamedRun(load, id) ? state : null;
+        return (await isOwnedGoalRun(load, id, resolveGoalOwner)) ? state : null;
       }
       return state;
     },
@@ -242,6 +273,7 @@ export function createOwnedGoalEngine<E extends GoalEngine>(
 export function createOwnedRunCanceller(
   cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>,
   readRunRecord: RunRecordReader,
+  resolveGoalOwner: GoalOwnerResolver,
 ): (runId: string) => Promise<CancelDurableRunOutcome> {
   return async (runId) => {
     const load = await readRunRecord(runId);
@@ -254,6 +286,13 @@ export function createOwnedRunCanceller(
     }
     // A claim with no workflow is cancelled too: that is the goal's own start
     // that died, and cancelling a run that never existed is a no-op.
-    return isGoalNamedRun(load, runId) ? cancelRun(runId) : { status: 'not-found' };
+    let owned: boolean;
+    try {
+      owned = await isOwnedGoalRun(load, runId, resolveGoalOwner);
+    } catch (error) {
+      // The goal that decides ownership could not be read: unknown, not foreign.
+      return { status: 'failed', error };
+    }
+    return owned ? cancelRun(runId) : { status: 'not-found' };
   };
 }
