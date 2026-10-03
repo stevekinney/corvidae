@@ -133,6 +133,13 @@ interface WorldOptions {
   /** The ports see no durable engine, as a bureau built without one would. */
   readonly withoutEngine?: boolean;
   readonly resolveFreshAttemptSource?: FreshAttemptSourceResolver;
+  /**
+   * Runs at the start of every read of a run's recovery record, with the number
+   * of reads so far (1 for the first), so a test can change what the next read
+   * finds at a precise point: after the start port verified the record and
+   * before it adopted the run.
+   */
+  readonly onRunRecordRead?: (readNumber: number, runId: string) => void;
   /** A clock the test shares with the artifact it builds; a fresh manual one otherwise. */
   readonly runtime?: ReturnType<typeof createManualRuntimeServices>;
   readonly bounds?: {
@@ -212,6 +219,7 @@ async function world(options: WorldOptions = {}) {
   // A run-record read that fails for as many calls as `runRecordReadFaults.remaining` says.
   const runRecordReadFaults = { remaining: 0 };
   const corruptRunRecords = new Set<string>();
+  let runRecordReads = 0;
   const runtime = options.runtime ?? createManualRuntimeServices();
   const sessions = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
   const conversations = createGoalConversations({
@@ -228,6 +236,8 @@ async function world(options: WorldOptions = {}) {
     conversations,
     getDurable: () => (options.withoutEngine === true ? undefined : durable),
     readRunRecord: (runId) => {
+      runRecordReads += 1;
+      options.onRunRecordRead?.(runRecordReads, runId);
       if (runRecordReadFaults.remaining > 0) {
         runRecordReadFaults.remaining -= 1;
         return Promise.resolve({ status: 'read-error', error: new Error('storage hiccup') });
@@ -481,6 +491,108 @@ describe('startAttempt', () => {
     expect(watched).toEqual([]);
   });
 
+  describe('adopting only a run whose record is read as the goal’s own at the point of adoption', () => {
+    const runId = 'goal-g1-a0';
+    // What replaces the goal's own claim after the start port verified it.
+    const replacements: Array<
+      [
+        string,
+        (w: {
+          runRecords: Map<string, CatalogRunRecoveryRecord>;
+          corruptRunRecords: Set<string>;
+        }) => void,
+        string,
+      ]
+    > = [
+      [
+        'a claim held by another agent',
+        (w) => w.runRecords.set(runId, { ...w.runRecords.get(runId)!, agentName: 'intruder' }),
+        'was not started for this goal attempt',
+      ],
+      [
+        'a claim held by another principal',
+        (w) => w.runRecords.set(runId, { ...w.runRecords.get(runId)!, principal: 'mallory' }),
+        'was not started for this goal attempt',
+      ],
+      [
+        'a claim marked for another goal',
+        (w) =>
+          w.runRecords.set(runId, {
+            ...w.runRecords.get(runId)!,
+            goalAttempt: { goalRunId: 'g2', attemptIndex: 0 },
+          }),
+        'was not started for this goal attempt',
+      ],
+      [
+        'a claim that is not a valid record',
+        (w) => w.corruptRunRecords.add(runId),
+        'corrupt-ownership-record',
+      ],
+      ['no claim at all', (w) => w.runRecords.delete(runId), 'not started by a goal'],
+    ];
+
+    it.each(replacements)(
+      'fails the attempt, adopting and watching nothing, when %s appears after verification',
+      async (_label, replace, detail) => {
+        let swap: (() => void) | undefined;
+        const w = await world({
+          onRunRecordRead: (readNumber) => {
+            // The first read is the start port's verification; the next is adoption's.
+            if (readNumber === 2) swap?.();
+          },
+        });
+        swap = () => replace(w);
+        w.markRunAsGoals(runId);
+        await startDurableRunResult(w.durable, {
+          runId,
+          sessionId: runId,
+          options: agentOptions(() => Promise.resolve({ content: 'done', toolCalls: [] })),
+          prompt: 'work',
+        });
+
+        const outcome = await w.ports.startAttempt(startRequest());
+
+        expect(outcome).toMatchObject({ status: 'failed' });
+        expect((outcome as { detail: string }).detail).toContain(detail);
+        expect(w.watched).toEqual([]);
+      },
+    );
+
+    it.each(replacements)(
+      'does not adopt the run a racing start created when %s appears after verification',
+      async (_label, replace, detail) => {
+        let swap: (() => void) | undefined;
+        const raced = await world({
+          startAttemptRun: () => {
+            throw new Error('Run "goal-g1-a0" already exists');
+          },
+          onRunRecordRead: (readNumber) => {
+            // Verification is read 1; adoption before the start finds no workflow and reads
+            // nothing; the raced adoption after the failed start is read 2.
+            if (readNumber === 2) swap?.();
+          },
+        });
+        swap = () => replace(raced);
+        raced.markRunAsGoals(runId);
+        createActiveRun(
+          agentOptions(() => new Promise(() => {})),
+          { ...raced.durable, runId, prompt: 'work' },
+        );
+        const original = raced.engine.get.bind(raced.engine);
+        await pollUntil(async () => (await original(runId)) !== null);
+        let reads = 0;
+        raced.engine.get = (id: string) =>
+          id === runId && reads++ === 0 ? Promise.resolve(null) : original(id);
+
+        const outcome = await raced.ports.startAttempt(startRequest());
+
+        expect(outcome).toMatchObject({ status: 'failed' });
+        expect((outcome as { detail: string }).detail).toContain(detail);
+        expect(raced.watched).toEqual([]);
+      },
+    );
+  });
+
   it('adopts the run when the deferred start failed because a concurrent start created it', async () => {
     const racer = await world({
       startAttemptRun: () => ({
@@ -488,6 +600,8 @@ describe('startAttempt', () => {
         durablyStarted: Promise.reject(new Error('Run "goal-g1-a0" already exists')),
       }),
     });
+    // The racing start claimed the run's recovery record before it created the run.
+    racer.markRunAsGoals('goal-g1-a0');
     createActiveRun(
       agentOptions(() => new Promise(() => {})),
       { ...racer.durable, runId: 'goal-g1-a0', prompt: 'work' },

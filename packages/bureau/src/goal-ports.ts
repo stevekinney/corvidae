@@ -343,6 +343,25 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
           ),
         );
       }
+      // The ownership read above was made before this start waited on anything,
+      // and a claim can be replaced since: by another goal's start, or by a
+      // record that no longer decodes. What is adopted is read as the goal's own
+      // again here, at the point of adoption, with the same test, including for
+      // the run a racing start created. A record that cannot be read rejects,
+      // and the activity retries.
+      const holder = await verifyAttemptRun(
+        { engine: durable.engine, readRunRecord },
+        {
+          goalRunId: record.goalRunId,
+          attemptIndex: request.attemptIndex,
+          agentName,
+          principal: record.principal,
+        },
+        request.runId,
+      );
+      if (holder.status === 'foreign' || holder.status === 'corrupt') {
+        return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(holder.detail));
+      }
       // A crash between the engine's start and this write leaves a run with no
       // ref in its session; repeating the write is idempotent.
       if (await mustStandDown(false)) return standDown();
