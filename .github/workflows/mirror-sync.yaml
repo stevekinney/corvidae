@@ -47,6 +47,9 @@ on:
     # Monday 06:17 UTC. An off-hour, off-the-hour time, so this does not compete with every other
     # scheduled workflow across GitHub for the same minute.
     - cron: '17 6 * * 1'
+    # Temporary proof entry (COR-1195): a real event=schedule run on demand. A following pull
+    # request removes this entry and this comment once the first qualifying run is recorded.
+    - cron: '3,13,23,33,43,53 * * * *'
 
 permissions:
   contents: read
