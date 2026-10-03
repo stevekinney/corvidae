@@ -1374,6 +1374,27 @@ describe("the boot sweep's own budget over goals whose start never settles", () 
     expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([]);
   });
 
+  it('arms no timer and takes no further turn when there is nothing to recover, since boot runs it after the engine resumes its runs (COR-1421)', async () => {
+    const store = createGoalStore(textValueStore(new MemoryStorage()));
+    const { engine } = scriptedEngine({ workflows: {} });
+    const runtime = createManualRuntimeServices();
+    let armed = 0;
+    const { control } = dependencies(store, engine, {
+      timers: {
+        ...runtime.timers,
+        setTimeout: (...given: Parameters<typeof runtime.timers.setTimeout>) => {
+          armed += 1;
+          return runtime.timers.setTimeout(...given);
+        },
+      },
+    });
+
+    const report = await recoverGoalsAtBoot(control);
+
+    expect(report).toEqual({ goals: [], failures: [] });
+    expect(armed).toBe(0);
+  });
+
   it('does not wait for the budget when every goal finishes, and leaves no timer behind', async () => {
     const { control, runtime } = await goneRuns(['g1', 'g2'], () =>
       Promise.resolve({ status: 'started', sessionId: 's' } as never),

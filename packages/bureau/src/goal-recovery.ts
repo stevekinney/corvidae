@@ -931,6 +931,10 @@ export async function recoverEveryGoal(
   } catch (error) {
     return { goals, failures: [{ goalRunId: '*', reason: describe(error) }] };
   }
+  // With nothing to recover the sweep ends without another turn of the event
+  // loop: boot runs it after the engine resumes its runs, and a turn spent here
+  // is one those runs' first events can be lost in (COR-1421).
+  if (records.length === 0) return { goals, failures };
   // Recovered a few at a time, each result kept at its goal's place in the
   // order, so the report reads the same however the goals interleave.
   const entries = new Map<
