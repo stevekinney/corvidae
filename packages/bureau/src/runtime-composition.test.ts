@@ -5735,6 +5735,154 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
+  describe('fenceGoalAttemptRecoveryRecord (COR-851)', () => {
+    const OWNER = {
+      goalRunId: 'g1',
+      attemptIndex: 0,
+      agentName: 'worker',
+      principal: 'alice',
+    } as const;
+    const AT = '2026-10-02T12:00:00.000Z';
+    const claim = {
+      agentName: 'worker',
+      definitionRevision: 3,
+      input: 'the goal’s work',
+      principal: 'alice',
+      goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+      costEstimation: null,
+    } as const;
+
+    async function compose() {
+      return createRuntimeComposition({ storage: { type: 'memory' }, durableExecution: true });
+    }
+
+    it('tombstones the goal’s own claim in place, keeping everything else it recorded', async () => {
+      const runtime = await compose();
+      try {
+        await runtime.claimCatalogRunRecoveryRecord('goal-g1-a0', claim);
+
+        expect(await runtime.fenceGoalAttemptRecoveryRecord('goal-g1-a0', OWNER, AT)).toBe(
+          'fenced',
+        );
+
+        expect(await runtime.loadCatalogRunRecoveryRecord('goal-g1-a0')).toEqual({
+          status: 'found',
+          record: {
+            schemaVersion: 1,
+            ...claim,
+            goalAttempt: { goalRunId: 'g1', attemptIndex: 0, tombstonedAt: AT },
+          },
+        });
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it('is idempotent and keeps the first tombstone’s time', async () => {
+      const runtime = await compose();
+      try {
+        await runtime.claimCatalogRunRecoveryRecord('goal-g1-a0', claim);
+        await runtime.fenceGoalAttemptRecoveryRecord('goal-g1-a0', OWNER, AT);
+
+        expect(
+          await runtime.fenceGoalAttemptRecoveryRecord(
+            'goal-g1-a0',
+            OWNER,
+            '2027-01-01T00:00:00.000Z',
+          ),
+        ).toBe('fenced');
+
+        const load = await runtime.loadCatalogRunRecoveryRecord('goal-g1-a0');
+        expect(load).toMatchObject({
+          status: 'found',
+          record: { goalAttempt: { tombstonedAt: AT } },
+        });
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it('creates a tombstoned claim where none exists, so a start that claims later is refused', async () => {
+      const runtime = await compose();
+      try {
+        expect(await runtime.fenceGoalAttemptRecoveryRecord('goal-g1-a0', OWNER, AT)).toBe(
+          'fenced',
+        );
+
+        // The late start's own claim loses to the tombstone and finds it.
+        expect(await runtime.claimCatalogRunRecoveryRecord('goal-g1-a0', claim)).toBe(false);
+        expect(await runtime.loadCatalogRunRecoveryRecord('goal-g1-a0')).toMatchObject({
+          status: 'found',
+          record: {
+            agentName: 'worker',
+            principal: 'alice',
+            goalAttempt: { goalRunId: 'g1', attemptIndex: 0, tombstonedAt: AT },
+          },
+        });
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it.each([
+      ['an ordinary run’s record', { agentName: 'worker', principal: 'alice' }],
+      ['another goal’s claim', { ...claim, goalAttempt: { goalRunId: 'g2', attemptIndex: 0 } }],
+      ['another principal’s claim', { ...claim, principal: 'mallory' }],
+    ])('leaves %s alone', async (_label, held) => {
+      const runtime = await compose();
+      try {
+        await runtime.claimCatalogRunRecoveryRecord('goal-g1-a0', {
+          definitionRevision: 1,
+          input: 'x',
+          ...held,
+        });
+
+        expect(await runtime.fenceGoalAttemptRecoveryRecord('goal-g1-a0', OWNER, AT)).toBe(
+          'foreign',
+        );
+
+        const load = await runtime.loadCatalogRunRecoveryRecord('goal-g1-a0');
+        expect(JSON.stringify(load)).not.toContain('tombstonedAt');
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it('rejects, writing nothing, when the record at the id is not a valid recovery record', async () => {
+      const runtime = await compose();
+      try {
+        const storage = runtime.durable?.engine.storage;
+        await storage?.put(
+          `${CATALOG_RUN_RECOVERY_KEY_PREFIX}goal-g1-a0`,
+          encode({ schemaVersion: 1, agentName: 7 }),
+        );
+
+        let caught: unknown;
+        try {
+          await runtime.fenceGoalAttemptRecoveryRecord('goal-g1-a0', OWNER, AT);
+        } catch (error) {
+          caught = error;
+        }
+
+        expect((caught as Error | undefined)?.message).toContain('not valid');
+        expect(await runtime.loadCatalogRunRecoveryRecord('goal-g1-a0')).toEqual({
+          status: 'corrupt',
+        });
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it('has nothing to fence with no durable storage', async () => {
+      const runtime = await createRuntimeComposition({
+        generate: async () => ({ content: 'x', toolCalls: [] }),
+        toolbox: createToolbox([], { context: {} }),
+      });
+
+      expect(await runtime.fenceGoalAttemptRecoveryRecord('goal-g1-a0', OWNER, AT)).toBe('fenced');
+    });
+  });
+
   it('claimCatalogRunRecoveryRecord has nothing to claim against with no durable storage', async () => {
     const runtime = await createRuntimeComposition({
       generate: async () => ({ content: 'x', toolCalls: [] }),

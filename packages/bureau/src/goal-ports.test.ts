@@ -30,6 +30,7 @@ import {
   GoalAttemptNotDurableCapableError,
   type GoalAttemptRun,
   type GoalAttemptStart,
+  GoalAttemptTombstonedError,
 } from './bureau-catalog-dispatch';
 import { createGoalConversations } from './goal-conversation';
 import type { AttemptForwarder, AttemptTarget } from './goal-forwarder';
@@ -125,6 +126,7 @@ interface WorldOptions {
   readonly plan?: { durable: boolean; agentVersion: string } | undefined;
   readonly startAttemptRun?: Parameters<typeof createGoalPorts>[0]['startAttemptRun'];
   readonly cancelRun?: Parameters<typeof createGoalPorts>[0]['cancelRun'];
+  readonly fenceAttempt?: Parameters<typeof createGoalPorts>[0]['fenceAttempt'];
   readonly policy?: GoalConversationPolicy;
   readonly resolveCostEstimation?: Parameters<typeof createGoalPorts>[0]['resolveCostEstimation'];
   readonly instructions?: string;
@@ -189,6 +191,7 @@ async function world(options: WorldOptions = {}) {
     }),
   );
   const watched: Array<{ target: AttemptTarget; live: unknown }> = [];
+  const fenced: string[] = [];
   const forwarder: AttemptForwarder = {
     watch: (target, live) => watched.push({ target, live }),
     reconcile: () => Promise.resolve('not-needed'),
@@ -242,9 +245,28 @@ async function world(options: WorldOptions = {}) {
         throw new Error('no attempt run was expected');
       }),
     cancelRun: options.cancelRun ?? (() => Promise.resolve({ status: 'requested' })),
+    fenceAttempt:
+      options.fenceAttempt ??
+      ((record, attemptIndex) => {
+        const runId = goalAttemptRunId(record.goalRunId, attemptIndex);
+        fenced.push(runId);
+        // What the runtime composition does: the claim becomes (or is created as) a tombstone.
+        const claimed = runRecords.get(runId);
+        runRecords.set(runId, {
+          schemaVersion: 1,
+          agentName: 'worker',
+          definitionRevision: 1,
+          input: 'work',
+          principal: 'alice',
+          ...claimed,
+          goalAttempt: { goalRunId: record.goalRunId, attemptIndex, tombstonedAt: NOW },
+        });
+        return Promise.resolve('fenced');
+      }),
     resolveCostEstimation: options.resolveCostEstimation ?? (() => Promise.resolve(undefined)),
   });
   return {
+    fenced,
     durable,
     engine,
     store,
@@ -647,6 +669,117 @@ describe('startAttempt', () => {
     });
   });
 
+  describe('a try Weft timed out, still running in the background', () => {
+    const timedOutSignal = () => {
+      const controller = new AbortController();
+      return { controller, signal: controller.signal };
+    };
+
+    it('writes nothing and starts no run when its signal fired before the start', async () => {
+      let starts = 0;
+      const { controller, signal } = timedOutSignal();
+      controller.abort();
+      const w = await world({
+        startAttemptRun: () => {
+          starts += 1;
+          return { run: {} as never, durablyStarted: Promise.resolve() };
+        },
+      });
+
+      expect(await w.ports.startAttempt(startRequest(), signal)).toEqual({ status: 'stood-down' });
+
+      expect(starts).toBe(0);
+      expect(w.watched).toEqual([]);
+      expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+    });
+
+    it('starts no run when its signal fires after the session is seated, before the engine start', async () => {
+      let starts = 0;
+      const { controller, signal } = timedOutSignal();
+      const w = await world({
+        startAttemptRun: () => {
+          starts += 1;
+          return { run: {} as never, durablyStarted: Promise.resolve() };
+        },
+      });
+      const original = w.sessions.load.bind(w.sessions);
+      let reads = 0;
+      w.sessions.load = async (id: string) => {
+        reads += 1;
+        if (reads === 2) controller.abort();
+        return original(id);
+      };
+
+      expect(await w.ports.startAttempt(startRequest(), signal)).toEqual({ status: 'stood-down' });
+
+      expect(starts).toBe(0);
+    });
+
+    it('leaves the run it created for the retry to adopt, writing no reference and attaching no forwarder, when the goal is still live', async () => {
+      const { controller, signal } = timedOutSignal();
+      const stopped: string[] = [];
+      const w = await world({
+        cancelRun: (runId) => {
+          stopped.push(runId);
+          return Promise.resolve({ status: 'requested' });
+        },
+        startAttemptRun: () => ({
+          run: {} as never,
+          // The try is timed out while the engine's start is in flight, and
+          // the start completes anyway.
+          durablyStarted: Promise.resolve().then(() => controller.abort()),
+        }),
+      });
+
+      expect(await w.ports.startAttempt(startRequest(), signal)).toEqual({ status: 'stood-down' });
+
+      // Not stopped: a retry adopts this run, and an aborted one would read as a failed attempt.
+      expect(stopped).toEqual([]);
+      expect(w.fenced).toEqual([]);
+      expect(w.watched).toEqual([]);
+      const session = await w.sessions.load('goal-g1-s0');
+      expect(session?.runs ?? []).toEqual([]);
+    });
+
+    it('stops the run it created, fencing its claim first, when the goal ended meanwhile', async () => {
+      const { controller, signal } = timedOutSignal();
+      const order: string[] = [];
+      let w!: Awaited<ReturnType<typeof world>>;
+      w = await world({
+        cancelRun: (runId) => {
+          order.push(`cancel:${runId}`);
+          return Promise.resolve({ status: 'requested' });
+        },
+        startAttemptRun: () => ({
+          run: {} as never,
+          durablyStarted: w.store
+            .requestCancellation('g1', { requestedAt: NOW }, NOW)
+            .then(() => controller.abort()),
+        }),
+      });
+
+      expect(await w.ports.startAttempt(startRequest(), signal)).toEqual({ status: 'stood-down' });
+
+      expect(w.fenced).toEqual(['goal-g1-a0']);
+      expect(order).toEqual(['cancel:goal-g1-a0']);
+    });
+  });
+
+  describe('a claim the goal tombstoned', () => {
+    it('stands down, creating nothing, when the start finds its claim tombstoned', async () => {
+      const w = await world({
+        startAttemptRun: () => ({
+          run: {} as never,
+          durablyStarted: Promise.reject(new GoalAttemptTombstonedError('goal-g1-a0')),
+        }),
+      });
+
+      expect(await w.ports.startAttempt(startRequest())).toEqual({ status: 'stood-down' });
+
+      expect(w.watched).toEqual([]);
+    });
+  });
+
   describe('the aggregate duration', () => {
     const BOUND_MS = 1_000;
     const bounds = { maximumAttempts: 3, maximumTotalDurationMs: BOUND_MS };
@@ -796,6 +929,29 @@ describe('abortAttempt', () => {
       await ports.abortAttempt(request);
     }
     expect(stopped).toEqual(Array.from({ length: 4 }, () => 'goal-g1-a0'));
+  });
+
+  it("tombstones the attempt's claim before it looks for the run, so a start that has claimed but not created the run is fenced", async () => {
+    const order: string[] = [];
+    const { ports, fenced } = await world({
+      cancelRun: (runId) => {
+        order.push(`cancel:${runId}`);
+        return Promise.resolve({ status: 'not-found' });
+      },
+    });
+
+    await ports.abortAttempt(request);
+
+    expect(fenced).toEqual(['goal-g1-a0']);
+    expect(order).toEqual(['cancel:goal-g1-a0']);
+  });
+
+  it('fails the activity, so it is retried, when the claim could not be fenced', async () => {
+    const { ports } = await world({
+      fenceAttempt: () => Promise.reject(new Error('claim storage is down')),
+    });
+
+    expect(await throwingRejectionOf(ports.abortAttempt(request))).toThrow('claim storage is down');
   });
 
   it('fails the activity when the engine could not cancel the run, so the controller is retried', async () => {

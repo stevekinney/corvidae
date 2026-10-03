@@ -9,6 +9,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { GOAL_WORKFLOW_TYPE } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
+import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import {
   createOwnedGoalEngine,
   createOwnedRunCanceller,
@@ -326,6 +327,8 @@ describe('the goal control plane over a foreign controller workflow', () => {
       resolveFreshAttemptSource: undefined,
       runtimeServices: createManualRuntimeServices(),
       host: createGoalWorkflowHost(),
+      fenceClaim: () => Promise.resolve('fenced'),
+      fenceHost: createGoalAttemptFenceHost(),
       getDurable: () => ({ engine: engine as never, checkpointStore: {} as never }),
       planAgent: () => ({ durable: true, agentVersion: '1' }),
       startAttemptRun: () => {

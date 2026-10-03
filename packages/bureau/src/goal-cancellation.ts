@@ -11,7 +11,12 @@
  * 2. `engine.cancel` the controller workflow, and await its durable commit. It
  *    ends the generator mid-flight, so a controller that had not yet acted on
  *    the signal never will.
- * 3. Stop the attempt's run (`cancelDurableRun`, idempotent).
+ * 3. Tombstone the claim of each attempt the cancellation may have overtaken,
+ *    then stop its run (`cancelDurableRun`, idempotent). A start that has claimed
+ *    its run but not created it leaves nothing to stop, so the tombstone, not the
+ *    stop, is what makes the run it goes on to create take no step
+ *    (`goal-attempt-fence.ts`). A claim that cannot be tombstoned is an
+ *    `attempt-run` still awaited.
  * 4. Commit `canceled` from the host, with the controller's own builder. A
  *    controller that already did leaves this a `duplicate`.
  * 5. One fresh read of everything that must be finished: the goal record, the
@@ -44,6 +49,7 @@ import {
   TERMINAL_CONTROLLER_STATUSES,
   attemptToStop,
   commitCancellation,
+  fenceOvertakenAttempts,
   type GoalControlDependencies,
 } from './goal-controller';
 import { cancelSignalId, goalWorkflowId, isTerminalGoalStatus, type GoalState } from './goal-state';
@@ -101,6 +107,7 @@ export async function cancelGoal(
   const engine = getEngine();
   const workflowId = goalWorkflowId(goalRunId);
   const attempts = runsToStop(marked.record);
+  let fenced = true;
   if (engine !== undefined) {
     // Each step is attempted whatever the one before did: a failure leaves the
     // marker in place and shows up as something unfinished in the read-back.
@@ -124,14 +131,14 @@ export async function cancelGoal(
         cause: error,
       });
     }
-    await stopRuns(dependencies, goalRunId, attempts);
+    fenced = await stopRuns(dependencies, marked.record);
   }
   const latest = (await store.get(goalRunId)) ?? marked.record;
   if (!isTerminalGoalStatus(latest.status)) {
     await commitCancellation(store, latest, clock.now());
   }
 
-  return readBack(dependencies, goalRunId, attempts, scoped);
+  return readBack(dependencies, goalRunId, attempts, scoped, fenced);
 }
 
 /**
@@ -150,6 +157,7 @@ export async function settleCanceledGoal(
   const { goalRunId } = record;
   const engine = getEngine();
   const attempts = runsToStop(record);
+  let fenced = true;
   if (engine !== undefined) {
     const controller = await engine.get(goalWorkflowId(goalRunId)).catch(() => undefined);
     if (
@@ -168,9 +176,9 @@ export async function settleCanceledGoal(
         });
       }
     }
-    await stopRuns(dependencies, goalRunId, attempts);
+    fenced = await stopRuns(dependencies, record);
   }
-  return readBack(dependencies, goalRunId, attempts, viewer.scoped === true);
+  return readBack(dependencies, goalRunId, attempts, viewer.scoped === true, fenced);
 }
 
 /**
@@ -183,12 +191,20 @@ export function runsToStop(record: GoalState): readonly string[] {
   return last === undefined || last === named ? [named] : [named, last];
 }
 
-async function stopRuns(
+/**
+ * Fences every attempt's claim and then stops its run, in that order: a start
+ * that has claimed its run but not yet created it leaves no run to stop, and the
+ * tombstone is what makes the run it goes on to create take no step. `false`
+ * when a claim could not be fenced, which the caller reports as an attempt run
+ * still owed.
+ */
+export async function stopRuns(
   dependencies: GoalControlDependencies,
-  goalRunId: string,
-  runIds: readonly string[],
-): Promise<void> {
-  for (const runId of runIds) {
+  record: GoalState,
+): Promise<boolean> {
+  const { goalRunId } = record;
+  const fenced = await fenceOvertakenAttempts(dependencies, record);
+  for (const runId of runsToStop(record)) {
     const stopped = await dependencies.cancelRun(runId).catch((error: unknown) => ({
       status: 'failed' as const,
       error,
@@ -202,6 +218,7 @@ async function stopRuns(
       });
     }
   }
+  return fenced;
 }
 
 /**
@@ -215,6 +232,8 @@ export async function readBack(
   goalRunId: string,
   attemptRunIds: readonly string[],
   scoped: boolean,
+  /** Whether every attempt claim the cancellation owed a tombstone was fenced; `false` is an attempt run still owed. */
+  fenced = true,
 ): Promise<BureauGoalCancelOutcome> {
   const { store, getEngine } = dependencies;
   const goal = await store.get(goalRunId);
@@ -230,6 +249,7 @@ export async function readBack(
     goal.status === 'canceled',
     dependencies.diagnose,
   );
+  if (!fenced && !awaiting.includes('attempt-run')) awaiting.push('attempt-run');
   return awaiting.length === 0
     ? { outcome: 'canceled', goal }
     : { outcome: 'cancellation-pending', goal, awaiting };

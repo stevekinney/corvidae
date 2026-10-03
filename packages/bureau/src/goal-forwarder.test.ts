@@ -583,3 +583,90 @@ describe('createAttemptForwarder', () => {
     expect(diagnostics[0]?.message).toContain('session store is down');
   });
 });
+
+describe('shutting down with a watcher paused between tries', () => {
+  it('releases the pause at drain, clearing its timer and ending the watcher, so no goal-owned work outlives shutdown', async () => {
+    const { durable, store } = await world();
+    await finishedRun(durable);
+    const pending = new Set<unknown>();
+    const timers = {
+      ...runtime.timers,
+      setTimeout: (callback: () => void, milliseconds?: number) => {
+        const handle = runtime.timers.setTimeout(callback, milliseconds);
+        pending.add(handle);
+        return handle;
+      },
+      clearTimeout: (handle: Parameters<typeof runtime.timers.clearTimeout>[0]) => {
+        pending.delete(handle);
+        runtime.timers.clearTimeout(handle);
+      },
+    };
+    let closing = false;
+    let tries = 0;
+    const forwarder = createAttemptForwarder({
+      store,
+      runtime: { ...runtime, timers },
+      getDurable: () => durable,
+      resolveCostEstimation: () => Promise.resolve(undefined),
+      conversations: {
+        settle: () => {
+          tries += 1;
+          return Promise.reject(new Error('session store is down'));
+        },
+      },
+      retryDelaysMs: [60_000],
+      isClosing: () => closing,
+      diagnose: () => {},
+    });
+
+    forwarder.watch(target);
+    // The first try failed and the watcher is now backing off for a minute.
+    await pollUntil(() => pending.size === 1);
+    closing = true;
+    await forwarder.drain();
+
+    expect(pending.size).toBe(0);
+    expect(tries).toBe(1);
+  });
+
+  it('wakes a pause at drain without closing, so cleanup never waits out a backoff, and the watcher goes on', async () => {
+    const { durable, store } = await world();
+    await finishedRun(durable);
+    const pending = new Set<unknown>();
+    const timers = {
+      ...runtime.timers,
+      setTimeout: (callback: () => void, milliseconds?: number) => {
+        const handle = runtime.timers.setTimeout(callback, milliseconds);
+        pending.add(handle);
+        return handle;
+      },
+      clearTimeout: (handle: Parameters<typeof runtime.timers.clearTimeout>[0]) => {
+        pending.delete(handle);
+        runtime.timers.clearTimeout(handle);
+      },
+    };
+    let tries = 0;
+    const forwarder = createAttemptForwarder({
+      store,
+      runtime: { ...runtime, timers },
+      getDurable: () => durable,
+      resolveCostEstimation: () => Promise.resolve(undefined),
+      conversations: {
+        settle: () => {
+          tries += 1;
+          return tries < 2 ? Promise.reject(new Error('hiccup')) : Promise.resolve();
+        },
+      },
+      retryDelaysMs: [60_000],
+      isClosing: () => false,
+      diagnose: () => {},
+    });
+
+    forwarder.watch(target);
+    await pollUntil(() => pending.size === 1);
+    await forwarder.drain();
+    await pollUntil(() => tries === 2);
+
+    expect(tries).toBe(2);
+  });
+});

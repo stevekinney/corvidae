@@ -6,7 +6,7 @@
  * result is recorded once and replayed from history afterwards.
  */
 
-import { activity } from '@lostgradient/weft';
+import { activity, type ActivityContext } from '@lostgradient/weft';
 
 import type { ProjectedValidatorResult } from '../goal-decision';
 import type {
@@ -89,8 +89,10 @@ export function createGoalWorkflowActivities(ports: GoalWorkflowPorts) {
     startAttempt: activity({
       name: 'startAttempt',
       idempotent: true,
-      execute: (input: GoalWorkflowStartRequest): Promise<GoalWorkflowStart> =>
-        ports.startAttempt(input),
+      execute: (
+        input: GoalWorkflowStartRequest,
+        context?: ActivityContext,
+      ): Promise<GoalWorkflowStart> => ports.startAttempt(input, context?.signal),
     }),
 
     runValidator: activity({

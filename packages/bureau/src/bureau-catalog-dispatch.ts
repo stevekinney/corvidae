@@ -137,6 +137,19 @@ export class GoalAttemptInvalidCostEstimationError extends Error {
   }
 }
 
+/**
+ * COR-851 — the attempt's claim is tombstoned: the goal ended, closed, or was
+ * canceled over this attempt while its start was between claiming the run and
+ * creating it. Nothing is started from a tombstoned claim, and the attempt
+ * stands down; it is neither a fault to retry nor a verdict on the attempt.
+ */
+export class GoalAttemptTombstonedError extends Error {
+  constructor(runId: string) {
+    super(`The claim for run "${runId}" is tombstoned: the goal ended over this attempt.`);
+    this.name = 'GoalAttemptTombstonedError';
+  }
+}
+
 export interface GoalAttemptRun {
   readonly run: AgentRun<unknown, boolean>;
   readonly durablyStarted: Promise<void>;
@@ -305,7 +318,14 @@ export function createCatalogDispatcher({
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
       return {
         ...withRuntime,
-        hooks: mergeHookRegistries(runtime.createBureauInvariantHooks(), withRuntime.hooks),
+        // A goal attempt's run is also fenced against its goal: it takes no step
+        // once the goal ended or its own claim was tombstoned (goal-attempt-fence.ts).
+        hooks: mergeHookRegistries(
+          runtime.createBureauInvariantHooks(
+            goalAttempt === undefined ? undefined : { ...goalAttempt, runId },
+          ),
+          withRuntime.hooks,
+        ),
       };
     };
     const resolveDurableAgent = async (): Promise<RunnableAgent<unknown, boolean>> => {
@@ -410,6 +430,14 @@ export function createCatalogDispatcher({
             `Run "${runId}" already exists and does not belong to this goal attempt`,
             'CONFLICT',
           );
+        }
+        // A tombstoned claim is the goal saying it is over this attempt. It is the
+        // pre-start half of the fence: the start stops here, before the engine is
+        // asked for a workflow. A start that already passed this point is stopped
+        // by the run's own fence instead (see goal-attempt-fence.ts).
+        if (existing.record.goalAttempt?.tombstonedAt !== undefined) {
+          runAttribution.delete(runId);
+          throw new GoalAttemptTombstonedError(runId);
         }
         // The winning claim is immutable. Two at-least-once executions of one
         // attempt can overlap, and either may be the one whose workflow the

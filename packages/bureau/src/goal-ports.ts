@@ -19,8 +19,27 @@
  * - `runValidator` may run twice after a crash. The decision is committed once
  *   (the store keeps the first), so a validator without side effects is simply
  *   run again; one that has them should say so with `determinism`.
- * - `abortAttempt` is `cancelDurableRun`, which is a no-op for a run that never
- *   existed or already ended.
+ * - `abortAttempt` tombstones the attempt's claim, then calls `cancelDurableRun`,
+ *   which is a no-op for a run that never existed or already ended. The
+ *   tombstone is what covers a start that has claimed its run but not created
+ *   it: there is no transaction across the claim and the engine's start, so the
+ *   run such a start goes on to create is fenced instead (`goal-attempt-fence.ts`).
+ *
+ * What each check in `startAttempt` covers, since several look alike:
+ *
+ * - the reads of the goal before each write are an in-process fast path: the
+ *   goal ended while this try ran, so nothing more is written. They cover no
+ *   crash and no race with another process.
+ * - the activity's own signal, aborted by Weft when it times this try out, stops
+ *   the writes of a try that is still running in the background after its
+ *   retry began.
+ * - the tombstoned claim refuses a start that reaches its own claim after the
+ *   goal ended over the attempt.
+ * - the read after the engine's start stops a run the goal ended over while the
+ *   start was in flight, in this process.
+ * - the run's own fence is the backstop for what none of those can see: a
+ *   process that dies between the engine's start and the read after it, and a
+ *   start that was already past its claim when the tombstone landed.
  *
  * Each attempt is its own durable run, started under its deterministic id. What
  * carries a conversation from one attempt to the next is the goal's session in
@@ -61,6 +80,7 @@ import {
   GoalAttemptNotDurableCapableError,
   type GoalAttemptRun,
   type GoalAttemptStart,
+  GoalAttemptTombstonedError,
 } from './bureau-catalog-dispatch';
 import type { GoalConversations } from './goal-conversation';
 import type { AttemptForwarder } from './goal-forwarder';
@@ -76,6 +96,7 @@ import {
   goalAttemptId,
   goalAttemptRunId,
   goalDecisionId,
+  type GoalState,
   goalTransitionId,
   isTerminalGoalStatus,
 } from './goal-state';
@@ -130,8 +151,8 @@ export function createGoalWorkflowHost(): GoalWorkflowHost {
       Promise.resolve().then(() => need('loadGoalState').loadGoalState(goalRunId)),
     commitTransition: (request) =>
       Promise.resolve().then(() => need('commitTransition').commitTransition(request)),
-    startAttempt: (request) =>
-      Promise.resolve().then(() => need('startAttempt').startAttempt(request)),
+    startAttempt: (request, signal) =>
+      Promise.resolve().then(() => need('startAttempt').startAttempt(request, signal)),
     runValidator: (request) =>
       Promise.resolve().then(() => need('runValidator').runValidator(request)),
     abortAttempt: (request) =>
@@ -165,6 +186,8 @@ export interface GoalPortsDependencies {
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   readonly startAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
+  /** Tombstones an attempt's claim before its run is stopped; see `goal-attempt-fence.ts`. */
+  readonly fenceAttempt: (record: GoalState, attemptIndex: number) => Promise<unknown>;
   readonly resolveCostEstimation: (runId: string) => Promise<RunOptions['costEstimation']>;
 }
 
@@ -213,6 +236,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     planAgent,
     startAttemptRun,
     cancelRun,
+    fenceAttempt,
     resolveCostEstimation,
   } = dependencies;
 
@@ -238,7 +262,10 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     }
   }
 
-  async function startAttempt(request: GoalWorkflowStartRequest): Promise<GoalWorkflowStart> {
+  async function startAttempt(
+    request: GoalWorkflowStartRequest,
+    signal?: AbortSignal,
+  ): Promise<GoalWorkflowStart> {
     const record = await store.get(request.goalRunId);
     if (record === undefined) {
       return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal record is unavailable'));
@@ -260,9 +287,9 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // the record is read again immediately before each write that would create or
     // extend an attempt. The residual window is the gap between that read and the
     // write it guards: a cancellation landing inside it is caught by the
-    // canceller, which stops the run (`cancelRun`) and by the forwarder, which
-    // re-reads the goal before it commits anything; at worst a session reference
-    // for a stopped run is written.
+    // canceller, which tombstones the attempt's claim and stops the run
+    // (`abortAttempt`), and by the forwarder, which re-reads the goal before it
+    // commits anything; at worst a session reference for a stopped run is written.
     //
     // The aggregate deadline is one of the reasons to stand down, measured with
     // the controller's own function over the same clock, so the two cannot
@@ -275,7 +302,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // when the controller has only just found the deadline elapsed. The deadline
     // is monotonic and the controller reads the same clock, so a run stopped here
     // is one the controller would have stopped as well.
-    const mustStandDown = async (withDeadline: boolean): Promise<boolean> => {
+    const goalIsOver = async (withDeadline: boolean): Promise<boolean> => {
       const latest = await store.get(request.goalRunId);
       return (
         latest === undefined ||
@@ -284,6 +311,17 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         (withDeadline && isDeadlineElapsed(latest, runtime.clock.now()))
       );
     };
+    // Weft aborts the activity's signal when it times this try out, and the try
+    // goes on running in the background while the retry that replaced it starts.
+    // Such a try writes nothing further: every durable write below is preceded by
+    // this check, so the only thing it can still leave is what the retry adopts.
+    // It does not stop a run it already created, because the goal is still live
+    // and the retry adopts that run; stopping it would hand the retry an aborted
+    // one, which the controller reads as a failed attempt. A goal that really is
+    // over is stopped by `goalIsOver` below, whether or not the signal fired.
+    const timedOut = (): boolean => signal?.aborted === true;
+    const mustStandDown = async (withDeadline: boolean): Promise<boolean> =>
+      timedOut() || (await goalIsOver(withDeadline));
     const standDown = (): GoalWorkflowStart => ({ status: 'stood-down' });
 
     const adopt = async (): Promise<GoalWorkflowStart | undefined> => {
@@ -322,6 +360,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
 
     // A cancellation that is already recorded must not be given a run to stop.
     if (
+      timedOut() ||
       record.cancellation !== undefined ||
       isTerminalGoalStatus(record.status) ||
       isDeadlineElapsed(record, runtime.clock.now())
@@ -395,6 +434,9 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       // restarts, rather than ending the goal over a transient fault.
       const raced = await adopt();
       if (raced !== undefined) return raced;
+      // The goal tombstoned this attempt's claim between this start's read of the
+      // goal and its own claim: it ended over the attempt, so nothing starts.
+      if (error instanceof GoalAttemptTombstonedError) return standDown();
       // A permanent property of the agent is a verdict on the attempt, not a
       // fault to retry.
       if (
@@ -411,10 +453,13 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // canceller's `cancelRun` finds the run: no start escapes both. The deadline
     // has no marker to be ordered against, so it is read here, after the run
     // exists, and the controller's own stop of a run it knows is the other half.
-    if (await mustStandDown(true)) {
+    if (await goalIsOver(true)) {
       await abortAttempt({ ...target, attemptId: request.attemptId });
       return standDown();
     }
+    // A try Weft timed out ends here without writing the session reference or
+    // attaching a forwarder: the retry adopts this run and does both.
+    if (timedOut()) return standDown();
     await conversations.recordStart(record, request);
     forwarder.watch(target, started.run);
     return { status: 'started', sessionId: seat.sessionId };
@@ -516,6 +561,13 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
   }
 
   async function abortAttempt(request: GoalWorkflowAbortRequest): Promise<void> {
+    // The claim is tombstoned before the run is looked for. A start that has
+    // claimed the run but not yet created it leaves no run to stop, and the
+    // tombstone is what stops the run it goes on to create: that run's own fence
+    // finds the claim tombstoned and takes no step. A rejection fails the
+    // activity, which retries, because the abort is still owed.
+    const record = await store.get(request.goalRunId);
+    if (record !== undefined) await fenceAttempt(record, request.attemptIndex);
     const outcome = await cancelRun(request.runId);
     if (outcome.status === 'failed') {
       throw outcome.error instanceof Error ? outcome.error : new Error(describe(outcome.error));

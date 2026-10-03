@@ -396,6 +396,48 @@ describe('a goal that ended while its next attempt was still starting', () => {
       database = createTestDatabase(`late-start-${ending}`);
       await overtaken(ending);
 
+      let steps = 0;
+      const { bureau } = await bootOver({
+        path: database.path,
+        agents: {
+          worker: workerAgent((context) => {
+            steps += 1;
+            return hangUntilAborted(context);
+          }),
+        },
+        validators: [createCheckValidator()],
+      });
+      await track(bureau);
+      await bureau.waitForRecovery?.();
+
+      // Ended either way: the resumed run's own fence stops it before its first
+      // step, or the sweep cancels it first. Neither lets it work for a goal that is over.
+      expect(
+        await pollUntil(async () =>
+          ['cancelled', 'completed'].includes((await workflowStatus(bureau, 'goal-g1-a0')) ?? ''),
+        ),
+      ).toBe(true);
+      expect(steps).toBe(0);
+      const goal = await bureau.goals.get('g1');
+      expect(goal).toMatchObject({ status: ending, attempts: [] });
+    },
+  );
+
+  it.each(['exhausted', 'canceled'] as const)(
+    'tombstones the claim of a start that claimed its run and never created it, so close() may mark the %s goal cleaned up',
+    async (ending) => {
+      database = createTestDatabase(`claimed-never-started-${ending}`);
+      const view = await inspection();
+      await view.store.create(pendingGoal());
+      await view.overwrite(await overtakingRecord(ending));
+      // The start died after claiming the run and before the engine created it.
+      await view.claimRun('goal-g1-a0', {
+        agentName: 'worker',
+        definitionRevision: 1,
+        input: 'work',
+        goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+      });
+
       const { bureau } = await bootOver({
         path: database.path,
         agents: { worker: workerAgent(hangUntilAborted) },
@@ -404,11 +446,17 @@ describe('a goal that ended while its next attempt was still starting', () => {
       await track(bureau);
       await bureau.waitForRecovery?.();
 
-      expect(
-        await pollUntil(async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled'),
-      ).toBe(true);
-      const goal = await bureau.goals.get('g1');
-      expect(goal).toMatchObject({ status: ending, attempts: [] });
+      // Nothing was created, and the claim a late start would continue from is now a tombstone.
+      expect(await workflowStatus(bureau, 'goal-g1-a0')).toBeUndefined();
+      const stored = await view.storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}goal-g1-a0`);
+      expect(stored).toBeDefined();
+      expect(decode(stored!)).toMatchObject({
+        goalAttempt: { goalRunId: 'g1', attemptIndex: 0, tombstonedAt: expect.any(String) },
+      });
+      const closed = await bureau.goals.close('g1');
+      expect(closed).toMatchObject({ outcome: 'closed' });
+      const after = await bureau.goals.get('g1');
+      expect(after?.cleanedUpAt).toBeDefined();
     },
   );
 
@@ -486,9 +534,15 @@ describe('a cancellation that a process died in the middle of', () => {
       '2026-10-02T12:00:00.000Z',
     );
 
+    let steps = 0;
     const { bureau } = await bootOver({
       path: database.path,
-      agents: { worker: workerAgent(hangUntilAborted) },
+      agents: {
+        worker: workerAgent((context) => {
+          steps += 1;
+          return hangUntilAborted(context);
+        }),
+      },
       validators: [createCheckValidator()],
     });
     await track(bureau);
@@ -500,7 +554,15 @@ describe('a cancellation that a process died in the middle of', () => {
       cancellation: { reason: 'operator' },
     });
     expect(goal.attempts.map((attempt) => attempt.status)).toEqual(['aborted']);
-    expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('cancelled');
+    // The marker is durable, so the resumed run's own fence refuses its first step,
+    // or the completion of the cancellation stops it first: it ended either way,
+    // and took no step for a goal that was being canceled.
+    expect(
+      await pollUntil(async () =>
+        ['cancelled', 'completed'].includes((await workflowStatus(bureau, 'goal-g1-a0')) ?? ''),
+      ),
+    ).toBe(true);
+    expect(steps).toBe(0);
   });
 
   it('is completed when the controller workflow was cancelled out from under its goal', async () => {

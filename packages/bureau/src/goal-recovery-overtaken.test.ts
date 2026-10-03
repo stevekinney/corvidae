@@ -98,6 +98,51 @@ describe('recovery when a cancellation lands between its read and its start', ()
   });
 });
 
+describe('recovery when a cancellation lands between counting a restart and starting it', () => {
+  it('starts no replacement controller and completes the cancellation', async () => {
+    const store = await runningGoal();
+    const racing: GoalStore = {
+      ...store,
+      recordControllerRestart: async (goalRunId, now, expectedCount) => {
+        const counted = await store.recordControllerRestart(goalRunId, now, expectedCount);
+        await store.requestCancellation(goalRunId, MARKER, NOW);
+        return counted;
+      },
+    };
+    const { engine, calls } = scriptedEngine({
+      workflows: { 'goal:g1': 'failed', 'goal-g1-a0': 'cancelled' },
+    });
+    const { control } = dependencies(racing, engine);
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(startsOf(calls)).toEqual([]);
+    expect(entry.outcome).toBe('canceled');
+  });
+
+  it('completes the cancellation instead of counting a restart when the marker landed before the count', async () => {
+    const store = await runningGoal();
+    const racing: GoalStore = {
+      ...store,
+      recordControllerRestart: async (goalRunId, now, expectedCount) => {
+        await store.requestCancellation(goalRunId, MARKER, NOW);
+        return store.recordControllerRestart(goalRunId, now, expectedCount);
+      },
+    };
+    const { engine, calls } = scriptedEngine({
+      workflows: { 'goal:g1': 'failed', 'goal-g1-a0': 'cancelled' },
+    });
+    const { control } = dependencies(racing, engine);
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(startsOf(calls)).toEqual([]);
+    expect(entry.outcome).toBe('canceled');
+    const unspent = await store.get('g1');
+    expect(unspent?.controllerRestarts).toBe(0);
+  });
+});
+
 describe('completing a cancellation another caller committed first', () => {
   it('settles the canceled goal instead of answering already-terminal without stopping anything', async () => {
     const store = await runningGoal();

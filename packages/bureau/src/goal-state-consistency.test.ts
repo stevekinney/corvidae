@@ -144,6 +144,11 @@ const contradictions: Array<[string, string, Mutation]> = [
   ['retrying', 'no attempts', (r) => (r['attempts'] = [])],
   [
     'retrying',
+    'no attempt headroom left (as many attempts as the bound allows)',
+    (r) => ((r['bounds'] as Record<string, unknown>)['maximumAttempts'] = 1),
+  ],
+  [
+    'retrying',
     'a last attempt still in flight',
     (r) => ((attemptsOf(r)[0] as Record<string, unknown>)['status'] = 'running'),
   ],

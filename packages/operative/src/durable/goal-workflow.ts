@@ -413,6 +413,16 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts, options: GoalWorkfl
 
   function* openAttempt(ctx: GoalContext, view: GoalWorkflowView, nowMs: number): Segment {
     const attemptIndex = view.attempts.length;
+    // Never past the bound, whatever the record says. A decision that retries has
+    // headroom and the store refuses a `retrying` record without it, so this is
+    // reached only by a record that slipped past both; the same exhaustion the
+    // decision table would have reached is committed instead of an extra attempt.
+    if (attemptIndex >= view.bounds.maximumAttempts) {
+      return yield* finishForced(ctx, view, nowMs, {
+        kind: 'exhaust',
+        reason: 'attempt-limit-reached',
+      });
+    }
     const feedback = goalInputFeedbackFor(view.attempts, attemptIndex);
     const request = {
       goalRunId: view.goalRunId,

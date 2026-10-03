@@ -121,6 +121,8 @@ export interface GoalWorld {
   /** Run ids whose start completed, in order. A run id appears at most once. */
   readonly startedRuns: string[];
   readonly abortedRuns: string[];
+  /** The activity's own signal each `startAttempt` call was handed, in order. */
+  readonly startSignals: (AbortSignal | undefined)[];
   /** The `validatorTimeoutMs` each validator call received, in order. */
   readonly validatorTimeouts: (number | undefined)[];
   /** The `feedback` each `startAttempt` call received, by attempt index. */
@@ -186,6 +188,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
   const claims = new Set<string>();
   const startedRuns: string[] = [];
   const abortedRuns: string[] = [];
+  const startSignals: (AbortSignal | undefined)[] = [];
   const validatorTimeouts: (number | undefined)[] = [];
   const startFeedback = new Map<number, string | undefined>();
   const validatorOutcomes: ProjectedValidatorOutcome[] = [];
@@ -271,7 +274,11 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
     return result;
   }
 
-  async function startAttempt(request: GoalWorkflowStartRequest): Promise<GoalWorkflowStart> {
+  async function startAttempt(
+    request: GoalWorkflowStartRequest,
+    signal?: AbortSignal,
+  ): Promise<GoalWorkflowStart> {
+    startSignals.push(signal);
     calls.push(`start:${request.attemptIndex}`);
     options.onStart?.();
     startFeedback.set(request.attemptIndex, request.feedback);
@@ -352,6 +359,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
     claims,
     startedRuns,
     abortedRuns,
+    startSignals,
     validatorTimeouts,
     startFeedback,
     validatorOutcomes,

@@ -539,6 +539,27 @@ describe('createGoalWorkflow', () => {
       expect(statusesOf(harness.world)).toEqual(['exhausted']);
     });
 
+    it('hands the start the activity signal, and Weft aborts the one of a try it timed out', async () => {
+      const harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
+        startAttemptTimeoutMs: 25,
+      });
+      const hung = harness.world.crashAfter('start:claimed');
+      await runGoal(harness, async () => {
+        await hung.reached;
+        harness.clock.advance(30);
+        await pollUntil(async () => {
+          await Bun.sleep(5);
+          return harness.world.calls.filter((call) => call === 'start:0').length >= 2;
+        });
+      });
+      const [timedOut, retry] = harness.world.startSignals;
+      expect(timedOut).toBeInstanceOf(AbortSignal);
+      // The try that is still running in the background is told it lost.
+      expect(timedOut?.aborted).toBe(true);
+      expect(retry).toBeInstanceOf(AbortSignal);
+    });
+
     it('exhausts before starting an attempt when the bound already elapsed', async () => {
       const harness = createHarness({
         bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
@@ -563,6 +584,36 @@ describe('createGoalWorkflow', () => {
         outcome: 'record-unavailable',
         goalRunId: GOAL_RUN_ID,
       });
+    });
+
+    it('exhausts a retrying record that has no attempt headroom instead of opening an attempt past the bound', async () => {
+      const harness = createHarness({ bounds: { maximumAttempts: 2 } });
+      const attempt = (index: number) => ({
+        attemptId: `${GOAL_RUN_ID}:a${index}`,
+        attemptIndex: index,
+        runId: `goal-${GOAL_RUN_ID}-a${index}`,
+        sessionId: `session-${index}`,
+        startedAt: '2026-10-02T00:00:00.000Z',
+        completedAt: '2026-10-02T00:00:01.000Z',
+        finishReason: 'stop-condition' as const,
+        usage: { steps: 1, tokens: 10 },
+        status: 'failed' as const,
+      });
+      harness.world.patchRecord({
+        status: 'retrying',
+        transitionSeq: 4,
+        attempts: [attempt(0), attempt(1)],
+        usage: { attempts: 2, steps: 2, tokens: 20, durationMs: 0 },
+      });
+
+      const result = await runGoal(harness, () => Promise.resolve());
+
+      expect(result).toMatchObject({
+        status: 'exhausted',
+        terminalReason: 'attempt-limit-reached',
+      });
+      expect(harness.world.startedRuns).toEqual([]);
+      expect(harness.world.calls.filter((call) => call.startsWith('start:'))).toEqual([]);
     });
 
     it('returns the result of an already-terminal record without committing anything', async () => {

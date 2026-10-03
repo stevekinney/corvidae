@@ -170,6 +170,7 @@ import {
   RunRegisteredEvent,
   RunRemovedEvent,
 } from './events';
+import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
 import { recoveryEntryFailure } from './goal-recovery';
 import type { BureauGoals } from './goal-types';
@@ -1320,12 +1321,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // engine this call builds; its ports are bound once the goal control plane
   // exists below.
   const goalWorkflowHost = createGoalWorkflowHost();
+  // The self-fence every goal attempt's run is registered with is read from the
+  // goal store, which exists only after the runtime composition, so it is bound
+  // by `composeBureauGoals` below.
+  const goalAttemptFenceHost = createGoalAttemptFenceHost();
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
   const goalValidatorCatalog = createGoalValidatorCatalog(options.validators);
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
-    { goalWorkflow: goalWorkflowHost.workflow },
+    { goalWorkflow: goalWorkflowHost.workflow, goalAttemptFence: goalAttemptFenceHost.fence },
   );
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
@@ -9351,6 +9356,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     startAttemptRun: startGoalAttemptRun,
     cancelRun: cancelDurableRun,
     readRunRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+    fenceClaim: (runId, owner, tombstonedAt) =>
+      runtime.fenceGoalAttemptRecoveryRecord(runId, owner, tombstonedAt),
+    fenceHost: goalAttemptFenceHost,
     // Not the memoized, audited step runs get: that records a run's cleanup
     // under a run id, and a goal's controller is not a run. An attempt's run is
     // one, but a goal prunes it at close, once its terminal checkpoint has been

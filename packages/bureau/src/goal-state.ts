@@ -952,7 +952,8 @@ const isInFlight = (attempt: DurableGoalAttempt | undefined): attempt is Durable
  *   attempt's own run;
  * - `evaluating`: the last attempt is `evaluating`, and the active work is the
  *   validation of that attempt;
- * - `retrying`: a last attempt that ended without passing, and no active work;
+ * - `retrying`: a last attempt that ended without passing, no active work, and
+ *   fewer attempts than the bound allows;
  * - a terminal status: no attempt in flight and no active work (the
  *   terminal reason's agreement with the status is {@link isTerminalPairing}).
  */
@@ -983,7 +984,11 @@ function isStatusRelationConsistent(value: PlainRecord): boolean {
       return (
         last !== undefined &&
         (last.status === 'failed' || last.status === 'aborted') &&
-        active === undefined
+        active === undefined &&
+        // A retry is a promise of another attempt, so it needs room for one. At
+        // the bound the decision is `exhausted`; a record that says otherwise is
+        // one a controller would open an attempt past the bound for.
+        attempts.length < (value['bounds'] as GoalBudget).maximumAttempts
       );
     default:
       return active === undefined && !isInFlight(last);

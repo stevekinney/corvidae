@@ -1110,8 +1110,8 @@ describe('createGoalStore control-plane writes', () => {
   it('does not touch the transition sequence, so a controller transition still lines up', async () => {
     const { store } = setup();
     await created(store);
-    await store.requestCancellation(GOAL, { requestedAt: at() }, at());
     await store.recordControllerRestart(GOAL, at());
+    await store.requestCancellation(GOAL, { requestedAt: at() }, at());
 
     const result = await store.applyTransition(
       transition(1, 'canceled', { terminalReason: 'goal-canceled' }),
@@ -1138,6 +1138,22 @@ describe('createGoalStore control-plane writes', () => {
     expect(await store.requestCancellation('nope', { requestedAt: at() }, at())).toEqual({
       status: 'missing',
     });
+  });
+
+  it('refuses to count a controller restart for a goal whose cancellation is recorded', async () => {
+    const { store } = setup();
+    await created(store);
+    await store.requestCancellation(GOAL, { requestedAt: at() }, at());
+
+    const refused = await store.recordControllerRestart(GOAL, at(), 0);
+
+    expect(refused).toMatchObject({
+      status: 'rejected',
+      reason: 'cancellation-requested',
+      record: { controllerRestarts: 0 },
+    });
+    const stored = await store.get(GOAL);
+    expect(stored?.controllerRestarts).toBe(0);
   });
 
   it('counts controller restarts', async () => {

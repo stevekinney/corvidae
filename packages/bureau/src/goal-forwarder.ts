@@ -18,7 +18,8 @@
  * A watch ends only when the attempt's run does. A wait that returns while the
  * run is still going (a handle that rejected on a persistence fault) is
  * followed by a read of the run, and a run still going is waited on again after
- * a bounded, repeating backoff.
+ * a bounded, repeating backoff. Every backoff is a pause that `drain()` can
+ * release, so shutdown does not leave a goal's timers behind.
  *
  * Three things keep a lost forwarder from parking a goal forever:
  *
@@ -221,10 +222,28 @@ export function createAttemptForwarder(
     }
   }
 
-  /** Waits `delay` milliseconds on the runtime clock. */
-  const pause = (delay: number): Promise<void> =>
+  /**
+   * The pauses in flight: how to end each one early, and the watcher that is
+   * waiting in it. A pause is the one place a watcher sits on a timer of its
+   * own, so it is the one place `drain()` can release.
+   */
+  const paused = new Map<() => void, Promise<void>>();
+
+  /**
+   * Waits `delay` milliseconds on the runtime's timers, or until `drain()`
+   * releases it. A pause that is released clears its timer, so it neither
+   * outlives shutdown nor, under a manual runtime that never fires one, waits
+   * forever.
+   */
+  const pause = (delay: number, watcher: Promise<void>): Promise<void> =>
     new Promise<void>((resolve) => {
-      runtime.timers.setTimeout(resolve, delay);
+      const handle = runtime.timers.setTimeout(release, delay);
+      function release(): void {
+        runtime.timers.clearTimeout(handle);
+        paused.delete(release);
+        resolve();
+      }
+      paused.set(release, watcher);
     });
 
   /**
@@ -239,6 +258,10 @@ export function createAttemptForwarder(
 
   function watch(target: AttemptTarget, live?: AgentRun<unknown, boolean>): void {
     if (watching.has(target.runId)) return;
+    let finished!: () => void;
+    const ended = new Promise<void>((resolve) => {
+      finished = resolve;
+    });
     const task = (async (): Promise<void> => {
       let handle = live;
       // A wait on the run can end while the run has not: the engine's handle
@@ -249,12 +272,13 @@ export function createAttemptForwarder(
         await untilEnded(target, handle);
         handle = undefined;
         if (isClosing()) return;
-        if ((await forwardWithRetries(target)) !== 'watching') return;
-        await pause(reattachDelay(round));
+        if ((await forwardWithRetries(target, ended)) !== 'watching') return;
+        await pause(reattachDelay(round), ended);
         if (isClosing()) return;
       }
     })().finally(() => {
       watching.delete(target.runId);
+      finished();
     });
     watching.set(target.runId, task);
   }
@@ -265,7 +289,10 @@ export function createAttemptForwarder(
    * runs only at boot, so a transient failure is retried here. `done` once it
    * was sent, found nothing to send, or the retries were spent (and diagnosed).
    */
-  async function forwardWithRetries(target: AttemptTarget): Promise<'done' | 'watching'> {
+  async function forwardWithRetries(
+    target: AttemptTarget,
+    watcher: Promise<void>,
+  ): Promise<'done' | 'watching'> {
     for (let retry = 0; ; retry += 1) {
       try {
         const outcome = await track(forward(target));
@@ -282,7 +309,7 @@ export function createAttemptForwarder(
           });
           return 'done';
         }
-        await pause(delay);
+        await pause(delay, watcher);
         if (isClosing()) return 'done';
       }
     }
@@ -294,7 +321,23 @@ export function createAttemptForwarder(
     return outcome;
   }
 
+  /**
+   * Resolves once every send already under way has finished, and releases every
+   * watcher paused between tries. It does not wait on a running attempt: a watcher
+   * waiting on its run is the run's to end.
+   *
+   * Releasing is what lets shutdown leave nothing of the goal's running. A paused
+   * watcher holds a timer, and under a manual runtime one that never fires. Each
+   * pause is cut short once: a watcher that finds the bureau closing ends, and
+   * its end is awaited; one that does not (cleanup before closing a goal) simply
+   * tries again sooner, which is harmless because every try is idempotent. The
+   * pauses the released watchers go on to make are not released again, so this
+   * cannot chase a watcher round a loop.
+   */
   async function drain(): Promise<void> {
+    const released = [...paused];
+    for (const [release] of released) release();
+    if (isClosing()) await Promise.allSettled(released.map(([, watcher]) => watcher));
     while (sending.size > 0) await Promise.allSettled(sending);
   }
 

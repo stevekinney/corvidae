@@ -102,6 +102,7 @@ export function dependencies(
 ) {
   const diagnostics: BureauDiagnostic[] = [];
   const stopped: string[] = [];
+  const fenced: string[] = [];
   const control: GoalControlDependencies = {
     store,
     catalog: createGoalValidatorCatalog([]),
@@ -118,9 +119,13 @@ export function dependencies(
       drain: () => Promise.resolve(),
     },
     startAttempt: () => Promise.reject(new Error('never starts an attempt')),
+    fenceAttempt: (record, attemptIndex) => {
+      fenced.push(goalAttemptRunId(record.goalRunId, attemptIndex));
+      return Promise.resolve('fenced');
+    },
     isClosing: () => false,
     cleanupWorkflow: () => Promise.resolve({ status: 'not-required' }),
     ...extra,
   };
-  return { control, diagnostics, stopped };
+  return { control, diagnostics, stopped, fenced };
 }

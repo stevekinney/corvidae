@@ -5,7 +5,7 @@
  * reaches in normal operation, because it plans the child first and refuses
  * an identifier another run already holds before it starts anything.
  */
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import {
   AgentContractError,
   createAgent,
@@ -13,6 +13,7 @@ import {
   createRunEngine,
   createRunWorkflow,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type OperativeHookMap,
   stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
@@ -22,7 +23,9 @@ import {
   createCatalogDispatcher,
   GoalAttemptInvalidCostEstimationError,
   GoalAttemptNotDurableCapableError,
+  GoalAttemptTombstonedError,
 } from './bureau-catalog-dispatch';
+import { registerGoalAttemptFence } from './goal-attempt-fence';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import { lastPromptOf } from './testing/goal-fixtures.test-support';
@@ -282,6 +285,23 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       expect(persisted).toEqual([]);
     });
 
+    it('starts nothing from its own claim once the goal has tombstoned it', async () => {
+      const { runtime, persisted } = conflicting({
+        agentName: 'worker',
+        goalAttempt: { goalRunId: 'g1', attemptIndex: 0, tombstonedAt: '2026-10-02T12:00:00.000Z' },
+      });
+      const runAttribution = new Map<string, RunAttribution>();
+
+      const error = await settle(
+        createDispatcher(false, { runtime, runAttribution }).startGoalAttemptRun(attempt),
+      );
+
+      // Refused before the engine is asked for a workflow (the engine here has no `start`).
+      expect(error).toBeInstanceOf(GoalAttemptTombstonedError);
+      expect(persisted).toEqual([]);
+      expect(runAttribution.has(attempt.runId)).toBe(false);
+    });
+
     it('adopts its own claim as it stands and never rewrites it', async () => {
       const { runtime, persisted } = conflicting({
         agentName: 'worker',
@@ -293,6 +313,92 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       // The winning claim is immutable: a loser of the claim race adopts it, so
       // the record can only ever describe the execution that wins the workflow.
       expect(persisted).toEqual([]);
+    });
+  });
+
+  describe('a start the goal ended over after it claimed the run and before the engine created it', () => {
+    /**
+     * The claim is written, then the goal's ending tombstones it, then the
+     * engine creates the workflow: the window no check from outside can close.
+     * The run it creates must refuse its first step.
+     */
+    async function overtakenStart() {
+      const storage = new MemoryStorage();
+      const checkpointStore = createCheckpointStore(
+        textValueStore(storage, { disposeUnderlyingStorage: false }),
+      );
+      const { engine } = await createRunEngine({
+        storage,
+        runWorkflow: createRunWorkflow(checkpointStore),
+        recover: false,
+      });
+      disposers.push(() => engine[Symbol.dispose]());
+      let tombstoned = false;
+      let generates = 0;
+      const worker = createAgent({
+        name: 'worker',
+        generate: async () => {
+          generates += 1;
+          return { content: 'done', toolCalls: [] };
+        },
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      const fenceTargets: unknown[] = [];
+      const runtime = {
+        durable: { engine, checkpointStore },
+        // What the runtime composition does for a goal attempt's run.
+        createBureauInvariantHooks: (goalAttempt?: { goalRunId: string }) => {
+          const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
+          if (goalAttempt !== undefined) {
+            fenceTargets.push(goalAttempt);
+            registerGoalAttemptFence(
+              hooks,
+              { mayRun: () => Promise.resolve(!tombstoned) },
+              goalAttempt as never,
+            );
+          }
+          return hooks;
+        },
+        claimCatalogRunRecoveryRecord: async () => {
+          // The claim lands, and the goal's ending tombstones it before the engine starts.
+          tombstoned = true;
+          return true;
+        },
+        persistCatalogRunRecoveryRecord: async () => {},
+      } as unknown as RuntimeComposition;
+      const dispatcher = createCatalogDispatcher({
+        agentCatalog: { find: () => worker },
+        runtime,
+        runtimeServices: createManualRuntimeServices(),
+        getShutdownPromise: () => undefined,
+        catalogRuns: new Set(),
+        runAttribution: new Map(),
+        detachBestEffortPromise: () => {},
+        createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+        validateAgentRunInput: () => {},
+        validateBureauRunOptions: () => {},
+        onDurableRunAborted: () => {},
+      });
+      return { dispatcher, engine, generates: () => generates, fenceTargets };
+    }
+
+    it('creates the run, which takes zero agent steps and ends', async () => {
+      const { dispatcher, engine, generates, fenceTargets } = await overtakenStart();
+
+      const started = dispatcher.startGoalAttemptRun(attempt);
+      await started.durablyStarted;
+      const result = await started.run.result();
+
+      // The run exists, as a start no one can atomically withhold must be allowed to:
+      expect(await engine.get(attempt.runId)).not.toBeNull();
+      // and it took no step, and ended.
+      expect(generates()).toBe(0);
+      expect(result.steps).toHaveLength(0);
+      expect(result.finishReason).toBe('tripwire');
+      const ended = await engine.get(attempt.runId);
+      expect(ended?.status).toBe('completed');
+      // The fence was built for this attempt's own identity.
+      expect(fenceTargets).toEqual([{ goalRunId: 'g1', attemptIndex: 0, runId: attempt.runId }]);
     });
   });
 

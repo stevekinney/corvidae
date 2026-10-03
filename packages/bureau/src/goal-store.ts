@@ -136,7 +136,9 @@ export type GoalControlRejection =
   /** Cleanup is recorded only for a goal that was closed. */
   | 'not-closed'
   /** The audit log is at its cap; a restart cannot be counted without dropping an entry. */
-  | 'audit-log-full';
+  | 'audit-log-full'
+  /** A cancellation is recorded: the goal is ending, so a controller is not restarted for it. */
+  | 'cancellation-requested';
 
 export type GoalControlResult =
   | { readonly status: 'updated'; readonly record: GoalState }
@@ -453,11 +455,13 @@ export function createGoalStore(
       const result = await control(goalRunId, (current) =>
         isTerminal(current.status)
           ? refuse(current, 'terminal')
-          : expectedCount !== undefined && current.controllerRestarts !== expectedCount
-            ? { outcome: 'done', result: { status: 'stale', record: current } }
-            : current.auditLog.length >= GOAL_AUDIT_LOG_MAXIMUM_ENTRIES
-              ? refuse(current, 'audit-log-full')
-              : { outcome: 'write', next: withRestart(current, now) },
+          : current.cancellation !== undefined
+            ? refuse(current, 'cancellation-requested')
+            : expectedCount !== undefined && current.controllerRestarts !== expectedCount
+              ? { outcome: 'done', result: { status: 'stale', record: current } }
+              : current.auditLog.length >= GOAL_AUDIT_LOG_MAXIMUM_ENTRIES
+                ? refuse(current, 'audit-log-full')
+                : { outcome: 'write', next: withRestart(current, now) },
       );
       if (result.status === 'updated') {
         await notify({ kind: 'controller-restarted', record: result.record });

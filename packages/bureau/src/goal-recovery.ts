@@ -41,15 +41,31 @@
  * signal id is stable, so a duplicate is harmless), one that is alive gets a
  * forwarder, and one that never started is started now, by the same
  * start-or-adopt the controller's own activity uses.
+ *
+ * That start is the one start made outside the controller, and it is kept for a
+ * reason. It is reached only for an attempt the controller already recorded as
+ * `running` whose run is gone (the run's storage was lost): the controller
+ * committed `running` because its start activity returned, and that result is
+ * memoized in the controller's history, with no Weft API to redo it, so a
+ * restarted or parked controller waits on a signal no run will send. Nothing
+ * inside the controller can start the run again. The start is the controller's
+ * own port, so it carries every fence the controller's start does: the stand-down
+ * reads, the activity-signal check, the claim tombstone, and the run's own fence
+ * (`goal-attempt-fence.ts`). It is never the way an attempt is first opened.
  */
 
 import { goalInputFeedbackFor, isAttemptStartFailureDetail } from '@lostgradient/operative';
 import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 
-import { runsToStop, settleCanceledGoal, unfinishedAfterCancellation } from './goal-cancellation';
+import {
+  runsToStop,
+  settleCanceledGoal,
+  stopRuns,
+  unfinishedAfterCancellation,
+} from './goal-cancellation';
 import { cleanUpGoal, isCleanupDone } from './goal-cleanup';
 import {
-  attemptToStop,
+  attemptIndexesToStop,
   commitCancellation,
   enforceDeterminism,
   type GoalControlDependencies,
@@ -90,7 +106,7 @@ async function completeCancellation(
   dependencies: GoalControlDependencies,
   record: GoalState,
 ): Promise<ControllerRecovery> {
-  const { store, clock, cancelRun, diagnose } = dependencies;
+  const { store, clock } = dependencies;
   let marked = record;
   if (marked.cancellation === undefined) {
     // The controller was cancelled with no marker: someone ended its workflow
@@ -116,23 +132,9 @@ async function completeCancellation(
     }
     marked = outcome.record;
   }
-  const runIds = [attemptToStop(marked).runId, marked.attempts.at(-1)?.runId].filter(
-    (runId, index, all): runId is string => runId !== undefined && all.indexOf(runId) === index,
-  );
-  for (const runId of runIds) {
-    const stopped = await cancelRun(runId).catch((error: unknown) => ({
-      status: 'failed' as const,
-      error,
-    }));
-    if (stopped.status === 'failed') {
-      diagnose({
-        level: 'error',
-        scope: 'goals',
-        message: `[bureau] Could not stop run "${runId}" of goal "${record.goalRunId}" while completing its cancellation: ${describe(stopped.error)}`,
-        cause: stopped.error,
-      });
-    }
-  }
+  const runIds = runsToStop(marked);
+  // Fenced, then stopped: see `stopRuns`.
+  const fenced = await stopRuns(dependencies, marked);
   const commit = await settleCancellationCommit(dependencies, marked);
   if (commit.kind === 'settled') return commit.outcome;
   // The record says `canceled`; whether the world agrees is a separate read, the
@@ -145,6 +147,7 @@ async function completeCancellation(
     true,
     dependencies.diagnose,
   );
+  if (!fenced && !awaiting.includes('attempt-run')) awaiting.push('attempt-run');
   return awaiting.length === 0
     ? { outcome: 'canceled' }
     : {
@@ -398,6 +401,11 @@ async function recoverController(
     record.controllerRestarts,
   );
   if (counted.status === 'rejected') {
+    // A cancellation that landed after this recovery's read is not a restart to
+    // spend: the store refuses it, and the cancellation is completed instead.
+    if (counted.reason === 'cancellation-requested') {
+      return endControllerAndCompleteCancellation(dependencies, counted.record);
+    }
     // Only a terminal goal is done. A full audit log leaves the goal running
     // with no controller and no room to record a restart: that is a goal
     // recovery gave up on, and it must not read as one that ended.
@@ -414,6 +422,11 @@ async function recoverController(
   if (counted.status !== 'updated') {
     return { outcome: 'unrecoverable', detail: `restart count: ${counted.status}` };
   }
+  // The count above is a write, and a cancellation can land after it and before
+  // the start. The restart is spent, as the bound errs toward giving up, but no
+  // replacement is started for a goal that no longer wants one.
+  const raced = await standDownIfOvertaken(dependencies, goalRunId);
+  if (raced !== undefined) return raced;
   let started: 'started' | 'exists';
   try {
     started = await startController(engine, goalRunId, true);
@@ -544,24 +557,32 @@ const needsRecovery = (record: GoalState): boolean =>
   owesCleanup(record);
 
 /**
- * Stops the run an exhausted or start-failed goal's ending may have overtaken,
- * the defense in depth behind the controller's refusal to abandon a start. It covers exactly
- * one crash point: a start's run was created (the engine's start committed) but
- * the process died, or a timed-out background try ran on, before the start's own
- * stand-down check stopped it, after the goal had already ended. The goal is
- * terminal and its controller is done, so nothing but this will ever name that
- * run again. A run that does not exist when it is read is not proof that none
- * will appear: a start that has claimed its run but not yet created it, in a
- * background try that is still alive in this process, looks absent. That start
- * stands itself down once it sees the goal ended or out of time (the check
- * after the engine's start), so it is the process's own check that covers it,
- * and this sweep covers the crash that skips that check. `runsToStop` names the
- * in-flight attempt's run, or the next attempt's deterministic id for a start that died short of its commit. A run
- * that does not exist or has ended is left alone; one that cannot be read or
- * stopped is reported, and stays owed until the next boot or `recover()`, and so
- * is every run while there is no engine to read one with. A canceled goal is
- * settled the same way by `settleCommittedCancellation`. `close()` runs it first,
- * because a closed and cleaned goal leaves the sweep.
+ * Settles the attempts an exhausted or start-failed goal's ending may have
+ * overtaken, the defense in depth behind the controller's refusal to abandon a
+ * start. The goal is terminal and its controller is done, so nothing but this
+ * will ever name those attempts again. It covers two named crash points, in this
+ * order.
+ *
+ * - Fence: a start that has claimed its run but not yet created it (in a
+ *   background try still alive in this process, or in a process that died there)
+ *   looks absent to every read, and no read can prove it will not appear: the
+ *   engine's start takes no precondition on the claim. So the attempt's claim is
+ *   tombstoned first. A start that claims afterwards finds the tombstone and
+ *   starts nothing, and a run that was already past its claim takes no step,
+ *   because its own fence reads the tombstone (`goal-attempt-fence.ts`). A claim
+ *   that cannot be tombstoned is reported and stays owed.
+ * - Stop: a start's run was created (the engine's start committed) but the
+ *   process died, or a timed-out background try ran on, before the start's own
+ *   stand-down check stopped it, after the goal had already ended. A run that is
+ *   alive is cancelled, so it does not run on after its goal.
+ *
+ * `runsToStop` names the in-flight attempt's run, or the next attempt's
+ * deterministic id for a start that died short of its commit. A run that does not
+ * exist or has ended is left alone; one that cannot be read or stopped is
+ * reported, and stays owed until the next boot or `recover()`, and so is every
+ * run while there is no engine to read one with. A canceled goal is settled the
+ * same way by `settleCommittedCancellation`. `close()` runs it first, because a
+ * closed and cleaned goal leaves the sweep.
  */
 export async function stopOvertakenRuns(
   dependencies: GoalControlDependencies,
@@ -579,6 +600,24 @@ export async function stopOvertakenRuns(
     };
   }
   const failures: string[] = [];
+  // Fenced before any run is looked for: an absent run is not proof that none
+  // will appear (a start that has claimed its run but not created it looks
+  // absent), and the tombstone is what makes the run such a start goes on to
+  // create take no step. Only once every claim is tombstoned is a run that is
+  // absent now owed nothing.
+  for (const attemptIndex of attemptIndexesToStop(record)) {
+    try {
+      await dependencies.fenceAttempt(record, attemptIndex);
+    } catch (error) {
+      dependencies.diagnose({
+        level: 'error',
+        scope: 'goals',
+        message: `[bureau] Could not fence attempt ${attemptIndex} of goal "${record.goalRunId}", whose ending may have overtaken its start; it is retried at the next boot or recover(): ${describe(error)}`,
+        cause: error,
+      });
+      failures.push(`attempt ${attemptIndex}'s claim: ${describe(error)}`);
+    }
+  }
   for (const runId of runsToStop(record)) {
     try {
       const run = await engine.get(runId);

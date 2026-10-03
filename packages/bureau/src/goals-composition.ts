@@ -21,6 +21,7 @@ import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@
 
 import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
 import type { DurableEventHistory } from './durable-event-history';
+import { createGoalAttemptFence, type GoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalConversations } from './goal-conversation';
 import { createGoalEventRecorder, projectGoalHistory } from './goal-event-projection';
 import { createAttemptForwarder } from './goal-forwarder';
@@ -32,11 +33,12 @@ import {
   type RunRecordReader,
 } from './goal-ownership';
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
-import { goalWorkflowId } from './goal-state';
+import { goalAttemptRunId, type GoalState, goalWorkflowId } from './goal-state';
 import { createGoalStore } from './goal-store';
 import type { BureauGoalRecoveryReport, BureauGoals, GoalEngine } from './goal-types';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
 import { createBureauGoals } from './goals';
+import type { GoalAttemptClaimFence, GoalAttemptClaimOwner } from './runtime-composition';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
 export interface GoalsCompositionDependencies {
@@ -57,6 +59,14 @@ export interface GoalsCompositionDependencies {
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
   /** Reads the recovery record that marks which goal attempt a run was started for. */
   readonly readRunRecord: RunRecordReader;
+  /** Tombstones a goal attempt's claim; see `RuntimeComposition.fenceGoalAttemptRecoveryRecord`. */
+  readonly fenceClaim: (
+    runId: string,
+    owner: GoalAttemptClaimOwner,
+    tombstonedAt: string,
+  ) => Promise<GoalAttemptClaimFence>;
+  /** Where the self-fence the attempts' runs are registered with is bound, once the store and the reader exist. */
+  readonly fenceHost: GoalAttemptFenceHost;
   /** Applies checkpoint retention to a terminal controller or attempt workflow; see `BureauGoalsDependencies`. */
   readonly cleanupWorkflow: (workflowId: string) => Promise<CleanupAcknowledgement>;
   readonly isClosing: () => boolean;
@@ -87,6 +97,17 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       : { ...durable, engine: createOwnedGoalEngine(durable.engine, readRunRecord) };
   };
   const cancelRun = createOwnedRunCanceller(dependencies.cancelRun, readRunRecord);
+  const fenceAttempt = (record: GoalState, attemptIndex: number): Promise<GoalAttemptClaimFence> =>
+    dependencies.fenceClaim(
+      goalAttemptRunId(record.goalRunId, attemptIndex),
+      {
+        goalRunId: record.goalRunId,
+        attemptIndex,
+        agentName: record.objective.agentName,
+        principal: record.principal,
+      },
+      runtimeServices.clock.nowISO(),
+    );
   const recordEvents =
     dependencies.eventHistory === undefined
       ? undefined
@@ -163,9 +184,12 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     planAgent: dependencies.planAgent,
     startAttemptRun: dependencies.startAttemptRun,
     cancelRun,
+    fenceAttempt,
     resolveCostEstimation,
   });
   host.bind(ports);
+  // Every attempt's run reads the goal and its own claim before each step.
+  dependencies.fenceHost.bind(createGoalAttemptFence({ store, readRunRecord }));
 
   const goals = createBureauGoals({
     store,
@@ -175,6 +199,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     diagnose,
     getEngine: () => getDurable()?.engine,
     cancelRun,
+    fenceAttempt,
     cleanupWorkflow: dependencies.cleanupWorkflow,
     forwarder,
     resolveFreshAttemptSource: dependencies.resolveFreshAttemptSource,

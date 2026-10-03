@@ -33,8 +33,20 @@ export interface GoalControlDependencies {
   readonly getEngine: () => GoalEngine | undefined;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
   readonly forwarder: AttemptForwarder;
-  /** The same start-or-adopt the controller's activity uses, for a recovery that must start a run itself. */
+  /**
+   * The same start-or-adopt the controller's activity uses, for the one recovery
+   * that must start a run itself: an attempt the controller recorded as running
+   * whose run is gone. See `recoverAttempt`.
+   */
   readonly startAttempt: GoalWorkflowPorts['startAttempt'];
+  /**
+   * Tombstones the claim of an attempt's run (`goal-attempt-fence.ts`), so a
+   * start that has claimed the run but not created it starts nothing and a run
+   * it does create takes no step. `foreign` is a record that is not this
+   * attempt's, left alone. Rejects when it could not be done; the work is then
+   * still owed.
+   */
+  readonly fenceAttempt: (record: GoalState, attemptIndex: number) => Promise<'fenced' | 'foreign'>;
   readonly isClosing: () => boolean;
   /**
    * Applies the bureau's checkpoint retention to a terminal workflow's history
@@ -96,6 +108,43 @@ export function attemptToStop(record: GoalState): GoalWorkflowAbortRequest {
     attemptId: goalIdentifiers.attemptId(record.goalRunId, attemptIndex),
     runId: goalIdentifiers.attemptRunId(record.goalRunId, attemptIndex),
   };
+}
+
+/**
+ * The attempts whose runs an ending or a cancellation must see stopped and
+ * fenced: the one `attemptToStop` names and, once the goal has moved past it, the
+ * attempt that was in flight.
+ */
+export function attemptIndexesToStop(record: GoalState): readonly number[] {
+  const named = attemptToStop(record).attemptIndex;
+  const last = record.attempts.at(-1)?.attemptIndex;
+  return last === undefined || last === named ? [named] : [named, last];
+}
+
+/**
+ * Tombstones the claim of every attempt `record`'s ending may have overtaken.
+ * `true` once every claim is fenced (or foreign, and so not the goal's to fence);
+ * `false` when one could not be, which leaves the ending's cleanup owed.
+ */
+export async function fenceOvertakenAttempts(
+  dependencies: Pick<GoalControlDependencies, 'fenceAttempt' | 'diagnose'>,
+  record: GoalState,
+): Promise<boolean> {
+  let allFenced = true;
+  for (const attemptIndex of attemptIndexesToStop(record)) {
+    try {
+      await dependencies.fenceAttempt(record, attemptIndex);
+    } catch (error) {
+      allFenced = false;
+      dependencies.diagnose({
+        level: 'error',
+        scope: 'goals',
+        message: `[bureau] Could not fence attempt ${attemptIndex} of goal "${record.goalRunId}"; it is retried at the next boot or recover(): ${error instanceof Error ? error.message : String(error)}`,
+        cause: error,
+      });
+    }
+  }
+  return allFenced;
 }
 
 /**

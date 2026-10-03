@@ -253,7 +253,13 @@ export interface GoalWorkflowPorts {
   loadGoalState(goalRunId: string): Promise<GoalWorkflowLoad>;
   /** One compare-and-swap transition; see Bureau's `GoalStore.applyTransition`. */
   commitTransition(request: GoalWorkflowTransition): Promise<GoalWorkflowCommit>;
-  startAttempt(request: GoalWorkflowStartRequest): Promise<GoalWorkflowStart>;
+  /**
+   * Start-or-adopt the attempt's run. `signal` is the activity's own: Weft aborts
+   * it when a try times out, and that try goes on running in the background
+   * after the retry that replaced it has started. A port that sees it aborted
+   * must write nothing further and must stop any run its own try created.
+   */
+  startAttempt(request: GoalWorkflowStartRequest, signal?: AbortSignal): Promise<GoalWorkflowStart>;
   /**
    * Runs the catalogued validator, normalizes and projects its output, and
    * bounds it to the inline cap. A throwing or malformed validator is an
