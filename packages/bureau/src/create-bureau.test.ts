@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import {
   CompletableEventTarget,
+  createDefaultRuntimeServices,
   createManualRuntimeServices,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
@@ -21290,6 +21291,7 @@ describe('COR-625: terminal-run checkpoint retention and cleanup', () => {
 // ---------------------------------------------------------------------------
 describe('createBureau schedule tick observation (COR-660)', () => {
   it('maps every tick to one schedule.attempted and an overlap collision to exactly one schedule.skipped', async () => {
+    const runtime = createDefaultRuntimeServices();
     const released = Promise.withResolvers<void>();
     let fireCount = 0;
     const generate: GenerateFunction = async () => {
@@ -21308,6 +21310,7 @@ describe('createBureau schedule tick observation (COR-660)', () => {
       generate,
       toolbox: createEmptyToolbox(),
       storage: { type: 'memory' },
+      runtime,
       durableExecution: true,
       durableBackgroundTasks: 'manual',
       stopWhen: stopWhen.noToolCalls(),
@@ -21331,7 +21334,7 @@ describe('createBureau schedule tick observation (COR-660)', () => {
       expect(attempted).toEqual([]);
 
       // First tick: the slot is free, so the occurrence launches a fire.
-      const firstOccurrence = Date.now() + 60_000;
+      const firstOccurrence = runtime.clock.now() + 60_000;
       await pollUntil(async () => {
         await bureau.runDurableMaintenance(firstOccurrence);
         return fireCount >= 1;

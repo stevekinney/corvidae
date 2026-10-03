@@ -10,7 +10,7 @@ import {
 import { BureauDisposedEvent, RunRegisteredEvent, RunRemovedEvent } from './events.ts';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
-async function invoke(
+function invoke(
   input: { bureauId: string; fromCursor?: string; kinds?: string | string[] },
   engine: BureauEventsOperationEngine,
 ) {

@@ -32,6 +32,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { type GenerateFunction, HumanWaitParkedEvent, stopWhen } from '@lostgradient/operative';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import {
   createProcessLocalGrantStateStore,
   createTool,
@@ -675,7 +676,7 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       await bureauB.resolveReview({ id: repark, decision: 'approve', principal: 'op' });
       await waitForCondition(() => bCalls >= 2, 'expected the run to resume into its next step');
       // Let any replayed park marker land before asserting.
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await yieldToPortableEventLoop();
       expect(bureauB.getRun(run.id)?.status).toBe('running');
       expect(pendingIds()).toEqual([]);
     } finally {
@@ -759,7 +760,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
     try {
       await waitForCondition(() => bCalls >= 1, 'expected the recovered run to reach step 3');
       // Let any replayed park marker land before asserting.
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await yieldToPortableEventLoop();
       expect(bureauB.getRun(run.id)?.status).toBe('running');
       expect(bureauB.listPendingReviews().filter((review) => review.runId === run.id)).toEqual([]);
     } finally {
