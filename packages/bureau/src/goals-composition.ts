@@ -83,7 +83,11 @@ export interface GoalsComposition {
   ownsWorkflow(workflowId: string): Promise<boolean>;
   /** The boot sweep. Never rejects. */
   recoverAtBoot(): Promise<BureauGoalRecoveryReport>;
-  /** Resolves once every forwarded signal already being sent has been delivered. */
+  /**
+   * Aborts the starts of recoveries still running past the boot sweep's budget,
+   * and resolves once they have settled and every forwarded signal already being
+   * sent has been delivered.
+   */
   drain(): Promise<void>;
 }
 
@@ -216,6 +220,9 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     createGoalAttemptFence({ store, readRunRecord, clock: runtimeServices.clock }),
   );
 
+  const shutdown = new AbortController();
+  let backgroundSweep: Promise<void> = Promise.resolve();
+
   const goalDependencies = {
     store,
     catalog,
@@ -231,6 +238,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     startAttempt: (request, signal) => ports.startAttempt(request, signal),
     timers: runtimeServices.timers,
     isClosing: dependencies.isClosing,
+    shutdownSignal: shutdown.signal,
     planAgent: dependencies.planAgent,
   } satisfies BureauGoalsDependencies;
   const goals = createBureauGoals(goalDependencies);
@@ -248,17 +256,31 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       // any point, at any depth in the log, is repaired here; the dedupe keys
       // make a replay of what is already recorded a no-op.
       if (recordEvents !== undefined) {
-        await projectGoalHistory(await store.list(), recordEvents).catch((error: unknown) =>
+        // Listing and projecting are one failure domain: a store that cannot be
+        // listed must not keep the recovery sweep below from running.
+        try {
+          await projectGoalHistory(await store.list(), recordEvents);
+        } catch (error) {
           diagnose({
             level: 'error',
             scope: 'goals',
             message: '[bureau] Could not re-project goal events at boot.',
             cause: error,
-          }),
-        );
+          });
+        }
       }
-      return recoverGoalsAtBoot(goalDependencies);
+      return recoverGoalsAtBoot(goalDependencies, {
+        onBackground: (settled) => {
+          backgroundSweep = settled;
+        },
+      });
     },
-    drain: () => forwarder.drain(),
+    async drain() {
+      // Recoveries that outlived the boot sweep's budget carry on in the
+      // background: abort their starts and wait for them to settle, so none
+      // touches the engine or storage once the bureau disposes them.
+      shutdown.abort();
+      await Promise.all([forwarder.drain(), backgroundSweep]);
+    },
   };
 }

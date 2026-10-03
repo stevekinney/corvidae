@@ -88,12 +88,7 @@ import {
 } from './goal-controller';
 import { GoalOwnershipError } from './goal-ownership';
 import { goalIdentifiers } from './goal-ports';
-import {
-  type GoalState,
-  goalRestartId,
-  goalWorkflowId,
-  isTerminalGoalStatus,
-} from './goal-state';
+import { goalRestartId, type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type {
   BureauGoalAttemptRecovery,
   BureauGoalCancellationWait,
@@ -593,12 +588,23 @@ async function startWithinBudget(
   const { timers, diagnose } = dependencies;
   const abandon = new AbortController();
   let handle: ReturnType<typeof timers.setTimeout>;
+  let resolveExpired!: (outcome: 'timed-out') => void;
   const expired = new Promise<'timed-out'>((resolve) => {
+    resolveExpired = resolve;
     handle = timers.setTimeout(() => {
       abandon.abort();
       resolve('timed-out');
     }, GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS);
   });
+  // Shutdown abandons the start as an expired budget does: the abandoned start
+  // writes nothing further, and nothing waits for it.
+  const onShutdown = (): void => {
+    abandon.abort();
+    resolveExpired('timed-out');
+  };
+  const shutdown = dependencies.shutdownSignal;
+  if (shutdown?.aborted === true) onShutdown();
+  else shutdown?.addEventListener('abort', onShutdown, { once: true });
   const start = dependencies.startAttempt(request, abandon.signal);
   // A start that fails after it was abandoned has no caller left to reject to.
   start.catch((error: unknown) => {
@@ -617,6 +623,7 @@ async function startWithinBudget(
   try {
     return await Promise.race([start, expired]);
   } finally {
+    shutdown?.removeEventListener('abort', onShutdown);
     timers.clearTimeout(handle);
   }
 }
@@ -898,6 +905,13 @@ export interface RecoverEveryGoalOptions {
    * for every goal.
    */
   readonly budgetMs?: number;
+  /**
+   * Handed the work still running when the budget ended, as a promise that never
+   * rejects and settles once every goal has stopped recovering, so a caller that
+   * must not leave it running (the bureau at shutdown) can await it. Not called
+   * when the sweep finished inside its budget.
+   */
+  readonly onBackground?: (settled: Promise<void>) => void;
 }
 
 /** Recovers one goal. Never throws. */
@@ -1067,6 +1081,13 @@ export async function recoverEveryGoal(
     }
   }
   reported = true;
+  if (overBudget)
+    options.onBackground?.(
+      everyGoal.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
   for (const [index, record] of records.entries()) {
     const result = entries.get(index);
     if (result === undefined) {
@@ -1097,8 +1118,12 @@ export async function recoverEveryGoal(
  */
 export function recoverGoalsAtBoot(
   dependencies: GoalControlDependencies,
+  options: Pick<RecoverEveryGoalOptions, 'onBackground'> = {},
 ): Promise<BureauGoalRecoveryReport> {
-  return recoverEveryGoal(dependencies, () => true, true, { budgetMs: GOAL_BOOT_SWEEP_BUDGET_MS });
+  return recoverEveryGoal(dependencies, () => true, true, {
+    ...options,
+    budgetMs: GOAL_BOOT_SWEEP_BUDGET_MS,
+  });
 }
 
 /**

@@ -51,6 +51,13 @@ export interface GoalControlDependencies {
   readonly fenceAttempt: (record: GoalState, attemptIndex: number) => Promise<'fenced' | 'foreign'>;
   readonly isClosing: () => boolean;
   /**
+   * Aborted when the bureau drains goal work at shutdown. Recovery's own start
+   * (`startWithinBudget`) is abandoned at once when it aborts, so a recovery that
+   * outlived the boot sweep's budget settles instead of being left running over an
+   * engine and storage that are being disposed.
+   */
+  readonly shutdownSignal?: AbortSignal | undefined;
+  /**
    * Applies the bureau's checkpoint retention to a terminal workflow's history
    * (the goal's controller, or one of its attempts' runs) and says truthfully
    * how it went. Never rejects.

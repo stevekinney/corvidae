@@ -706,7 +706,8 @@ describe('restarting a controller that ended abnormally', () => {
     async function spent() {
       const store = await runningGoal();
       for (let restart = 0; restart < MAXIMUM_CONTROLLER_RESTARTS; restart += 1) {
-        expect((await store.recordControllerRestart('g1', NOW, restart)).status).toBe('updated');
+        const counted = await store.recordControllerRestart('g1', NOW, restart);
+        expect(counted.status).toBe('updated');
       }
       return store;
     }
@@ -759,7 +760,9 @@ describe('restarting a controller that ended abnormally', () => {
       });
       const counting = {
         ...store,
-        recordControllerRestart: async (...args: Parameters<typeof store.recordControllerRestart>) => {
+        recordControllerRestart: async (
+          ...args: Parameters<typeof store.recordControllerRestart>
+        ) => {
           const result = await store.recordControllerRestart(...args);
           counted();
           await gate;
@@ -771,7 +774,8 @@ describe('restarting a controller that ended abnormally', () => {
 
       const recovering = recoverGoal(first.control, 'g1');
       await paused;
-      expect((await store.get('g1'))?.controllerRestarts).toBe(MAXIMUM_CONTROLLER_RESTARTS);
+      const midway = await store.get('g1');
+      expect(midway?.controllerRestarts).toBe(MAXIMUM_CONTROLLER_RESTARTS);
       const overlapped = await recoverGoal(second.control, 'g1');
       release();
       const finished = await recovering;

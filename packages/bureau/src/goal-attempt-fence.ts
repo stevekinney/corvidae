@@ -89,11 +89,11 @@
 import type { HookRegistry, RuntimeServices, RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import {
   GuardrailTripwireError,
-  type OperativeHookMap,
   isDeadlineElapsed,
   remainingMilliseconds,
   START_ATTEMPT_MAXIMUM_TRIES,
   START_ATTEMPT_TIMEOUT_MS,
+  type OperativeHookMap,
 } from '@lostgradient/operative';
 
 import { isGoalOwnedRunRecord, type RunRecordReader } from './goal-ownership';
