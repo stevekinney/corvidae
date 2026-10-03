@@ -417,6 +417,33 @@ describe('a goal that ended while its next attempt was still starting', () => {
       goals: [{ outcome: 'cleanup-pending' }],
     });
   });
+
+  it('reports a run whose canceller has no capability as one that could not be stopped, with a diagnostic, not as nothing', async () => {
+    const store = await endedBeforeAnyAttempt('exhausted');
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'running' },
+    });
+    const { control, diagnostics } = dependencies(store, engine, {
+      cancelRun: () => Promise.resolve({ status: 'unsupported-capability' }),
+    });
+
+    const report = await recoverEveryGoal(control);
+
+    expect(report.goals).toEqual([
+      {
+        goalRunId: 'g1',
+        outcome: 'cleanup-pending',
+        detail: expect.stringContaining('could not be stopped'),
+      },
+    ]);
+    expect(report.goals[0]?.detail).toContain('goal-g1-a0');
+    expect(report.goals[0]?.detail).toContain('unsupported-capability');
+    expect(
+      diagnostics.some(
+        (diagnostic) => diagnostic.level === 'error' && diagnostic.message.includes('goal-g1-a0'),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('a closed goal whose cleanup could not be finished by this recovery', () => {
@@ -740,6 +767,29 @@ describe('restarting a controller that ended abnormally', () => {
       expect(diagnostics.some((diagnostic) => diagnostic.message.includes('engine busy'))).toBe(
         true,
       );
+    });
+
+    it('reports a run whose canceller has no capability as one that could not be cancelled, not as nothing', async () => {
+      const store = await spentGoal();
+      const { engine } = scriptedEngine({
+        workflows: { 'goal:g1': 'failed', 'goal-g1-a0': 'running' },
+      });
+      const { control, diagnostics } = dependencies(store, engine, {
+        cancelRun: () => Promise.resolve({ status: 'unsupported-capability' }),
+      });
+
+      const entry = await recoverGoal(control, 'g1');
+
+      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+      expect(entry.detail).toContain('could not be cancelled');
+      expect(entry.detail).toContain('goal-g1-a0');
+      expect(entry.detail).toContain('unsupported-capability');
+      expect(
+        diagnostics.some(
+          (diagnostic) =>
+            diagnostic.level === 'error' && diagnostic.message.includes('unsupported-capability'),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -1276,6 +1326,24 @@ describe("recovery's own start of an attempt whose run is gone", () => {
       true,
     );
   });
+
+  it('diagnoses nothing for a start that rejects only because recovery abandoned it', async () => {
+    const calls: unknown[] = [];
+    const { control, diagnostics, runtime } = await goneRun((_request, signal) => {
+      calls.push(1);
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
+
+    const recovering = recoverGoal(control, 'g1');
+    await untilCalled(calls);
+    await runtime.advance(GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS);
+    await recovering;
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+
+    expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([]);
+  });
 });
 
 describe("the boot sweep's own budget over goals whose start never settles", () => {
@@ -1355,6 +1423,54 @@ describe("the boot sweep's own budget over goals whose start never settles", () 
     expect(report?.failures.map((failure) => failure.goalRunId)).toEqual(['g1']);
   });
 
+  it('diagnoses a recovery that fails after the boot report was given, since nothing is left to read it', async () => {
+    let fail: (error: Error) => void = () => {};
+    const { control, runtime, diagnostics } = await goneRuns(
+      ['g1'],
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+
+    void recoverGoalsAtBoot(control);
+    await turns();
+    await runtime.advance(GOAL_BOOT_SWEEP_BUDGET_MS);
+    await turns();
+    fail(new Error('late resolver fault'));
+    await turns();
+
+    expect(
+      diagnostics.some(
+        (diagnostic) =>
+          diagnostic.level === 'error' &&
+          diagnostic.message.includes('g1') &&
+          diagnostic.message.includes('boot'),
+      ),
+    ).toBe(true);
+  });
+
+  it('reports a goal no worker reached within the budget as not started, apart from the ones still recovering', async () => {
+    const ids = ['g1', 'g2', 'g3', 'g4', 'g5'];
+    const { control, runtime } = await goneRuns(ids, () => new Promise(() => {}));
+
+    let report: Awaited<ReturnType<typeof recoverGoalsAtBoot>> | undefined;
+    void recoverGoalsAtBoot(control).then((done) => {
+      report = done;
+    });
+    await turns();
+    await runtime.advance(GOAL_BOOT_SWEEP_BUDGET_MS);
+    await turns();
+
+    const reasons = Object.fromEntries(
+      (report?.failures ?? []).map((failure) => [failure.goalRunId, failure.reason]),
+    );
+    expect(Object.keys(reasons).toSorted()).toEqual(ids);
+    for (const id of ['g1', 'g2', 'g3', 'g4']) expect(reasons[id]).toContain('still recovering');
+    expect(reasons['g5']).toContain('not started');
+    expect(reasons['g5']).not.toContain('still recovering');
+  });
+
   it('lets a recovery that outlives the budget end on its own, leaving no timer behind', async () => {
     const { control, runtime, diagnostics } = await goneRuns(['g1'], () => new Promise(() => {}));
 
@@ -1371,7 +1487,10 @@ describe("the boot sweep's own budget over goals whose start never settles", () 
 
     expect(report).toBe(reported);
     expect(runtime.pendingTimers()).toEqual([]);
-    expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([]);
+    // The one error is the late ending itself, diagnosed because no report is left to carry it.
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.level === 'error').map((d) => d.message),
+    ).toEqual([expect.stringContaining('ended after the boot sweep')]);
   });
 
   it('arms no timer and takes no further turn when there is nothing to recover, since boot runs it after the engine resumes its runs (COR-1421)', async () => {

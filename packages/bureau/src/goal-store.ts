@@ -241,7 +241,6 @@ export interface GoalScan {
 /** A re-read-and-retry bound for compare-and-swap loss; past it a write reports `stale`. */
 const MAXIMUM_CAS_ATTEMPTS = 16;
 
-/** The goal id a record key was built from; the raw suffix when it does not decode. */
 /**
  * Whether `value` can name a record: text that is well-formed, which is what
  * its percent encoding needs. The store's lookups take ids from callers the
@@ -252,6 +251,7 @@ function isKeyableGoalRunId(value: unknown): value is string {
   return typeof value === 'string' && value.isWellFormed();
 }
 
+/** The goal id a record key was built from; the raw suffix when it does not decode. */
 function decodeGoalRunIdFromKey(key: string): string {
   const encoded = key.slice(GOAL_RECORD_KEY_PREFIX.length);
   try {

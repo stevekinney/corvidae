@@ -332,13 +332,17 @@ async function stopOrphanedAttempts(
       error,
     }));
     if (stopped.status === 'requested') cancelled.push(runId);
-    if (stopped.status === 'failed') {
-      failures.push(`run "${runId}": ${describe(stopped.error)}`);
+    if (stopped.status === 'failed' || stopped.status === 'unsupported-capability') {
+      // A canceller without the capability stopped nothing either: the run may
+      // still be working, so it is a run that could not be stopped, not no news.
+      const reason =
+        stopped.status === 'failed' ? describe(stopped.error) : 'unsupported-capability';
+      failures.push(`run "${runId}": ${reason}`);
       dependencies.diagnose({
         level: 'error',
         scope: 'goals',
-        message: `[bureau] Could not stop run "${runId}" of goal "${record.goalRunId}", whose controller recovery gave up on; it is retried at the next boot or recover(): ${describe(stopped.error)}`,
-        cause: stopped.error,
+        message: `[bureau] Could not stop run "${runId}" of goal "${record.goalRunId}", whose controller recovery gave up on; it is retried at the next boot or recover(): ${reason}`,
+        ...(stopped.status === 'failed' ? { cause: stopped.error } : {}),
       });
     }
   }
@@ -548,6 +552,10 @@ async function startWithinBudget(
   // A start that fails after it was abandoned has no caller left to reject to.
   start.catch((error: unknown) => {
     if (!abandon.signal.aborted) return;
+    // The port rejecting because recovery aborted it is the abandonment working,
+    // not a late failure.
+    if (error === abandon.signal.reason) return;
+    if (error instanceof Error && error.name === 'AbortError') return;
     diagnose({
       level: 'error',
       scope: 'goals',
@@ -744,6 +752,8 @@ export async function stopOvertakenRuns(
       if (run === null || TERMINAL_CONTROLLER_STATUSES.has(run.status)) continue;
       const stopped = await dependencies.cancelRun(runId);
       if (stopped.status === 'failed') throw stopped.error;
+      // No capability to cancel with stopped nothing: the run may still be working.
+      if (stopped.status === 'unsupported-capability') throw new Error('unsupported-capability');
     } catch (error) {
       dependencies.diagnose({
         level: 'error',
@@ -905,6 +915,25 @@ export async function recoverGoal(
 export const UNREADABLE_RECORD_DETAIL = (goalRunId: string): string =>
   `The record stored for goal "${goalRunId}" is unreadable, so recovery cannot tell what it was doing.`;
 
+/**
+ * A recovery that ends after the boot report was given has no report left to
+ * land in, so a failure of it is diagnosed here rather than dropped.
+ */
+function diagnoseLateRecovery(
+  dependencies: GoalControlDependencies,
+  goalRunId: string,
+  result: BureauGoalRecoveryEntry | { readonly failure: string } | 'quiet',
+): void {
+  if (result === 'quiet') return;
+  const reason = 'failure' in result ? result.failure : recoveryEntryFailure(result);
+  if (reason === undefined) return;
+  dependencies.diagnose({
+    level: 'error',
+    scope: 'goals',
+    message: `[bureau] Recovery of goal "${goalRunId}" ended after the boot sweep's report was given, and failed: ${reason}`,
+  });
+}
+
 /** The boot sweep: every goal that is not terminal, and every canceled one not yet closed, whose cleanup may be owed. */
 export async function recoverEveryGoal(
   dependencies: GoalControlDependencies,
@@ -942,11 +971,13 @@ export async function recoverEveryGoal(
     BureauGoalRecoveryEntry | { readonly failure: string } | 'quiet'
   >();
   let reported = false;
+  const started = new Set<number>();
   let next = 0;
   async function worker(): Promise<void> {
     while (next < records.length) {
       const index = next;
       next += 1;
+      started.add(index);
       const record = records[index]!;
       let result: BureauGoalRecoveryEntry | { readonly failure: string } | 'quiet';
       try {
@@ -961,6 +992,7 @@ export async function recoverEveryGoal(
         result = { failure: describe(error) };
       }
       if (!reported) entries.set(index, result);
+      else diagnoseLateRecovery(dependencies, record.goalRunId, result);
     }
   }
   const everyGoal = Promise.all(
@@ -991,7 +1023,9 @@ export async function recoverEveryGoal(
       if (overBudget) {
         failures.push({
           goalRunId: record.goalRunId,
-          reason: `The goal was still recovering when the boot sweep's ${budgetMs} ms budget ended; recovery carries on in the background, and recover() reports where it stands.`,
+          reason: started.has(index)
+            ? `The goal was still recovering when the boot sweep's ${budgetMs} ms budget ended; recovery carries on in the background, and recover() reports where it stands.`
+            : `Recovery of the goal had not started when the boot sweep's ${budgetMs} ms budget ended, because every recovery slot was held by a goal that had not settled; recover() retries it.`,
         });
       }
     } else if (result === 'quiet') {
