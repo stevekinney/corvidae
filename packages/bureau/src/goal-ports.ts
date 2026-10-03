@@ -242,19 +242,6 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal record is unavailable'));
     }
     const { agentName } = record.objective;
-    const plan = planAgent(agentName);
-    if (plan === undefined) {
-      return failed(
-        ATTEMPT_RUN_FAILURE_DETAIL.runStart(`agent "${agentName}" is no longer in the catalog`),
-      );
-    }
-    if (!plan.durable) {
-      return failed(
-        ATTEMPT_RUN_FAILURE_DETAIL.runStart(
-          `agent "${agentName}" cannot run durably (agent-not-durable-capable)`,
-        ),
-      );
-    }
     // Inside an engine activity the engine exists, so its absence is a fault of
     // this process, never a verdict on the goal: throwing lets the activity retry.
     const durable = getDurable();
@@ -346,6 +333,24 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     }
     const adopted = await adopt();
     if (adopted !== undefined) return adopted;
+    // Only a run that must be started needs the agent as the catalog holds it
+    // now. A run that already exists was started from the definition of its own
+    // time, and adopting it needs nothing from today's catalog: an agent that
+    // was removed or made non-durable since must not strand its finished or
+    // running attempt. This is deliberately after the adoption above.
+    const plan = planAgent(agentName);
+    if (plan === undefined) {
+      return failed(
+        ATTEMPT_RUN_FAILURE_DETAIL.runStart(`agent "${agentName}" is no longer in the catalog`),
+      );
+    }
+    if (!plan.durable) {
+      return failed(
+        ATTEMPT_RUN_FAILURE_DETAIL.runStart(
+          `agent "${agentName}" cannot run durably (agent-not-durable-capable)`,
+        ),
+      );
+    }
     if (await mustStandDown()) return standDown();
     const seat = await conversations.seat(record, request);
     if (seat.status === 'failed') return failed(seat.detail);

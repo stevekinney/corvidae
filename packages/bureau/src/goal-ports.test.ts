@@ -318,6 +318,56 @@ describe('startAttempt', () => {
     expect(watched[0]?.live).toBeUndefined();
   });
 
+  describe('after a crash between the attempt workflow starting and the open-attempt commit', () => {
+    const catalogs = [
+      ['removed from the catalog', undefined],
+      ['no longer durable', { durable: false, agentVersion: '2' }],
+    ] as const;
+
+    describe.each(catalogs)('and an agent that is %s on restart', (_label, plan) => {
+      it('adopts a completed attempt, records its session ref, and settles its transcript', async () => {
+        const w = await world({ plan });
+        w.markRunAsGoals('goal-g1-a0');
+        await startDurableRunResult(w.durable, {
+          runId: 'goal-g1-a0',
+          sessionId: 'goal-g1-a0',
+          options: agentOptions(() => Promise.resolve({ content: 'done', toolCalls: [] })),
+          prompt: 'work',
+        });
+
+        const outcome = await w.ports.startAttempt(startRequest());
+
+        expect(outcome).toEqual({ status: 'adopted', sessionId: 'goal-g1-s0' });
+        expect(w.watched.map((entry) => entry.target)).toEqual([
+          { goalRunId: 'g1', attemptIndex: 0, runId: 'goal-g1-a0' },
+        ]);
+        expect(await runsOf(w, 'goal-g1-s0')).toEqual([['goal-g1-a0', 'running']]);
+        // The transcript commits without ever consulting today's catalog.
+        const record = await w.store.get('g1');
+        if (record === undefined) throw new Error('the goal record is missing');
+        await w.conversations.settle(record, 0, 'goal-g1-a0');
+        expect(await runsOf(w, 'goal-g1-s0')).toEqual([['goal-g1-a0', 'completed']]);
+      });
+
+      it('adopts a still-running attempt and starts nothing', async () => {
+        const w = await world({ plan });
+        w.markRunAsGoals('goal-g1-a0');
+        createActiveRun(
+          agentOptions(() => new Promise(() => {})),
+          { ...w.durable, runId: 'goal-g1-a0', prompt: 'work' },
+        );
+        await pollUntil(async () => (await w.engine.get('goal-g1-a0')) !== null);
+
+        const outcome = await w.ports.startAttempt(startRequest());
+
+        expect(outcome).toEqual({ status: 'adopted', sessionId: 'goal-g1-s0' });
+        expect(w.watched).toHaveLength(1);
+        expect(w.watched[0]?.live).toBeUndefined();
+        expect(await runsOf(w, 'goal-g1-s0')).toEqual([['goal-g1-a0', 'running']]);
+      });
+    });
+  });
+
   it("refuses to adopt a workflow that is not the attempt's run", async () => {
     const { ports, engine, markRunAsGoals } = await world();
     markRunAsGoals('goal-g1-a0');
