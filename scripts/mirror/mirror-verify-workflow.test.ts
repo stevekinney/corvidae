@@ -204,6 +204,35 @@ describe('renderMirrorVerifyWorkflow', () => {
     });
   });
 
+  test('Weft renders the binary payload gate while other targets do not', async () => {
+    await withFixture(async ({ targetDirectory, bunLockPath }) => {
+      const weft: PublishedPackage = {
+        ...published[0]!,
+        workspace: '@lostgradient/weft',
+        directory: 'packages/weft',
+        publicName: '@lostgradient/weft',
+      };
+      const weftWorkflow = await renderMirrorVerifyWorkflow({
+        targetDirectory,
+        bunLockPath,
+        published: [weft],
+        privateWorkspaces: [],
+      });
+      expect(weftWorkflow).toContain('verify @lostgradient/weft binary payload');
+      expect(weftWorkflow).toContain('test -f scripts/build-binary-size.test.ts');
+      expect(weftWorkflow).toContain(
+        'bun test scripts/build-binary.test.ts scripts/build-binary-size.test.ts',
+      );
+      const otherWorkflow = await renderMirrorVerifyWorkflow({
+        targetDirectory,
+        bunLockPath,
+        published,
+        privateWorkspaces: [],
+      });
+      expect(otherWorkflow).not.toContain('build-binary-size.test.ts');
+    });
+  });
+
   test('large consumer files stay under the Actions run limit and reconstruct byte-for-byte', async () => {
     await withFixture(async ({ targetDirectory, bunLockPath }) => {
       const largePublished: PublishedPackage[] = [

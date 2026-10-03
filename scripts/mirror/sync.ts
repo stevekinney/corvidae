@@ -889,6 +889,10 @@ export async function verifyTarget({
         );
         break;
       }
+      case 'binary-size': {
+        assertSucceeded(result, `verifying binary payload for ${step.publicName}`);
+        break;
+      }
       case 'pack': {
         assertSucceeded(result, `packing ${step.publicName}`);
         break;
