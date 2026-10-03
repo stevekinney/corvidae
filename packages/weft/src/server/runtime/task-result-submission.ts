@@ -85,6 +85,10 @@ export async function awaitTaskLedgerRecovery(context: ServerContext): Promise<R
   }
 }
 
+/**
+ * Validate and extract typed fields from a parsed task-result body.
+ * Returns the validated result or a 400 Response if validation fails.
+ */
 function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskResult | Response {
   const operationId = body['operationId'];
   const status = body['status'];
@@ -118,7 +122,17 @@ function validateTaskResultBody(body: Record<string, unknown>): ValidatedTaskRes
   };
 }
 
-/** Every permanent rejection reason exposed by long-poll result submission. */
+/**
+ * Every reason `handleTaskResultRequest` can permanently reject a `taskResult`
+ * submission for, surfaced on the `403`/`413` response body's `reason` field
+ * (COR-237) so a caller — including `LongPollWorker`'s own result-delivery
+ * logic — does not have to pattern-match `error` text to tell the classes
+ * apart. `TaskResultAuthorizationFailure` covers the shared identity gate
+ * both transports go through; `'queue-mismatch'` and `'revision-mismatch'`
+ * are long-poll-specific preconditions checked before/alongside it;
+ * `TaskLedgerCompletionFailureReason` (currently only `'conflicting-content'`)
+ * is the one named ledger-commit outcome from below that gate.
+ */
 export type LongPollTaskResultRejectionReason =
   | TaskResultAuthorizationFailure
   | 'queue-mismatch'
@@ -128,6 +142,40 @@ export type LongPollTaskResultRejectionReason =
 type LongPollCompletionAuthorization =
   Readonly<{ ok: true }> | Readonly<{ ok: false; reason: LongPollTaskResultRejectionReason }>;
 
+/**
+ * Whether a long-poll completion may apply, read from the durable ledger
+ * record rather than the old `op:inflight:` record. Unlike the pre-ledger
+ * system, an absent or non-owning record is a hard rejection, not a
+ * duplicate-tolerant no-op — the ledger's single authoritative key removes
+ * the ambiguity that made "absent" a plausible stand-in for "already
+ * resolved elsewhere" (see the project brief's failure matrix: "Result
+ * arrives for unknown operation → Rejected"). The identity/attempt-token
+ * decision itself is shared with the WebSocket transport (COR-233) — see
+ * `authorizeTaskResultForCurrentAttempt` in `task-result-authorization.ts`,
+ * which is also what lets a resend of an already-`terminal`/`deadLettered`
+ * result reach `commitTaskLedgerCompletion`'s idempotent `duplicate`
+ * handling instead of dying here the way it did before COR-233.
+ *
+ * Revision authorization (WFT-20) is STRICT for long-poll, unlike the
+ * WebSocket transport's additive policy: when the stored ledger record
+ * carries a `workflowRevision`, the POST body must echo it back exactly — a
+ * missing echo is rejected the same as a mismatched one. Long-poll has no
+ * live in-flight registry entry to fall back to ("was this SDK ever told
+ * about the field") the way the WebSocket path does, so once ANY caller
+ * starts supplying `workflowRevision` on `TaskDispatch` for a given
+ * operation, every worker completing it must echo the value back. Checked
+ * only while the attempt is still live (`leased`/`completing`) — a resend
+ * against an already-resolved record is authorized by attempt token alone
+ * (see `authorizeTaskResultForCurrentAttempt`), and `commitTaskLedgerCompletion`'s
+ * content-digest comparison is what actually guards a resolved record
+ * against a genuinely different resubmission from there.
+ *
+ * `queue` is the `:queue` path segment the result POST arrived on. It must
+ * match the record's own `queue` exactly (COR-240) — otherwise a result
+ * submitted against the wrong queue path could still authorize a completion
+ * as long as the rest of the body matched, which is not the contract the
+ * queue segment exists to enforce.
+ */
 function isLongPollCompletionAuthorized(
   record: RemoteTaskRecord | null,
   validated: ValidatedTaskResult,
@@ -156,6 +204,13 @@ function isLongPollCompletionAuthorized(
   return { ok: true };
 }
 
+/**
+ * Apply a validated task result through the shared result-application
+ * implementation (`applyWorkerTaskResult`, COR-240 acceptance criterion 12),
+ * then update the in-memory bookkeeping the durable write does not own —
+ * resolving any parked local completion waiters and clearing the deadline
+ * tracker entry.
+ */
 async function applyTaskResult(
   context: ServerContext,
   options: ServeOptions,
@@ -186,6 +241,12 @@ async function applyTaskResult(
     };
   }
 
+  // Dead-lettered is terminal-ish: no further heartbeat/visibility extension
+  // will arrive for this operation, so stop tracking its deadline either
+  // way. taskQueue.complete() is deliberately skipped for a dead letter —
+  // that signals a normal delivered result to whatever is waiting, and a
+  // dead letter is the opposite: the result could not be durably applied as
+  // completed/failed.
   context.deadlineTracker.remove(operationId);
   if (applied.disposition !== 'dead-lettered') {
     context.taskQueue.complete({ operationId, status, value, error });
@@ -196,6 +257,20 @@ async function applyTaskResult(
   return { ok: true, disposition: applied.disposition };
 }
 
+/**
+ * `403` response for a `taskResult` this transport will never apply — no
+ * matter how many times it is resent — carrying the `operationId`/
+ * `attemptToken` that identify exactly which submission was rejected, plus a
+ * machine-distinguishable `reason` (COR-237) when the caller has one:
+ * `LongPollTaskResultRejectionReason` names the full set. Mirrors the
+ * WebSocket transport's correlated `protocolError` (protocol v7,
+ * `websocket-worker.ts`'s `commitAndAcknowledgeTaskResult`/
+ * `applyTaskResultFallback`) in semantics, not shape: `LongPollWorker`'s own
+ * result-delivery buffer (`LongPollResultDelivery`) drops the matching
+ * buffered entry based on `operationId`/`attemptToken` correlation alone —
+ * `reason` is surfaced to callers for diagnostics/logging only and plays no
+ * part in that drop-versus-retry decision.
+ */
 function taskResultForbiddenResponse(
   operationId: string,
   attemptToken: string,
@@ -299,6 +374,13 @@ async function submitValidatedTaskResult(
     `[weft] Failed to commit task result for "${result.operationId}" through the durable ledger:`,
     applied.reason,
   );
+  // Mirrors the WebSocket transport's correlated `protocolError` (protocol
+  // v7): the error body carries `operationId`/`attemptToken` plus, when
+  // this is the one named ledger-commit outcome (`applied.reasonCode`,
+  // e.g. `'conflicting-content'`), a machine-distinguishable `reason` too
+  // (COR-237) — `LongPollWorker`'s own result-delivery logic reads it to
+  // decide whether this rejection is permanent (drop the buffered result)
+  // or a generic, potentially-transient commit failure worth retrying.
   return taskResultForbiddenResponse(result.operationId, result.attemptToken, applied.reasonCode);
 }
 

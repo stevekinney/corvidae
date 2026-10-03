@@ -10,7 +10,7 @@ import {
 } from './workflow-event-feed.ts';
 
 export const REPLAY_PAGE_SIZE = 128;
-const DEFAULT_RETENTION_BATCH_SIZE = 100;
+export const DEFAULT_RETENTION_BATCH_SIZE = 100;
 
 export async function loadTailAuthority(
   storage: Storage,

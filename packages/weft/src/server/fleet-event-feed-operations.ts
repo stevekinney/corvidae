@@ -16,6 +16,7 @@ import {
   decodeCursorOrThrow,
   decodeRetentionFloorOrThrow,
   decodeStorageValue,
+  DEFAULT_RETENTION_BATCH_SIZE,
   highestFleetEventSequence,
   isFloorRecord,
   isTailRecord,
@@ -42,8 +43,6 @@ import {
   type ReplayLiveFeed,
   type ReplayLiveFeedBackend,
 } from './workflow-event-feed.ts';
-
-const DEFAULT_RETENTION_BATCH_SIZE = 100;
 
 export function createFleetEventFeedOperations(
   storage: Storage,
