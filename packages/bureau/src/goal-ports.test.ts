@@ -5,6 +5,7 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createActiveRun,
+  createAgentSession,
   createCheckpointStore,
   createRunEngine,
   createRunWorkflow,
@@ -41,6 +42,7 @@ import {
 } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
+import type { CatalogRunRecoveryRecord } from './runtime-composition';
 import { isSessionAuthorityAuthorized } from './session-authority';
 import { freshHandoff, pollUntil, transcriptOf } from './testing/goal-fixtures.test-support';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
@@ -118,6 +120,7 @@ interface WorldOptions {
   readonly startAttemptRun?: Parameters<typeof createGoalPorts>[0]['startAttemptRun'];
   readonly cancelRun?: Parameters<typeof createGoalPorts>[0]['cancelRun'];
   readonly policy?: GoalConversationPolicy;
+  readonly resolveCostEstimation?: Parameters<typeof createGoalPorts>[0]['resolveCostEstimation'];
   readonly instructions?: string;
   readonly resolveFreshAttemptSource?: FreshAttemptSourceResolver;
   /** A clock the test shares with the artifact it builds; a fresh manual one otherwise. */
@@ -182,6 +185,18 @@ async function world(options: WorldOptions = {}) {
     reconcile: () => Promise.resolve('not-needed'),
     drain: () => Promise.resolve(),
   };
+  // What the dispatcher records with each goal attempt's run: whose it is.
+  const runRecords = new Map<string, CatalogRunRecoveryRecord>();
+  const markRunAsGoals = (runId: string, attemptIndex = 0): void => {
+    runRecords.set(runId, {
+      schemaVersion: 1,
+      agentName: 'worker',
+      definitionRevision: 1,
+      input: 'work',
+      principal: 'alice',
+      goalAttempt: { goalRunId: 'g1', attemptIndex },
+    });
+  };
   const runtime = options.runtime ?? createManualRuntimeServices();
   const sessions = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
   const conversations = createGoalConversations({
@@ -197,6 +212,12 @@ async function world(options: WorldOptions = {}) {
     forwarder,
     conversations,
     getDurable: () => durable,
+    readRunRecord: (runId) => {
+      const record = runRecords.get(runId);
+      return Promise.resolve(
+        record === undefined ? { status: 'missing' } : { status: 'found', record },
+      );
+    },
     planAgent: () => ('plan' in options ? options.plan : { durable: true, agentVersion: '1' }),
     startAttemptRun:
       options.startAttemptRun ??
@@ -204,7 +225,7 @@ async function world(options: WorldOptions = {}) {
         throw new Error('no attempt run was expected');
       }),
     cancelRun: options.cancelRun ?? (() => Promise.resolve({ status: 'requested' })),
-    resolveCostEstimation: () => Promise.resolve(undefined),
+    resolveCostEstimation: options.resolveCostEstimation ?? (() => Promise.resolve(undefined)),
   });
   return {
     durable,
@@ -216,6 +237,8 @@ async function world(options: WorldOptions = {}) {
     sessions,
     conversations,
     checkpointReadFaults,
+    runRecords,
+    markRunAsGoals,
   };
 }
 
@@ -242,7 +265,14 @@ describe('startAttempt', () => {
 
     expect(outcome).toEqual({ status: 'started', sessionId: 'goal-g1-s0' });
     expect(starts).toEqual([
-      { agentName: 'worker', input: 'work', runId: 'goal-g1-a0', principal: 'alice' },
+      {
+        agentName: 'worker',
+        input: 'work',
+        runId: 'goal-g1-a0',
+        goalRunId: 'g1',
+        attemptIndex: 0,
+        principal: 'alice',
+      },
     ]);
     expect(watched).toEqual([
       { target: { goalRunId: 'g1', attemptIndex: 0, runId: 'goal-g1-a0' }, live },
@@ -256,7 +286,8 @@ describe('startAttempt', () => {
   });
 
   it("adopts a run that already exists under the attempt's id instead of starting another", async () => {
-    const { ports, durable, watched } = await world();
+    const { ports, durable, watched, markRunAsGoals } = await world();
+    markRunAsGoals('goal-g1-a0');
     await startDurableRunResult(durable, {
       runId: 'goal-g1-a0',
       sessionId: 'goal-g1-a0',
@@ -272,7 +303,8 @@ describe('startAttempt', () => {
   });
 
   it("refuses to adopt a workflow that is not the attempt's run", async () => {
-    const { ports, engine } = await world();
+    const { ports, engine, markRunAsGoals } = await world();
+    markRunAsGoals('goal-g1-a0');
     await engine.start('durableHeartbeatTick', {}, { id: 'goal-g1-a0' }).catch(() => undefined);
     // Any workflow holding the id that is not an agent run's will do.
     const taken = await engine.get('goal-g1-a0');
@@ -292,6 +324,7 @@ describe('startAttempt', () => {
         throw new Error('Run "goal-g1-a0" already exists');
       },
     });
+    raced.markRunAsGoals('goal-g1-a0');
     createActiveRun(
       agentOptions(() => new Promise(() => {})),
       { ...raced.durable, runId: 'goal-g1-a0', prompt: 'work' },
@@ -530,6 +563,38 @@ describe('runValidator', () => {
       },
     });
     expect(JSON.parse(JSON.stringify(result))).toEqual(result);
+  });
+
+  it.each([
+    ['a null entry', [null]],
+    ['a string entry', ['unit']],
+    ['an entry with no source', [{ detail: 'x' }]],
+  ])(
+    "records %s in a verdict's evidence as a malformed-output error, never a verdict",
+    async (_label, evidence) => {
+      const { ports } = await evaluating({
+        validators: [{ identity: CHECK, validate: () => ({ kind: 'pass', evidence }) as never }],
+      });
+
+      expect(await ports.runValidator(request)).toMatchObject({
+        outcome: { kind: 'error', error: { kind: 'output', code: 'MALFORMED_VALIDATOR_OUTPUT' } },
+      });
+    },
+  );
+
+  it('fails the activity, to be retried, when the cost estimator fails for a goal with a cost bound', async () => {
+    let fail = true;
+    const { ports } = await evaluating({
+      bounds: { maximumAttempts: 3, maximumTotalCostUsd: 1 },
+      validators: [{ identity: CHECK, validate: () => ({ kind: 'pass', evidence: [] }) }],
+      resolveCostEstimation: () =>
+        fail ? Promise.reject(new Error('pricing hiccup')) : Promise.resolve(undefined),
+    });
+
+    expect(await throwingRejectionOf(ports.runValidator(request))).toThrow('pricing hiccup');
+    // It is not recorded as an attempt with no cost: the retry reads the result.
+    fail = false;
+    expect(await ports.runValidator(request)).toMatchObject({ outcome: { kind: 'pass' } });
   });
 
   it('hands the validator the attempts before this one', async () => {
@@ -920,6 +985,7 @@ describe('startAttempt after a crash between the engine start and the session wr
   it('records the adopted run in its session once, however often the start repeats', async () => {
     const w = await world();
     await finishAttemptZero(w);
+    w.markRunAsGoals('goal-g1-a1', 1);
     // The previous process started attempt 1's workflow and died before recording it.
     createActiveRun(
       agentOptions(() => new Promise(() => {})),
@@ -1099,5 +1165,183 @@ describe("the authority recorded on a goal's sessions", () => {
     const session = await w.sessions.load('goal-g1-s1');
     expect(isSessionAuthorityAuthorized(session!.metadata, 'alice')).toBe(true);
     expect(isSessionAuthorityAuthorized(session!.metadata, 'bob')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An id is not ownership
+// ---------------------------------------------------------------------------
+
+describe("startAttempt when something else already holds one of the goal's deterministic ids", () => {
+  const refusingStarter = () => {
+    const starts: GoalAttemptStart[] = [];
+    return {
+      starts,
+      startAttemptRun: (start: GoalAttemptStart): GoalAttemptRun => {
+        starts.push(start);
+        return { run: {} as never, durablyStarted: Promise.resolve() };
+      },
+    };
+  };
+
+  const foreignRecord = (
+    overrides: Partial<CatalogRunRecoveryRecord>,
+  ): CatalogRunRecoveryRecord => ({
+    schemaVersion: 1,
+    agentName: 'worker',
+    definitionRevision: 1,
+    input: 'work',
+    principal: 'alice',
+    goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+    ...overrides,
+  });
+
+  it.each([
+    ['an ordinary run with no goal marker', undefined],
+    ["another goal's attempt", { goalAttempt: { goalRunId: 'g2', attemptIndex: 0 } }],
+    ['another attempt of this goal', { goalAttempt: { goalRunId: 'g1', attemptIndex: 5 } }],
+    ["another principal's run", { principal: 'mallory' }],
+    ["another agent's run", { agentName: 'intruder' }],
+  ] as const)(
+    'refuses a live run that is %s, and touches nothing of it',
+    async (_label, override) => {
+      const { starts, startAttemptRun } = refusingStarter();
+      const w = await world({ startAttemptRun });
+      createActiveRun(
+        agentOptions(() => new Promise(() => {})),
+        { ...w.durable, runId: 'goal-g1-a0', prompt: "someone else's" },
+      );
+      await pollUntil(async () => (await w.engine.get('goal-g1-a0')) !== null);
+      if (override !== undefined) {
+        w.runRecords.set('goal-g1-a0', foreignRecord(override));
+      }
+
+      const outcome = await w.ports.startAttempt(startRequest());
+
+      expect(outcome).toMatchObject({ status: 'failed' });
+      expect((outcome as { detail: string }).detail).toContain('goal-g1-a0');
+      // Nothing was adopted, started over it, watched, or written to a session.
+      expect(starts).toEqual([]);
+      expect(w.watched).toEqual([]);
+      expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+      const stillThere = await w.engine.get('goal-g1-a0');
+      expect(stillThere?.status).toBe('running');
+    },
+  );
+
+  it('refuses a claim another run holds, even though no workflow exists yet', async () => {
+    const { starts, startAttemptRun } = refusingStarter();
+    const w = await world({ startAttemptRun });
+    w.runRecords.set('goal-g1-a0', {
+      schemaVersion: 1,
+      agentName: 'worker',
+      definitionRevision: 1,
+      input: 'work',
+      principal: 'alice',
+    });
+
+    const outcome = await w.ports.startAttempt(startRequest());
+
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect(starts).toEqual([]);
+    expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+  });
+
+  it('completes its own claim when the start died before the workflow existed', async () => {
+    const { starts, startAttemptRun } = refusingStarter();
+    const w = await world({ startAttemptRun });
+    w.markRunAsGoals('goal-g1-a0');
+
+    expect(await w.ports.startAttempt(startRequest())).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s0',
+    });
+    expect(starts).toHaveLength(1);
+  });
+
+  const foreignSession = (w: World, id: string, metadata: Record<string, unknown>) =>
+    w.sessions.update(id, () =>
+      createAgentSession({
+        agentName: 'worker',
+        conversationHistory: createConversationHistory(),
+        id,
+        runs: [],
+        metadata: metadata as never,
+        runtime: w.runtime,
+      }),
+    );
+  const strangerAuthority = {
+    principalId: 'mallory',
+    tenantId: 'bureau',
+    ownerId: 'worker',
+    capabilities: ['tools:execute'],
+    authorizationRevision: 'bureau:1',
+  };
+
+  it.each([
+    ['a session an ordinary caller created at the id', {}],
+    ["another goal's session", { goalRunId: 'g2' }],
+    [
+      "another principal's session that names this goal",
+      { goalRunId: 'g1', lastRequestAuthority: strangerAuthority },
+    ],
+  ])('refuses %s, and leaves its transcript as it was', async (_label, metadata) => {
+    const { starts, startAttemptRun } = refusingStarter();
+    const w = await world({ startAttemptRun });
+    await foreignSession(w, 'goal-g1-s0', metadata);
+    const before = await w.sessions.load('goal-g1-s0');
+
+    const outcome = await w.ports.startAttempt(startRequest());
+
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect((outcome as { detail: string }).detail).toContain('goal-g1-s0');
+    expect(starts).toEqual([]);
+    expect(await w.sessions.load('goal-g1-s0')).toEqual(before);
+  });
+
+  it("refuses a session that holds a run that is not one of the goal's attempts", async () => {
+    const { starts, startAttemptRun } = refusingStarter();
+    const w = await world({ startAttemptRun });
+    await foreignSession(w, 'goal-g1-s0', {
+      goalRunId: 'g1',
+      lastRequestAuthority: { ...strangerAuthority, principalId: 'alice' },
+    });
+    await w.sessions.update('goal-g1-s0', (session) => ({
+      ...session!,
+      runs: [
+        {
+          runId: 'someone-elses-run',
+          sequence: 0,
+          status: 'completed',
+          startedAt: NOW,
+          agentName: 'worker',
+        },
+      ],
+    }));
+
+    expect(await w.ports.startAttempt(startRequest())).toMatchObject({ status: 'failed' });
+    expect(starts).toEqual([]);
+  });
+
+  it('refuses to seed a retry from a foreign trunk, under continue and under fork-from-baseline', async () => {
+    for (const policy of [
+      { kind: 'continue' },
+      { kind: 'fork-from-baseline', throughRun: 0 },
+    ] as const) {
+      const { starts, startAttemptRun } = refusingStarter();
+      const w = await world({ startAttemptRun, policy });
+      await finishAttemptZero(w);
+      // The trunk is replaced by a foreign session after attempt 0 ran.
+      await w.sessions.update('goal-g1-s0', (session) => ({
+        ...session!,
+        metadata: { ...session!.metadata, lastRequestAuthority: strangerAuthority },
+      }));
+
+      const outcome = await w.ports.startAttempt(startRequest('say done'));
+
+      expect(outcome).toMatchObject({ status: 'failed' });
+      expect(starts).toEqual([]);
+      expect(await w.sessions.load('goal-g1-s1')).toBeUndefined();
+    }
   });
 });

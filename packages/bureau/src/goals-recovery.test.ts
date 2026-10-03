@@ -295,6 +295,15 @@ describe('a goal across a process restart', () => {
 
     expect(await bureau.goals.get('g1')).toEqual(succeeded);
     expect(await bureau.goals.get('g2')).toEqual(canceled);
+    // The canceled goal's finalizer, which stops its attempt, may still be owed
+    // in this process, and the sweep says so until it has settled. After that
+    // nothing is left to recover for either ended goal.
+    expect(
+      await pollUntil(async () => {
+        const report = await bureau.goals.recover();
+        return report.goals.length === 0 && report.failures.length === 0;
+      }),
+    ).toBe(true);
     expect(await bureau.goals.recover()).toEqual({ goals: [], failures: [] });
     expect(await bureau.goals.recover('g1')).toEqual({
       goals: [{ goalRunId: 'g1', outcome: 'already-terminal' }],
@@ -528,6 +537,8 @@ describe('the attempt behind a running goal', () => {
     });
     await pollUntil(async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'completed');
     const view = await inspection();
+    // The run is the goal's own: its start recorded the marker a goal adopts by.
+    await view.markRunAsGoalAttempt('goal-g1-a0', 'g1', 0);
     await seedRunning(view);
 
     expect(await bureau.goals.recover('g1')).toMatchObject({
@@ -570,6 +581,47 @@ describe('the attempt behind a running goal', () => {
     expect(steps).toBe(1);
   });
 
+  it("does not adopt a run an ordinary caller created at the attempt's id, and leaves it as it was", async () => {
+    database = createTestDatabase('foreign-run');
+    let steps = 0;
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: {
+        worker: workerAgent(() => {
+          steps += 1;
+          return Promise.resolve({ content: 'done', toolCalls: [] });
+        }),
+        planner: workerAgent(hangUntilAborted, 'planner'),
+      },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+    bureau.run('planner', 'plan');
+    await pollUntil(async () => {
+      const runs = await durableIds(bureau, 'agent-run-');
+      return runs.length === 1;
+    });
+    const [parentRunId] = await durableIds(bureau, 'agent-run-');
+    await bureau.children.dispatch({
+      parentRunId: parentRunId!,
+      agentName: 'worker',
+      input: 'work',
+      childRunId: 'goal-g1-a0',
+    });
+    await pollUntil(async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'completed');
+    const view = await inspection();
+    await seedRunning(view);
+
+    const recovered = await bureau.goals.recover('g1');
+
+    // The goal refuses the run; it neither forwards its result nor starts over it.
+    expect(recovered.goals[0]).toMatchObject({ goalRunId: 'g1', attempt: 'failed' });
+    expect(recovered.goals[0]?.detail).toContain('goal-g1-a0');
+    expect(steps).toBe(1);
+    expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('completed');
+  });
+
   it('is started from the claim a start left behind when it died before the workflow existed', async () => {
     database = createTestDatabase('claim');
     let steps = 0;
@@ -589,6 +641,7 @@ describe('the attempt behind a running goal', () => {
       agentName: 'worker',
       definitionRevision: readGenerationProfile(worker).revision,
       input: 'work',
+      goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
     });
     await view.store.create(pendingGoal());
     expect(await bureau.getDurableRun('goal-g1-a0')).toBeNull();

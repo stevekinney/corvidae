@@ -10,12 +10,12 @@ import {
   type FreshAttemptSourceResolver,
   type Validator,
 } from '@lostgradient/operative';
-import { encode, resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import { decode, encode, resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
 import { Conversation } from 'conversationalist';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
-import { goalSessionId } from '../goal-conversation';
+import { goalSessionId, goalSessionMetadata } from '../goal-conversation';
 import {
   createGoalState,
   type DurableGoalAttempt,
@@ -74,11 +74,30 @@ export async function inspect(path: string) {
     /** A catalog-run recovery claim, as a start that died before its workflow existed left it. */
     async claimRun(
       runId: string,
-      record: { agentName: string; definitionRevision: number; input: string },
+      record: {
+        agentName: string;
+        definitionRevision: number;
+        input: string;
+        goalAttempt?: { goalRunId: string; attemptIndex: number };
+      },
     ) {
       await storage.put(
         `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`,
         encode({ schemaVersion: 1, ...record }),
+      );
+    },
+    /** Marks a run that already exists as the goal's own attempt, as the goal's own start would have. */
+    async markRunAsGoalAttempt(runId: string, goalRunId: string, attemptIndex: number) {
+      const key = `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`;
+      const stored = await storage.get(key);
+      if (stored === null || stored === undefined)
+        throw new Error(`no recovery record for ${runId}`);
+      await storage.put(
+        key,
+        encode({
+          ...(decode(stored) as Record<string, unknown>),
+          goalAttempt: { goalRunId, attemptIndex },
+        }),
       );
     },
   };
@@ -160,6 +179,7 @@ export async function seedTrunk(inspection: Inspection, goal = pendingGoal()) {
       agentName: goal.objective.agentName,
       conversationHistory: conversation.current,
       id: goalSessionId(goal.goalRunId, 0),
+      metadata: goalSessionMetadata(goal),
       runs: [
         {
           runId: goalAttemptRunId(goal.goalRunId, 0),

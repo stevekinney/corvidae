@@ -297,7 +297,7 @@ export class GoalObjectiveTooLargeError extends Error {
 
 /** The goal id cannot be used to name the workflows and signals a goal is made of. */
 export class GoalRunIdError extends Error {
-  readonly reason: 'control-character' | 'too-long';
+  readonly reason: 'empty' | 'control-character' | 'too-long';
 
   constructor(reason: GoalRunIdError['reason'], message: string) {
     super(message);
@@ -350,20 +350,30 @@ function boundError(error: ProjectedValidatorError): ProjectedValidatorError {
   };
 }
 
-/**
- * Brings a validator outcome under `maximumBytes` deterministically. An
- * outcome already under the ceiling is returned untouched. Otherwise every
- * evidence `detail` and `ValidatorError.cause` is replaced by a
- * `{ truncated, originalByteLength }` marker and free-text fields are cut to a
- * fixed length. The verdict itself (its `kind`, `retryable`, `source`s) never
- * changes, so the decision a bounded outcome produces equals the unbounded one.
- */
-export function boundValidationOutcome(
-  outcome: ProjectedValidatorOutcome,
-  maximumBytes: number = GOAL_VALIDATION_MAXIMUM_BYTES,
-): ProjectedValidatorOutcome {
-  if (utf8ByteLength(JSON.stringify(outcome)) <= maximumBytes) return outcome;
-  const evidence = (items: readonly { source: string; detail: JSONValue }[]) =>
+const COMPACT_TEXT_CHARACTERS = 256;
+const COMPACT_SOURCE_CHARACTERS = 128;
+const COMPACT_CODE_CHARACTERS = 64;
+/** Evidence past this many entries is dropped in the second tier, however small each is. */
+const MAXIMUM_BOUNDED_EVIDENCE_ENTRIES = 512;
+
+/** The code of the outcome that replaces one that could not be brought under the cap. */
+export const VALIDATION_OUTCOME_TOO_LARGE = 'OUTCOME_TOO_LARGE';
+
+/** Cuts to `maximum` UTF-16 units without leaving half of a surrogate pair behind. */
+function cut(text: string, maximum: number): string {
+  if (text.length <= maximum) return text;
+  const end = /[\ud800-\udbff]/.test(text.charAt(maximum - 1)) ? maximum - 1 : maximum;
+  return `${text.slice(0, end)}…`;
+}
+
+const fitsWithin = (outcome: ProjectedValidatorOutcome, maximumBytes: number): boolean =>
+  utf8ByteLength(JSON.stringify(outcome)) <= maximumBytes;
+
+type EvidenceList = readonly { source: string; detail: JSONValue }[];
+
+/** First tier: details and causes become markers; free text is cut to a few thousand characters. */
+function boundFirstTier(outcome: ProjectedValidatorOutcome): ProjectedValidatorOutcome {
+  const evidence = (items: EvidenceList) =>
     items.map((item) => ({ source: item.source, detail: truncationMarker(item.detail) }));
   switch (outcome.kind) {
     case 'pass':
@@ -388,6 +398,108 @@ export function boundValidationOutcome(
     case 'indeterminate':
       return { kind: 'indeterminate', reason: truncateText(outcome.reason) };
   }
+}
+
+/**
+ * Second tier: every string is short, and evidence is cut to as many entries as
+ * fit (a marker says how many were dropped). The verdict is still the validator's.
+ */
+function boundSecondTier(
+  outcome: ProjectedValidatorOutcome,
+  maximumBytes: number,
+): ProjectedValidatorOutcome | undefined {
+  const compactError = (error: ProjectedValidatorError): ProjectedValidatorError => {
+    const { cause, ...rest } = error;
+    return {
+      ...rest,
+      code: cut(error.code, COMPACT_CODE_CHARACTERS),
+      message: cut(error.message, COMPACT_TEXT_CHARACTERS),
+      ...(cause === undefined ? {} : { cause: truncationMarker(cause) }),
+    };
+  };
+  const withEvidence = (
+    items: EvidenceList,
+    build: (evidence: EvidenceList) => ProjectedValidatorOutcome,
+  ): ProjectedValidatorOutcome | undefined => {
+    const considered = items.slice(0, MAXIMUM_BOUNDED_EVIDENCE_ENTRIES).map((item) => ({
+      source: cut(item.source, COMPACT_SOURCE_CHARACTERS),
+      detail: truncationMarker(item.detail),
+    }));
+    const candidate = (keep: number): ProjectedValidatorOutcome =>
+      build(
+        keep === items.length
+          ? considered.slice(0, keep)
+          : [
+              ...considered.slice(0, keep),
+              { source: 'omitted', detail: { omittedEntries: items.length - keep } },
+            ],
+      );
+    // Fitting is monotonic in the number of entries kept, so search for the most that fit.
+    let low = 0;
+    let high = considered.length;
+    if (!fitsWithin(candidate(0), maximumBytes)) return undefined;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (fitsWithin(candidate(middle), maximumBytes)) low = middle;
+      else high = middle - 1;
+    }
+    return candidate(low);
+  };
+  switch (outcome.kind) {
+    case 'pass':
+      return withEvidence(outcome.evidence, (evidence) => ({ kind: 'pass', evidence }));
+    case 'fail':
+      return withEvidence(outcome.evidence, (evidence) => ({
+        kind: 'fail',
+        feedback: cut(outcome.feedback, COMPACT_TEXT_CHARACTERS),
+        evidence,
+        retryable: outcome.retryable,
+      }));
+    case 'error':
+      return { kind: 'error', error: compactError(outcome.error) };
+    case 'unavailable':
+      return {
+        kind: 'unavailable',
+        error: compactError(outcome.error),
+        reason: cut(outcome.reason, COMPACT_TEXT_CHARACTERS),
+      };
+    case 'indeterminate':
+      return { kind: 'indeterminate', reason: cut(outcome.reason, COMPACT_TEXT_CHARACTERS) };
+    case 'canceled':
+      return outcome;
+  }
+}
+
+/**
+ * Brings a validator outcome under `maximumBytes`, and guarantees it stays there.
+ *
+ * 1. An outcome already under the ceiling is returned untouched.
+ * 2. Otherwise every evidence `detail` and `ValidatorError.cause` becomes a
+ *    `{ truncated, originalByteLength }` marker and free text is cut to a fixed
+ *    length. The verdict (`kind`, `retryable`, the `source`s) does not change.
+ * 3. If that is still over (a great many entries, or very long sources, codes,
+ *    or multi-byte text), strings are cut short and evidence is cut to as many
+ *    entries as fit, with a marker for the rest. The verdict still does not change.
+ * 4. If even that cannot fit, the outcome is replaced by a validator
+ *    infrastructure `error` coded {@link VALIDATION_OUTCOME_TOO_LARGE}. That is
+ *    deliberate: a verdict nobody can record is not one the goal may act on.
+ *
+ * Only a ceiling below the size of that replacement (a few dozen bytes) cannot
+ * be honoured; the record's own cap is orders of magnitude above it.
+ */
+export function boundValidationOutcome(
+  outcome: ProjectedValidatorOutcome,
+  maximumBytes: number = GOAL_VALIDATION_MAXIMUM_BYTES,
+): ProjectedValidatorOutcome {
+  if (fitsWithin(outcome, maximumBytes) || outcome.kind === 'canceled') return outcome;
+  const first = boundFirstTier(outcome);
+  if (fitsWithin(first, maximumBytes)) return first;
+  const second = boundSecondTier(outcome, maximumBytes);
+  if (second !== undefined && fitsWithin(second, maximumBytes)) return second;
+  return {
+    kind: 'error',
+    error: { kind: 'output', code: VALIDATION_OUTCOME_TOO_LARGE, message: 'Outcome too large.' },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -900,6 +1012,9 @@ const identifierEncoder = new TextEncoder();
  * goal's own bound allows, before anything is written.
  */
 function validateGoalRunId(goalRunId: string, maximumAttempts: number): void {
+  if (goalRunId.length === 0) {
+    throw new GoalRunIdError('empty', 'The goal id must not be empty.');
+  }
   // eslint-disable-next-line no-control-regex -- Weft's own workflow-id rule is exactly these.
   if (/[\u0000-\u001f\u007f]/.test(goalRunId)) {
     throw new GoalRunIdError(

@@ -58,6 +58,9 @@ export interface GoalAttemptStart {
   /** The first attempt's prompt, or a later attempt's seed conversation with its turn appended. */
   readonly input: AgentInput;
   readonly runId: string;
+  /** Recorded with the run, so the goal can later tell its own run from another at the same id. */
+  readonly goalRunId: string;
+  readonly attemptIndex: number;
   readonly principal?: string | undefined;
 }
 
@@ -68,6 +71,12 @@ export interface GoalAttemptStart {
  * they have, and rejects with whatever stopped them, so a caller can tell
  * "the run exists" from "a start is under way".
  */
+/** Which goal attempt a run was started for; see `CatalogRunRecoveryRecord.goalAttempt`. */
+interface GoalAttemptOwner {
+  readonly goalRunId: string;
+  readonly attemptIndex: number;
+}
+
 export interface GoalAttemptRun {
   readonly run: AgentRun<unknown, boolean>;
   readonly durablyStarted: Promise<void>;
@@ -136,7 +145,7 @@ export function createCatalogDispatcher({
      * The record is rewritten with identical content and the start continues
      * from it, rather than refusing as a child with a taken id would.
      */
-    goalAttempt = false,
+    goalAttempt?: GoalAttemptOwner,
     /** COR-851 — settled with the durable start's own outcome; see {@link GoalAttemptRun}. */
     durableStart?: {
       readonly resolve: () => void;
@@ -299,12 +308,29 @@ export function createCatalogDispatcher({
         // `principal`, and `runAttribution` (in-memory only) started
         // empty on the new process.
         ...(principal !== undefined ? { principal } : {}),
+        ...(goalAttempt === undefined ? {} : { goalAttempt }),
       };
       if (runIdOverride === undefined) {
         await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
       } else if (!(await runtime.claimCatalogRunRecoveryRecord(runId, recoveryRecord))) {
-        if (!goalAttempt) {
+        if (goalAttempt === undefined) {
           throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
+        }
+        // Only the same attempt's own claim, left by a start that died before
+        // its workflow existed, may be completed. A claim another run, another
+        // goal, or another principal holds is never overwritten.
+        const existing = await runtime.loadCatalogRunRecoveryRecord(runId);
+        const owned =
+          existing.status === 'found' &&
+          existing.record.goalAttempt?.goalRunId === goalAttempt.goalRunId &&
+          existing.record.goalAttempt.attemptIndex === goalAttempt.attemptIndex &&
+          existing.record.agentName === name &&
+          existing.record.principal === principal;
+        if (!owned) {
+          throw createBureauError(
+            `Run "${runId}" already exists and does not belong to this goal attempt`,
+            'CONFLICT',
+          );
         }
         await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
       }
@@ -650,7 +676,7 @@ export function createCatalogDispatcher({
       start.principal,
       agent,
       start.runId,
-      true,
+      { goalRunId: start.goalRunId, attemptIndex: start.attemptIndex },
       { resolve: resolveStart, reject: rejectStart },
     );
     return { run, durablyStarted };

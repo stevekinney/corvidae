@@ -27,6 +27,11 @@ import type { DurableEventHistory } from './durable-event-history';
 import { createGoalConversations } from './goal-conversation';
 import { createGoalEventRecorder, projectGoalHistory } from './goal-event-projection';
 import { createAttemptForwarder } from './goal-forwarder';
+import {
+  createOwnedGoalEngine,
+  createOwnedRunCanceller,
+  type RunRecordReader,
+} from './goal-ownership';
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
 import { goalWorkflowId } from './goal-state';
 import { createGoalStore } from './goal-store';
@@ -52,6 +57,8 @@ export interface GoalsCompositionDependencies {
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   readonly startAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
+  /** Reads the recovery record that marks which goal attempt a run was started for. */
+  readonly readRunRecord: RunRecordReader;
   /** Applies checkpoint retention to a terminal controller workflow; see `BureauGoalsDependencies`. */
   readonly cleanupController: (workflowId: string) => Promise<CleanupAcknowledgement>;
   readonly isClosing: () => boolean;
@@ -71,7 +78,17 @@ export interface GoalsComposition {
 }
 
 export function composeBureauGoals(dependencies: GoalsCompositionDependencies): GoalsComposition {
-  const { runtimeServices, host, agentCatalog, getDurable, diagnose } = dependencies;
+  const { runtimeServices, host, agentCatalog, diagnose, readRunRecord } = dependencies;
+  // Everything but the start-attempt port, which must tell an absent id from a
+  // foreign one, sees the engine through the goal's ownership checks: a
+  // workflow or run the goal does not own does not exist to it.
+  const getDurable = (): ReturnType<typeof dependencies.getDurable> => {
+    const durable = dependencies.getDurable();
+    return durable === undefined
+      ? undefined
+      : { ...durable, engine: createOwnedGoalEngine(durable.engine, readRunRecord) };
+  };
+  const cancelRun = createOwnedRunCanceller(dependencies.cancelRun, readRunRecord);
   const recordEvents =
     dependencies.eventHistory === undefined
       ? undefined
@@ -132,10 +149,13 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     runtime: runtimeServices,
     forwarder,
     conversations,
-    getDurable,
+    // The raw engine: adopting a run needs to know whether the id is held at
+    // all, which the owned view hides when the holder is foreign.
+    getDurable: dependencies.getDurable,
+    readRunRecord,
     planAgent: dependencies.planAgent,
     startAttemptRun: dependencies.startAttemptRun,
-    cancelRun: dependencies.cancelRun,
+    cancelRun,
     resolveCostEstimation,
   });
   host.bind(ports);
@@ -147,7 +167,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     clock: runtimeServices.clock,
     diagnose,
     getEngine: () => getDurable()?.engine,
-    cancelRun: dependencies.cancelRun,
+    cancelRun,
     cleanupController: dependencies.cleanupController,
     forwarder,
     resolveFreshAttemptSource: dependencies.resolveFreshAttemptSource,

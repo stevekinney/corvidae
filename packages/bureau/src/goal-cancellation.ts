@@ -126,7 +126,7 @@ export async function cancelGoal(
  * are done; the controller and the attempt runs may not be, so each is stopped
  * again (a no-op for one already stopped) and the answer comes from the read.
  */
-async function settleCanceledGoal(
+export async function settleCanceledGoal(
   dependencies: GoalControlDependencies,
   record: GoalState,
 ): Promise<BureauGoalCancelOutcome> {

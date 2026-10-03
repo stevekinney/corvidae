@@ -126,6 +126,10 @@ export function createAttemptForwarder(
     ) {
       return 'not-needed';
     }
+    // A resolver that fails here is not an attempt that has no cost: reading the
+    // result without an estimate would be recorded as `costUnaccounted` and end
+    // the goal over a fault that may be gone by the next try. The failure
+    // propagates, so the forwarder retries it and recovery sends the signal.
     const costEstimation =
       record.bounds.maximumTotalCostUsd === undefined
         ? undefined
@@ -133,7 +137,7 @@ export function createAttemptForwarder(
             record.objective.agentName,
             record.objective.prompt,
             record.principal,
-          ).catch(() => undefined);
+          );
     const reading = await readDurableRunResult(durable, target.runId, { runtime, costEstimation });
     if (reading.status === 'missing') return 'missing';
     if (reading.status === 'not-terminal') return 'watching';

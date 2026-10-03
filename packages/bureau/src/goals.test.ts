@@ -239,6 +239,18 @@ describe('bureau.goals', () => {
       expect(await bureau.goals.list()).toEqual([]);
     });
 
+    it('refuses an empty goal id with the documented outcome rather than throwing', async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+
+      const created = await bureau.goals.create(goalRequest({ goalRunId: '' }));
+
+      expect(created).toMatchObject({ outcome: 'rejected', code: 'invalid-goal-run-id' });
+      expect(await bureau.goals.list()).toEqual([]);
+    });
+
     it.each([
       {
         label: 'a fork-from-baseline policy with no baseline run',

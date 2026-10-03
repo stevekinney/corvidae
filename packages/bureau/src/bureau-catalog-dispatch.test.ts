@@ -117,7 +117,13 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
   });
-  const attempt = { agentName: 'worker', input: 'work', runId: 'goal-g1-a0' };
+  const attempt = {
+    agentName: 'worker',
+    input: 'work',
+    runId: 'goal-g1-a0',
+    goalRunId: 'g1',
+    attemptIndex: 0,
+  };
 
   it("settles durablyStarted only once the attempt's workflow is in the engine", async () => {
     const storage = new MemoryStorage();
@@ -163,5 +169,73 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         (error: unknown) => error,
       ),
     ).toEqual(expect.objectContaining({ message: 'recovery record write failed' }));
+  });
+
+  describe('a claim already holding the attempt id', () => {
+    const conflicting = (record: Record<string, unknown> | undefined) => {
+      const persisted: unknown[] = [];
+      const runtime = {
+        durable: { engine: {}, checkpointStore: {} },
+        createBureauInvariantHooks: () => undefined,
+        claimCatalogRunRecoveryRecord: async () => false,
+        loadCatalogRunRecoveryRecord: async () =>
+          record === undefined
+            ? { status: 'missing' }
+            : {
+                status: 'found',
+                record: { schemaVersion: 1, definitionRevision: 1, input: 'work', ...record },
+              },
+        persistCatalogRunRecoveryRecord: async (_runId: string, written: unknown) => {
+          persisted.push(written);
+        },
+      } as unknown as RuntimeComposition;
+      return { runtime, persisted };
+    };
+    const settle = (started: { durablyStarted: Promise<void> }) =>
+      started.durablyStarted.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    it.each([
+      [
+        'a claim another goal holds',
+        { agentName: 'worker', goalAttempt: { goalRunId: 'g2', attemptIndex: 0 } },
+      ],
+      [
+        'a claim for another attempt',
+        { agentName: 'worker', goalAttempt: { goalRunId: 'g1', attemptIndex: 4 } },
+      ],
+      ["an ordinary run's record", { agentName: 'worker' }],
+      [
+        "another principal's claim",
+        {
+          agentName: 'worker',
+          principal: 'mallory',
+          goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+        },
+      ],
+      ['no record at all', undefined],
+    ])('refuses to overwrite %s', async (_label, record) => {
+      const { runtime, persisted } = conflicting(record);
+
+      const error = await settle(createDispatcher(false, { runtime }).startGoalAttemptRun(attempt));
+
+      expect(error).toEqual(expect.objectContaining({ code: 'CONFLICT' }));
+      expect(persisted).toEqual([]);
+    });
+
+    it('completes its own claim, rewriting it with the marker', async () => {
+      const { runtime, persisted } = conflicting({
+        agentName: 'worker',
+        goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+      });
+
+      await settle(createDispatcher(false, { runtime }).startGoalAttemptRun(attempt));
+
+      expect(persisted).toEqual([
+        expect.objectContaining({ goalAttempt: { goalRunId: 'g1', attemptIndex: 0 } }),
+      ]);
+    });
   });
 });

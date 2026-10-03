@@ -85,8 +85,8 @@ export type BureauGoalCreateRejectionCode =
    */
   | 'invalid-configuration'
   /**
-   * The goal id cannot name the workflows and signals a goal is made of: it has
-   * a control character, or an identifier derived from it would pass Weft's
+   * The goal id cannot name the workflows and signals a goal is made of: it is
+   * empty, it has a control character, or an identifier derived from it would pass Weft's
    * 128-byte limit (an over-long signal id is never delivered, so the goal
    * would wait forever).
    */

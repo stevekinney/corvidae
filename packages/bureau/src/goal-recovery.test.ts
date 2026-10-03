@@ -5,10 +5,10 @@
  * process restarts.
  */
 import type { Validator } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, WorkflowTeardownPendingError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import type { GoalControlDependencies } from './goal-controller';
+import { commitCancellation, type GoalControlDependencies } from './goal-controller';
 import { recoverEveryGoal, recoverGoal } from './goal-recovery';
 import { createGoalState } from './goal-state';
 import { createGoalStore } from './goal-store';
@@ -71,6 +71,74 @@ describe('completing a cancellation', () => {
     );
 
     expect(entry).toEqual({ goalRunId: 'g1', outcome: 'canceled' });
+  });
+});
+
+describe('a goal whose cancellation committed but whose cleanup is still owed', () => {
+  async function committedCanceled() {
+    const store = await runningGoal();
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    const marked = (await store.get('g1'))!;
+    await commitCancellation(store, marked, Date.parse(NOW));
+    const committed = await store.get('g1');
+    expect(committed?.status).toBe('canceled');
+    return store;
+  }
+
+  it('is driven to settlement by recover(), not reported already terminal', async () => {
+    const store = await committedCanceled();
+    const { engine, calls } = scriptedEngine({
+      workflows: { 'goal:g1': 'running', 'goal-g1-a0': 'running' },
+    });
+    const { control, stopped } = dependencies(store, engine);
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'cancellation-pending' });
+    expect(entry.detail).toContain('controller');
+    expect(calls).toContain('cancel:goal:g1');
+    expect(stopped).toContain('goal-g1-a0');
+  });
+
+  it('is already terminal once the controller, finalizer, and attempt have all settled', async () => {
+    const store = await committedCanceled();
+    const { engine, calls } = scriptedEngine({
+      workflows: { 'goal:g1': 'cancelled', 'goal-g1-a0': 'cancelled' },
+      finalizer: { status: 'succeeded' },
+    });
+    const { control } = dependencies(store, engine);
+
+    expect(await recoverGoal(control, 'g1')).toEqual({
+      goalRunId: 'g1',
+      outcome: 'already-terminal',
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it('leaves a settled canceled goal out of the sweep report, like any other ended goal', async () => {
+    const store = await committedCanceled();
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'cancelled', 'goal-g1-a0': 'cancelled' },
+      finalizer: { status: 'succeeded' },
+    });
+    const { control } = dependencies(store, engine);
+
+    expect(await recoverEveryGoal(control)).toEqual({ goals: [], failures: [] });
+  });
+
+  it('is included in the boot sweep, which finishes the cleanup', async () => {
+    const store = await committedCanceled();
+    const { engine, calls } = scriptedEngine({
+      workflows: { 'goal:g1': 'running', 'goal-g1-a0': 'running' },
+    });
+    const { control } = dependencies(store, engine);
+
+    const report = await recoverEveryGoal(control);
+
+    expect(report.goals.map((entry) => [entry.goalRunId, entry.outcome])).toEqual([
+      ['g1', 'cancellation-pending'],
+    ]);
+    expect(calls).toContain('cancel:goal:g1');
   });
 });
 
@@ -165,6 +233,98 @@ describe('restarting a controller that ended abnormally', () => {
     const counted = await store.get('g1');
     expect(counted?.controllerRestarts).toBe(1);
     expect(started).toHaveLength(1);
+  });
+
+  it('does not spend a restart while the ended controller still owes its finalizer', async () => {
+    const store = await runningGoal();
+    const started: unknown[][] = [];
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'failed' },
+      finalizer: { status: 'pending', attempts: 0 },
+    });
+    const { control } = dependencies(
+      store,
+      engineWith(engine, {
+        start: (...args) => {
+          started.push(args);
+          return Promise.resolve();
+        },
+      }),
+    );
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'running' });
+    expect(entry.detail).toContain('finalizer');
+    expect(started).toEqual([]);
+    const unspent = await store.get('g1');
+    expect(unspent?.controllerRestarts).toBe(0);
+  });
+
+  it('answers running, never throws, when Weft refuses the restart for a teardown that began after the check', async () => {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({ workflows: { 'goal:g1': 'failed' } });
+    const { control } = dependencies(
+      store,
+      engineWith(engine, {
+        start: () => Promise.reject(new WorkflowTeardownPendingError('goal:g1')),
+      }),
+    );
+
+    expect(await recoverGoal(control, 'g1')).toMatchObject({ goalRunId: 'g1', outcome: 'running' });
+  });
+
+  it('restarts once the finalizer has settled', async () => {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'failed' },
+      finalizer: { status: 'succeeded' },
+    });
+    const { control } = dependencies(store, engineWith(engine, { start: () => Promise.resolve() }));
+
+    expect(await recoverGoal(control, 'g1')).toMatchObject({ outcome: 'restarted' });
+    const spent = await store.get('g1');
+    expect(spent?.controllerRestarts).toBe(1);
+  });
+});
+
+describe('a controller that completed while its goal was still not terminal', () => {
+  it('is not restarted for a goal whose validator cannot supply the evidence it requires', async () => {
+    const store = createGoalStore(textValueStore(new MemoryStorage()));
+    await store.create(
+      createGoalState({
+        goalRunId: 'g1',
+        identity: { name: 'goal', version: '1' },
+        objective: { agentName: 'worker', prompt: 'work' },
+        validator: { name: 'check', version: '1' },
+        requireDeterministicValidation: true,
+        conversationPolicy: { kind: 'continue' },
+        bounds: { maximumAttempts: 2, maximumTotalSteps: 10 },
+        now: NOW,
+      }),
+    );
+    const started: unknown[][] = [];
+    const { engine } = scriptedEngine({ workflows: { 'goal:g1': 'completed' } });
+    const { control } = dependencies(
+      store,
+      engineWith(engine, {
+        start: (...args) => {
+          started.push(args);
+          return Promise.resolve();
+        },
+      }),
+      { catalog: createGoalValidatorCatalog([validator('stochastic')]) },
+    );
+
+    expect(await recoverGoal(control, 'g1')).toEqual({
+      goalRunId: 'g1',
+      outcome: 'unsupported-validation',
+    });
+    expect(started).toEqual([]);
+    expect(await store.get('g1')).toMatchObject({
+      status: 'failed',
+      terminalReason: 'unsupported-validation',
+    });
   });
 });
 

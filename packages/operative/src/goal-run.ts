@@ -57,6 +57,7 @@ import {
   decideRunFinish,
   freezeValidatorOutcome,
   goalAttemptInput,
+  isDurationBoundElapsed,
   isFailedReason,
   OPERATOR_ABORT_DETAIL,
   stripValidatorErrorCause,
@@ -702,6 +703,12 @@ export function startGoal(options: StartGoalOptions): GoalRun {
     // validator won the race, so the status check is a defensive guard for the
     // goal ending between the validator settling and this continuation running.
     if (settled === undefined || status !== 'evaluating') return STOP;
+    // The bound is enforced after validation too, not only by its timer: a
+    // verdict that arrives once the duration is spent is not applied.
+    if (isDurationBoundElapsed(budget, durationMs())) {
+      closeCurrentAttemptAsAborted();
+      return applyDecision(decideDurationElapsed(), () => {});
+    }
     const { startedAt, completedAt } = settled.value;
     // An abortAttempt() that landed after the validator settled but before this
     // continuation ran still wins: the attempt was operator-aborted.

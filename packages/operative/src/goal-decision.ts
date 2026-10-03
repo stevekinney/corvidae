@@ -534,6 +534,11 @@ export function decideDeterminismRequirement(
   };
 }
 
+/** Whether the aggregate duration bound is spent. One reading for the in-memory and the durable controller. */
+export function isDurationBoundElapsed(budget: GoalBudget, durationMs: number): boolean {
+  return budget.maximumTotalDurationMs !== undefined && durationMs >= budget.maximumTotalDurationMs;
+}
+
 /** The aggregate duration bound elapsed. */
 export function decideDurationElapsed(): GoalDecision {
   return { kind: 'exhaust', reason: 'aggregate-budget-exceeded' };
@@ -571,6 +576,15 @@ function malformedOutput(detail: string): ValidatorOutcome {
   };
 }
 
+function isEvidenceList(value: unknown): value is readonly ValidatorEvidence[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) => isRecord(entry) && typeof (entry as { source?: unknown }).source === 'string',
+    )
+  );
+}
+
 /**
  * A malformed return value is a validator infrastructure failure (`error`,
  * kind `'output'`), never a verdict.
@@ -579,20 +593,22 @@ export function normalizeValidatorOutcome(value: unknown): ValidatorOutcome {
   if (!isRecord(value)) return malformedOutput('expected an object');
   switch (value['kind']) {
     case 'pass':
-      return Array.isArray(value['evidence'])
-        ? { kind: 'pass', evidence: value['evidence'] as readonly ValidatorEvidence[] }
-        : malformedOutput('pass requires an evidence array');
+      return isEvidenceList(value['evidence'])
+        ? { kind: 'pass', evidence: value['evidence'] }
+        : malformedOutput('pass requires an evidence array of objects with a string source');
     case 'fail':
       return typeof value['feedback'] === 'string' &&
-        Array.isArray(value['evidence']) &&
+        isEvidenceList(value['evidence']) &&
         typeof value['retryable'] === 'boolean'
         ? {
             kind: 'fail',
             feedback: value['feedback'],
-            evidence: value['evidence'] as readonly ValidatorEvidence[],
+            evidence: value['evidence'],
             retryable: value['retryable'],
           }
-        : malformedOutput('fail requires feedback, an evidence array, and retryable');
+        : malformedOutput(
+            'fail requires feedback, an evidence array of objects with a string source, and retryable',
+          );
     case 'error':
       return isValidatorError(value['error'])
         ? { kind: 'error', error: value['error'] }

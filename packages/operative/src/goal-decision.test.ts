@@ -628,6 +628,27 @@ describe('normalizeValidatorOutcome (fail closed)', () => {
     outputError({ kind: 'indeterminate' });
   });
 
+  it('treats a malformed evidence entry as an output error, in a pass and in a fail', () => {
+    const malformedEntries: unknown[] = [
+      null,
+      undefined,
+      'unit',
+      42,
+      {},
+      { detail: 'no source' },
+      { source: 7, detail: 'numeric source' },
+    ];
+    for (const entry of malformedEntries) {
+      outputError({ kind: 'pass', evidence: [entry] });
+      outputError({ kind: 'pass', evidence: [{ source: 'ok', detail: 1 }, entry] });
+      outputError({ kind: 'fail', feedback: 'x', evidence: [entry], retryable: true });
+    }
+    // A detail is any value; only the source is constrained.
+    expect(
+      normalizeValidatorOutcome({ kind: 'pass', evidence: [{ source: 's', detail: null }] }),
+    ).toEqual({ kind: 'pass', evidence: [{ source: 's', detail: null }] });
+  });
+
   it('passes well-formed outcomes through', () => {
     expect(normalizeValidatorOutcome({ kind: 'pass', evidence: [] })).toEqual({
       kind: 'pass',

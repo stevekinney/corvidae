@@ -59,6 +59,7 @@ import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch
 import type { GoalConversations } from './goal-conversation';
 import { attemptSessionId } from './goal-conversation';
 import type { AttemptForwarder } from './goal-forwarder';
+import { type RunRecordReader, verifyAttemptRun } from './goal-ownership';
 import {
   boundValidationOutcome,
   type DurableGoalAttempt,
@@ -146,6 +147,8 @@ export interface GoalPortsDependencies {
   readonly forwarder: AttemptForwarder;
   readonly conversations: GoalConversations;
   readonly getDurable: () => DurableActiveRunContext | undefined;
+  /** Reads the recovery record that says whose run holds an attempt's deterministic id. */
+  readonly readRunRecord: RunRecordReader;
   /** `undefined` when the catalog has no agent by this name. */
   readonly planAgent: (
     agentName: string,
@@ -200,6 +203,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     forwarder,
     conversations,
     getDurable,
+    readRunRecord,
     planAgent,
     startAttemptRun,
     cancelRun,
@@ -278,6 +282,27 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     if (record.cancellation !== undefined || isTerminalGoalStatus(record.status)) {
       return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal is canceled or has ended'));
     }
+    // An id is not ownership: a run, a claim, or a session already holding one
+    // of this goal's deterministic ids may belong to another goal, another
+    // principal, or no goal at all. Nothing is adopted, started over, or
+    // appended to until it is proved to be this goal's own.
+    const ownership = await verifyAttemptRun(
+      { engine: durable.engine, readRunRecord },
+      {
+        goalRunId: record.goalRunId,
+        attemptIndex: request.attemptIndex,
+        agentName,
+        principal: record.principal,
+      },
+      request.runId,
+    );
+    if (ownership.status === 'foreign') {
+      return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(ownership.detail));
+    }
+    const foreignSession = await conversations.verify(record, request.attemptIndex);
+    if (foreignSession !== undefined) {
+      return failed(ATTEMPT_RUN_FAILURE_DETAIL.conversationPolicy(foreignSession));
+    }
     const adopted = await adopt();
     if (adopted !== undefined) return adopted;
     const seat = await conversations.seat(record, request);
@@ -288,6 +313,8 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         agentName,
         input: seat.input,
         runId: request.runId,
+        goalRunId: request.goalRunId,
+        attemptIndex: request.attemptIndex,
         ...(record.principal === undefined ? {} : { principal: record.principal }),
       });
       // The handle is deferred: resolving the agent, claiming the recovery
@@ -367,6 +394,9 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         `Attempt ${request.attemptIndex} of goal "${request.goalRunId}" cannot be read.`,
       );
     }
+    // A failing resolver fails this activity, which is retried, rather than
+    // reading the result without an estimate and recording the attempt's cost as
+    // unaccounted for good.
     const costEstimation =
       record.bounds.maximumTotalCostUsd === undefined
         ? undefined
@@ -374,7 +404,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
             record.objective.agentName,
             record.objective.prompt,
             record.principal,
-          ).catch(() => undefined);
+          );
     const reading = await readDurableRunResult(durable, attempt.runId, {
       runtime,
       costEstimation,

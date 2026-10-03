@@ -804,6 +804,11 @@ export function decodeScheduleRunMarker(decoded: unknown): string | undefined {
  * `buildRunDepsFromSession` rebuilds session-owned deps from config rather
  * than a stored blob.
  */
+export type CatalogRunRecoveryLoad =
+  | { status: 'found'; record: CatalogRunRecoveryRecord }
+  | { status: 'missing' }
+  | { status: 'read-error'; error: unknown };
+
 export interface CatalogRunRecoveryRecord {
   readonly schemaVersion: 1;
   readonly agentName: string;
@@ -819,6 +824,14 @@ export interface CatalogRunRecoveryRecord {
    * Absent when the original dispatch supplied no principal.
    */
   readonly principal?: string;
+  /**
+   * COR-851 — set only on the run a durable goal started for one of its
+   * attempts: which goal and which attempt it was started for. A goal's run id
+   * is a deterministic function of the goal, so the id alone does not prove the
+   * run is the goal's; this marker, written by the goal's own start, does. A
+   * goal adopts or stops an existing run only when it carries its own marker.
+   */
+  readonly goalAttempt?: { readonly goalRunId: string; readonly attemptIndex: number };
 }
 
 // Exported for tests only — lets `runtime-composition.test.ts` construct the
@@ -846,6 +859,17 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
   if (typeof value['definitionRevision'] !== 'number') return false;
   const principal = value['principal'];
   if (principal !== undefined && typeof principal !== 'string') return false;
+  const goalAttempt = value['goalAttempt'];
+  if (
+    goalAttempt !== undefined &&
+    !(
+      isRecord(goalAttempt) &&
+      typeof goalAttempt['goalRunId'] === 'string' &&
+      typeof goalAttempt['attemptIndex'] === 'number'
+    )
+  ) {
+    return false;
+  }
   return isCatalogAgentInput(value['input']);
 }
 
@@ -1601,6 +1625,12 @@ export interface RuntimeComposition {
     runId: string,
     record: Omit<CatalogRunRecoveryRecord, 'schemaVersion'>,
   ): Promise<boolean>;
+  /**
+   * COR-851 — the persisted catalog-run recovery record for `runId`, as
+   * stored. A goal reads it to verify that a run at one of its deterministic
+   * ids is the goal's own before adopting or stopping it.
+   */
+  loadCatalogRunRecoveryRecord(runId: string): Promise<CatalogRunRecoveryLoad>;
   /**
    * Whether `runId` has a persisted catalog-run recovery record — used by
    * `createBureau`'s boot-recovery classification to route a catalog run to
@@ -2951,11 +2981,6 @@ export async function createRuntimeComposition(
     );
   }
 
-  type CatalogRunRecoveryLoad =
-    | { status: 'found'; record: CatalogRunRecoveryRecord }
-    | { status: 'missing' }
-    | { status: 'read-error'; error: unknown };
-
   async function loadCatalogRunRecoveryRecord(runId: string): Promise<CatalogRunRecoveryLoad> {
     if (!durableStorage) return { status: 'missing' };
     try {
@@ -3706,6 +3731,7 @@ export async function createRuntimeComposition(
     },
     persistCatalogRunRecoveryRecord,
     claimCatalogRunRecoveryRecord,
+    loadCatalogRunRecoveryRecord,
     isCatalogRecoveredRun,
     classifyCatalogRecoveredRun,
     clearCatalogRunRecoveryCache,

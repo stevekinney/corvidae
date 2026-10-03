@@ -88,6 +88,8 @@ export interface GoalWorldOptions {
   readonly bounds?: GoalBudget | undefined;
   readonly retryOn?: readonly GoalRetryableReason[] | undefined;
   readonly validatorTimeoutMs?: number | undefined;
+  /** Runs inside every validator call, so a test can move the clock while a verdict is being produced. */
+  readonly onValidate?: (() => void) | undefined;
 }
 
 export interface CrashPoint {
@@ -282,6 +284,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
     calls.push(`validate:${request.attemptIndex}`);
     const outcome = validatorOutcomes[validatorCalls] ?? { kind: 'pass', evidence: [] };
     validatorCalls += 1;
+    options.onValidate?.();
     await point('validate');
     return {
       identity: request.validator,

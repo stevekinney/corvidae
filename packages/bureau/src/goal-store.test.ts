@@ -7,6 +7,7 @@ import {
   GoalConfigurationError,
   type GoalRunStatus,
   type GoalRunTerminalReason,
+  type ProjectedValidatorOutcome,
   TERMINAL_STATUS_BY_REASON,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
@@ -1118,7 +1119,7 @@ describe('boundValidationOutcome', () => {
   });
 
   it('replaces evidence and error causes with markers and keeps the verdict', () => {
-    const big = 'x'.repeat(200);
+    const big = 'x'.repeat(2000);
     const fail = {
       kind: 'fail',
       feedback: 'nope',
@@ -1130,8 +1131,8 @@ describe('boundValidationOutcome', () => {
       error: { kind: 'execute', code: 'boom', message: 'bad', cause: { trace: big } },
     } as const;
 
-    const boundedFail = boundValidationOutcome(fail, 100);
-    const boundedError = boundValidationOutcome(error, 100);
+    const boundedFail = boundValidationOutcome(fail, 600);
+    const boundedError = boundValidationOutcome(error, 600);
 
     expect(boundedFail).toMatchObject({ kind: 'fail', retryable: true, feedback: 'nope' });
     expect(boundedFail.kind === 'fail' && boundedFail.evidence[0]).toEqual({
@@ -1147,10 +1148,109 @@ describe('boundValidationOutcome', () => {
   it('truncates long free text only once the outcome is over the cap', () => {
     const reason = 'r'.repeat(10_000);
 
-    const bounded = boundValidationOutcome({ kind: 'indeterminate', reason }, 100);
+    const bounded = boundValidationOutcome({ kind: 'indeterminate', reason }, 2000);
 
     expect(bounded.kind === 'indeterminate' && bounded.reason.length).toBeLessThan(5000);
     expect(boundValidationOutcome({ kind: 'canceled' }, 1)).toEqual({ kind: 'canceled' });
+  });
+});
+
+describe('boundValidationOutcome guarantees the cap', () => {
+  /** A small deterministic generator, so a failing case is reproducible from its seed. */
+  function random(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const ALPHABETS = ['a', 'é', '\u20ac', '\u{1F600}'] as const;
+
+  function adversarialOutcome(next: () => number): ProjectedValidatorOutcome {
+    const text = (): string => {
+      const magnitude = [0, 3, 40, 900, 5_000, 70_000, 400_000][Math.floor(next() * 7)]!;
+      return ALPHABETS[Math.floor(next() * ALPHABETS.length)]!.repeat(magnitude);
+    };
+    const json = (): never =>
+      (next() < 0.5
+        ? { text: text() }
+        : {
+            rows: Array.from({ length: Math.floor(next() * 300) }, () => 'r'.repeat(50)),
+          }) as never;
+    const evidence = () => {
+      const count = [0, 1, 5, 200, 3_000, 40_000][Math.floor(next() * 6)]!;
+      // Many entries or long ones, never both at once: the whole must stay a few megabytes.
+      const share = Math.max(1, Math.floor(2_000_000 / Math.max(1, count)));
+      const entryText = (): string =>
+        ALPHABETS[Math.floor(next() * ALPHABETS.length)]!.repeat(
+          Math.min(share, [0, 3, 40, 900, 5_000, 70_000][Math.floor(next() * 6)]!),
+        );
+      return Array.from({ length: count }, () => ({
+        source: entryText(),
+        detail: { text: entryText() } as never,
+      }));
+    };
+    const error = () => ({
+      kind: (['load', 'contract', 'execute', 'timeout', 'output'] as const)[
+        Math.floor(next() * 5)
+      ]!,
+      code: text(),
+      message: text(),
+      ...(next() < 0.5 ? { cause: json() } : {}),
+    });
+    switch (Math.floor(next() * 6)) {
+      case 0:
+        return { kind: 'pass', evidence: evidence() };
+      case 1:
+        return { kind: 'fail', feedback: text(), evidence: evidence(), retryable: next() < 0.5 };
+      case 2:
+        return { kind: 'error', error: error() };
+      case 3:
+        return { kind: 'unavailable', error: error(), reason: text() };
+      case 4:
+        return { kind: 'indeterminate', reason: text() };
+      default:
+        return { kind: 'canceled' };
+    }
+  }
+
+  it.each([GOAL_VALIDATION_MAXIMUM_BYTES, 4096, 1024])(
+    'never returns an outcome over %d bytes, whatever the sizes of its parts',
+    (maximumBytes) => {
+      for (let seed = 1; seed <= 150; seed += 1) {
+        const original = adversarialOutcome(random(seed));
+        const bounded = boundValidationOutcome(original, maximumBytes);
+
+        const bytes = new TextEncoder().encode(JSON.stringify(bounded)).byteLength;
+        expect({ seed, bytes: bytes <= maximumBytes }).toEqual({ seed, bytes: true });
+        // The verdict survives unless the outcome could not be bounded at all, in
+        // which case it is a validator infrastructure error and says so.
+        if (bounded.kind !== original.kind) {
+          expect({ seed, kind: bounded.kind }).toEqual({ seed, kind: 'error' });
+          expect(bounded.kind === 'error' && bounded.error.code).toBe('OUTCOME_TOO_LARGE');
+        } else if (original.kind === 'fail' && bounded.kind === 'fail') {
+          expect(bounded.retryable).toBe(original.retryable);
+        }
+      }
+    },
+  );
+
+  it('keeps the verdict of an outcome whose evidence is merely long, by dropping entries, not changing it', () => {
+    const evidence = Array.from({ length: 5_000 }, (_, index) => ({
+      source: `check-${index}`,
+      detail: { index },
+    }));
+
+    const bounded = boundValidationOutcome({ kind: 'pass', evidence });
+
+    expect(bounded.kind).toBe('pass');
+    expect(new TextEncoder().encode(JSON.stringify(bounded)).byteLength).toBeLessThanOrEqual(
+      GOAL_VALIDATION_MAXIMUM_BYTES,
+    );
+    expect(bounded.kind === 'pass' && bounded.evidence.length).toBeGreaterThan(10);
   });
 });
 

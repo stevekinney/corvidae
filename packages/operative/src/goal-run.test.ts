@@ -793,6 +793,9 @@ describe('malformed validator output', () => {
     { kind: 'error', error: { kind: 'unknown-kind', code: 'X', message: 'm' } },
     { kind: 'unavailable', error: { kind: 'execute', code: 'X', message: 'm' } },
     { kind: 'indeterminate' },
+    { kind: 'pass', evidence: [null] },
+    { kind: 'pass', evidence: [{ detail: 'no source' }] },
+    { kind: 'fail', feedback: 'x', evidence: ['unit'], retryable: true },
   ])('treats %p as an output error and never retries it', async (malformed) => {
     const fixture = createFixture();
     const { result, run } = await runToEnd(
@@ -1016,6 +1019,32 @@ describe('terminal reasons', () => {
       terminalReason: 'aggregate-budget-exceeded',
     });
     expect(run.attempts()).toHaveLength(1);
+  });
+
+  it('exhausts, applying no verdict, when the bound elapsed while the validator ran, even if its timer is inert', async () => {
+    const fixture = createFixture();
+    const inertTimers = {
+      ...fixture.runtime.timers,
+      setTimeout: () => ({}),
+      clearTimeout: () => {},
+    };
+    const runtime = { ...fixture.runtime, timers: inertTimers } as never;
+    const validator = scriptedValidator([
+      async () => {
+        await fixture.runtime.advance(1000);
+        return PASS;
+      },
+    ]);
+    const { result } = await runToEnd(
+      goalOptions(fixture, validator, {
+        runtime,
+        budget: { maximumAttempts: 3, maximumTotalDurationMs: 1000 },
+      }),
+    );
+    expect(result).toMatchObject({
+      status: 'exhausted',
+      terminalReason: 'aggregate-budget-exceeded',
+    });
   });
 
   it('clears the duration timer once the goal is terminal', async () => {

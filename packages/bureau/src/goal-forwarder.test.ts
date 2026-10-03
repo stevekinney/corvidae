@@ -82,6 +82,7 @@ async function world(
   forwarding: {
     retryDelaysMs?: readonly number[];
     settle?: (attemptIndex: number, runId: string) => Promise<void>;
+    resolveCostEstimation?: () => Promise<RunOptions['costEstimation'] | undefined>;
   } = {},
 ) {
   const storage = new MemoryStorage();
@@ -125,7 +126,7 @@ async function world(
     getDurable: () => durable,
     resolveCostEstimation: (agentName) => {
       costLookups.push(agentName);
-      return Promise.resolve({ model: 'gpt-4o' });
+      return forwarding.resolveCostEstimation?.() ?? Promise.resolve({ model: 'gpt-4o' });
     },
     conversations: {
       settle: async (_record, attemptIndex, runId) => {
@@ -226,6 +227,49 @@ describe('createAttemptForwarder', () => {
     expect(costLookups).toEqual(['worker']);
     const payload = sent[0]?.payload as { costUsd?: number };
     expect(payload.costUsd).toBeGreaterThan(0);
+  });
+
+  it('retries a cost estimator that failed in passing instead of reporting the attempt as unaccounted', async () => {
+    let failures = 2;
+    const { durable, sent, forwarder, diagnostics, costLookups } = await world(
+      { maximumTotalCostUsd: 1 },
+      {
+        retryDelaysMs: [0, 0, 0],
+        resolveCostEstimation: () => {
+          if (failures > 0) {
+            failures -= 1;
+            return Promise.reject(new Error('pricing service hiccup'));
+          }
+          return Promise.resolve({ model: 'gpt-4o' });
+        },
+      },
+    );
+    await finishedRun(durable);
+
+    forwarder.watch(target);
+    await pollUntil(() => sent.length === 1);
+
+    // The signal says what the run cost; it never went out without a cost.
+    expect(costLookups).toHaveLength(3);
+    const payload = sent[0]?.payload as { costUsd?: number } | undefined;
+    expect(payload?.costUsd).toBeGreaterThan(0);
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('sends nothing, and reports the failure, when the cost estimator is down for a goal with a cost bound', async () => {
+    const { durable, sent, forwarder } = await world(
+      { maximumTotalCostUsd: 1 },
+      { resolveCostEstimation: () => Promise.reject(new Error('pricing service is down')) },
+    );
+    await finishedRun(durable);
+
+    const failure = await forwarder.reconcile(target).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toEqual(expect.objectContaining({ message: 'pricing service is down' }));
+    expect(sent).toEqual([]);
   });
 
   it('sends the same signal id each time it is asked, which is what makes re-sending safe', async () => {

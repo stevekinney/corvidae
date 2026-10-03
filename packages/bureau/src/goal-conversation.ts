@@ -124,6 +124,12 @@ export type AttemptSeat =
 export interface GoalConversations {
   /** Resolves the session and the input for one attempt, creating the session when a retry needs a new one. */
   seat(record: GoalState, request: AttemptSeatRequest): Promise<AttemptSeat>;
+  /**
+   * Whether the session this attempt runs in, if one already exists, is the
+   * goal's own. Answers why not when it is not, and `undefined` when the
+   * session is absent or the goal's.
+   */
+  verify(record: GoalState, attemptIndex: number): Promise<string | undefined>;
   /** Records the attempt's run in its session. Idempotent per run id. */
   recordStart(record: GoalState, request: AttemptSeatRequest): Promise<void>;
   /** Commits a terminal attempt's transcript to its session. A no-op for a run that has not ended. */
@@ -133,41 +139,73 @@ export interface GoalConversations {
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+/**
+ * Why a session found under one of the goal's deterministic ids is not the
+ * goal's, or `undefined` when it is. A session id is a function of a
+ * caller-chosen goal id, so another caller's session can already hold it. The
+ * goal's own writes record its `goalRunId` and its principal's authority in the
+ * session, and only the goal's own attempt runs in it.
+ */
+export function foreignSessionReason(record: GoalState, session: AgentSession): string | undefined {
+  const refuse = (why: string): string =>
+    `Session "${session.id}" ${why}, so goal "${record.goalRunId}" will not use it.`;
+  if (session.metadata['goalRunId'] !== record.goalRunId) {
+    return refuse('was not created for this goal');
+  }
+  const authority = session.metadata['lastRequestAuthority'];
+  const principalId =
+    typeof authority === 'object' && authority !== null && !Array.isArray(authority)
+      ? (authority as Record<string, unknown>)['principalId']
+      : undefined;
+  if (principalId !== record.principal) return refuse('belongs to a different principal');
+  const runPrefix = goalAttemptRunId(record.goalRunId, 0).slice(0, -1);
+  const isAttemptRun = (runId: string): boolean =>
+    runId.startsWith(runPrefix) && /^\d+$/.test(runId.slice(runPrefix.length));
+  if (!session.runs.every((ref) => isAttemptRun(ref.runId))) {
+    return refuse("holds a run that is not one of this goal's attempts");
+  }
+  return undefined;
+}
+
+/**
+ * The metadata every session of a goal carries: the goal that created it, which
+ * is what lets the goal recognize it again, and the authority that keeps the
+ * transcript with the goal's principal.
+ */
+export function goalSessionMetadata(record: GoalState): Record<string, JSONValue> {
+  return {
+    goalRunId: record.goalRunId,
+    ...(record.principal === undefined
+      ? {}
+      : {
+          lastRequestAuthority: {
+            principalId: record.principal,
+            tenantId: 'bureau',
+            ownerId: record.objective.agentName,
+            capabilities: ['tools:execute'],
+            authorizationRevision: 'bureau:1',
+          },
+        }),
+  };
+}
+
 export function createGoalConversations(
   dependencies: GoalConversationDependencies,
 ): GoalConversations {
   const { sessionStore, runtime, getDurable, resolveFreshAttemptSource } = dependencies;
-
-  /** The recorded authority that keeps a goal's transcript with the goal's principal. */
-  function metadataFor(record: GoalState): Record<string, JSONValue> {
-    return {
-      goalRunId: record.goalRunId,
-      ...(record.principal === undefined
-        ? {}
-        : {
-            lastRequestAuthority: {
-              principalId: record.principal,
-              tenantId: 'bureau',
-              ownerId: record.objective.agentName,
-              capabilities: ['tools:execute'],
-              authorizationRevision: 'bureau:1',
-            },
-          }),
-    };
-  }
 
   function emptySession(record: GoalState, sessionId: string): AgentSession {
     return createAgentSession({
       agentName: record.objective.agentName,
       conversationHistory: createConversationHistory(undefined, { runtime }),
       id: sessionId,
-      metadata: metadataFor(record),
+      metadata: goalSessionMetadata(record),
       runtime,
     });
   }
 
   /** Writes `candidate` under its id only when nothing is there, and answers what is stored. */
-  async function createOnce(candidate: AgentSession): Promise<AgentSession> {
+  async function createOnce(record: GoalState, candidate: AgentSession): Promise<AgentSession> {
     const stored = await sessionStore.update(candidate.id, (existing) =>
       existing === undefined ? candidate : undefined,
     );
@@ -175,6 +213,13 @@ export function createGoalConversations(
     if (session === undefined) {
       throw new GoalConversationError(`Session "${candidate.id}" could not be created.`);
     }
+    return owned(record, session);
+  }
+
+  /** The session, once it is proved to be the goal's; a foreign one is refused, never used. */
+  function owned(record: GoalState, session: AgentSession): AgentSession {
+    const foreign = foreignSessionReason(record, session);
+    if (foreign !== undefined) throw new GoalConversationError(foreign);
     return session;
   }
 
@@ -187,7 +232,8 @@ export function createGoalConversations(
     // A ref the attempt's start never got to write is written now, so a ref
     // that cannot be found is never what ends a goal.
     await recordStart(record, { attemptIndex, runId });
-    const session = await sessionStore.load(sessionId);
+    const loaded = await sessionStore.load(sessionId);
+    const session = loaded === undefined ? undefined : owned(record, loaded);
     const ref = session?.runs.find((candidate) => candidate.runId === runId);
     if (ref === undefined || ref.status !== 'running') return;
     const durable = getDurable();
@@ -210,7 +256,8 @@ export function createGoalConversations(
     const trunkId = goalSessionId(record.goalRunId, 0);
     const runId = goalAttemptRunId(record.goalRunId, attemptIndex);
     await settle(record, attemptIndex, runId);
-    const trunk = await sessionStore.load(trunkId);
+    const loadedTrunk = await sessionStore.load(trunkId);
+    const trunk = loadedTrunk === undefined ? undefined : owned(record, loadedTrunk);
     const ref = trunk?.runs.find((candidate) => candidate.runId === runId);
     if (trunk === undefined || ref === undefined) {
       throw new GoalConversationError(
@@ -247,7 +294,7 @@ export function createGoalConversations(
     // it was built from: the artifact's retention window may have passed, or its
     // source gone, in the time a crash and a recovery took.
     const written = await sessionStore.load(sessionId);
-    if (written !== undefined) return written.conversationHistory;
+    if (written !== undefined) return owned(record, written).conversationHistory;
     if (policy.kind === 'fork-from-baseline') {
       // The baseline is a run of the trunk, which is committed once attempt 0 ends.
       const trunk = await committedTrunk(record, 0);
@@ -256,10 +303,10 @@ export function createGoalConversations(
         conversationHistory: conversationThroughRun(trunk, policy.throughRun),
         id: sessionId,
         runs: [],
-        metadata: metadataFor(record),
+        metadata: goalSessionMetadata(record),
         runtime,
       });
-      const stored = await createOnce(forked);
+      const stored = await createOnce(record, forked);
       return stored.conversationHistory;
     }
     const fresh = await createFreshAttemptSession({
@@ -272,10 +319,20 @@ export function createGoalConversations(
     const session: AgentSession = {
       ...fresh,
       id: sessionId,
-      metadata: { ...fresh.metadata, ...metadataFor(record) },
+      metadata: { ...fresh.metadata, ...goalSessionMetadata(record) },
     };
-    const stored = await createOnce(session);
+    const stored = await createOnce(record, session);
     return stored.conversationHistory;
+  }
+
+  async function verify(record: GoalState, attemptIndex: number): Promise<string | undefined> {
+    const sessionId = attemptSessionId(
+      record.goalRunId,
+      record.conversationPolicy.kind,
+      attemptIndex,
+    );
+    const existing = await sessionStore.load(sessionId);
+    return existing === undefined ? undefined : foreignSessionReason(record, existing);
   }
 
   async function seat(record: GoalState, request: AttemptSeatRequest): Promise<AttemptSeat> {
@@ -289,7 +346,12 @@ export function createGoalConversations(
     );
     // The first attempt runs the prompt as written, so the agent's own
     // instructions frame its conversation, exactly as in memory.
-    if (request.attemptIndex === 0) return { status: 'seated', sessionId, input: turn };
+    if (request.attemptIndex === 0) {
+      const foreign = await verify(record, 0);
+      return foreign === undefined
+        ? { status: 'seated', sessionId, input: turn }
+        : { status: 'failed', detail: ATTEMPT_RUN_FAILURE_DETAIL.conversationPolicy(foreign) };
+    }
 
     try {
       const history = await seedHistory(record, request, sessionId);
@@ -321,6 +383,7 @@ export function createGoalConversations(
       request.attemptIndex,
     );
     await sessionStore.update(sessionId, (existing) => {
+      if (existing !== undefined) owned(record, existing);
       const session = existing ?? emptySession(record, sessionId);
       if (session.runs.some((ref) => ref.runId === request.runId)) {
         return existing === undefined ? session : undefined;
@@ -336,5 +399,5 @@ export function createGoalConversations(
     });
   }
 
-  return { seat, recordStart, settle };
+  return { seat, verify, recordStart, settle };
 }

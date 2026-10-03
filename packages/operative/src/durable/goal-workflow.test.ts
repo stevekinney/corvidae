@@ -356,6 +356,27 @@ describe('createGoalWorkflow', () => {
       expect(harness.world.record().usage.durationMs).toBeGreaterThanOrEqual(25);
     });
 
+    it('exhausts, applying no verdict, when the bound elapsed while the validator ran', async () => {
+      // eslint-disable-next-line prefer-const -- the hook closes over the harness it is passed to.
+      let harness: GoalHarness;
+      harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
+        onValidate: () => {
+          harness.clock.advance(1_000);
+        },
+      });
+      const result = await runGoal(harness, async (run) => {
+        await pollUntil(attemptRunning(harness, 0));
+        await finishAttempt(run, 0);
+      });
+      expect(result).toMatchObject({
+        status: 'exhausted',
+        terminalReason: 'aggregate-budget-exceeded',
+      });
+      expect(statusesOf(harness.world)).toEqual(['running', 'evaluating', 'exhausted']);
+      expect(harness.world.record().attempts[0]?.validation).toBeUndefined();
+    });
+
     it('exhausts before starting an attempt when the bound already elapsed', async () => {
       const harness = createHarness({
         bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },

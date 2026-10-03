@@ -16,6 +16,13 @@
  * | suspended                               | resume it                                           |
  * | cancelled, or a cancellation marker     | commit `canceled` from the host                     |
  * | failed, timed out, or completed early   | restart it from the record, up to a bound           |
+ * | its finalizer is still owed             | nothing; the restart waits and is not counted       |
+ * | a workflow that is not the goal's       | never touched: it reads as absent (goal-ownership)  |
+ *
+ * A goal whose `canceled` is already committed is not skipped: its controller
+ * or attempt run may still be running if the process that committed it died
+ * first, so `recover()` and the boot sweep settle it the way `cancel()` does
+ * and answer `already-terminal` only once the read-back finds everything ended.
  *
  * A controller that ended while the goal was not terminal and no one asked it
  * to stop ended abnormally. It is restarted with `onTerminalConflict:
@@ -35,8 +42,9 @@
  */
 
 import { GOAL_CANCEL_SIGNAL, goalInputFeedbackFor } from '@lostgradient/operative';
+import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 
-import { unfinishedAfterCancellation } from './goal-cancellation';
+import { settleCanceledGoal, unfinishedAfterCancellation } from './goal-cancellation';
 import {
   attemptToStop,
   commitCancellation,
@@ -138,7 +146,12 @@ async function recoverController(
   }
   const { goalRunId } = record;
   const state = await engine.get(goalWorkflowId(goalRunId));
-  if (state === null || state.status === 'failed' || state.status === 'timed-out') {
+  if (
+    state === null ||
+    state.status === 'failed' ||
+    state.status === 'timed-out' ||
+    state.status === 'completed'
+  ) {
     // A controller is about to be started for a goal nothing has run yet.
     const ended = await enforceDeterminism(dependencies, record);
     if (ended !== undefined) return { outcome: 'unsupported-validation' };
@@ -183,6 +196,16 @@ async function recoverController(
       detail: `The controller ended ${state.status} and has already been restarted ${record.controllerRestarts} times.`,
     };
   }
+  // A controller that ended still owes its finalizer until Weft says it does
+  // not, and Weft refuses to replace a run in that state. Nothing is counted
+  // for a restart that cannot happen yet: the next recovery tries again.
+  const finalizer = await engine.getFinalizerStatus(goalWorkflowId(goalRunId)).catch(() => null);
+  if (finalizer !== null && (finalizer.status === 'pending' || finalizer.status === 'running')) {
+    return {
+      outcome: 'running',
+      detail: `The controller ended ${state.status} and its finalizer is still ${finalizer.status}; it is restarted once that settles.`,
+    };
+  }
   // The count is a compare-and-swap on the value this recovery read, so of
   // several recoveries that saw the same ended controller exactly one is
   // counted, and only that one starts a replacement. A restart counted but
@@ -200,7 +223,22 @@ async function recoverController(
   if (counted.status !== 'updated') {
     return { outcome: 'unrecoverable', detail: `restart count: ${counted.status}` };
   }
-  const started = await startController(engine, goalRunId, true);
+  let started: 'started' | 'exists';
+  try {
+    started = await startController(engine, goalRunId, true);
+  } catch (error) {
+    // A teardown that began between the readiness check above and this start.
+    // That window is a few reads wide, and the count it spends is the one cost
+    // of closing it: the check, not a refund, is what keeps a pending teardown
+    // from consuming the bound.
+    if (error instanceof WorkflowTeardownPendingError) {
+      return {
+        outcome: 'running',
+        detail: `The restart waits for the controller's teardown: ${error.message}`,
+      };
+    }
+    throw error;
+  }
   return {
     outcome: started === 'started' ? 'restarted' : 'running',
     detail: `The controller ended ${state.status}${state.error === undefined ? '' : `: ${state.error}`}.`,
@@ -242,6 +280,31 @@ async function recoverAttempt(
     : { attempt: 'run-started' };
 }
 
+/**
+ * Finishes what a committed `canceled` leaves to do, and answers the way
+ * `cancel()` would: `already-terminal` when everything is settled, otherwise
+ * `cancellation-pending` naming what is not.
+ */
+async function settleCommittedCancellation(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+): Promise<BureauGoalRecoveryEntry> {
+  const settled = await settleCanceledGoal(dependencies, record);
+  if (settled.outcome === 'cancellation-pending') {
+    return {
+      goalRunId: record.goalRunId,
+      outcome: 'cancellation-pending',
+      detail: `Still waiting on: ${settled.awaiting.join(', ')}.`,
+    };
+  }
+  return { goalRunId: record.goalRunId, outcome: 'already-terminal' };
+}
+
+/** Whether a record still has anything for recovery to do. */
+const needsRecovery = (record: GoalState): boolean =>
+  !isTerminalGoalStatus(record.status) ||
+  (record.status === 'canceled' && record.closedAt === undefined);
+
 /** Recovers one goal. Never throws. */
 export async function recoverGoal(
   dependencies: GoalControlDependencies,
@@ -249,7 +312,13 @@ export async function recoverGoal(
 ): Promise<BureauGoalRecoveryEntry> {
   const record = await dependencies.store.get(goalRunId);
   if (record === undefined) return { goalRunId, outcome: 'not-found' };
-  if (isTerminalGoalStatus(record.status)) return { goalRunId, outcome: 'already-terminal' };
+  if (isTerminalGoalStatus(record.status)) {
+    // A goal whose `canceled` is committed may still have its controller or
+    // attempt run to stop, if the process that committed it died first.
+    return record.status === 'canceled'
+      ? settleCommittedCancellation(dependencies, record)
+      : { goalRunId, outcome: 'already-terminal' };
+  }
   const controller = await recoverController(dependencies, record);
   if (controller.outcome === 'unrecoverable' || controller.outcome === 'already-terminal') {
     return { goalRunId, ...controller };
@@ -275,7 +344,7 @@ export async function recoverGoal(
   };
 }
 
-/** The boot sweep: every goal that is not terminal. */
+/** The boot sweep: every goal that is not terminal, and every canceled one not yet closed, whose cleanup may be owed. */
 export async function recoverEveryGoal(
   dependencies: GoalControlDependencies,
   /** Narrows the sweep to the goals the caller may see; every goal when omitted. */
@@ -286,13 +355,17 @@ export async function recoverEveryGoal(
   let records: GoalState[];
   try {
     const stored = await dependencies.store.list();
-    records = stored.filter((record) => !isTerminalGoalStatus(record.status) && allows(record));
+    records = stored.filter((record) => needsRecovery(record) && allows(record));
   } catch (error) {
     return { goals, failures: [{ goalRunId: '*', reason: describe(error) }] };
   }
   for (const record of records) {
     try {
-      goals.push(await recoverGoal(dependencies, record.goalRunId));
+      const entry = await recoverGoal(dependencies, record.goalRunId);
+      // A canceled goal is in the sweep only to have its cleanup finished; one
+      // with nothing left to finish is no more news than any other ended goal.
+      if (isTerminalGoalStatus(record.status) && entry.outcome === 'already-terminal') continue;
+      goals.push(entry);
     } catch (error) {
       failures.push({ goalRunId: record.goalRunId, reason: describe(error) });
     }

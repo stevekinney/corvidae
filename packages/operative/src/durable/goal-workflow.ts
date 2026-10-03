@@ -349,6 +349,11 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
     ) {
       return undefined;
     }
+    // A verdict that arrives once the duration is spent is not applied: the
+    // bound is enforced here as it is at every other decision point.
+    if (isDeadlineElapsed(fresh, reread.nowMs)) {
+      return yield* finishForced(ctx, fresh, reread.nowMs, decideDurationElapsed());
+    }
     const decision = decideOutcome(decisionContextFor(fresh, reread.nowMs), {
       outcome: result.outcome,
       inputFeedback: goalInputFeedbackFor(fresh.attempts, attempt.attemptIndex),
