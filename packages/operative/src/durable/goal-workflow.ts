@@ -51,7 +51,9 @@
  *   C   commitTransition  -> exhausted     aggregate-budget-exceeded
  *
  * pending | retrying
- *   S   startAttempt                       start-or-adopt by the deterministic run id
+ *   S   startAttempt                       start-or-adopt by the deterministic run id;
+ *                                          raced against sleep(remaining) when a duration bound is set,
+ *                                          and when the deadline wins nothing more: the next L ends the goal
  *   C   commitTransition  -> running       attempt N, usage.attempts = N + 1, active = attempt
  *   S'  (S answered 'failed')              commitTransition -> failed (attempt-run-failed) in place of C
  *
@@ -67,7 +69,11 @@
  *         C   commitTransition -> <decision>     any other finish reason skips the validator
  *
  * evaluating
- *   V   runValidator                       at-least-once: a crash here re-runs it
+ *   V   runValidator                       at-least-once: a crash here re-runs it; raced against
+ *                                          sleep(remaining) when a duration bound is set, and given
+ *                                          min(validatorTimeoutMs, remaining) as its own timeout.
+ *                                          When the deadline wins nothing more: the next L sees the
+ *                                          elapsed bound and ends the goal (A, C -> exhausted)
  *   L2  loadGoalState                      re-read: the marker, the status, and the clock
  *       marker set or status moved -> nothing more; the next L handles it
  *       aggregate duration elapsed while the validator ran (the verdict is not applied):
@@ -75,6 +81,14 @@
  *         C   commitTransition -> exhausted     aggregate-budget-exceeded
  *   C   commitTransition -> <decision>     the verdict and the decision, together
  * ```
+ *
+ * Every wait on code the workflow does not own (the attempt's own signal, the
+ * start of its run, the validator) is raced against the aggregate deadline, so a
+ * hung one cannot hold a goal past `maximumTotalDurationMs`. With a bound, the race
+ * is `raceKeyed({ work, deadline })` (one branch more than the unbounded wait); the
+ * choice depends only on the recorded read, so a replay opens the same race. The
+ * abandoned activity is idempotent and its late effects stand down (the start port
+ * re-reads the goal before it writes).
  *
  * The decision is committed once even though the validator may run twice: the
  * transition carries `decisionId = <attemptId>:decision`, the store accepts the
@@ -251,16 +265,51 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
     return yield* commit(ctx, buildGoalForcedFinish(view, identifiers, nowMs, decision));
   }
 
+  /**
+   * Runs one activity that calls out to code the workflow does not own, and
+   * gives up on it when the aggregate duration elapses first. With no duration
+   * bound the activity is simply awaited. The branch taken is a pure function
+   * of the recorded read (`view`, `nowMs`), so a replay opens the same race.
+   *
+   * `elapsed` means the deadline won: nothing was learned about the activity,
+   * and the caller returns so the next decision point reads the elapsed bound
+   * and ends the goal. The abandoned activity is never relied on again; its
+   * effects are the idempotent kind each one documents.
+   */
+  function* beforeDeadline<TResult>(
+    ctx: GoalContext,
+    view: GoalWorkflowView,
+    nowMs: number,
+    operation: () => Generator<unknown, TResult, unknown>,
+  ): Generator<
+    unknown,
+    { readonly elapsed: false; readonly value: TResult } | { readonly elapsed: true },
+    unknown
+  > {
+    const remaining = remainingMilliseconds(view, nowMs);
+    if (remaining === undefined) return { elapsed: false, value: yield* operation() };
+    const winner = yield* ctx.raceKeyed({
+      work: operation(),
+      deadline: ctx.sleep(Math.ceil(remaining)),
+    });
+    return winner.key === 'work' ? { elapsed: false, value: winner.value } : { elapsed: true };
+  }
+
   function* openAttempt(ctx: GoalContext, view: GoalWorkflowView, nowMs: number): Segment {
     const attemptIndex = view.attempts.length;
     const feedback = goalInputFeedbackFor(view.attempts, attemptIndex);
-    const started = yield* ctx.run(activities.startAttempt, {
+    const request = {
       goalRunId: view.goalRunId,
       attemptIndex,
       attemptId: identifiers.attemptId(view.goalRunId, attemptIndex),
       runId: identifiers.attemptRunId(view.goalRunId, attemptIndex),
       ...(feedback === undefined ? {} : { feedback }),
-    });
+    };
+    const attempt = yield* beforeDeadline(ctx, view, nowMs, () =>
+      ctx.run(activities.startAttempt, request),
+    );
+    if (attempt.elapsed) return undefined;
+    const started = attempt.value;
     if (started.status === 'failed') {
       const decision = decideAttemptRunFailure(started.detail);
       return yield* commit(ctx, buildStartFailure(view, identifiers, nowMs, decision));
@@ -324,22 +373,32 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
     );
   }
 
-  function* validate(ctx: GoalContext, view: GoalWorkflowView): Segment {
+  function* validate(ctx: GoalContext, view: GoalWorkflowView, nowMs: number): Segment {
     const attempt = currentAttemptOf(view);
     if (attempt === undefined || attempt.status !== 'evaluating') {
       throw new GoalControllerError(
         `Goal "${view.goalRunId}" is evaluating with no evaluating attempt.`,
       );
     }
-    const result = yield* ctx.run(activities.runValidator, {
-      goalRunId: view.goalRunId,
-      attemptId: attempt.attemptId,
-      attemptIndex: attempt.attemptIndex,
-      validator: view.validator,
-      ...(view.validatorTimeoutMs === undefined
-        ? {}
-        : { validatorTimeoutMs: view.validatorTimeoutMs }),
-    });
+    // The validator is code the goal's owner supplied, and the port runs it
+    // without an abort signal, so the aggregate duration cannot stop it from
+    // outside. It is raced against the deadline, and told not to outlast it.
+    const remaining = remainingMilliseconds(view, nowMs);
+    const timeoutMs =
+      remaining === undefined
+        ? view.validatorTimeoutMs
+        : Math.min(view.validatorTimeoutMs ?? Infinity, Math.ceil(remaining));
+    const validation = yield* beforeDeadline(ctx, view, nowMs, () =>
+      ctx.run(activities.runValidator, {
+        goalRunId: view.goalRunId,
+        attemptId: attempt.attemptId,
+        attemptIndex: attempt.attemptIndex,
+        validator: view.validator,
+        ...(timeoutMs === undefined ? {} : { validatorTimeoutMs: timeoutMs }),
+      }),
+    );
+    if (validation.elapsed) return undefined;
+    const result = validation.value;
     const reread = yield* ctx.run(activities.loadGoalState, { goalRunId: view.goalRunId });
     const fresh = reread.view;
     if (
@@ -377,7 +436,7 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
       case 'running':
         return yield* awaitAttempt(ctx, view, nowMs);
       case 'evaluating':
-        return yield* validate(ctx, view);
+        return yield* validate(ctx, view, nowMs);
       default:
         return yield* openAttempt(ctx, view, nowMs);
     }

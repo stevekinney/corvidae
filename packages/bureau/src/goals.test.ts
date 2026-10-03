@@ -206,6 +206,30 @@ describe('bureau.goals', () => {
       expect(await bureau.goals.list()).toHaveLength(1);
     });
 
+    it('recognizes a repeat whose request lists the same configuration in another key order', async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+      const first = await bureau.goals.create(
+        goalRequest({
+          identity: { name: 'goal', version: '1' },
+          bounds: { maximumAttempts: 3, maximumTotalSteps: 1000 },
+        }),
+      );
+      expect(first.outcome).toBe('created');
+
+      const reordered = await bureau.goals.create(
+        goalRequest({
+          identity: { version: '1', name: 'goal' },
+          bounds: { maximumTotalSteps: 1000, maximumAttempts: 3 },
+        }),
+      );
+
+      expect(reordered).toMatchObject({ outcome: 'existing', goal: { goalRunId: 'g1' } });
+      expect(await bureau.goals.list()).toHaveLength(1);
+    });
+
     it('does not show another principal the goal that its id collides with', async () => {
       const { bureau } = await boot({
         agents: { worker: workerAgent(hangUntilAborted) },

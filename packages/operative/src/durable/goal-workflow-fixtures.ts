@@ -118,6 +118,8 @@ export interface GoalWorld {
   /** Run ids whose start completed, in order. A run id appears at most once. */
   readonly startedRuns: string[];
   readonly abortedRuns: string[];
+  /** The `validatorTimeoutMs` each validator call received, in order. */
+  readonly validatorTimeouts: (number | undefined)[];
   /** The `feedback` each `startAttempt` call received, by attempt index. */
   readonly startFeedback: Map<number, string | undefined>;
   /** Outcomes the validator returns, one per call, in order. Defaults to `pass`. */
@@ -174,6 +176,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
   const claims = new Set<string>();
   const startedRuns: string[] = [];
   const abortedRuns: string[] = [];
+  const validatorTimeouts: (number | undefined)[] = [];
   const startFeedback = new Map<number, string | undefined>();
   const validatorOutcomes: ProjectedValidatorOutcome[] = [];
 
@@ -282,6 +285,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
 
   async function runValidator(request: GoalWorkflowValidatorRequest) {
     calls.push(`validate:${request.attemptIndex}`);
+    validatorTimeouts.push(request.validatorTimeoutMs);
     const outcome = validatorOutcomes[validatorCalls] ?? { kind: 'pass', evidence: [] };
     validatorCalls += 1;
     options.onValidate?.();
@@ -327,6 +331,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
     claims,
     startedRuns,
     abortedRuns,
+    validatorTimeouts,
     startFeedback,
     validatorOutcomes,
     requestCancellation() {

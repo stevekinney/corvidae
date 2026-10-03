@@ -281,15 +281,16 @@ describe('a repeated create of a fresh-from-artifact goal after its artifact exp
     });
   });
 
-  it('still refuses a different goal whose artifact has expired', async () => {
+  it('still refuses a new goal whose artifact has expired, and names a different request under a stored id a conflict', async () => {
     const { bureau, runtime, request } = await bootExpiring();
     expect(await bureau.goals.create(request)).toMatchObject({ outcome: 'created' });
 
     runtime.setTime(runtime.clock.now() + EIGHT_DAYS_MS);
 
+    // The id is taken, so the stored record decides before the artifact is read.
     expect(await bureau.goals.create({ ...request, prompt: 'something else' })).toMatchObject({
-      outcome: 'rejected',
-      code: 'invalid-configuration',
+      outcome: 'conflict',
+      goal: { goalRunId: 'g1' },
     });
     expect(await bureau.goals.create({ ...request, goalRunId: 'g2' })).toMatchObject({
       outcome: 'rejected',

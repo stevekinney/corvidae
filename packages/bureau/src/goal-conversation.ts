@@ -239,7 +239,15 @@ export function createGoalConversations(
     const loaded = await sessionStore.load(sessionId);
     const session = loaded === undefined ? undefined : owned(record, loaded);
     const ref = session?.runs.find((candidate) => candidate.runId === runId);
-    if (ref === undefined || ref.status !== 'running') return;
+    // `recordStart` has just written this ref, so one that is not there is a
+    // store that lags or fails, not a transcript with nothing to commit: returning
+    // would tell the caller it is committed. The activity retries the read.
+    if (ref === undefined) {
+      throw new Error(
+        `The run "${runId}" of session "${sessionId}" cannot be read back to commit its transcript.`,
+      );
+    }
+    if (ref.status !== 'running') return;
     const durable = getDurable();
     // Returning here would read as a transcript committed: the forwarder would
     // then tell the controller the attempt ended without it.

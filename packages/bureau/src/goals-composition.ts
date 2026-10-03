@@ -16,6 +16,7 @@ import {
   type FreshAttemptSourceResolver,
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
+  readGenerationProfile,
   type RunOptions,
   type SessionStore,
 } from '@lostgradient/operative';
@@ -41,6 +42,21 @@ import type { BureauGoalRecoveryReport, BureauGoals, GoalEngine } from './goal-t
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
 import { createBureauGoals } from './goals';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
+
+/**
+ * The run being priced was started under an agent revision this process does
+ * not hold, so the estimator it ran with cannot be reproduced. Retrying cannot
+ * help until the catalog holds that revision again; nothing prices the run
+ * with a different one in the meantime.
+ */
+export class GoalAgentRevisionUnavailableError extends Error {
+  constructor(runId: string, agentName: string, recordedRevision: number, why: string) {
+    super(
+      `Run "${runId}" was started under revision ${recordedRevision} of agent "${agentName}", and ${why}, so its cost cannot be estimated.`,
+    );
+    this.name = 'GoalAgentRevisionUnavailableError';
+  }
+}
 
 export interface GoalsCompositionDependencies {
   /** Built by the caller before the durable engine, so a bad registration fails startup first. */
@@ -119,19 +135,44 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
    * started with (the recovery record's, which for a retry is the seeded
    * conversation, not the goal's prompt), so an agent whose options depend on
    * its input is priced the way the run was configured.
+   *
+   * It is also resolved from the revision the run was started under. The
+   * recovery record names that revision, and the catalog holds only the
+   * agent's current one: after a restart onto a newer revision the estimator
+   * of the run that ran is gone, and pricing it with another would record a
+   * cost the run never had. So a catalog without that exact revision is a
+   * fault (it rejects, and the caller retries or reports it), never a quiet
+   * estimate from a different definition.
    */
   async function resolveCostEstimation(
     agentName: string,
     runId: string,
     principal: string | undefined,
   ): Promise<RunOptions['costEstimation'] | undefined> {
-    const agent = agentCatalog.find(agentName);
-    if (agent === undefined || !hasDefinitionResolver(agent)) return undefined;
     const load = await readRunRecord(runId);
     // No record means no run was started under this id, so there is nothing to price.
     if (load.status === 'missing') return undefined;
     if (load.status === 'read-error') throw new GoalOwnershipUnknownError(runId, load.error);
     if (load.status === 'corrupt') throw new GoalCorruptOwnershipRecordError(runId);
+    const recorded = load.record.definitionRevision;
+    const agent = agentCatalog.find(agentName);
+    if (agent === undefined || !hasDefinitionResolver(agent)) {
+      throw new GoalAgentRevisionUnavailableError(
+        runId,
+        agentName,
+        recorded,
+        'the catalog no longer holds the agent',
+      );
+    }
+    const current = readGenerationProfile(agent).revision;
+    if (current !== recorded) {
+      throw new GoalAgentRevisionUnavailableError(
+        runId,
+        agentName,
+        recorded,
+        `the catalog holds revision ${current}`,
+      );
+    }
     const options = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](load.record.input, {
       agentName,
       ...(principal === undefined ? {} : { principal }),

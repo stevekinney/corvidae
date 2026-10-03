@@ -1648,6 +1648,25 @@ describe('abort', () => {
     expect(seen).not.toContain('goal.failed');
   });
 
+  it('exhausts at the aggregate duration bound while the validator never settles', async () => {
+    const fixture = createFixture();
+    const reached = deferred<void>();
+    const validator = scriptedValidator([parkedValidatorStep(reached)]);
+    const run = startGoal(
+      goalOptions(fixture, validator, {
+        budget: { maximumAttempts: 3, maximumTotalDurationMs: 1000 },
+      }),
+    );
+    await reached.promise;
+    await fixture.runtime.advance(1000);
+    const result = await run.result();
+    expect(result).toMatchObject({
+      status: 'exhausted',
+      terminalReason: 'aggregate-budget-exceeded',
+    });
+    expect(run.attempts()[0]?.validation).toBeUndefined();
+  });
+
   it('aborts one attempt mid-validation on the last allowed attempt and exhausts the goal', async () => {
     const fixture = createFixture();
     const reached = deferred<void>();

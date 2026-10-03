@@ -202,7 +202,14 @@ async function loadTerminalConversationHistory(
   runId: string,
   requireConversation = false,
 ): Promise<ConversationHistory | undefined> {
-  if (!checkpointStore) return undefined;
+  if (!checkpointStore) {
+    // A caller that needs the transcript has nothing to read it with, which is
+    // a fault to retry, never a run recorded as ended without one.
+    if (requireConversation) {
+      throw new Error(`Run "${runId}" completed but there is no checkpoint store to read it from.`);
+    }
+    return undefined;
+  }
   try {
     const checkpoint = await checkpointStore.loadCheckpoint(runId);
     if (checkpoint.conversation === null) {
@@ -234,6 +241,10 @@ async function loadTerminalConversationHistory(
  * runId must NOT be marked terminal) or when `engine.get()` reports it as
  * still non-terminal (`resume()` should have succeeded in that case — leave
  * the RunRef alone rather than guessing at a status).
+ *
+ * With `requireConversation` the caller is owed a committed transcript, so none
+ * of those is a quiet `null`: a failed or empty read, an unknown run, a run
+ * still open, and a completed run with no checkpoint store each reject.
  */
 async function readTerminalRunOutcome(
   engine: RegistryAgnosticEngine,
@@ -248,11 +259,22 @@ async function readTerminalRunOutcome(
   let state: WorkflowState | null;
   try {
     state = await engine.get(runId);
-  } catch {
+  } catch (error) {
+    // A caller that needs the transcript treats a failed read as a fault to
+    // retry: resolving here would read as a transcript committed.
+    if (requireConversation) throw error;
     return null;
   }
-  if (!state) return null;
+  if (!state) {
+    if (requireConversation) {
+      throw new Error(`The engine has no record of run "${runId}" to read its transcript from.`);
+    }
+    return null;
+  }
   if (state.status === 'pending' || state.status === 'running' || state.status === 'suspended') {
+    if (requireConversation) {
+      throw new Error(`Run "${runId}" is not yet terminal, so its transcript is not committed.`);
+    }
     return null;
   }
 

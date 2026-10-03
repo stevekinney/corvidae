@@ -10,7 +10,7 @@
  * written directly through the goal store, which is the only thing that ever
  * writes them.
  */
-import { readGenerationProfile } from '@lostgradient/operative';
+import { OPERATIVE_RESOLVE_RUN_OPTIONS, readGenerationProfile } from '@lostgradient/operative';
 import { KEYS } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -545,6 +545,109 @@ describe('the attempt behind a running goal', () => {
     expect(goal.attempts).toHaveLength(1);
   });
 
+  describe('pricing an attempt that already ran', () => {
+    const COST_BOUNDS = { maximumAttempts: 3, maximumTotalSteps: 1000, maximumTotalCostUsd: 100 };
+
+    /** A worker whose run options declare an estimator, counting how often they are resolved. */
+    function pricedWorker(resolutions: { count: number }) {
+      const base = workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] }));
+      const resolveOptions = (
+        base as unknown as Record<
+          symbol,
+          (input: unknown, context: unknown) => Promise<Record<string, unknown>>
+        >
+      )[OPERATIVE_RESOLVE_RUN_OPTIONS];
+      if (resolveOptions === undefined) throw new Error('the worker has no run-option resolver');
+      return Object.create(base, {
+        [OPERATIVE_RESOLVE_RUN_OPTIONS]: {
+          value: (input: unknown, context: unknown) => {
+            resolutions.count += 1;
+            return resolveOptions
+              .call(base, input, context)
+              .then((options) => ({ ...options, costEstimation: { model: 'gpt-4o' } }));
+          },
+        },
+      }) as typeof base;
+    }
+
+    /** A finished attempt run whose recovery record names `definitionRevision`, under a cost-bounded goal. */
+    async function finishedAttemptRecordedAt(definitionRevision: number) {
+      await seedFinishedRun(database.path, 'goal-g1-a0');
+      const view = await inspection();
+      await view.claimRun('goal-g1-a0', {
+        agentName: 'worker',
+        definitionRevision,
+        input: 'work',
+        goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+      });
+      return view;
+    }
+
+    it('prices it with the estimator of the revision that ran it when that is the revision the catalog holds', async () => {
+      database = createTestDatabase('priced-same-revision');
+      const resolutions = { count: 0 };
+      const worker = pricedWorker(resolutions);
+      const view = await finishedAttemptRecordedAt(readGenerationProfile(worker).revision);
+      const { bureau } = await bootOver({
+        path: database.path,
+        agents: { worker },
+        validators: [createCheckValidator()],
+      });
+      await track(bureau);
+      await bureau.waitForRecovery?.();
+      await seedRunning(view, pendingGoal({ bounds: COST_BOUNDS }));
+
+      await bureau.goals.recover('g1');
+
+      expect(await ended(bureau)).toMatchObject({ status: 'succeeded' });
+      expect(resolutions.count).toBeGreaterThan(0);
+    });
+
+    it('never prices it with a newer revision of the agent, and says why it cannot be priced', async () => {
+      database = createTestDatabase('priced-newer-revision');
+      const resolutions = { count: 0 };
+      const worker = pricedWorker(resolutions);
+      const view = await finishedAttemptRecordedAt(readGenerationProfile(worker).revision + 1);
+      const diagnostics = createDiagnostics();
+      const { bureau } = await bootOver({
+        path: database.path,
+        agents: { worker },
+        validators: [createCheckValidator()],
+        diagnostics,
+      });
+      await track(bureau);
+      await bureau.waitForRecovery?.();
+      await seedRunning(view, pendingGoal({ bounds: COST_BOUNDS }));
+
+      const report = await bureau.goals.recover('g1');
+
+      // The estimator of a revision this process does not hold is not the
+      // estimator of the run that ran, so it is not consulted; the goal stays
+      // as it was, and the fault is named rather than priced over.
+      expect(resolutions.count).toBe(0);
+      expect(await goalStatus(bureau, 'g1')).toBe('running');
+      expect(JSON.stringify(report)).toContain('revision');
+    });
+
+    it('names an agent that has left the catalog as the reason an attempt that ran cannot be priced', async () => {
+      database = createTestDatabase('priced-agent-gone');
+      const view = await finishedAttemptRecordedAt(1);
+      const { bureau } = await bootOver({
+        path: database.path,
+        agents: { planner: workerAgent(hangUntilAborted, 'planner') },
+        validators: [createCheckValidator()],
+      });
+      await track(bureau);
+      await bureau.waitForRecovery?.();
+      await seedRunning(view, pendingGoal({ bounds: COST_BOUNDS }));
+
+      const report = await bureau.goals.recover('g1');
+
+      expect(await goalStatus(bureau, 'g1')).toBe('running');
+      expect(JSON.stringify(report)).toContain('revision');
+    });
+  });
+
   it('is started again when the controller recorded it as running but its run was never created', async () => {
     database = createTestDatabase('never-created');
     let steps = 0;
@@ -1075,6 +1178,71 @@ describe('a goal read by a bureau with no durable engine', () => {
       outcome: 'closed',
       goal: { status: 'failed' },
       cleanup: { status: 'unresolved', reason: 'unreachable' },
+    });
+  });
+  describe('a repeated create is recognized before the current capabilities are asked', () => {
+    it('answers existing for a goal still running when the bureau has no durable engine, naming the controller it could not ensure', async () => {
+      database = createTestDatabase('repeat-no-engine');
+      await seedRunning(await inspection());
+      const bureau = await bootWithoutEngine();
+
+      const repeated = await bureau.goals.create(goalRequest());
+
+      expect(repeated).toMatchObject({
+        outcome: 'existing',
+        goal: { goalRunId: 'g1', status: 'running' },
+        controller: { status: 'start-failed', reason: expect.stringContaining('durable engine') },
+      });
+    });
+
+    it('answers existing for a goal that has ended, whatever the bureau can do now', async () => {
+      database = createTestDatabase('repeat-terminal');
+      const view = await inspection();
+      await seedRunning(view);
+      await view.store.applyTransition({
+        goalRunId: 'g1',
+        seq: 2,
+        transitionId: goalTransitionId('g1', 2),
+        to: 'failed',
+        at: '2026-10-02T12:00:00.000Z',
+        cause: 'attempt run failed',
+        terminalReason: 'attempt-run-failed',
+      });
+      const bureau = await bootWithoutEngine();
+
+      const repeated = await bureau.goals.create(goalRequest());
+
+      expect(repeated).toMatchObject({ outcome: 'existing', goal: { status: 'failed' } });
+      expect('controller' in repeated).toBe(false);
+    });
+
+    it('answers existing when the catalog no longer holds the goal agent or its validator', async () => {
+      database = createTestDatabase('repeat-catalog-gone');
+      await seedRunning(await inspection());
+      const { bureau } = await bootOver({
+        path: database.path,
+        agents: { other: workerAgent(hangForever) },
+        validators: [],
+      });
+      await track(bureau);
+
+      const repeated = await bureau.goals.create(goalRequest());
+
+      expect(repeated).toMatchObject({ outcome: 'existing', goal: { goalRunId: 'g1' } });
+    });
+
+    it('still refuses a different request under a stored id, and a new id with no capability, as before', async () => {
+      database = createTestDatabase('repeat-conflict');
+      await seedRunning(await inspection());
+      const bureau = await bootWithoutEngine();
+
+      expect(await bureau.goals.create(goalRequest({ prompt: 'another' }))).toMatchObject({
+        outcome: 'conflict',
+      });
+      expect(await bureau.goals.create(goalRequest({ goalRunId: 'g2' }))).toMatchObject({
+        outcome: 'rejected',
+        code: 'durable-unavailable',
+      });
     });
   });
 });

@@ -602,6 +602,25 @@ describe('committing an attempt transcript without a durable engine', () => {
   });
 });
 
+describe('committing an attempt transcript from a session store that cannot read the run back', () => {
+  it('fails instead of returning as though the transcript were committed', async () => {
+    const { store, sessions, runtime } = await world();
+    const record = (await store.get('g1'))!;
+    const request = { attemptIndex: 0, runId: goalAttemptRunId('g1', 0) };
+    const lagging = createGoalConversations({
+      sessionStore: { ...sessions, load: () => Promise.resolve(undefined) },
+      runtime,
+      getDurable: () => undefined,
+      resolveFreshAttemptSource: undefined,
+    });
+    await lagging.recordStart(record, request);
+
+    expect(await throwingRejectionOf(lagging.settle(record, 0, request.runId))).toThrow(
+      'cannot be read back',
+    );
+  });
+});
+
 describe('abortAttempt', () => {
   const request = { goalRunId: 'g1', attemptIndex: 0, attemptId: 'g1:a0', runId: 'goal-g1-a0' };
 

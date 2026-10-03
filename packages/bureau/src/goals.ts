@@ -71,9 +71,28 @@ const NO_ENGINE_TO_READ_RUN =
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+/**
+ * JSON with object keys sorted and `undefined` members dropped, so two requests
+ * that list the same configuration in another key order (an artifact, a budget,
+ * an identity) compare equal. Arrays keep their order: it is part of the value.
+ */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((entry) => canonicalJson(entry)).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    const members = Object.keys(value)
+      .toSorted()
+      .flatMap((key) => {
+        const member: unknown = (value as Record<string, unknown>)[key];
+        return member === undefined ? [] : [`${JSON.stringify(key)}:${canonicalJson(member)}`];
+      });
+    return `{${members.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
 /** The parts of a record that a create request determines, for telling a repeat from a conflict. */
 function configurationOf(state: GoalState): string {
-  return JSON.stringify([
+  return canonicalJson([
     state.identity,
     state.objective,
     state.validator,
@@ -139,6 +158,85 @@ export function createBureauGoals<TName extends string = string>(
       ...(availableVersions === undefined ? {} : { availableVersions }),
     });
 
+    const conversationPolicy = request.conversationPolicy;
+    const goalRunId = request.goalRunId ?? runtime.identifiers.next('goal-run');
+
+    // The record this request describes, built from the request alone: nothing
+    // in it depends on what the bureau can do today (the validator's identity is
+    // the one requested, which the catalog only confirms), so a repeat can be
+    // compared to what is stored before any current capability is consulted. A
+    // request that cannot be built is reported where it always was, below.
+    let built: { readonly state: GoalState } | { readonly error: unknown };
+    try {
+      built = {
+        state: createGoalState({
+          goalRunId,
+          identity: request.identity,
+          objective: {
+            agentName: request.agentName,
+            prompt: request.prompt,
+            ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
+          },
+          validator: { name: request.validator.name, version: request.validator.version },
+          requireDeterministicValidation: request.requireDeterministicValidation,
+          validatorTimeoutMs: request.validatorTimeoutMs,
+          conversationPolicy: request.conversationPolicy ?? { kind: 'continue' },
+          retryPolicy: request.retryPolicy,
+          bounds: request.bounds,
+          principal: request.principal,
+          now: clock.nowISO(),
+        }),
+      };
+    } catch (error) {
+      built = { error };
+    }
+
+    /** A goal under this id is already stored: a repeat of the same request heals it, a different one conflicts. */
+    async function repeatOf(
+      existing: GoalState,
+      state: GoalState,
+    ): Promise<BureauGoalCreateOutcome> {
+      if (configurationOf(existing) !== configurationOf(state)) {
+        // A request from a different principal has no claim on what is stored.
+        return principalAllows(request.principal, existing.principal)
+          ? { outcome: 'conflict', goal: existing }
+          : { outcome: 'conflict' };
+      }
+      if (isTerminalGoalStatus(existing.status)) return { outcome: 'existing', goal: existing };
+      // A controller is not started once the bureau is shutting down; the goal
+      // is still the one that was asked for, and the caller is told so.
+      if (isClosing()) {
+        return {
+          outcome: 'existing',
+          goal: existing,
+          controller: { status: 'start-failed', reason: 'The bureau is shutting down.' },
+        };
+      }
+      // The first call may have died between recording the goal and starting
+      // its controller; repeating it is how a caller heals that. A controller
+      // that cannot be ensured now (no engine, a start that fails) is reported
+      // in `controller`: it does not turn a recognized repeat into a refusal.
+      const ensured = await ensureController(dependencies, existing);
+      return { outcome: 'existing', goal: ensured.goal, controller: ensured.controller };
+    }
+
+    // An id already in the store decides the call before anything about the
+    // bureau's present capabilities does: a repeat of a request that was accepted
+    // is `existing` (or `conflict`) even when its engine, agent, or validator is
+    // gone now, and for a goal that has ended. Those checks decide a new record.
+    // A request that could not be built (an id the store cannot key, say) names
+    // no record, so it is never looked up.
+    if (request.goalRunId !== undefined && 'state' in built) {
+      const stored = await store.get(goalRunId);
+      if (stored !== undefined) return repeatOf(stored, built.state);
+      if (await store.isUnreadable(goalRunId)) {
+        return rejected(
+          'record-unreadable',
+          `The record stored for goal "${goalRunId}" is unreadable.`,
+        );
+      }
+    }
+
     if (isClosing()) return rejected('shutdown', 'The bureau is shutting down.');
     const engine = getEngine();
     if (engine === undefined) {
@@ -173,13 +271,11 @@ export function createBureauGoals<TName extends string = string>(
 
     // Everything a `fresh-from-artifact` attempt will check about its artifact,
     // so a goal whose artifact could never seed an attempt is refused before it
-    // is recorded rather than failing on its first retry. The outcome is held,
-    // not returned: a check that depends on the time it runs (the retention
-    // window, a source that has since gone) must not turn a repeated `create` of
-    // a goal already recorded into a refusal, which is how a caller heals a
-    // crash between recording the goal and starting its controller. It decides
-    // only a goal that is not already stored.
-    const conversationPolicy = request.conversationPolicy;
+    // is recorded rather than failing on its first retry. It decides only a goal
+    // that is not already stored: a check that depends on the time it runs (the
+    // retention window, a source that has since gone) must not turn a repeated
+    // `create` into a refusal, which is how a caller heals a crash between
+    // recording the goal and starting its controller.
     let artifactRefusal: BureauGoalCreateOutcome | undefined;
     if (conversationPolicy?.kind === 'fresh-from-artifact') {
       try {
@@ -206,27 +302,8 @@ export function createBureauGoals<TName extends string = string>(
       );
     }
 
-    const goalRunId = request.goalRunId ?? runtime.identifiers.next('goal-run');
-    let state: GoalState;
-    try {
-      state = createGoalState({
-        goalRunId,
-        identity: request.identity,
-        objective: {
-          agentName: request.agentName,
-          prompt: request.prompt,
-          ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
-        },
-        validator: resolution.entry.identity,
-        requireDeterministicValidation: request.requireDeterministicValidation,
-        validatorTimeoutMs: request.validatorTimeoutMs,
-        conversationPolicy: request.conversationPolicy ?? { kind: 'continue' },
-        retryPolicy: request.retryPolicy,
-        bounds: request.bounds,
-        principal: request.principal,
-        now: clock.nowISO(),
-      });
-    } catch (error) {
+    if ('error' in built) {
+      const { error } = built;
       if (artifactRefusal !== undefined) return artifactRefusal;
       if (error instanceof GoalObjectiveTooLargeError) {
         return rejected('objective-too-large', error.message);
@@ -242,28 +319,8 @@ export function createBureauGoals<TName extends string = string>(
       }
       throw error;
     }
-
-    /** A goal under this id is already stored: a repeat of the same request heals it, a different one conflicts. */
-    async function repeatOf(existing: GoalState): Promise<BureauGoalCreateOutcome> {
-      if (configurationOf(existing) !== configurationOf(state)) {
-        // A request from a different principal has no claim on what is stored.
-        return principalAllows(request.principal, existing.principal)
-          ? { outcome: 'conflict', goal: existing }
-          : { outcome: 'conflict' };
-      }
-      if (isTerminalGoalStatus(existing.status)) return { outcome: 'existing', goal: existing };
-      // The first call may have died between recording the goal and starting
-      // its controller; repeating it is how a caller heals that.
-      const ensured = await ensureController(dependencies, existing);
-      return { outcome: 'existing', goal: ensured.goal, controller: ensured.controller };
-    }
-
-    if (artifactRefusal !== undefined) {
-      const existing = await store.get(goalRunId);
-      return existing !== undefined && configurationOf(existing) === configurationOf(state)
-        ? repeatOf(existing)
-        : artifactRefusal;
-    }
+    const { state } = built;
+    if (artifactRefusal !== undefined) return artifactRefusal;
 
     const created = await store.create(state);
     if (created.status === 'duplicate') {
@@ -273,7 +330,7 @@ export function createBureauGoals<TName extends string = string>(
           `The record stored for goal "${goalRunId}" is unreadable.`,
         );
       }
-      return repeatOf(created.existing);
+      return repeatOf(created.existing, state);
     }
 
     // COR-638: a validator that cannot supply the evidence a goal demands ends

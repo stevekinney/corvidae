@@ -377,6 +377,63 @@ describe('createGoalWorkflow', () => {
       expect(harness.world.record().attempts[0]?.validation).toBeUndefined();
     });
 
+    it('exhausts at the deadline while the validator never returns', async () => {
+      const harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
+      });
+      const hung = harness.world.crashAfter('validate');
+      const result = await runGoal(harness, async (run) => {
+        await pollUntil(attemptRunning(harness, 0));
+        await finishAttempt(run, 0);
+        await hung.reached;
+        harness.clock.advance(1_000);
+      });
+      expect(result).toMatchObject({
+        status: 'exhausted',
+        terminalReason: 'aggregate-budget-exceeded',
+      });
+      expect(statusesOf(harness.world)).toEqual(['running', 'evaluating', 'exhausted']);
+      expect(harness.world.abortedRuns).toEqual([`goal-${GOAL_RUN_ID}-a0`]);
+      expect(harness.world.record().attempts[0]?.validation).toBeUndefined();
+    });
+
+    it.each([
+      { configured: 10_000_000, bound: 3_600_000, expected: 3_600_000 },
+      { configured: 5_000, bound: 3_600_000, expected: 5_000 },
+      { configured: undefined, bound: 3_600_000, expected: 3_600_000 },
+    ])(
+      'tells the validator not to outlast the deadline (configured $configured)',
+      async ({ configured, bound, expected }) => {
+        const harness = createHarness({
+          bounds: { maximumAttempts: 2, maximumTotalDurationMs: bound },
+          validatorTimeoutMs: configured,
+        });
+        await runGoal(harness, async (run) => {
+          await pollUntil(attemptRunning(harness, 0));
+          await finishAttempt(run, 0);
+        });
+        expect(harness.world.validatorTimeouts).toEqual([expected]);
+      },
+    );
+
+    it('exhausts at the deadline while an attempt start never returns', async () => {
+      const harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
+      });
+      const hung = harness.world.crashAfter('start:started');
+      const result = await runGoal(harness, async () => {
+        await hung.reached;
+        harness.clock.advance(1_000);
+      });
+      expect(result).toMatchObject({
+        status: 'exhausted',
+        terminalReason: 'aggregate-budget-exceeded',
+      });
+      // The run a start left behind is stopped by its deterministic id.
+      expect(harness.world.abortedRuns).toEqual([`goal-${GOAL_RUN_ID}-a0`]);
+      expect(statusesOf(harness.world)).toEqual(['exhausted']);
+    });
+
     it('exhausts before starting an attempt when the bound already elapsed', async () => {
       const harness = createHarness({
         bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
