@@ -24,9 +24,9 @@ import {
   updateWorkflowState,
   writeRetainedTerminalSearchAttributes,
 } from '../attributes-tags.ts';
+import { isCheckpointGenerationAbandoned } from '../abandoned-checkpoint-generations.ts';
 import { TERMINAL_CLEANUP_DELAY_MS } from '../bulk-operations.ts';
 import { takeCancelHandlers, type CancelHandler } from '../cancel-handlers.ts';
-import { isAbandonedGeneration } from '../checkpoint-conflict-record.ts';
 import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-side-effects.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
 import { dropQueuedInlineWorkflowStart } from '../inline-launch-queue.ts';
@@ -609,11 +609,12 @@ export async function failWorkflow(
       // resume whose services are unavailable can fail the run (the fail path runs
       // before the suspended→running flip) instead of stranding it 'suspended'.
       allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
-      // A run this engine abandoned after losing a checkpoint CAS belongs to the
-      // winner: never write a terminal state over it. Scoped to the lost generation
-      // and evaluated after the last read, so a later generation under the same id
-      // (a delayed start failing before launch) still fails.
-      skipCommitIf: (state) => isAbandonedGeneration(internals, workflowId, state),
+      // A generation this engine abandoned after losing a checkpoint CAS belongs
+      // to the winner: never write a terminal state over it. Scoped by token and
+      // evaluated after the last read, so a later generation under the same id
+      // still fails normally.
+      skipCommitIf: (state) =>
+        isCheckpointGenerationAbandoned(internals, workflowId, state.workflowExecutionToken),
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);

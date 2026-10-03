@@ -272,7 +272,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -314,7 +313,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 3_000 },
@@ -363,7 +361,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -408,7 +405,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -471,7 +467,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -516,7 +511,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         // Inline engine with an empty services map (fresh-process recovery) and a
         // resolver that reports the run unavailable.
         inlineStrategy: {},
@@ -556,7 +550,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -611,7 +604,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: {
@@ -654,7 +646,6 @@ describe('engine time operation helpers', () => {
     await storage.put(KEYS.checkpoint(workflowId), storedBytes);
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      checkpointConflicts: new Map(),
       inlineStrategy: {},
       workflowServices: new Map<string, unknown>(),
       options: { getNow: () => 2_000 },
@@ -711,7 +702,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         workflowsNeedingTerminalCleanup,
@@ -787,7 +777,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        checkpointConflicts: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         workflowsNeedingTerminalCleanup,

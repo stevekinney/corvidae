@@ -136,9 +136,10 @@ export async function retainDiscardedDurableTimer(
     return;
   }
   throw new Error(
-    `Durable timer "${timerId}" for workflow "${workflowId}" was discarded by a non-owning ` +
-      `engine under ownership: 'workflow-lease'; retaining it in storage for the true owner ` +
-      `instead of letting the scheduler delete it.`,
+    `Durable timer "${timerId}" for workflow "${workflowId}" was discarded by an engine that ` +
+      `does not own the run (a lost workflow-lease claim, or a checkpoint compare-and-swap race ` +
+      `lost under ownership: 'none'); retaining it in storage for the true owner instead of ` +
+      `letting the scheduler delete it.`,
   );
 }
 

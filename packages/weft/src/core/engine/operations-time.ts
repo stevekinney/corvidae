@@ -5,6 +5,7 @@ import { encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../scheduler.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../types.ts';
+import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
@@ -415,6 +416,22 @@ export async function handleTimerFired(
     | 'workflowVersionTupleFromState'
   >,
 ): Promise<void> {
+  // A generation this engine abandoned after losing a checkpoint compare-and-swap
+  // race belongs to the winner, so its review, condition, and deadline timers are
+  // the winner's to fire: keep the durable record instead of letting the
+  // scheduler treat this fire as processed and delete it. (Sleep timers reach the
+  // same decision through `confirmWakeOwnership`.) Synchronous when nothing was
+  // abandoned, so no timer fire for a healthy run changes shape.
+  if (
+    (isReviewTimerEntry(entry) ||
+      entry.kind === 'wait-condition' ||
+      entry.kind === 'execution-deadline') &&
+    isCurrentCheckpointGenerationAbandoned(internals, entry.workflowId)
+  ) {
+    await retainDiscardedDurableTimer(entry.id, entry.workflowId, callbacks.loadWorkflowState);
+    return;
+  }
+
   if (isReviewTimerEntry(entry)) {
     await handleReviewTimer(internals, entry, callbacks);
     return;

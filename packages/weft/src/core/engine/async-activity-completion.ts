@@ -55,6 +55,7 @@ import { KEYS } from '../../storage/interface.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { OperationOutcome } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
+import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import {
   buildAsyncActivityAcknowledgementOperations,
   queuePendingAsyncActivityResolution,
@@ -304,7 +305,10 @@ async function deliverPendingAsyncActivityResolution(
   // `ownership: 'none'` and `'lease'`, where the check is a no-op anyway.
   // Those modes must stay byte-identical, so the await only happens when a
   // claim registry actually exists.
-  if (internals.workflowClaimRegistry !== null) {
+  if (
+    internals.workflowClaimRegistry !== null ||
+    isCurrentCheckpointGenerationAbandoned(internals, workflowId)
+  ) {
     if ((await confirmWakeOwnership(internals, workflowId, 'async-activity')) === 'discard') {
       return;
     }

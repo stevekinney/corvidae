@@ -776,7 +776,6 @@ export class Engine<
     getInternals(this).disposed = false;
     getInternals(this).handleCache = new Map();
     getInternals(this).resultResolvers = new Map();
-    getInternals(this).checkpointConflicts = new Map();
     getInternals(this).signalWaiters = new Map();
     getInternals(this).signalWaitersByWorkflow = new Map();
     getInternals(this).conditionWaiters = new Map();

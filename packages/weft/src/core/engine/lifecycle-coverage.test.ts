@@ -161,7 +161,6 @@ function createResumeWorkflowFromStorageInternals({
 }: ResumeWorkflowFromStorageInternalsOptions): Parameters<typeof resumeWorkflowFromStorage>[0] {
   return {
     checkpoints: new Map(),
-    checkpointConflicts: new Map(),
     eventLogHeads: new Map(),
     inlineStrategy: null,
     options: { development: false, getNow: () => 1_000, historyPolicy: { maxEvents: null } },
@@ -419,7 +418,6 @@ describe('engine lifecycle coverage helpers', () => {
     };
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      checkpointConflicts: new Map(),
       eventLogHeads: new Map(),
       options: { getNow: () => 10_000 },
       registrations: new Map([
@@ -1064,7 +1062,6 @@ describe('engine lifecycle coverage helpers', () => {
     const dispatchEvent = mock(() => {});
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      checkpointConflicts: new Map(),
       inlineStrategy: null,
       registrations: new Map(),
       strategy: { startWorkflow: startWorkflowStrategy },
@@ -1122,7 +1119,6 @@ describe('engine lifecycle coverage helpers', () => {
     const continueWorkflow = mock(() => {});
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      checkpointConflicts: new Map(),
       composedWorkflowInterceptor: undefined,
       inlineStrategy: { adoptWorkflow, continueWorkflow },
       interceptors: [],
@@ -1170,7 +1166,6 @@ describe('engine lifecycle coverage helpers', () => {
     let inlineStrategyReads = 0;
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      checkpointConflicts: new Map(),
       get inlineStrategy() {
         inlineStrategyReads++;
         return inlineStrategyReads === 1 ? {} : null;
@@ -1283,7 +1278,6 @@ describe('engine lifecycle coverage helpers', () => {
             registrations: new Map(),
             storage,
             options: { ownershipMode: 'none' },
-            checkpointConflicts: new Map(),
           } as never,
           workflowId,
           true,
@@ -1308,7 +1302,6 @@ describe('engine lifecycle coverage helpers', () => {
             registrations: new Map(),
             storage,
             options: { ownershipMode: 'none' },
-            checkpointConflicts: new Map(),
           } as never,
           workflowId,
           true,
@@ -1491,7 +1484,6 @@ describe('engine lifecycle coverage helpers', () => {
     const handle = { id: workflowId };
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      checkpointConflicts: new Map(),
       eventLogHeads: new Map(),
       inlineStrategy: null,
       options: { development: false, getNow: () => 20_000, historyPolicy: { maxEvents: null } },

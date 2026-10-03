@@ -1,3 +1,4 @@
+import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import type { EngineInternals } from './internals.ts';
 import { confirmWakeOwnership, type WakeOwnershipDecision } from './wake-ownership-guard.ts';
 
@@ -40,7 +41,10 @@ export function notifyConditionWaiters(internals: EngineInternals, workflowId: s
   // resolver is absent when the workflow has no active `waitUntil` — e.g. an
   // `onUpdate` arrived before the workflow reached `waitUntil`, or after it
   // already completed. That is a harmless no-op poke.
-  if (internals.workflowClaimRegistry === null) {
+  if (
+    internals.workflowClaimRegistry === null &&
+    !isCurrentCheckpointGenerationAbandoned(internals, workflowId)
+  ) {
     internals.conditionWaiters.get(workflowId)?.();
     return;
   }

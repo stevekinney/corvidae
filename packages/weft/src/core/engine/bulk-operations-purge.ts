@@ -214,7 +214,6 @@ export function clearPurgedWorkflowInMemoryState(
   forgetCommittedCheckpointBytes(internals, workflowId);
   const inMemoryCheckpoint = internals.checkpoints.get(workflowId);
   internals.checkpoints.delete(workflowId);
-  internals.checkpointConflicts.delete(workflowId);
   internals.heartbeatDetails.delete(workflowId);
   internals.lastHeartbeatDetailsByStep.delete(workflowId);
   for (const [token, pending] of internals.pendingAsyncActivities) {

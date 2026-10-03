@@ -1,4 +1,5 @@
 import { WorkflowSourceLoadCancelledEvent } from '../events/workflow-source-events.ts';
+import { clearAbandonedCheckpointGenerations } from './abandoned-checkpoint-generations.ts';
 import { clearAllPendingAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import { disposeEngineCleanupInterval } from './engine-runtime-helpers.ts';
 import { EngineDisposedError } from './errors.ts';
@@ -181,7 +182,7 @@ export function disposeEngine(
   internals.durableInlineOperations.clear();
   internals.sleepTimersFiredWithoutResolver.clear();
   internals.checkpoints.clear();
-  internals.checkpointConflicts.clear();
+  clearAbandonedCheckpointGenerations(internals);
   internals.pendingExecutionStateOwnerId = undefined;
   internals.pendingParentWorkflowId = undefined;
   internals.pendingParentWorkflowExecutionToken = undefined;

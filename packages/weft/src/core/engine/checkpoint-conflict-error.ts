@@ -63,19 +63,21 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
  * progress; it writes nothing durable on the way out, because the winning
  * engine owns the workflow's checkpoint, terminal state, and record.
  *
- * `handle.result()` on the losing engine rejects with this error. A parent
- * workflow on the losing engine that was awaiting a child this engine abandoned
- * is itself abandoned and rejects with its own instance of this error, whose
- * `cause` is the child's. Recovering
- * the workflow on the losing engine means re-resuming it from the winner's
- * checkpoint, which this error does not do for you.
+ * `handle.result()` on the losing engine rejects with this error, including a
+ * call made after the loss, for as long as this engine still holds the lost
+ * generation. A parent workflow on the losing engine that was awaiting a child
+ * this engine abandoned never receives a failure for it: the engine that won the
+ * child drives the parent too. The loser writes nothing durable and releases
+ * nothing locally, and it does not recover on its own: recovering the workflow on
+ * the losing engine means re-resuming it from the winner's checkpoint, which this
+ * error does not do for you. `ownership: 'workflow-lease'` is the complete
+ * answer for two live engines over one store.
  *
- * The rejection is scoped to the run that was lost. A `result()` call made after
- * the loss rejects only while storage still identifies that run; if the winner
- * finished it and started another under the same id, the call resolves against
- * the current run. A handle whose `result()` already rejected keeps that
- * outcome, including after `engine.resume()`: use the handle `resume()` returns
- * (or a later `engine.getHandle()`), which observes the resumed run.
+ * The loss is scoped to the generation that lost, identified by its
+ * `workflowExecutionToken`. If this engine launches that same generation again
+ * (`engine.resume()`), the loss no longer applies; the handle `resume()` returns
+ * (or a later `engine.getHandle()`) observes the resumed run, while a handle
+ * whose `result()` already rejected keeps that outcome.
  *
  * @example
  * ```ts

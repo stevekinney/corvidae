@@ -129,7 +129,6 @@ function createCleanupInternals(storage: MemoryStorage, checkpoint: Checkpoint):
   return {
     ...createCheckpointInternals(storage, checkpoint),
     cancelHandlersByWorkflow: new Map(),
-    checkpointConflicts: new Map(),
     heartbeatDetails: new Map(),
     lastHeartbeatDetailsByStep: new Map(),
     pendingAsyncActivities: new Map(),

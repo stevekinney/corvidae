@@ -42,7 +42,6 @@ function createInternals(
 ) {
   return {
     checkpoints: new Map(),
-    checkpointConflicts: new Map(),
     deposed: false,
     eventLogHeads: new Map(),
     handleCache: new Map(),

@@ -11,6 +11,7 @@ import type { ComposedWorkflowInterceptor } from '../interceptor.ts';
 import { encodePayloadWithinLimit } from '../payload-size.ts';
 import { validateSignalId } from '../signal-id.ts';
 import type { SignalDeliveryOptions, WorkflowState } from '../types.ts';
+import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import { commitAnonymousSignalOperations } from './anonymous-signal-sequence.ts';
 import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import type { EngineInternals } from './internals.ts';
@@ -372,8 +373,12 @@ async function deliverBufferedSignals(
       // resolution by a microtask under `ownership: 'none'`/`'lease'`, where
       // the check is a no-op anyway. Those modes must stay byte-identical —
       // mirrors `async-activity-completion.ts`'s own registry-gated await.
+      // A generation abandoned after a lost checkpoint race also discards here,
+      // in every ownership mode; for a healthy `'none'`/`'lease'` run the guard
+      // stays false and nothing is awaited.
       if (
-        internals.workflowClaimRegistry !== null &&
+        (internals.workflowClaimRegistry !== null ||
+          isCurrentCheckpointGenerationAbandoned(internals, workflowId)) &&
         (await confirmWakeOwnership(internals, workflowId, 'signal')) === 'discard'
       ) {
         continue;

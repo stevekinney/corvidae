@@ -1,70 +1,59 @@
 import {
+  isCheckpointGenerationAbandoned,
+  markCheckpointGenerationAbandoned,
+} from './abandoned-checkpoint-generations.ts';
+import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
-import { dropQueuedInlineWorkflowStart } from './inline-launch-queue.ts';
 import type { EngineInternals } from './internals.ts';
-import { swallowPromiseRejection, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
-import {
-  releaseAbandonedWorkflowMemory,
-  type TerminationCallbacks,
-} from './termination/cleanup.ts';
 
 /**
  * Stop driving a workflow whose checkpoint commit lost its compare-and-swap
  * race to another engine over the same store, without writing anything durable.
  *
- * The winning engine owns the workflow's checkpoint, terminal state, and
- * record, so this must never fail, complete, or checkpoint the run: it only
- * releases this engine's in-memory execution state (generator, abort
- * controller, context, parked-inline entry, queued launch, every per-workflow
- * map {@link releaseAbandonedWorkflowMemory} covers, and this engine's local
- * workflow-lease claim, forgotten without a durable release so it stops renewing
- * and expires), settles every pending `result()` waiter with the typed error,
- * remembers the loss so a later `result()` call rejects instead of waiting on a
- * generator that is gone, and emits the operator warning. Durable timers and
- * buffered signals stay in storage for the winner.
+ * Under `ownership: 'none'` nothing fences the two engines, so the loser cannot
+ * converge; it fails fast and loudly instead. Synchronously: remember the lost
+ * generation (so every later wake, failure, and `result()` for it is refused),
+ * retire the execution so the generator is never fed again, reject the pending
+ * `result()` waiter with the typed error, evict the cached handle so a later
+ * `getHandle()` builds one that observes the marker, and emit the operator
+ * warning. Nothing else is released: maps, timers, waiters, feeds, and claims
+ * stay as they were, and durable timers and buffered signals stay in storage for
+ * the winner. `ownership: 'workflow-lease'` is the complete answer for two live
+ * engines.
  *
- * Called where the conflict is detected, before the error propagates, so the
- * generator is already gone when any caller's failure handling runs: the
- * in-flight operation is no longer current (nothing is fed to the generator)
- * and no later `failWorkflow` is accepted for the run. Idempotent.
- *
- * Under `ownership: 'lease'` and `'workflow-lease'` a deposition is handled
- * upstream (`EngineDeposedError`); only a same-epoch lost race reaches here, and
- * with one holder per store or workflow that means the checkpoint bytes changed
- * under the holder's own epoch. This engine cannot advance the run either way, so
- * the same release applies.
+ * Returns early unless the in-memory checkpoint still belongs to the generation
+ * whose commit lost (the error carries its token): a local replacement
+ * installed while the loss was classified is healthy and not ours to abandon.
+ * Idempotent.
  */
 export function abandonWorkflowAfterCheckpointConflict(
   internals: EngineInternals,
   error: WorkflowCheckpointConflictError,
-  callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
 ): void {
-  const { workflowId } = error;
-  if (internals.checkpointConflicts.has(workflowId)) return;
-  // The loss belongs to the generation whose commit lost, which the error carries.
-  // A local replacement (start-new, resume) may have installed a new generation
-  // under this id while the loss was classified; that healthy run is not ours to
-  // abandon.
-  const { workflowExecutionToken } = error;
-  if (workflowExecutionTokenForWorkflow(internals, workflowId) !== workflowExecutionToken) return;
+  const { workflowId, workflowExecutionToken } = error;
+  if (workflowExecutionToken === undefined) return;
+  if (internals.checkpoints.get(workflowId)?.workflowExecutionToken !== workflowExecutionToken) {
+    return;
+  }
+  if (isCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken)) return;
+  markCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken);
   try {
     internals.strategy.retireWorkflow(workflowId);
   } catch {
     // A retirement that cannot reach the execution (a closed worker channel)
-    // must not stop the local cleanup below, which is what settles result().
+    // must not stop the rest of the abandonment, which is what settles result().
   }
-  dropQueuedInlineWorkflowStart(internals, workflowId);
-  internals.durableInlineOperations.delete(workflowId);
-  releaseAbandonedWorkflowMemory(internals, workflowId, callbacks);
-  internals.workflowClaimRegistry?.forgetLocalClaim(workflowId);
-
-  internals.checkpointConflicts.set(workflowId, { error, workflowExecutionToken });
   const waiter = internals.resultResolvers.get(workflowId);
   if (waiter !== undefined) {
     internals.resultResolvers.delete(workflowId);
     waiter.reject(error);
+  }
+  const cached = internals.handleCache.get(workflowId);
+  if (cached !== undefined) {
+    internals.finalizationRegistry.unregister(cached.unregisterToken);
+    internals.handleCache.delete(workflowId);
   }
 
   emitCheckpointConflictWarning(new WeftWorkflowCheckpointConflictWarning(workflowId));
@@ -111,48 +100,8 @@ export function persistCheckpointAbandoningOnConflict(
   const persisted = persist();
   void persisted.catch((error: unknown) => {
     if (error instanceof WorkflowCheckpointConflictError) {
-      abandonWorkflowAfterCheckpointConflict(internals, error, { swallowPromiseRejection });
+      abandonWorkflowAfterCheckpointConflict(internals, error);
     }
   });
   return persisted;
-}
-
-/**
- * A child this engine abandoned after losing its checkpoint compare-and-swap
- * race is healthy under the winning engine, so its local `result()` rejection is
- * not a child failure the parent may observe or fail on. The local parent's
- * progress depends on a result this engine will never produce, which makes the
- * parent stale too: abandon it the same way (no durable write, its own conflict
- * error naming the parent with the child's as `cause`) and settle the parent's
- * view of the child never, like every other discarded wake.
- */
-export function abandonParentOfAbandonedChild(
-  internals: EngineInternals,
-  childWorkflowId: string,
-  parentWorkflowId: string,
-  childResult: Promise<unknown>,
-): Promise<unknown> {
-  // Scope the cascade to the generation that is awaiting the child: by the time
-  // the child's loss settles, that parent may be gone and its id reused locally.
-  const awaitingGeneration = workflowExecutionTokenForWorkflow(internals, parentWorkflowId);
-  return childResult.catch((error: unknown) => {
-    if (
-      !(error instanceof WorkflowCheckpointConflictError) ||
-      error.workflowId !== childWorkflowId
-    ) {
-      throw error;
-    }
-    if (workflowExecutionTokenForWorkflow(internals, parentWorkflowId) !== awaitingGeneration) {
-      return new Promise<never>(() => {});
-    }
-    abandonWorkflowAfterCheckpointConflict(
-      internals,
-      new WorkflowCheckpointConflictError(parentWorkflowId, {
-        cause: error,
-        workflowExecutionToken: awaitingGeneration,
-      }),
-      { swallowPromiseRejection },
-    );
-    return new Promise<never>(() => {});
-  });
 }

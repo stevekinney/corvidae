@@ -1,4 +1,5 @@
 import type { Checkpoint } from '../types.ts';
+import { forgetAbandonedCheckpointGeneration } from './abandoned-checkpoint-generations.ts';
 import type { EngineInternals } from './internals.ts';
 
 const committedCheckpointBytes = new WeakMap<EngineInternals, Map<string, Uint8Array>>();
@@ -34,9 +35,10 @@ export function forgetCommittedCheckpointBytes(
 /**
  * Install `checkpoint` as the in-memory checkpoint of a workflow this engine is
  * launching (start, resume, fork, delayed-start fire), clearing any recorded
- * checkpoint conflict for it: the engine drives this run now, so an earlier
- * loss must not reject its `result()`. With `serialized`, also primes the
- * checkpoint-bytes compare-and-swap baseline from those committed bytes.
+ * abandoned-generation marker for that same generation: the engine drives it
+ * again, so an earlier loss no longer applies to it. With `serialized`, also
+ * primes the checkpoint-bytes compare-and-swap baseline from those committed
+ * bytes.
  */
 export function adoptLaunchCheckpoint(
   internals: EngineInternals,
@@ -45,6 +47,6 @@ export function adoptLaunchCheckpoint(
   serialized?: Uint8Array,
 ): void {
   internals.checkpoints.set(workflowId, checkpoint);
-  internals.checkpointConflicts.delete(workflowId);
+  forgetAbandonedCheckpointGeneration(internals, workflowId, checkpoint.workflowExecutionToken);
   if (serialized !== undefined) rememberCommittedCheckpointBytes(internals, workflowId, serialized);
 }

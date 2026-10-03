@@ -1,27 +1,44 @@
 /**
- * What abandoning a workflow after a lost checkpoint compare-and-swap releases
- * and refuses to write, and the call paths that reach it besides the generator's
- * own checkpoint message.
+ * What abandoning a workflow after a lost checkpoint compare-and-swap does and
+ * refuses to do under `ownership: 'none'`.
  *
- * Losses are forced deterministically: a storage wrapper writes a different
- * checkpoint under the engine at the checkpoint commit that follows an armed
- * step, which is exactly what a second engine's winning write does, so the real
- * conditional batch loses. After that point the wrapper records every write the
- * losing engine attempts.
+ * The loser marks the lost generation (workflow id plus execution token),
+ * retires its execution, rejects the pending `result()` waiter, evicts the
+ * cached handle, and warns. It releases nothing else and writes nothing: every
+ * later wake, terminal failure, and `result()` for that generation is refused
+ * instead. The two-engine race that produces a real loss lives in
+ * `checkpoint-conflict.test.ts`; these tests drive the abandonment directly, or
+ * force one loss through a storage wrapper, and watch what the engine writes.
  */
-import { describe, expect, it, spyOn } from 'bun:test';
+import { describe, expect, it, mock, spyOn } from 'bun:test';
 
 import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred, yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
+import {
+  createDeferred,
+  expectPromisePending,
+  waitForCondition,
+  yieldToEventLoop,
+} from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { DurableActivityScopeError, durableActivity } from '../context/durable-activity.ts';
-import { RemoteActivityCancellationRequestedEvent } from '../events.ts';
-import { activity, workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
-import { clearPurgedWorkflowInMemoryState } from './bulk-operations-purge.ts';
+import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';
 import {
-  abandonParentOfAbandonedChild,
+  activity,
+  workflow,
+  type Checkpoint,
+  type TimerEntry,
+  type WorkflowContext,
+  type WorkflowState,
+} from '../types.ts';
+import {
+  abandonedCheckpointGenerationCount,
+  isCheckpointGenerationAbandoned,
+  markCheckpointGenerationAbandoned,
+} from './abandoned-checkpoint-generations.ts';
+import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
+import {
   abandonWorkflowAfterCheckpointConflict,
   emitCheckpointConflictWarning,
   persistCheckpointAbandoningOnConflict,
@@ -30,16 +47,19 @@ import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
-import { clearCheckpointConflictForResume } from './checkpoint-conflict-record.ts';
-import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
-import { getWorkflowResultPromise } from './handle-result.ts';
+import { notifyConditionWaiters } from './condition-waiters.ts';
+import {
+  createWorkflowResultWaiter,
+  getGeneratorOwnedWorkflowResultPromise,
+} from './handle-result.ts';
+import { WorkflowHandle } from './handles.ts';
 import { Engine } from './index.ts';
-import { getInternals } from './internals.ts';
-import { workflowFeedListenerKey } from './state-utilities.ts';
-import { swallowPromiseRejection, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
-import { cleanupTerminalWorkflowMemory } from './termination/cleanup.ts';
+import { getInternals, type EngineInternals } from './internals.ts';
+import { registerSignalWaiter } from './signals.ts';
 import { failWorkflow } from './termination/complete.ts';
-import { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
+import { confirmWakeOwnership } from './wake-ownership-guard.ts';
+
+const WRITE_METHODS = ['put', 'delete', 'deletePrefix', 'batch', 'conditionalBatch'];
 
 function writeOperations(
   name: string,
@@ -48,6 +68,25 @@ function writeOperations(
   if (name === 'batch') return argumentsList[0] as BatchOperation[];
   if (name === 'conditionalBatch') return argumentsList[1] as BatchOperation[];
   return null;
+}
+
+/** Wrap `base` so every write the engine attempts is recorded by method name. */
+function recordWrites(base: Storage) {
+  const writes: string[] = [];
+  const storage = new Proxy(base, {
+    get(target, property) {
+      const original: unknown = Reflect.get(target, property, target);
+      if (typeof original !== 'function') return original;
+      if (WRITE_METHODS.includes(String(property))) {
+        return (...argumentsList: unknown[]) => {
+          writes.push(String(property));
+          return original.apply(target, argumentsList);
+        };
+      }
+      return original.bind(target);
+    },
+  });
+  return { storage, writes };
 }
 
 /**
@@ -63,9 +102,7 @@ function createLosingStorage(base: Storage, workflowId: string, armed: { value: 
       const original: unknown = Reflect.get(target, property, target);
       if (typeof original !== 'function') return original;
       const name = String(property);
-      if (!['put', 'delete', 'deletePrefix', 'batch', 'conditionalBatch'].includes(name)) {
-        return original.bind(target);
-      }
+      if (!WRITE_METHODS.includes(name)) return original.bind(target);
       return async (...argumentsList: unknown[]) => {
         if (state.lost) state.writesAfterLoss.push(name);
         const operations = writeOperations(name, argumentsList);
@@ -106,446 +143,118 @@ async function readStatus(base: Storage, workflowId: string): Promise<WorkflowSt
   return (decode((await base.get(KEYS.workflow(workflowId)))!) as WorkflowState).status;
 }
 
+function tokenOf(internals: EngineInternals, workflowId: string): string | undefined {
+  return internals.checkpoints.get(workflowId)?.workflowExecutionToken;
+}
+
+/** Report the loss of whichever generation the engine currently holds for the workflow. */
+function loseGeneration(internals: EngineInternals, workflowId: string): void {
+  abandonWorkflowAfterCheckpointConflict(
+    internals,
+    new WorkflowCheckpointConflictError(workflowId, {
+      workflowExecutionToken: tokenOf(internals, workflowId),
+    }),
+  );
+}
+
+/** Record strategy calls, still calling through, so retirement is observable. */
+function observeStrategy(internals: EngineInternals) {
+  const retired: string[] = [];
+  const cancelled: string[] = [];
+  const original = internals.strategy;
+  internals.strategy = new Proxy(original, {
+    get(target, property) {
+      const member: unknown = Reflect.get(target, property, target);
+      if (property === 'retireWorkflow') {
+        return (workflowId: string) => {
+          retired.push(workflowId);
+          (member as (id: string) => void).call(target, workflowId);
+        };
+      }
+      if (property === 'cancelWorkflow') {
+        return (workflowId: string) => {
+          cancelled.push(workflowId);
+          (member as (id: string) => void).call(target, workflowId);
+        };
+      }
+      return typeof member === 'function' ? member.bind(target) : member;
+    },
+  });
+  return { retired, cancelled, restore: () => (internals.strategy = original) };
+}
+
+const parkedOnSignal = (name: string) =>
+  workflow({ name }).execute(async function* (context: WorkflowContext) {
+    return yield* context.waitForSignal<string>('go');
+  });
+
+async function startParked(engine: Engine, name: string, id: string) {
+  engine.register(parkedOnSignal(name));
+  const handle = await engine.start(name, null, { id });
+  await waitForCondition(() => getInternals(engine).parkedInlineWorkflows.has(id), {
+    label: `${id} parked on its signal`,
+  });
+  return handle;
+}
+
 describe('abandoning a workflow after a lost checkpoint compare-and-swap', () => {
-  it('releases every per-workflow in-memory map for the workflow and no other', async () => {
-    const storage = new MemoryStorage();
-    const writes: string[] = [];
-    const watched = new Proxy(storage, {
-      get(target, property) {
-        const original: unknown = Reflect.get(target, property, target);
-        if (typeof original !== 'function') return original;
-        if (
-          ['put', 'delete', 'deletePrefix', 'batch', 'conditionalBatch'].includes(String(property))
-        ) {
-          writes.push(String(property));
-        }
-        return original.bind(target);
-      },
-    });
-    await using engine = new Engine({ storage: watched });
+  it('marks the lost generation, retires it, rejects the waiter, evicts the handle, and releases nothing', async () => {
+    const watched = recordWrites(new MemoryStorage());
+    await using engine = new Engine({ storage: watched.storage });
     const internals = getInternals(engine);
-    const remoteCancellations: Event[] = [];
-    engine.addEventListener(RemoteActivityCancellationRequestedEvent.type, (event) => {
-      remoteCancellations.push(event);
-    });
-    const warning = collectConflictWarnings();
-
-    const seed = (workflowId: string): void => {
-      internals.checkpoints.set(workflowId, {} as never);
-      internals.heartbeatDetails.set(workflowId, 1);
-      internals.lastHeartbeatDetailsByStep.set(workflowId, new Map());
-      internals.pendingAsyncActivities.set(`token-${workflowId}`, { workflowId } as never);
-      internals.eventLogHeads.set(workflowId, {} as never);
-      internals.pendingTimelineEntries.set(workflowId, {} as never);
-      internals.pendingAsyncActivityResolutions.set(workflowId, {} as never);
-      stageAtomicWorkflowCommitSideEffects(internals, workflowId, {
-        conditions: [],
-        operations: [{ type: 'put', key: 'staged', value: new Uint8Array([1]) }],
-      });
-      internals.workflowServices.set(workflowId, { credential: 'closure' });
-      internals.workflowHeaders.set(workflowId, new Map());
-      internals.workflowVersionTuples.set(workflowId, {} as never);
-      internals.cancelHandlersByWorkflow.set(workflowId, []);
-      internals.workflowFeedListeners.set(workflowFeedListenerKey(workflowId, 'events'), new Set());
-      internals.workflowFeedListeners.set(workflowFeedListenerKey(workflowId, 'tokens'), new Set());
-      internals.workflowNestingDepths.set(workflowId, 1);
-      internals.deliveredPendingUpdateIds.set(workflowId, new Set());
-      internals.workflowTypeByWorkflowId.set(workflowId, {} as never);
-      internals.workflowsNeedingTerminalCleanup.add(workflowId);
-      internals.parkedInlineWorkflows.add(workflowId);
-      internals.durableInlineOperations.set(workflowId, {} as never);
-    };
-    const holdsState = (workflowId: string): boolean[] => [
-      internals.checkpoints.has(workflowId),
-      internals.heartbeatDetails.has(workflowId),
-      internals.lastHeartbeatDetailsByStep.has(workflowId),
-      [...internals.pendingAsyncActivities.values()].some(
-        (pending) => pending.workflowId === workflowId,
-      ),
-      internals.eventLogHeads.has(workflowId),
-      internals.pendingTimelineEntries.has(workflowId),
-      internals.pendingAsyncActivityResolutions.has(workflowId),
-      internals.pendingAtomicWorkflowCommitSideEffects.has(workflowId),
-      internals.workflowServices.has(workflowId),
-      internals.workflowHeaders.has(workflowId),
-      internals.workflowVersionTuples.has(workflowId),
-      internals.cancelHandlersByWorkflow.has(workflowId),
-      internals.workflowNestingDepths.has(workflowId),
-      internals.deliveredPendingUpdateIds.has(workflowId),
-      internals.workflowTypeByWorkflowId.has(workflowId),
-      internals.workflowsNeedingTerminalCleanup.has(workflowId),
-      internals.parkedInlineWorkflows.has(workflowId),
-      internals.durableInlineOperations.has(workflowId),
+    const handle = await startParked(engine, 'lost-run', 'lost-run');
+    const pendingResult = handle.result();
+    const strategy = observeStrategy(internals);
+    const held = () => [
+      internals.checkpoints.has('lost-run'),
+      internals.parkedInlineWorkflows.has('lost-run'),
+      internals.eventLogHeads.has('lost-run'),
+      internals.workflowVersionTuples.has('lost-run'),
+      internals.cancelHandlersByWorkflow.has('lost-run'),
+      internals.durableInlineOperations.has('lost-run'),
     ];
-    seed('lost');
-    seed('bystander');
-    expect(holdsState('lost').every(Boolean)).toBe(true);
-
-    const error = new WorkflowCheckpointConflictError('lost');
-    abandonWorkflowAfterCheckpointConflict(internals, error, { swallowPromiseRejection });
-    // A second report of the same loss does nothing: one warning, no re-release.
-    abandonWorkflowAfterCheckpointConflict(internals, error, { swallowPromiseRejection });
-    await warning.received;
-    warning.stop();
-
-    expect(holdsState('lost').some(Boolean)).toBe(false);
-    expect(holdsState('bystander').every(Boolean)).toBe(true);
-    // Externally owned feed subscriptions survive, so a later local resume
-    // still delivers to them; terminal cleanup is what drops them.
-    expect(internals.workflowFeedListeners.has(workflowFeedListenerKey('lost', 'events'))).toBe(
-      true,
-    );
-    expect(internals.workflowFeedListeners.has(workflowFeedListenerKey('lost', 'tokens'))).toBe(
-      true,
-    );
-    expect(internals.checkpointConflicts.get('lost')?.error).toBe(error);
-    expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual(['lost']);
-    // The winner owns the durable task behind a pending async activity.
-    expect(remoteCancellations).toEqual([]);
-    expect(writes).toEqual([]);
-  });
-
-  it('drops the recorded loss on terminal cleanup, purge, and engine disposal', async () => {
-    const storage = new MemoryStorage();
-    const engine = new Engine({ storage });
-    const internals = getInternals(engine);
-    const warning = collectConflictWarnings(3);
-    for (const workflowId of ['terminal', 'purged', 'disposed']) {
-      abandonWorkflowAfterCheckpointConflict(
-        internals,
-        new WorkflowCheckpointConflictError(workflowId),
-        { swallowPromiseRejection },
-      );
-    }
-    await warning.received;
-    warning.stop();
-    expect([...internals.checkpointConflicts.keys()]).toEqual(['terminal', 'purged', 'disposed']);
-
-    cleanupTerminalWorkflowMemory(internals, 'terminal', {
-      swallowPromiseRejection,
-      dispatchEvent: () => {},
-    });
-    expect(internals.checkpointConflicts.has('terminal')).toBe(false);
-
-    clearPurgedWorkflowInMemoryState(internals, { id: 'purged' } as never, () => {});
-    expect(internals.checkpointConflicts.has('purged')).toBe(false);
-
-    await engine[Symbol.asyncDispose]();
-    expect(internals.checkpointConflicts.size).toBe(0);
-  });
-
-  it('forgets the local workflow-lease claim without a durable write', async () => {
-    const storage = new MemoryStorage();
-    await using engine = new Engine({ storage });
-    const internals = getInternals(engine);
-    const registry = new WorkflowClaimRegistry({
-      storage,
-      engineId: 'abandoning-engine',
-      getNow: () => internals.options.getNow(),
-      claimTtlMs: 30_000,
-      claimRenewIntervalMs: 5_000,
-    });
-    internals.workflowClaimRegistry = registry;
-    const acquired = await registry.acquire('claimed');
-    expect(acquired.status).toBe('acquired');
-    const holderBefore = await storage.get(KEYS.workflowOwnerHolder('claimed'));
-    expect(registry.currentEpoch('claimed')).not.toBeNull();
+    const before = held();
+    const checkpointBefore = internals.checkpoints.get('lost-run');
+    expect(before.slice(0, 2)).toEqual([true, true]);
+    expect(internals.handleCache.has('lost-run')).toBe(true);
+    watched.writes.length = 0;
     const warning = collectConflictWarnings();
 
-    abandonWorkflowAfterCheckpointConflict(
-      internals,
-      new WorkflowCheckpointConflictError('claimed'),
-      {
-        swallowPromiseRejection,
-      },
-    );
-    warning.stop();
-
-    expect(registry.currentEpoch('claimed')).toBeNull();
-    expect(await storage.get(KEYS.workflowOwnerHolder('claimed'))).toEqual(holderBefore);
-  });
-
-  it('evicts review handlers on abandonment but leaves the winner durable review timers alone', async () => {
-    const storage = new MemoryStorage();
-    await using engine = new Engine({ storage });
-    const internals = getInternals(engine);
-    const timerIds = ['review-escalation:review-1:1000', 'review-timeout:review-1'];
-    for (const id of timerIds) {
-      await internals.scheduler.schedule({
-        id,
-        workflowId: 'reviewed',
-        fireAt: Number.MAX_SAFE_INTEGER,
-        kind: 'sleep',
-      });
-    }
-    internals.reviewEscalationHandlers.set('review-1', async () => true);
-    internals.reviewTimerIds.set('review-1', timerIds);
-    internals.workflowReviewIds.set('reviewed', new Set(['review-1']));
-    // Calls through, so a cancel would also delete the durable record.
-    const cancel = spyOn(internals.scheduler, 'cancel');
-    const deletions: string[] = [];
-    internals.storage = new Proxy(storage, {
-      get(target, property) {
-        const original: unknown = Reflect.get(target, property, target);
-        if (['delete', 'deletePrefix'].includes(String(property))) deletions.push(String(property));
-        return typeof original === 'function' ? original.bind(target) : original;
-      },
-    });
-    const warning = collectConflictWarnings();
-
-    abandonWorkflowAfterCheckpointConflict(
-      internals,
-      new WorkflowCheckpointConflictError('reviewed'),
-      { swallowPromiseRejection },
-    );
-    await warning.received;
-    warning.stop();
-    internals.storage = storage;
-    cancel.mockRestore();
-
-    expect(internals.reviewEscalationHandlers.has('review-1')).toBe(false);
-    expect(internals.reviewTimerIds.has('review-1')).toBe(false);
-    expect(internals.workflowReviewIds.has('reviewed')).toBe(false);
-    expect(cancel).not.toHaveBeenCalled();
-    expect(deletions).toEqual([]);
-    for (const id of timerIds) {
-      expect(await storage.get(`timer-idx:${id}`)).not.toBeNull();
-    }
-  });
-
-  it('refuses to fail an abandoned workflow durably, until the engine launches it again', async () => {
-    const storage = new MemoryStorage();
-    const parked = workflow({ name: 'refused-failure' }).execute(async function* (
-      ctx: WorkflowContext,
-    ) {
-      yield* ctx.waitForSignal('continue');
-      return 'completed';
-    });
-    await using engine = await Engine.create({
-      storage,
-      recover: false,
-      workflows: { 'refused-failure': parked },
-    });
-    await engine.start('refused-failure', null, { id: 'refused-failure' });
-    const internals = getInternals(engine);
-    const warning = collectConflictWarnings();
-    abandonWorkflowAfterCheckpointConflict(
-      internals,
-      new WorkflowCheckpointConflictError('refused-failure', {
-        workflowExecutionToken: workflowExecutionTokenForWorkflow(internals, 'refused-failure'),
-      }),
-      { swallowPromiseRejection },
-    );
-    await warning.received;
-    warning.stop();
-    const writes: string[] = [];
-    internals.storage = new Proxy(storage, {
-      get(target, property) {
-        const original: unknown = Reflect.get(target, property, target);
-        if (
-          ['put', 'delete', 'deletePrefix', 'batch', 'conditionalBatch'].includes(String(property))
-        ) {
-          writes.push(String(property));
-        }
-        return typeof original === 'function' ? original.bind(target) : original;
-      },
-    });
-
-    await failWorkflow(
-      internals,
-      'refused-failure',
-      new Error('late failure'),
-      new Proxy({}, { get: () => () => {} }) as never,
-    );
-    internals.storage = storage;
-
-    expect(writes).toEqual([]);
-    expect(await readStatus(storage, 'refused-failure')).toBe('running');
-  });
-
-  it('still fails a later generation under an id whose earlier generation was abandoned', async () => {
-    const storage = new MemoryStorage();
-    const parked = workflow({ name: 'later-generation' }).execute(async function* (
-      ctx: WorkflowContext,
-    ) {
-      yield* ctx.waitForSignal('continue');
-      return 'completed';
-    });
-    await using engine = await Engine.create({
-      storage,
-      recover: false,
-      workflows: { 'later-generation': parked },
-    });
-    await engine.start('later-generation', null, { id: 'later-generation' });
-    const internals = getInternals(engine);
-    // The loss recorded here belongs to a different generation than the one in
-    // storage, as when a delayed start is failing before it launches.
-    internals.checkpointConflicts.set('later-generation', {
-      error: new WorkflowCheckpointConflictError('later-generation'),
-      workflowExecutionToken: 'abandoned-generation',
-    });
-
-    await failWorkflow(
-      internals,
-      'later-generation',
-      new Error('pre-launch failure'),
-      new Proxy({}, { get: () => () => {} }) as never,
-    );
-
-    expect(await readStatus(storage, 'later-generation')).toBe('failed');
-  });
-
-  it('drops a failure already in flight when the run is abandoned before its terminal commit', async () => {
-    const storage = new MemoryStorage();
-    const parked = workflow({ name: 'failure-in-flight' }).execute(async function* (
-      ctx: WorkflowContext,
-    ) {
-      yield* ctx.waitForSignal('continue');
-      return 'completed';
-    });
-    await using engine = await Engine.create({
-      storage,
-      recover: false,
-      workflows: { 'failure-in-flight': parked },
-    });
-    await engine.start('failure-in-flight', null, { id: 'in-flight' });
-    const internals = getInternals(engine);
-    // Hold the failure at its first storage read, as an interleaving turn would.
-    const reachedRead = createDeferred();
-    const releaseRead = createDeferred();
-    internals.storage = new Proxy(storage, {
-      get(target, property) {
-        const original: unknown = Reflect.get(target, property, target);
-        if (typeof original !== 'function') return original;
-        if (property === 'get') {
-          return async (key: string) => {
-            if (key === KEYS.attribute('in-flight')) {
-              reachedRead.resolve();
-              await releaseRead.promise;
-            }
-            return original.call(target, key);
-          };
-        }
-        return original.bind(target);
-      },
-    });
-
-    const failing = failWorkflow(
-      internals,
-      'in-flight',
-      new Error('late failure'),
-      // The post-commit callbacks are irrelevant here: the assertion is whether
-      // the terminal write lands at all.
-      new Proxy({}, { get: () => () => {} }) as never,
-    );
-    await reachedRead.promise;
-    const warning = collectConflictWarnings();
-    abandonWorkflowAfterCheckpointConflict(
-      internals,
-      new WorkflowCheckpointConflictError('in-flight', {
-        workflowExecutionToken: workflowExecutionTokenForWorkflow(internals, 'in-flight'),
-      }),
-      { swallowPromiseRejection },
-    );
-    await warning.received;
-    warning.stop();
-    releaseRead.resolve();
-    await failing;
-    internals.storage = storage;
-
-    expect(await readStatus(storage, 'in-flight')).toBe('running');
-  });
-
-  it('fails a once-abandoned workflow durably when a later local resume fails before launching it', async () => {
-    const storage = new MemoryStorage();
-    const parked = workflow({ name: 'abandoned-then-recovered' }).execute(async function* (
-      ctx: WorkflowContext,
-    ) {
-      yield* ctx.waitForSignal('continue');
-      return 'completed';
-    });
-    const firstEngine = await Engine.create({
-      storage,
-      recover: false,
-      workflows: { 'abandoned-then-recovered': parked },
-    });
-    await firstEngine.start('abandoned-then-recovered', null, { id: 'recovered-run' });
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if ((await storage.get(KEYS.checkpoint('recovered-run'))) !== null) break;
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-    await firstEngine[Symbol.asyncDispose]();
-
-    await using engine = await Engine.create({
-      storage,
-      recover: false,
-      workflows: { 'abandoned-then-recovered': parked },
-    });
-    const warning = collectConflictWarnings();
-    abandonWorkflowAfterCheckpointConflict(
-      getInternals(engine),
-      new WorkflowCheckpointConflictError('recovered-run'),
-      { swallowPromiseRejection },
-    );
-    await warning.received;
-    warning.stop();
-
-    // The recovery hook is a pre-check that runs before the workflow is
-    // launched, so its failure is this engine's own, legitimate terminal outcome.
-    await engine.recoverAll({
-      onRecoveredWorkflow: () => {
-        throw new Error('live surface unavailable');
-      },
-    });
-
-    expect(await readStatus(storage, 'recovered-run')).toBe('failed');
-  });
-
-  it('retires the workflow through the active execution strategy and never cancels it', async () => {
-    await using engine = new Engine({ storage: new MemoryStorage() });
-    const internals = getInternals(engine);
-    // Worker and revision-realm engines run with no inline strategy; the
-    // active strategy is the one that owns the workflow's execution.
-    const inlineStrategy = internals.inlineStrategy;
-    const activeStrategy = internals.strategy;
-    const retired: string[] = [];
-    const cancelled: string[] = [];
-    internals.inlineStrategy = null;
-    internals.strategy = new Proxy(activeStrategy, {
-      get(target, property) {
-        // Real cancellation can discard a worker and fail its other workflows;
-        // an abandoned run must take the non-failing retire path instead.
-        if (property === 'cancelWorkflow') {
-          return (workflowId: string) => cancelled.push(workflowId);
-        }
-        if (property === 'retireWorkflow') {
-          return (workflowId: string) => retired.push(workflowId);
-        }
-        const original: unknown = Reflect.get(target, property, target);
-        return typeof original === 'function' ? original.bind(target) : original;
-      },
-    });
-    const warning = collectConflictWarnings();
     try {
-      abandonWorkflowAfterCheckpointConflict(
-        internals,
-        new WorkflowCheckpointConflictError('worker-run'),
-        { swallowPromiseRejection },
-      );
+      loseGeneration(internals, 'lost-run');
+      // A second report of the same loss does nothing: one warning, one retire.
+      loseGeneration(internals, 'lost-run');
       await warning.received;
     } finally {
       warning.stop();
-      internals.strategy = activeStrategy;
-      internals.inlineStrategy = inlineStrategy;
+      strategy.restore();
     }
 
-    expect(retired).toEqual(['worker-run']);
-    expect(cancelled).toEqual([]);
+    const reason = await rejectionOf(pendingResult);
+    expect(reason).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect((reason as WorkflowCheckpointConflictError).workflowId).toBe('lost-run');
+    expect(
+      isCheckpointGenerationAbandoned(internals, 'lost-run', tokenOf(internals, 'lost-run')),
+    ).toBe(true);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    expect(strategy.retired).toEqual(['lost-run']);
+    expect(strategy.cancelled).toEqual([]);
+    expect(internals.resultResolvers.has('lost-run')).toBe(false);
+    // The cached handle is gone, so a later getHandle() builds a fresh one.
+    expect(internals.handleCache.has('lost-run')).toBe(false);
+    expect(engine.getHandle('lost-run')).not.toBe(handle);
+    // Nothing else was released, and nothing was written.
+    expect(held()).toEqual(before);
+    expect(internals.checkpoints.get('lost-run')).toBe(checkpointBefore);
+    expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual(['lost-run']);
+    expect(watched.writes).toEqual([]);
   });
 
   it('finishes abandoning when the strategy cannot retire the execution', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const internals = getInternals(engine);
+    const handle = await startParked(engine, 'unreachable-run', 'unreachable-run');
+    const pendingResult = handle.result();
     const activeStrategy = internals.strategy;
     internals.strategy = new Proxy(activeStrategy, {
       get(target, property) {
@@ -558,20 +267,102 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
         return typeof original === 'function' ? original.bind(target) : original;
       },
     });
-    const pending = getWorkflowResultPromise(internals, 'unreachable-run');
-    const conflict = new WorkflowCheckpointConflictError('unreachable-run');
     const warning = collectConflictWarnings();
     try {
-      abandonWorkflowAfterCheckpointConflict(internals, conflict, { swallowPromiseRejection });
+      loseGeneration(internals, 'unreachable-run');
       await warning.received;
     } finally {
       warning.stop();
       internals.strategy = activeStrategy;
     }
 
-    expect(await rejectionOf(pending)).toBe(conflict);
-    expect(internals.checkpointConflicts.get('unreachable-run')?.error).toBe(conflict);
-    expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual(['unreachable-run']);
+    expect(await rejectionOf(pendingResult)).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    expect(internals.handleCache.has('unreachable-run')).toBe(false);
+  });
+
+  it('ignores a loss that does not name the generation the engine currently holds', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const strategy = observeStrategy(internals);
+    internals.checkpoints.set('lost-generation', {
+      workflowExecutionToken: 'current-generation',
+    } as Checkpoint);
+
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('lost-generation', {
+        workflowExecutionToken: 'older-generation',
+      }),
+    );
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('lost-generation'),
+    );
+    strategy.restore();
+
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+    expect(strategy.retired).toEqual([]);
+  });
+
+  it('leaves a replacement generation under the same id alone, through the production start-new path', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    engine.register(parkedOnSignal('replaced-run'));
+    const first = await engine.start('replaced-run', null, { id: 'replaced-run' });
+    await waitForCondition(() => internals.parkedInlineWorkflows.has('replaced-run'), {
+      label: 'first generation parked',
+    });
+    const firstToken = tokenOf(internals, 'replaced-run');
+    await engine.signal('replaced-run', 'go', 'first');
+    expect(await first.result()).toBe('first');
+
+    const second = await engine.start('replaced-run', null, {
+      id: 'replaced-run',
+      onTerminalConflict: 'start-new',
+    });
+    await waitForCondition(() => internals.parkedInlineWorkflows.has('replaced-run'), {
+      label: 'replacement generation parked',
+    });
+    expect(tokenOf(internals, 'replaced-run')).not.toBe(firstToken);
+    const strategy = observeStrategy(internals);
+    const warning = collectConflictWarnings();
+
+    // The first generation's commit lost; its error reaches the engine only now.
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('replaced-run', { workflowExecutionToken: firstToken }),
+    );
+    await yieldToEventLoop();
+    warning.stop();
+    strategy.restore();
+
+    expect(warning.warnings).toEqual([]);
+    expect(strategy.retired).toEqual([]);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+    await engine.signal('replaced-run', 'go', 'second');
+    expect(await second.result()).toBe('second');
+  });
+
+  it('forgets a marker only when the engine launches that same generation again, and on disposal', async () => {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    markCheckpointGenerationAbandoned(internals, 'relaunched', 'generation-1');
+    markCheckpointGenerationAbandoned(internals, 'relaunched', undefined);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+
+    adoptLaunchCheckpoint(internals, 'relaunched', {
+      workflowExecutionToken: 'generation-2',
+    } as Checkpoint);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    adoptLaunchCheckpoint(internals, 'relaunched', {
+      workflowExecutionToken: 'generation-1',
+    } as Checkpoint);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+
+    markCheckpointGenerationAbandoned(internals, 'relaunched', 'generation-1');
+    await engine[Symbol.asyncDispose]();
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
   });
 
   it('warns through console.warn where the runtime has no process.emitWarning', () => {
@@ -587,173 +378,47 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     emitCheckpointConflictWarning(warning, { emitWarning: (value) => emitted.push(value) });
     expect(emitted).toEqual([warning]);
   });
-
-  it('rethrows a persist failure that is not a checkpoint conflict without abandoning', async () => {
-    const storage = new MemoryStorage();
-    await using engine = new Engine({ storage });
-    const internals = getInternals(engine);
-    const failure = new Error('storage unavailable');
-
-    const reason = await rejectionOf(
-      persistCheckpointAbandoningOnConflict(internals, () => Promise.reject(failure)),
-    );
-
-    expect(reason).toBe(failure);
-    expect(internals.checkpointConflicts.size).toBe(0);
-  });
 });
 
-describe('scoping abandonment to the generation that lost', () => {
-  it('leaves a replacement generation installed during loss classification alone', async () => {
-    const base = new MemoryStorage();
-    const armed = { value: false };
-    const { storage, state } = createLosingStorage(base, 'scoped-loss', armed);
-    const classificationReached = createDeferred();
-    const releaseClassification = createDeferred();
-    let held = false;
-    // Hold the read that classifies the lost commit, as an interleaved local
-    // start-new or resume would land while it awaits.
-    const classifying = new Proxy(storage, {
-      get(target, property) {
-        const original: unknown = Reflect.get(target, property, target);
-        if (property !== 'get' || typeof original !== 'function') {
-          return typeof original === 'function' ? original.bind(target) : original;
-        }
-        return async (key: string) => {
-          if (state.lost && !held && key === KEYS.checkpoint('scoped-loss')) {
-            held = true;
-            classificationReached.resolve();
-            await releaseClassification.promise;
-          }
-          return original.call(target, key);
-        };
-      },
-    });
-    const definition = workflow({ name: 'scoped-loss' }).execute(async function* (
-      context: WorkflowContext,
-    ) {
-      yield* context.run(() => {
-        armed.value = true;
-        return 'a';
-      });
-      yield* context.run(() => 'b');
-      return yield* context.waitForSignal<string>('go');
+describe('persistCheckpointAbandoningOnConflict', () => {
+  it('returns the persist promise itself, so a successful persist settles with no extra hop', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const persisted = Promise.resolve();
+
+    expect(persistCheckpointAbandoningOnConflict(getInternals(engine), () => persisted)).toBe(
+      persisted,
+    );
+    await persisted;
+    expect(abandonedCheckpointGenerationCount(getInternals(engine))).toBe(0);
+  });
+
+  it('abandons before the caller observes a conflict, and rethrows anything else untouched', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpoints.set('persisting', { workflowExecutionToken: 'token' } as Checkpoint);
+    const conflict = new WorkflowCheckpointConflictError('persisting', {
+      workflowExecutionToken: 'token',
     });
     const warning = collectConflictWarnings();
-    await using engine = new Engine({ storage: classifying });
-    engine.register(definition);
-    await engine.start('scoped-loss', null, { id: 'scoped-loss' });
-    await classificationReached.promise;
-    const internals = getInternals(engine);
-    const replacement = {
-      ...internals.checkpoints.get('scoped-loss')!,
-      workflowExecutionToken: 'replacement-generation',
-    };
-    // A replacement launch drops the old generation's in-flight operation record.
-    internals.durableInlineOperations.delete('scoped-loss');
-    internals.checkpoints.set('scoped-loss', replacement);
 
-    releaseClassification.resolve();
-    await yieldToEventLoop();
+    const reason = await rejectionOf(
+      persistCheckpointAbandoningOnConflict(internals, () => Promise.reject(conflict)),
+    );
+    await warning.received;
     warning.stop();
 
-    expect(warning.warnings).toEqual([]);
-    expect(internals.checkpointConflicts.has('scoped-loss')).toBe(false);
-    expect(internals.checkpoints.get('scoped-loss')).toBe(replacement);
-    expect(state.writesAfterLoss).toEqual([]);
-    expect(await readStatus(base, 'scoped-loss')).toBe('running');
+    expect(reason).toBe(conflict);
+    expect(isCheckpointGenerationAbandoned(internals, 'persisting', 'token')).toBe(true);
+
+    const failure = new Error('storage unavailable');
+    expect(
+      await rejectionOf(
+        persistCheckpointAbandoningOnConflict(internals, () => Promise.reject(failure)),
+      ),
+    ).toBe(failure);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
   });
 
-  it('records the token of the generation that lost, from the error', async () => {
-    await using engine = new Engine({ storage: new MemoryStorage() });
-    const internals = getInternals(engine);
-    internals.checkpoints.set('lost-generation', {
-      workflowExecutionToken: 'current-generation',
-    } as never);
-
-    abandonWorkflowAfterCheckpointConflict(
-      internals,
-      new WorkflowCheckpointConflictError('lost-generation', {
-        workflowExecutionToken: 'older-generation',
-      }),
-      { swallowPromiseRejection },
-    );
-    expect(internals.checkpointConflicts.has('lost-generation')).toBe(false);
-    expect(internals.checkpoints.has('lost-generation')).toBe(true);
-
-    abandonWorkflowAfterCheckpointConflict(
-      internals,
-      new WorkflowCheckpointConflictError('lost-generation', {
-        workflowExecutionToken: 'current-generation',
-      }),
-      { swallowPromiseRejection },
-    );
-    expect(internals.checkpointConflicts.get('lost-generation')?.workflowExecutionToken).toBe(
-      'current-generation',
-    );
-  });
-});
-
-describe('result() after a recorded checkpoint loss', () => {
-  const conflictRecord = (workflowId: string, workflowExecutionToken: string | undefined) => ({
-    error: new WorkflowCheckpointConflictError(workflowId),
-    workflowExecutionToken,
-  });
-
-  it('keeps reporting the loss when storage cannot be read', async () => {
-    const storage = new MemoryStorage();
-    await using engine = new Engine({ storage });
-    const internals = getInternals(engine);
-    const record = conflictRecord('unreadable', 'lost-run');
-    internals.checkpointConflicts.set('unreadable', record);
-    internals.storage = new Proxy(storage, {
-      get(target, property) {
-        if (property === 'get') return () => Promise.reject(new Error('storage unavailable'));
-        const original: unknown = Reflect.get(target, property, target);
-        return typeof original === 'function' ? original.bind(target) : original;
-      },
-    });
-
-    expect(await rejectionOf(getWorkflowResultPromise(internals, 'unreadable'))).toBe(record.error);
-    expect(internals.checkpointConflicts.get('unreadable')).toBe(record);
-  });
-
-  it('drops a loss that storage shows belongs to a run that is gone, then resolves normally', async () => {
-    await using engine = new Engine({ storage: new MemoryStorage() });
-    const internals = getInternals(engine);
-    internals.checkpointConflicts.set('replaced', conflictRecord('replaced', 'lost-run'));
-
-    const reason = await rejectionOf(getWorkflowResultPromise(internals, 'replaced'));
-
-    expect((reason as Error).message).toContain('not found in storage');
-    expect(internals.checkpointConflicts.has('replaced')).toBe(false);
-  });
-
-  it('defers to a local launch that cleared the loss while storage was being read', async () => {
-    await using engine = new Engine({ storage: new MemoryStorage() });
-    const internals = getInternals(engine);
-    internals.checkpointConflicts.set('relaunched', conflictRecord('relaunched', 'lost-run'));
-    const pending = getWorkflowResultPromise(internals, 'relaunched');
-    internals.checkpointConflicts.delete('relaunched');
-
-    const reason = await rejectionOf(pending);
-
-    expect((reason as Error).message).toContain('not found in storage');
-  });
-
-  it('clears a loss for resume with and without a cached handle', async () => {
-    await using engine = new Engine({ storage: new MemoryStorage() });
-    const internals = getInternals(engine);
-    internals.checkpointConflicts.set('uncached', conflictRecord('uncached', undefined));
-    clearCheckpointConflictForResume(internals, 'uncached');
-    expect(internals.checkpointConflicts.has('uncached')).toBe(false);
-
-    clearCheckpointConflictForResume(internals, 'never-recorded');
-    expect(internals.checkpointConflicts.size).toBe(0);
-  });
-});
-
-describe('a checkpoint conflict raised outside the generator checkpoint message', () => {
   it('abandons at the durableActivity retry-sleep persist without delivering the error to user code', async () => {
     const base = new MemoryStorage();
     const armed = { value: false };
@@ -805,7 +470,7 @@ describe('a checkpoint conflict raised outside the generator checkpoint message'
     expect(reason).toBeInstanceOf(WorkflowCheckpointConflictError);
     expect(state.lost).toBe(true);
     // Nothing reaches the generator, and the memo callback sees only its scope
-    // closing, as it would for any cancellation — never the conflict.
+    // closing, as it would for any cancellation, never the conflict.
     expect(observedByWorkflow).toEqual([]);
     expect(observedInMemoCallback).toHaveLength(1);
     expect(observedInMemoCallback[0]).toBeInstanceOf(DurableActivityScopeError);
@@ -814,127 +479,362 @@ describe('a checkpoint conflict raised outside the generator checkpoint message'
     expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual(['retry-conflict']);
     expect(getInternals(engine).inlineStrategy?.hasGenerator('retry-conflict')).toBe(false);
   });
+});
 
-  it('abandons a local parent awaiting a child this engine abandoned, naming the child as cause', async () => {
-    const base = new MemoryStorage();
-    const armed = { value: false };
-    const { storage, state } = createLosingStorage(base, 'abandoned-child', armed);
-    const observedByUserCode: unknown[] = [];
-    const child = workflow({ name: 'abandoned-child-workflow' }).execute(async function* (
-      context: WorkflowContext,
-    ) {
-      const first = yield* context.run(() => {
-        armed.value = true;
-        return 'a';
-      });
-      const second = yield* context.run(() => 'b');
-      return first + second;
-    });
-    const parent = workflow({ name: 'abandoned-child-parent' }).execute(async function* (
-      context: WorkflowContext,
-    ) {
-      try {
-        return yield* context.startChild('abandoned-child-workflow', null, {
-          id: 'abandoned-child',
-        });
-      } catch (error) {
-        observedByUserCode.push(error);
-        throw error;
-      }
-    });
-    const warning = collectConflictWarnings(2);
-    await using engine = new Engine({ storage });
-    engine.register(child);
-    engine.register(parent);
-
-    const parentHandle = await engine.start('abandoned-child-parent', null, {
-      id: 'abandoned-child-parent',
-    });
-    const parentReason = await rejectionOf(parentHandle.result());
-    const childReason = await rejectionOf(engine.getHandle('abandoned-child').result());
-    await warning.received;
-    warning.stop();
-
-    expect(childReason).toBeInstanceOf(WorkflowCheckpointConflictError);
-    expect((childReason as WorkflowCheckpointConflictError).workflowId).toBe('abandoned-child');
-    expect(parentReason).toBeInstanceOf(WorkflowCheckpointConflictError);
-    expect((parentReason as WorkflowCheckpointConflictError).workflowId).toBe(
-      'abandoned-child-parent',
-    );
-    expect((parentReason as WorkflowCheckpointConflictError).cause).toBe(childReason);
-    expect(observedByUserCode).toEqual([]);
-    expect(state.writesAfterLoss).toEqual([]);
-    expect(await readStatus(base, 'abandoned-child-parent')).toBe('running');
-    expect(await readStatus(base, 'abandoned-child')).toBe('running');
-    expect(warning.warnings.map((emitted) => emitted.workflowId).toSorted()).toEqual([
-      'abandoned-child',
-      'abandoned-child-parent',
-    ]);
-    const internals = getInternals(engine);
-    expect(internals.inlineStrategy?.hasGenerator('abandoned-child-parent')).toBe(false);
-    expect(internals.checkpoints.has('abandoned-child-parent')).toBe(false);
-  });
-
-  it('leaves a parent id reused by a new generation alone when an old child conflict settles', async () => {
+describe('wakes for an abandoned generation', () => {
+  it('discards the wake in every ownership mode without consulting the claim registry', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const internals = getInternals(engine);
-    internals.checkpoints.set('reused-parent', { workflowExecutionToken: 'generation-a' } as never);
-    const childResult = createDeferred<unknown>();
-    const parentView = abandonParentOfAbandonedChild(
-      internals,
-      'old-child',
-      'reused-parent',
-      childResult.promise,
-    );
-    // The awaiting generation is gone and the id now runs a new generation.
-    internals.checkpoints.set('reused-parent', { workflowExecutionToken: 'generation-b' } as never);
+    internals.checkpoints.set('marked', { workflowExecutionToken: 'lost' } as Checkpoint);
+    internals.checkpoints.set('healthy', { workflowExecutionToken: 'fine' } as Checkpoint);
+    markCheckpointGenerationAbandoned(internals, 'marked', 'lost');
 
-    childResult.reject(new WorkflowCheckpointConflictError('old-child'));
-    expect(
-      await Promise.race([parentView, new Promise((resolve) => setImmediate(resolve, 'pending'))]),
-    ).toBe('pending');
+    expect(await confirmWakeOwnership(internals, 'marked', 'signal')).toBe('discard');
+    expect(await confirmWakeOwnership(internals, 'healthy', 'signal')).toBe('proceed');
+    // A different generation under the marked id is not the abandoned one.
+    internals.checkpoints.set('marked', { workflowExecutionToken: 'replacement' } as Checkpoint);
+    expect(await confirmWakeOwnership(internals, 'marked', 'signal')).toBe('proceed');
+    internals.checkpoints.set('marked', { workflowExecutionToken: 'lost' } as Checkpoint);
 
-    expect(internals.checkpointConflicts.has('reused-parent')).toBe(false);
-    expect(internals.checkpoints.get('reused-parent')?.workflowExecutionToken).toBe('generation-b');
+    internals.workflowClaimRegistry = {
+      engineId: 'engine',
+      currentEpoch: () => {
+        throw new Error('the abandoned generation must be discarded before the registry is read');
+      },
+    } as never;
+    expect(await confirmWakeOwnership(internals, 'marked', 'signal')).toBe('discard');
+    internals.workflowClaimRegistry = null;
   });
 
-  it('rejects a parent that awaits an already-abandoned child, and still surfaces other child failures', async () => {
-    const storage = new MemoryStorage();
-    await using engine = new Engine({ storage });
+  it('does not wake the abandoned generation for a delivered signal', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
     const internals = getInternals(engine);
-    const warning = collectConflictWarnings(2);
-    abandonWorkflowAfterCheckpointConflict(
+    await startParked(engine, 'signalled-run', 'signalled-run');
+    await startParked(engine, 'signalled-bystander', 'signalled-bystander');
+    const markedWaiter = mock(() => {});
+    const bystanderWaiter = mock(() => {});
+    registerSignalWaiter(internals, 'signalled-run', 'signalled-run:go', markedWaiter);
+    registerSignalWaiter(
       internals,
-      new WorkflowCheckpointConflictError('earlier-child'),
-      { swallowPromiseRejection },
+      'signalled-bystander',
+      'signalled-bystander:go',
+      bystanderWaiter,
     );
-    const { getGeneratorOwnedWorkflowResultPromise } = await import('./handle-result.ts');
-
-    const parentView = getGeneratorOwnedWorkflowResultPromise(
-      internals,
-      'earlier-child',
-      'late-parent',
-    );
-    // The loss is checked against storage before it is reported, so the parent
-    // is abandoned once that read lands; its view of the child never settles.
+    const warning = collectConflictWarnings();
+    loseGeneration(internals, 'signalled-run');
     await warning.received;
     warning.stop();
-    expect(await Promise.race([parentView, Promise.resolve('pending')])).toBe('pending');
 
-    expect(internals.checkpointConflicts.get('late-parent')?.error.cause).toBe(
-      internals.checkpointConflicts.get('earlier-child')?.error,
+    await engine.signal('signalled-run', 'go', 'late');
+    await engine.signal('signalled-bystander', 'go', 'on time');
+    await yieldToEventLoop();
+
+    expect(markedWaiter).not.toHaveBeenCalled();
+    expect(internals.signalWaiters.has('signalled-run:go')).toBe(true);
+    expect(bystanderWaiter).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wake the abandoned generation for a condition poke', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    await startParked(engine, 'poked-run', 'poked-run');
+    await startParked(engine, 'bystander-run', 'bystander-run');
+    const markedWaiter = mock(() => {});
+    const bystanderWaiter = mock(() => {});
+    internals.conditionWaiters.set('poked-run', markedWaiter);
+    internals.conditionWaiters.set('bystander-run', bystanderWaiter);
+    const warning = collectConflictWarnings();
+    loseGeneration(internals, 'poked-run');
+    await warning.received;
+    warning.stop();
+
+    notifyConditionWaiters(internals, 'poked-run');
+    notifyConditionWaiters(internals, 'bystander-run');
+    await yieldToEventLoop();
+
+    expect(markedWaiter).not.toHaveBeenCalled();
+    expect(bystanderWaiter).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not feed the abandoned generation an async activity completion', async () => {
+    const requests: RemoteActivityTaskRequest[] = [];
+    const broker: RemoteActivityBroker = {
+      async enqueue(request) {
+        requests.push(request);
+      },
+    };
+    await using engine = new Engine({ activityExecution: { mode: 'remote', broker } });
+    const internals = getInternals(engine);
+    const chargeCard = activity({
+      name: 'chargeCard',
+      execute: async (_input: { orderId: string }): Promise<never> => {
+        throw new Error('local execution must never run in remote mode');
+      },
+    });
+    engine.register(
+      workflow({ name: 'remote-lost' })
+        .activities({ chargeCard })
+        .execute(async function* (context: WorkflowContext) {
+          return yield* context.run(chargeCard, { orderId: 'ord-1' });
+        }),
     );
+    await engine.start('remote-lost', null, { id: 'remote-lost' });
+    await waitForCondition(() => requests.length > 0, { label: 'activity enqueued' });
+    const warning = collectConflictWarnings();
+    loseGeneration(internals, 'remote-lost');
+    await warning.received;
+    warning.stop();
 
-    // A child that merely failed is not a conflict: the parent still sees it.
-    const failure = new Error('child failed');
-    const waiter = internals.resultResolvers;
-    const failing = getGeneratorOwnedWorkflowResultPromise(
+    await engine.completeAsyncActivity(requests[0]!.operationId, 'charged');
+
+    // Delivery stages the resolution record's deletion with the next checkpoint
+    // commit; a discarded delivery stages nothing and leaves the record alone.
+    expect(internals.pendingAtomicWorkflowCommitSideEffects.has('remote-lost')).toBe(false);
+  });
+
+  it('keeps the winner durable timers when the loser scheduler fires them', async () => {
+    let now = 1_000_000;
+    const watched = recordWrites(new MemoryStorage());
+    await using engine = await Engine.create({
+      storage: watched.storage,
+      workflows: {
+        'timers-condition': workflow({ name: 'timers-condition' }).execute(async function* (
+          context: WorkflowContext,
+        ) {
+          return yield* context.waitUntil(() => false, '5m');
+        }),
+        'timers-sleep': workflow({ name: 'timers-sleep' }).execute(async function* (
+          context: WorkflowContext,
+        ) {
+          yield* context.sleep('5m');
+          return 'woke';
+        }),
+      },
+      getNow: () => now,
+      backgroundTasks: 'manual',
+      startScheduler: false,
+    });
+    const internals = getInternals(engine);
+    await engine.start('timers-condition', null, { id: 'condition-run', executionTimeout: '10m' });
+    await engine.start('timers-sleep', null, { id: 'sleep-run' });
+    await waitForCondition(
+      () =>
+        internals.conditionWaiters.has('condition-run') &&
+        internals.sleepResolversByWorkflow.has('sleep-run'),
+      { label: 'both runs parked on a durable timer' },
+    );
+    const reviewHandler = mock(async () => true);
+    internals.reviewEscalationHandlers.set('review-1', reviewHandler);
+    const reviewTimer: TimerEntry = {
+      id: 'review-escalation:review-1:1000',
+      workflowId: 'condition-run',
+      fireAt: now + 1_000,
+      kind: 'sleep',
+      workflowExecutionToken: tokenOf(internals, 'condition-run')!,
+    };
+    await internals.scheduler.schedule(reviewTimer);
+    const timerKeys = async (): Promise<string[]> => {
+      const keys: string[] = [];
+      for await (const [key] of watched.storage.scan('timer-idx:')) keys.push(key);
+      return keys.sort();
+    };
+    const timersBefore = await timerKeys();
+    expect(timersBefore.length).toBeGreaterThanOrEqual(4);
+
+    const warning = collectConflictWarnings(2);
+    loseGeneration(internals, 'condition-run');
+    loseGeneration(internals, 'sleep-run');
+    await warning.received;
+    warning.stop();
+    watched.writes.length = 0;
+
+    // Every timer is due on this engine's scheduler: sleep, condition deadline,
+    // execution deadline, and the review escalation.
+    now += 11 * 60 * 1000;
+    await engine.scheduler.tick(now);
+
+    // The scheduler retries them: the records stay for the winner, nothing was
+    // written, no waiter was woken, and no review handler ran.
+    expect(await timerKeys()).toEqual(timersBefore);
+    expect(watched.writes).toEqual([]);
+    expect(reviewHandler).not.toHaveBeenCalled();
+    expect(internals.conditionWaiters.has('condition-run')).toBe(true);
+    expect(internals.sleepResolversByWorkflow.has('sleep-run')).toBe(true);
+    expect((await engine.get('condition-run'))?.status).toBe('running');
+    expect((await engine.get('sleep-run'))?.status).toBe('running');
+  });
+});
+
+describe('failing an abandoned generation', () => {
+  const noCallbacks = new Proxy({}, { get: () => () => {} }) as never;
+
+  async function startParkedEngine(name: string, storage: Storage) {
+    const engine = await Engine.create({ storage, recover: false });
+    engine.register(parkedOnSignal(name));
+    await engine.start(name, null, { id: name });
+    return engine;
+  }
+
+  it('refuses the terminal write for the marked generation', async () => {
+    const storage = new MemoryStorage();
+    await using engine = await startParkedEngine('refused-failure', storage);
+    const internals = getInternals(engine);
+    markCheckpointGenerationAbandoned(
       internals,
-      'failing-child',
-      'other-parent',
+      'refused-failure',
+      tokenOf(internals, 'refused-failure'),
     );
-    waiter.get('failing-child')!.reject(failure);
-    expect(await rejectionOf(failing)).toBe(failure);
-    expect(internals.checkpointConflicts.has('other-parent')).toBe(false);
+    const watched = recordWrites(storage);
+    internals.storage = watched.storage;
+
+    await failWorkflow(internals, 'refused-failure', new Error('late failure'), noCallbacks);
+    internals.storage = storage;
+
+    expect(watched.writes).toEqual([]);
+    expect(await readStatus(storage, 'refused-failure')).toBe('running');
+  });
+
+  it('still fails a later generation under an id whose earlier generation was abandoned', async () => {
+    const storage = new MemoryStorage();
+    await using engine = await startParkedEngine('later-generation', storage);
+    const internals = getInternals(engine);
+    markCheckpointGenerationAbandoned(internals, 'later-generation', 'abandoned-generation');
+
+    await failWorkflow(internals, 'later-generation', new Error('pre-launch failure'), noCallbacks);
+
+    expect(await readStatus(storage, 'later-generation')).toBe('failed');
+  });
+
+  it('drops a failure already in flight when the run is abandoned before its terminal commit', async () => {
+    const storage = new MemoryStorage();
+    await using engine = await startParkedEngine('in-flight', storage);
+    const internals = getInternals(engine);
+    // Hold the failure at its first storage read, as an interleaving turn would.
+    const reachedRead = createDeferred();
+    const releaseRead = createDeferred();
+    internals.storage = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (key === KEYS.attribute('in-flight')) {
+              reachedRead.resolve();
+              await releaseRead.promise;
+            }
+            return original.call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+
+    const failing = failWorkflow(internals, 'in-flight', new Error('late failure'), noCallbacks);
+    await reachedRead.promise;
+    const warning = collectConflictWarnings();
+    loseGeneration(internals, 'in-flight');
+    await warning.received;
+    warning.stop();
+    releaseRead.resolve();
+    await failing;
+    internals.storage = storage;
+
+    expect(await readStatus(storage, 'in-flight')).toBe('running');
+  });
+});
+
+describe('result() for an abandoned generation', () => {
+  it('rejects for a fresh handle without reading storage, while the generation is current', async () => {
+    const storage = new MemoryStorage();
+    let reads = 0;
+    const counting = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return (...argumentsList: unknown[]) => {
+            reads += 1;
+            return original.apply(target, argumentsList);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+    await using engine = new Engine({ storage: counting });
+    const internals = getInternals(engine);
+    await startParked(engine, 'fresh-handle', 'fresh-handle');
+    const warning = collectConflictWarnings();
+    loseGeneration(internals, 'fresh-handle');
+    await warning.received;
+    warning.stop();
+    reads = 0;
+
+    const freshHandle = new WorkflowHandle('fresh-handle', internals.engine);
+    const reason = await rejectionOf(freshHandle.result());
+
+    expect(reason).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect((reason as WorkflowCheckpointConflictError).workflowId).toBe('fresh-handle');
+    expect((reason as WorkflowCheckpointConflictError).workflowExecutionToken).toBe(
+      tokenOf(internals, 'fresh-handle'),
+    );
+    expect(reads).toBe(0);
+    expect(internals.resultResolvers.has('fresh-handle')).toBe(false);
+  });
+
+  it('is untouched for a workflow whose generation was not abandoned', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const handle = await startParked(engine, 'healthy-run', 'healthy-run');
+    await startParked(engine, 'lost-neighbour', 'lost-neighbour');
+    const warning = collectConflictWarnings();
+    loseGeneration(internals, 'lost-neighbour');
+    await warning.received;
+    warning.stop();
+
+    await engine.signal('healthy-run', 'go', 'fine');
+    expect(await handle.result()).toBe('fine');
+  });
+});
+
+describe('a child this engine abandoned', () => {
+  it('never reports a failure to the parent awaiting it, and mutates nothing', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const waiter = createWorkflowResultWaiter(internals, 'abandoned-child');
+    const viewedByParent = getGeneratorOwnedWorkflowResultPromise(
+      internals,
+      'abandoned-child',
+      'parent',
+    );
+
+    waiter.reject(new WorkflowCheckpointConflictError('abandoned-child'));
+    await yieldToEventLoop();
+
+    await expectPromisePending(viewedByParent);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+  });
+
+  it('still surfaces every other child failure, including another workflow conflict', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const failure = new Error('child failed');
+    const failedChild = createWorkflowResultWaiter(internals, 'failed-child');
+    const viewOfFailure = getGeneratorOwnedWorkflowResultPromise(
+      internals,
+      'failed-child',
+      'parent',
+    );
+    failedChild.reject(failure);
+    const unrelatedConflict = new WorkflowCheckpointConflictError('grandchild');
+    const conflictedChild = createWorkflowResultWaiter(internals, 'other-child');
+    const viewOfConflict = getGeneratorOwnedWorkflowResultPromise(
+      internals,
+      'other-child',
+      'parent',
+    );
+    conflictedChild.reject(unrelatedConflict);
+
+    expect(await rejectionOf(viewOfFailure)).toBe(failure);
+    expect(await rejectionOf(viewOfConflict)).toBe(unrelatedConflict);
   });
 });
