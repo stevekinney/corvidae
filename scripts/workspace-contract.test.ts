@@ -139,7 +139,9 @@ describe('internal workspace architecture', () => {
     expect(scripts['test:self']).toBe(
       'bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
     );
-    expect(scripts['audit']).toBe('bun audit --audit-level=high');
+    // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
+    // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
+    expect(scripts['audit']).toBe('bun scripts/check-audit-exceptions.ts');
   });
 
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {
