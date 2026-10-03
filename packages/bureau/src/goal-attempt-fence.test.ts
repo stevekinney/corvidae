@@ -138,6 +138,21 @@ describe('createGoalAttemptFence', () => {
     expect(await fence.mayRun(target)).toEqual(RUN);
   });
 
+  it('refuses an acknowledged attempt once the goal’s aggregate duration has elapsed, and lets it run before', async () => {
+    const store = await liveGoal(undefined, { maximumAttempts: 2, maximumTotalDurationMs: 1_000 });
+    await openAttempt(store);
+    const at = (offsetMs: number) =>
+      createGoalAttemptFence({
+        store,
+        readRunRecord: () => Promise.resolve(own),
+        clock: { now: () => Date.parse(NOW) + offsetMs },
+      });
+
+    expect(await at(999).mayRun(target)).toEqual(RUN);
+    expect(await at(1_000).mayRun(target)).toEqual(REFUSE);
+    expect(await at(60_000).mayRun(target)).toEqual(REFUSE);
+  });
+
   it('refuses once the goal’s cancellation is recorded', async () => {
     const store = await liveGoal();
     await store.requestCancellation('g1', { requestedAt: NOW }, NOW);

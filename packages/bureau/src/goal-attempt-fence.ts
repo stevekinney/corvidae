@@ -16,7 +16,8 @@
  * the tool calls of every step, on a fresh start and on a recovered run alike. It
  * lets the step proceed only when both of these are read now:
  *
- * - the goal's record exists and is neither terminal nor marked for cancellation;
+ * - the goal's record exists, is neither terminal nor marked for cancellation, and
+ *   has not spent its aggregate duration (`maximumTotalDurationMs`);
  * - the attempt's catalog claim is the goal's own for this attempt and is not
  *   tombstoned. A goal that ends, closes, or is canceled tombstones the claims of
  *   the attempts it may have overtaken (see `goal-cancellation.ts`), so a start
@@ -89,6 +90,7 @@ import type { HookRegistry, RuntimeServices, RuntimeTimeoutHandle } from '@lostg
 import {
   GuardrailTripwireError,
   type OperativeHookMap,
+  isDeadlineElapsed,
   remainingMilliseconds,
   START_ATTEMPT_MAXIMUM_TRIES,
   START_ATTEMPT_TIMEOUT_MS,
@@ -180,6 +182,10 @@ export function createGoalAttemptFence(dependencies: {
       ) {
         return REFUSE;
       }
+      // The aggregate duration, on the clock the controller measures it on: a goal
+      // recovered after its deadline resumes this run beside a controller that is
+      // about to commit it exhausted, and the run must take no further step first.
+      if (isDeadlineElapsed(record, dependencies.clock.now())) return REFUSE;
       const load = await dependencies.readRunRecord(target.runId);
       if (load.status === 'read-error') throw load.error;
       if (load.status !== 'found') return REFUSE;
