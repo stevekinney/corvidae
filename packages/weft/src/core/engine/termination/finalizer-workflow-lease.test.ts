@@ -340,6 +340,39 @@ for (const mode of MULTI_ENGINE_MODES) {
       expect(second.destroyed).toHaveLength(1);
     });
 
+    it('a rearm resolution leaves exactly one live timer after the tick, even when the slot collides with the fired key', async () => {
+      // The first engine terminates the workflow and dies; the second engine has no
+      // registration for the type, so the fired teardown timer resolves to `rearm`. Its clock
+      // reads behind the scheduler's, so the quantized self-heal slot equals the fired key,
+      // which the scheduler deletes after the callback. The re-arm must land strictly later.
+      const storage = new MemoryStorage();
+      const firedAt = 3_000_000; // a multiple of the 30s self-heal interval.
+      const clock1: Clock = { now: firedAt };
+      const engine1 = await createEngine(mode, storage, clock1);
+      registerTeardownType(
+        engine1,
+        `unregistered-${mode}`,
+        countingFinalizer(`destroy-unreg-${mode}`).destroy,
+      );
+      const id = `unregistered-${mode}-1`;
+      await startAndTerminate(engine1, storage, `unregistered-${mode}`, id);
+      const token = (await readClaim(storage, id))!.token;
+      await engine1[Symbol.asyncDispose]();
+      expect(await timerKeys(storage)).toEqual([
+        KEYS.teardownTimer(firedAt, createTeardownTimerId(token)),
+      ]);
+
+      // `now + 30s` lands exactly on the fired slot, so `nextSelfHealSlot(now)` collides.
+      const clock2: Clock = { now: firedAt - SELF_HEAL_INTERVAL_MS };
+      await using engine2 = await createEngine(mode, storage, clock2);
+      await engine2.scheduler.tick(firedAt);
+
+      expect(await timerKeys(storage)).toEqual([
+        KEYS.teardownTimer(firedAt + SELF_HEAL_INTERVAL_MS, createTeardownTimerId(token)),
+      ]);
+      expect(await readClaim(storage, id)).toMatchObject({ status: 'owed', token });
+    });
+
     it('engines racing the same fired timer and its successors run the finalizer once and never multiply timers', async () => {
       const storage = new MemoryStorage();
       // Each engine has its own clock, so a re-arm at `getNow() + delay` would write a

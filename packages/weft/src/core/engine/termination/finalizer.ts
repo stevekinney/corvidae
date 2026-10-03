@@ -331,6 +331,7 @@ export async function runWorkflowFinalizer(
         workflowId,
         resolution.token,
         TEARDOWN_SELF_HEAL_DELAY_MS,
+        firedAt,
       );
       return;
     }
@@ -339,7 +340,7 @@ export async function runWorkflowFinalizer(
     // Never propagate — a thrown timer callback re-fires with no backoff. Re-arm a
     // self-heal timer first so an error mid-drive (after the marker was read, before a
     // settle) does not strand the marker with no future timer. (Codex round-2 MF3.)
-    await rearmTeardownTimer(internals, workflowId, token, TEARDOWN_SELF_HEAL_DELAY_MS);
+    await rearmTeardownTimer(internals, workflowId, token, TEARDOWN_SELF_HEAL_DELAY_MS, firedAt);
     callbacks.handleCleanupError('runWorkflowFinalizer', error, workflowId);
   }
 }

@@ -203,6 +203,19 @@ function nextSelfHealSlot(now: number, delayMs: number): number {
 }
 
 /**
+ * The self-heal slot for a re-arm made from inside a fired-timer callback. The scheduler
+ * deletes the fired key once the callback returns, so a re-arm that lands on that key would be
+ * erased and the marker stranded. Measuring the slot from the later of the engine clock and the
+ * fired timer's `fireAt` makes it at least one full interval past the fired key, whatever this
+ * engine's clock reads, while staying a pure function of (clock, fired key) so engines still
+ * quantize onto shared slots. Every re-arm a fired callback makes goes through here, directly
+ * or via {@link liveClaimWatchdogFireAt}'s fallback.
+ */
+function selfHealSlotAfterFired(now: number, firedAt: number, delayMs: number): number {
+  return nextSelfHealSlot(Math.max(now, firedAt), delayMs);
+}
+
+/**
  * Write a `wf-teardown:` timer for `token` at exactly `fireAt`, engine-scoped (`null`), never
  * fenced on the workflow's claim: this write only arms a timer — a scheduling hint that cannot
  * change the marker or any workflow state. A stale or zombie timer is harmless: the drive
@@ -235,19 +248,22 @@ async function writeTeardownTimer(
  * timer. A lost claim or settle CAS is deliberately NOT such an exit: the CAS winner armed
  * its own timer in the same batch, so a loser stays silent. The marker bytes are left
  * untouched — only the timer is (re)written, at a slot shared by every engine (see
- * {@link nextSelfHealSlot}).
+ * {@link nextSelfHealSlot}). `firedAt` is the fired timer's own `fireAt`: the slot is always
+ * strictly after it (see {@link selfHealSlotAfterFired}), so the scheduler's post-callback delete
+ * of the fired key can never erase the re-arm. Omit it only outside a fired-timer callback.
  */
 export async function rearmTeardownTimer(
   internals: EngineInternals,
   workflowId: string,
   token: string,
   delayMs: number,
+  firedAt: number = Number.NEGATIVE_INFINITY,
 ): Promise<void> {
   await writeTeardownTimer(
     internals,
     workflowId,
     token,
-    nextSelfHealSlot(internals.options.getNow(), delayMs),
+    selfHealSlotAfterFired(internals.options.getNow(), firedAt, delayMs),
   );
 }
 
