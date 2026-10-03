@@ -266,9 +266,15 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     //
     // The aggregate deadline is one of the reasons to stand down, measured with
     // the controller's own function over the same clock, so the two cannot
-    // disagree. It counts only before the run exists (`withDeadline`): the
-    // controller never abandons a start, so once a run exists the controller
-    // will learn of it and enforcing the deadline is a plain abort of it.
+    // disagree. It counts at every check but the adoption of a run that already
+    // exists: the controller stops a run it knows of, and adopting one is not
+    // creating one. After the engine starts a run it matters most. The controller
+    // waits only for the starts it issued; a try Weft timed out that is still
+    // running, or the host's own recovery start, creates its run with no one
+    // waiting, and the goal's record is not yet terminal for the check to see
+    // when the controller has only just found the deadline elapsed. The deadline
+    // is monotonic and the controller reads the same clock, so a run stopped here
+    // is one the controller would have stopped as well.
     const mustStandDown = async (withDeadline: boolean): Promise<boolean> => {
       const latest = await store.get(request.goalRunId);
       return (
@@ -402,8 +408,10 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // The cancellation marker is written before `cancelRun` looks for the run,
     // and the run existed before this read. So either this read sees the marker
     // and stops the run itself, or the marker lands after it and the
-    // canceller's `cancelRun` finds the run: no start escapes both.
-    if (await mustStandDown(false)) {
+    // canceller's `cancelRun` finds the run: no start escapes both. The deadline
+    // has no marker to be ordered against, so it is read here, after the run
+    // exists, and the controller's own stop of a run it knows is the other half.
+    if (await mustStandDown(true)) {
       await abortAttempt({ ...target, attemptId: request.attemptId });
       return standDown();
     }

@@ -707,7 +707,7 @@ describe('startAttempt', () => {
       expect(await original('goal-g1-s0')).toBeUndefined();
     });
 
-    it('does not abandon a run it is creating when it elapses meanwhile: the controller will stop a run it knows', async () => {
+    it('stops the run it just created and stands down when the bound elapsed while it was created', async () => {
       const created = Promise.withResolvers<void>();
       const stopped: string[] = [];
       // eslint-disable-next-line prefer-const -- the hook closes over the world it is passed to.
@@ -727,9 +727,13 @@ describe('startAttempt', () => {
       const answer = w.ports.startAttempt(startRequest());
       created.resolve();
 
-      expect(await answer).toMatchObject({ status: 'started' });
-      expect(stopped).toEqual([]);
-      expect(w.watched).toHaveLength(1);
+      // A start the controller did not wait for (a timed-out background try, or
+      // the host's own recovery start) is not one it will ever learn of, and the
+      // record is not yet terminal for the check to see: the elapsed bound is
+      // what tells this start its run has no owner.
+      expect(await answer).toEqual({ status: 'stood-down' });
+      expect(stopped).toEqual(['goal-g1-a0']);
+      expect(w.watched).toEqual([]);
     });
   });
 });

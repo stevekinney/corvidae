@@ -43,7 +43,7 @@
  * start-or-adopt the controller's own activity uses.
  */
 
-import { goalInputFeedbackFor } from '@lostgradient/operative';
+import { goalInputFeedbackFor, isAttemptStartFailureDetail } from '@lostgradient/operative';
 import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 
 import { runsToStop, settleCanceledGoal, unfinishedAfterCancellation } from './goal-cancellation';
@@ -478,17 +478,27 @@ const owesCleanup = (record: GoalState): boolean =>
 
 /**
  * An ending that can leave a run behind. The controller never abandons a start
- * (it waits for the start activity to settle), so it always knows the run it
+ * it issued (it waits for the start activity to settle), so it knows the run it
  * must stop, and stops it before it commits the ending. What it cannot know
  * about is a start it did not wait for: a try Weft timed out that is still
- * running in the background, which creates its run after the goal ended, or a
- * process that dies after the engine's start committed the run and before the
- * start's own stand-down check stopped it. Either leaves a run alive under a
- * goal that is already terminal, and only a cancellation or the aggregate
- * duration running out can end a goal while a start is in flight.
+ * running in the background, or the host's own recovery start, which creates
+ * its run after the goal ended, or a process that dies after the engine's start
+ * committed the run and before the start's own stand-down check stopped it.
+ * Either leaves a run alive under a goal that is already terminal. A start can
+ * be in flight when the goal is canceled, when its aggregate duration runs out,
+ * and when the start itself ends the goal `failed` (`attempt-run-failed`, from a
+ * start-failure commit), so those three are swept; a goal that failed for any
+ * other reason, or succeeded, ended after every start it issued had settled.
+ * A goal that is still running whose controller recovery gave up on
+ * (`unrecoverable`) is not terminal and is reported at every boot; the run such
+ * a start leaves is not swept until the goal ends.
  */
-const mayHaveOvertakenAStart = (record: GoalState): boolean =>
-  record.status === 'canceled' || record.status === 'exhausted';
+export const mayHaveOvertakenAStart = (record: GoalState): boolean =>
+  record.status === 'canceled' ||
+  record.status === 'exhausted' ||
+  (record.status === 'failed' &&
+    record.terminalReason === 'attempt-run-failed' &&
+    isAttemptStartFailureDetail(record.failureDetail));
 
 /** Whether a record still has anything for recovery to do. */
 const needsRecovery = (record: GoalState): boolean =>
@@ -497,14 +507,19 @@ const needsRecovery = (record: GoalState): boolean =>
   owesCleanup(record);
 
 /**
- * Stops the run an exhausted goal's ending may have overtaken, the defense in
- * depth behind the controller's refusal to abandon a start. It covers exactly
+ * Stops the run an exhausted or start-failed goal's ending may have overtaken,
+ * the defense in depth behind the controller's refusal to abandon a start. It covers exactly
  * one crash point: a start's run was created (the engine's start committed) but
  * the process died, or a timed-out background try ran on, before the start's own
  * stand-down check stopped it, after the goal had already ended. The goal is
  * terminal and its controller is done, so nothing but this will ever name that
- * run again. `runsToStop` names the in-flight attempt's run, or the next
- * attempt's deterministic id for a start that died short of its commit. A run
+ * run again. A run that does not exist when it is read is not proof that none
+ * will appear: a start that has claimed its run but not yet created it, in a
+ * background try that is still alive in this process, looks absent. That start
+ * stands itself down once it sees the goal ended or out of time (the check
+ * after the engine's start), so it is the process's own check that covers it,
+ * and this sweep covers the crash that skips that check. `runsToStop` names the
+ * in-flight attempt's run, or the next attempt's deterministic id for a start that died short of its commit. A run
  * that does not exist or has ended is left alone; one that cannot be read or
  * stopped is reported, and stays owed until the next boot or `recover()`, and so
  * is every run while there is no engine to read one with. A canceled goal is
@@ -564,7 +579,10 @@ async function finishOwedCleanup(
   dependencies: GoalControlDependencies,
   record: GoalState,
 ): Promise<BureauGoalRecoveryEntry | undefined> {
-  if (!owesCleanup(record) || dependencies.isClosing()) return undefined;
+  if (!owesCleanup(record)) return undefined;
+  // Pruning is not started once the bureau is shutting down, and the cleanup is
+  // still owed, so the goal must not read as finished: the next boot finishes it.
+  if (dependencies.isClosing()) return { goalRunId: record.goalRunId, ...SHUTTING_DOWN };
   const cleanup = await cleanUpGoal(dependencies, record);
   if (isCleanupDone(cleanup)) {
     await dependencies.store.markCleanedUp(record.goalRunId, dependencies.clock.nowISO());
@@ -604,7 +622,7 @@ export async function recoverGoal(
     const settled: BureauGoalRecoveryEntry =
       record.status === 'canceled'
         ? await settleCommittedCancellation(dependencies, record)
-        : record.status === 'exhausted'
+        : mayHaveOvertakenAStart(record)
           ? await stopOvertakenRuns(dependencies, record)
           : { goalRunId, outcome: 'already-terminal' };
     // Only once nothing is left to stop: pruning a history something still reads would lose it.

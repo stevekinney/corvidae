@@ -13,7 +13,7 @@ import { createGoalStore } from './goal-store';
 import { createBureauGoals } from './goals';
 import { dependencies, NOW, scriptedEngine } from './testing/goal-control-fixtures.test-support';
 
-async function exhaustedBeforeAnyAttempt() {
+async function exhaustedBeforeAnyAttempt(ending: 'exhausted' | 'failed' = 'exhausted') {
   const store = createGoalStore(textValueStore(new MemoryStorage()));
   await store.create(
     createGoalState({
@@ -26,15 +26,28 @@ async function exhaustedBeforeAnyAttempt() {
       now: NOW,
     }),
   );
-  const result = await store.applyTransition({
-    goalRunId: 'g1',
-    seq: 1,
-    transitionId: goalTransitionId('g1', 1),
-    to: 'exhausted',
-    at: NOW,
-    cause: 'the aggregate duration elapsed',
-    terminalReason: 'aggregate-budget-exceeded',
-  });
+  const result = await store.applyTransition(
+    ending === 'failed'
+      ? {
+          goalRunId: 'g1',
+          seq: 1,
+          transitionId: goalTransitionId('g1', 1),
+          to: 'failed',
+          at: NOW,
+          cause: 'fail: attempt-run-failed',
+          terminalReason: 'attempt-run-failed',
+          failureDetail: 'Starting the inner run failed: a catalog fault',
+        }
+      : {
+          goalRunId: 'g1',
+          seq: 1,
+          transitionId: goalTransitionId('g1', 1),
+          to: 'exhausted',
+          at: NOW,
+          cause: 'the aggregate duration elapsed',
+          terminalReason: 'aggregate-budget-exceeded',
+        },
+  );
   expect(result.status).toBe('applied');
   return store;
 }
@@ -71,6 +84,23 @@ describe('closing an exhausted goal whose ending overtook an attempt start', () 
     expect(closed).toMatchObject({ outcome: 'closed', goal: { status: 'exhausted' } });
     const after = await store.get('g1');
     expect(after?.closedAt).toBeDefined();
+  });
+
+  it('stops the run a start-failure ending left behind before closing a failed goal', async () => {
+    const store = await exhaustedBeforeAnyAttempt('failed');
+    const workflows: Record<string, string> = { 'goal:g1': 'completed', 'goal-g1-a0': 'running' };
+    const stopped: string[] = [];
+    const goals = goalsOver(store, workflows, (runId) => {
+      stopped.push(runId);
+      workflows[runId] = 'cancelled';
+      return Promise.resolve({ status: 'requested' });
+    });
+
+    expect(await goals.close('g1')).toMatchObject({
+      outcome: 'closed',
+      goal: { status: 'failed' },
+    });
+    expect(stopped).toEqual(['goal-g1-a0']);
   });
 
   it('leaves the goal open, and in the sweep, when the run cannot be stopped', async () => {

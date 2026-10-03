@@ -28,6 +28,7 @@ import { cancelGoal, settleCanceledGoal } from './goal-cancellation';
 import { cleanUpGoal, isCleanupDone } from './goal-cleanup';
 import { ensureController, type GoalControlDependencies } from './goal-controller';
 import {
+  mayHaveOvertakenAStart,
   recoverEveryGoal,
   recoverGoal,
   stopOvertakenRuns,
@@ -332,6 +333,17 @@ export function createBureauGoals<TName extends string = string>(
       return repeatOf(created.existing, state);
     }
 
+    // The shutdown check at the top of this call was made before the record was
+    // written; a shutdown that began since must not get a controller. The goal is
+    // recorded, and a repeat of this call or the next boot starts it.
+    if (isClosing()) {
+      return {
+        outcome: 'created',
+        goal: state,
+        controller: { status: 'start-failed', reason: 'The bureau is shutting down.' },
+      };
+    }
+
     // COR-638: a validator that cannot supply the evidence a goal demands ends
     // it `failed`/`unsupported-validation` before any attempt runs, and the
     // same check guards every other place a controller is started.
@@ -474,11 +486,11 @@ export function createBureauGoals<TName extends string = string>(
         };
       }
     }
-    if (record.status === 'exhausted') {
+    if (record.status !== 'canceled' && mayHaveOvertakenAStart(record)) {
       // The controller waits for an attempt's start, so its own ending stops the
-      // run it knows of. The one crash point left is a run created after the
-      // goal ended (a timed-out background try, or a process that died before
-      // the start's own stand-down check). Closing and cleaning the goal takes
+      // run it knows of. What is left is a run created after the goal ended (a
+      // timed-out background try, the host's recovery start, or a process that
+      // died before the start's own stand-down check). Closing and cleaning the goal takes
       // it out of the boot sweep, which is what stops such a run, so it is
       // stopped first and a run that cannot be stopped (or cannot be looked for,
       // with no engine) keeps the goal open.

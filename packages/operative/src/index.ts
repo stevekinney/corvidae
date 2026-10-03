@@ -268,6 +268,7 @@ export {
   decideRetryOrExhaust,
   decideRunFinish,
   goalAttemptInput,
+  isAttemptStartFailureDetail,
   isBudgetExceeded,
   normalizeValidatorOutcome,
   projectValidatorError,

@@ -214,8 +214,12 @@ describe('a goal whose cancellation committed but whose cleanup is still owed', 
 
 /** A goal that ended `exhausted` (its aggregate duration) or `canceled` with no attempt ever recorded. */
 async function endedBeforeAnyAttempt(
-  status: 'exhausted' | 'canceled',
-  closure: { readonly closed?: boolean; readonly cleanedUp?: boolean } = {},
+  status: 'exhausted' | 'canceled' | 'failed',
+  closure: {
+    readonly closed?: boolean;
+    readonly cleanedUp?: boolean;
+    readonly runFailed?: boolean;
+  } = {},
 ) {
   const kv = textValueStore(new MemoryStorage());
   const store = createGoalStore(kv);
@@ -234,15 +238,31 @@ async function endedBeforeAnyAttempt(
     await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
     await commitCancellation(store, (await store.get('g1'))!, Date.parse(NOW));
   } else {
-    const result = await store.applyTransition({
-      goalRunId: 'g1',
-      seq: 1,
-      transitionId: goalTransitionId('g1', 1),
-      to: 'exhausted',
-      at: NOW,
-      cause: 'the aggregate duration elapsed',
-      terminalReason: 'aggregate-budget-exceeded',
-    });
+    const result = await store.applyTransition(
+      status === 'failed'
+        ? {
+            goalRunId: 'g1',
+            seq: 1,
+            transitionId: goalTransitionId('g1', 1),
+            to: 'failed',
+            at: NOW,
+            cause: 'fail: attempt-run-failed',
+            terminalReason: 'attempt-run-failed',
+            failureDetail:
+              closure.runFailed === true
+                ? 'The inner run rejected: boom'
+                : 'Starting the inner run failed: a catalog fault',
+          }
+        : {
+            goalRunId: 'g1',
+            seq: 1,
+            transitionId: goalTransitionId('g1', 1),
+            to: 'exhausted',
+            at: NOW,
+            cause: 'the aggregate duration elapsed',
+            terminalReason: 'aggregate-budget-exceeded',
+          },
+    );
     expect(result.status).toBe('applied');
   }
   if (closure.closed === true) await store.close('g1', NOW);
@@ -255,7 +275,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
   // cancellation) won; the late start created the run anyway and the process
   // died before the start's own stand-down check could stop it. The goal is
   // terminal, so nothing else will ever name that run: boot stops it.
-  it.each(['exhausted', 'canceled'] as const)(
+  it.each(['exhausted', 'canceled', 'failed'] as const)(
     'stops the run it left behind at boot, for a goal %s',
     async (status) => {
       const store = await endedBeforeAnyAttempt(status);
@@ -278,6 +298,48 @@ describe('a goal that ended while its next attempt was still starting', () => {
       expect(after?.status).toBe(status);
     },
   );
+
+  it('does not sweep a goal that failed for a reason no start can be behind', async () => {
+    const store = createGoalStore(textValueStore(new MemoryStorage()));
+    await store.create(
+      createGoalState({
+        goalRunId: 'g1',
+        identity: { name: 'goal', version: '1' },
+        objective: { agentName: 'worker', prompt: 'work' },
+        validator: { name: 'check', version: '1' },
+        conversationPolicy: { kind: 'continue' },
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 1000 },
+        now: NOW,
+      }),
+    );
+    await store.applyTransition({
+      goalRunId: 'g1',
+      seq: 1,
+      transitionId: goalTransitionId('g1', 1),
+      to: 'failed',
+      at: NOW,
+      cause: 'fail: validator-fail-non-retryable',
+      terminalReason: 'validator-fail-non-retryable',
+    });
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'running' },
+    });
+    const { control, stopped } = dependencies(store, engine);
+
+    expect(await recoverEveryGoal(control)).toEqual({ goals: [], failures: [] });
+    expect(stopped).toEqual([]);
+  });
+
+  it('does not sweep a goal whose started run failed, which no start can be behind', async () => {
+    const store = await endedBeforeAnyAttempt('failed', { runFailed: true });
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'running' },
+    });
+    const { control, stopped } = dependencies(store, engine);
+
+    expect(await recoverEveryGoal(control)).toEqual({ goals: [], failures: [] });
+    expect(stopped).toEqual([]);
+  });
 
   it('leaves a run that has already ended alone', async () => {
     const store = await endedBeforeAnyAttempt('exhausted');
@@ -930,6 +992,19 @@ describe('recovery while the bureau is shutting down', () => {
     expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'shutting-down' });
     expect(calls.some((call) => call.startsWith('start:'))).toBe(false);
     expect(recoveryEntryFailure(entry)).toBeUndefined();
+  });
+
+  it('says a closed goal still owes its cleanup instead of reading already-terminal', async () => {
+    const store = await endedBeforeAnyAttempt('exhausted', { closed: true });
+    const { engine } = scriptedEngine({ workflows: { 'goal:g1': 'completed' } });
+
+    const entry = await recoverGoal(closing(store, engine), 'g1');
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'shutting-down' });
+    expect(recoveryEntryFailure(entry)).toBeUndefined();
+    // Nothing was pruned or recorded: the next boot finishes it.
+    const after = await store.get('g1');
+    expect(after?.cleanedUpAt).toBeUndefined();
   });
 
   it('resumes no suspended controller', async () => {

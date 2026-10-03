@@ -377,6 +377,20 @@ export const ATTEMPT_RUN_FAILURE_DETAIL = {
   controller: (message: string): string => `The goal controller failed unexpectedly: ${message}`,
 } as const;
 
+const START_FAILURE_PREFIXES = [
+  ATTEMPT_RUN_FAILURE_DETAIL.conversationPolicy(''),
+  ATTEMPT_RUN_FAILURE_DETAIL.runStart(''),
+] as const;
+
+/**
+ * Whether a goal's `failureDetail` says the attempt's start failed (the
+ * conversation policy could not be applied, or the run could not be started),
+ * as opposed to a run that was started and then failed. Only the first can leave
+ * a start in flight when the goal ends.
+ */
+export const isAttemptStartFailureDetail = (detail: string | undefined): boolean =>
+  detail !== undefined && START_FAILURE_PREFIXES.some((prefix) => detail.startsWith(prefix));
+
 const UNSUPPORTED_VALIDATION_DETAIL =
   'The validator cannot supply the deterministic evidence this goal requires.';
 const VALIDATOR_CANCELED_DETAIL = 'The validator was canceled.';

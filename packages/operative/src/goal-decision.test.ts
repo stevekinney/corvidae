@@ -13,6 +13,7 @@ import {
   decideRunFinish,
   GOAL_RUN_TRANSITIONS,
   goalAttemptInput,
+  isAttemptStartFailureDetail,
   isBudgetExceeded,
   isFailedReason,
   normalizeValidatorOutcome,
@@ -832,4 +833,17 @@ describe('goalAttemptInput', () => {
       expect(goalAttemptInput(kind, prompt, index, feedback)).toBe(expected);
     },
   );
+});
+
+describe('isAttemptStartFailureDetail', () => {
+  it('is true for a start that failed and false for a run that was started', () => {
+    expect(isAttemptStartFailureDetail(ATTEMPT_RUN_FAILURE_DETAIL.runStart('boom'))).toBe(true);
+    expect(isAttemptStartFailureDetail(ATTEMPT_RUN_FAILURE_DETAIL.conversationPolicy('boom'))).toBe(
+      true,
+    );
+    expect(isAttemptStartFailureDetail(ATTEMPT_RUN_FAILURE_DETAIL.runRejected('boom'))).toBe(false);
+    expect(isAttemptStartFailureDetail(ATTEMPT_RUN_FAILURE_DETAIL.runFinish('error'))).toBe(false);
+    expect(isAttemptStartFailureDetail(ATTEMPT_RUN_FAILURE_DETAIL.costUnaccounted)).toBe(false);
+    expect(isAttemptStartFailureDetail(undefined)).toBe(false);
+  });
 });

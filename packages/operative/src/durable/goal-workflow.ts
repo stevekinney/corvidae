@@ -92,7 +92,12 @@
  * deadline, so a hung one cannot hold a goal past `maximumTotalDurationMs`. With
  * a bound, the race is `raceKeyed({ work, deadline })` (one branch more than the
  * unbounded wait); the choice depends only on the recorded read, so a replay
- * opens the same race. The abandoned validator is idempotent.
+ * opens the same race. The validator is also told not to outlast the deadline
+ * (its timeout is clamped to what remains, and the port's `executeValidator`
+ * enforces it), so a validator that honors a timeout is not abandoned running;
+ * one that ignores it is, and its verdict is discarded. A validator with an
+ * external effect is therefore only as safe to abandon as it is idempotent, which
+ * is what declaring determinism promises and nothing else does.
  *
  * The start of an attempt is the exception, and deliberately so. It has a
  * durable side effect (the claim, then the run), so abandoning it at the
@@ -112,7 +117,9 @@
  * re-reads the goal before every write, including the aggregate deadline measured
  * exactly as this controller measures it, and answers `stood-down` rather than
  * claim or start anything for a goal that is over; a run it created that the goal
- * ended over while it started is stopped by the port. Past the last try the
+ * ended over while it started is stopped by the port, including when the cause is the
+ * deadline (the controller waits for the starts it issued, but not for a timed-out
+ * background try or the host's own recovery start, which only this check bounds). Past the last try the
  * controller fails and Bureau restarts it from the record (a bounded number of
  * times), and the restarted controller ends the goal at its deadline.
  *
@@ -121,7 +128,7 @@
  * and its background twin: a timed-out try that was still running when the goal
  * ended. In either the process can die before the run is stopped, leaving a run
  * the terminal goal never names, so the host's recovery stops whatever run an
- * `exhausted` or `canceled` goal's ending left (`attemptToStop`'s target and the
+ * `exhausted`, `canceled`, or start-failed (`failed`, `attempt-run-failed`) goal's ending left (`attemptToStop`'s target and the
  * last recorded attempt's), at every boot and `recover()` and in `close()`, until
  * the goal is closed and its cleanup recorded. A crash on this side of the
  * commit needs no sweep: the replayed start adopts the run, and the next
