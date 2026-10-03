@@ -54,11 +54,19 @@
  * own port, so it carries every fence the controller's start does: the stand-down
  * reads, the activity-signal check, the claim tombstone, and the run's own fence
  * (`goal-attempt-fence.ts`). It is never the way an attempt is first opened.
+ *
+ * Being outside the controller's activity it is also outside Weft's bound on
+ * one, so `startWithinBudget` gives it the same budget (every try of the start
+ * activity) and abandons it when that is spent, reporting the attempt `failed`
+ * for the next sweep or `recover()` to retry. That bound is what keeps a start
+ * that waits on something that never settles from holding the boot sweep, which
+ * `createBureau()` awaits, forever.
  */
 
 import { goalInputFeedbackFor, isAttemptStartFailureDetail } from '@lostgradient/operative';
 import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 
+import { GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS } from './goal-attempt-fence';
 import {
   runsToStop,
   settleCanceledGoal,
@@ -510,12 +518,56 @@ async function recoverController(
   };
 }
 
+/**
+ * The recovery start runs outside the controller's activity, and so outside the
+ * bound Weft puts on that activity: a start that waits on something that never
+ * settles (a durable resolver, a store) would hold `recover()` and, through the
+ * boot sweep, `createBureau()` forever. It gets the controller's own budget,
+ * every try of the start activity (`GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS`),
+ * and is abandoned when that is spent. Abandoning is what Weft does to a try it
+ * times out: its signal is aborted, so the port writes nothing further and
+ * creates no run it has not already created (the next start adopts one that
+ * exists), and nothing waits for it. `timed-out` is reported as an attempt that
+ * could not be reconciled, which the boot report counts as a failure, and the
+ * next sweep or `recover()` tries again.
+ */
+async function startWithinBudget(
+  dependencies: GoalControlDependencies,
+  request: Parameters<GoalControlDependencies['startAttempt']>[0],
+): Promise<Awaited<ReturnType<GoalControlDependencies['startAttempt']>> | 'timed-out'> {
+  const { timers, diagnose } = dependencies;
+  const abandon = new AbortController();
+  let handle: ReturnType<typeof timers.setTimeout> | undefined;
+  const expired = new Promise<'timed-out'>((resolve) => {
+    handle = timers.setTimeout(() => {
+      abandon.abort();
+      resolve('timed-out');
+    }, GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS);
+  });
+  const start = dependencies.startAttempt(request, abandon.signal);
+  // A start that fails after it was abandoned has no caller left to reject to.
+  start.catch((error: unknown) => {
+    if (!abandon.signal.aborted) return;
+    diagnose({
+      level: 'error',
+      scope: 'goals',
+      message: `[bureau] The abandoned start of attempt ${request.attemptIndex} of goal "${request.goalRunId}" failed: ${describe(error)}`,
+      cause: error,
+    });
+  });
+  try {
+    return await Promise.race([start, expired]);
+  } finally {
+    timers.clearTimeout(handle);
+  }
+}
+
 /** Reconciles the attempt a `running` goal is waiting on. */
 async function recoverAttempt(
   dependencies: GoalControlDependencies,
   record: GoalState,
 ): Promise<{ attempt?: BureauGoalAttemptRecovery; detail?: string }> {
-  const { store, forwarder, startAttempt } = dependencies;
+  const { store, forwarder } = dependencies;
   const current = (await store.get(record.goalRunId)) ?? record;
   const last = current.attempts.at(-1);
   if (current.status !== 'running' || last === undefined || last.status !== 'running') return {};
@@ -537,13 +589,19 @@ async function recoverAttempt(
     return { detail: 'The attempt was not restarted: the bureau is shutting down.' };
   }
   const feedback = goalInputFeedbackFor(current.attempts, last.attemptIndex);
-  const started = await startAttempt({
+  const started = await startWithinBudget(dependencies, {
     goalRunId: current.goalRunId,
     attemptIndex: last.attemptIndex,
     attemptId: goalIdentifiers.attemptId(current.goalRunId, last.attemptIndex),
     runId: last.runId,
     ...(feedback === undefined ? {} : { feedback }),
   });
+  if (started === 'timed-out') {
+    return {
+      attempt: 'failed',
+      detail: `The attempt's run was not restarted: its start did not settle within ${GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS} ms, so it was abandoned (a start that was past its own checks still adopts what it created); recover() tries again.`,
+    };
+  }
   if (started.status === 'stood-down') {
     // The goal was canceled, ended, or ran out of its duration; nothing was
     // created, and the controller ends the goal from the record.

@@ -4,10 +4,12 @@
  * directly. `goals-recovery.test.ts` shows the same recovery across real
  * process restarts.
  */
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { Validator } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, WorkflowTeardownPendingError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS } from './goal-attempt-fence';
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
 import {
   MAXIMUM_CONTROLLER_RESTARTS,
@@ -1170,5 +1172,106 @@ describe('recoveryEntryFailure', () => {
     entry({ goalRunId: 'g', outcome: 'cancellation-pending', awaiting: ['controller'] }),
   ])('is not a failure for %j', (given) => {
     expect(recoveryEntryFailure(given)).toBeUndefined();
+  });
+});
+
+describe("recovery's own start of an attempt whose run is gone", () => {
+  /** A goal whose controller is alive and whose running attempt has no run under its id. */
+  async function goneRun(startAttempt: GoalControlDependencies['startAttempt']) {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({ workflows: { 'goal:g1': 'running' } });
+    const runtime = createManualRuntimeServices();
+    const forwarder = {
+      watch: () => {},
+      reconcile: () => Promise.resolve('missing' as const),
+      drain: () => Promise.resolve(),
+    };
+    const { control, diagnostics } = dependencies(store, engine, {
+      startAttempt,
+      forwarder,
+      timers: runtime.timers,
+    });
+    return { control, diagnostics, runtime };
+  }
+
+  const untilCalled = async (calls: unknown[]) => {
+    for (let turn = 0; turn < 200 && calls.length === 0; turn += 1) await Promise.resolve();
+    expect(calls).toHaveLength(1);
+  };
+
+  it("abandons a start that never settles at the controller's own start budget, aborts its signal, and says the attempt could not be reconciled", async () => {
+    const signals: AbortSignal[] = [];
+    const { control, runtime } = await goneRun((_request, signal) => {
+      if (signal !== undefined) signals.push(signal);
+      return new Promise(() => {});
+    });
+
+    const recovering = recoverGoal(control, 'g1');
+    await untilCalled(signals);
+    await runtime.advance(GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS - 1);
+    expect(signals[0]?.aborted).toBe(false);
+    await runtime.advance(1);
+    const entry = await recovering;
+
+    expect(signals[0]?.aborted).toBe(true);
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'running', attempt: 'failed' });
+    expect(entry.detail).toContain(`${GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS} ms`);
+    // A stuck goal is a failure of the boot, not a clean one.
+    expect(recoveryEntryFailure(entry)).toBeDefined();
+  });
+
+  it('lets the boot sweep finish over a start that never settles, reporting the goal as a failure', async () => {
+    const calls: unknown[] = [];
+    const { control, runtime } = await goneRun(() => {
+      calls.push(1);
+      return new Promise(() => {});
+    });
+
+    const sweeping = recoverEveryGoal(control);
+    await untilCalled(calls);
+    await runtime.advance(GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS);
+    const report = await sweeping;
+
+    expect(report.failures).toEqual([]);
+    expect(report.goals).toHaveLength(1);
+    expect(report.goals[0]).toMatchObject({ goalRunId: 'g1', attempt: 'failed' });
+    expect(recoveryEntryFailure(report.goals[0]!)).toBeDefined();
+  });
+
+  it('does not wait for the budget when the start settles, and leaves no timer behind', async () => {
+    const signals: AbortSignal[] = [];
+    const { control, runtime } = await goneRun((_request, signal) => {
+      if (signal !== undefined) signals.push(signal);
+      return Promise.resolve({ status: 'started', sessionId: 's' } as never);
+    });
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({ outcome: 'running', attempt: 'run-started' });
+    expect(signals[0]?.aborted).toBe(false);
+    expect(runtime.pendingTimers()).toEqual([]);
+  });
+
+  it('diagnoses an abandoned start that fails later instead of leaving an unhandled rejection', async () => {
+    let fail: (error: Error) => void = () => {};
+    const calls: unknown[] = [];
+    const { control, diagnostics, runtime } = await goneRun(() => {
+      calls.push(1);
+      return new Promise((_resolve, reject) => {
+        fail = reject;
+      });
+    });
+
+    const recovering = recoverGoal(control, 'g1');
+    await untilCalled(calls);
+    await runtime.advance(GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS);
+    await recovering;
+    fail(new Error('resolver fault'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(diagnostics.some((diagnostic) => diagnostic.message.includes('resolver fault'))).toBe(
+      true,
+    );
   });
 });

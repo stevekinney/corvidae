@@ -29,6 +29,8 @@ export interface GoalControlDependencies {
   /** What the goal's validator promises, for the requirement a goal states about it. */
   readonly catalog: Pick<GoalValidatorCatalog, 'resolve'>;
   readonly clock: Pick<RuntimeServices['clock'], 'now' | 'nowISO'>;
+  /** Bounds the one start recovery makes outside the controller's own activity; see `recoverAttempt`. */
+  readonly timers: Pick<RuntimeServices['timers'], 'setTimeout' | 'clearTimeout'>;
   readonly diagnose: DiagnosticSink;
   readonly getEngine: () => GoalEngine | undefined;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;

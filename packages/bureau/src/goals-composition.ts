@@ -227,7 +227,8 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     cleanupWorkflow: dependencies.cleanupWorkflow,
     forwarder,
     resolveFreshAttemptSource: dependencies.resolveFreshAttemptSource,
-    startAttempt: (request) => ports.startAttempt(request),
+    startAttempt: (request, signal) => ports.startAttempt(request, signal),
+    timers: runtimeServices.timers,
     isClosing: dependencies.isClosing,
     planAgent: dependencies.planAgent,
   });

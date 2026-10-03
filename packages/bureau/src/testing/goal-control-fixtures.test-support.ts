@@ -3,6 +3,7 @@
  * the tests that drive `cancelGoal` and `recoverGoal` directly. Each thing a
  * read-back waits for can be left unfinished in turn.
  */
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { GoalControlDependencies } from '../goal-controller';
@@ -107,6 +108,7 @@ export function dependencies(
     store,
     catalog: createGoalValidatorCatalog([]),
     clock: { now: () => Date.parse(NOW), nowISO: () => NOW },
+    timers: createDefaultRuntimeServices().timers,
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
     getEngine: () => engine,
     cancelRun: (runId) => {
