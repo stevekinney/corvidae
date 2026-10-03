@@ -155,6 +155,7 @@ describe('mirror target-owned enumeration', () => {
       'verify-release-version.ts',
       'pr-title.ts',
       'validate-package-consumers.ts',
+      'build-binary-size.test.ts',
     ]) {
       expect(findTargetOwner(policy, `packages/weft/scripts/${file}`, 'weft')?.glob).toBe(
         `packages/weft/scripts/${file}`,

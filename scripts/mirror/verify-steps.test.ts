@@ -67,6 +67,43 @@ function workflowEnvironment(): VerifyEnvironment {
 }
 
 describe('buildVerifySteps', () => {
+  test('only Weft verifies binary payload in both local and workflow environments', () => {
+    const weft: PublishedPackage = {
+      ...published[0]!,
+      workspace: '@lostgradient/weft',
+      directory: 'packages/weft',
+      publicName: '@lostgradient/weft',
+    };
+    for (const environment of [localEnvironment(), workflowEnvironment()]) {
+      const steps = buildVerifySteps(
+        { installCommand: ['bun', 'install'], published: [weft], privateWorkspaces: [] },
+        environment,
+      );
+      const binary = steps.find((step) => step.kind === 'binary-size');
+      expect(binary).toEqual({
+        kind: 'binary-size',
+        description: 'verify @lostgradient/weft binary payload',
+        cwd: environment.resolveDirectory('packages/weft'),
+        command: [
+          'bun',
+          'test',
+          'scripts/build-binary.test.ts',
+          'scripts/build-binary-size.test.ts',
+        ],
+        publicName: '@lostgradient/weft',
+      });
+      expect(steps.indexOf(binary!)).toBeGreaterThan(
+        steps.findIndex((step) => step.kind === 'typecheck-published'),
+      );
+      expect(steps.indexOf(binary!)).toBeLessThan(steps.findIndex((step) => step.kind === 'pack'));
+      expect(
+        buildVerifySteps(
+          { installCommand: ['bun', 'install'], published, privateWorkspaces: [] },
+          environment,
+        ).filter((step) => step.kind === 'binary-size'),
+      ).toEqual([]);
+    }
+  });
   test('the ordered kinds include private builds before private typechecks and the consumer smoke test', () => {
     const steps = buildVerifySteps(
       { installCommand: ['bun', 'install', '--frozen-lockfile'], published, privateWorkspaces },

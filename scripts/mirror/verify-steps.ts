@@ -62,6 +62,7 @@ export type VerifyStepKind =
   | 'install'
   | 'build'
   | 'typecheck-published'
+  | 'binary-size'
   | 'pack'
   | 'pack-relocate'
   | 'readme'
@@ -297,6 +298,16 @@ export function buildVerifySteps(
         publicName: entry.publicName,
       });
     }
+  }
+
+  if (ordered.some((entry) => entry.publicName === '@lostgradient/weft')) {
+    steps.push({
+      kind: 'binary-size',
+      description: 'verify @lostgradient/weft binary payload',
+      cwd: env.resolveDirectory('packages/weft'),
+      command: ['bun', 'test', 'scripts/build-binary.test.ts', 'scripts/build-binary-size.test.ts'],
+      publicName: '@lostgradient/weft',
+    });
   }
 
   for (const entry of ordered) {
