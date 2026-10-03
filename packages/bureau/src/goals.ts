@@ -468,10 +468,51 @@ export function createBureauGoals<TName extends string = string>(
   ): Promise<BureauGoalCloseOutcome> {
     const record = await authorized(goalRunId, query);
     if (record === undefined) return absent(goalRunId, query);
+    const unsettled = await settleBeforeClosing(record, query);
+    if (unsettled !== undefined) return unsettled;
+    const closed = await store.close(goalRunId, clock.nowISO());
+    switch (closed.status) {
+      case 'updated':
+      case 'unchanged': {
+        // The settlement above ran against the record this call read. When that
+        // record was not terminal, a transition (a cancel, an exhausted
+        // deadline, a start failure) may have won the race to the close, and the
+        // closure just accepted is over a goal whose controller, finalizer, or
+        // run was never settled. The closure is committed and cannot be taken
+        // back, so the goal stays unmarked (`cleanedUpAt` unset), and so in the
+        // boot sweep, until the same settlement reads back clean.
+        if (!isTerminalGoalStatus(record.status)) {
+          const unsettledAfterRace = await settleBeforeClosing(closed.record, query);
+          if (unsettledAfterRace !== undefined) return unsettledAfterRace;
+        }
+        return await finishClosure(closed.record);
+      }
+      case 'rejected':
+        return { outcome: 'not-terminal', goal: closed.record };
+      case 'stale':
+        return { outcome: 'contended', goal: closed.record };
+      case 'corrupt':
+        // The record decoded a moment ago and no longer does.
+        return query?.principal === undefined
+          ? { outcome: 'record-unreadable' }
+          : { outcome: 'not-found' };
+      case 'missing':
+        return { outcome: 'not-found' };
+    }
+  }
+
+  /**
+   * What must be true of a goal before it leaves the boot sweep. A canceled goal
+   * whose controller, finalizer, or attempt run is not read back as ended, and an
+   * exhausted or start-failed goal whose ending may have overtaken a run, must
+   * not be closed over: nothing would be left to finish them. `undefined` when
+   * nothing is owed (or the goal is not one of those).
+   */
+  async function settleBeforeClosing(
+    record: GoalState,
+    query: BureauGoalQuery | undefined,
+  ): Promise<BureauGoalCloseOutcome | undefined> {
     if (record.status === 'canceled') {
-      // A closed goal leaves the boot sweep, so a cancellation whose controller,
-      // finalizer, or attempt run is not yet read back as ended must not be
-      // closed over: nothing would be left to finish it.
       const settled = await settleCanceledGoal(dependencies, record, {
         scoped: query?.principal !== undefined,
       });
@@ -485,15 +526,16 @@ export function createBureauGoals<TName extends string = string>(
           awaiting: settled.awaiting,
         };
       }
+      return undefined;
     }
-    if (record.status !== 'canceled' && mayHaveOvertakenAStart(record)) {
+    if (mayHaveOvertakenAStart(record)) {
       // The controller waits for an attempt's start, so its own ending stops the
       // run it knows of. What is left is a run created after the goal ended (a
       // timed-out background try, the host's recovery start, or a process that
-      // died before the start's own stand-down check). Closing and cleaning the goal takes
-      // it out of the boot sweep, which is what stops such a run, so it is
-      // stopped first and a run that cannot be stopped (or cannot be looked for,
-      // with no engine) keeps the goal open.
+      // died before the start's own stand-down check). Closing and cleaning the
+      // goal takes it out of the boot sweep, which is what stops such a run, so it
+      // is stopped first and a run that cannot be stopped (or cannot be looked
+      // for, with no engine) keeps the goal open.
       const stopped = await stopOvertakenRuns(dependencies, record);
       if (stopped.outcome === 'cleanup-pending') {
         return {
@@ -503,23 +545,7 @@ export function createBureauGoals<TName extends string = string>(
         };
       }
     }
-    const closed = await store.close(goalRunId, clock.nowISO());
-    switch (closed.status) {
-      case 'updated':
-      case 'unchanged':
-        return await finishClosure(closed.record);
-      case 'rejected':
-        return { outcome: 'not-terminal', goal: closed.record };
-      case 'stale':
-        return { outcome: 'contended', goal: closed.record };
-      case 'corrupt':
-        // The record decoded a moment ago and no longer does.
-        return query?.principal === undefined
-          ? { outcome: 'record-unreadable' }
-          : { outcome: 'not-found' };
-      case 'missing':
-        return { outcome: 'not-found' };
-    }
+    return undefined;
   }
 
   /**
