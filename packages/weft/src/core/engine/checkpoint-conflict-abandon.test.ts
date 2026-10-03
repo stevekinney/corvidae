@@ -656,7 +656,7 @@ describe('wakes for an abandoned generation', () => {
     const timerKeys = async (): Promise<string[]> => {
       const keys: string[] = [];
       for await (const [key] of watched.storage.scan('timer-idx:')) keys.push(key);
-      return keys.sort();
+      return keys.toSorted();
     };
     const timersBefore = await timerKeys();
     expect(timersBefore.length).toBeGreaterThanOrEqual(4);
@@ -680,8 +680,10 @@ describe('wakes for an abandoned generation', () => {
     expect(reviewHandler).not.toHaveBeenCalled();
     expect(internals.conditionWaiters.has('condition-run')).toBe(true);
     expect(internals.sleepResolversByWorkflow.has('sleep-run')).toBe(true);
-    expect((await engine.get('condition-run'))?.status).toBe('running');
-    expect((await engine.get('sleep-run'))?.status).toBe('running');
+    const conditionState = await engine.get('condition-run');
+    const sleepState = await engine.get('sleep-run');
+    expect(conditionState?.status).toBe('running');
+    expect(sleepState?.status).toBe('running');
   });
 });
 

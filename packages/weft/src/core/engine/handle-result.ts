@@ -1,4 +1,7 @@
-import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
+import {
+  isCheckpointConflictFor,
+  isCurrentCheckpointGenerationAbandoned,
+} from './abandoned-checkpoint-generations.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { EngineDisposedError } from './errors.ts';
@@ -36,10 +39,8 @@ export function getWorkflowResultPromise(
     return existingWaiter.promise;
   }
 
-  // The generation this engine holds for the workflow lost a checkpoint
-  // compare-and-swap race and was abandoned: nothing local will ever settle a
-  // fresh waiter for it, so reject with the loss. Synchronous, no storage read.
-  // A later generation under the same id carries a new token and is unaffected.
+  // This engine abandoned its current generation after a lost checkpoint race:
+  // nothing local will settle a fresh waiter, so reject now (no storage read).
   if (isCurrentCheckpointGenerationAbandoned(internals, workflowId)) {
     const rejected = Promise.reject(
       new WorkflowCheckpointConflictError(workflowId, {
@@ -137,15 +138,9 @@ function fenceResultOnParentGeneration(
       return undefined;
     },
     async (error: unknown) => {
-      // A child this engine abandoned after losing its checkpoint race is healthy
-      // under the engine that won it, which also drives the parent: a child
-      // failure here would be false, so the parent never hears about it.
-      if (
-        error instanceof WorkflowCheckpointConflictError &&
-        error.workflowId === childWorkflowId
-      ) {
-        return undefined;
-      }
+      // A child abandoned after a lost checkpoint race is healthy under its
+      // winner, which drives the parent too: report nothing, not a false failure.
+      if (isCheckpointConflictFor(error, childWorkflowId)) return undefined;
       if (await parentStillOwnsGeneration(internals, parentWorkflowId)) gate.reject(error);
       return undefined;
     },

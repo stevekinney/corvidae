@@ -55,7 +55,6 @@ import { KEYS } from '../../storage/interface.ts';
 import { assertPayloadWithinLimit } from '../payload-size.ts';
 import type { OperationOutcome } from '../types.ts';
 import { WeftError } from '../weft-error.ts';
-import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import {
   buildAsyncActivityAcknowledgementOperations,
   queuePendingAsyncActivityResolution,
@@ -69,7 +68,7 @@ import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { isCurrentOperation, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
-import { confirmWakeOwnership } from './wake-ownership-guard.ts';
+import { confirmWakeOwnership, wakeNeedsOwnershipCheck } from './wake-ownership-guard.ts';
 
 type AsyncActivityResolutionCallbacks = {
   feedOperationResult: (
@@ -305,10 +304,7 @@ async function deliverPendingAsyncActivityResolution(
   // `ownership: 'none'` and `'lease'`, where the check is a no-op anyway.
   // Those modes must stay byte-identical, so the await only happens when a
   // claim registry actually exists.
-  if (
-    internals.workflowClaimRegistry !== null ||
-    isCurrentCheckpointGenerationAbandoned(internals, workflowId)
-  ) {
+  if (wakeNeedsOwnershipCheck(internals, workflowId)) {
     if ((await confirmWakeOwnership(internals, workflowId, 'async-activity')) === 'discard') {
       return;
     }

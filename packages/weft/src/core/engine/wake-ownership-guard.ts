@@ -46,6 +46,19 @@ import { wakeOwnershipCheck } from './wake-ownership-check.ts';
 export type WakeOwnershipDecision = 'proceed' | 'discard';
 
 /**
+ * Whether a wake for `workflowId` needs {@link confirmWakeOwnership} at all:
+ * only with a claim registry, or for a generation abandoned after a lost
+ * checkpoint race. Synchronous, so call sites that must not add a microtask hop
+ * to a healthy `'none'`/`'lease'` run can guard the `await` itself with it.
+ */
+export function wakeNeedsOwnershipCheck(internals: EngineInternals, workflowId: string): boolean {
+  return (
+    internals.workflowClaimRegistry !== null ||
+    isCurrentCheckpointGenerationAbandoned(internals, workflowId)
+  );
+}
+
+/**
  * Decide whether a claim-requiring wake path may resolve its in-memory
  * waiter / drive its generator for `workflowId`. See the module doc for the
  * three-way decision tree and the thrown-read policy.

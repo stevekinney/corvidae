@@ -17,6 +17,7 @@ import type {
   WorkflowState,
   WorkflowTimelineEntry,
 } from '../../types.ts';
+import { isCheckpointGenerationAbandoned } from '../abandoned-checkpoint-generations.ts';
 import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
@@ -24,7 +25,6 @@ import {
   updateWorkflowState,
   writeRetainedTerminalSearchAttributes,
 } from '../attributes-tags.ts';
-import { isCheckpointGenerationAbandoned } from '../abandoned-checkpoint-generations.ts';
 import { TERMINAL_CLEANUP_DELAY_MS } from '../bulk-operations.ts';
 import { takeCancelHandlers, type CancelHandler } from '../cancel-handlers.ts';
 import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-side-effects.ts';

@@ -18,11 +18,11 @@ import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
+import { abandonedCheckpointGenerationCount } from './abandoned-checkpoint-generations.ts';
 import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
-import { abandonedCheckpointGenerationCount } from './abandoned-checkpoint-generations.ts';
 import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
 

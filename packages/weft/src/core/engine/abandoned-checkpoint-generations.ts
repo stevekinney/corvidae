@@ -1,3 +1,4 @@
+import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import type { EngineInternals } from './internals.ts';
 
 /**
@@ -91,4 +92,9 @@ export function isCurrentCheckpointGenerationAbandoned(
 /** Number of generations currently marked abandoned (diagnostics and tests). */
 export function abandonedCheckpointGenerationCount(internals: EngineInternals): number {
   return abandonedGenerationsByEngine.get(internals)?.size ?? 0;
+}
+
+/** Whether `error` reports a lost checkpoint race for exactly this workflow. */
+export function isCheckpointConflictFor(error: unknown, workflowId: string): boolean {
+  return error instanceof WorkflowCheckpointConflictError && error.workflowId === workflowId;
 }

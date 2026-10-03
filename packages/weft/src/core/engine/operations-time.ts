@@ -5,7 +5,6 @@ import { encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../scheduler.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../types.ts';
-import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
@@ -16,11 +15,14 @@ import { ensureDelayedStartClaimAndCleanupBeforeFailure } from './lifecycle/stan
 import { registerSleepResolver } from './sleep-resolver-registration.ts';
 import {
   acknowledgeSupersededSleepTimers,
+  fireExecutionDeadline,
   handleSleepTimerWithAcknowledgement,
   resolveSleepTimer,
   retainDiscardedDurableTimer,
+  retainTimerOfAbandonedGeneration,
 } from './sleep-timer-acknowledgements.ts';
 import { type TimeOperationCallbacks } from './time-operation-callbacks.ts';
+import { wakeNeedsOwnershipCheck } from './wake-ownership-guard.ts';
 import { commitWithWorkflowClaimFold, prepareWorkflowClaimFold } from './workflow-claim-fold.ts';
 import { buildWorkflowVisibilityIndexTransition } from './workflow-indexes.ts';
 
@@ -416,22 +418,6 @@ export async function handleTimerFired(
     | 'workflowVersionTupleFromState'
   >,
 ): Promise<void> {
-  // A generation this engine abandoned after losing a checkpoint compare-and-swap
-  // race belongs to the winner, so its review, condition, and deadline timers are
-  // the winner's to fire: keep the durable record instead of letting the
-  // scheduler treat this fire as processed and delete it. (Sleep timers reach the
-  // same decision through `confirmWakeOwnership`.) Synchronous when nothing was
-  // abandoned, so no timer fire for a healthy run changes shape.
-  if (
-    (isReviewTimerEntry(entry) ||
-      entry.kind === 'wait-condition' ||
-      entry.kind === 'execution-deadline') &&
-    isCurrentCheckpointGenerationAbandoned(internals, entry.workflowId)
-  ) {
-    await retainDiscardedDurableTimer(entry.id, entry.workflowId, callbacks.loadWorkflowState);
-    return;
-  }
-
   if (isReviewTimerEntry(entry)) {
     await handleReviewTimer(internals, entry, callbacks);
     return;
@@ -460,13 +446,15 @@ export async function handleTimerFired(
   if (entry.kind === 'sleep') {
     await handleSleepTimerWithAcknowledgement(internals, entry, callbacks.loadWorkflowState);
   } else if (entry.kind === 'wait-condition') {
-    // registry null: unchanged sync fast path ('none'/'lease'), no async hop.
-    if (internals.workflowClaimRegistry === null) {
+    // No claim registry and no abandoned generation: unchanged sync fast path, no async hop.
+    if (!wakeNeedsOwnershipCheck(internals, entry.workflowId)) {
       resolveConditionTimer(internals, entry);
     } else {
       await resolveConditionTimerConfirmingOwnership(internals, entry, callbacks.loadWorkflowState);
     }
-  } else if (entry.kind === 'execution-deadline') await callbacks.timeout(entry.workflowId);
+  } else if (entry.kind === 'execution-deadline') {
+    await fireExecutionDeadline(internals, entry, callbacks);
+  }
 }
 function isReviewTimerEntry(entry: TimerEntry): boolean {
   return entry.id.startsWith('review-escalation:') || entry.id.startsWith('review-timeout:');
@@ -495,6 +483,8 @@ async function handleReviewTimer(
   entry: TimerEntry,
   callbacks: Pick<TimeOperationCallbacks, 'loadWorkflowState'>,
 ): Promise<void> {
+  const retained = retainTimerOfAbandonedGeneration(internals, entry, callbacks.loadWorkflowState);
+  if (retained !== undefined) return retained;
   const reviewId = entry.id.split(':')[1];
   if (!reviewId) return;
   const handler = internals.reviewEscalationHandlers.get(reviewId);
