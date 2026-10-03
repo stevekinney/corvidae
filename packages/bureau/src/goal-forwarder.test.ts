@@ -85,6 +85,8 @@ async function world(
     resolveCostEstimation?: () => Promise<RunOptions['costEstimation'] | undefined>;
     /** How many times the engine's handle for a run rejects its `result()` while the workflow is still going. */
     handleResultFailures?: number;
+    /** The runtime services the forwarder's timers come from. */
+    runtime?: typeof runtime;
   } = {},
 ) {
   const storage = new MemoryStorage();
@@ -155,7 +157,7 @@ async function world(
   let closing = false;
   const forwarder = createAttemptForwarder({
     store,
-    runtime,
+    runtime: forwarding.runtime ?? runtime,
     getDurable: () => durable,
     resolveCostEstimation: (runId) => {
       costRunIds.push(runId);
@@ -627,6 +629,56 @@ describe('shutting down with a watcher paused between tries', () => {
 
     expect(pending.size).toBe(0);
     expect(tries).toBe(1);
+  });
+
+  it('arms no timer for a watcher whose send was still in flight when shutdown began, so none outlives drain()', async () => {
+    const pending = new Set<unknown>();
+    const timers = {
+      ...runtime.timers,
+      setTimeout: (callback: () => void, milliseconds?: number) => {
+        const handle = runtime.timers.setTimeout(callback, milliseconds);
+        pending.add(handle);
+        return handle;
+      },
+      clearTimeout: (handle: Parameters<typeof runtime.timers.clearTimeout>[0]) => {
+        pending.delete(handle);
+        runtime.timers.clearTimeout(handle);
+      },
+    };
+    const gate = Promise.withResolvers<void>();
+    let entered = false;
+    const { durable, forwarder, engine, close } = await world(
+      {},
+      {
+        retryDelaysMs: [60_000],
+        // The run's wait ends once without the run having ended, so the watcher
+        // goes on to read it, and that read is held while shutdown begins.
+        handleResultFailures: 1,
+        runtime: { ...runtime, timers },
+        resolveCostEstimation: async () => {
+          entered = true;
+          await gate.promise;
+          return undefined;
+        },
+      },
+    );
+    createActiveRun(
+      options(() => new Promise(() => {})),
+      { ...durable, runId: target.runId, prompt: 'go' },
+    );
+    await pollUntil(async () => (await engine.get(target.runId)) !== null);
+
+    forwarder.watch(target);
+    await pollUntil(() => entered);
+    close();
+    const drained = forwarder.drain();
+    gate.resolve();
+    await drained;
+    for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
+
+    // The read found the run still going, and the watcher saw the bureau closing
+    // before it paused: no backoff timer was armed after drain() returned.
+    expect(pending.size).toBe(0);
   });
 
   it('wakes a pause at drain without closing, so cleanup never waits out a backoff, and the watcher goes on', async () => {

@@ -118,7 +118,11 @@ export function attemptToStop(record: GoalState): GoalWorkflowAbortRequest {
 export function attemptIndexesToStop(record: GoalState): readonly number[] {
   const named = attemptToStop(record).attemptIndex;
   const last = record.attempts.at(-1)?.attemptIndex;
-  return last === undefined || last === named ? [named] : [named, last];
+  const indexes = last === undefined || last === named ? [named] : [named, last];
+  // The controller never opens an attempt at or past `maximumAttempts`, so no
+  // start can claim such an index and a tombstone for it would be a record that
+  // nothing ever reads or prunes (`cleanUpGoal` retires indexes below the bound).
+  return indexes.filter((index) => index < record.bounds.maximumAttempts);
 }
 
 /**

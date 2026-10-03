@@ -1104,6 +1104,31 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
     expect(goal?.terminalReason).toBeUndefined();
   });
 
+  it('tombstones the claim of the attempt a controller it gave up on may have left starting, so no run works for a goal nothing reads', async () => {
+    const { bureau, view } = await bootForPoison();
+    await seedPoisoned(view);
+    await bureau.goals.recover('g1');
+    for (let restart = 1; restart <= MAXIMUM_CONTROLLER_RESTARTS; restart += 1) {
+      expect(await controllerFailed(bureau)).toBe(true);
+      await bureau.goals.recover('g1');
+    }
+    expect(await controllerFailed(bureau)).toBe(true);
+    expect(await view.storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}goal-g1-a0`)).toBeNull();
+
+    const past = await bureau.goals.recover('g1');
+
+    expect(past.goals[0]).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+    // A start that reaches its claim now finds the tombstone and starts nothing, and a
+    // run already past its claim reads it in its own fence.
+    const stored = await view.storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}goal-g1-a0`);
+    expect(stored).toBeDefined();
+    expect(decode(stored!)).toMatchObject({
+      goalAttempt: { goalRunId: 'g1', attemptIndex: 0, tombstonedAt: expect.any(String) },
+    });
+    // The goal itself is exactly as it was: no terminal reason is invented.
+    expect(await bureau.goals.get('g1')).toMatchObject({ status: 'pending' });
+  });
+
   it('is reported by the boot sweep as a recovery failure, so the report is not clean', async () => {
     const { bureau, view } = await bootForPoison();
     await seedPoisoned(view);

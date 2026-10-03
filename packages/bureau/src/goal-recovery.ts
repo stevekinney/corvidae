@@ -68,6 +68,7 @@ import {
   attemptIndexesToStop,
   commitCancellation,
   enforceDeterminism,
+  fenceOvertakenAttempts,
   type GoalControlDependencies,
   startController,
   TERMINAL_CONTROLLER_STATUSES,
@@ -358,6 +359,11 @@ async function recoverController(
 
   // Failed, timed out, or completed while the goal is not terminal.
   if (record.controllerRestarts >= MAXIMUM_CONTROLLER_RESTARTS) {
+    // No controller will ever read an attempt's ending again, so a start that was
+    // still in flight when the last controller died must not leave a run working
+    // for it. Tombstoning is what stops that run: its own fence reads the claim.
+    // The goal is not terminal and stays as it is; `cancel()` fences these again.
+    await fenceOvertakenAttempts(dependencies, record);
     return {
       outcome: 'unrecoverable',
       detail: `The controller ended ${state.status} and has already been restarted ${record.controllerRestarts} times.`,
@@ -409,12 +415,12 @@ async function recoverController(
     // Only a terminal goal is done. A full audit log leaves the goal running
     // with no controller and no room to record a restart: that is a goal
     // recovery gave up on, and it must not read as one that ended.
-    return counted.reason === 'terminal'
-      ? { outcome: 'already-terminal' }
-      : {
-          outcome: 'unrecoverable',
-          detail: `The controller ended ${state.status}, but the goal's audit log has no room to record a restart.`,
-        };
+    if (counted.reason === 'terminal') return { outcome: 'already-terminal' };
+    await fenceOvertakenAttempts(dependencies, record);
+    return {
+      outcome: 'unrecoverable',
+      detail: `The controller ended ${state.status}, but the goal's audit log has no room to record a restart.`,
+    };
   }
   if (counted.status === 'stale') {
     return { outcome: 'running', detail: 'Another recovery is restarting the controller.' };
@@ -540,8 +546,9 @@ const owesCleanup = (record: GoalState): boolean =>
  * start-failure commit), so those three are swept; a goal that failed for any
  * other reason, or succeeded, ended after every start it issued had settled.
  * A goal that is still running whose controller recovery gave up on
- * (`unrecoverable`) is not terminal and is reported at every boot; the run such
- * a start leaves is not swept until the goal ends.
+ * (`unrecoverable`) is not terminal and is reported at every boot. Recovery
+ * tombstones the claims of the attempts it may have overtaken when it gives up,
+ * so a run such a start leaves takes no step; `cancel()` or `close()` stops it.
  */
 export const mayHaveOvertakenAStart = (record: GoalState): boolean =>
   record.status === 'canceled' ||

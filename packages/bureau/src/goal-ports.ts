@@ -566,6 +566,10 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // tombstone is what stops the run it goes on to create: that run's own fence
     // finds the claim tombstoned and takes no step. A rejection fails the
     // activity, which retries, because the abort is still owed.
+    // A record that cannot be read is nothing to tombstone against, and nothing
+    // the run needs a tombstone for: its own fence refuses a step for a goal whose
+    // record is missing or unreadable (`goal-attempt-fence.ts`), and a read that
+    // throws rejects here and retries.
     const record = await store.get(request.goalRunId);
     if (record !== undefined) await fenceAttempt(record, request.attemptIndex);
     const outcome = await cancelRun(request.runId);

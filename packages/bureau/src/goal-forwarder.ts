@@ -231,12 +231,20 @@ export function createAttemptForwarder(
 
   /**
    * Waits `delay` milliseconds on the runtime's timers, or until `drain()`
-   * releases it. A pause that is released clears its timer, so it neither
+   * releases it; it does not wait at all once the bureau is closing. A pause that is released clears its timer, so it neither
    * outlives shutdown nor, under a manual runtime that never fires one, waits
    * forever.
    */
   const pause = (delay: number, watcher: Promise<void>): Promise<void> =>
     new Promise<void>((resolve) => {
+      // A watcher whose send was in flight when shutdown began reaches its next
+      // pause after `drain()` took its snapshot of the pauses. A timer armed now
+      // would be one nothing releases, and under a manual runtime one that never
+      // fires, so a closing bureau arms none.
+      if (isClosing()) {
+        resolve();
+        return;
+      }
       const handle = runtime.timers.setTimeout(release, delay);
       function release(): void {
         runtime.timers.clearTimeout(handle);

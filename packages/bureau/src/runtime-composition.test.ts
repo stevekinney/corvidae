@@ -5825,6 +5825,43 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     });
 
     it.each([
+      ['claim', 'tombstone'],
+      ['tombstone', 'claim'],
+    ] as const)(
+      'ends tombstoned when a start’s claim and the goal’s tombstone race, with the %s issued first',
+      async (first, second) => {
+        const runtime = await compose();
+        try {
+          for (let round = 0; round < 25; round += 1) {
+            const runId = `goal-g1-a${round}`;
+            const owner = { ...OWNER, attemptIndex: round };
+            const racing = {
+              ...claim,
+              goalAttempt: { goalRunId: 'g1', attemptIndex: round },
+            };
+            const claiming = () => runtime.claimCatalogRunRecoveryRecord(runId, racing);
+            const fencing = () => runtime.fenceGoalAttemptRecoveryRecord(runId, owner, AT);
+            const [one, two] = await Promise.all([
+              first === 'claim' ? claiming() : fencing(),
+              second === 'claim' ? claiming() : fencing(),
+            ]);
+
+            // However the two interleave, the claim's holder is told the truth and the
+            // tombstone lands: a start that won its claim is stopped by its own run's
+            // fence, and one that lost it starts nothing.
+            expect([one, two]).toContain('fenced');
+            expect(await runtime.loadCatalogRunRecoveryRecord(runId)).toMatchObject({
+              status: 'found',
+              record: { goalAttempt: { goalRunId: 'g1', attemptIndex: round, tombstonedAt: AT } },
+            });
+          }
+        } finally {
+          runtime.durable?.engine[Symbol.dispose]?.();
+        }
+      },
+    );
+
+    it.each([
       ['an ordinary run’s record', { agentName: 'worker', principal: 'alice' }],
       ['another goal’s claim', { ...claim, goalAttempt: { goalRunId: 'g2', attemptIndex: 0 } }],
       ['another principal’s claim', { ...claim, principal: 'mallory' }],

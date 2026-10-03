@@ -4,7 +4,7 @@
  * then creates must take no step. These tests drive real durable runs under the
  * hook, and the fence over the real goal store.
  */
-import { HookRegistry } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import {
   createCheckpointStore,
   createRunEngine,
@@ -12,6 +12,7 @@ import {
   type DurableActiveRunContext,
   GuardrailTripwireError,
   type OperativeHookMap,
+  type RunOptions,
   startDurableRunResult,
   stopWhen,
 } from '@lostgradient/operative';
@@ -26,12 +27,13 @@ import {
   GOAL_ATTEMPT_FENCE_HOOK_ID,
   GOAL_ATTEMPT_FENCE_READ_TRIES,
   type GoalAttemptFence,
+  type GoalAttemptFenceRegistration,
   type GoalAttemptTarget,
   registerGoalAttemptFence,
 } from './goal-attempt-fence';
 import { createGoalState } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
-import type { CatalogRunRecoveryLoad } from './runtime-composition';
+import { type CatalogRunRecoveryLoad, createRuntimeComposition } from './runtime-composition';
 
 const NOW = '2026-10-02T12:00:00.000Z';
 const target: GoalAttemptTarget = { goalRunId: 'g1', attemptIndex: 0, runId: 'goal-g1-a0' };
@@ -183,10 +185,16 @@ async function durableContext(): Promise<DurableActiveRunContext> {
 }
 
 /** A run of the attempt under the fence, counting the model calls it makes. */
-async function fencedRun(fence: GoalAttemptFence) {
+async function fencedRun(
+  fence: GoalAttemptFence,
+  extras: {
+    registration?: GoalAttemptFenceRegistration;
+    contextManagement?: RunOptions['contextManagement'];
+  } = {},
+) {
   const context = await durableContext();
   const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
-  registerGoalAttemptFence(hooks, fence, target);
+  registerGoalAttemptFence(hooks, fence, target, extras.registration);
   let generates = 0;
   const result = await startDurableRunResult(context, {
     runId: target.runId,
@@ -200,6 +208,9 @@ async function fencedRun(fence: GoalAttemptFence) {
       conversation: createConversationHistory(),
       stopWhen: stopWhen.noToolCalls(),
       hooks,
+      ...(extras.contextManagement === undefined
+        ? {}
+        : { contextManagement: extras.contextManagement }),
     },
     prompt: 'go',
   });
@@ -214,6 +225,9 @@ describe('registerGoalAttemptFence', () => {
 
     expect(hooks.getHandlers('prepareStep').map((entry) => entry.id)).toEqual([
       GOAL_ATTEMPT_FENCE_HOOK_ID,
+    ]);
+    expect(hooks.getHandlers('beforeCompaction').map((entry) => entry.id)).toEqual([
+      `${GOAL_ATTEMPT_FENCE_HOOK_ID}:compaction`,
     ]);
   });
 
@@ -270,6 +284,82 @@ describe('registerGoalAttemptFence', () => {
     expect(String(result.error)).toContain('storage is down');
   });
 
+  it('rides out a fault that outlasts a burst of back-to-back reads by backing off on the runtime clock', async () => {
+    const base = createDefaultRuntimeServices();
+    let waits = 0;
+    const runtime = {
+      timers: {
+        ...base.timers,
+        setTimeout: (callback: () => void, milliseconds?: number) => {
+          waits += 1;
+          return base.timers.setTimeout(callback, milliseconds);
+        },
+      },
+    };
+    let reads = 0;
+    const { result, generates } = await fencedRun(
+      {
+        mayRun: () => {
+          reads += 1;
+          // The store recovers only once the fence has waited twice, which no
+          // number of back-to-back reads could produce.
+          return waits >= 2
+            ? Promise.resolve(true)
+            : Promise.reject(new Error('storage is briefly down'));
+        },
+      },
+      { registration: { runtime, delaysMs: [1, 1, 1, 1] } },
+    );
+
+    expect(waits).toBe(2);
+    expect(reads).toBe(3);
+    expect(result.finishReason).toBe('stop-condition');
+    expect(generates()).toBe(1);
+  });
+
+  it('does not compact the conversation of a step it refuses, since compaction can reach a model', async () => {
+    let compactions = 0;
+    const { result, generates } = await fencedRun(
+      { mayRun: () => Promise.resolve(false) },
+      {
+        contextManagement: {
+          maxTokens: 100_000,
+          compactionThreshold: 10,
+          tokenEstimator: () => 50,
+          onCompact: () => {
+            compactions += 1;
+            return Promise.resolve();
+          },
+        },
+      },
+    );
+
+    expect(compactions).toBe(0);
+    expect(generates()).toBe(0);
+    expect(result.finishReason).toBe('tripwire');
+  });
+
+  it('leaves the compaction of a step it allows to run', async () => {
+    let compactions = 0;
+    const { result } = await fencedRun(
+      { mayRun: () => Promise.resolve(true) },
+      {
+        contextManagement: {
+          maxTokens: 100_000,
+          compactionThreshold: 10,
+          tokenEstimator: () => 50,
+          onCompact: () => {
+            compactions += 1;
+            return Promise.resolve();
+          },
+        },
+      },
+    );
+
+    expect(compactions).toBe(1);
+    expect(result.finishReason).toBe('stop-condition');
+  });
+
   it('is not a handler an onError hook can retry or skip', async () => {
     const context = await durableContext();
     const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
@@ -295,6 +385,75 @@ describe('registerGoalAttemptFence', () => {
     });
 
     expect(generates).toBe(0);
+    expect(result.finishReason).toBe('tripwire');
+  });
+});
+
+describe('the fence over the real tombstone', () => {
+  const OWNER = {
+    goalRunId: 'g1',
+    attemptIndex: 0,
+    agentName: 'worker',
+    principal: undefined,
+  } as const;
+  const claim = {
+    agentName: 'worker',
+    definitionRevision: 1,
+    input: 'work',
+    goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+    costEstimation: null,
+  } as const;
+
+  /** The goal is live throughout: only the claim decides whether the run may work. */
+  async function composed() {
+    const runtime = await createRuntimeComposition({
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    disposers.push(() => runtime.durable?.engine[Symbol.dispose]?.());
+    const fence = createGoalAttemptFence({
+      store: await liveGoal(),
+      readRunRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+    });
+    return { runtime, fence };
+  }
+
+  it('lets a run work under the claim a start made, as the control for the tombstone', async () => {
+    const { runtime, fence } = await composed();
+    await runtime.claimCatalogRunRecoveryRecord(target.runId, claim);
+
+    const { result, generates } = await fencedRun(fence);
+
+    expect(generates()).toBe(1);
+    expect(result.finishReason).toBe('stop-condition');
+  });
+
+  it('takes zero steps when the goal tombstoned the claim between the start’s claim and its engine start', async () => {
+    const { runtime, fence } = await composed();
+    // The start claims, the goal's ending tombstones the claim, and only then does
+    // the engine start create the run: the interleaving no read from outside can close.
+    expect(await runtime.claimCatalogRunRecoveryRecord(target.runId, claim)).toBe(true);
+    expect(
+      await runtime.fenceGoalAttemptRecoveryRecord(target.runId, OWNER, '2026-10-02T12:30:00.000Z'),
+    ).toBe('fenced');
+
+    const { result, generates, context } = await fencedRun(fence);
+
+    expect(generates()).toBe(0);
+    expect(result.steps).toHaveLength(0);
+    expect(result.finishReason).toBe('tripwire');
+    const ended = await context.engine.get(target.runId);
+    expect(ended?.status).toBe('completed');
+  });
+
+  it('takes zero steps, and the start claims nothing, when the tombstone was created where no claim existed', async () => {
+    const { runtime, fence } = await composed();
+    await runtime.fenceGoalAttemptRecoveryRecord(target.runId, OWNER, '2026-10-02T12:30:00.000Z');
+
+    expect(await runtime.claimCatalogRunRecoveryRecord(target.runId, claim)).toBe(false);
+    const { result, generates } = await fencedRun(fence);
+
+    expect(generates()).toBe(0);
     expect(result.finishReason).toBe('tripwire');
   });
 });

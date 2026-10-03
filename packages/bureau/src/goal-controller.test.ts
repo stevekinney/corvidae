@@ -5,7 +5,8 @@
 import { WorkflowAlreadyExistsError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { commitCancellation, ensureController } from './goal-controller';
+import { attemptIndexesToStop, commitCancellation, ensureController } from './goal-controller';
+import type { GoalState } from './goal-state';
 import type { GoalEngine } from './goal-types';
 import {
   dependencies,
@@ -78,5 +79,30 @@ describe('ensureController', () => {
       expect(ensured.goal.status).toBe('canceled');
       expect(calls.filter((call) => call.startsWith('start:'))).toEqual([]);
     });
+  });
+});
+
+describe('attemptIndexesToStop', () => {
+  const recordOf = (
+    maximumAttempts: number,
+    statuses: readonly ('running' | 'failed')[],
+  ): GoalState =>
+    ({
+      goalRunId: 'g1',
+      bounds: { maximumAttempts },
+      attempts: statuses.map((status, attemptIndex) => ({ attemptIndex, status })),
+    }) as unknown as GoalState;
+
+  it('names the in-flight attempt, and the next one a start may have died short of committing', () => {
+    expect(attemptIndexesToStop(recordOf(3, []))).toEqual([0]);
+    expect(attemptIndexesToStop(recordOf(3, ['running']))).toEqual([0]);
+    expect(attemptIndexesToStop(recordOf(3, ['failed']))).toEqual([1, 0]);
+  });
+
+  it('never names an index at or past the attempt bound, which no start can claim', () => {
+    // An attempt-limit-reached goal has used every attempt: the next index is the
+    // bound itself, and a tombstone for it would be a record nothing prunes.
+    expect(attemptIndexesToStop(recordOf(2, ['failed', 'failed']))).toEqual([1]);
+    expect(attemptIndexesToStop(recordOf(1, ['failed']))).toEqual([0]);
   });
 });

@@ -2486,7 +2486,9 @@ export async function createRuntimeComposition(
     // runs for a step the goal no longer allows. This is the one invariant that
     // closes over a run, and only a goal attempt's run is given it.
     if (goalAttempt !== undefined && dependencies.goalAttemptFence !== undefined) {
-      registerGoalAttemptFence(invariants, dependencies.goalAttemptFence, goalAttempt);
+      registerGoalAttemptFence(invariants, dependencies.goalAttemptFence, goalAttempt, {
+        runtime: runtimeServices,
+      });
     }
     if (options.identity) {
       registerIdentityInvariant(invariants, options.identity);

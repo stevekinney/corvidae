@@ -12,8 +12,8 @@
  * any side effect.
  *
  * The fence is a `prepareStep` hook registered in the run's own hook tier, ahead
- * of every other `prepareStep` handler, so it runs before the first generate or
- * tool call of every step, on a fresh start and on a recovered run alike. It
+ * of every other `prepareStep` handler, so it runs before the generate call and
+ * the tool calls of every step, on a fresh start and on a recovered run alike. It
  * lets the step proceed only when both of these are read now:
  *
  * - the goal's record exists and is neither terminal nor marked for cancellation;
@@ -22,11 +22,24 @@
  *   the attempts it may have overtaken (see `goal-cancellation.ts`), so a start
  *   that lost the race finds the tombstone here.
  *
- * It fails closed. A read that fails is tried again a bounded number of times;
- * if it still cannot be read the step does not run, because a step that ran on an
- * unknown is exactly what the fence exists to prevent. A fence that stops a run
- * ends it with a tripwire error, which no `onError` hook can retry or skip, so
- * the run takes zero agent steps and finishes cleanly.
+ * What runs before `prepareStep` in a step is operative's own preparation: the
+ * step-started event, context compaction, and the `selectTools` and
+ * `selectToolChoice` hooks. Compaction is the one that can reach a model, so the
+ * same verdict also gates it, through a `beforeCompaction` handler that cancels
+ * the compaction of a step the goal does not allow. The event and the selection
+ * hooks make no model or tool call, and the fence that follows them stops the
+ * step before anything the step would do.
+ *
+ * It fails closed, and it does not mistake a fault for a verdict. A read that
+ * fails is tried again, backing off on the runtime's clock (a fault that lasts a
+ * moment is ridden out, and a step abort ends the wait). Only if the goal and its
+ * claim still cannot be read after the last try does the step not run, because a
+ * step that ran on an unknown is exactly what the fence exists to prevent. A fence
+ * that stops a run ends it with a tripwire error, which no `onError` hook can retry
+ * or skip, so the run takes zero agent steps and finishes cleanly. The controller
+ * reads that finish as the attempt's run failing, so a fault that outlasts every
+ * try (the backoffs add up to a few seconds, and the goal's own store is down for
+ * that long too) costs the goal that attempt.
  *
  * Residual: a run whose start was overtaken still exists, as a workflow that
  * ended after zero steps under the attempt's deterministic id. `cleanUpGoal`
@@ -34,7 +47,7 @@
  * so that record is retired with the rest of the goal's history.
  */
 
-import type { HookRegistry } from '@lostgradient/lifecycle';
+import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
 import { GuardrailTripwireError, type OperativeHookMap } from '@lostgradient/operative';
 
 import { type RunRecordReader } from './goal-ownership';
@@ -60,8 +73,15 @@ export interface GoalAttemptFence {
 /** The id the fence's hook is registered under. */
 export const GOAL_ATTEMPT_FENCE_HOOK_ID = 'bureau:goal-attempt-fence';
 
+/**
+ * How long the fence waits before each further read of a goal or claim it could
+ * not read, on the runtime's clock. The first read is immediate, so the number of
+ * reads is one more than the number of delays.
+ */
+export const GOAL_ATTEMPT_FENCE_READ_DELAYS_MS: readonly number[] = [100, 500, 2_000, 5_000];
+
 /** How many times the fence reads before it treats the answer as unknown and refuses. */
-export const GOAL_ATTEMPT_FENCE_READ_TRIES = 3;
+export const GOAL_ATTEMPT_FENCE_READ_TRIES = GOAL_ATTEMPT_FENCE_READ_DELAYS_MS.length + 1;
 
 /**
  * The fence over the goal store and the recovery records. `undefined` for the
@@ -142,29 +162,80 @@ const refusal = (target: GoalAttemptTarget, detail: string): GuardrailTripwireEr
     },
   );
 
+export interface GoalAttemptFenceRegistration {
+  /** The runtime whose timers the backoff between reads waits on; without one the reads are made back to back. */
+  readonly runtime?: Pick<RuntimeServices, 'timers'>;
+  /** The delay before each further read; defaults to `GOAL_ATTEMPT_FENCE_READ_DELAYS_MS`. */
+  readonly delaysMs?: readonly number[];
+}
+
+/** Waits `delay` milliseconds on the runtime's timers, or until `signal` aborts. */
+function waitFor(
+  runtime: Pick<RuntimeServices, 'timers'>,
+  delay: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const handle = runtime.timers.setTimeout(done, delay);
+    function done(): void {
+      runtime.timers.clearTimeout(handle);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    }
+    signal?.addEventListener('abort', done, { once: true });
+  });
+}
+
+/** What the fence concluded from its reads: a verdict, or `undefined` and the fault that kept it from one. */
+interface FenceReading {
+  readonly verdict: boolean | undefined;
+  readonly cause: unknown;
+}
+
+async function readFence(
+  fence: GoalAttemptFence,
+  target: GoalAttemptTarget,
+  registration: GoalAttemptFenceRegistration,
+  signal: AbortSignal | undefined,
+): Promise<FenceReading> {
+  const delays = registration.delaysMs ?? GOAL_ATTEMPT_FENCE_READ_DELAYS_MS;
+  let cause: unknown;
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return { verdict: await fence.mayRun(target), cause };
+    } catch (error) {
+      cause = error;
+    }
+    // A step that was aborted has no use for the answer, and is refused below.
+    if (signal?.aborted === true) break;
+    const delay = delays[attempt];
+    if (delay !== undefined && registration.runtime !== undefined) {
+      await waitFor(registration.runtime, delay, signal);
+    }
+  }
+  return { verdict: undefined, cause };
+}
+
 /**
  * Registers the fence as the first `prepareStep` handler of a run's invariant
- * tier. The hook reads nothing it can change and writes nothing, so replaying it
- * is safe.
+ * tier, and as a `beforeCompaction` handler that cancels the compaction of a step
+ * it does not allow. The hooks read nothing they can change and write nothing, so
+ * replaying them is safe.
  */
 export function registerGoalAttemptFence(
   registry: HookRegistry<OperativeHookMap>,
   fence: GoalAttemptFence,
   target: GoalAttemptTarget,
+  registration: GoalAttemptFenceRegistration = {},
 ): void {
   registry.on(
     'prepareStep',
-    async () => {
-      let verdict: boolean | undefined;
-      let cause: unknown;
-      for (let attempt = 0; verdict === undefined && attempt < GOAL_ATTEMPT_FENCE_READ_TRIES;) {
-        attempt += 1;
-        try {
-          verdict = await fence.mayRun(target);
-        } catch (error) {
-          cause = error;
-        }
-      }
+    async (context) => {
+      const { verdict, cause } = await readFence(fence, target, registration, context.signal);
       if (verdict === true) return;
       throw verdict === false
         ? refusal(
@@ -177,5 +248,17 @@ export function registerGoalAttemptFence(
           );
     },
     { id: GOAL_ATTEMPT_FENCE_HOOK_ID, replay: 'safe' },
+  );
+  registry.on(
+    'beforeCompaction',
+    async () => {
+      // Compaction may call a model, and it runs before `prepareStep`. A step the
+      // fence allows is left to the other handlers (`undefined` is no verdict); one
+      // it does not allow is not compacted, and the `prepareStep` handler above then
+      // refuses it.
+      const { verdict } = await readFence(fence, target, registration, undefined);
+      return verdict === true ? undefined : false;
+    },
+    { id: `${GOAL_ATTEMPT_FENCE_HOOK_ID}:compaction`, replay: 'safe' },
   );
 }
