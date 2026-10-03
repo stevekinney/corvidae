@@ -50,7 +50,7 @@ import {
   teardownTimerOperations,
 } from './finalizer-claim.ts';
 import { resolveFinalizerRegistration } from './finalizer-registration.ts';
-import { withTeardownDriveClaim } from './finalizer-teardown-claim.ts';
+import { reassertOwedAfterShutdown, withTeardownDriveClaim } from './finalizer-teardown-claim.ts';
 
 export { teardownStaleThresholdMs, type TeardownDeadLetterRecord } from './finalizer-claim.ts';
 
@@ -380,23 +380,10 @@ async function driveResolvedTeardown(
   }
   if (result.abortedByShutdown) {
     // A clean engine disposal aborted the attempt — NOT a finalizer failure. Re-assert
-    // `owed` at the UNCHANGED attempt count (settle-CAS'd on our running bytes) and re-arm
-    // a near-future timer, so the next owner retries from the same count and the resource
-    // is never dead-lettered just because the engine was disposed. (Codex MF4 / junior MF2.)
-    // A lost settle CAS means a reclaimer took the running bytes — re-arm so the marker is
-    // never stranded after the scheduler deletes the fired timer. (Cursor Bugbot round 4.)
-    const fireAt = internals.options.getNow() + TEARDOWN_SELF_HEAL_DELAY_MS;
-    const settled = await settleOnRunningClaim(internals, workflowId, runningBytes, [
-      {
-        type: 'put',
-        key: KEYS.teardownOwed(workflowId),
-        value: encodeOwedClaim(claim.attempts, token),
-      },
-      ...teardownTimerOperations(token, workflowId, fireAt),
-    ]);
-    if (!settled) {
-      await rearmOnLostSettle(internals, workflowId, token);
-    }
+    // `owed` at the UNCHANGED attempt count and re-arm, so the next owner retries from the
+    // same count and the resource is never dead-lettered just because the engine was
+    // disposed. (Codex MF4 / junior MF2; Cursor Bugbot round 4.)
+    await reassertOwedAfterShutdown(internals, workflowId, runningBytes, claim.attempts, token);
     return;
   }
   await settleTeardownFailure(
