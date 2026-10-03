@@ -184,7 +184,7 @@ export function encodeRunningClaim(attempts: number, token: string, claimedAt: n
  * Re-arm a future `wf-teardown:` timer for a non-settling drive exit (lost CAS, a
  * presumed-live `running` claim, a shutdown abort, or a leave-the-marker case), so the
  * claim is not stranded after the scheduler deletes the fired timer. The marker bytes
- * are left untouched — only the timer is (re)written. Fenced, best-effort: a deposed
+ * are left untouched — only the timer is (re)written. Best-effort: a deposed
  * engine that loses the fence simply yields to the new owner, whose own timer drives it.
  */
 export async function rearmTeardownTimer(
@@ -195,9 +195,14 @@ export async function rearmTeardownTimer(
 ): Promise<void> {
   const fireAt = internals.options.getNow() + delayMs;
   try {
+    // Engine-scoped (`null`), never fenced on the workflow's claim: this write only arms a
+    // timer — a scheduling hint that cannot change the marker or any workflow state — and the
+    // claim-less back-off paths (another engine owns the drive, or this one was deposed
+    // mid-drive) are exactly the ones that must still leave a timer behind. A stale or
+    // zombie timer is harmless: the drive re-validates the marker's token and bytes.
     await commitFencedEngineWrite(
       internals,
-      workflowId,
+      null,
       teardownTimerOperations(token, workflowId, fireAt),
       [],
       () => new Error('teardown self-heal re-arm lost the lease fence'),
