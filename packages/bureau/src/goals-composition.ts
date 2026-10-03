@@ -227,7 +227,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
   );
 
   const shutdown = new AbortController();
-  let backgroundSweep: Promise<void> = Promise.resolve();
+  let backgroundSweep: Promise<void> | undefined;
 
   const goalDependencies = {
     store,
@@ -290,22 +290,29 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       // of the engine or the store does not. Waiting for it forever would hang
       // `close()` before storage is disposed, so the wait is bounded: past the
       // budget the sweep is diagnosed and left, as a recovery that outlived it.
-      const { timers } = runtimeServices;
-      let handle: ReturnType<typeof timers.setTimeout>;
-      const expired = new Promise<'expired'>((resolve) => {
-        handle = timers.setTimeout(() => resolve('expired'), GOAL_DRAIN_BUDGET_MS);
-      });
-      try {
-        const sweep = await Promise.race([backgroundSweep.then(() => 'settled' as const), expired]);
-        if (sweep === 'expired') {
-          diagnose({
-            level: 'warn',
-            scope: 'goals',
-            message: `[bureau] The goal recovery sweep did not settle within ${GOAL_DRAIN_BUDGET_MS} ms of shutdown and was left running.`,
-          });
+      // No timer is armed when no sweep outlived its budget, which is the
+      // ordinary case.
+      if (backgroundSweep !== undefined) {
+        const { timers } = runtimeServices;
+        let handle: ReturnType<typeof timers.setTimeout>;
+        const expired = new Promise<'expired'>((resolve) => {
+          handle = timers.setTimeout(() => resolve('expired'), GOAL_DRAIN_BUDGET_MS);
+        });
+        try {
+          const sweep = await Promise.race([
+            backgroundSweep.then(() => 'settled' as const),
+            expired,
+          ]);
+          if (sweep === 'expired') {
+            diagnose({
+              level: 'warn',
+              scope: 'goals',
+              message: `[bureau] The goal recovery sweep did not settle within ${GOAL_DRAIN_BUDGET_MS} ms of shutdown and was left running.`,
+            });
+          }
+        } finally {
+          timers.clearTimeout(handle!);
         }
-      } finally {
-        timers.clearTimeout(handle!);
       }
       await forwarder.drain();
     },
