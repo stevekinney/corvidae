@@ -284,6 +284,15 @@ export interface DurableEventHistorySubscribeOptions {
   since?: string | undefined;
   /** Ends the subscription (equivalent to calling `unsubscribe()`) when aborted. */
   signal?: AbortSignal;
+  /**
+   * COR-851 — the authenticated caller's principal, consulted by
+   * `Bureau.subscribeEventHistory` exactly as `Bureau.eventHistory` consults
+   * {@link DurableEventHistoryPageOptions.principal}: omitted, the caller is
+   * trusted and sees everything; present, each event is delivered only while
+   * the principal may read the owner. The store primitive
+   * (`DurableEventHistory.subscribeEventHistory`) does not read this field.
+   */
+  principal?: string | undefined;
 }
 
 /**

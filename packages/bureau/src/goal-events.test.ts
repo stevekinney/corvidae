@@ -339,3 +339,60 @@ describe('a goal history across a restart', () => {
     ]);
   });
 });
+
+describe('who may subscribe to a goal history', () => {
+  async function aliceGoalEnded() {
+    database = createTestDatabase('events-subscribe-authorization');
+    const bureau = await boot();
+    await bureau.goals.create(goalRequest({ principal: 'alice' }));
+    await ended(bureau);
+    return bureau;
+  }
+
+  function watch(bureau: Bureau, principal?: string) {
+    const seen: string[] = [];
+    const subscription = bureau.subscribeEventHistory(
+      { kind: 'goal', id: 'g1' },
+      (event) => seen.push(event.kind),
+      principal === undefined ? undefined : { principal },
+    );
+    cleanups.push(() => subscription.unsubscribe());
+    return { seen, subscription };
+  }
+
+  it('replays the history to the goal owner and to a trusted caller', async () => {
+    const bureau = await aliceGoalEnded();
+
+    const owner = watch(bureau, 'alice');
+    const trusted = watch(bureau);
+
+    expect(await pollUntil(() => owner.seen.includes('goal.succeeded'))).toBe(true);
+    expect(await pollUntil(() => trusted.seen.includes('goal.succeeded'))).toBe(true);
+    expect(owner.seen[0]).toBe('goal.started');
+    expect(owner.subscription.closed).toBe(false);
+  });
+
+  it('delivers nothing to a stranger', async () => {
+    const bureau = await aliceGoalEnded();
+    const owner = watch(bureau, 'alice');
+    const stranger = watch(bureau, 'bob');
+
+    // The owner's replay finished, so anything the stranger was going to be given has been.
+    expect(await pollUntil(() => owner.seen.includes('goal.succeeded'))).toBe(true);
+    expect(await pollUntil(() => stranger.seen.length > 0, 100)).toBe(false);
+  });
+
+  it('delivers nothing to a stranger who subscribed to the id before the goal existed, and everything to its owner', async () => {
+    database = createTestDatabase('events-subscribe-before-creation');
+    const bureau = await boot();
+    const stranger = watch(bureau, 'bob');
+    const owner = watch(bureau, 'alice');
+
+    await bureau.goals.create(goalRequest({ principal: 'alice' }));
+    await ended(bureau);
+
+    expect(await pollUntil(() => owner.seen.includes('goal.succeeded'))).toBe(true);
+    expect(owner.seen[0]).toBe('goal.started');
+    expect(await pollUntil(() => stranger.seen.length > 0, 100)).toBe(false);
+  });
+});

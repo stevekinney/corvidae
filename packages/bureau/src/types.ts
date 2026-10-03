@@ -1818,6 +1818,14 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * for an ephemeral bureau (no persistent storage backend configured) —
    * a caller that must distinguish "unsupported" from "supported but
    * empty" calls `eventHistory()` first.
+   *
+   * COR-851 — `options.principal` applies the same authorization
+   * `eventHistory()` applies to its own `principal`, to the replay and to live
+   * delivery alike: omitted, the caller is trusted; present, each event is
+   * delivered only while the principal may read the owner (checked fresh per
+   * event, so an owner created after the subscription is authorized by its
+   * first event), and an owner it may not read, or that does not exist, yields
+   * silence — never a refusal that would tell the two apart.
    */
   subscribeEventHistory(
     owner: DurableEventOwner,

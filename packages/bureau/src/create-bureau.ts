@@ -8851,6 +8851,95 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let durableEventProducerInstance: DurableEventProducer | undefined;
 
   /**
+   * Whether `principal` may read `owner`'s durable history right now: the one
+   * rule `eventHistory()` and `subscribeEventHistory()` both apply, so a feed
+   * that cannot be paged by a stranger cannot be tailed by one either.
+   *
+   * - run: only the principal `runAttribution` records for it, failing closed
+   *   when none is recorded (see `resolveEventHistory`).
+   * - goal: only a principal `bureau.goals.get` shows the goal to, failing closed
+   *   for a goal that cannot be read, so an id cannot be probed.
+   * - session: open unless the session records an authority the principal does
+   *   not hold (a session with no recorded authority is open).
+   * - schedule: no ownership concept exists, so open.
+   *
+   * Read fresh on every call, because ownership is not stable for a live feed:
+   * a goal or run may not exist yet when a subscription starts, and a session
+   * id can be recreated under another authority.
+   */
+  async function ownerReadableBy(owner: DurableEventOwner, principal: string): Promise<boolean> {
+    switch (owner.kind) {
+      case 'run':
+        return runAttribution.get(owner.id)?.principal === principal;
+      case 'goal':
+        return (await goalsComposition.goals.get(owner.id, { principal })) !== undefined;
+      case 'session': {
+        if (!runtime.sessionStore) return true;
+        const session = await runtime.sessionStore.load(owner.id);
+        return !session || isSessionAuthorityAuthorized(session.metadata, principal);
+      }
+      case 'schedule':
+        return true;
+    }
+  }
+
+  /**
+   * `Bureau.subscribeEventHistory` for a caller that stated a principal. The
+   * store's subscription is opened at once (so an invalid cursor still throws
+   * synchronously, as for a trusted caller), but nothing it produces reaches
+   * `listener` until `ownerReadableBy` says so, and it says so again for every
+   * event, in order, through one serialized chain: an owner that did not exist
+   * when the subscription began (a goal created afterwards, a run dispatched
+   * afterwards) is authorized by the first event that names it, and an owner
+   * whose authority changes mid-feed stops being delivered. An event the
+   * principal may not read is dropped, never queued, and a failed check is
+   * a denial. The subscription stays open and silent rather than reporting a
+   * refusal, so it cannot be used to tell an owner that exists from one that
+   * does not.
+   */
+  function subscribeAuthorized(
+    history: DurableEventHistory,
+    owner: DurableEventOwner,
+    listener: (event: DurableEventEnvelope) => void,
+    principal: string,
+    subscribeOptions: DurableEventHistorySubscribeOptions | undefined,
+  ): Subscription {
+    let delivery: Promise<void> = Promise.resolve();
+    const deliver = async (event: DurableEventEnvelope): Promise<void> => {
+      let readable = false;
+      try {
+        readable = await ownerReadableBy(owner, principal);
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-event-history',
+          message: `[bureau] Could not authorize ${owner.kind}:${owner.id} for a subscriber; its event "${event.kind}" was not delivered: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+      if (!readable || inner.closed) return;
+      try {
+        listener(event);
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-event-history',
+          message: `[bureau] Listener threw for ${owner.kind}:${owner.id} event "${event.kind}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+    };
+    const inner = history.subscribeEventHistory(
+      owner,
+      (event) => {
+        delivery = delivery.then(() => deliver(event));
+      },
+      subscribeOptions,
+    );
+    return inner;
+  }
+
+  /**
    * AB-313 — authorization and deleted-aggregate handling layered over
    * `eventHistoryInstance.page()`. This wrapper (not `page()` itself, which
    * knows nothing about sessions, runs, or principals) is the only place
@@ -8949,8 +9038,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // (copilot review, PR #551). Omitting `principal` entirely still
       // skips this check (an internal/trusted caller), matching every
       // other owner kind's convention.
-      const runPrincipal = runAttribution.get(owner.id)?.principal;
-      if (runPrincipal !== principal) {
+      if (!(await ownerReadableBy(owner, principal))) {
         return { outcome: 'not-found' };
       }
     }
@@ -8967,7 +9055,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (
       owner.kind === 'goal' &&
       principal !== undefined &&
-      (await goalsComposition.goals.get(owner.id, { principal })) === undefined
+      !(await ownerReadableBy(owner, principal))
     ) {
       return { outcome: 'not-found' };
     }
@@ -9334,7 +9422,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // `eventHistory()` first.
         return { unsubscribe() {}, closed: true };
       }
-      return eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions);
+      const principal = subscribeOptions?.principal;
+      // An omitted principal is a trusted caller, as it is for `eventHistory()`.
+      return principal === undefined
+        ? eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions)
+        : subscribeAuthorized(eventHistoryInstance, owner, listener, principal, subscribeOptions);
     },
     get webhookNotifier(): WebhookNotifier | undefined {
       return webhookNotifierInstance;
