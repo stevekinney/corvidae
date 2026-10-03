@@ -144,7 +144,9 @@ export const bureauEventsSubscriptionOperation = defineOperation({
         close: () => iterable.close(),
       });
     } catch (error) {
-      return Promise.reject(error);
+      return Promise.resolve().then(() => {
+        throw error;
+      });
     }
   },
 });

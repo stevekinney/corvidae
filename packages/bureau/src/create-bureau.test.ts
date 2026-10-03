@@ -2,11 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
   createManualRuntimeServices,
+  type RuntimeTimeoutHandle,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
 import {
