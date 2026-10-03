@@ -190,13 +190,42 @@ export function encodeRunningClaim(attempts: number, token: string, claimedAt: n
 }
 
 /**
- * The next self-heal slot strictly after `now`: the next multiple of `delayMs`. Quantizing the
- * fire time makes a re-arm IDEMPOTENT across engines. A timer key embeds `fireAt`, so engines
- * that each re-arm at `getNow() + delay` write distinct keys for one logical self-heal and
- * multiply the timers every interval; engines that quantize land on the same key.
+ * The next self-heal slot at least a full `delayMs` after `now`: the first multiple of
+ * `delayMs` at or past `now + delayMs`. Quantizing the fire time makes a re-arm IDEMPOTENT
+ * across engines. A timer key embeds `fireAt`, so engines that each re-arm at
+ * `getNow() + delay` write distinct keys for one logical self-heal and multiply the timers
+ * every interval; engines that quantize land on the same key. Starting from `now + delayMs`
+ * (not `now`) keeps the delay contract: a re-arm made 1ms before a slot boundary waits the
+ * next full slot rather than firing a millisecond later.
  */
 function nextSelfHealSlot(now: number, delayMs: number): number {
-  return (Math.floor(now / delayMs) + 1) * delayMs;
+  return Math.ceil((now + delayMs) / delayMs) * delayMs;
+}
+
+/**
+ * Write a `wf-teardown:` timer for `token` at exactly `fireAt`, engine-scoped (`null`), never
+ * fenced on the workflow's claim: this write only arms a timer — a scheduling hint that cannot
+ * change the marker or any workflow state. A stale or zombie timer is harmless: the drive
+ * re-validates the marker's token and bytes on every fire. Best-effort: a deposed engine that
+ * loses the fence simply yields to the new owner, whose own timer drives it.
+ */
+async function writeTeardownTimer(
+  internals: EngineInternals,
+  workflowId: string,
+  token: string,
+  fireAt: number,
+): Promise<void> {
+  try {
+    await commitFencedEngineWrite(
+      internals,
+      null,
+      teardownTimerOperations(token, workflowId, fireAt),
+      [],
+      () => new Error('teardown timer re-arm lost the lease fence'),
+    );
+  } catch {
+    // Deposed or lost-race: the current owner re-drives via its own timer.
+  }
 }
 
 /**
@@ -206,8 +235,7 @@ function nextSelfHealSlot(now: number, delayMs: number): number {
  * timer. A lost claim or settle CAS is deliberately NOT such an exit: the CAS winner armed
  * its own timer in the same batch, so a loser stays silent. The marker bytes are left
  * untouched — only the timer is (re)written, at a slot shared by every engine (see
- * {@link nextSelfHealSlot}). Best-effort: a deposed engine that loses the fence simply
- * yields to the new owner, whose own timer drives it.
+ * {@link nextSelfHealSlot}).
  */
 export async function rearmTeardownTimer(
   internals: EngineInternals,
@@ -215,21 +243,47 @@ export async function rearmTeardownTimer(
   token: string,
   delayMs: number,
 ): Promise<void> {
-  const fireAt = nextSelfHealSlot(internals.options.getNow(), delayMs);
-  try {
-    // Engine-scoped (`null`), never fenced on the workflow's claim: this write only arms a
-    // timer — a scheduling hint that cannot change the marker or any workflow state. A stale
-    // or zombie timer is harmless: the drive re-validates the marker's token and bytes.
-    await commitFencedEngineWrite(
-      internals,
-      null,
-      teardownTimerOperations(token, workflowId, fireAt),
-      [],
-      () => new Error('teardown self-heal re-arm lost the lease fence'),
-    );
-  } catch {
-    // Deposed or lost-race: the current owner re-drives via its own timer.
-  }
+  await writeTeardownTimer(
+    internals,
+    workflowId,
+    token,
+    nextSelfHealSlot(internals.options.getNow(), delayMs),
+  );
+}
+
+/**
+ * The fire time of the watchdog a drive re-arms when it yields to a `running` claim it judged
+ * fresh. The claim CAS armed one watchdog at `claimedAt` plus the horizon it computed, and
+ * that timer is the only liveness a crashed holder has; the yield consumed it (the scheduler
+ * deletes the fired key), so without a re-arm the marker would stay `running` forever. That
+ * happens whenever this engine's horizon or clock disagrees with the claimer's: a finalizer
+ * timeout that changed between claim and fire, or a `tick(now)` driven ahead of `getNow()`.
+ *
+ * The target is `claimedAt` plus THIS drive's horizon — the same deterministic key every
+ * engine computes for the same claim, so concurrent yields collapse onto one timer and, when
+ * the horizons agree, onto the watchdog that is already armed. When that deadline is not past
+ * the timer that just fired (a clock reading behind the scheduler's), the key would collide
+ * with the fired one and the scheduler's post-callback delete would erase the re-arm, so the
+ * target moves one self-heal interval beyond the fired timer instead — still a pure function
+ * of the claim and the fired key, never of a per-engine clock.
+ */
+export function liveClaimWatchdogFireAt(
+  claim: TeardownClaim,
+  finalizer: RunnableFinalizer,
+  firedAt: number,
+): number {
+  const deadline = (claim.claimedAt ?? firedAt) + teardownStaleThresholdMs(finalizer);
+  return deadline > firedAt ? deadline : firedAt + TEARDOWN_SELF_HEAL_DELAY_MS;
+}
+
+/** Re-arm the watchdog for a live `running` claim this drive yielded to (see above). */
+export async function rearmLiveClaimWatchdog(
+  internals: EngineInternals,
+  workflowId: string,
+  token: string,
+  fireAt: number,
+): Promise<void> {
+  await writeTeardownTimer(internals, workflowId, token, fireAt);
 }
 
 /**

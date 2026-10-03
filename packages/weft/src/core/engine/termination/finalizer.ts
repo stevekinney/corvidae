@@ -27,6 +27,10 @@
  * token); a drive that loses a claim or settle CAS stays silent. Only the exits with no
  * winner — a missing registration, a failed corrupt-marker clear, an unexpected error — re-arm
  * a self-heal timer, at a slot every engine shares so concurrent re-arms collapse to one key.
+ * A drive that yields to a `running` claim it judges fresh re-arms the watchdog at the claim's
+ * `claimedAt` plus its own stale horizon: the fired timer may have been the only liveness the
+ * crashed holder had (this engine's horizon or clock can read earlier than the claimer's), and
+ * the key is a pure function of the claim, so every engine writes the same one.
  * A timer whose token no longer matches the marker (a leftover watchdog, a stray self-heal) is
  * inert: it resolves to nothing owed.
  *
@@ -46,9 +50,11 @@ import {
   clearTeardownMarker,
   deadLetterTeardown,
   encodeOwedClaim,
+  liveClaimWatchdogFireAt,
   MAX_TEARDOWN_ATTEMPTS,
   newTeardownToken,
   observedMarkerHold,
+  rearmLiveClaimWatchdog,
   rearmTeardownTimer,
   reassertOwedAfterShutdown,
   runningClaimIsStale,
@@ -111,15 +117,16 @@ interface ResolvedTeardownDrive {
 /**
  * The outcome of resolving a fired teardown timer into actionable drive inputs.
  * `'run'` carries the resolved inputs; `'cleared'` means the marker was deleted or there
- * is nothing left to do (a settle — no re-arm); `'yield'` means a live sibling owns the
- * marker and its own timer, so this drive stays silent; `'rearm'` means no winner owns the
+ * is nothing left to do (a settle — no re-arm); `'yield'` means a live sibling holds the
+ * marker, so this drive does not run, but it carries the watchdog deadline to re-arm (the
+ * fired timer may have been the only one left); `'rearm'` means no winner owns the
  * next timer (a missing registration, a failed clear), so the drive must re-arm a self-heal
  * timer before returning and carries the token to re-arm.
  */
 type TeardownResolution =
   | { kind: 'run'; drive: ResolvedTeardownDrive }
   | { kind: 'cleared' }
-  | { kind: 'yield' }
+  | { kind: 'yield'; watchdogFireAt: number }
   | { kind: 'rearm'; token: string };
 
 /**
@@ -173,6 +180,7 @@ async function resolveTeardownDrive(
   internals: EngineInternals,
   workflowId: string,
   token: string,
+  firedAt: number,
   callbacks: FinalizerDriveCallbacks,
 ): Promise<TeardownResolution> {
   // Read the marker FIRST so every bail path can condition its clear/dead-letter on the
@@ -216,9 +224,12 @@ async function resolveTeardownDrive(
   }
 
   if (!runningClaimIsStale(internals, claim, finalizer)) {
-    // A genuine live sibling drive owns it, and the CAS that claimed it armed its watchdog in
-    // the same batch — stay silent. Re-arming here is what multiplied timers across engines.
-    return { kind: 'yield' };
+    // A live sibling holds it and its claim CAS armed a watchdog in the same batch, but that
+    // watchdog may be the very timer that just fired (this engine's horizon or clock reads
+    // earlier than the claimer's), and the scheduler deletes a fired timer once its callback
+    // returns. Hand back the deterministic watchdog deadline so the caller re-arms it; the key
+    // is shared across engines, so this never multiplies timers.
+    return { kind: 'yield', watchdogFireAt: liveClaimWatchdogFireAt(claim, finalizer, firedAt) };
   }
 
   const finalizerStateBytes = await internals.storage.get(KEYS.finalizerState(workflowId));
@@ -285,13 +296,16 @@ async function deadLetterMissingState(
  * Never throws: the scheduler treats a thrown timer callback as "retry on the next
  * tick", which would defeat the backoff schedule, so every failure path is handled
  * internally and the function returns normally (letting the scheduler delete the
- * fired timer; a backoff/self-heal reschedule writes a fresh timer entry).
+ * fired timer; a backoff/self-heal reschedule writes a fresh timer entry). `firedAt` is the
+ * fired timer's own `fireAt`; it keeps a yield's watchdog re-arm off the fired key, which the
+ * scheduler deletes after this returns.
  */
 export async function runWorkflowFinalizer(
   internals: EngineInternals,
   workflowId: string,
   timerId: string,
   callbacks: FinalizerDriveCallbacks,
+  firedAt: number = Number.NEGATIVE_INFINITY,
 ): Promise<void> {
   // Parse the token OUTSIDE the try so the catch can re-arm a self-heal timer: an
   // unexpected error after the marker was observed but before a settle/re-arm would
@@ -303,8 +317,12 @@ export async function runWorkflowFinalizer(
   }
 
   try {
-    const resolution = await resolveTeardownDrive(internals, workflowId, token, callbacks);
-    if (resolution.kind === 'cleared' || resolution.kind === 'yield') {
+    const resolution = await resolveTeardownDrive(internals, workflowId, token, firedAt, callbacks);
+    if (resolution.kind === 'cleared') {
+      return;
+    }
+    if (resolution.kind === 'yield') {
+      await rearmLiveClaimWatchdog(internals, workflowId, token, resolution.watchdogFireAt);
       return;
     }
     if (resolution.kind === 'rearm') {

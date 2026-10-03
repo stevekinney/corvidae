@@ -260,11 +260,12 @@ describe('runWorkflowFinalizer — defensive bail-out branches', () => {
     engine[Symbol.dispose]();
   });
 
-  it('leaves the marker and arms nothing when a fresh running claim is presumed live', async () => {
+  it('leaves the marker and re-arms only the watchdog when a fresh running claim is presumed live', async () => {
     // A `running` claim whose `claimedAt` is recent (well under the stale threshold) is a
-    // genuine live sibling — the drive must NOT reclaim or clear it, and must stay silent:
-    // the CAS that claimed it armed its watchdog in the same batch, and a loser's re-arm is
-    // what multiplied timers across engines (COR-1415).
+    // genuine live sibling — the drive must NOT reclaim or clear it. It re-arms exactly the
+    // watchdog at `claimedAt` plus the stale horizon: the fired timer may have been the only
+    // one left, and that deadline is a pure function of the claim, so engines never multiply
+    // it (COR-1415).
     let clock = 1_000_000;
     const engine = new Engine({ getNow: () => clock });
     let finalizerRuns = 0;
@@ -306,12 +307,14 @@ describe('runWorkflowFinalizer — defensive bail-out branches', () => {
     );
 
     // The live sibling's running marker is untouched, the finalizer did NOT run again,
-    // and no timer was armed.
+    // and the one timer armed is the watchdog at the stale horizon (1m timeout + 30s margin).
     const markerBytes = await internals.storage.get(KEYS.teardownOwed(workflowId));
     expect(markerBytes).not.toBeNull();
     expect(decode(markerBytes!)).toMatchObject({ status: 'running' });
     expect(finalizerRuns).toBe(0);
-    expect(await teardownTimerCount(internals)).toBe(0);
+    const timerKeys: string[] = [];
+    for await (const [key] of internals.storage.scan('wf-teardown:')) timerKeys.push(key);
+    expect(timerKeys).toEqual([KEYS.teardownTimer(clock + 90_000, createTeardownTimerId(token))]);
     engine[Symbol.dispose]();
   });
 
