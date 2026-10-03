@@ -799,6 +799,37 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
     expect(goal?.terminalReason).toBeUndefined();
   });
 
+  it('is reported by the boot sweep as a recovery failure, so the report is not clean', async () => {
+    const { bureau, view } = await bootForPoison();
+    await seedPoisoned(view);
+    await bureau.goals.recover('g1');
+    for (let restart = 1; restart <= MAXIMUM_CONTROLLER_RESTARTS; restart += 1) {
+      expect(await controllerFailed(bureau)).toBe(true);
+      await bureau.goals.recover('g1');
+    }
+    expect(await controllerFailed(bureau)).toBe(true);
+
+    const diagnostics = createDiagnostics();
+    const next = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
+      validators: [createCheckValidator()],
+      diagnostics,
+    });
+    await track(next.bureau);
+    const report = await next.bureau.waitForRecovery?.();
+
+    expect(report?.outcome).toBe('partial');
+    expect(report?.perRunFailures).toEqual([
+      { runId: 'g1', reason: expect.stringContaining('restarted') },
+    ]);
+    expect(
+      diagnostics
+        .scope('recovery')
+        .some((diagnostic) => diagnostic.message.includes('Goal "g1" is unrecoverable')),
+    ).toBe(true);
+  });
+
   it('finishes the goal once the restarted controller can read its record', async () => {
     const { bureau, view } = await bootForPoison();
     await seedPoisoned(view);

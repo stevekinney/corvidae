@@ -4602,6 +4602,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           message: `[bureau] Could not recover goal "${failure.goalRunId}": ${failure.reason}`,
         });
       }
+      // A goal recovery found it could not bring back (its controller kept
+      // ending, or something else holds its workflow) is a failure too, not a
+      // clean boot: it is reported by outcome rather than thrown.
+      for (const entry of goalRecovery.goals) {
+        if (entry.outcome !== 'unrecoverable') continue;
+        const reason = entry.detail ?? 'The goal could not be recovered.';
+        currentRecoveryPerRunFailures?.push({ runId: entry.goalRunId, reason });
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Goal "${entry.goalRunId}" is unrecoverable: ${reason}`,
+        });
+      }
     }
 
     const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
