@@ -194,7 +194,8 @@ function engineStatusToRunRefStatus(
  * without resuming it. Returns `undefined` when no transcript was ever
  * checkpointed (e.g. the run failed before its first step) or the checkpoint
  * read fails — mirroring the "tolerate a missing conversation" behavior of
- * the settle path in `recover()`'s success branch.
+ * the settle path in `recover()`'s success branch. With `requireConversation`,
+ * either case throws instead, so the caller can retry.
  */
 async function loadTerminalConversationHistory(
   checkpointStore: CheckpointStore | undefined,
@@ -204,7 +205,14 @@ async function loadTerminalConversationHistory(
   if (!checkpointStore) return undefined;
   try {
     const checkpoint = await checkpointStore.loadCheckpoint(runId);
-    if (checkpoint.conversation === null) return undefined;
+    if (checkpoint.conversation === null) {
+      // A caller that needs the transcript treats a checkpoint with none the
+      // same as an unreadable one: it must wait or fail, never seed from nothing.
+      if (requireConversation) {
+        throw new Error(`Run "${runId}" completed but its checkpoint holds no conversation.`);
+      }
+      return undefined;
+    }
     return Conversation.from(checkpoint.conversation).current;
   } catch (error) {
     // A caller that needs the transcript would rather retry than record the

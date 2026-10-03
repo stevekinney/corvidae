@@ -54,7 +54,7 @@ export async function runningGoal(): Promise<GoalStore> {
 export interface Script {
   /** Statuses `engine.get` answers, by workflow id. A missing key is `null`. */
   readonly workflows: Record<string, string>;
-  readonly finalizer?: { status: string } | null;
+  readonly finalizer?: { status: string; attempts?: number; error?: string } | null;
   /** Runs inside `engine.cancel`, before it settles. */
   readonly onCancel?: () => Promise<void>;
   readonly cancelThrows?: boolean;

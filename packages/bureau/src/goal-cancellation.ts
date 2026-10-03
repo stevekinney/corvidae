@@ -27,6 +27,11 @@
  * every condition terminal is `canceled`, anything else is
  * `cancellation-pending` and names what it saw unfinished, because
  * `engine.cancel` having resolved is not proof that a cancellation committed.
+ * The finalizer is read as the engine reports it: no finalizer owed (`null`, a
+ * controller that ended on its own) or `succeeded` is settled; `pending` and
+ * `running` are `finalizer`; `failed` is `finalizer-failed`, named apart because
+ * the engine has dead-lettered it and will not retry, so waiting cannot settle it.
+ * A failed finalizer is never answered `canceled`.
  */
 
 import { GOAL_CANCEL_SIGNAL } from '@lostgradient/operative';
@@ -197,6 +202,7 @@ export async function readBack(
     goalRunId,
     attemptRunIds,
     goal.status === 'canceled',
+    dependencies.diagnose,
   );
   return awaiting.length === 0
     ? { outcome: 'canceled', goal }
@@ -209,6 +215,7 @@ export async function unfinishedAfterCancellation(
   goalRunId: string,
   attemptRunIds: readonly string[],
   recordCanceled: boolean,
+  diagnose?: GoalControlDependencies['diagnose'],
 ): Promise<BureauGoalCancellationWait[]> {
   const awaiting: BureauGoalCancellationWait[] = [];
   if (!recordCanceled) awaiting.push('goal-record');
@@ -224,7 +231,16 @@ export async function unfinishedAfterCancellation(
   const finalizer = await engine
     .getFinalizerStatus(goalWorkflowId(goalRunId))
     .catch(() => undefined);
-  if (finalizer === undefined || (finalizer !== null && finalizer.status !== 'succeeded')) {
+  if (finalizer !== undefined && finalizer !== null && finalizer.status === 'failed') {
+    // Dead-lettered: the engine has stopped retrying, so asking again will not
+    // settle it. Say so, rather than letting it read as one still in progress.
+    awaiting.push('finalizer-failed');
+    diagnose?.({
+      level: 'error',
+      scope: 'goals',
+      message: `[bureau] The finalizer of goal "${goalRunId}" failed after ${finalizer.attempts} attempt${finalizer.attempts === 1 ? '' : 's'} and will not be retried: ${finalizer.error}`,
+    });
+  } else if (finalizer === undefined || (finalizer !== null && finalizer.status !== 'succeeded')) {
     awaiting.push('finalizer');
   }
   const runs = await Promise.all(

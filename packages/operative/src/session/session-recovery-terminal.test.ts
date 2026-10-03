@@ -355,3 +355,84 @@ describe('reconcileTerminalRunRef — a checkpoint that cannot be read', () => {
     expect(ref?.conversationBoundary).toBeDefined();
   });
 });
+
+describe('reconcileTerminalRunRef — a completed run whose checkpoint holds no conversation', () => {
+  async function nullConversationWorld() {
+    const sessionId = 'cor-851-null-conversation';
+    const runId = `${sessionId}:0`;
+    const store = await seedRunningSession(sessionId, runId);
+    const engine = createSessionEngine({
+      get: async () => ({
+        id: runId,
+        status: 'completed',
+        result: {
+          schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          runId,
+          steps: 1,
+          content: 'done',
+          finishReason: 'stop-condition',
+        },
+      }),
+    });
+    let conversation: ReturnType<Conversation['snapshot']> | null = null;
+    const checkpointStore = createCheckpointStoreFixture(async () => ({
+      conversation,
+      cursor: { totalUsage: {}, lastContent: 'done', schemaAttempts: 0 },
+      steps: [],
+    }));
+    const running = {
+      runId,
+      sequence: 0,
+      status: 'running',
+      startedAt: fixtureRuntime.clock.nowISO(),
+      agentName: 'agent',
+    } as const;
+    return {
+      sessionId,
+      store,
+      engine,
+      checkpointStore,
+      running,
+      commitConversation: () => {
+        const recovered = new Conversation(createConversationHistory());
+        recovered.appendUserMessage('hi');
+        conversation = recovered.snapshot();
+      },
+    };
+  }
+
+  it('by default marks the run terminal without its transcript, as recover() always has', async () => {
+    const { sessionId, store, engine, checkpointStore, running } = await nullConversationWorld();
+
+    await reconcileTerminalRunRef(store, engine, checkpointStore, sessionId, running);
+
+    const session = await store.load(sessionId);
+    const ref = session?.runs[0];
+    expect(ref?.status).toBe('completed');
+    expect(ref?.conversationBoundary).toBeUndefined();
+  });
+
+  it('when the transcript is required, leaves the run open until a conversation is committed', async () => {
+    const { sessionId, store, engine, checkpointStore, running, commitConversation } =
+      await nullConversationWorld();
+
+    expect(
+      await throwingRejectionOf(
+        reconcileTerminalRunRef(store, engine, checkpointStore, sessionId, running, {
+          requireConversation: true,
+        }),
+      ),
+    ).toThrow('no conversation');
+    const stranded = await store.load(sessionId);
+    expect(stranded?.runs[0]?.status).toBe('running');
+
+    commitConversation();
+    await reconcileTerminalRunRef(store, engine, checkpointStore, sessionId, running, {
+      requireConversation: true,
+    });
+    const settled = await store.load(sessionId);
+    const ref = settled?.runs[0];
+    expect(ref?.status).toBe('completed');
+    expect(ref?.conversationBoundary).toBeDefined();
+  });
+});

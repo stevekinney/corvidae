@@ -120,6 +120,7 @@ async function completeCancellation(
     record.goalRunId,
     runIds,
     true,
+    dependencies.diagnose,
   );
   return awaiting.length === 0
     ? { outcome: 'canceled' }

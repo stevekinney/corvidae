@@ -200,8 +200,15 @@ export type BureauGoalCancellationWait =
   | 'goal-record'
   /** The controller workflow has not reached a terminal status. */
   | 'controller'
-  /** The controller's finalizer is pending, running, or failed. */
+  /** The controller's finalizer is pending or running, or its status could not be read. */
   | 'finalizer'
+  /**
+   * The controller's finalizer failed and the engine dead-lettered it, so it
+   * will not be retried and waiting will not settle it. The goal is still
+   * `canceled` and never reads as done: whatever the finalizer was to stop
+   * (the active attempt's run) may be running and needs an operator.
+   */
+  | 'finalizer-failed'
   /** The in-flight attempt's run has not reached a terminal status. */
   | 'attempt-run';
 
@@ -211,12 +218,18 @@ export type BureauGoalCancellationWait =
  *
  * - `canceled`: a fresh read, taken after `engine.cancel` settled and the
  *   attempt was stopped, found the goal record `canceled`, the controller
- *   workflow terminal, its finalizer settled or not owed, and the in-flight
- *   attempt's run terminal or absent.
+ *   workflow terminal, its finalizer `succeeded` or not owed (a controller that
+ *   ended on its own staged nothing to finalize), and the in-flight attempt's
+ *   run terminal or absent. Nothing else is answered `canceled`.
  * - `cancellation-pending`: the cancellation marker is durably recorded, so the
  *   goal will end `canceled` and no controller transition can overtake it, but
- *   the read-back found something in `awaiting` still unfinished. Call
- *   `recover()` or `cancel()` again; both are idempotent.
+ *   the read-back found something in `awaiting` still unfinished. `finalizer`
+ *   (pending, running, or unreadable), `controller`, `attempt-run`, and
+ *   `goal-record` are in progress: call `recover()` or `cancel()` again; both
+ *   are idempotent. `finalizer-failed` is different: the engine dead-lettered
+ *   the finalizer and will not retry it, so repeating `cancel()` re-reads the
+ *   same failure and it is also written to the diagnostics. It is reported
+ *   rather than hidden, and is never answered `canceled`.
  * - `already-terminal`: the goal had already ended for a reason other than
  *   cancellation; nothing was changed. A goal that ended `canceled` is never
  *   answered this way: its controller and attempt run are stopped again and

@@ -59,11 +59,53 @@ describe('cancelGoal', () => {
   it.each([
     { label: 'pending', finalizer: { status: 'pending' } },
     { label: 'running', finalizer: { status: 'running' } },
-    { label: 'failed', finalizer: { status: 'failed' } },
   ])('is pending on the finalizer while it is $label', async ({ finalizer }) => {
     const { outcome } = await cancelWith({ workflows: settled, finalizer });
 
     expect(outcome).toMatchObject({ outcome: 'cancellation-pending', awaiting: ['finalizer'] });
+  });
+
+  it('is pending on the finalizer when its status cannot be read', async () => {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({ workflows: settled });
+    const unreadable = {
+      ...engine,
+      getFinalizerStatus: () => Promise.reject(new Error('storage unavailable')),
+    } as typeof engine;
+    const { control } = dependencies(store, unreadable);
+
+    const outcome = await cancelGoal(control, (await store.get('g1'))!, {});
+
+    expect(outcome).toMatchObject({ outcome: 'cancellation-pending', awaiting: ['finalizer'] });
+  });
+
+  it('reports a failed finalizer explicitly, with why, and never answers canceled', async () => {
+    const { outcome, diagnostics, store } = await cancelWith({
+      workflows: settled,
+      finalizer: { status: 'failed', attempts: 3, error: 'run adapter unreachable' },
+    });
+
+    expect(outcome).toMatchObject({
+      outcome: 'cancellation-pending',
+      awaiting: ['finalizer-failed'],
+    });
+    const message = diagnostics.map((diagnostic) => diagnostic.message).join('\n');
+    expect(message).toContain('failed after 3 attempts');
+    expect(message).toContain('run adapter unreachable');
+    // The record still says canceled: only the world's agreement is in doubt.
+    expect(await store.get('g1')).toMatchObject({ status: 'canceled' });
+  });
+
+  it('names a failed finalizer next to everything else that is unfinished', async () => {
+    const { outcome } = await cancelWith({
+      workflows: { 'goal:g1': 'running', 'goal-g1-a0': 'running' },
+      finalizer: { status: 'failed', attempts: 1, error: 'boom' },
+      cancelThrows: true,
+    });
+
+    expect(outcome).toMatchObject({
+      awaiting: ['controller', 'finalizer-failed', 'attempt-run'],
+    });
   });
 
   it('accepts a finalizer that has succeeded', async () => {
@@ -177,6 +219,46 @@ describe('cancelGoal', () => {
       // Its controller had already ended, so there was nothing to signal or cancel.
       expect(calls).toEqual([]);
       expect(await store.get('g1')).toEqual(ended);
+    });
+
+    it('reads the finalizer back on a retry after a restart: pending, then canceled once it succeeds', async () => {
+      const store = await canceledGoal();
+      const ended = (await store.get('g1'))!;
+
+      // A fresh process: the controller already ended, the finalizer is still owed.
+      const owed = scriptedEngine({ workflows: settled, finalizer: { status: 'pending' } });
+      expect(await cancelGoal(dependencies(store, owed.engine).control, ended, {})).toMatchObject({
+        outcome: 'cancellation-pending',
+        awaiting: ['finalizer'],
+      });
+
+      const done = scriptedEngine({ workflows: settled, finalizer: { status: 'succeeded' } });
+      expect(await cancelGoal(dependencies(store, done.engine).control, ended, {})).toMatchObject({
+        outcome: 'canceled',
+      });
+      // Nothing to signal or cancel: the controller had already ended.
+      expect(owed.calls).toEqual([]);
+      expect(done.calls).toEqual([]);
+    });
+
+    it('reports a finalizer that failed before the restart, and does not retry it', async () => {
+      const store = await canceledGoal();
+      const failed = scriptedEngine({
+        workflows: settled,
+        finalizer: { status: 'failed', attempts: 5, error: 'dead-lettered' },
+      });
+      const { control, diagnostics } = dependencies(store, failed.engine);
+
+      const outcome = await cancelGoal(control, (await store.get('g1'))!, {});
+
+      expect(outcome).toMatchObject({
+        outcome: 'cancellation-pending',
+        awaiting: ['finalizer-failed'],
+      });
+      expect(diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(
+        'dead-lettered',
+      );
+      expect(failed.calls).toEqual([]);
     });
 
     it('stops the run of the attempt that was in flight, not only the next one', async () => {
