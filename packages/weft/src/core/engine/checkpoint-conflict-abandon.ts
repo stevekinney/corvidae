@@ -85,27 +85,32 @@ export function emitCheckpointConflictWarning(
 }
 
 /**
- * Run an engine-level checkpoint persist and, when it throws
+ * Run an engine-level checkpoint persist and, when it rejects with
  * {@link WorkflowCheckpointConflictError}, abandon the workflow before the error
- * reaches the caller. Wrapping every engine entry into `persistCheckpoint`
+ * reaches the caller. Covering every engine entry into `persistCheckpoint`
  * (the generator checkpoint message, data operations, and the durableActivity
  * retry-sleep persist) means the generator is already gone, and the in-flight
  * operation no longer current, by the time any caller's failure handling turns
- * the throw into a failed operation result or a failed workflow. The error is
- * rethrown unchanged for callers that unwind through it.
+ * the rejection into a failed operation result or a failed workflow.
+ *
+ * Deliberately not `async`: the persist promise itself is returned, so a
+ * successful persist settles for its caller exactly when it would without this
+ * wrapper. An extra await here measurably exposed a latent ordering race in the
+ * bulk signal path (COR-1408 investigation). The abandonment runs as a side
+ * reaction registered before the caller can await, so on rejection it runs
+ * first; the caller still observes the original rejection unchanged.
  */
-export async function persistCheckpointAbandoningOnConflict(
+export function persistCheckpointAbandoningOnConflict(
   internals: EngineInternals,
   persist: () => Promise<void>,
 ): Promise<void> {
-  try {
-    await persist();
-  } catch (error) {
+  const persisted = persist();
+  void persisted.catch((error: unknown) => {
     if (error instanceof WorkflowCheckpointConflictError) {
       abandonWorkflowAfterCheckpointConflict(internals, error, { swallowPromiseRejection });
     }
-    throw error;
-  }
+  });
+  return persisted;
 }
 
 /**
