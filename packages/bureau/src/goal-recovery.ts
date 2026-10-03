@@ -487,9 +487,10 @@ const needsRecovery = (record: GoalState): boolean =>
  * run again. A run that does not exist or has ended is left alone; one that
  * cannot be read or stopped is reported, and stays owed until the next boot or
  * `recover()`. A canceled goal is settled the same way by
- * `settleCommittedCancellation`.
+ * `settleCommittedCancellation`. `close()` runs it first, because a closed and
+ * cleaned goal leaves the sweep.
  */
-async function stopOvertakenRuns(
+export async function stopOvertakenRuns(
   dependencies: GoalControlDependencies,
   record: GoalState,
 ): Promise<BureauGoalRecoveryEntry> {

@@ -362,9 +362,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
    * run and parks it; the goal's record is then rewritten to the ending that
    * overtook it, which is the record the dead process left.
    */
-  async function overtaken(ending: 'exhausted' | 'canceled') {
-    await crashWhileRunning();
-    const view = await inspection();
+  async function overtakingRecord(ending: 'exhausted' | 'canceled') {
     const scratch = createGoalStore(textValueStore(new MemoryStorage()));
     await scratch.create(pendingGoal());
     if (ending === 'canceled') {
@@ -383,7 +381,13 @@ describe('a goal that ended while its next attempt was still starting', () => {
     }
     const record = await scratch.get('g1');
     expect(record).toMatchObject({ status: ending, attempts: [] });
-    await view.overwrite(record!);
+    return record!;
+  }
+
+  async function overtaken(ending: 'exhausted' | 'canceled') {
+    await crashWhileRunning();
+    const view = await inspection();
+    await view.overwrite(await overtakingRecord(ending));
   }
 
   it.each(['exhausted', 'canceled'] as const)(
@@ -407,6 +411,26 @@ describe('a goal that ended while its next attempt was still starting', () => {
       expect(goal).toMatchObject({ status: ending, attempts: [] });
     },
   );
+
+  it('has the run stopped by close() when the ending lands after the boot sweep, so the goal does not leave the sweep with it alive', async () => {
+    database = createTestDatabase('late-start-close');
+    await crashWhileRunning();
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(hangUntilAborted) },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+    expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('running');
+    const view = await inspection();
+    await view.overwrite(await overtakingRecord('exhausted'));
+
+    const closed = await bureau.goals.close('g1');
+
+    expect(closed).toMatchObject({ outcome: 'closed', goal: { status: 'exhausted' } });
+    expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('cancelled');
+  });
 });
 
 describe('a goal when the validator it names is no longer registered', () => {

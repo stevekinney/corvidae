@@ -204,6 +204,18 @@ export type BureauGoalCloseOutcome =
       readonly goal: GoalState;
       readonly awaiting: readonly BureauGoalCancellationWait[];
     }
+  /**
+   * The goal is `exhausted`, but a run its ending overtook (an attempt's start
+   * the aggregate duration abandoned, which created its run afterwards) could
+   * not be stopped (`detail`). A closed, cleaned goal leaves the boot sweep, so
+   * closing one with that run alive would strand it. `closedAt` is not set; call
+   * again once it can be stopped.
+   */
+  | {
+      readonly outcome: 'cleanup-pending';
+      readonly goal: GoalState;
+      readonly detail: string;
+    }
   /** Lost the write to concurrent writers too many times in a row; call again. */
   | { readonly outcome: 'contended'; readonly goal: GoalState }
   /** A record is stored under this id but cannot be decoded: a permanent fault, not absence. */

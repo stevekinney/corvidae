@@ -27,7 +27,12 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { cancelGoal, settleCanceledGoal } from './goal-cancellation';
 import { cleanUpGoal, isCleanupDone } from './goal-cleanup';
 import { ensureController, type GoalControlDependencies } from './goal-controller';
-import { recoverEveryGoal, recoverGoal, UNREADABLE_RECORD_DETAIL } from './goal-recovery';
+import {
+  recoverEveryGoal,
+  recoverGoal,
+  stopOvertakenRuns,
+  UNREADABLE_RECORD_DETAIL,
+} from './goal-recovery';
 import {
   createGoalState,
   GoalObjectiveTooLargeError,
@@ -466,6 +471,20 @@ export function createBureauGoals<TName extends string = string>(
           outcome: 'cancellation-pending',
           goal: settled.goal,
           awaiting: settled.awaiting,
+        };
+      }
+    }
+    if (record.status === 'exhausted') {
+      // The ending of an exhausted goal may have overtaken an attempt's start.
+      // Closing and cleaning the goal takes it out of the boot sweep, which is
+      // what stops such a run, so it is stopped first and a run that cannot be
+      // stopped keeps the goal open.
+      const stopped = await stopOvertakenRuns(dependencies, record);
+      if (stopped.outcome === 'cleanup-pending') {
+        return {
+          outcome: 'cleanup-pending',
+          goal: record,
+          detail: stopped.detail ?? 'A run the goal ended over could not be stopped.',
         };
       }
     }
