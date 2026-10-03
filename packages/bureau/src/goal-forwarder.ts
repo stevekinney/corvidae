@@ -15,6 +15,11 @@
  * few times with backoff before it is diagnosed, since nothing else would send
  * the signal until the next boot.
  *
+ * A watch ends only when the attempt's run does. A wait that returns while the
+ * run is still going (a handle that rejected on a persistence fault) is
+ * followed by a read of the run, and a run still going is waited on again after
+ * a bounded, repeating backoff.
+ *
  * Three things keep a lost forwarder from parking a goal forever:
  *
  * - The signal id is `attempt-terminal:<goalRunId>:<n>`, so sending it twice
@@ -216,39 +221,71 @@ export function createAttemptForwarder(
     }
   }
 
+  /** Waits `delay` milliseconds on the runtime clock. */
+  const pause = (delay: number): Promise<void> =>
+    new Promise<void>((resolve) => {
+      runtime.timers.setTimeout(resolve, delay);
+    });
+
+  /**
+   * How long to wait before reattaching to a run that is still going after its
+   * wait ended: the retry delays again, the last one repeating. The delay is
+   * bounded; the number of reattachments is not, since a count would end the
+   * watch while the run is alive and leave its controller parked with no one to
+   * signal it until the next boot.
+   */
+  const reattachDelay = (round: number): number =>
+    retryDelaysMs[Math.min(round, retryDelaysMs.length - 1)] ?? 0;
+
   function watch(target: AttemptTarget, live?: AgentRun<unknown, boolean>): void {
     if (watching.has(target.runId)) return;
     const task = (async (): Promise<void> => {
-      await untilEnded(target, live);
-      if (isClosing()) return;
-      // The controller waits on this signal with no deadline of its own, and
-      // recovery runs only at boot, so a transient failure is retried here.
-      for (let retry = 0; ; retry += 1) {
-        try {
-          await track(forward(target));
-          return;
-        } catch (error) {
-          if (isClosing()) return;
-          const delay = retryDelaysMs[retry];
-          if (delay === undefined) {
-            diagnose({
-              level: 'error',
-              scope: 'goals',
-              message: `[bureau] Could not forward the end of attempt ${target.attemptIndex} of goal "${target.goalRunId}"; recovery will send it again: ${describe(error)}`,
-              cause: error,
-            });
-            return;
-          }
-          await new Promise<void>((resolve) => {
-            runtime.timers.setTimeout(resolve, delay);
-          });
-          if (isClosing()) return;
-        }
+      let handle = live;
+      // A wait on the run can end while the run has not: the engine's handle
+      // rejects on a transient persistence fault, and a successful `forward()`
+      // then reads the run as not yet terminal. Either way nothing else would
+      // signal the controller, so the watch goes on until the run actually ends.
+      for (let round = 0; ; round += 1) {
+        await untilEnded(target, handle);
+        handle = undefined;
+        if (isClosing()) return;
+        if ((await forwardWithRetries(target)) !== 'watching') return;
+        await pause(reattachDelay(round));
+        if (isClosing()) return;
       }
     })().finally(() => {
       watching.delete(target.runId);
     });
     watching.set(target.runId, task);
+  }
+
+  /**
+   * Forwards the attempt's ending, retrying a failure with backoff. The
+   * controller waits on this signal with no deadline of its own, and recovery
+   * runs only at boot, so a transient failure is retried here. `done` once it
+   * was sent, found nothing to send, or the retries were spent (and diagnosed).
+   */
+  async function forwardWithRetries(target: AttemptTarget): Promise<'done' | 'watching'> {
+    for (let retry = 0; ; retry += 1) {
+      try {
+        const outcome = await track(forward(target));
+        return outcome === 'watching' ? 'watching' : 'done';
+      } catch (error) {
+        if (isClosing()) return 'done';
+        const delay = retryDelaysMs[retry];
+        if (delay === undefined) {
+          diagnose({
+            level: 'error',
+            scope: 'goals',
+            message: `[bureau] Could not forward the end of attempt ${target.attemptIndex} of goal "${target.goalRunId}"; recovery will send it again: ${describe(error)}`,
+            cause: error,
+          });
+          return 'done';
+        }
+        await pause(delay);
+        if (isClosing()) return 'done';
+      }
+    }
   }
 
   async function reconcile(target: AttemptTarget): Promise<AttemptReconciliation> {

@@ -83,6 +83,8 @@ async function world(
     retryDelaysMs?: readonly number[];
     settle?: (attemptIndex: number, runId: string) => Promise<void>;
     resolveCostEstimation?: () => Promise<RunOptions['costEstimation'] | undefined>;
+    /** How many times the engine's handle for a run rejects its `result()` while the workflow is still going. */
+    handleResultFailures?: number;
   } = {},
 ) {
   const storage = new MemoryStorage();
@@ -98,10 +100,41 @@ async function world(
   const sent: SentSignal[] = [];
   // Settling and signalling share one log, so a test can say which came first.
   const order: string[] = [];
-  const spy = withSignal(engine, (workflowId, name, payload, deliveryOptions) => {
+  const signalling = withSignal(engine, (workflowId, name, payload, deliveryOptions) => {
     order.push('signal');
     sent.push({ workflowId, name, payload, signalId: deliveryOptions?.signalId });
     return Promise.resolve();
+  });
+  let handleResultFailures = forwarding.handleResultFailures ?? 0;
+  const resultRejections: number[] = [];
+  // A transient persistence fault: the handle's wait fails although the
+  // workflow it watches carries on.
+  const spy = new Proxy(signalling, {
+    get(target, property) {
+      if (property === 'getHandle') {
+        return (id: string) => {
+          const handle = target.getHandle(id);
+          return new Proxy(handle, {
+            get(handleTarget, handleProperty) {
+              if (handleProperty === 'result') {
+                return () => {
+                  if (handleResultFailures > 0) {
+                    handleResultFailures -= 1;
+                    resultRejections.push(resultRejections.length);
+                    return Promise.reject(new Error('persistence hiccup'));
+                  }
+                  return handleTarget.result();
+                };
+              }
+              const value = Reflect.get(handleTarget, handleProperty, handleTarget) as unknown;
+              return typeof value === 'function' ? (value.bind(handleTarget) as unknown) : value;
+            },
+          });
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === 'function' ? (value.bind(target) as unknown) : value;
+    },
   });
   const settled: Array<{ attemptIndex: number; runId: string }> = [];
   const durable: DurableActiveRunContext = { engine: spy, checkpointStore };
@@ -149,6 +182,7 @@ async function world(
     forwarder,
     diagnostics,
     costRunIds,
+    resultRejections,
     close: () => {
       closing = true;
     },
@@ -330,6 +364,30 @@ describe('createAttemptForwarder', () => {
     await pollUntil(async () => (await engine.get(target.runId)) !== null);
 
     expect(await forwarder.reconcile(target)).toBe('watching');
+    expect(sent).toEqual([]);
+
+    await engine.cancel(target.runId);
+    await pollUntil(() => sent.length === 1);
+    expect(sent[0]).toMatchObject({
+      name: 'attempt-terminal:0',
+      payload: { finishReason: 'aborted' },
+    });
+  });
+
+  it('keeps watching a run whose handle rejected while the workflow carried on, and forwards its ending when it comes', async () => {
+    const { durable, sent, forwarder, engine, resultRejections } = await world(
+      {},
+      { retryDelaysMs: [0], handleResultFailures: 2 },
+    );
+    createActiveRun(
+      options(() => new Promise(() => {})),
+      { ...durable, runId: target.runId, prompt: 'go' },
+    );
+    await pollUntil(async () => (await engine.get(target.runId)) !== null);
+
+    forwarder.watch(target);
+    await pollUntil(() => resultRejections.length === 2);
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
     expect(sent).toEqual([]);
 
     await engine.cancel(target.runId);
