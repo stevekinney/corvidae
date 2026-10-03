@@ -19,6 +19,13 @@
  * themselves and never pass through that admission. Ownership verification stays
  * as defence in depth for a store written by something else.
  *
+ * The host-level operate-by-id APIs (`cancelDurableRun`, `abortRun`, `deleteRun`,
+ * `deleteSession`, `getDurableRun`, `signalDurableRun`) take no principal and
+ * are not guarded for these ids: they are host-trusted by design, the same as
+ * for every other run, and a host that forwards a caller-supplied id to one of
+ * them owns authorizing it. The reservation closes squatting and purge
+ * collisions, which no authorization at the point of use can.
+ *
  * The prefixes are the single source: each builder of a goal-derived id starts
  * from one of them, and a test asserts that, so a new derived id cannot slip
  * outside the reservation.
@@ -48,4 +55,33 @@ export function reservedIdentifierReason(kind: string, id: string): string | und
   return prefix === undefined
     ? undefined
     : `reserved-identifier: ${kind} "${id}" begins with "${prefix}", a prefix durable goals own; choose another.`;
+}
+
+/**
+ * Event history records a run, a session, and a schedule under a workflow-shaped
+ * id (`run:<id>`, `session:<id>`, `schedule:<id>`; see `encodeOwner`). A child
+ * run's workflow id is its run id, and Weft deletes every event carrying a
+ * workflow's id when it purges that workflow, so a child named `run:<victim>`
+ * would erase the victim's history when it is purged (and fabricate a retained
+ * run owner while it lives). These prefixes are therefore refused for an id that
+ * names a workflow.
+ */
+export const EVENT_OWNER_WORKFLOW_ID_PREFIXES: readonly string[] = [
+  'run:',
+  'session:',
+  'schedule:',
+];
+
+/**
+ * Why `id` may not be chosen by an ordinary caller as the id of a workflow
+ * (`kind`); `undefined` when it may. Covers the goal prefixes and the
+ * event-history owner prefixes.
+ */
+export function reservedWorkflowIdentifierReason(kind: string, id: string): string | undefined {
+  const goalReason = reservedIdentifierReason(kind, id);
+  if (goalReason !== undefined) return goalReason;
+  const prefix = EVENT_OWNER_WORKFLOW_ID_PREFIXES.find((candidate) => id.startsWith(candidate));
+  return prefix === undefined
+    ? undefined
+    : `reserved-identifier: ${kind} "${id}" begins with "${prefix}", a prefix durable event history records its owners under; choose another.`;
 }

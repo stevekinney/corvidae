@@ -213,4 +213,57 @@ describe('createCheckpointStore', () => {
       expect(await store.loadCursor('run-2')).toEqual(cursor(9));
     });
   });
+
+  describe('run ids that contain the key delimiter', () => {
+    // A run id is caller-chosen (a child run, a goal's attempt). Keys are
+    // `durable-run:<id>:<part>`, so an unencoded `:` let one run's keys land
+    // inside another run's prefix.
+    const victim = 'goal-x-a0';
+    const intruder = 'goal-x-a0:step:q';
+
+    it('does not surface another run cursor or transcript as a step record', async () => {
+      const store = createCheckpointStore(createStore());
+      await store.saveStep(victim, {
+        step: 0,
+        content: 'v',
+        toolCalls: [],
+        results: [],
+        final: true,
+      });
+      await store.saveCursor(intruder, cursor(4));
+      await store.saveConversation(
+        intruder,
+        new Conversation(createConversationHistory()).snapshot(),
+      );
+
+      const steps = await store.loadSteps(victim);
+
+      expect(steps).toHaveLength(1);
+      expect(steps.map((record) => record.content)).toEqual(['v']);
+      const checkpoint = await store.loadCheckpoint(victim);
+      expect(checkpoint.cursor.step).toBe(0);
+    });
+
+    it('does not clear another run when a run is cleared, in either direction', async () => {
+      const store = createCheckpointStore(createStore());
+      await store.saveCursor(victim, cursor(1));
+      await store.saveCursor(intruder, cursor(2));
+
+      await store.clear(victim);
+      expect(await store.loadCursor(intruder)).toEqual(cursor(2));
+
+      await store.saveCursor(victim, cursor(1));
+      await store.clear(intruder);
+      expect(await store.loadCursor(victim)).toEqual(cursor(1));
+    });
+
+    it('keeps ids that differ only by an encoded delimiter apart', async () => {
+      const store = createCheckpointStore(createStore());
+      await store.saveCursor('a:b', cursor(1));
+      await store.saveCursor('a%3Ab', cursor(2));
+
+      expect(await store.loadCursor('a:b')).toEqual(cursor(1));
+      expect(await store.loadCursor('a%3Ab')).toEqual(cursor(2));
+    });
+  });
 });

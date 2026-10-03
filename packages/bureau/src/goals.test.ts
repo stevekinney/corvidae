@@ -245,6 +245,18 @@ describe('bureau.goals', () => {
       expect(await bureau.goals.list()).toEqual([]);
     });
 
+    it('refuses a goal id with a lone surrogate with the documented outcome rather than throwing', async () => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+
+      const created = await bureau.goals.create(goalRequest({ goalRunId: 'g\ud800' }));
+
+      expect(created).toMatchObject({ outcome: 'rejected', code: 'invalid-goal-run-id' });
+      expect(await bureau.goals.list()).toEqual([]);
+    });
+
     it('refuses an empty goal id with the documented outcome rather than throwing', async () => {
       const { bureau } = await boot({
         agents: { worker: workerAgent(hangUntilAborted) },

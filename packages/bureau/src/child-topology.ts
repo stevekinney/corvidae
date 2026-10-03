@@ -114,7 +114,7 @@ import type {
   ChildTopologyStore,
 } from './child-topology-store';
 import { principalAllows } from './principal-allows';
-import { reservedIdentifierReason } from './reserved-identifiers';
+import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
 // ---------------------------------------------------------------------------
@@ -1183,7 +1183,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     const reserved =
       request.childRunId === undefined
         ? undefined
-        : reservedIdentifierReason('child run identifier', request.childRunId);
+        : reservedWorkflowIdentifierReason('child run identifier', request.childRunId);
     if (reserved !== undefined) {
       return { outcome: 'rejected', code: 'reserved-child-run-id', reason: reserved };
     }

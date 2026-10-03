@@ -4,18 +4,31 @@ import type { ConversationSnapshot } from 'conversationalist';
 import type { RunCheckpoint, RunCursor, StepRecord } from './types';
 
 /**
+ * A run id is caller-chosen (a child run, a goal's attempt), and the key
+ * layout below separates its parts with `:`. An unencoded id containing `:`
+ * would put one run's keys inside another run's prefix (`x-a0:step:q`'s cursor
+ * under `x-a0`'s step prefix), so `loadSteps` would read it as a step and
+ * `clear` would delete it. `:` and `%` are escaped, which is injective and
+ * leaves every ordinary id (no `:`, no `%`) exactly as it was.
+ */
+function encodeRunId(runId: string): string {
+  return runId.replaceAll('%', '%25').replaceAll(':', '%3A');
+}
+
+/**
  * Key layout for durable run checkpoints. All keys are namespaced under
  * `durable-run:{runId}:` so a single backing store can hold many runs alongside
  * sessions, cache, and identity data without collision.
  */
 const keys = {
-  cursor: (runId: string) => `durable-run:${runId}:cursor`,
-  transcript: (runId: string) => `durable-run:${runId}:transcript`,
-  stepPrefix: (runId: string) => `durable-run:${runId}:step:`,
+  prefix: (runId: string) => `durable-run:${encodeRunId(runId)}:`,
+  cursor: (runId: string) => `${keys.prefix(runId)}cursor`,
+  transcript: (runId: string) => `${keys.prefix(runId)}transcript`,
+  stepPrefix: (runId: string) => `${keys.prefix(runId)}step:`,
   /** Steps are zero-padded so lexicographic `list()` order matches step order. */
   step: (runId: string, step: number) =>
-    `durable-run:${runId}:step:${String(step).padStart(10, '0')}`,
-} as const;
+    `${keys.stepPrefix(runId)}${String(step).padStart(10, '0')}`,
+};
 
 /**
  * A durable store for agent-run checkpoints, backed by a Weft
@@ -132,7 +145,7 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
     async clear(runId) {
       // `deletePrefix` is a required member of Weft's TextValueStore (0.2.1), so
       // a prefix wipe needs no optional-method fallback.
-      return store.deletePrefix(`durable-run:${runId}:`);
+      return store.deletePrefix(keys.prefix(runId));
     },
   };
 

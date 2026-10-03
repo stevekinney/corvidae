@@ -300,7 +300,7 @@ export class GoalObjectiveTooLargeError extends Error {
 
 /** The goal id cannot be used to name the workflows and signals a goal is made of. */
 export class GoalRunIdError extends Error {
-  readonly reason: 'empty' | 'control-character' | 'too-long';
+  readonly reason: 'empty' | 'control-character' | 'malformed' | 'too-long';
 
   constructor(reason: GoalRunIdError['reason'], message: string) {
     super(message);
@@ -1024,6 +1024,11 @@ function validateGoalRunId(goalRunId: string, maximumAttempts: number): void {
       'control-character',
       'The goal id must not contain control characters.',
     );
+  }
+  // A lone surrogate cannot be encoded (the record key is percent-encoded), so
+  // it would surface as a URIError from the store instead of this rejection.
+  if (!goalRunId.isWellFormed()) {
+    throw new GoalRunIdError('malformed', 'The goal id must be well-formed Unicode text.');
   }
   const last = Math.max(0, maximumAttempts - 1);
   const signals = [attemptSignalId(goalRunId, last), cancelSignalId(goalRunId)];

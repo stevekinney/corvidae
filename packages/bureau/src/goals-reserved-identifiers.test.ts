@@ -61,29 +61,46 @@ function thrown(action: () => unknown): unknown {
   return undefined;
 }
 
+async function expectChildRunIdRefused(bureau: Bureau, childRunId: string): Promise<void> {
+  bureau.run('planner', 'plan');
+  await pollUntil(async () => {
+    const parents = await durableIds(bureau, 'agent-run-');
+    return parents.length === 1;
+  });
+  const [parentRunId] = await durableIds(bureau, 'agent-run-');
+  if (parentRunId === undefined) throw new Error('the parent run never started');
+
+  const outcome = await bureau.children.dispatch({
+    parentRunId,
+    agentName: 'worker',
+    input: 'x',
+    childRunId,
+    principal: 'mallory',
+  });
+
+  expect(outcome).toMatchObject({ outcome: 'rejected', code: 'reserved-child-run-id' });
+  expect(await bureau.children.list(parentRunId)).toEqual([]);
+}
+
 describe('an id an ordinary caller chooses', () => {
   it.each(RESERVED)('may not be the child run id %s', async (childRunId) => {
     const bureau = await boot();
     await bureau.goals.create(goalRequest());
-    bureau.run('planner', 'plan');
-    await pollUntil(async () => {
-      const parents = await durableIds(bureau, 'agent-run-');
-      return parents.length === 1;
-    });
-    const [parentRunId] = await durableIds(bureau, 'agent-run-');
-    if (parentRunId === undefined) throw new Error('the parent run never started');
 
-    const outcome = await bureau.children.dispatch({
-      parentRunId,
-      agentName: 'worker',
-      input: 'x',
-      childRunId,
-      principal: 'mallory',
-    });
-
-    expect(outcome).toMatchObject({ outcome: 'rejected', code: 'reserved-child-run-id' });
-    expect(await bureau.children.list(parentRunId)).toEqual([]);
+    await expectChildRunIdRefused(bureau, childRunId);
   });
+
+  // Event history records a run, session, or schedule under `run:<id>`,
+  // `session:<id>`, or `schedule:<id>`, and a child's workflow id is its run id:
+  // a child with such an id would erase the owner's history when it is purged.
+  it.each(['run:r1', 'session:s1', 'schedule:sch1'])(
+    'may not be the child run id %s, an event-history owner id',
+    async (childRunId) => {
+      const bureau = await boot();
+
+      await expectChildRunIdRefused(bureau, childRunId);
+    },
+  );
 
   it.each(RESERVED)('may not be the session id %s of createRun', async (sessionId) => {
     const bureau = await boot();
