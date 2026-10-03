@@ -7,6 +7,7 @@
  * transcript the next process resumes it with, and the session it leaves
  * behind, which must hold one run per attempt and each message once.
  */
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { FreshAttemptSourceResolver, SessionStore } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -243,6 +244,57 @@ describe('a durable goal under the fresh-from-artifact policy', () => {
     expect(outcome).toMatchObject({ outcome: 'rejected', code: 'invalid-configuration' });
     expect((outcome as { reason: string }).reason).toContain('source-unresolved');
     expect(await bureau.goals.list()).toEqual([]);
+  });
+});
+
+describe('a repeated create of a fresh-from-artifact goal after its artifact expired', () => {
+  const EIGHT_DAYS_MS = 8 * 24 * 60 * 60 * 1000;
+
+  async function bootExpiring() {
+    const runtime = createManualRuntimeServices();
+    const { artifact, resolveSource } = await freshHandoff(
+      'Make the check pass.',
+      new Date(runtime.clock.now()),
+    );
+    const bureau = await boot({
+      agents: { worker: workerAgent(hangForever) },
+      validators: [createCheckValidator()],
+      resolveFreshAttemptSource: resolveSource,
+      runtime,
+    });
+    const request = goalRequest({
+      conversationPolicy: { kind: 'fresh-from-artifact', artifact },
+      instructions: 'Be careful.',
+    });
+    return { bureau, runtime, request };
+  }
+
+  it('adopts the goal it already recorded, because the retention window is a consumption rule', async () => {
+    const { bureau, runtime, request } = await bootExpiring();
+    expect(await bureau.goals.create(request)).toMatchObject({ outcome: 'created' });
+
+    runtime.setTime(runtime.clock.now() + EIGHT_DAYS_MS);
+
+    expect(await bureau.goals.create(request)).toMatchObject({
+      outcome: 'existing',
+      goal: { goalRunId: 'g1' },
+    });
+  });
+
+  it('still refuses a different goal whose artifact has expired', async () => {
+    const { bureau, runtime, request } = await bootExpiring();
+    expect(await bureau.goals.create(request)).toMatchObject({ outcome: 'created' });
+
+    runtime.setTime(runtime.clock.now() + EIGHT_DAYS_MS);
+
+    expect(await bureau.goals.create({ ...request, prompt: 'something else' })).toMatchObject({
+      outcome: 'rejected',
+      code: 'invalid-configuration',
+    });
+    expect(await bureau.goals.create({ ...request, goalRunId: 'g2' })).toMatchObject({
+      outcome: 'rejected',
+      code: 'invalid-configuration',
+    });
   });
 });
 

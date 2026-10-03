@@ -150,11 +150,16 @@ export function createBureauGoals<TName extends string = string>(
           );
     }
 
-    // Everything a `fresh-from-artifact` attempt will check about its artifact
-    // except that it is still inside its retention window when it is consumed:
-    // a goal whose artifact could never seed an attempt is refused before it is
-    // recorded, rather than failing on its first retry.
+    // Everything a `fresh-from-artifact` attempt will check about its artifact,
+    // so a goal whose artifact could never seed an attempt is refused before it
+    // is recorded rather than failing on its first retry. The outcome is held,
+    // not returned: a check that depends on the time it runs (the retention
+    // window, a source that has since gone) must not turn a repeated `create` of
+    // a goal already recorded into a refusal, which is how a caller heals a
+    // crash between recording the goal and starting its controller. It decides
+    // only a goal that is not already stored.
     const conversationPolicy = request.conversationPolicy;
+    let artifactRefusal: BureauGoalCreateOutcome | undefined;
     if (conversationPolicy?.kind === 'fresh-from-artifact') {
       try {
         await validateFreshAttemptArtifact(conversationPolicy.artifact, {
@@ -162,10 +167,11 @@ export function createBureauGoals<TName extends string = string>(
           now: clock.now(),
         });
       } catch (error) {
-        if (error instanceof FreshAttemptArtifactError) {
-          return rejected('invalid-configuration', `fresh-from-artifact: ${error.message}`);
-        }
-        throw error;
+        if (!(error instanceof FreshAttemptArtifactError)) throw error;
+        artifactRefusal = rejected(
+          'invalid-configuration',
+          `fresh-from-artifact: ${error.message}`,
+        );
       }
     }
 
@@ -200,6 +206,7 @@ export function createBureauGoals<TName extends string = string>(
         now: clock.nowISO(),
       });
     } catch (error) {
+      if (artifactRefusal !== undefined) return artifactRefusal;
       if (error instanceof GoalObjectiveTooLargeError) {
         return rejected('objective-too-large', error.message);
       }
@@ -210,15 +217,8 @@ export function createBureauGoals<TName extends string = string>(
       throw error;
     }
 
-    const created = await store.create(state);
-    if (created.status === 'duplicate') {
-      if (created.existing === undefined) {
-        return rejected(
-          'record-unreadable',
-          `The record stored for goal "${goalRunId}" is unreadable.`,
-        );
-      }
-      const { existing } = created;
+    /** A goal under this id is already stored: a repeat of the same request heals it, a different one conflicts. */
+    async function repeatOf(existing: GoalState): Promise<BureauGoalCreateOutcome> {
       if (configurationOf(existing) !== configurationOf(state)) {
         // A request from a different principal has no claim on what is stored.
         return principalAllows(request.principal, existing.principal)
@@ -230,6 +230,24 @@ export function createBureauGoals<TName extends string = string>(
       // its controller; repeating it is how a caller heals that.
       const ensured = await ensureController(dependencies, existing);
       return { outcome: 'existing', goal: ensured.goal, controller: ensured.controller };
+    }
+
+    if (artifactRefusal !== undefined) {
+      const existing = await store.get(goalRunId);
+      return existing !== undefined && configurationOf(existing) === configurationOf(state)
+        ? repeatOf(existing)
+        : artifactRefusal;
+    }
+
+    const created = await store.create(state);
+    if (created.status === 'duplicate') {
+      if (created.existing === undefined) {
+        return rejected(
+          'record-unreadable',
+          `The record stored for goal "${goalRunId}" is unreadable.`,
+        );
+      }
+      return repeatOf(created.existing);
     }
 
     // COR-638: a validator that cannot supply the evidence a goal demands ends
