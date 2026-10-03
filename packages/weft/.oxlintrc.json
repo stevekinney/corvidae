@@ -157,8 +157,6 @@
         "src/storage/indexeddb.ts",
         "src/storage/web-extension.ts",
         "src/workers/workflow-runner.ts",
-        "src/server/fleet-event-feed.ts",
-        "src/server/runtime/task-polling.ts",
         "src/server/runtime/task-dispatch.ts",
         "src/server/runtime/websocket-worker.ts"
       ],
