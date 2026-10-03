@@ -208,7 +208,7 @@ export type {
 } from './test/harness';
 export { BureauHarnessUnsupportedError, createBureauTestHarness } from './test/harness';
 export type { BureauIncompleteWork, BureauQuiescenceReport } from './test/quiescence';
-export { assertBureauQuiescent,BureauQuiescenceError } from './test/quiescence';
+export { assertBureauQuiescent, BureauQuiescenceError } from './test/quiescence';
 export type {
   AssembleReproductionArtifactOptions,
   ReproductionArtifact,

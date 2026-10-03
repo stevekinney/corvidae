@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { type BureauEventEnvelope,createBureauEventFeed } from './bureau-event-feed.ts';
+import { type BureauEventEnvelope, createBureauEventFeed } from './bureau-event-feed.ts';
 import {
   bureauEventEnvelopeSchema,
   type BureauEventsOperationEngine,
