@@ -9,7 +9,12 @@ import { MemoryStorage, textValueStore, WorkflowTeardownPendingError } from '@lo
 import { describe, expect, it } from 'bun:test';
 
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
-import { recoverEveryGoal, recoverGoal, recoveryEntryFailure } from './goal-recovery';
+import {
+  MAXIMUM_CONTROLLER_RESTARTS,
+  recoverEveryGoal,
+  recoverGoal,
+  recoveryEntryFailure,
+} from './goal-recovery';
 import { createGoalState, goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
 import { createGoalStore } from './goal-store';
 import type { GoalEngine } from './goal-types';
@@ -662,6 +667,76 @@ describe('restarting a controller that ended abnormally', () => {
 
     expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
     expect(entry.detail).toContain('audit log');
+  });
+
+  describe('a goal recovery gives up on', () => {
+    async function spentGoal() {
+      const store = await runningGoal();
+      for (let restart = 0; restart < MAXIMUM_CONTROLLER_RESTARTS; restart += 1) {
+        const counted = await store.recordControllerRestart('g1', NOW, restart);
+        expect(counted.status).toBe('updated');
+      }
+      return store;
+    }
+
+    it("cancels the attempt's run, which the fence cannot stop inside a model or tool call, and says so", async () => {
+      const store = await spentGoal();
+      const { engine } = scriptedEngine({
+        workflows: { 'goal:g1': 'failed', 'goal-g1-a0': 'running' },
+      });
+      const { control, stopped, fenced } = dependencies(store, engine);
+
+      const entry = await recoverGoal(control, 'g1');
+
+      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+      expect(entry.detail).toContain('"goal-g1-a0" was cancelled');
+      // Fenced as before, and the goal itself is left exactly as it was.
+      expect(fenced).toContain('goal-g1-a0');
+      expect(stopped).toContain('goal-g1-a0');
+      expect(await store.get('g1')).toMatchObject({ status: 'running' });
+    });
+
+    it('cancels the attempt run when the audit log has no room for a restart', async () => {
+      const store = await runningGoal();
+      const { engine } = scriptedEngine({
+        workflows: { 'goal:g1': 'failed', 'goal-g1-a0': 'running' },
+      });
+      const full = {
+        ...store,
+        recordControllerRestart: async () => ({
+          status: 'rejected' as const,
+          reason: 'audit-log-full' as const,
+          record: (await store.get('g1'))!,
+        }),
+      };
+      const { control, stopped } = dependencies(full, engine);
+
+      const entry = await recoverGoal(control, 'g1');
+
+      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+      expect(entry.detail).toContain('was cancelled');
+      expect(stopped).toContain('goal-g1-a0');
+    });
+
+    it('reports a run it could not cancel, without hiding the give-up, and keeps the claim fenced', async () => {
+      const store = await spentGoal();
+      const { engine } = scriptedEngine({
+        workflows: { 'goal:g1': 'failed', 'goal-g1-a0': 'running' },
+      });
+      const { control, diagnostics, fenced } = dependencies(store, engine, {
+        cancelRun: () => Promise.resolve({ status: 'failed', error: new Error('engine busy') }),
+      });
+
+      const entry = await recoverGoal(control, 'g1');
+
+      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+      expect(entry.detail).toContain('could not be cancelled');
+      expect(entry.detail).toContain('engine busy');
+      expect(fenced).toContain('goal-g1-a0');
+      expect(diagnostics.some((diagnostic) => diagnostic.message.includes('engine busy'))).toBe(
+        true,
+      );
+    });
   });
 
   it('restarts once the finalizer has settled', async () => {

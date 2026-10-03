@@ -30,8 +30,10 @@
  * to stop ended abnormally. It is restarted with `onTerminalConflict:
  * 'start-new'`, and the new instance resumes purely from the record. Each
  * restart advances `controllerRestarts`; past `MAXIMUM_CONTROLLER_RESTARTS` the
- * goal is reported `unrecoverable` and left exactly as it is. COR-638's
- * terminal reasons are not extended to cover it.
+ * goal is reported `unrecoverable` and left exactly as it is, except that no run
+ * is left working for it: its attempt claims are tombstoned and the attempt run is
+ * cancelled (`stopOrphanedAttempts`). COR-638's terminal reasons are not extended
+ * to cover it.
  *
  * ## The attempt
  *
@@ -290,6 +292,65 @@ async function commitWithoutEngine(
       };
 }
 
+/**
+ * What recovery does for a goal it gives up on: nothing will ever read an
+ * attempt's ending again, so no run may keep working for it. Two things stop
+ * one, because each covers what the other cannot.
+ *
+ * - Tombstoning the claims stops a start still in flight when the last
+ *   controller died, and a run past its claim takes no step the next time its own
+ *   fence reads it (`goal-attempt-fence.ts`). The fence acts at step boundaries
+ *   only.
+ * - Cancelling the run stops one that is inside a model or tool call right now,
+ *   which no fence can reach until that call returns, and an unbounded call never
+ *   does. It goes through the owned canceller (`cancelRun`), which stops only a
+ *   run whose recovery record is the goal's own, and is a no-op for a run that
+ *   never existed or already ended.
+ *
+ * The goal is not terminal and stays as it is; `cancel()` does both again.
+ * Returns the sentence the outcome's `detail` appends, which says what was done
+ * and, honestly, what could not be.
+ */
+async function stopOrphanedAttempts(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+): Promise<string> {
+  const fenced = await fenceOvertakenAttempts(dependencies, record);
+  const cancelled: string[] = [];
+  const failures: string[] = [];
+  for (const runId of runsToStop(record)) {
+    const stopped = await dependencies.cancelRun(runId).catch((error: unknown) => ({
+      status: 'failed' as const,
+      error,
+    }));
+    if (stopped.status === 'requested') cancelled.push(runId);
+    if (stopped.status === 'failed') {
+      failures.push(`run "${runId}": ${describe(stopped.error)}`);
+      dependencies.diagnose({
+        level: 'error',
+        scope: 'goals',
+        message: `[bureau] Could not stop run "${runId}" of goal "${record.goalRunId}", whose controller recovery gave up on; it is retried at the next boot or recover(): ${describe(stopped.error)}`,
+        cause: stopped.error,
+      });
+    }
+  }
+  const parts: string[] = [];
+  if (cancelled.length > 0) {
+    parts.push(
+      `The attempt run${cancelled.length === 1 ? '' : 's'} ${cancelled.map((id) => `"${id}"`).join(', ')} ${cancelled.length === 1 ? 'was' : 'were'} cancelled, because no controller is left to read ${cancelled.length === 1 ? 'its' : 'their'} ending.`,
+    );
+  }
+  if (failures.length > 0) {
+    parts.push(
+      `A run could not be cancelled and may still be working (${failures.join('; ')}); recover() or cancel() retries it.`,
+    );
+  }
+  if (!fenced) {
+    parts.push('A claim could not be tombstoned; recover() or cancel() retries it.');
+  }
+  return parts.length === 0 ? '' : ` ${parts.join(' ')}`;
+}
+
 async function recoverController(
   dependencies: GoalControlDependencies,
   record: GoalState,
@@ -359,14 +420,9 @@ async function recoverController(
 
   // Failed, timed out, or completed while the goal is not terminal.
   if (record.controllerRestarts >= MAXIMUM_CONTROLLER_RESTARTS) {
-    // No controller will ever read an attempt's ending again, so a start that was
-    // still in flight when the last controller died must not leave a run working
-    // for it. Tombstoning is what stops that run: its own fence reads the claim.
-    // The goal is not terminal and stays as it is; `cancel()` fences these again.
-    await fenceOvertakenAttempts(dependencies, record);
     return {
       outcome: 'unrecoverable',
-      detail: `The controller ended ${state.status} and has already been restarted ${record.controllerRestarts} times.`,
+      detail: `The controller ended ${state.status} and has already been restarted ${record.controllerRestarts} times.${await stopOrphanedAttempts(dependencies, record)}`,
     };
   }
   // A controller that ended still owes its finalizer until Weft says it does
@@ -416,10 +472,9 @@ async function recoverController(
     // with no controller and no room to record a restart: that is a goal
     // recovery gave up on, and it must not read as one that ended.
     if (counted.reason === 'terminal') return { outcome: 'already-terminal' };
-    await fenceOvertakenAttempts(dependencies, record);
     return {
       outcome: 'unrecoverable',
-      detail: `The controller ended ${state.status}, but the goal's audit log has no room to record a restart.`,
+      detail: `The controller ended ${state.status}, but the goal's audit log has no room to record a restart.${await stopOrphanedAttempts(dependencies, record)}`,
     };
   }
   if (counted.status === 'stale') {
