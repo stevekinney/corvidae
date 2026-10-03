@@ -31,12 +31,12 @@ import {
   GoalObjectiveTooLargeError,
   goalRecordKey,
   GoalRunIdError,
+  goalSessionId,
   type GoalState,
   goalTransitionId,
   goalWorkflowId,
   InvalidGoalStateError,
   isGoalState,
-  goalSessionId,
 } from './goal-state';
 import {
   createGoalStore,

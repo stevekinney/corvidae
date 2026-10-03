@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
 import { recoverEveryGoal, recoverGoal, recoveryEntryFailure } from './goal-recovery';
-import { createGoalState, goalRecordKey, type GoalState } from './goal-state';
+import { createGoalState, goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
 import { createGoalStore } from './goal-store';
 import type { GoalEngine } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
@@ -209,6 +209,216 @@ describe('a goal whose cancellation committed but whose cleanup is still owed', 
       ['g1', 'cancellation-pending'],
     ]);
     expect(calls).toContain('cancel:goal:g1');
+  });
+});
+
+/** A goal that ended `exhausted` (its aggregate duration) or `canceled` with no attempt ever recorded. */
+async function endedBeforeAnyAttempt(
+  status: 'exhausted' | 'canceled',
+  closure: { readonly closed?: boolean; readonly cleanedUp?: boolean } = {},
+) {
+  const kv = textValueStore(new MemoryStorage());
+  const store = createGoalStore(kv);
+  await store.create(
+    createGoalState({
+      goalRunId: 'g1',
+      identity: { name: 'goal', version: '1' },
+      objective: { agentName: 'worker', prompt: 'work' },
+      validator: { name: 'check', version: '1' },
+      conversationPolicy: { kind: 'continue' },
+      bounds: { maximumAttempts: 2, maximumTotalDurationMs: 1000 },
+      now: NOW,
+    }),
+  );
+  if (status === 'canceled') {
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    await commitCancellation(store, (await store.get('g1'))!, Date.parse(NOW));
+  } else {
+    const result = await store.applyTransition({
+      goalRunId: 'g1',
+      seq: 1,
+      transitionId: goalTransitionId('g1', 1),
+      to: 'exhausted',
+      at: NOW,
+      cause: 'the aggregate duration elapsed',
+      terminalReason: 'aggregate-budget-exceeded',
+    });
+    expect(result.status).toBe('applied');
+  }
+  if (closure.closed === true) await store.close('g1', NOW);
+  if (closure.cleanedUp === true) await store.markCleanedUp('g1', NOW);
+  return store;
+}
+
+describe('a goal that ended while its next attempt was still starting', () => {
+  // The start claimed the run and was abandoned when the deadline (or a
+  // cancellation) won; the late start created the run anyway and the process
+  // died before the start's own stand-down check could stop it. The goal is
+  // terminal, so nothing else will ever name that run: boot stops it.
+  it.each(['exhausted', 'canceled'] as const)(
+    'stops the run it left behind at boot, for a goal %s',
+    async (status) => {
+      const store = await endedBeforeAnyAttempt(status);
+      const workflows: Record<string, string> = { 'goal:g1': 'completed', 'goal-g1-a0': 'running' };
+      const { engine } = scriptedEngine({ workflows, finalizer: { status: 'succeeded' } });
+      const stopped: string[] = [];
+      const { control } = dependencies(store, engine, {
+        cancelRun: (runId) => {
+          stopped.push(runId);
+          workflows[runId] = 'cancelled';
+          return Promise.resolve({ status: 'requested' });
+        },
+      });
+
+      const report = await recoverEveryGoal(control);
+
+      expect(stopped).toEqual(['goal-g1-a0']);
+      expect(report).toEqual({ goals: [], failures: [] });
+      const after = await store.get('g1');
+      expect(after?.status).toBe(status);
+    },
+  );
+
+  it('leaves a run that has already ended alone', async () => {
+    const store = await endedBeforeAnyAttempt('exhausted');
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'cancelled' },
+    });
+    const { control, stopped } = dependencies(store, engine);
+
+    expect(await recoverEveryGoal(control)).toEqual({ goals: [], failures: [] });
+    expect(stopped).toEqual([]);
+  });
+
+  it('touches nothing once the goal is closed and its cleanup is recorded', async () => {
+    const store = await endedBeforeAnyAttempt('exhausted', { closed: true, cleanedUp: true });
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'running' },
+    });
+    const { control, stopped } = dependencies(store, engine);
+
+    expect(await recoverEveryGoal(control)).toEqual({ goals: [], failures: [] });
+    expect(stopped).toEqual([]);
+  });
+
+  it('is stopped by recover(id) too', async () => {
+    const store = await endedBeforeAnyAttempt('exhausted');
+    const workflows: Record<string, string> = { 'goal:g1': 'completed', 'goal-g1-a0': 'running' };
+    const { engine } = scriptedEngine({ workflows });
+    const stopped: string[] = [];
+    const { control } = dependencies(store, engine, {
+      cancelRun: (runId) => {
+        stopped.push(runId);
+        workflows[runId] = 'cancelled';
+        return Promise.resolve({ status: 'requested' });
+      },
+    });
+
+    expect(await recoverGoal(control, 'g1')).toEqual({
+      goalRunId: 'g1',
+      outcome: 'already-terminal',
+    });
+    expect(stopped).toEqual(['goal-g1-a0']);
+  });
+
+  it('is a failure of the boot, kept for the next one, when the run cannot be stopped', async () => {
+    const store = await endedBeforeAnyAttempt('exhausted');
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'running' },
+    });
+    const { control, diagnostics } = dependencies(store, engine, {
+      cancelRun: () => Promise.resolve({ status: 'failed', error: new Error('engine busy') }),
+    });
+
+    const report = await recoverEveryGoal(control);
+
+    expect(report.goals).toEqual([
+      {
+        goalRunId: 'g1',
+        outcome: 'cleanup-pending',
+        detail: expect.stringContaining('engine busy'),
+      },
+    ]);
+    expect(recoveryEntryFailure(report.goals[0]!)).toContain('engine busy');
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain('engine busy');
+    // Not closed, so the next sweep tries again.
+    expect(await recoverEveryGoal(control)).toMatchObject({
+      goals: [{ outcome: 'cleanup-pending' }],
+    });
+  });
+});
+
+describe('a closed goal whose cleanup could not be finished by this recovery', () => {
+  const closedFailedGoal = async () => {
+    const store = await runningGoal();
+    await store.applyTransition({
+      goalRunId: 'g1',
+      seq: 2,
+      transitionId: goalTransitionId('g1', 2),
+      to: 'failed',
+      at: NOW,
+      cause: 'attempt run failed',
+      terminalReason: 'attempt-run-failed',
+      attempt: { ...(await store.get('g1'))!.attempts[0]!, status: 'failed' },
+      active: null,
+    });
+    await store.close('g1', NOW);
+    return store;
+  };
+
+  it.each([
+    [
+      'a part that failed to prune',
+      () => Promise.resolve({ status: 'failed' as const, error: new Error('storage hiccup') }),
+      'storage hiccup',
+    ],
+    [
+      'a part that could not be reached',
+      () => Promise.resolve({ status: 'unresolved' as const, reason: 'timed-out' as const }),
+      'timed-out',
+    ],
+  ])('is reported as pending, not already terminal: %s', async (_name, cleanupWorkflow, detail) => {
+    const store = await closedFailedGoal();
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'failed' },
+    });
+    const { control } = dependencies(store, engine, { cleanupWorkflow });
+
+    const entry = await recoverGoal(control, 'g1');
+    const report = await recoverEveryGoal(control);
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'cleanup-pending' });
+    expect(entry.detail).toContain(detail);
+    expect(report.goals.map((reported) => reported.outcome)).toEqual(['cleanup-pending']);
+    expect(recoveryEntryFailure(entry)).toContain(detail);
+    const stored = await store.get('g1');
+    expect(stored?.cleanedUpAt).toBeUndefined();
+  });
+
+  it('is pending when there is no engine to prune with', async () => {
+    const store = await closedFailedGoal();
+    const { control } = dependencies(store, undefined as never, { getEngine: () => undefined });
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({ outcome: 'cleanup-pending' });
+    expect(entry.detail).toContain('durable engine');
+    expect(recoveryEntryFailure(entry)).toBeDefined();
+  });
+
+  it('is already terminal, and recorded as cleaned up, once everything is pruned', async () => {
+    const store = await closedFailedGoal();
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'failed' },
+    });
+    const { control } = dependencies(store, engine);
+
+    expect(await recoverGoal(control, 'g1')).toEqual({
+      goalRunId: 'g1',
+      outcome: 'already-terminal',
+    });
+    const stored = await store.get('g1');
+    expect(stored?.cleanedUpAt).toBeDefined();
   });
 });
 
@@ -702,6 +912,7 @@ describe('recoveryEntryFailure', () => {
   it.each([
     [entry({ goalRunId: 'g', outcome: 'unrecoverable', detail: 'gave up' }), 'gave up'],
     [entry({ goalRunId: 'g', outcome: 'restart-pending', detail: 'finalizer' }), 'finalizer'],
+    [entry({ goalRunId: 'g', outcome: 'cleanup-pending', detail: 'pruning' }), 'pruning'],
     [entry({ goalRunId: 'g', outcome: 'running', attempt: 'failed', detail: 'no run' }), 'no run'],
     [
       entry({

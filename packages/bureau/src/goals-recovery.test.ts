@@ -11,13 +11,14 @@
  * writes them.
  */
 import { OPERATIVE_RESOLVE_RUN_OPTIONS, readGenerationProfile } from '@lostgradient/operative';
-import { decode, KEYS } from '@lostgradient/weft';
+import { decode, KEYS, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { commitCancellation } from './goal-controller';
 import { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
 import { goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
+import { createGoalStore } from './goal-store';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import {
   cancelUntilSettled,
@@ -349,6 +350,63 @@ describe('a goal across a process restart', () => {
     await track(bureau);
     expect(await ended(bureau)).toMatchObject({ status: 'succeeded' });
   });
+});
+
+describe('a goal that ended while its next attempt was still starting', () => {
+  const NOW = '2026-10-02T12:00:00.000Z';
+  /**
+   * The deadline (or a cancellation) won the race against the attempt's start
+   * after the start had claimed the run, so the goal ended with no attempt
+   * recorded. The abandoned start then created the run anyway, and the process
+   * died before the start's own stand-down check. Bureau A really starts the
+   * run and parks it; the goal's record is then rewritten to the ending that
+   * overtook it, which is the record the dead process left.
+   */
+  async function overtaken(ending: 'exhausted' | 'canceled') {
+    await crashWhileRunning();
+    const view = await inspection();
+    const scratch = createGoalStore(textValueStore(new MemoryStorage()));
+    await scratch.create(pendingGoal());
+    if (ending === 'canceled') {
+      await scratch.requestCancellation('g1', { requestedAt: NOW }, NOW);
+      await commitCancellation(scratch, (await scratch.get('g1'))!, Date.parse(NOW));
+    } else {
+      await scratch.applyTransition({
+        goalRunId: 'g1',
+        seq: 1,
+        transitionId: goalTransitionId('g1', 1),
+        to: 'exhausted',
+        at: NOW,
+        cause: 'the aggregate duration elapsed',
+        terminalReason: 'aggregate-budget-exceeded',
+      });
+    }
+    const record = await scratch.get('g1');
+    expect(record).toMatchObject({ status: ending, attempts: [] });
+    await view.overwrite(record!);
+  }
+
+  it.each(['exhausted', 'canceled'] as const)(
+    'has the run it created stopped by the next boot, and stays %s',
+    async (ending) => {
+      database = createTestDatabase(`late-start-${ending}`);
+      await overtaken(ending);
+
+      const { bureau } = await bootOver({
+        path: database.path,
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+      await track(bureau);
+      await bureau.waitForRecovery?.();
+
+      expect(
+        await pollUntil(async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled'),
+      ).toBe(true);
+      const goal = await bureau.goals.get('g1');
+      expect(goal).toMatchObject({ status: ending, attempts: [] });
+    },
+  );
 });
 
 describe('a goal when the validator it names is no longer registered', () => {
@@ -1236,6 +1294,36 @@ describe('a goal read by a bureau with no durable engine', () => {
     expect(
       active !== undefined && 'runStatusError' in active ? active.runStatusError : undefined,
     ).toContain('durable engine');
+  });
+
+  it('is a failure of the boot, not a clean one, when the cleanup a closed goal owes has no engine to run on', async () => {
+    database = createTestDatabase('no-engine-owed-cleanup');
+    const view = await inspection();
+    const attempt = await seedRunning(view);
+    await view.store.applyTransition({
+      goalRunId: 'g1',
+      seq: 2,
+      transitionId: goalTransitionId('g1', 2),
+      to: 'failed',
+      at: '2026-10-02T12:00:00.000Z',
+      cause: 'attempt run failed',
+      terminalReason: 'attempt-run-failed',
+      attempt: { ...attempt, status: 'failed' },
+      active: null,
+    });
+    // The closure committed and the process died before it cleaned up.
+    const closure = await view.store.close('g1', '2026-10-02T12:00:01.000Z');
+    expect(closure.status).toBe('updated');
+    const bureau = await bootWithoutEngine();
+
+    const report = await bureau.waitForRecovery?.();
+
+    expect(report?.outcome).toBe('partial');
+    expect(report?.perRunFailures).toEqual([
+      { runId: 'g1', reason: expect.stringContaining('durable engine') },
+    ]);
+    const stored = await bureau.goals.get('g1');
+    expect(stored?.cleanedUpAt).toBeUndefined();
   });
 
   it('does not call a controller it could not look for one it never had: close() leaves cleanup unresolved', async () => {

@@ -26,10 +26,10 @@ import {
   goalAttemptId,
   goalAttemptRunId,
   goalDecisionId,
+  goalSessionId,
   type GoalState,
   goalTransitionId,
   goalWorkflowId,
-  goalSessionId,
 } from './goal-state';
 import { createGoalStore, type GoalTransitionRequest } from './goal-store';
 import type { BureauDiagnostic } from './types';

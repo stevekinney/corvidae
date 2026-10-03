@@ -318,6 +318,12 @@ export type BureauGoalCancelOutcome =
  * - `cancellation-pending`: `canceled` was committed, but the read found the
  *   controller, its finalizer, or the attempt's run not yet terminal (see
  *   `detail`); `cancel()` or `recover()` again finishes it.
+ * - `cleanup-pending`: the goal has ended, but something its ending still owed
+ *   could not be finished by this recovery (stopping a run its ending overtook,
+ *   or the checkpoint cleanup a closure owes, with a part that failed to prune,
+ *   could not be reached, or no engine to prune with; see `detail`). Nothing
+ *   retries on its own: the next boot, `recover()`, or `close()` does. It is a
+ *   failure in the boot report, not a clean boot.
  * - `unsupported-validation`: the goal had not started, and its validator cannot
  *   supply the deterministic evidence it requires, so recovery ended it
  *   `failed`/`unsupported-validation` without starting a controller.
@@ -335,6 +341,7 @@ export type BureauGoalRecoveryOutcome =
   | 'restart-pending'
   | 'canceled'
   | 'cancellation-pending'
+  | 'cleanup-pending'
   | 'unsupported-validation'
   | 'already-terminal'
   | 'not-found'

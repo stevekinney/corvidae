@@ -88,7 +88,13 @@
  * is `raceKeyed({ work, deadline })` (one branch more than the unbounded wait); the
  * choice depends only on the recorded read, so a replay opens the same race. The
  * abandoned activity is idempotent and its late effects stand down (the start port
- * re-reads the goal before it writes).
+ * re-reads the goal before it writes, and stops the run it created if the goal
+ * ended meanwhile). An abandoned start can outlive the goal's ending, and a
+ * process that dies between the run's creation and that stand-down leaves a run
+ * the terminal goal never names, so the host's recovery stops whatever run an
+ * `exhausted` or `canceled` goal's ending overtook (`attemptToStop`'s target
+ * and the last recorded attempt's), at every boot and `recover()`, until the
+ * goal is closed and its cleanup recorded.
  *
  * The decision is committed once even though the validator may run twice: the
  * transition carries `decisionId = <attemptId>:decision`, the store accepts the

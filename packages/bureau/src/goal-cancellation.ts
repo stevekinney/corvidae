@@ -177,7 +177,7 @@ export async function settleCanceledGoal(
  * Every run a cancellation of `record` must see stopped: the one `attemptToStop`
  * names, and, once the goal has moved past it, the attempt that was in flight.
  */
-function runsToStop(record: GoalState): readonly string[] {
+export function runsToStop(record: GoalState): readonly string[] {
   const named = attemptToStop(record).runId;
   const last = record.attempts.at(-1)?.runId;
   return last === undefined || last === named ? [named] : [named, last];

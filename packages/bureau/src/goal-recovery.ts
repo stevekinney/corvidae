@@ -44,7 +44,7 @@
 import { GOAL_CANCEL_SIGNAL, goalInputFeedbackFor } from '@lostgradient/operative';
 import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 
-import { settleCanceledGoal, unfinishedAfterCancellation } from './goal-cancellation';
+import { runsToStop, settleCanceledGoal, unfinishedAfterCancellation } from './goal-cancellation';
 import { cleanUpGoal, isCleanupDone } from './goal-cleanup';
 import {
   attemptToStop,
@@ -463,28 +463,90 @@ async function settleCommittedCancellation(
 const owesCleanup = (record: GoalState): boolean =>
   record.closedAt !== undefined && record.cleanedUpAt === undefined;
 
+/**
+ * An ending that can overtake a start. A cancellation, or the aggregate
+ * duration running out, abandons an attempt's start that is in flight; the
+ * abandoned start can still create its run afterwards, and a process that dies
+ * before the start's own stand-down check leaves that run alive under a goal
+ * that is already terminal. No other ending races a start.
+ */
+const mayHaveOvertakenAStart = (record: GoalState): boolean =>
+  record.status === 'canceled' || record.status === 'exhausted';
+
 /** Whether a record still has anything for recovery to do. */
 const needsRecovery = (record: GoalState): boolean =>
   !isTerminalGoalStatus(record.status) ||
-  (record.status === 'canceled' && record.closedAt === undefined) ||
+  (mayHaveOvertakenAStart(record) && record.closedAt === undefined) ||
   owesCleanup(record);
+
+/**
+ * Stops the run an exhausted goal's ending may have overtaken: the one its
+ * in-flight attempt left (`runsToStop` names it, or the next attempt's
+ * deterministic id for a start that died short of its commit). The goal is
+ * terminal and its controller is done, so nothing but this will ever name that
+ * run again. A run that does not exist or has ended is left alone; one that
+ * cannot be read or stopped is reported, and stays owed until the next boot or
+ * `recover()`. A canceled goal is settled the same way by
+ * `settleCommittedCancellation`.
+ */
+async function stopOvertakenRuns(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+): Promise<BureauGoalRecoveryEntry> {
+  const engine = dependencies.getEngine();
+  // Without an engine no run could have been resumed by this process, and this
+  // goal stays in the sweep until one can be read.
+  if (engine === undefined) return { goalRunId: record.goalRunId, outcome: 'already-terminal' };
+  const failures: string[] = [];
+  for (const runId of runsToStop(record)) {
+    try {
+      const run = await engine.get(runId);
+      if (run === null || TERMINAL_CONTROLLER_STATUSES.has(run.status)) continue;
+      const stopped = await dependencies.cancelRun(runId);
+      if (stopped.status === 'failed') throw stopped.error;
+    } catch (error) {
+      dependencies.diagnose({
+        level: 'error',
+        scope: 'goals',
+        message: `[bureau] Could not stop run "${runId}", which the ending of goal "${record.goalRunId}" overtook; it is retried at the next boot or recover(): ${describe(error)}`,
+        cause: error,
+      });
+      failures.push(`run "${runId}": ${describe(error)}`);
+    }
+  }
+  return failures.length === 0
+    ? { goalRunId: record.goalRunId, outcome: 'already-terminal' }
+    : {
+        goalRunId: record.goalRunId,
+        outcome: 'cleanup-pending',
+        detail: `The goal ended, but a run its ending overtook could not be stopped (${failures.join('; ')}).`,
+      };
+}
 
 /**
  * Finishes the checkpoint cleanup a closed goal still owes: the process that
  * committed the closure died before it finished, or a part could not be pruned
  * then. Recorded on the goal only once nothing is left owed, so a part that
- * still cannot be pruned is tried again by the next boot or `close()`.
+ * still cannot be pruned is tried again by the next boot or `close()`, and says
+ * so: the entry it returns is `cleanup-pending`, which the boot report counts as
+ * a failure. `undefined` when nothing is owed any longer.
  */
 async function finishOwedCleanup(
   dependencies: GoalControlDependencies,
   record: GoalState,
-): Promise<void> {
-  if (!owesCleanup(record) || dependencies.isClosing()) return;
+): Promise<BureauGoalRecoveryEntry | undefined> {
+  if (!owesCleanup(record) || dependencies.isClosing()) return undefined;
   const cleanup = await cleanUpGoal(dependencies, record);
   if (isCleanupDone(cleanup)) {
     await dependencies.store.markCleanedUp(record.goalRunId, dependencies.clock.nowISO());
-    return;
+    return undefined;
   }
+  const reason =
+    dependencies.getEngine() === undefined
+      ? 'there is no durable engine to prune it with'
+      : cleanup.status === 'failed'
+        ? describe(cleanup.error)
+        : `it is unresolved (${cleanup.status === 'unresolved' ? cleanup.reason : 'unknown'})`;
   if (cleanup.status === 'failed') {
     dependencies.diagnose({
       level: 'error',
@@ -493,6 +555,11 @@ async function finishOwedCleanup(
       cause: cleanup.error,
     });
   }
+  return {
+    goalRunId: record.goalRunId,
+    outcome: 'cleanup-pending',
+    detail: `The closed goal's checkpoint cleanup is not finished: ${reason}.`,
+  };
 }
 
 /** Recovers one goal. Never throws. */
@@ -508,9 +575,13 @@ export async function recoverGoal(
     const settled: BureauGoalRecoveryEntry =
       record.status === 'canceled'
         ? await settleCommittedCancellation(dependencies, record)
-        : { goalRunId, outcome: 'already-terminal' };
+        : record.status === 'exhausted'
+          ? await stopOvertakenRuns(dependencies, record)
+          : { goalRunId, outcome: 'already-terminal' };
     // Only once nothing is left to stop: pruning a history something still reads would lose it.
-    if (settled.outcome === 'already-terminal') await finishOwedCleanup(dependencies, record);
+    if (settled.outcome === 'already-terminal') {
+      return (await finishOwedCleanup(dependencies, record)) ?? settled;
+    }
     return settled;
   }
   let controller: ControllerRecovery;
@@ -600,8 +671,10 @@ export async function recoverEveryGoal(
  * `undefined` when it is not one. The boot report folds these into its
  * per-run failures, so `waitForRecovery()` does not read clean over a goal that
  * is stuck: one recovery gave up on, one with no controller and nothing to
- * restart it, one whose attempt could not be reconciled, or a cancellation
- * that cannot settle (a dead-lettered finalizer, or no engine to read it with).
+ * restart it, one whose attempt could not be reconciled, one that has ended but
+ * owes cleanup (a closure's pruning, or a run its ending overtook) it could not
+ * finish, or a cancellation that cannot settle (a dead-lettered finalizer, or no
+ * engine to read it with).
  * A cancellation still waiting on a controller, finalizer, or run in progress is
  * not one: those finish on their own.
  */
@@ -610,6 +683,9 @@ export function recoveryEntryFailure(entry: BureauGoalRecoveryEntry): string | u
   if (entry.outcome === 'unrecoverable') return reason('The goal could not be recovered.');
   if (entry.outcome === 'restart-pending') {
     return reason('The controller ended and its restart is pending.');
+  }
+  if (entry.outcome === 'cleanup-pending') {
+    return reason("The ended goal's cleanup is not finished.");
   }
   if (entry.attempt === 'failed') {
     return reason("The goal's attempt could not be reconciled.");

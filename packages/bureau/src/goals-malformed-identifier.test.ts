@@ -51,7 +51,11 @@ const MALFORMED = [
 ] as const;
 
 const OPERATIONS: ReadonlyArray<
-  readonly [string, (bureau: Bureau, goalRunId: string) => Promise<unknown>, (id: string) => unknown]
+  readonly [
+    string,
+    (bureau: Bureau, goalRunId: string) => Promise<unknown>,
+    (id: string) => unknown,
+  ]
 > = [
   ['get', (bureau, id) => bureau.goals.get(id), () => undefined],
   ['active', (bureau, id) => bureau.goals.active(id), () => undefined],
@@ -72,13 +76,16 @@ describe('a goal id with a lone surrogate', () => {
     });
   }
 
-  it.each(MALFORMED)('is not found when the caller is scoped to a principal: %s', async (_n, id) => {
-    const bureau = await boot();
-    expect(await bureau.goals.get(id, { principal: 'alice' })).toBeUndefined();
-    expect(await bureau.goals.cancel(id, { principal: 'alice' })).toEqual({
-      outcome: 'not-found',
-    });
-  });
+  it.each(MALFORMED)(
+    'is not found when the caller is scoped to a principal: %s',
+    async (_n, id) => {
+      const bureau = await boot();
+      expect(await bureau.goals.get(id, { principal: 'alice' })).toBeUndefined();
+      expect(await bureau.goals.cancel(id, { principal: 'alice' })).toEqual({
+        outcome: 'not-found',
+      });
+    },
+  );
 });
 
 describe('the goal store given a goal id with a lone surrogate', () => {
@@ -106,23 +113,26 @@ describe('the goal store given a goal id with a lone surrogate', () => {
     ).toEqual({ status: 'missing' });
   });
 
-  it.each(MALFORMED)('refuses to create a record under it with the store error: %s', async (_n, id) => {
-    const store = createGoalStore(textValueStore(new MemoryStorage()));
-    const state = createGoalState({
-      goalRunId: 'valid',
-      identity: { name: 'goal', version: '1' },
-      objective: { agentName: 'worker', prompt: 'work' },
-      validator: { name: 'check', version: '1' },
-      conversationPolicy: { kind: 'continue' },
-      bounds: { maximumAttempts: 2, maximumTotalSteps: 10 },
-      now: NOW,
-    });
-    let error: unknown;
-    try {
-      await store.create({ ...state, goalRunId: id, workflowId: `goal:${id}` });
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error).toBeInstanceOf(InvalidGoalStateError);
-  });
+  it.each(MALFORMED)(
+    'refuses to create a record under it with the store error: %s',
+    async (_n, id) => {
+      const store = createGoalStore(textValueStore(new MemoryStorage()));
+      const state = createGoalState({
+        goalRunId: 'valid',
+        identity: { name: 'goal', version: '1' },
+        objective: { agentName: 'worker', prompt: 'work' },
+        validator: { name: 'check', version: '1' },
+        conversationPolicy: { kind: 'continue' },
+        bounds: { maximumAttempts: 2, maximumTotalSteps: 10 },
+        now: NOW,
+      });
+      let error: unknown;
+      try {
+        await store.create({ ...state, goalRunId: id, workflowId: `goal:${id}` });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeInstanceOf(InvalidGoalStateError);
+    },
+  );
 });

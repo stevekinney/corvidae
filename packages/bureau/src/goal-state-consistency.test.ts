@@ -175,7 +175,7 @@ describe('the goal record decoder', () => {
     expect(isGoalState(record)).toBe(false);
   });
 
-  describe('the ids derived from the record\'s own goal', () => {
+  describe("the ids derived from the record's own goal", () => {
     const OTHER = 'goal-other';
     const rewrite = (record: Record<string, unknown>, index: number, change: object) => {
       attemptsOf(record)[index] = { ...attemptsOf(record)[index], ...change };
@@ -231,14 +231,16 @@ describe('the goal record decoder', () => {
     ];
 
     it.each(mismatches)('treats a %s goal with %s as corrupt', async (status, _name, mutate) => {
-      const base = (await records())[status] as GoalState;
+      const every = await records();
+      const base = every[status] as GoalState;
       const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
       mutate(record);
       expect(isGoalState(record)).toBe(false);
     });
 
     it('accepts the session a fork policy gives a later attempt, and refuses the trunk for it', async () => {
-      const base = (await records())['succeeded'] as GoalState;
+      const every = await records();
+      const base = every['succeeded'] as GoalState;
       const forked = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
       forked['conversationPolicy'] = {
         kind: 'fork-from-baseline',
@@ -280,7 +282,8 @@ describe('the goal record decoder', () => {
         active: { ...attemptWork(0), runId: foreign.runId },
       });
       expect(result.status).toBe('rejected');
-      expect((await store.get(GOAL))?.status).toBe('pending');
+      const stored = await store.get(GOAL);
+      expect(stored?.status).toBe('pending');
     });
   });
 
