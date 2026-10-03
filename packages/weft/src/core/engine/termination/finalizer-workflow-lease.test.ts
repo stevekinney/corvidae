@@ -32,8 +32,13 @@ import type { RunnableFinalizer } from './finalizer-activity.ts';
 import {
   claimTeardownMarker,
   encodeOwedClaim,
+  encodeRunningClaim,
+  fireAtAfterFired,
   observedMarkerHold,
+  OUTSIDE_FIRED_TIMER,
+  rearmLiveClaimWatchdog,
   rearmTeardownTimer,
+  reassertOwedAfterShutdown,
   settleOnRunningClaim,
   teardownBackoffMs,
   teardownTimerOperations,
@@ -259,7 +264,9 @@ for (const mode of ALL_MODES) {
 
         // A leftover timer for each earlier claim comes due ahead of the backoff.
         for (const staleToken of staleTokens) {
-          await storage.batch(teardownTimerOperations(staleToken, id, dueAt - 1_000));
+          await storage.batch(
+            teardownTimerOperations(staleToken, id, dueAt - 1_000, OUTSIDE_FIRED_TIMER),
+          );
         }
         clock.now = dueAt - 1_000;
         await engine.scheduler.tick(clock.now);
@@ -481,7 +488,13 @@ for (const mode of MULTI_ENGINE_MODES) {
       expect(destroyed).toHaveLength(1);
 
       // A zombie's leftover timer for the settled claim lands after the settle.
-      await rearmTeardownTimer(getInternals(engine), id, 'zombie-token', 1_000);
+      await rearmTeardownTimer(
+        getInternals(engine),
+        id,
+        'zombie-token',
+        1_000,
+        OUTSIDE_FIRED_TIMER,
+      );
       expect(await timerCount(storage)).toBe(1);
       clock.now += STALE_RUNNING_HORIZON_MS;
       await engine.scheduler.tick(clock.now);
@@ -514,7 +527,15 @@ for (const mode of MULTI_ENGINE_MODES) {
         timeout: '10s',
       };
       expect(
-        await claimTeardownMarker(getInternals(engine), id, owedBytes, 0, token, shortFinalizer),
+        await claimTeardownMarker(
+          getInternals(engine),
+          id,
+          owedBytes,
+          0,
+          token,
+          shortFinalizer,
+          OUTSIDE_FIRED_TIMER,
+        ),
       ).not.toBeNull();
 
       // The claimer dies. Its watchdog (and the terminal commit's first timer) fire here.
@@ -556,6 +577,7 @@ for (const mode of MULTI_ENGINE_MODES) {
           0,
           token,
           noopFinalizer(`destroy-ahead-claimer-${mode}`),
+          OUTSIDE_FIRED_TIMER,
         ),
       ).not.toBeNull();
       const watchdogAt = claimedAt + DEFAULT_STALE_HORIZON_MS;
@@ -588,11 +610,193 @@ for (const mode of MULTI_ENGINE_MODES) {
         `boundary-${mode}-1`,
         'boundary-token',
         30_000,
+        OUTSIDE_FIRED_TIMER,
       );
 
       expect(await timerKeys(storage)).toEqual([
         KEYS.teardownTimer(90_000, createTeardownTimerId('boundary-token')),
       ]);
+    });
+
+    it('a reclaim whose watchdog would land on the fired key keeps a watchdog past it', async () => {
+      // The previous claim armed its watchdog at claimedAt + 5m30s (no finalizer timeout). The
+      // registered finalizer now has a 10s timeout (40s horizon), so a peer ticking at that
+      // watchdog with a clock 40s behind it reclaims and arms its own watchdog at
+      // `claimedAt + 40s`, which is exactly the fired key. The scheduler deletes the fired key
+      // after the callback, so the watchdog must land strictly later or a reclaimer that dies
+      // leaves a running marker with no timer.
+      const storage = new MemoryStorage();
+      const start = 9_000_000;
+      const clock: Clock = { now: start };
+      const id = `reclaim-collide-${mode}-1`;
+      let token = '';
+      const finalizer = activity({
+        name: `destroy-reclaim-collide-${mode}`,
+        timeout: '10s',
+        execute: async () => {
+          // A peer takes the marker mid-run (same token, its own claim time) so this attempt's
+          // settle CAS loses and the claim watchdog is the only liveness left to inspect.
+          await storage.put(KEYS.teardownOwed(id), encodeRunningClaim(1, token, clock.now + 5_000));
+        },
+      });
+      await using engine = await createEngine(mode, storage, clock);
+      registerTeardownType(engine, `reclaim-collide-${mode}`, finalizer);
+      await startAndTerminate(engine, storage, `reclaim-collide-${mode}`, id);
+      token = (await readClaim(storage, id))!.token;
+      const owedBytes = (await storage.get(KEYS.teardownOwed(id)))!;
+      await storage.delete(KEYS.teardownTimer(start, createTeardownTimerId(token)));
+      expect(
+        await claimTeardownMarker(
+          getInternals(engine),
+          id,
+          owedBytes,
+          0,
+          token,
+          noopFinalizer(`destroy-reclaim-collide-claimer-${mode}`),
+          OUTSIDE_FIRED_TIMER,
+        ),
+      ).not.toBeNull();
+      const firedAt = start + DEFAULT_STALE_HORIZON_MS;
+      expect(await timerKeys(storage)).toEqual([
+        KEYS.teardownTimer(firedAt, createTeardownTimerId(token)),
+      ]);
+
+      clock.now = firedAt - 40_000; // claimedAt + 40s === firedAt, and the claim is stale.
+      await engine.scheduler.tick(firedAt);
+
+      expect(await timerKeys(storage)).toEqual([
+        KEYS.teardownTimer(firedAt + SELF_HEAL_INTERVAL_MS, createTeardownTimerId(token)),
+      ]);
+    });
+
+    it('a failed attempt backs off past the fired key when that key is ahead of the engine clock', async () => {
+      const storage = new MemoryStorage();
+      const clock: Clock = { now: 9_500_000 };
+      const failing = activity({
+        name: `destroy-ahead-failure-${mode}`,
+        execute: async () => {
+          throw new Error('teardown failed');
+        },
+      });
+      await using engine = await createEngine(mode, storage, clock);
+      registerTeardownType(engine, `ahead-failure-${mode}`, failing);
+      const id = `ahead-failure-${mode}-1`;
+      await startAndTerminate(engine, storage, `ahead-failure-${mode}`, id);
+
+      // The fired timer sits ten minutes ahead of the engine clock (a horizon armed by a peer
+      // whose clock ran ahead), so `now + backoff` would precede the key that just fired.
+      const token = (await readClaim(storage, id))!.token;
+      const firedAt = clock.now + 10 * 60_000;
+      await storage.delete(KEYS.teardownTimer(clock.now, createTeardownTimerId(token)));
+      await storage.batch(teardownTimerOperations(token, id, firedAt, OUTSIDE_FIRED_TIMER));
+      await engine.scheduler.tick(firedAt);
+
+      expect(await readClaim(storage, id)).toMatchObject({ status: 'owed', attempts: 1 });
+      const keys = await timerKeys(storage);
+      expect(keys).toHaveLength(1);
+      expect(keys.every((key) => key >= KEYS.teardownTimer(firedAt + 1, ''))).toBe(true);
+    });
+
+    it('every timer write a fired teardown callback can make lands strictly after the fired key', async () => {
+      // The clock reads well behind the fired key, so each write's natural target collides with
+      // or precedes it. Whatever the path, the scheduler deletes the fired key afterwards, so
+      // every key left for the token must sort strictly after it.
+      const firedAt = 20_000_000;
+      const pastFired = KEYS.teardownTimer(firedAt + 1, '');
+      const cases: {
+        name: string;
+        write: (context: {
+          engine: Engine;
+          id: string;
+          token: string;
+          owedBytes: Uint8Array;
+        }) => Promise<void>;
+      }[] = [
+        {
+          name: 'self-heal re-arm',
+          write: ({ engine, id, token }) =>
+            rearmTeardownTimer(getInternals(engine), id, token, SELF_HEAL_INTERVAL_MS, firedAt),
+        },
+        {
+          name: 'live-claim watchdog re-arm at the fired key',
+          write: ({ engine, id, token }) =>
+            rearmLiveClaimWatchdog(getInternals(engine), id, token, firedAt, firedAt),
+        },
+        {
+          name: 'live-claim watchdog re-arm before the fired key',
+          write: ({ engine, id, token }) =>
+            rearmLiveClaimWatchdog(getInternals(engine), id, token, firedAt - 1, firedAt),
+        },
+        {
+          name: 'claim watchdog',
+          write: async ({ engine, id, token, owedBytes }) => {
+            await claimTeardownMarker(
+              getInternals(engine),
+              id,
+              owedBytes,
+              0,
+              token,
+              noopFinalizer(`destroy-table-claim-${mode}`),
+              firedAt,
+            );
+          },
+        },
+        {
+          name: 'shutdown re-assertion',
+          write: async ({ engine, id, token, owedBytes }) => {
+            const hold = await claimTeardownMarker(
+              getInternals(engine),
+              id,
+              owedBytes,
+              0,
+              token,
+              noopFinalizer(`destroy-table-shutdown-${mode}`),
+              OUTSIDE_FIRED_TIMER,
+            );
+            await reassertOwedAfterShutdown(getInternals(engine), id, hold!, 0, firedAt);
+          },
+        },
+        {
+          name: 'raw teardown timer operations',
+          write: async ({ engine, id, token }) => {
+            await getInternals(engine).storage.batch(
+              teardownTimerOperations(token, id, firedAt - 5, firedAt),
+            );
+          },
+        },
+      ];
+
+      for (const { name, write } of cases) {
+        const storage = new MemoryStorage();
+        const clock: Clock = { now: 1_000_000 };
+        await using engine = await createEngine(mode, storage, clock);
+        registerTeardownType(
+          engine,
+          `table-${mode}`,
+          countingFinalizer(`destroy-table-${mode}`).destroy,
+        );
+        const id = `table-${mode}-${name.replaceAll(' ', '-')}`;
+        await startAndTerminate(engine, storage, `table-${mode}`, id);
+        const token = (await readClaim(storage, id))!.token;
+        const owedBytes = (await storage.get(KEYS.teardownOwed(id)))!;
+        // Drop the terminal commit's own timer: only the write under test may remain.
+        for (const key of await timerKeys(storage)) await storage.delete(key);
+
+        await write({ engine, id, token, owedBytes });
+
+        const keys = await timerKeys(storage);
+        expect(keys.length, name).toBeGreaterThan(0);
+        for (const key of keys) {
+          expect(key >= pastFired, `${name}: ${key}`).toBe(true);
+        }
+      }
+    });
+
+    it('fireAtAfterFired keeps a strictly later target and bumps any other one', () => {
+      expect(fireAtAfterFired(101, 100)).toBe(101);
+      expect(fireAtAfterFired(100, 100)).toBe(100 + SELF_HEAL_INTERVAL_MS);
+      expect(fireAtAfterFired(99, 100)).toBe(100 + SELF_HEAL_INTERVAL_MS);
+      expect(fireAtAfterFired(5, OUTSIDE_FIRED_TIMER)).toBe(5);
     });
 
     it('self-heal re-arms from engines with different clocks collapse onto one timer', async () => {
@@ -603,8 +807,20 @@ for (const mode of MULTI_ENGINE_MODES) {
       await using engineB = await createEngine(mode, storage, clockB);
       const id = `slot-${mode}-1`;
 
-      await rearmTeardownTimer(getInternals(engineA), id, 'slot-token', SELF_HEAL_INTERVAL_MS);
-      await rearmTeardownTimer(getInternals(engineB), id, 'slot-token', SELF_HEAL_INTERVAL_MS);
+      await rearmTeardownTimer(
+        getInternals(engineA),
+        id,
+        'slot-token',
+        SELF_HEAL_INTERVAL_MS,
+        OUTSIDE_FIRED_TIMER,
+      );
+      await rearmTeardownTimer(
+        getInternals(engineB),
+        id,
+        'slot-token',
+        SELF_HEAL_INTERVAL_MS,
+        OUTSIDE_FIRED_TIMER,
+      );
 
       // Both land on the same quantized slot, so the key is shared rather than doubled.
       expect(await timerKeys(storage)).toEqual([
@@ -631,6 +847,7 @@ for (const mode of MULTI_ENGINE_MODES) {
         0,
         token,
         finalizer,
+        OUTSIDE_FIRED_TIMER,
       );
       expect(liveHold).not.toBeNull();
       const runningBytes = await storage.get(KEYS.teardownOwed(id));
@@ -644,6 +861,7 @@ for (const mode of MULTI_ENGINE_MODES) {
         0,
         token,
         finalizer,
+        OUTSIDE_FIRED_TIMER,
       );
       expect(staleClaim).toBeNull();
       expect(
@@ -782,11 +1000,20 @@ describe('finalizer teardown under ownership: workflow-lease only (COR-1415)', (
       0,
       token,
       finalizer,
+      OUTSIDE_FIRED_TIMER,
     );
     expect(hold).not.toBeNull();
     expect(await storage.get(KEYS.teardownOwed(id))).toEqual(hold!.bytes);
     expect(
-      await claimTeardownMarker(getInternals(peer), id, owedBytes, 0, token, finalizer),
+      await claimTeardownMarker(
+        getInternals(peer),
+        id,
+        owedBytes,
+        0,
+        token,
+        finalizer,
+        OUTSIDE_FIRED_TIMER,
+      ),
     ).toBeNull();
   });
 });

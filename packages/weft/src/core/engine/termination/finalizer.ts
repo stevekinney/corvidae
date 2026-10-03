@@ -54,6 +54,7 @@ import {
   MAX_TEARDOWN_ATTEMPTS,
   newTeardownToken,
   observedMarkerHold,
+  OUTSIDE_FIRED_TIMER,
   rearmLiveClaimWatchdog,
   rearmTeardownTimer,
   reassertOwedAfterShutdown,
@@ -115,13 +116,11 @@ interface ResolvedTeardownDrive {
 }
 
 /**
- * The outcome of resolving a fired teardown timer into actionable drive inputs.
- * `'run'` carries the resolved inputs; `'cleared'` means the marker was deleted or there
- * is nothing left to do (a settle — no re-arm); `'yield'` means a live sibling holds the
- * marker, so this drive does not run, but it carries the watchdog deadline to re-arm (the
- * fired timer may have been the only one left); `'rearm'` means no winner owns the
- * next timer (a missing registration, a failed clear), so the drive must re-arm a self-heal
- * timer before returning and carries the token to re-arm.
+ * The outcome of resolving a fired teardown timer into actionable drive inputs. `'run'`
+ * carries the resolved inputs; `'cleared'` means nothing is left to do (a settle, no re-arm);
+ * `'yield'` means a live sibling holds the marker and carries the watchdog deadline to re-arm;
+ * `'rearm'` means no winner owns the next timer (a missing registration, a failed clear), so
+ * the drive re-arms a self-heal timer for the carried token.
  */
 type TeardownResolution =
   | { kind: 'run'; drive: ResolvedTeardownDrive }
@@ -217,26 +216,21 @@ async function resolveTeardownDrive(
   // only `activity()` populates this field.
   const finalizer = await resolveFinalizerRegistration(internals, state.type, state.revision);
   if (finalizer === undefined) {
-    // A node that recovers without this workflow type registered cannot run the
-    // finalizer yet — but the resource is still owed. Leave the marker and re-arm so a
-    // node that DOES register the type can run it. (Junior MF1 / Codex MF1.)
+    // Without this type registered the finalizer cannot run yet, but the resource is still
+    // owed: leave the marker and re-arm for a node that registers it. (Junior MF1 / Codex MF1.)
     return { kind: 'rearm', token };
   }
 
   if (!runningClaimIsStale(internals, claim, finalizer)) {
-    // A live sibling holds it and its claim CAS armed a watchdog in the same batch, but that
-    // watchdog may be the very timer that just fired (this engine's horizon or clock reads
-    // earlier than the claimer's), and the scheduler deletes a fired timer once its callback
-    // returns. Hand back the deterministic watchdog deadline so the caller re-arms it; the key
-    // is shared across engines, so this never multiplies timers.
+    // A live sibling holds it; its watchdog may be the very timer that just fired (this
+    // engine's horizon or clock differs), so hand back the deterministic deadline to re-arm.
     return { kind: 'yield', watchdogFireAt: liveClaimWatchdogFireAt(claim, finalizer, firedAt) };
   }
 
   const finalizerStateBytes = await internals.storage.get(KEYS.finalizerState(workflowId));
   if (finalizerStateBytes === null) {
-    // The recorded resource state is gone (a concurrent drive may have already settled
-    // it), so dead-letter conditioned on the bytes we read — a lost CAS means a winner
-    // already cleared the marker, so we stay silent. (Codex round-2 MF2.)
+    // The recorded resource state is gone, so dead-letter conditioned on the bytes we read; a
+    // lost CAS means a winner already cleared the marker. (Codex round-2 MF2.)
     await deadLetterMissingState(
       internals,
       workflowId,
@@ -295,22 +289,19 @@ async function deadLetterMissingState(
  * Drive one teardown attempt for a workflow whose `wf-teardown:` timer just fired.
  * Never throws: the scheduler treats a thrown timer callback as "retry on the next
  * tick", which would defeat the backoff schedule, so every failure path is handled
- * internally and the function returns normally (letting the scheduler delete the
- * fired timer; a backoff/self-heal reschedule writes a fresh timer entry). `firedAt` is the
- * fired timer's own `fireAt`; it keeps a yield's watchdog re-arm off the fired key, which the
- * scheduler deletes after this returns.
+ * internally and the function returns normally (the scheduler then deletes the fired timer).
+ * `firedAt` is the fired timer's own `fireAt`; every timer written here lands strictly after
+ * it (see `teardownTimerOperations`).
  */
 export async function runWorkflowFinalizer(
   internals: EngineInternals,
   workflowId: string,
   timerId: string,
   callbacks: FinalizerDriveCallbacks,
-  firedAt: number = Number.NEGATIVE_INFINITY,
+  firedAt: number = OUTSIDE_FIRED_TIMER,
 ): Promise<void> {
-  // Parse the token OUTSIDE the try so the catch can re-arm a self-heal timer: an
-  // unexpected error after the marker was observed but before a settle/re-arm would
-  // otherwise leave the marker stranded (the scheduler deletes the fired timer on a
-  // non-throwing return). `parseTeardownTimerId` is pure and never throws.
+  // Parse the token OUTSIDE the try so the catch can re-arm a self-heal timer (the scheduler
+  // deletes the fired timer on a non-throwing return). `parseTeardownTimerId` never throws.
   const token = parseTeardownTimerId(timerId);
   if (token === null) {
     return; // malformed timer id — nothing to drive.
@@ -322,7 +313,13 @@ export async function runWorkflowFinalizer(
       return;
     }
     if (resolution.kind === 'yield') {
-      await rearmLiveClaimWatchdog(internals, workflowId, token, resolution.watchdogFireAt);
+      await rearmLiveClaimWatchdog(
+        internals,
+        workflowId,
+        token,
+        resolution.watchdogFireAt,
+        firedAt,
+      );
       return;
     }
     if (resolution.kind === 'rearm') {
@@ -335,11 +332,10 @@ export async function runWorkflowFinalizer(
       );
       return;
     }
-    await driveResolvedTeardown(internals, workflowId, token, resolution.drive, callbacks);
+    await driveResolvedTeardown(internals, workflowId, token, resolution.drive, callbacks, firedAt);
   } catch (error) {
-    // Never propagate — a thrown timer callback re-fires with no backoff. Re-arm a
-    // self-heal timer first so an error mid-drive (after the marker was read, before a
-    // settle) does not strand the marker with no future timer. (Codex round-2 MF3.)
+    // Never propagate (a thrown callback re-fires with no backoff); re-arm first so an error
+    // mid-drive does not strand the marker with no future timer. (Codex round-2 MF3.)
     await rearmTeardownTimer(internals, workflowId, token, TEARDOWN_SELF_HEAL_DELAY_MS, firedAt);
     callbacks.handleCleanupError('runWorkflowFinalizer', error, workflowId);
   }
@@ -355,6 +351,7 @@ async function driveResolvedTeardown(
   token: string,
   drive: ResolvedTeardownDrive,
   callbacks: FinalizerDriveCallbacks,
+  firedAt: number,
 ): Promise<void> {
   const { state, claim, markerBytes, finalizer, finalizerInput } = drive;
   const attempt = claim.attempts + 1;
@@ -368,6 +365,7 @@ async function driveResolvedTeardown(
     claim.attempts,
     token,
     finalizer,
+    firedAt,
   );
   if (hold === null) {
     return;
@@ -394,17 +392,23 @@ async function driveResolvedTeardown(
     return;
   }
   if (result.abortedByShutdown) {
-    // A clean engine disposal aborted the attempt — NOT a finalizer failure. Re-assert
-    // `owed` at the UNCHANGED attempt count under a new token and arm a near-future timer, so
-    // the next owner retries from the same count and the resource is never dead-lettered just
-    // because the engine was disposed. This is the same engine-scoped CAS as every other
-    // settle, so it lands under `workflow-lease` too, where the earlier drive-claim design had
-    // to leave the marker `running` for the stale horizon. Under global `'lease'` disposal may
-    // release the lease first; the marker then stays `running` and the watchdog reclaims it.
-    await reassertOwedAfterShutdown(internals, workflowId, hold, claim.attempts);
+    // A clean engine disposal aborted the attempt, not a finalizer failure: re-assert `owed` at
+    // the UNCHANGED attempt count under a new token with a near-future timer, so the resource is
+    // never dead-lettered just because the engine was disposed. Under global `'lease'` disposal
+    // may release the lease first; the marker then stays `running` and the watchdog reclaims it.
+    await reassertOwedAfterShutdown(internals, workflowId, hold, claim.attempts, firedAt);
     return;
   }
-  await settleTeardownFailure(internals, workflowId, state, attempt, hold, result.error, callbacks);
+  await settleTeardownFailure(
+    internals,
+    workflowId,
+    state,
+    attempt,
+    hold,
+    result.error,
+    callbacks,
+    firedAt,
+  );
 }
 
 /**
@@ -445,6 +449,7 @@ async function settleTeardownFailure(
   hold: TeardownHold,
   error: unknown,
   callbacks: FinalizerDriveCallbacks,
+  firedAt: number,
 ): Promise<void> {
   const message = errorMessage(error);
   if (attempt >= MAX_TEARDOWN_ATTEMPTS) {
@@ -473,10 +478,9 @@ async function settleTeardownFailure(
     return;
   }
 
-  // Persist the incremented attempt back as `owed` under a NEW token, then reschedule the
-  // timer at the backoff deadline — conditioned on still owning the `running` claim we wrote.
-  // The new token is what keeps the backoff honest: the watchdog and any stray timer carry the
-  // old token, so they resolve to nothing owed instead of starting the next attempt early.
+  // Persist the incremented attempt as `owed` under a NEW token and reschedule at the backoff
+  // deadline, conditioned on still owning the `running` claim. The new token keeps the backoff
+  // honest: the watchdog and any stray timer carry the old one and resolve to nothing owed.
   const retryToken = newTeardownToken();
   const fireAt = internals.options.getNow() + teardownBackoffMs(attempt);
   const settled = await settleOnRunningClaim(internals, workflowId, hold, [
@@ -485,7 +489,7 @@ async function settleTeardownFailure(
       key: KEYS.teardownOwed(workflowId),
       value: encodeOwedClaim(attempt, retryToken),
     },
-    ...teardownTimerOperations(retryToken, workflowId, fireAt),
+    ...teardownTimerOperations(retryToken, workflowId, fireAt, firedAt),
   ]);
   if (!settled) {
     return;

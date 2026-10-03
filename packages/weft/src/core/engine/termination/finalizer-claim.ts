@@ -163,16 +163,41 @@ export interface TeardownDeadLetterRecord {
  */
 export const LEGACY_DEAD_LETTER_HISTORY_TOKEN = 'legacy';
 
-/** Build the operations that arm a fresh `wf-teardown:` timer at `fireAt` (same token). */
+/**
+ * The `firedAt` for a teardown timer write made OUTSIDE a fired teardown-timer callback (a
+ * test fixture or a direct primitive call): no timer has fired, so nothing constrains the key.
+ */
+export const OUTSIDE_FIRED_TIMER = Number.NEGATIVE_INFINITY;
+
+/**
+ * The fire time a timer written from inside a fired teardown-timer callback must use. The
+ * scheduler deletes the fired key once the callback returns, and a timer key embeds its
+ * `fireAt` and token, so a write that lands on the fired key (same token, same `fireAt`) is
+ * erased with it and strands the marker. A `desiredFireAt` strictly after `firedAt` is kept
+ * as is; anything else moves one self-heal interval past the fired key, a pure function of
+ * (desired, fired key) so engines still agree on the key.
+ */
+export function fireAtAfterFired(desiredFireAt: number, firedAt: number): number {
+  return desiredFireAt > firedAt ? desiredFireAt : firedAt + TEARDOWN_SELF_HEAL_DELAY_MS;
+}
+
+/**
+ * Build the operations that arm a `wf-teardown:` timer. This is the ONLY place a teardown
+ * timer is built for a write, and `firedAt` is required, so a callback-originated write cannot
+ * omit the fired key: the timer lands at `desiredFireAt`, or strictly after `firedAt` when
+ * `desiredFireAt` would not be (see {@link fireAtAfterFired}). Pass {@link OUTSIDE_FIRED_TIMER}
+ * only outside a fired-timer callback.
+ */
 export function teardownTimerOperations(
   token: string,
   workflowId: string,
-  fireAt: number,
+  desiredFireAt: number,
+  firedAt: number,
 ): BatchOperation[] {
   return buildTimerBatchOperations({
     id: createTeardownTimerId(token),
     workflowId,
-    fireAt,
+    fireAt: fireAtAfterFired(desiredFireAt, firedAt),
     kind: 'teardown',
   });
 }
@@ -203,19 +228,6 @@ function nextSelfHealSlot(now: number, delayMs: number): number {
 }
 
 /**
- * The self-heal slot for a re-arm made from inside a fired-timer callback. The scheduler
- * deletes the fired key once the callback returns, so a re-arm that lands on that key would be
- * erased and the marker stranded. Measuring the slot from the later of the engine clock and the
- * fired timer's `fireAt` makes it at least one full interval past the fired key, whatever this
- * engine's clock reads, while staying a pure function of (clock, fired key) so engines still
- * quantize onto shared slots. Every re-arm a fired callback makes goes through here, directly
- * or via {@link liveClaimWatchdogFireAt}'s fallback.
- */
-function selfHealSlotAfterFired(now: number, firedAt: number, delayMs: number): number {
-  return nextSelfHealSlot(Math.max(now, firedAt), delayMs);
-}
-
-/**
  * Write a `wf-teardown:` timer for `token` at exactly `fireAt`, engine-scoped (`null`), never
  * fenced on the workflow's claim: this write only arms a timer — a scheduling hint that cannot
  * change the marker or any workflow state. A stale or zombie timer is harmless: the drive
@@ -226,13 +238,14 @@ async function writeTeardownTimer(
   internals: EngineInternals,
   workflowId: string,
   token: string,
-  fireAt: number,
+  desiredFireAt: number,
+  firedAt: number,
 ): Promise<void> {
   try {
     await commitFencedEngineWrite(
       internals,
       null,
-      teardownTimerOperations(token, workflowId, fireAt),
+      teardownTimerOperations(token, workflowId, desiredFireAt, firedAt),
       [],
       () => new Error('teardown timer re-arm lost the lease fence'),
     );
@@ -249,47 +262,39 @@ async function writeTeardownTimer(
  * its own timer in the same batch, so a loser stays silent. The marker bytes are left
  * untouched — only the timer is (re)written, at a slot shared by every engine (see
  * {@link nextSelfHealSlot}). `firedAt` is the fired timer's own `fireAt`: the slot is always
- * strictly after it (see {@link selfHealSlotAfterFired}), so the scheduler's post-callback delete
- * of the fired key can never erase the re-arm. Omit it only outside a fired-timer callback.
+ * strictly after it (measured from the later of the clock and `firedAt`), so the post-callback delete
+ * of the fired key can never erase the re-arm. Pass {@link OUTSIDE_FIRED_TIMER} only outside a fired-timer callback.
  */
 export async function rearmTeardownTimer(
   internals: EngineInternals,
   workflowId: string,
   token: string,
   delayMs: number,
-  firedAt: number = Number.NEGATIVE_INFINITY,
+  firedAt: number,
 ): Promise<void> {
   await writeTeardownTimer(
     internals,
     workflowId,
     token,
-    selfHealSlotAfterFired(internals.options.getNow(), firedAt, delayMs),
+    nextSelfHealSlot(Math.max(internals.options.getNow(), firedAt), delayMs),
+    firedAt,
   );
 }
 
 /**
  * The fire time of the watchdog a drive re-arms when it yields to a `running` claim it judged
- * fresh. The claim CAS armed one watchdog at `claimedAt` plus the horizon it computed, and
- * that timer is the only liveness a crashed holder has; the yield consumed it (the scheduler
- * deletes the fired key), so without a re-arm the marker would stay `running` forever. That
- * happens whenever this engine's horizon or clock disagrees with the claimer's: a finalizer
- * timeout that changed between claim and fire, or a `tick(now)` driven ahead of `getNow()`.
- *
- * The target is `claimedAt` plus THIS drive's horizon — the same deterministic key every
- * engine computes for the same claim, so concurrent yields collapse onto one timer and, when
- * the horizons agree, onto the watchdog that is already armed. When that deadline is not past
- * the timer that just fired (a clock reading behind the scheduler's), the key would collide
- * with the fired one and the scheduler's post-callback delete would erase the re-arm, so the
- * target moves one self-heal interval beyond the fired timer instead — still a pure function
- * of the claim and the fired key, never of a per-engine clock.
+ * fresh: the claim CAS armed one watchdog, and the yield consumed it (the scheduler deletes
+ * the fired key), which happens whenever this engine's horizon or clock disagrees with the
+ * claimer's. The target is `claimedAt` plus THIS drive's horizon, a key every engine computes
+ * identically so concurrent yields collapse onto one timer; the write moves it past the fired
+ * key when needed (see {@link fireAtAfterFired}).
  */
 export function liveClaimWatchdogFireAt(
   claim: TeardownClaim,
   finalizer: RunnableFinalizer,
   firedAt: number,
 ): number {
-  const deadline = (claim.claimedAt ?? firedAt) + teardownStaleThresholdMs(finalizer);
-  return deadline > firedAt ? deadline : firedAt + TEARDOWN_SELF_HEAL_DELAY_MS;
+  return (claim.claimedAt ?? firedAt) + teardownStaleThresholdMs(finalizer);
 }
 
 /** Re-arm the watchdog for a live `running` claim this drive yielded to (see above). */
@@ -297,9 +302,10 @@ export async function rearmLiveClaimWatchdog(
   internals: EngineInternals,
   workflowId: string,
   token: string,
-  fireAt: number,
+  watchdogFireAt: number,
+  firedAt: number,
 ): Promise<void> {
-  await writeTeardownTimer(internals, workflowId, token, fireAt);
+  await writeTeardownTimer(internals, workflowId, token, watchdogFireAt, firedAt);
 }
 
 /**
@@ -355,7 +361,8 @@ export function newTeardownToken(): string {
  * it is byte-for-byte the `expectedBytes` we read, so concurrent claimers cannot both win.
  * The SAME batch arms a watchdog timer at `claimedAt` plus the stale-running horizon: a
  * winner that dies mid-finalizer is then reclaimed by the watchdog, and a loser never needs
- * a timer of its own. Returns the {@link TeardownHold} on success (the settle CAS
+ * a timer of its own; `firedAt` is the fired timer's `fireAt` (see {@link teardownTimerOperations}).
+ * Returns the {@link TeardownHold} on success (the settle CAS
  * precondition and the watchdog cleanup), or `null` on a lost CAS.
  */
 export async function claimTeardownMarker(
@@ -365,13 +372,17 @@ export async function claimTeardownMarker(
   attempts: number,
   token: string,
   finalizer: RunnableFinalizer,
+  firedAt: number,
 ): Promise<TeardownHold | null> {
   const claimedAt = internals.options.getNow();
   const runningBytes = encodeRunningClaim(attempts, token, claimedAt);
+  // The claim reuses the fired timer's token: a watchdog on the fired key would be erased by
+  // the scheduler's post-callback delete.
   const watchdogOperations = teardownTimerOperations(
     token,
     workflowId,
     claimedAt + teardownStaleThresholdMs(finalizer),
+    firedAt,
   );
   const claimed = await commitFencedEngineWriteAllowingPreconditionFailure(
     internals,
@@ -428,12 +439,13 @@ export async function reassertOwedAfterShutdown(
   workflowId: string,
   hold: TeardownHold,
   attempts: number,
+  firedAt: number,
 ): Promise<void> {
   const token = newTeardownToken();
   const fireAt = internals.options.getNow() + TEARDOWN_SELF_HEAL_DELAY_MS;
   await settleOnRunningClaim(internals, workflowId, hold, [
     { type: 'put', key: KEYS.teardownOwed(workflowId), value: encodeOwedClaim(attempts, token) },
-    ...teardownTimerOperations(token, workflowId, fireAt),
+    ...teardownTimerOperations(token, workflowId, fireAt, firedAt),
   ]);
 }
 

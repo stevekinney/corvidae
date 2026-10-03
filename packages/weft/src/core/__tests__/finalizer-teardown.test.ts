@@ -26,7 +26,10 @@ import { decode, encode } from '../codec.ts';
 import { Engine, WorkflowTeardownPendingError } from '../engine.ts';
 import { type TeardownClaim } from '../engine/state-utilities.ts';
 import type { TeardownDeadLetterRecord } from '../engine/termination.ts';
-import { teardownTimerOperations } from '../engine/termination/finalizer-claim.ts';
+import {
+  OUTSIDE_FIRED_TIMER,
+  teardownTimerOperations,
+} from '../engine/termination/finalizer-claim.ts';
 import type { AnyActivityDefinition, WorkflowContext } from '../types.ts';
 import { activity, workflow } from '../types.ts';
 import { collectTeardownEvents } from './finalizer-teardown.test-support.ts';
@@ -372,7 +375,12 @@ describe('engine-driven finalizer teardown (#446 Phase 2)', () => {
     await storage.batch([
       { type: 'put', key: KEYS.teardownOwed('teardown-crash-1'), value: encode(staleRunning) },
       // The claim CAS arms its watchdog in the same batch, so a crashed holder leaves one.
-      ...teardownTimerOperations(owed.token, 'teardown-crash-1', now + 330_000),
+      ...teardownTimerOperations(
+        owed.token,
+        'teardown-crash-1',
+        now + 330_000,
+        OUTSIDE_FIRED_TIMER,
+      ),
     ]);
     engine1[Symbol.dispose](); // "crash" — no in-flight drive, no leaked promise.
 
