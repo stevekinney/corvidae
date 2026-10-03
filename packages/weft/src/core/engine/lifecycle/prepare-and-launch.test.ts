@@ -155,8 +155,10 @@ describe('engine.prepare() / handle.launch() / handle.abandon() (COR-75)', () =>
     // Commits refresh the remembered bytes only once a baseline exists, so an
     // unprimed launch would leave the run's later checkpoints unconditioned.
     expect(internals.parkedInlineWorkflows.has(prepared.id)).toBe(true);
+    const storedCheckpoint = await storage.get(KEYS.checkpoint(prepared.id));
+    expect(storedCheckpoint).not.toBeNull();
     expect(getCommittedCheckpointBytes(internals, prepared.id)).toEqual(
-      await storage.get(KEYS.checkpoint(prepared.id)),
+      storedCheckpoint ?? undefined,
     );
   });
 
