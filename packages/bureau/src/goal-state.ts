@@ -536,6 +536,44 @@ const isPlainRecord = (value: unknown): value is PlainRecord =>
 const isString = (value: unknown): value is string => typeof value === 'string';
 const isNonEmptyString = (value: unknown): value is string => isString(value) && value.length > 0;
 const isOptionalString = (value: unknown): boolean => value === undefined || isString(value);
+
+const ISO_TIMESTAMP =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * A finite, calendar-valid ISO-8601 instant with a time and a zone. A string
+ * that merely parses is not enough: `Date.parse` rolls `2026-02-31` over into
+ * March, and a timestamp the elapsed-time arithmetic cannot read would count as
+ * no time at all, so a duration-bounded goal would never spend its budget.
+ */
+export function isIsoTimestamp(value: unknown): value is string {
+  if (!isString(value)) return false;
+  const match = ISO_TIMESTAMP.exec(value);
+  if (match === null) return false;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+const isTimestamp = isIsoTimestamp;
+const isOptionalTimestamp = (value: unknown): boolean =>
+  value === undefined || isIsoTimestamp(value);
 const isNonNegativeInteger = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0;
 const isNonNegativeNumber = (value: unknown): value is number =>
@@ -667,8 +705,8 @@ function isValidation(value: unknown): value is DurableGoalValidation {
     isPlainRecord(value) &&
     hasExactKeys(value, ['identity', 'startedAt', 'completedAt', 'outcome', 'decisionId']) &&
     isValidatorIdentity(value['identity']) &&
-    isNonEmptyString(value['startedAt']) &&
-    isNonEmptyString(value['completedAt']) &&
+    isTimestamp(value['startedAt']) &&
+    isTimestamp(value['completedAt']) &&
     isProjectedValidatorOutcome(value['outcome']) &&
     isNonEmptyString(value['decisionId'])
   );
@@ -705,8 +743,8 @@ export function isDurableGoalAttempt(value: unknown): value is DurableGoalAttemp
     isNonNegativeInteger(value['attemptIndex']) &&
     isNonEmptyString(value['runId']) &&
     isNonEmptyString(value['sessionId']) &&
-    isNonEmptyString(value['startedAt']) &&
-    isOptionalString(value['completedAt']) &&
+    isTimestamp(value['startedAt']) &&
+    isOptionalTimestamp(value['completedAt']) &&
     (value['finishReason'] === undefined || hasKey(FINISH_REASONS, value['finishReason'])) &&
     (value['validation'] === undefined || isValidation(value['validation'])) &&
     isOptionalString(value['feedback']) &&
@@ -722,7 +760,7 @@ function isActiveWork(value: unknown): value is ActiveGoalWork {
       hasExactKeys(value, ['kind', 'attemptId', 'runId', 'startedAt']) &&
       isNonEmptyString(value['attemptId']) &&
       isNonEmptyString(value['runId']) &&
-      isNonEmptyString(value['startedAt'])
+      isTimestamp(value['startedAt'])
     );
   }
   return (
@@ -730,7 +768,7 @@ function isActiveWork(value: unknown): value is ActiveGoalWork {
     hasExactKeys(value, ['kind', 'attemptId', 'validator', 'startedAt']) &&
     isNonEmptyString(value['attemptId']) &&
     isValidatorIdentity(value['validator']) &&
-    isNonEmptyString(value['startedAt'])
+    isTimestamp(value['startedAt'])
   );
 }
 
@@ -742,7 +780,7 @@ function isTransitionRecord(value: unknown): value is GoalTransitionRecord {
     isNonEmptyString(value['transitionId']) &&
     isGoalRunStatus(value['from']) &&
     isGoalRunStatus(value['to']) &&
-    isNonEmptyString(value['at']) &&
+    isTimestamp(value['at']) &&
     isString(value['cause'])
   );
 }
@@ -755,7 +793,7 @@ function isAuditEvent(value: unknown): value is GoalAuditEvent {
     isPlainRecord(value['payload']) &&
     isJsonValue(value['payload']) &&
     isNonEmptyString(value['dedupeKey']) &&
-    isNonEmptyString(value['at'])
+    isTimestamp(value['at'])
   );
 }
 
@@ -774,7 +812,7 @@ function isCancellationMarker(value: unknown): value is GoalCancellationMarker {
   return (
     isPlainRecord(value) &&
     hasExactKeys(value, ['requestedAt', 'principal', 'reason']) &&
-    isNonEmptyString(value['requestedAt']) &&
+    isTimestamp(value['requestedAt']) &&
     isOptionalString(value['principal']) &&
     isOptionalString(value['reason'])
   );
@@ -1017,6 +1055,35 @@ function hasOwnDerivedIds(value: PlainRecord): boolean {
   );
 }
 
+/**
+ * The aggregate usage is the sum of what the recorded attempts reported, taken
+ * in order, which is exactly how every transition builds it (the in-flight
+ * attempt reports nothing until its run ends). A record whose aggregate says
+ * otherwise is one a controller would trust instead of the attempts, so a goal
+ * that really spent 50 steps could resume with none counted against
+ * `maximumTotalSteps`. The cost is absent until some attempt reports one.
+ * `durationMs` is a reading of the clock rather than a sum, so it has no
+ * counterpart here.
+ */
+function isUsageConsistent(value: PlainRecord): boolean {
+  const attempts = value['attempts'] as readonly DurableGoalAttempt[];
+  const usage = value['usage'] as DurableGoalUsage;
+  let steps = 0;
+  let tokens = 0;
+  let costUsd: number | undefined;
+  for (const attempt of attempts) {
+    steps += attempt.usage.steps;
+    tokens += attempt.usage.tokens;
+    if (attempt.usage.costUsd !== undefined) costUsd = (costUsd ?? 0) + attempt.usage.costUsd;
+  }
+  return (
+    usage.attempts === attempts.length &&
+    usage.steps === steps &&
+    usage.tokens === tokens &&
+    usage.costUsd === costUsd
+  );
+}
+
 function isConsistent(value: PlainRecord): boolean {
   const transition = value['currentTransition'] as GoalTransitionRecord;
   const attempts = value['attempts'] as readonly DurableGoalAttempt[];
@@ -1028,6 +1095,7 @@ function isConsistent(value: PlainRecord): boolean {
     transition.transitionId === goalTransitionId(value['goalRunId'] as string, transition.seq) &&
     attempts.every((attempt, index) => attempt.attemptIndex === index) &&
     hasOwnDerivedIds(value) &&
+    isUsageConsistent(value) &&
     isStatusRelationConsistent(value) &&
     isTerminalPairing(value)
   );
@@ -1065,10 +1133,10 @@ function isShape(value: PlainRecord): boolean {
     isNonNegativeInteger(value['controllerRestarts']) &&
     Array.isArray(value['auditLog']) &&
     value['auditLog'].every(isAuditEntry) &&
-    isOptionalString(value['closedAt']) &&
-    isOptionalString(value['cleanedUpAt']) &&
-    isNonEmptyString(value['createdAt']) &&
-    isNonEmptyString(value['updatedAt'])
+    isOptionalTimestamp(value['closedAt']) &&
+    isOptionalTimestamp(value['cleanedUpAt']) &&
+    isTimestamp(value['createdAt']) &&
+    isTimestamp(value['updatedAt'])
   );
 }
 

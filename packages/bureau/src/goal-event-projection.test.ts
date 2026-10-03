@@ -102,7 +102,7 @@ function transition(
     seq,
     transitionId: goalTransitionId(GOAL, seq),
     to,
-    at: `2026-10-02T00:02:${String(10 + tick++).padStart(2, '0')}.000Z`,
+    at: new Date(Date.UTC(2026, 9, 2, 0, 2, 10 + tick++)).toISOString(),
     cause: `to-${to}`,
     ...overrides,
   };
@@ -127,6 +127,7 @@ async function toEvaluating(store: Store, index = 0, firstSeq = 1) {
   await store.applyTransition(
     transition(firstSeq, 'running', {
       attempt: attempt(index),
+      usage: { attempts: index + 1, steps: 0, tokens: 0, durationMs: 0 },
       active: {
         kind: 'attempt',
         attemptId: goalAttemptId(GOAL, index),
@@ -323,6 +324,7 @@ describe('the goal event projection', () => {
       await store.applyTransition(
         transition(1, 'running', {
           attempt: attempt(0),
+          usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
           active: {
             kind: 'attempt',
             attemptId: goalAttemptId(GOAL, 0),

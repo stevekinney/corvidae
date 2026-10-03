@@ -280,7 +280,11 @@ export function createGoalStore(
     const raw = await kv.get(key);
     if (raw === null) return { kind: 'missing' };
     const record = decodeGoalState(raw);
-    if (record === undefined) {
+    // A record is the goal named by its own id, and the key it is stored under
+    // is that id's key. A valid record for another goal sitting under this key
+    // is not this goal's, and returning it would let every read, and so every
+    // write, act on the wrong goal: fail closed like any other corruption.
+    if (record === undefined || goalRecordKey(record.goalRunId) !== key) {
       onCorrupt(key);
       return { kind: 'corrupt' };
     }

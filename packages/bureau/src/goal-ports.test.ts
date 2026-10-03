@@ -1190,6 +1190,7 @@ describe('runValidator', () => {
       to: 'evaluating',
       at: NOW,
       cause: 'attempt 0 reached stop-condition',
+      usage: { attempts: 1, steps: 1, tokens: 0, durationMs: 0 },
       attempt: { ...attemptZero, finishReason: 'stop-condition', status: 'evaluating' },
       active: { kind: 'validation', attemptId: 'g1:a0', validator: CHECK, startedAt: NOW },
     });
@@ -1229,6 +1230,7 @@ describe('runValidator', () => {
       to: 'running',
       at: NOW,
       cause: 'attempt 1 started',
+      usage: { attempts: 2, steps: 1, tokens: 0, durationMs: 0 },
       attempt: {
         attemptId: 'g1:a1',
         attemptIndex: 1,
@@ -1278,6 +1280,7 @@ describe('runValidator', () => {
       to: 'running',
       at: NOW,
       cause: 'attempt 0 started',
+      usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
       attempt: {
         attemptId: 'g1:a0',
         attemptIndex: 0,

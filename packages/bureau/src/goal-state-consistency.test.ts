@@ -22,7 +22,7 @@ const GOAL = 'goal-consistency';
 const VALIDATOR = { name: 'tests@bureau', version: '1.0.0' };
 const STARTED = '2026-10-02T00:00:05.000Z';
 let tick = 0;
-const at = (): string => `2026-10-02T00:01:${String(10 + tick++).padStart(2, '0')}.000Z`;
+const at = (): string => new Date(Date.UTC(2026, 9, 2, 0, 1, 10 + tick++)).toISOString();
 
 function attempt(index: number, overrides: Partial<DurableGoalAttempt> = {}): DurableGoalAttempt {
   return {
@@ -36,6 +36,9 @@ function attempt(index: number, overrides: Partial<DurableGoalAttempt> = {}): Du
     ...overrides,
   };
 }
+
+/** The aggregate a record carries once `count` attempts have started and nothing was spent. */
+const usageAfter = (count: number) => ({ attempts: count, steps: 0, tokens: 0, durationMs: 0 });
 
 const attemptWork = (index: number) =>
   ({
@@ -87,7 +90,11 @@ async function records(): Promise<Record<string, GoalState>> {
     now: '2026-10-02T00:00:00.000Z',
   });
   await store.create(pending);
-  const running = await send(store, 'running', { attempt: attempt(0), active: attemptWork(0) });
+  const running = await send(store, 'running', {
+    attempt: attempt(0),
+    usage: usageAfter(1),
+    active: attemptWork(0),
+  });
   const evaluating = await send(store, 'evaluating', {
     attempt: attempt(0, { status: 'evaluating', finishReason: 'stop-condition' }),
     active: validationWork(0),
@@ -96,7 +103,11 @@ async function records(): Promise<Record<string, GoalState>> {
     attempt: attempt(0, { status: 'failed', finishReason: 'stop-condition' }),
     active: null,
   });
-  await send(store, 'running', { attempt: attempt(1), active: attemptWork(1) });
+  await send(store, 'running', {
+    attempt: attempt(1),
+    usage: usageAfter(2),
+    active: attemptWork(1),
+  });
   await send(store, 'evaluating', {
     attempt: attempt(1, { status: 'evaluating', finishReason: 'stop-condition' }),
     active: validationWork(1),
@@ -110,6 +121,16 @@ async function records(): Promise<Record<string, GoalState>> {
 }
 
 type Mutation = (record: Record<string, unknown>) => void;
+
+/**
+ * Keeps the aggregate attempt count in step with a mutated attempts array, so a
+ * contradiction is refused for the contradiction it is and not because the
+ * aggregate no longer sums the attempts (`goal-store.test.ts` covers that).
+ */
+function syncAttemptCount(record: Record<string, unknown>): void {
+  const usage = record['usage'] as Record<string, unknown>;
+  usage['attempts'] = (record['attempts'] as unknown[]).length;
+}
 
 const attemptsOf = (record: Record<string, unknown>) =>
   record['attempts'] as Array<Record<string, unknown>>;
@@ -177,6 +198,7 @@ describe('the goal record decoder', () => {
     const base = every[status] as GoalState;
     const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
     mutate(record);
+    syncAttemptCount(record);
     expect(isGoalState(record)).toBe(false);
   });
 
@@ -240,6 +262,7 @@ describe('the goal record decoder', () => {
       const base = every[status] as GoalState;
       const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
       mutate(record);
+      syncAttemptCount(record);
       expect(isGoalState(record)).toBe(false);
     });
 

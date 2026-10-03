@@ -73,7 +73,7 @@ function setup(corrupt: string[] = []) {
 }
 
 let clock = 0;
-const at = () => `2026-10-02T00:00:${String(10 + clock++).padStart(2, '0')}.000Z`;
+const at = () => new Date(Date.UTC(2026, 9, 2, 0, 0, 10 + clock++)).toISOString();
 
 function attempt(index: number, overrides: Partial<DurableGoalAttempt> = {}): DurableGoalAttempt {
   return {
@@ -89,6 +89,9 @@ function attempt(index: number, overrides: Partial<DurableGoalAttempt> = {}): Du
 }
 
 /** The in-flight attempt work a `running` record must carry. */
+/** The aggregate a record carries once its first attempt has started and reported nothing yet. */
+const FIRST_ATTEMPT_USAGE = { attempts: 1, steps: 0, tokens: 0, durationMs: 0 } as const;
+
 const attemptWork = (index: number) =>
   ({
     kind: 'attempt',
@@ -654,6 +657,7 @@ describe('createGoalStore applyTransition', () => {
             status: 'passed',
             validation: passed,
             finishReason: 'stop-condition',
+            usage: { steps: 4, tokens: 90, costUsd: 0.01 },
           }),
           usage: { attempts: 1, steps: 4, tokens: 90, costUsd: 0.01, durationMs: 1000 },
           active: null,
@@ -764,7 +768,11 @@ describe('createGoalStore applyTransition', () => {
       await toEvaluating(store);
       const request = transition(3, 'succeeded', {
         terminalReason: 'validator-passed',
-        attempt: attempt(0, { status: 'passed', finishReason: 'stop-condition' }),
+        attempt: attempt(0, {
+          status: 'passed',
+          finishReason: 'stop-condition',
+          usage: { steps: 4, tokens: 90 },
+        }),
         usage: { attempts: 1, steps: 4, tokens: 90, durationMs: 1000 },
         active: null,
       });
@@ -779,7 +787,11 @@ describe('createGoalStore applyTransition', () => {
     it('lets exactly one of two concurrent identical commits apply', async () => {
       const { store } = setup();
       await created(store);
-      const request = transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) });
+      const request = transition(1, 'running', {
+        attempt: attempt(0),
+        usage: FIRST_ATTEMPT_USAGE,
+        active: attemptWork(0),
+      });
 
       const results = await Promise.all([
         store.applyTransition(request),
@@ -796,7 +808,11 @@ describe('createGoalStore applyTransition', () => {
       await created(store);
       const first = applied(
         await store.applyTransition(
-          transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) }),
+          transition(1, 'running', {
+            attempt: attempt(0),
+            usage: FIRST_ATTEMPT_USAGE,
+            active: attemptWork(0),
+          }),
         ),
       );
 
@@ -823,7 +839,11 @@ describe('createGoalStore applyTransition', () => {
     it('reports a replay of an older transition as stale with the authoritative record', async () => {
       const { store } = setup();
       await created(store);
-      const first = transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) });
+      const first = transition(1, 'running', {
+        attempt: attempt(0),
+        usage: FIRST_ATTEMPT_USAGE,
+        active: attemptWork(0),
+      });
       applied(await store.applyTransition(first));
       const current = applied(
         await store.applyTransition(
@@ -1021,7 +1041,11 @@ describe('createGoalStore applyTransition', () => {
 
       const result = applied(
         await racingStore.applyTransition(
-          transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) }),
+          transition(1, 'running', {
+            attempt: attempt(0),
+            usage: FIRST_ATTEMPT_USAGE,
+            active: attemptWork(0),
+          }),
         ),
       );
 
@@ -1044,7 +1068,11 @@ describe('createGoalStore applyTransition', () => {
       } as unknown as typeof kv;
 
       const result = await createGoalStore(losing).applyTransition(
-        transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) }),
+        transition(1, 'running', {
+          attempt: attempt(0),
+          usage: FIRST_ATTEMPT_USAGE,
+          active: attemptWork(0),
+        }),
       );
 
       expect(result).toEqual({ status: 'stale', record: original });
@@ -1096,15 +1124,22 @@ describe('createGoalStore control-plane writes', () => {
 
     const first = await store.requestCancellation(
       GOAL,
-      { requestedAt: 'first', reason: 'stop' },
+      { requestedAt: '2026-10-02T01:00:01.000Z', reason: 'stop' },
       at(),
     );
-    const second = await store.requestCancellation(GOAL, { requestedAt: 'second' }, at());
+    const second = await store.requestCancellation(
+      GOAL,
+      { requestedAt: '2026-10-02T01:00:02.000Z' },
+      at(),
+    );
 
     expect(first).toMatchObject({ status: 'updated', record: { revision: 2, transitionSeq: 0 } });
     expect(second).toMatchObject({ status: 'unchanged' });
     const stored = await store.get(GOAL);
-    expect(stored?.cancellation).toEqual({ requestedAt: 'first', reason: 'stop' });
+    expect(stored?.cancellation).toEqual({
+      requestedAt: '2026-10-02T01:00:01.000Z',
+      reason: 'stop',
+    });
   });
 
   it('does not touch the transition sequence, so a controller transition still lines up', async () => {
@@ -1196,11 +1231,17 @@ describe('createGoalStore control-plane writes', () => {
         transition(1, 'failed', { terminalReason: 'unsupported-validation' }),
       ),
     );
-    const closed = await store.close(GOAL, 'closed-at');
-    const again = await store.close(GOAL, 'later');
+    const closed = await store.close(GOAL, '2026-10-02T01:00:03.000Z');
+    const again = await store.close(GOAL, '2026-10-02T01:00:05.000Z');
 
-    expect(closed).toMatchObject({ status: 'updated', record: { closedAt: 'closed-at' } });
-    expect(again).toMatchObject({ status: 'unchanged', record: { closedAt: 'closed-at' } });
+    expect(closed).toMatchObject({
+      status: 'updated',
+      record: { closedAt: '2026-10-02T01:00:03.000Z' },
+    });
+    expect(again).toMatchObject({
+      status: 'unchanged',
+      record: { closedAt: '2026-10-02T01:00:03.000Z' },
+    });
   });
 
   it('records the cleanup a closure owes once, and only for a goal that was closed', async () => {
@@ -1216,15 +1257,18 @@ describe('createGoalStore control-plane writes', () => {
       status: 'rejected',
       reason: 'not-closed',
     });
-    await store.close(GOAL, 'closed-at');
-    const cleaned = await store.markCleanedUp(GOAL, 'cleaned-at');
-    const again = await store.markCleanedUp(GOAL, 'later');
+    await store.close(GOAL, '2026-10-02T01:00:03.000Z');
+    const cleaned = await store.markCleanedUp(GOAL, '2026-10-02T01:00:04.000Z');
+    const again = await store.markCleanedUp(GOAL, '2026-10-02T01:00:06.000Z');
 
     expect(cleaned).toMatchObject({
       status: 'updated',
-      record: { closedAt: 'closed-at', cleanedUpAt: 'cleaned-at' },
+      record: { closedAt: '2026-10-02T01:00:03.000Z', cleanedUpAt: '2026-10-02T01:00:04.000Z' },
     });
-    expect(again).toMatchObject({ status: 'unchanged', record: { cleanedUpAt: 'cleaned-at' } });
+    expect(again).toMatchObject({
+      status: 'unchanged',
+      record: { cleanedUpAt: '2026-10-02T01:00:04.000Z' },
+    });
     expect(await store.markCleanedUp('missing', at())).toEqual({ status: 'missing' });
   });
 
@@ -1544,5 +1588,243 @@ describe('the audit transition log', () => {
     expect(restarted).toMatchObject({ status: 'rejected', reason: 'audit-log-full' });
     const after = await store.get(GOAL);
     expect(after?.auditLog).toHaveLength(GOAL_AUDIT_LOG_MAXIMUM_ENTRIES);
+  });
+});
+
+describe('a record is believed only when its parts agree with each other (COR-851)', () => {
+  const key = goalRecordKey(GOAL);
+
+  /** Rewrites the stored text of `record` after `change` edits its parsed form. */
+  async function overwrite(
+    kv: ReturnType<typeof createKv>,
+    record: GoalState,
+    change: (parsed: Record<string, any>) => void,
+    at = key,
+  ): Promise<void> {
+    const parsed = JSON.parse(JSON.stringify(record)) as Record<string, any>;
+    change(parsed);
+    await kv.set(at, JSON.stringify(parsed));
+  }
+
+  /** A retrying record whose one completed attempt reported `usage`, with the aggregate written to match. */
+  async function retryingAfter(
+    store: GoalStore,
+    usage: { steps: number; tokens: number; costUsd?: number },
+  ): Promise<GoalState> {
+    await created(store);
+    await toEvaluating(store);
+    return applied(
+      await store.applyTransition(
+        transition(3, 'retrying', {
+          attempt: attempt(0, { status: 'failed', usage }),
+          usage: { attempts: 1, ...usage, durationMs: 0 },
+          active: null,
+        }),
+      ),
+    );
+  }
+
+  describe('aggregate usage', () => {
+    it('refuses to store an aggregate that disagrees with the attempts it sums', async () => {
+      const { kv, store } = setup();
+      await created(store);
+      const evaluating = await toEvaluating(store);
+
+      // The attempt used 50 steps but the aggregate stays at zero.
+      const result = await store.applyTransition(
+        transition(3, 'retrying', {
+          attempt: attempt(0, { status: 'failed', usage: { steps: 50, tokens: 0 } }),
+          active: null,
+        }),
+      );
+
+      expect(result).toMatchObject({ status: 'rejected', reason: 'invalid-record' });
+      expect(JSON.parse((await kv.get(key)) ?? 'null')).toEqual(evaluating);
+    });
+
+    const disagreements: Array<[string, (parsed: Record<string, any>) => void]> = [
+      ['steps', (parsed) => (parsed['usage'].steps = 0)],
+      ['tokens', (parsed) => (parsed['usage'].tokens = 0)],
+      ['cost', (parsed) => delete parsed['usage'].costUsd],
+      ['attempt count', (parsed) => (parsed['usage'].attempts = 2)],
+      ['an inflated step total', (parsed) => (parsed['usage'].steps = 9999)],
+    ];
+
+    for (const [name, change] of disagreements) {
+      it(`reads a record as corrupt when the aggregate ${name} disagrees with its attempts`, async () => {
+        const corrupt: string[] = [];
+        const { kv, store } = setup(corrupt);
+        const record = await retryingAfter(store, { steps: 50, tokens: 7, costUsd: 0.5 });
+        expect(await store.get(GOAL)).toEqual(record);
+
+        await overwrite(kv, record, change);
+
+        expect(await store.get(GOAL)).toBeUndefined();
+        expect(corrupt).toEqual([key]);
+      });
+    }
+
+    it('accepts an aggregate that sums every attempt, in order', async () => {
+      const { store } = setup();
+      await retryingAfter(store, { steps: 50, tokens: 7, costUsd: 0.1 });
+      const second = applied(
+        await store.applyTransition(
+          transition(4, 'running', {
+            attempt: attempt(1),
+            usage: { attempts: 2, steps: 50, tokens: 7, costUsd: 0.1, durationMs: 0 },
+            active: attemptWork(1),
+          }),
+        ),
+      );
+      expect(second.usage).toMatchObject({ attempts: 2, steps: 50, tokens: 7, costUsd: 0.1 });
+    });
+  });
+
+  describe('timestamps', () => {
+    it('refuses to create a record whose creation time is not a timestamp', () => {
+      for (const now of ['corrupt', '2026-13-45T99:00:00.000Z', '2026-10-02', ' ']) {
+        expect(() => createGoalState(input({ now }))).toThrow(InvalidGoalStateError);
+      }
+    });
+
+    const timestampPaths: Array<[string, (parsed: Record<string, any>) => void]> = [
+      ['createdAt', (parsed) => (parsed['createdAt'] = 'corrupt')],
+      ['updatedAt', (parsed) => (parsed['updatedAt'] = 'corrupt')],
+      ['the current transition', (parsed) => (parsed['currentTransition'].at = 'corrupt')],
+      ['an attempt start', (parsed) => (parsed['attempts'][0].startedAt = 'corrupt')],
+      ['an attempt completion', (parsed) => (parsed['attempts'][0].completedAt = 'corrupt')],
+      ['a validation start', (parsed) => (parsed['attempts'][0].validation.startedAt = 'corrupt')],
+      [
+        'a validation completion',
+        (parsed) => (parsed['attempts'][0].validation.completedAt = 'corrupt'),
+      ],
+      ['an audit event', (parsed) => (parsed['auditLog'][0].events[0].at = 'corrupt')],
+      ['closedAt', (parsed) => (parsed['closedAt'] = 'corrupt')],
+      ['cleanedUpAt', (parsed) => (parsed['cleanedUpAt'] = 'corrupt')],
+      [
+        'a calendar date that does not exist',
+        (parsed) => (parsed['createdAt'] = '2026-02-31T00:00:00.000Z'),
+      ],
+      ['a bare date', (parsed) => (parsed['createdAt'] = '2026-10-02')],
+    ];
+
+    async function finishedRecord(store: GoalStore): Promise<GoalState> {
+      await created(store);
+      await toEvaluating(store);
+      applied(
+        await store.applyTransition(
+          transition(3, 'succeeded', {
+            terminalReason: 'validator-passed',
+            attempt: attempt(0, {
+              status: 'passed',
+              validation: passed,
+              finishReason: 'stop-condition',
+              completedAt: '2026-10-02T00:00:07.000Z',
+            }),
+            active: null,
+          }),
+        ),
+      );
+      await store.close(GOAL, '2026-10-02T00:00:08.000Z');
+      await store.markCleanedUp(GOAL, '2026-10-02T00:00:09.000Z');
+      const record = await store.get(GOAL);
+      if (record === undefined) throw new Error('expected the finished record');
+      return record;
+    }
+
+    for (const [name, change] of timestampPaths) {
+      it(`reads a record as corrupt when ${name} is not a timestamp`, async () => {
+        const corrupt: string[] = [];
+        const { kv, store } = setup(corrupt);
+        const record = await finishedRecord(store);
+        // Pin that the unmodified record, with every timestamp field present, is believed.
+        expect(record.auditLog.some((entry) => entry.events.length > 0)).toBe(true);
+        expect(record.cleanedUpAt).toBeDefined();
+        expect(record.attempts[0]?.completedAt).toBeDefined();
+
+        await overwrite(kv, record, change);
+
+        expect(await store.get(GOAL)).toBeUndefined();
+        expect(corrupt).toEqual([key]);
+      });
+    }
+
+    it('reads a record as corrupt when the cancellation time is not a timestamp', async () => {
+      const { kv, store } = setup();
+      const record = await created(store);
+      const marked = await store.requestCancellation(GOAL, { requestedAt: at() }, at());
+      expect(marked.status).toBe('updated');
+
+      await overwrite(
+        kv,
+        record,
+        (parsed) => (parsed['cancellation'] = { requestedAt: 'corrupt' }),
+      );
+
+      expect(await store.get(GOAL)).toBeUndefined();
+    });
+
+    it('reads a record whose in-flight work start is not a timestamp as corrupt', async () => {
+      const { kv, store } = setup();
+      await created(store);
+      const running = applied(
+        await store.applyTransition(
+          transition(1, 'running', {
+            attempt: attempt(0),
+            usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
+            active: attemptWork(0),
+          }),
+        ),
+      );
+
+      await overwrite(kv, running, (parsed) => {
+        parsed['attempts'][0].startedAt = 'corrupt';
+        parsed['active'].startedAt = 'corrupt';
+      });
+
+      expect(await store.get(GOAL)).toBeUndefined();
+    });
+  });
+
+  describe('storage key', () => {
+    it("never returns another goal's record stored under this goal's key", async () => {
+      const corrupt: string[] = [];
+      const { kv, store } = setup(corrupt);
+      const other = createGoalState(input({ goalRunId: 'goal-b' }));
+      const foreignKey = goalRecordKey('goal-a');
+      await kv.set(foreignKey, JSON.stringify(other));
+
+      expect(await store.get('goal-a')).toBeUndefined();
+      expect(await store.list()).toEqual([]);
+      const scanned = await store.scan();
+      expect(scanned.unreadable).toEqual(['goal-a']);
+      expect(await store.listUnreadable()).toEqual(['goal-a']);
+      expect(await store.isUnreadable('goal-a')).toBe(true);
+      expect(corrupt).toContain(foreignKey);
+    });
+
+    it('writes nothing through a key whose record belongs to another goal', async () => {
+      const { kv, store } = setup();
+      const other = createGoalState(input({ goalRunId: 'goal-b' }));
+      const foreignKey = goalRecordKey('goal-a');
+      const raw = JSON.stringify(other);
+      await kv.set(foreignKey, raw);
+
+      expect(await store.requestCancellation('goal-a', { requestedAt: at() }, at())).toEqual({
+        status: 'corrupt',
+      });
+      expect(await store.recordControllerRestart('goal-a', at())).toEqual({ status: 'corrupt' });
+      expect(await store.close('goal-a', at())).toEqual({ status: 'corrupt' });
+      expect(await kv.get(foreignKey)).toBe(raw);
+      expect(await store.get('goal-b')).toBeUndefined();
+    });
+
+    it('still reads a record stored under its own key, however the id is encoded', async () => {
+      const { store } = setup();
+      await store.create(createGoalState(input({ goalRunId: 'a:b/c d' })));
+      const found = await store.get('a:b/c d');
+      expect(found?.goalRunId).toBe('a:b/c d');
+      expect(await store.list()).toHaveLength(1);
+    });
   });
 });

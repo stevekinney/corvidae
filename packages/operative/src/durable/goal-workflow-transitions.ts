@@ -42,16 +42,37 @@ export const isTerminalStatus = (status: GoalRunStatus): boolean =>
 
 const toIso = (nowMs: number): string => new Date(nowMs).toISOString();
 
-/** The aggregate duration so far, measured from the record's creation. */
-export function elapsedMilliseconds(view: DurationClock, nowMs: number): number {
+/**
+ * What a creation time that cannot be read counts as: more time than any bound
+ * allows, and still a finite number that survives the JSON the duration is
+ * recorded in. Reading it as no time at all would let a duration-bounded goal
+ * run for ever.
+ */
+const UNREADABLE_CREATION_MILLISECONDS = Number.MAX_SAFE_INTEGER;
+
+const creationMilliseconds = (view: DurationClock): number | undefined => {
   const createdAt = Date.parse(view.createdAt);
-  return Number.isFinite(createdAt) ? Math.max(0, nowMs - createdAt) : 0;
+  return Number.isFinite(createdAt) ? createdAt : undefined;
+};
+
+/**
+ * The aggregate duration so far, measured from the record's creation. A
+ * creation time that cannot be read fails closed: the goal is as old as it can
+ * be, so a bound on its duration is spent rather than never consumed.
+ */
+export function elapsedMilliseconds(view: DurationClock, nowMs: number): number {
+  const createdAt = creationMilliseconds(view);
+  return createdAt === undefined
+    ? UNREADABLE_CREATION_MILLISECONDS
+    : Math.max(0, nowMs - createdAt);
 }
 
 /** `undefined` when the goal has no duration bound. */
 export function remainingMilliseconds(view: DurationClock, nowMs: number): number | undefined {
   const bound = view.bounds.maximumTotalDurationMs;
-  return bound === undefined ? undefined : Math.max(0, bound - elapsedMilliseconds(view, nowMs));
+  if (bound === undefined) return undefined;
+  if (creationMilliseconds(view) === undefined) return 0;
+  return Math.max(0, bound - elapsedMilliseconds(view, nowMs));
 }
 
 export function isDeadlineElapsed(view: DurationClock, nowMs: number): boolean {
