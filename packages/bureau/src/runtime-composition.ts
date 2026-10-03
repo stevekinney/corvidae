@@ -807,6 +807,13 @@ export function decodeScheduleRunMarker(decoded: unknown): string | undefined {
 export type CatalogRunRecoveryLoad =
   | { status: 'found'; record: CatalogRunRecoveryRecord }
   | { status: 'missing' }
+  /**
+   * A value is stored at the key but is not a recovery record (it does not
+   * decodes but fails shape validation). It is present, so goal ownership must
+   * never read it as absent; every other consumer treats it as it always did,
+   * as `missing`.
+   */
+  | { status: 'corrupt' }
   | { status: 'read-error'; error: unknown };
 
 export interface CatalogRunRecoveryRecord {
@@ -2989,7 +2996,7 @@ export async function createRuntimeComposition(
       const decoded = decode(value);
       return isCatalogRunRecoveryRecord(decoded)
         ? { status: 'found', record: decoded }
-        : { status: 'missing' };
+        : { status: 'corrupt' };
     } catch (error) {
       return { status: 'read-error', error };
     }
@@ -3028,7 +3035,7 @@ export async function createRuntimeComposition(
     // never evicted per-read).
     if (catalogRunRecoveryCache.has(runId)) return true;
     const load = await loadCatalogRunRecoveryRecord(runId);
-    return load.status !== 'missing';
+    return load.status !== 'missing' && load.status !== 'corrupt';
   }
 
   /**
@@ -3078,7 +3085,7 @@ export async function createRuntimeComposition(
       };
     }
     const load = await loadCatalogRunRecoveryRecord(runId);
-    if (load.status === 'missing') return { isCatalogRun: false };
+    if (load.status === 'missing' || load.status === 'corrupt') return { isCatalogRun: false };
     if (load.status === 'read-error') return { isCatalogRun: true };
     return {
       isCatalogRun: true,

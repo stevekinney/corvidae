@@ -5514,6 +5514,34 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
+  it('reads a decodable record of the wrong shape as corrupt for ownership, and as missing for every other consumer', async () => {
+    const runtime = await createRuntimeComposition({
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      await runtime.durable!.engine.storage.put(
+        `${CATALOG_RUN_RECOVERY_KEY_PREFIX}catalog-run-wrong-shape`,
+        encode({ schemaVersion: 1, agentName: 7 }),
+      );
+
+      expect(await runtime.loadCatalogRunRecoveryRecord('catalog-run-wrong-shape')).toEqual({
+        status: 'corrupt',
+      });
+      // Non-goal consumers see exactly what they saw before: not catalog territory.
+      expect(await runtime.isCatalogRecoveredRun('catalog-run-wrong-shape')).toBe(false);
+      expect(await runtime.classifyCatalogRecoveredRun('catalog-run-wrong-shape')).toEqual({
+        isCatalogRun: false,
+      });
+      expect(await runtime.loadCatalogRunRecoveryRecord('catalog-run-never-written')).toEqual({
+        status: 'missing',
+      });
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
   it('reports a distinct reason (never "no longer in the catalog") when the catalog agent exists but no longer supports durable definition resolution', async () => {
     const runtime = await createRuntimeComposition({
       storage: { type: 'memory' },

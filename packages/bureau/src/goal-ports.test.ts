@@ -199,6 +199,7 @@ async function world(options: WorldOptions = {}) {
   };
   // A run-record read that fails for as many calls as `runRecordReadFaults.remaining` says.
   const runRecordReadFaults = { remaining: 0 };
+  const corruptRunRecords = new Set<string>();
   const runtime = options.runtime ?? createManualRuntimeServices();
   const sessions = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
   const conversations = createGoalConversations({
@@ -219,6 +220,7 @@ async function world(options: WorldOptions = {}) {
         runRecordReadFaults.remaining -= 1;
         return Promise.resolve({ status: 'read-error', error: new Error('storage hiccup') });
       }
+      if (corruptRunRecords.has(runId)) return Promise.resolve({ status: 'corrupt' });
       const record = runRecords.get(runId);
       return Promise.resolve(
         record === undefined ? { status: 'missing' } : { status: 'found', record },
@@ -244,6 +246,7 @@ async function world(options: WorldOptions = {}) {
     conversations,
     checkpointReadFaults,
     runRecordReadFaults,
+    corruptRunRecords,
     runRecords,
     markRunAsGoals,
   };
@@ -1293,6 +1296,33 @@ describe("startAttempt when something else already holds one of the goal's deter
     });
     expect(starts).toHaveLength(1);
   });
+
+  it.each([
+    ['a live run', true],
+    ['a claim with no workflow', false],
+  ])(
+    'fails the attempt with corrupt-ownership-record, and touches nothing, for %s whose record is present but invalid',
+    async (_label, live) => {
+      const { starts, startAttemptRun } = refusingStarter();
+      const w = await world({ startAttemptRun });
+      if (live) {
+        createActiveRun(
+          agentOptions(() => new Promise(() => {})),
+          { ...w.durable, runId: 'goal-g1-a0', prompt: 'work' },
+        );
+        await pollUntil(async () => (await w.engine.get('goal-g1-a0')) !== null);
+      }
+      w.corruptRunRecords.add('goal-g1-a0');
+
+      const outcome = await w.ports.startAttempt(startRequest());
+
+      expect(outcome).toMatchObject({ status: 'failed' });
+      expect((outcome as { detail: string }).detail).toContain('corrupt-ownership-record');
+      expect(starts).toEqual([]);
+      expect(w.watched).toEqual([]);
+      expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+    },
+  );
 
   it('refuses a claim another run holds, even though no workflow exists yet', async () => {
     const { starts, startAttemptRun } = refusingStarter();

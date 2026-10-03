@@ -61,6 +61,22 @@ export class GoalOwnershipUnknownError extends Error {
   }
 }
 
+/**
+ * A recovery record is stored at the id but is not a valid record, so who holds
+ * the run cannot be decided and never will be by reading again. It is not
+ * absent, so nothing is adopted, replaced, started over, or cancelled; it is
+ * not retried either. It surfaces as `corrupt-ownership-record` for an
+ * operator to repair.
+ */
+export class GoalCorruptOwnershipRecordError extends GoalOwnershipError {
+  constructor(runId: string) {
+    super(
+      `corrupt-ownership-record: the recovery record for run "${runId}" exists but is not valid, so its owner cannot be determined.`,
+    );
+    this.name = 'GoalCorruptOwnershipRecordError';
+  }
+}
+
 export type RunRecordReader = (runId: string) => Promise<CatalogRunRecoveryLoad>;
 
 export interface ExpectedAttemptOwner {
@@ -87,7 +103,9 @@ export type AttemptRunOwnership =
   | { readonly status: 'owned' }
   /** Nothing holds the id: no claim and no workflow. */
   | { readonly status: 'absent' }
-  | { readonly status: 'foreign'; readonly detail: string };
+  | { readonly status: 'foreign'; readonly detail: string }
+  /** A record is present but invalid; `detail` leads with `corrupt-ownership-record`. */
+  | { readonly status: 'corrupt'; readonly detail: string };
 
 /**
  * Who holds an attempt's deterministic run id. A claim with no workflow is the
@@ -104,6 +122,9 @@ export async function verifyAttemptRun(
 ): Promise<AttemptRunOwnership> {
   const load = await dependencies.readRunRecord(runId);
   if (load.status === 'read-error') throw new GoalOwnershipUnknownError(runId, load.error);
+  if (load.status === 'corrupt') {
+    return { status: 'corrupt', detail: new GoalCorruptOwnershipRecordError(runId).message };
+  }
   if (load.status === 'found') {
     return isOwnAttemptRecord(load.record, expected)
       ? { status: 'owned' }
@@ -178,6 +199,8 @@ export function createOwnedGoalEngine<E extends GoalEngine>(
         // A record that cannot be read does not say the run is foreign or
         // absent; surface it so the caller retries instead of acting on a guess.
         if (load.status === 'read-error') throw new GoalOwnershipUnknownError(id, load.error);
+        // Present but invalid: not absent, and not retryable.
+        if (load.status === 'corrupt') throw new GoalCorruptOwnershipRecordError(id);
         return isGoalNamedRun(load, id) ? state : null;
       }
       return state;
@@ -221,6 +244,9 @@ export function createOwnedRunCanceller(
     // Unknown is not foreign: report a retryable failure and cancel nothing.
     if (load.status === 'read-error') {
       return { status: 'failed', error: new GoalOwnershipUnknownError(runId, load.error) };
+    }
+    if (load.status === 'corrupt') {
+      return { status: 'failed', error: new GoalCorruptOwnershipRecordError(runId) };
     }
     // A claim with no workflow is cancelled too: that is the goal's own start
     // that died, and cancelling a run that never existed is a no-op.

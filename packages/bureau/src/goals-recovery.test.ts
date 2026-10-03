@@ -581,6 +581,34 @@ describe('the attempt behind a running goal', () => {
     expect(steps).toBe(1);
   });
 
+  it('reports a corrupt-ownership-record against the attempt, and starts nothing, when its recovery record is present but invalid', async () => {
+    database = createTestDatabase('corrupt-record');
+    let steps = 0;
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: {
+        worker: workerAgent(() => {
+          steps += 1;
+          return Promise.resolve({ content: 'done', toolCalls: [] });
+        }),
+      },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+    const view = await inspection();
+    await seedRunning(view);
+    await view.corruptRunRecord('goal-g1-a0');
+
+    const recovered = await bureau.goals.recover('g1');
+
+    expect(recovered.goals[0]).toMatchObject({ goalRunId: 'g1', attempt: 'failed' });
+    expect(recovered.goals[0]?.detail).toContain('corrupt-ownership-record');
+    // Not absent: no run was started over it, and its record was left as it was.
+    expect(steps).toBe(0);
+    expect(await workflowStatus(bureau, 'goal-g1-a0')).toBeUndefined();
+  });
+
   it("does not adopt a run an ordinary caller created at the attempt's id, and leaves it as it was", async () => {
     database = createTestDatabase('foreign-run');
     let steps = 0;

@@ -59,7 +59,11 @@ import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch
 import type { GoalConversations } from './goal-conversation';
 import { attemptSessionId } from './goal-conversation';
 import type { AttemptForwarder } from './goal-forwarder';
-import { type RunRecordReader, verifyAttemptRun } from './goal-ownership';
+import {
+  GoalCorruptOwnershipRecordError,
+  type RunRecordReader,
+  verifyAttemptRun,
+} from './goal-ownership';
 import {
   boundValidationOutcome,
   type DurableGoalAttempt,
@@ -255,7 +259,16 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     };
 
     const adopt = async (): Promise<GoalWorkflowStart | undefined> => {
-      const existing = await durable.engine.get(request.runId);
+      let existing: Awaited<ReturnType<typeof durable.engine.get>>;
+      try {
+        existing = await durable.engine.get(request.runId);
+      } catch (error) {
+        // A record that is present but invalid fails the attempt, explicitly.
+        if (error instanceof GoalCorruptOwnershipRecordError) {
+          return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(error.message));
+        }
+        throw error;
+      }
       if (existing === null) return undefined;
       if (!isAgentRunWorkflowInput(existing.input) || existing.input.runId !== request.runId) {
         return failed(
@@ -296,7 +309,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       },
       request.runId,
     );
-    if (ownership.status === 'foreign') {
+    if (ownership.status === 'foreign' || ownership.status === 'corrupt') {
       return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(ownership.detail));
     }
     const foreignSession = await conversations.verify(record, request.attemptIndex);

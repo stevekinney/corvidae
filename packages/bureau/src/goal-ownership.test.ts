@@ -12,6 +12,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   createOwnedGoalEngine,
   createOwnedRunCanceller,
+  GoalCorruptOwnershipRecordError,
   GoalOwnershipError,
   GoalOwnershipUnknownError,
   verifyAttemptRun,
@@ -233,6 +234,48 @@ describe('an unreadable run record is unknown, never foreign or absent', () => {
       (error: unknown) => error,
     );
     expect(failure).toBeInstanceOf(GoalOwnershipUnknownError);
+  });
+});
+
+describe('a present but invalid run record is corrupt, never absent', () => {
+  const corrupt = (): Promise<CatalogRunRecoveryLoad> => Promise.resolve({ status: 'corrupt' });
+  const id = goalAttemptRunId('g1', 0);
+
+  it('makes the owned engine throw a typed, non-retryable error instead of hiding the run', async () => {
+    const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+    const owned = createOwnedGoalEngine(engine, corrupt);
+    const failure = await owned.get(id).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(GoalCorruptOwnershipRecordError);
+    expect(failure).toBeInstanceOf(GoalOwnershipError);
+    expect((failure as Error).message).toContain('corrupt-ownership-record');
+  });
+
+  it('makes the canceller fail with the typed error and cancel nothing', async () => {
+    const stopped: string[] = [];
+    const cancel = createOwnedRunCanceller((runId) => {
+      stopped.push(runId);
+      return Promise.resolve({ status: 'requested' });
+    }, corrupt);
+    const outcome = await cancel(id);
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect((outcome as { error: unknown }).error).toBeInstanceOf(GoalCorruptOwnershipRecordError);
+    expect(stopped).toEqual([]);
+  });
+
+  it('makes verifyAttemptRun answer corrupt, even when no workflow exists to contradict it', async () => {
+    const { engine } = fakeEngine({});
+    const expected = {
+      goalRunId: 'g1',
+      attemptIndex: 0,
+      agentName: 'worker',
+      principal: undefined,
+    };
+    const outcome = await verifyAttemptRun({ engine, readRunRecord: corrupt }, expected, id);
+    expect(outcome.status).toBe('corrupt');
+    expect((outcome as { detail: string }).detail).toContain('corrupt-ownership-record');
   });
 });
 

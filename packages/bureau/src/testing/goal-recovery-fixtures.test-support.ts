@@ -86,6 +86,13 @@ export async function inspect(path: string) {
         encode({ schemaVersion: 1, ...record }),
       );
     },
+    /** A value at a run's recovery key that decodes but is not a recovery record. */
+    async corruptRunRecord(runId: string) {
+      await storage.put(
+        `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`,
+        encode({ schemaVersion: 1, agentName: 7 }),
+      );
+    },
     /** Marks a run that already exists as the goal's own attempt, as the goal's own start would have. */
     async markRunAsGoalAttempt(runId: string, goalRunId: string, attemptIndex: number) {
       const key = `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`;
