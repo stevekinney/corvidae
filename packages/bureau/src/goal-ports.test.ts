@@ -14,6 +14,7 @@ import {
   type FreshAttemptSourceResolver,
   type GoalConversationPolicy,
   type GoalWorkflowPorts,
+  isDeadlineElapsed,
   type RunOptions,
   startDurableRunResult,
   stopWhen,
@@ -136,6 +137,7 @@ interface WorldOptions {
     maximumAttempts: number;
     maximumTotalSteps?: number;
     maximumTotalCostUsd?: number;
+    maximumTotalDurationMs?: number;
   };
 }
 
@@ -492,8 +494,7 @@ describe('startAttempt', () => {
 
     const outcome = await ports.startAttempt(startRequest());
 
-    expect(outcome).toMatchObject({ status: 'failed' });
-    expect((outcome as { detail: string }).detail).toContain('canceled');
+    expect(outcome).toEqual({ status: 'stood-down' });
     expect(starts).toBe(0);
     expect(watched).toEqual([]);
   });
@@ -520,8 +521,7 @@ describe('startAttempt', () => {
     started.resolve();
 
     const outcome = await answer;
-    expect(outcome).toMatchObject({ status: 'failed' });
-    expect((outcome as { detail: string }).detail).toContain('canceled');
+    expect(outcome).toEqual({ status: 'stood-down' });
     expect(stopped).toEqual(['goal-g1-a0']);
     expect(watched).toEqual([]);
   });
@@ -612,8 +612,7 @@ describe('startAttempt', () => {
         },
       });
       const outcome = await w.ports.startAttempt(startRequest());
-      expect(outcome).toMatchObject({ status: 'failed' });
-      expect((outcome as { detail: string }).detail).toContain('canceled');
+      expect(outcome).toEqual({ status: 'stood-down' });
       expect(starts).toBe(0);
       expect(await w.original('goal-g1-s0')).toBeUndefined();
     });
@@ -627,7 +626,7 @@ describe('startAttempt', () => {
         },
       });
       const outcome = await w.ports.startAttempt(startRequest());
-      expect(outcome).toMatchObject({ status: 'failed' });
+      expect(outcome).toEqual({ status: 'stood-down' });
       expect(starts).toBe(0);
       expect(w.watched).toEqual([]);
     });
@@ -642,9 +641,95 @@ describe('startAttempt', () => {
         prompt: 'work',
       });
       const outcome = await w.ports.startAttempt(startRequest());
-      expect(outcome).toMatchObject({ status: 'failed' });
+      expect(outcome).toEqual({ status: 'stood-down' });
       expect(w.watched).toEqual([]);
       expect(await w.original('goal-g1-s0')).toBeUndefined();
+    });
+  });
+
+  describe('the aggregate duration', () => {
+    const BOUND_MS = 1_000;
+    const bounds = { maximumAttempts: 3, maximumTotalDurationMs: BOUND_MS };
+    const pastTheBound = (runtime: ReturnType<typeof createManualRuntimeServices>) =>
+      runtime.setTime(Date.parse(NOW) + BOUND_MS + 1);
+
+    function clockedWorld(options: Parameters<typeof world>[0] = {}) {
+      const runtime = createManualRuntimeServices();
+      runtime.setTime(Date.parse(NOW));
+      return world({ ...options, runtime, bounds });
+    }
+
+    it('stands down before claiming, seating, or starting anything once it has elapsed', async () => {
+      let starts = 0;
+      const w = await clockedWorld({
+        startAttemptRun: () => {
+          starts += 1;
+          return { run: {} as never, durablyStarted: Promise.resolve() };
+        },
+      });
+      pastTheBound(w.runtime);
+
+      const outcome = await w.ports.startAttempt(startRequest());
+
+      expect(outcome).toEqual({ status: 'stood-down' });
+      expect(starts).toBe(0);
+      expect(w.watched).toEqual([]);
+      expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+      expect(await w.engine.get('goal-g1-a0')).toBeNull();
+    });
+
+    it('measures the bound the way the controller does, from the record and the runtime clock', async () => {
+      const w = await clockedWorld({
+        startAttemptRun: () => ({ run: {} as never, durablyStarted: Promise.resolve() }),
+      });
+      const record = (await w.store.get('g1'))!;
+      w.runtime.setTime(Date.parse(NOW) + BOUND_MS + 1);
+      expect(isDeadlineElapsed(record, w.runtime.clock.now())).toBe(true);
+      expect(await w.ports.startAttempt(startRequest())).toEqual({ status: 'stood-down' });
+    });
+
+    it('writes no session when it elapses before the session is seated', async () => {
+      let starts = 0;
+      const w = await clockedWorld({
+        startAttemptRun: () => {
+          starts += 1;
+          return { run: {} as never, durablyStarted: Promise.resolve() };
+        },
+      });
+      const original = w.sessions.load.bind(w.sessions);
+      w.sessions.load = (id: string) => {
+        pastTheBound(w.runtime);
+        return original(id);
+      };
+
+      expect(await w.ports.startAttempt(startRequest())).toEqual({ status: 'stood-down' });
+      expect(starts).toBe(0);
+      expect(await original('goal-g1-s0')).toBeUndefined();
+    });
+
+    it('does not abandon a run it is creating when it elapses meanwhile: the controller will stop a run it knows', async () => {
+      const created = Promise.withResolvers<void>();
+      const stopped: string[] = [];
+      // eslint-disable-next-line prefer-const -- the hook closes over the world it is passed to.
+      let w: Awaited<ReturnType<typeof clockedWorld>>;
+      w = await clockedWorld({
+        startAttemptRun: () => {
+          // The bound passes after every pre-write check, while the run is created.
+          pastTheBound(w.runtime);
+          return { run: {} as never, durablyStarted: created.promise };
+        },
+        cancelRun: (runId) => {
+          stopped.push(runId);
+          return Promise.resolve({ status: 'requested' });
+        },
+      });
+
+      const answer = w.ports.startAttempt(startRequest());
+      created.resolve();
+
+      expect(await answer).toMatchObject({ status: 'started' });
+      expect(stopped).toEqual([]);
+      expect(w.watched).toHaveLength(1);
     });
   });
 });

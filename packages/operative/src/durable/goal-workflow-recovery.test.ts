@@ -300,7 +300,34 @@ describe('createGoalWorkflow crash and adopt', () => {
         const result = (await handle.result()) as GoalWorkflowResult;
         expect(result).toMatchObject({ status: 'succeeded' });
         expect(harness.world.startedRuns).toEqual([runIdOf(0)]);
+        expect(harness.world.abortedRuns).toEqual([]);
         expect(harness.world.record().attempts[0]?.sessionId).toBe(`session-${runIdOf(0)}`);
+      } finally {
+        adopter.engine[Symbol.dispose]();
+      }
+    });
+
+    it('stops a started run exactly once when the deadline passed between starting it and recording it', async () => {
+      const harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
+      });
+      const crash = harness.world.crashAfter('start:started');
+      const a = await createGoalEngine(harness);
+      await startGoalWorkflow(a);
+      await crash.reached;
+      expect(harness.world.startedRuns).toEqual([runIdOf(0)]);
+
+      // The takeover outlasts the bound, so the replayed start finds the goal over.
+      const { adopter, handle } = await crashAndAdopt(harness, a);
+      try {
+        const result = (await handle.result()) as GoalWorkflowResult;
+        expect(result).toMatchObject({
+          status: 'exhausted',
+          terminalReason: 'aggregate-budget-exceeded',
+        });
+        expect(harness.world.startedRuns).toEqual([runIdOf(0)]);
+        expect(harness.world.abortedRuns).toEqual([runIdOf(0)]);
+        expect(harness.world.calls.filter((call) => call === 'abort:0')).toHaveLength(1);
       } finally {
         adopter.engine[Symbol.dispose]();
       }

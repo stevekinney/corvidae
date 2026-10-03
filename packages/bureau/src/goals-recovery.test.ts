@@ -1137,6 +1137,44 @@ describe('a goal record that contradicts itself', () => {
   });
 });
 
+describe('a recorded cancellation whose controller is stuck in a validator that never returns', () => {
+  it('is completed by recover(): the controller is ended and the goal commits canceled', async () => {
+    database = createTestDatabase('stuck-validator');
+    const stuck = createLatch();
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })) },
+      validators: [createCheckValidator({ before: () => stuck.promise })],
+    });
+    await track(bureau);
+    cleanups.push(() => stuck.release());
+    await bureau.goals.create(goalRequest());
+    await status(bureau, 'evaluating');
+    // The marker is recorded without the signal (the process that wrote it died
+    // first), and the controller is inside an activity that will not return.
+    const view = await inspection();
+    const marked = await view.store.requestCancellation(
+      'g1',
+      { requestedAt: '2026-10-02T12:00:00.000Z' },
+      '2026-10-02T12:00:00.000Z',
+    );
+    expect(marked.status).toBe('updated');
+
+    const report = await bureau.goals.recover('g1');
+
+    // The controller was not left running: it was ended and the record committed.
+    expect(['canceled', 'cancellation-pending']).toContain(report.goals[0]?.outcome as string);
+    await status(bureau, 'canceled');
+    expect(await workflowStatus(bureau, 'goal:g1')).toBe('cancelled');
+    // The controller's finalizer finishes on its own, after which nothing is owed.
+    const finished = await pollUntil(async () => {
+      const again = await bureau.goals.recover('g1');
+      return again.goals[0]?.outcome === 'already-terminal';
+    });
+    expect(finished).toBe(true);
+  });
+});
+
 describe('a canceled goal whose workflow this bureau cannot read', () => {
   /** A canceled record with its marker, as a process that committed it and then died left it. */
   async function seedCanceled() {

@@ -871,8 +871,8 @@ describe('a recorded cancellation of a goal whose controller was cancelled, with
   });
 });
 
-describe('a running controller whose recorded cancellation cannot be signalled', () => {
-  it('is diagnosed and ended, rather than left parked while the forwarder stands down', async () => {
+describe('a running controller with a recorded cancellation', () => {
+  it('is ended and its cancellation completed from the host, never left to a signal it may not read', async () => {
     const store = await runningGoal();
     await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
     const workflows: Record<string, string> = { 'goal:g1': 'running', 'goal-g1-a0': 'running' };
@@ -883,26 +883,102 @@ describe('a running controller whose recorded cancellation cannot be signalled',
         return Promise.resolve();
       },
     });
-    const { control, diagnostics } = dependencies(
-      store,
-      engineWith(engine, { signal: () => Promise.reject(new Error('signal fault')) }),
-      {
-        cancelRun: (runId) => {
-          workflows[runId] = 'cancelled';
-          return Promise.resolve({ status: 'requested' });
-        },
+    const { control } = dependencies(store, engine, {
+      cancelRun: (runId) => {
+        workflows[runId] = 'cancelled';
+        return Promise.resolve({ status: 'requested' });
       },
-    );
+    });
 
     const entry = await recoverGoal(control, 'g1');
 
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(
-      'signal fault',
-    );
     expect(calls).toContain('cancel:goal:g1');
+    expect(calls.some((call) => call.startsWith('signal:'))).toBe(false);
     expect(entry).toEqual({ goalRunId: 'g1', outcome: 'canceled' });
     const committed = await store.get('g1');
     expect(committed?.status).toBe('canceled');
+  });
+
+  it('leaves a running controller alone when no cancellation is recorded', async () => {
+    const store = await runningGoal();
+    const workflows: Record<string, string> = { 'goal:g1': 'running', 'goal-g1-a0': 'running' };
+    const { engine, calls } = scriptedEngine({ workflows });
+    const { control } = dependencies(store, engine);
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry.outcome).toBe('running');
+    expect(calls).not.toContain('cancel:goal:g1');
+  });
+});
+
+describe('recovery while the bureau is shutting down', () => {
+  const closing = (
+    store: Awaited<ReturnType<typeof runningGoal>>,
+    engine: Parameters<typeof dependencies>[1],
+  ) => {
+    const { control } = dependencies(store, engine);
+    return { ...control, isClosing: () => true };
+  };
+
+  it('starts no controller for a goal that has none, and says so', async () => {
+    const store = await runningGoal();
+    const { engine, calls } = scriptedEngine({ workflows: {} });
+
+    const entry = await recoverGoal(closing(store, engine), 'g1');
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'shutting-down' });
+    expect(calls.some((call) => call.startsWith('start:'))).toBe(false);
+    expect(recoveryEntryFailure(entry)).toBeUndefined();
+  });
+
+  it('resumes no suspended controller', async () => {
+    const store = await runningGoal();
+    const { engine, calls } = scriptedEngine({ workflows: { 'goal:g1': 'suspended' } });
+
+    const entry = await recoverGoal(closing(store, engine), 'g1');
+
+    expect(entry).toMatchObject({ outcome: 'shutting-down' });
+    expect(calls.some((call) => call.startsWith('resume:'))).toBe(false);
+  });
+
+  it('restarts no ended controller and spends no restart on it', async () => {
+    const store = await runningGoal();
+    const { engine, calls } = scriptedEngine({
+      workflows: { 'goal:g1': 'failed' },
+      finalizer: { status: 'succeeded' },
+    });
+
+    const entry = await recoverGoal(closing(store, engine), 'g1');
+
+    expect(entry).toMatchObject({ outcome: 'shutting-down' });
+    expect(calls.some((call) => call.startsWith('start:'))).toBe(false);
+    const after = await store.get('g1');
+    expect(after?.controllerRestarts).toBe(0);
+  });
+
+  it('still ends a controller for a recorded cancellation, which starts nothing', async () => {
+    const store = await runningGoal();
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    const workflows: Record<string, string> = { 'goal:g1': 'running', 'goal-g1-a0': 'running' };
+    const { engine, calls } = scriptedEngine({
+      workflows,
+      onCancel: () => {
+        workflows['goal:g1'] = 'cancelled';
+        return Promise.resolve();
+      },
+    });
+    const { control } = dependencies(store, engine, {
+      cancelRun: (runId) => {
+        workflows[runId] = 'cancelled';
+        return Promise.resolve({ status: 'requested' });
+      },
+    });
+
+    const entry = await recoverGoal({ ...control, isClosing: () => true }, 'g1');
+
+    expect(calls).toContain('cancel:goal:g1');
+    expect(entry.outcome).toBe('canceled');
   });
 });
 

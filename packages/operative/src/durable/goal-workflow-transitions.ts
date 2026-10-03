@@ -30,24 +30,31 @@ import type {
 
 type ViewAttempt = GoalWorkflowView['attempts'][number];
 
+/**
+ * What the aggregate duration is measured from: the record's creation and its
+ * bound. The controller and the start port both measure the deadline with
+ * these functions, so the two can never disagree about whether it has elapsed.
+ */
+export type DurationClock = Pick<GoalWorkflowView, 'createdAt' | 'bounds'>;
+
 export const isTerminalStatus = (status: GoalRunStatus): boolean =>
   TERMINAL_STATUSES.includes(status);
 
 const toIso = (nowMs: number): string => new Date(nowMs).toISOString();
 
 /** The aggregate duration so far, measured from the record's creation. */
-export function elapsedMilliseconds(view: GoalWorkflowView, nowMs: number): number {
+export function elapsedMilliseconds(view: DurationClock, nowMs: number): number {
   const createdAt = Date.parse(view.createdAt);
   return Number.isFinite(createdAt) ? Math.max(0, nowMs - createdAt) : 0;
 }
 
 /** `undefined` when the goal has no duration bound. */
-export function remainingMilliseconds(view: GoalWorkflowView, nowMs: number): number | undefined {
+export function remainingMilliseconds(view: DurationClock, nowMs: number): number | undefined {
   const bound = view.bounds.maximumTotalDurationMs;
   return bound === undefined ? undefined : Math.max(0, bound - elapsedMilliseconds(view, nowMs));
 }
 
-export function isDeadlineElapsed(view: GoalWorkflowView, nowMs: number): boolean {
+export function isDeadlineElapsed(view: DurationClock, nowMs: number): boolean {
   return remainingMilliseconds(view, nowMs) === 0;
 }
 

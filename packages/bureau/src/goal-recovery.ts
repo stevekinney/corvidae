@@ -13,8 +13,10 @@
  * | --------------------------------------- | --------------------------------------------------- |
  * | no workflow                             | start one (the crash between record and start)      |
  * | running or pending                      | nothing; a controller is alive                      |
- * | suspended                               | resume it; cancel it when a cancellation is marked  |
+ * | running, pending, or suspended, marked  | end it, then commit `canceled` from the host        |
+ * | suspended                               | resume it                                           |
  * | cancelled, or a cancellation marker     | commit `canceled` from the host (also with no engine)|
+ * | any of the starts above, bureau closing | nothing, `shutting-down`; no restart is spent       |
  * | failed, timed out, or completed early   | restart it from the record, up to a bound           |
  * | its finalizer is still owed, or unread  | restart-pending; not counted; recover() retries it  |
  * | a workflow that is not the goal's       | never touched: it reads as absent (goal-ownership)  |
@@ -41,7 +43,7 @@
  * start-or-adopt the controller's own activity uses.
  */
 
-import { GOAL_CANCEL_SIGNAL, goalInputFeedbackFor } from '@lostgradient/operative';
+import { goalInputFeedbackFor } from '@lostgradient/operative';
 import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 
 import { runsToStop, settleCanceledGoal, unfinishedAfterCancellation } from './goal-cancellation';
@@ -56,7 +58,7 @@ import {
 } from './goal-controller';
 import { GoalOwnershipError } from './goal-ownership';
 import { goalIdentifiers } from './goal-ports';
-import { cancelSignalId, type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
+import { type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type {
   BureauGoalAttemptRecovery,
   BureauGoalCancellationWait,
@@ -70,6 +72,12 @@ export const MAXIMUM_CONTROLLER_RESTARTS = 3;
 
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/** Recovery began while the bureau was shutting down, so it started nothing. */
+const SHUTTING_DOWN: ControllerRecovery = {
+  outcome: 'shutting-down',
+  detail: 'The bureau is shutting down; the next boot recovers this goal.',
+};
 
 interface ControllerRecovery {
   readonly outcome: BureauGoalRecoveryOutcome;
@@ -263,6 +271,13 @@ async function recoverController(
     state.status === 'timed-out' ||
     state.status === 'completed'
   ) {
+    // Nothing below may start, resume, or restart a controller once the bureau
+    // has begun shutting down: the engine is being disposed. A marked goal whose
+    // controller already ended starts nothing (its cancellation is completed
+    // below), so only the cases that would start one stop here.
+    if (dependencies.isClosing() && (state === null || record.cancellation === undefined)) {
+      return SHUTTING_DOWN;
+    }
     // A controller is about to be started for a goal nothing has run yet.
     const ended = await enforceDeterminism(dependencies, record);
     if (ended !== undefined) return { outcome: 'unsupported-validation' };
@@ -274,29 +289,13 @@ async function recoverController(
     };
   }
   if (state.status === 'running' || state.status === 'pending') {
-    // A controller parked on its attempt wakes for a marker only by the signal,
-    // and the process that wrote the marker may have died before sending it.
-    // The signal id is stable, so sending it again is harmless.
+    // A cancellation marker means the goal is ending, and a controller that is
+    // alive may be inside an activity that never returns (a validator, a start),
+    // where no signal can reach it: the marker is read only at a decision point.
+    // So it is ended, and the cancellation completed from the host, exactly as
+    // for a suspended controller.
     if (record.cancellation !== undefined) {
-      try {
-        await engine.signal(
-          goalWorkflowId(goalRunId),
-          GOAL_CANCEL_SIGNAL,
-          {},
-          { signalId: cancelSignalId(goalRunId) },
-        );
-      } catch (error) {
-        // The forwarder stands down for a marked goal, so a controller that
-        // never hears the signal stays parked and its attempt keeps running. End
-        // the workflow and finish the cancellation here, as for a suspended one.
-        dependencies.diagnose({
-          level: 'error',
-          scope: 'goals',
-          message: `[bureau] Could not signal the controller of goal "${goalRunId}" to cancel; ending it instead: ${describe(error)}`,
-          cause: error,
-        });
-        return endControllerAndCompleteCancellation(dependencies, record);
-      }
+      return endControllerAndCompleteCancellation(dependencies, record);
     }
     return { outcome: 'running' };
   }
@@ -308,6 +307,7 @@ async function recoverController(
       // `cancel()` does to a controller; the rest is settled the same way.
       return endControllerAndCompleteCancellation(dependencies, record);
     }
+    if (dependencies.isClosing()) return SHUTTING_DOWN;
     await engine.resume(goalWorkflowId(goalRunId));
     return { outcome: 'running' };
   }
@@ -346,6 +346,10 @@ async function recoverController(
       detail: `The controller ended ${state.status} and its finalizer is still ${finalizer.status}; recover() restarts it once that settles.`,
     };
   }
+  // A shutdown that began while the finalizer was read must not consume a
+  // restart for a controller that cannot be started. The window after this check,
+  // between the count and the start, is a few awaits wide.
+  if (dependencies.isClosing()) return SHUTTING_DOWN;
   // The count is a compare-and-swap on the value this recovery read, so of
   // several recoveries that saw the same ended controller exactly one is
   // counted, and only that one starts a replacement. A restart counted but
@@ -416,7 +420,11 @@ async function recoverAttempt(
 
   // No run exists under the attempt's id. The controller recorded the attempt as
   // started, so the run was lost with its workflow before it could be recovered;
-  // start it again, exactly as the controller's own activity would have.
+  // start it again, exactly as the controller's own activity would have, unless
+  // the bureau is shutting down, when no run may be started.
+  if (dependencies.isClosing()) {
+    return { detail: 'The attempt was not restarted: the bureau is shutting down.' };
+  }
   const feedback = goalInputFeedbackFor(current.attempts, last.attemptIndex);
   const started = await startAttempt({
     goalRunId: current.goalRunId,
@@ -425,6 +433,11 @@ async function recoverAttempt(
     runId: last.runId,
     ...(feedback === undefined ? {} : { feedback }),
   });
+  if (started.status === 'stood-down') {
+    // The goal was canceled, ended, or ran out of its duration; nothing was
+    // created, and the controller ends the goal from the record.
+    return { detail: 'The attempt was not restarted: the goal is over or out of time.' };
+  }
   return started.status === 'failed'
     ? { attempt: 'failed', detail: started.detail }
     : { attempt: 'run-started' };
@@ -464,11 +477,15 @@ const owesCleanup = (record: GoalState): boolean =>
   record.closedAt !== undefined && record.cleanedUpAt === undefined;
 
 /**
- * An ending that can overtake a start. A cancellation, or the aggregate
- * duration running out, abandons an attempt's start that is in flight; the
- * abandoned start can still create its run afterwards, and a process that dies
- * before the start's own stand-down check leaves that run alive under a goal
- * that is already terminal. No other ending races a start.
+ * An ending that can leave a run behind. The controller never abandons a start
+ * (it waits for the start activity to settle), so it always knows the run it
+ * must stop, and stops it before it commits the ending. What it cannot know
+ * about is a start it did not wait for: a try Weft timed out that is still
+ * running in the background, which creates its run after the goal ended, or a
+ * process that dies after the engine's start committed the run and before the
+ * start's own stand-down check stopped it. Either leaves a run alive under a
+ * goal that is already terminal, and only a cancellation or the aggregate
+ * duration running out can end a goal while a start is in flight.
  */
 const mayHaveOvertakenAStart = (record: GoalState): boolean =>
   record.status === 'canceled' || record.status === 'exhausted';
@@ -480,24 +497,35 @@ const needsRecovery = (record: GoalState): boolean =>
   owesCleanup(record);
 
 /**
- * Stops the run an exhausted goal's ending may have overtaken: the one its
- * in-flight attempt left (`runsToStop` names it, or the next attempt's
- * deterministic id for a start that died short of its commit). The goal is
+ * Stops the run an exhausted goal's ending may have overtaken, the defense in
+ * depth behind the controller's refusal to abandon a start. It covers exactly
+ * one crash point: a start's run was created (the engine's start committed) but
+ * the process died, or a timed-out background try ran on, before the start's own
+ * stand-down check stopped it, after the goal had already ended. The goal is
  * terminal and its controller is done, so nothing but this will ever name that
- * run again. A run that does not exist or has ended is left alone; one that
- * cannot be read or stopped is reported, and stays owed until the next boot or
- * `recover()`. A canceled goal is settled the same way by
- * `settleCommittedCancellation`. `close()` runs it first, because a closed and
- * cleaned goal leaves the sweep.
+ * run again. `runsToStop` names the in-flight attempt's run, or the next
+ * attempt's deterministic id for a start that died short of its commit. A run
+ * that does not exist or has ended is left alone; one that cannot be read or
+ * stopped is reported, and stays owed until the next boot or `recover()`, and so
+ * is every run while there is no engine to read one with. A canceled goal is
+ * settled the same way by `settleCommittedCancellation`. `close()` runs it first,
+ * because a closed and cleaned goal leaves the sweep.
  */
 export async function stopOvertakenRuns(
   dependencies: GoalControlDependencies,
   record: GoalState,
 ): Promise<BureauGoalRecoveryEntry> {
   const engine = dependencies.getEngine();
-  // Without an engine no run could have been resumed by this process, and this
-  // goal stays in the sweep until one can be read.
-  if (engine === undefined) return { goalRunId: record.goalRunId, outcome: 'already-terminal' };
+  // A run it may have left cannot be inspected without an engine, so the goal
+  // is not reported done: it stays in the sweep until one can be read.
+  if (engine === undefined) {
+    return {
+      goalRunId: record.goalRunId,
+      outcome: 'cleanup-pending',
+      detail:
+        'The goal ended, but there is no durable engine to look for a run its ending may have overtaken.',
+    };
+  }
   const failures: string[] = [];
   for (const runId of runsToStop(record)) {
     try {
@@ -607,6 +635,7 @@ export async function recoverGoal(
     controller.outcome === 'canceled' ||
     controller.outcome === 'cancellation-pending' ||
     controller.outcome === 'restart-pending' ||
+    controller.outcome === 'shutting-down' ||
     controller.outcome === 'unsupported-validation'
   ) {
     return { goalRunId, ...controller };

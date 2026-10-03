@@ -64,7 +64,11 @@ export type {
   GoalWorkflowValidatorRequest,
   GoalWorkflowView,
 } from './goal-workflow-ports';
-export { buildGoalForcedFinish, goalInputFeedbackFor } from './goal-workflow-transitions';
+export {
+  buildGoalForcedFinish,
+  goalInputFeedbackFor,
+  isDeadlineElapsed,
+} from './goal-workflow-transitions';
 export { readDurableRunResult } from './read-run-result';
 export type { DurableRunReading, ReadDurableRunResultOptions } from './read-run-result';
 export { createRunWorkflow } from './run-workflow';

@@ -336,6 +336,10 @@ export type BureauGoalCancelOutcome =
  *   could not be reached, or no engine to prune with; see `detail`). Nothing
  *   retries on its own: the next boot, `recover()`, or `close()` does. It is a
  *   failure in the boot report, not a clean boot.
+ * - `shutting-down`: the bureau has begun shutting down, so recovery started,
+ *   resumed, and restarted nothing and spent no restart: a controller would be
+ *   created on an engine that is being disposed. The goal is left as it is, and
+ *   the next boot's recovery handles it. It is not a failure.
  * - `unsupported-validation`: the goal had not started, and its validator cannot
  *   supply the deterministic evidence it requires, so recovery ended it
  *   `failed`/`unsupported-validation` without starting a controller.
@@ -354,6 +358,7 @@ export type BureauGoalRecoveryOutcome =
   | 'canceled'
   | 'cancellation-pending'
   | 'cleanup-pending'
+  | 'shutting-down'
   | 'unsupported-validation'
   | 'already-terminal'
   | 'not-found'

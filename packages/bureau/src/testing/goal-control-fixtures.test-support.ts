@@ -82,6 +82,10 @@ export function scriptedEngine(script: Script) {
       await script.onCancel?.();
       if (script.cancelThrows === true) throw new Error('engine unavailable');
     },
+    start: (_type: string, _input: unknown, options?: { id?: string }) => {
+      calls.push(`start:${options?.id ?? ''}`);
+      return Promise.resolve();
+    },
     resume: (id: string) => {
       calls.push(`resume:${id}`);
       return Promise.resolve();

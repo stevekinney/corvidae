@@ -7,6 +7,7 @@ import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { GoalControlDependencies } from './goal-controller';
+import { recoverGoal, recoveryEntryFailure } from './goal-recovery';
 import { createGoalState, goalTransitionId } from './goal-state';
 import { createGoalStore } from './goal-store';
 import { createBureauGoals } from './goals';
@@ -99,5 +100,36 @@ describe('closing an exhausted goal whose ending overtook an attempt start', () 
 
     expect(await goals.close('g1')).toMatchObject({ outcome: 'closed' });
     expect(stopped).toEqual([]);
+  });
+});
+
+describe('an exhausted goal when no durable engine can look for the run its ending overtook', () => {
+  const engineless = (store: Awaited<ReturnType<typeof exhaustedBeforeAnyAttempt>>) => {
+    const { engine } = scriptedEngine({ workflows: {} });
+    const { control } = dependencies(store, engine, { getEngine: () => undefined });
+    return control;
+  };
+
+  it('is reported cleanup-pending by recovery, a failure in the boot report, never already-terminal', async () => {
+    const store = await exhaustedBeforeAnyAttempt();
+
+    const entry = await recoverGoal(engineless(store), 'g1');
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'cleanup-pending' });
+    expect(recoveryEntryFailure(entry)).toContain('no durable engine');
+  });
+
+  it('is not closed over, so it stays in the sweep', async () => {
+    const store = await exhaustedBeforeAnyAttempt();
+    const goals = createBureauGoals({
+      ...engineless(store),
+      runtime: { identifiers: undefined as never },
+      resolveFreshAttemptSource: undefined,
+      planAgent: () => undefined,
+    });
+
+    expect(await goals.close('g1')).toMatchObject({ outcome: 'cleanup-pending' });
+    const after = await store.get('g1');
+    expect(after?.closedAt).toBeUndefined();
   });
 });

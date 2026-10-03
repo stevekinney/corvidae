@@ -475,10 +475,13 @@ export function createBureauGoals<TName extends string = string>(
       }
     }
     if (record.status === 'exhausted') {
-      // The ending of an exhausted goal may have overtaken an attempt's start.
-      // Closing and cleaning the goal takes it out of the boot sweep, which is
-      // what stops such a run, so it is stopped first and a run that cannot be
-      // stopped keeps the goal open.
+      // The controller waits for an attempt's start, so its own ending stops the
+      // run it knows of. The one crash point left is a run created after the
+      // goal ended (a timed-out background try, or a process that died before
+      // the start's own stand-down check). Closing and cleaning the goal takes
+      // it out of the boot sweep, which is what stops such a run, so it is
+      // stopped first and a run that cannot be stopped (or cannot be looked for,
+      // with no engine) keeps the goal open.
       const stopped = await stopOvertakenRuns(dependencies, record);
       if (stopped.outcome === 'cleanup-pending') {
         return {

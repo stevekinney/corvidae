@@ -209,7 +209,16 @@ export interface GoalWorkflowStartRequest {
  */
 export type GoalWorkflowStart =
   | { readonly status: 'started' | 'adopted'; readonly sessionId: string }
-  | { readonly status: 'failed'; readonly detail: string };
+  | { readonly status: 'failed'; readonly detail: string }
+  /**
+   * The start created nothing, because the goal was canceled, had ended, or its
+   * aggregate duration had elapsed before the start wrote anything (or the goal
+   * was canceled or ended while the run was being started, in which case the
+   * port stopped the run it had created). It is not a verdict on the attempt:
+   * the controller commits nothing, and its next read of the record ends the
+   * goal the way the record says.
+   */
+  | { readonly status: 'stood-down' };
 
 export interface GoalWorkflowValidatorRequest {
   readonly goalRunId: string;

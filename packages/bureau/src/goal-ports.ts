@@ -48,6 +48,7 @@ import {
   type GoalWorkflowTransition,
   type GoalWorkflowValidatorRequest,
   isAgentRunWorkflowInput,
+  isDeadlineElapsed,
   type ProjectedValidatorOutcome,
   type ProjectedValidatorResult,
   projectValidatorResult,
@@ -255,23 +256,29 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       runId: request.runId,
     };
 
-    // The goal can be canceled or end at any await below, so the record is read
-    // again immediately before each write that would create or extend an attempt.
-    // The residual window is the gap between that read and the write it guards:
-    // a cancellation landing inside it is caught by the canceller, which stops
-    // the run (`cancelRun`) and by the forwarder, which re-reads the goal before
-    // it commits anything; at worst a session reference for a stopped run is
-    // written.
-    const mustStandDown = async (): Promise<boolean> => {
+    // The goal can be canceled, end, or run out of time at any await below, so
+    // the record is read again immediately before each write that would create or
+    // extend an attempt. The residual window is the gap between that read and the
+    // write it guards: a cancellation landing inside it is caught by the
+    // canceller, which stops the run (`cancelRun`) and by the forwarder, which
+    // re-reads the goal before it commits anything; at worst a session reference
+    // for a stopped run is written.
+    //
+    // The aggregate deadline is one of the reasons to stand down, measured with
+    // the controller's own function over the same clock, so the two cannot
+    // disagree. It counts only before the run exists (`withDeadline`): the
+    // controller never abandons a start, so once a run exists the controller
+    // will learn of it and enforcing the deadline is a plain abort of it.
+    const mustStandDown = async (withDeadline: boolean): Promise<boolean> => {
       const latest = await store.get(request.goalRunId);
       return (
         latest === undefined ||
         latest.cancellation !== undefined ||
-        isTerminalGoalStatus(latest.status)
+        isTerminalGoalStatus(latest.status) ||
+        (withDeadline && isDeadlineElapsed(latest, runtime.clock.now()))
       );
     };
-    const standDown = (): GoalWorkflowStart =>
-      failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal is canceled or has ended'));
+    const standDown = (): GoalWorkflowStart => ({ status: 'stood-down' });
 
     const adopt = async (): Promise<GoalWorkflowStart | undefined> => {
       let existing: Awaited<ReturnType<typeof durable.engine.get>>;
@@ -294,7 +301,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       }
       // A crash between the engine's start and this write leaves a run with no
       // ref in its session; repeating the write is idempotent.
-      if (await mustStandDown()) return standDown();
+      if (await mustStandDown(false)) return standDown();
       await conversations.recordStart(record, request);
       forwarder.watch(target);
       return {
@@ -308,8 +315,12 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     };
 
     // A cancellation that is already recorded must not be given a run to stop.
-    if (record.cancellation !== undefined || isTerminalGoalStatus(record.status)) {
-      return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal is canceled or has ended'));
+    if (
+      record.cancellation !== undefined ||
+      isTerminalGoalStatus(record.status) ||
+      isDeadlineElapsed(record, runtime.clock.now())
+    ) {
+      return standDown();
     }
     // An id is not ownership: a run, a claim, or a session already holding one
     // of this goal's deterministic ids may belong to another goal, another
@@ -352,10 +363,10 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         ),
       );
     }
-    if (await mustStandDown()) return standDown();
+    if (await mustStandDown(true)) return standDown();
     const seat = await conversations.seat(record, request);
     if (seat.status === 'failed') return failed(seat.detail);
-    if (await mustStandDown()) return standDown();
+    if (await mustStandDown(true)) return standDown();
     let started: GoalAttemptRun;
     try {
       started = startAttemptRun({
@@ -392,11 +403,9 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // and the run existed before this read. So either this read sees the marker
     // and stops the run itself, or the marker lands after it and the
     // canceller's `cancelRun` finds the run: no start escapes both.
-    if (await mustStandDown()) {
+    if (await mustStandDown(false)) {
       await abortAttempt({ ...target, attemptId: request.attemptId });
-      return failed(
-        ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal was canceled while its attempt started'),
-      );
+      return standDown();
     }
     await conversations.recordStart(record, request);
     forwarder.watch(target, started.run);

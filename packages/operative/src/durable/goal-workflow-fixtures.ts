@@ -28,7 +28,7 @@ import {
   TERMINAL_STATUSES,
 } from '../goal-decision';
 import { createRunEngine } from './create-run-engine';
-import { createGoalWorkflow } from './goal-workflow';
+import { createGoalWorkflow, type GoalWorkflowOptions } from './goal-workflow';
 import {
   type GoalAttemptTerminalSignal,
   goalAttemptTerminalSignalName,
@@ -43,6 +43,7 @@ import {
   type GoalWorkflowTransition,
   type GoalWorkflowValidatorRequest,
 } from './goal-workflow-ports';
+import { isDeadlineElapsed } from './goal-workflow-transitions';
 
 export const GOAL_RUN_ID = 'goal-1';
 export const GOAL_WORKFLOW_ID = `goal:${GOAL_RUN_ID}`;
@@ -90,6 +91,8 @@ export interface GoalWorldOptions {
   readonly validatorTimeoutMs?: number | undefined;
   /** Runs inside every validator call, so a test can move the clock while a verdict is being produced. */
   readonly onValidate?: (() => void) | undefined;
+  /** Runs at the top of every `startAttempt`, so a test can move the clock between the controller's read and the start. */
+  readonly onStart?: (() => void) | undefined;
 }
 
 export interface CrashPoint {
@@ -140,6 +143,12 @@ export interface GoalWorld {
   makeRecordMissing(): void;
   /** The port call named `label` performs its effect once, then never returns. */
   crashAfter(label: CrashLabel): CrashPoint;
+  /**
+   * The next `startAttempt` that creates a run parks right after creating it, and
+   * answers only once `release` is called: a start that is still in flight when
+   * the clock moves, but that does settle.
+   */
+  holdNextStart(): { readonly reached: Promise<void>; release(): void };
 }
 
 const iso = (milliseconds: number): string => new Date(milliseconds).toISOString();
@@ -170,6 +179,7 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
   const crashes = new Map<string, PendingCrash>();
   const runs = new Map<string, { sessionId: string; aborted: boolean }>();
   let validatorCalls = 0;
+  let startGate: { signalReached: () => void; released: Promise<void> } | undefined;
 
   const transitions: GoalWorkflowTransition[] = [];
   const calls: string[] = [];
@@ -263,12 +273,17 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
 
   async function startAttempt(request: GoalWorkflowStartRequest): Promise<GoalWorkflowStart> {
     calls.push(`start:${request.attemptIndex}`);
+    options.onStart?.();
     startFeedback.set(request.attemptIndex, request.feedback);
     if (nextStartFailure !== undefined) {
       const detail = nextStartFailure;
       nextStartFailure = undefined;
       return { status: 'failed', detail };
     }
+    // The real port's pre-write stand-down, with the deadline measured by the
+    // controller's own function: nothing is claimed or started for a goal that
+    // is over, whatever the controller's last read said.
+    if (isDeadlineElapsed(stored, clock.getNow())) return { status: 'stood-down' };
     // A claim without a started run is the state a crash between the two leaves.
     if (!claims.has(request.runId)) {
       claims.add(request.runId);
@@ -280,6 +295,12 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
     runs.set(request.runId, { sessionId, aborted: false });
     startedRuns.push(request.runId);
     await point('start:started');
+    if (startGate !== undefined) {
+      const gate = startGate;
+      startGate = undefined;
+      gate.signalReached();
+      await gate.released;
+    }
     return { status: 'started', sessionId };
   }
 
@@ -355,6 +376,18 @@ export function createGoalWorld(options: GoalWorldOptions): GoalWorld {
     makeRecordMissing() {
       missing = true;
     },
+    holdNextStart() {
+      let signalReached: () => void = () => {};
+      let release: () => void = () => {};
+      const reached = new Promise<void>((resolve) => {
+        signalReached = resolve;
+      });
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      startGate = { signalReached, released };
+      return { reached, release };
+    },
     crashAfter(label) {
       let signalReached: () => void = () => {};
       const reached = new Promise<void>((resolve) => {
@@ -379,14 +412,20 @@ export interface GoalHarness {
   readonly storage: MemoryStorage;
   readonly clock: ManualClock;
   readonly world: GoalWorld;
+  /** What every engine over this harness builds its workflow with. */
+  readonly workflowOptions: GoalWorkflowOptions;
 }
 
-export function createHarness(options: Omit<GoalWorldOptions, 'clock'> = {}): GoalHarness {
+export function createHarness(
+  options: Omit<GoalWorldOptions, 'clock'> & { readonly startAttemptTimeoutMs?: number } = {},
+): GoalHarness {
   const clock = createManualClock();
+  const { startAttemptTimeoutMs, ...worldOptions } = options;
   return {
     storage: new MemoryStorage(),
     clock,
-    world: createGoalWorld({ ...options, clock }),
+    world: createGoalWorld({ ...worldOptions, clock }),
+    workflowOptions: { startAttemptTimeoutMs },
   };
 }
 
@@ -407,7 +446,7 @@ export function createGoalEngine(harness: GoalHarness, options: GoalEngineOption
   return createRunEngine({
     storage: harness.storage,
     runWorkflow: idleAgentRun(),
-    goalWorkflow: createGoalWorkflow(harness.world.ports),
+    goalWorkflow: createGoalWorkflow(harness.world.ports, harness.workflowOptions),
     recover: false,
     ownership: 'workflow-lease',
     workflowClaimTtlMs: CLAIM_TTL_MS,

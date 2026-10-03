@@ -1,5 +1,12 @@
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import {
+  START_ATTEMPT_MAXIMUM_BACKOFF_MS,
+  START_ATTEMPT_MAXIMUM_TRIES,
+  START_ATTEMPT_TIMEOUT_MS,
+  startAttemptOptions,
+} from './goal-workflow';
 import {
   createGoalEngine,
   createHarness,
@@ -12,6 +19,11 @@ import {
   statusesOf,
 } from './goal-workflow-fixtures';
 import { GOAL_CANCEL_SIGNAL, type GoalWorkflowResult } from './goal-workflow-ports';
+
+/** Lets a parked controller run every turn it has before the test looks at it. */
+async function settleEventLoop(): Promise<void> {
+  for (let turn = 0; turn < 50; turn += 1) await yieldToPortableEventLoop();
+}
 
 /** Runs a goal to its result on one engine, driving the attempts with `drive`. */
 async function runGoal(
@@ -30,6 +42,28 @@ async function runGoal(
 
 const attemptRunning = (harness: GoalHarness, index: number) => () =>
   harness.world.record().attempts[index]?.status === 'running';
+
+describe('startAttemptOptions', () => {
+  it('gives an unbounded goal a per-try timeout and a bounded number of tries, no schedule budget', () => {
+    const options = startAttemptOptions(undefined);
+    expect(options.timeout).toBe(START_ATTEMPT_TIMEOUT_MS);
+    expect(options.retry?.maxAttempts).toBe(START_ATTEMPT_MAXIMUM_TRIES);
+    expect(options.scheduleToCloseTimeout).toBeUndefined();
+  });
+
+  it('spans every try, plus one more try and backoff, for a bounded goal, whatever remains', () => {
+    const options = startAttemptOptions(5_000.2);
+    // Never shortened to the remaining duration: a start in flight at the
+    // deadline is waited for, not abandoned.
+    expect(options.timeout).toBe(START_ATTEMPT_TIMEOUT_MS);
+    // The remaining duration, one more try, and one more backoff: the retry that
+    // reaches the port's deadline check must still be admitted.
+    expect(options.scheduleToCloseTimeout).toBe(
+      5_001 + START_ATTEMPT_TIMEOUT_MS + START_ATTEMPT_MAXIMUM_BACKOFF_MS,
+    );
+    expect(startAttemptOptions(10_000_000).timeout).toBe(START_ATTEMPT_TIMEOUT_MS);
+  });
+});
 
 describe('createGoalWorkflow', () => {
   describe('a passing goal', () => {
@@ -416,21 +450,92 @@ describe('createGoalWorkflow', () => {
       },
     );
 
-    it('exhausts at the deadline while an attempt start never returns', async () => {
+    it('waits for a start that is in flight when the deadline passes, then aborts the run it started', async () => {
       const harness = createHarness({
         bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
       });
-      const hung = harness.world.crashAfter('start:started');
+      const held = harness.world.holdNextStart();
       const result = await runGoal(harness, async () => {
-        await hung.reached;
+        await held.reached;
         harness.clock.advance(1_000);
+        // Nothing may end the goal while the start has not answered: the
+        // controller does not abandon it. The turns are real time, so a deadline
+        // timer that was racing the start would have fired by now.
+        for (let turn = 0; turn < 20; turn += 1) {
+          await Bun.sleep(5);
+          await settleEventLoop();
+          expect(harness.world.record().status).toBe('pending');
+          expect(harness.world.abortedRuns).toEqual([]);
+        }
+        held.release();
       });
       expect(result).toMatchObject({
         status: 'exhausted',
         terminalReason: 'aggregate-budget-exceeded',
       });
-      // The run a start left behind is stopped by its deterministic id.
+      // The start settled, so the controller knows the run and stops it: the
+      // attempt is recorded and closed aborted, never an orphan.
+      expect(statusesOf(harness.world)).toEqual(['running', 'exhausted']);
+      expect(harness.world.record().attempts[0]).toMatchObject({ status: 'aborted' });
+      expect(harness.world.startedRuns).toEqual([`goal-${GOAL_RUN_ID}-a0`]);
       expect(harness.world.abortedRuns).toEqual([`goal-${GOAL_RUN_ID}-a0`]);
+    });
+
+    it('ends the goal at its deadline, creating no run, when the start stands down for the elapsed bound', async () => {
+      // eslint-disable-next-line prefer-const -- the hook closes over the harness it is passed to.
+      let harness: GoalHarness;
+      harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
+        // The bound elapses between the controller's read and the start's own.
+        onStart: () => {
+          harness.clock.advance(1_000);
+        },
+      });
+      const result = await runGoal(harness, () => Promise.resolve());
+      expect(result).toMatchObject({
+        status: 'exhausted',
+        terminalReason: 'aggregate-budget-exceeded',
+      });
+      expect(harness.world.claims.size).toBe(0);
+      expect(harness.world.startedRuns).toEqual([]);
+      expect(statusesOf(harness.world)).toEqual(['exhausted']);
+      // L S L(sees the elapsed bound) A C L: a stood-down start commits nothing.
+      expect(harness.world.calls).toEqual([
+        'load',
+        'start:0',
+        'load',
+        'abort:0',
+        'commit:exhausted:applied',
+        'load',
+      ]);
+    });
+
+    it('bounds a hung start with Weft and still ends the goal at its deadline', async () => {
+      const harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 25 },
+        startAttemptTimeoutMs: 25,
+      });
+      // The first try claims the run and then never answers.
+      const hung = harness.world.crashAfter('start:claimed');
+      const result = await runGoal(harness, async () => {
+        await hung.reached;
+        // The bound passes (25ms) while the first try hangs, within the start's
+        // schedule budget (the bound plus one more try, 50ms).
+        harness.clock.advance(30);
+        // The per-try timeout is a real timer: it gives up on the hung try, and
+        // the retry finds the goal over.
+        await pollUntil(async () => {
+          await Bun.sleep(5);
+          return harness.world.calls.filter((call) => call === 'start:0').length >= 2;
+        });
+      });
+      expect(result).toMatchObject({
+        status: 'exhausted',
+        terminalReason: 'aggregate-budget-exceeded',
+      });
+      // Weft retried the start; the retry saw the elapsed bound and created nothing.
+      expect(harness.world.calls.filter((call) => call === 'start:0')).toHaveLength(2);
+      expect(harness.world.startedRuns).toEqual([]);
       expect(statusesOf(harness.world)).toEqual(['exhausted']);
     });
 

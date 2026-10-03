@@ -51,11 +51,15 @@
  *   C   commitTransition  -> exhausted     aggregate-budget-exceeded
  *
  * pending | retrying
- *   S   startAttempt                       start-or-adopt by the deterministic run id;
- *                                          raced against sleep(remaining) when a duration bound is set,
- *                                          and when the deadline wins nothing more: the next L ends the goal
- *   C   commitTransition  -> running       attempt N, usage.attempts = N + 1, active = attempt
- *   S'  (S answered 'failed')              commitTransition -> failed (attempt-run-failed) in place of C
+ *   S   startAttempt                       start-or-adopt by the deterministic run id. Awaited to
+ *                                          settlement, never raced against the deadline; Weft's own
+ *                                          per-try timeout, retry, and (with a duration bound)
+ *                                          scheduleToCloseTimeout bound a hung one (see below)
+ *       started | adopted -> C commitTransition -> running   attempt N, usage.attempts = N + 1, active = attempt
+ *       failed            -> S' commitTransition -> failed (attempt-run-failed) in place of C
+ *       stood-down        -> nothing more (the port created nothing: the goal was canceled, ended,
+ *                            or out of time before the start wrote anything); the next L reads the
+ *                            marker or the elapsed bound with a fresh clock and ends the goal
  *
  * running
  *   R   raceKeyed { attempt: waitForSignal('attempt-terminal:N'),
@@ -82,19 +86,51 @@
  *   C   commitTransition -> <decision>     the verdict and the decision, together
  * ```
  *
- * Every wait on code the workflow does not own (the attempt's own signal, the
- * start of its run, the validator) is raced against the aggregate deadline, so a
- * hung one cannot hold a goal past `maximumTotalDurationMs`. With a bound, the race
- * is `raceKeyed({ work, deadline })` (one branch more than the unbounded wait); the
- * choice depends only on the recorded read, so a replay opens the same race. The
- * abandoned activity is idempotent and its late effects stand down (the start port
- * re-reads the goal before it writes, and stops the run it created if the goal
- * ended meanwhile). An abandoned start can outlive the goal's ending, and a
- * process that dies between the run's creation and that stand-down leaves a run
+ * ## Waiting on code the workflow does not own
+ *
+ * The attempt's own signal and the validator are raced against the aggregate
+ * deadline, so a hung one cannot hold a goal past `maximumTotalDurationMs`. With
+ * a bound, the race is `raceKeyed({ work, deadline })` (one branch more than the
+ * unbounded wait); the choice depends only on the recorded read, so a replay
+ * opens the same race. The abandoned validator is idempotent.
+ *
+ * The start of an attempt is the exception, and deliberately so. It has a
+ * durable side effect (the claim, then the run), so abandoning it at the
+ * deadline would leave an outstanding start the controller does not know about:
+ * a run that could appear after the goal ended. The controller therefore waits
+ * for the start to settle, and its answer is always known (`started`,
+ * `adopted`, `stood-down`, or `failed`). After that, enforcing the deadline is a
+ * plain abort of a run the controller knows exists (`A`, then `C -> exhausted`).
+ * A start that has not settled is bounded by Weft instead (`startAttemptOptions`):
+ * a per-try timeout (not shortened to the deadline, so a slow start is waited
+ * for), one retry, and with a duration bound a `scheduleToCloseTimeout` of the
+ * remaining duration plus one more try. Retry is only a top-level `ctx.run`
+ * feature, which is why the start is no longer inside a race, where an
+ * activity never retries. A timed-out try keeps
+ * running in the background, and the retry adopts the run it created (the
+ * ownership check and the deterministic run id) or stands down. The start port
+ * re-reads the goal before every write, including the aggregate deadline measured
+ * exactly as this controller measures it, and answers `stood-down` rather than
+ * claim or start anything for a goal that is over; a run it created that the goal
+ * ended over while it started is stopped by the port. Past the last try the
+ * controller fails and Bureau restarts it from the record (a bounded number of
+ * times), and the restarted controller ends the goal at its deadline.
+ *
+ * What remains is the crash an at-least-once activity always has, between the
+ * engine's start committing the run and the port finishing its stand-down check,
+ * and its background twin: a timed-out try that was still running when the goal
+ * ended. In either the process can die before the run is stopped, leaving a run
  * the terminal goal never names, so the host's recovery stops whatever run an
- * `exhausted` or `canceled` goal's ending overtook (`attemptToStop`'s target
- * and the last recorded attempt's), at every boot and `recover()`, until the
- * goal is closed and its cleanup recorded.
+ * `exhausted` or `canceled` goal's ending left (`attemptToStop`'s target and the
+ * last recorded attempt's), at every boot and `recover()` and in `close()`, until
+ * the goal is closed and its cleanup recorded. A crash on this side of the
+ * commit needs no sweep: the replayed start adopts the run, and the next
+ * decision point aborts it.
+ *
+ * Replay: the start now sits at a top-level slot with retry options, where it
+ * used to be one branch of a race. That is a different slot order from the one
+ * the previous revision recorded, which is acceptable only because the workflow
+ * is pre-release and no history of it exists in the wild.
  *
  * The decision is committed once even though the validator may run twice: the
  * transition carries `decisionId = <attemptId>:decision`, the store accepts the
@@ -142,7 +178,7 @@
  * moved on), and a controller that receives either re-reads.
  */
 
-import type { WorkflowContext } from '@lostgradient/weft';
+import type { ActivityCallOptions, WorkflowContext } from '@lostgradient/weft';
 import { workflow } from '@lostgradient/weft';
 
 import {
@@ -212,6 +248,73 @@ const ADOPTABLE_REJECTIONS: readonly string[] = [
   'decision-already-recorded',
 ];
 
+/**
+ * How long one try of the attempt's start may take before Weft stops waiting for
+ * it and tries again. Starting an attempt is a handful of local store reads and
+ * writes plus the engine's own start, so a minute is generous; what it must not
+ * be is unbounded, because a hung start would hold the controller forever.
+ *
+ * It is deliberately not shortened to what remains of the goal's duration. A
+ * try cut off at the deadline is an abandoned start, which is the very thing
+ * this timeout exists to avoid for a start that is merely slow: a start still
+ * in flight at the deadline is waited for, and only one that outlasts this
+ * constant is given up on. The price is that a hung start can hold a bounded
+ * goal past its deadline by up to one try.
+ */
+export const START_ATTEMPT_TIMEOUT_MS = 60_000;
+
+/**
+ * Tries a hung or failing start is given, with no backoff between them: the
+ * start is idempotent, a wait would only slow the failure of a fault that does
+ * not clear (Weft's timer resolution makes even a short backoff cost about half
+ * a second per failure), and the time since the last try is already the
+ * try's own timeout. One retry is enough for a transient fault and keeps a permanent one from
+ * delaying the controller's failure (and Bureau's bounded restarts) by much. A
+ * timed-out try keeps running in the background (Weft cannot preempt it), and
+ * the next one adopts the run it created or stands down: the start is
+ * idempotent by the attempt's deterministic run id. Past the last try the
+ * controller fails and Bureau's bounded restart takes over.
+ */
+export const START_ATTEMPT_MAXIMUM_TRIES = 2;
+const START_ATTEMPT_INITIAL_BACKOFF_MS = 0;
+export const START_ATTEMPT_MAXIMUM_BACKOFF_MS = 0;
+
+export interface GoalWorkflowOptions {
+  /** Overrides {@link START_ATTEMPT_TIMEOUT_MS}; tests use it to give a hung start a short fuse. */
+  readonly startAttemptTimeoutMs?: number | undefined;
+}
+
+/**
+ * The Weft options for the attempt's start, a pure function of the remaining
+ * duration the controller just read, so a replay passes the same ones.
+ *
+ * With a duration bound, `scheduleToCloseTimeout` spans every try:
+ * the remaining duration, plus one more try of slack. The
+ * slack is deliberate. The budget is checked where a retry would be scheduled,
+ * so a budget equal to the remaining duration would refuse the very retry that
+ * reaches the start port's deadline check and stands down; with the slack that
+ * retry is admitted after a hung try times out, answers `stood-down`, and the
+ * goal ends at its deadline instead of the controller failing. Without a bound
+ * there is nothing to span, and the number of tries is the only limit.
+ */
+export function startAttemptOptions(
+  remainingMs: number | undefined,
+  timeoutMs: number = START_ATTEMPT_TIMEOUT_MS,
+): ActivityCallOptions {
+  const retry = {
+    maxAttempts: START_ATTEMPT_MAXIMUM_TRIES,
+    initialBackoff: START_ATTEMPT_INITIAL_BACKOFF_MS,
+    backoffMultiplier: 2,
+    maxBackoff: START_ATTEMPT_MAXIMUM_BACKOFF_MS,
+  };
+  if (remainingMs === undefined) return { timeout: timeoutMs, retry };
+  return {
+    timeout: timeoutMs,
+    retry,
+    scheduleToCloseTimeout: Math.ceil(remainingMs) + timeoutMs + START_ATTEMPT_MAXIMUM_BACKOFF_MS,
+  };
+}
+
 function terminalResult(view: GoalWorkflowView): GoalWorkflowResult {
   if (view.terminalReason === undefined) {
     throw new GoalControllerError(
@@ -247,7 +350,7 @@ function isRefusal(commit: GoalWorkflowCommit): boolean {
  * captured once, like `createRunWorkflow`'s checkpoint store, so no per-run
  * registry or `services` is needed.
  */
-export function createGoalWorkflow(ports: GoalWorkflowPorts) {
+export function createGoalWorkflow(ports: GoalWorkflowPorts, options: GoalWorkflowOptions = {}) {
   const activities = createGoalWorkflowActivities(ports);
   const { identifiers } = ports;
 
@@ -311,11 +414,16 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
       runId: identifiers.attemptRunId(view.goalRunId, attemptIndex),
       ...(feedback === undefined ? {} : { feedback }),
     };
-    const attempt = yield* beforeDeadline(ctx, view, nowMs, () =>
-      ctx.run(activities.startAttempt, request),
+    // Never raced against the deadline: an abandoned start leaves a run the
+    // controller does not know about. Weft bounds a hung one instead.
+    const started = yield* ctx.run(
+      activities.startAttempt,
+      request,
+      startAttemptOptions(remainingMilliseconds(view, nowMs), options.startAttemptTimeoutMs),
     );
-    if (attempt.elapsed) return undefined;
-    const started = attempt.value;
+    // Nothing was created: the goal was canceled, ended, or out of time before
+    // the start wrote anything. The next decision point reads which.
+    if (started.status === 'stood-down') return undefined;
     if (started.status === 'failed') {
       const decision = decideAttemptRunFailure(started.detail);
       return yield* commit(ctx, buildStartFailure(view, identifiers, nowMs, decision));
