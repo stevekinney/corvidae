@@ -1,7 +1,7 @@
 import { TypedEventTarget } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
-  BudgetExceededEvent,
+  BudgetExceededError,
   BudgetThresholdEvent,
   type CombinedOperativeEventMap,
   ContextBudgetWarningEvent,
@@ -215,23 +215,98 @@ describe('createRunFrameForwarder', () => {
     }
   });
 
-  it('emits an error notification frame when the cost budget is exceeded', () => {
-    const { activeRun, dispatch } = createEventDrivenActiveRun();
+  it('emits one error notification before the terminal observer when a real run exceeds its budget', async () => {
+    const activeRun = createActiveRun({
+      generate: () => Promise.reject(new BudgetExceededError('cost budget reached')),
+      toolbox: createToolbox<readonly Tool[]>([]),
+      conversation: new Conversation(),
+      maximumSteps: 1,
+      runId: 'run-budget-exceeded',
+    });
     const frames: RunFrame[] = [];
-    const dispose = createRunFrameForwarder('run-budget-exceeded', activeRun, (frame) =>
-      frames.push(frame),
+    const order: string[] = [];
+    const dispose = createRunFrameForwarder(
+      'run-budget-exceeded',
+      activeRun,
+      (frame) => {
+        frames.push(frame);
+        if (frame.type === 'notification' && frame.code === 'budget.exceeded') {
+          order.push('notification');
+        }
+      },
+      { clock: () => 4242 },
     );
+    activeRun.addEventListener('run.completed', () => order.push('terminal'));
 
-    dispatch(new BudgetExceededEvent({ currentCost: 6, budget: 5, model: 'claude-sonnet-5' }));
+    const result = await activeRun.result;
     dispose();
 
-    const notification = frames.find((frame) => frame.type === 'notification');
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(order).toEqual(['notification', 'terminal']);
+    const notifications = frames.filter(
+      (frame) => frame.type === 'notification' && frame.code === 'budget.exceeded',
+    );
+    expect(notifications).toHaveLength(1);
+    const notification = notifications[0];
     expect(notification?.type).toBe('notification');
     if (notification?.type === 'notification') {
       expect(notification.level).toBe('error');
       expect(notification.code).toBe('budget.exceeded');
-      expect(notification.message).toBe('Cost budget exceeded (6 of 5)');
+      expect(notification.message).toBe('Cost budget exceeded');
+      expect(notification.step).toBe(frames.findLast((frame) => frame.type === 'step')?.step);
+      expect(notification.timestamp).toBe(4242);
     }
+  });
+
+  it('does not turn a deprecated budget event, a successful run or a failed run into a budget notification', async () => {
+    const { activeRun, dispatch } = createEventDrivenActiveRun();
+    const frames: RunFrame[] = [];
+    const dispose = createRunFrameForwarder('run-legacy-budget', activeRun, (frame) =>
+      frames.push(frame),
+    );
+    dispatch(new Event('budget.exceeded'));
+    dispose();
+    expect(frames).toEqual([]);
+
+    const successfulRun = createActiveRun({
+      generate: generateDone,
+      toolbox: createToolbox<readonly Tool[]>([]),
+      conversation: new Conversation(),
+      maximumSteps: 1,
+      runId: 'run-within-budget',
+    });
+    const successfulFrames: RunFrame[] = [];
+    const disposeSuccessful = createRunFrameForwarder('run-within-budget', successfulRun, (frame) =>
+      successfulFrames.push(frame),
+    );
+    const successfulResult = await successfulRun.result;
+    expect(successfulResult.finishReason).not.toBe('budget-exceeded');
+    disposeSuccessful();
+    expect(
+      successfulFrames.some(
+        (frame) => frame.type === 'notification' && frame.code === 'budget.exceeded',
+      ),
+    ).toBe(false);
+
+    const failedRun = createActiveRun({
+      generate: () => Promise.reject(new Error('provider unavailable')),
+      toolbox: createToolbox<readonly Tool[]>([]),
+      conversation: new Conversation(),
+      maximumSteps: 1,
+      runId: 'run-provider-error',
+    });
+    const failedFrames: RunFrame[] = [];
+    const disposeFailed = createRunFrameForwarder('run-provider-error', failedRun, (frame) =>
+      failedFrames.push(frame),
+    );
+    const failedResult = await failedRun.result;
+    disposeFailed();
+    expect(failedResult.finishReason).toBe('error');
+    expect(
+      failedFrames.some(
+        (frame) => frame.type === 'notification' && frame.code === 'budget.exceeded',
+      ),
+    ).toBe(false);
   });
 
   it('emits a warning notification frame when the context window budget is running low', () => {

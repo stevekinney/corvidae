@@ -169,7 +169,10 @@ export function createRunFrameForwarder(
     );
   });
 
-  on('budget.exceeded', (event) => {
+  // Operative reports a real budget rejection through the terminal result.
+  // Its deprecated `budget.exceeded` event is never dispatched by a run.
+  on('run.completed', (event) => {
+    if (event.finishReason !== 'budget-exceeded') return;
     emit(
       createNotificationFrame(
         {
@@ -177,7 +180,7 @@ export function createRunFrameForwarder(
           step: currentStep,
           level: 'error' satisfies NotificationLevel,
           code: 'budget.exceeded',
-          message: `Cost budget exceeded (${event.currentCost} of ${event.budget})`,
+          message: 'Cost budget exceeded',
         },
         clock,
       ),
