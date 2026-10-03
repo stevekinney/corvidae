@@ -65,7 +65,8 @@ export async function cancelGoal(
 ): Promise<BureauGoalCancelOutcome> {
   const { store, clock, diagnose, getEngine } = dependencies;
   const { goalRunId } = record;
-  if (record.status === 'canceled') return settleCanceledGoal(dependencies, record);
+  const scoped = options.principal !== undefined;
+  if (record.status === 'canceled') return settleCanceledGoal(dependencies, record, { scoped });
   if (isTerminalGoalStatus(record.status)) return { outcome: 'already-terminal', goal: record };
 
   const now = clock.nowISO();
@@ -90,7 +91,7 @@ export async function cancelGoal(
     // The goal ended between the caller's read and the marker. One that ended
     // canceled is read back like any other; one that ended otherwise is done.
     return marked.record.status === 'canceled'
-      ? settleCanceledGoal(dependencies, marked.record)
+      ? settleCanceledGoal(dependencies, marked.record, { scoped })
       : { outcome: 'already-terminal', goal: marked.record };
   }
   // The store retried the write against concurrent writers and lost every
@@ -130,17 +131,20 @@ export async function cancelGoal(
     await commitCancellation(store, latest, clock.now());
   }
 
-  return readBack(dependencies, goalRunId, attempts, marked.record);
+  return readBack(dependencies, goalRunId, attempts, scoped);
 }
 
 /**
  * Finishes what a committed `canceled` leaves to do. The marker and the commit
  * are done; the controller and the attempt runs may not be, so each is stopped
  * again (a no-op for one already stopped) and the answer comes from the read.
+ * `scoped` is whether the caller may see only its own goals, which hides a
+ * record fault behind `not-found`, as every other verb does.
  */
 export async function settleCanceledGoal(
   dependencies: GoalControlDependencies,
   record: GoalState,
+  viewer: { readonly scoped?: boolean | undefined } = {},
 ): Promise<BureauGoalCancelOutcome> {
   const { getEngine, diagnose } = dependencies;
   const { goalRunId } = record;
@@ -166,7 +170,7 @@ export async function settleCanceledGoal(
     }
     await stopRuns(dependencies, goalRunId, attempts);
   }
-  return readBack(dependencies, goalRunId, attempts, record);
+  return readBack(dependencies, goalRunId, attempts, viewer.scoped === true);
 }
 
 /**
@@ -200,15 +204,25 @@ async function stopRuns(
   }
 }
 
-/** One fresh read of every condition `cancel()` answers for. */
+/**
+ * One fresh read of every condition `cancel()` answers for. A record that the
+ * fresh read cannot return (deleted, or no longer decodable, since the caller
+ * read it) is answered as exactly that, never papered over with the caller's
+ * older copy: `canceled` is only ever said of a record read back as `canceled`.
+ */
 export async function readBack(
   dependencies: GoalControlDependencies,
   goalRunId: string,
   attemptRunIds: readonly string[],
-  fallback: GoalState,
+  scoped: boolean,
 ): Promise<BureauGoalCancelOutcome> {
   const { store, getEngine } = dependencies;
-  const goal = (await store.get(goalRunId)) ?? fallback;
+  const goal = await store.get(goalRunId);
+  if (goal === undefined) {
+    return !scoped && (await store.isUnreadable(goalRunId))
+      ? { outcome: 'record-unreadable' }
+      : { outcome: 'not-found' };
+  }
   const awaiting = await unfinishedAfterCancellation(
     getEngine(),
     goalRunId,

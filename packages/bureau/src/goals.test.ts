@@ -299,6 +299,40 @@ describe('bureau.goals', () => {
       expect(await bureau.goals.list()).toEqual([]);
     });
 
+    it.each([
+      { label: 'zero', override: { validatorTimeoutMs: 0 } },
+      { label: 'negative', override: { validatorTimeoutMs: -5 } },
+      { label: 'not a number', override: { validatorTimeoutMs: Number.NaN } },
+      { label: 'infinite', override: { validatorTimeoutMs: Number.POSITIVE_INFINITY } },
+      { label: 'an empty identity name', override: { identity: { name: '', version: '1' } } },
+      {
+        label: 'an identity with a key the record does not hold',
+        override: { identity: { name: 'goal', version: '1', extra: true } },
+      },
+      {
+        label: 'a deterministic-validation flag that is not a boolean',
+        override: { requireDeterministicValidation: 'yes' },
+      },
+      { label: 'a principal that is not text', override: { principal: 7 } },
+      {
+        label: 'bounds with a key the record does not hold',
+        override: { bounds: { maximumAttempts: 2, maximumTotalSteps: 5, extra: 1 } },
+      },
+    ] as const)(
+      'refuses $label as an invalid configuration instead of throwing, before writing anything',
+      async ({ override }) => {
+        const { bureau } = await boot({
+          agents: { worker: workerAgent(hangUntilAborted) },
+          validators: [createCheckValidator()],
+        });
+
+        const outcome = await bureau.goals.create(goalRequest(override as never));
+
+        expect(outcome).toMatchObject({ outcome: 'rejected', code: 'invalid-configuration' });
+        expect(await bureau.goals.list()).toEqual([]);
+      },
+    );
+
     it('refuses a validator that is missing or registered at another version, before writing anything', async () => {
       const { bureau } = await boot({
         agents: { worker: workerAgent(hangUntilAborted) },

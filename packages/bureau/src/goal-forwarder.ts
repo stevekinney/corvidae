@@ -116,8 +116,14 @@ export function createAttemptForwarder(
 
   /** Sends the attempt's terminal signal if its run has ended. */
   async function forward(target: AttemptTarget): Promise<AttemptReconciliation> {
+    if (isClosing()) return 'not-needed';
+    // No engine is not an ended goal: nothing can be read to forward, and
+    // `not-needed` would tell recovery there is nothing owed. It is a fault the
+    // caller retries or reports.
     const durable = getDurable();
-    if (durable === undefined || isClosing()) return 'not-needed';
+    if (durable === undefined) {
+      throw new Error("The bureau has no durable engine to read an attempt's ending with.");
+    }
     const record = await store.get(target.goalRunId);
     if (
       record === undefined ||
@@ -138,10 +144,22 @@ export function createAttemptForwarder(
     if (reading.status === 'missing') return 'missing';
     if (reading.status === 'not-terminal') return 'watching';
     if (isClosing()) return 'not-needed';
+    // Committing writes the goal's session, so it is authorized by a read taken
+    // now, not the one above: the reads of the run and the cost estimate between
+    // them can outlast a cancellation or a duration-terminal transition, and a
+    // finished or canceled goal's session is not this forwarder's to change.
+    const current = await store.get(target.goalRunId);
+    if (
+      current === undefined ||
+      isTerminalGoalStatus(current.status) ||
+      current.cancellation !== undefined
+    ) {
+      return 'not-needed';
+    }
     // Before the controller can start the next attempt or the validator, so a
     // retry always finds this attempt's transcript in the session. Idempotent,
     // so a recovery that sends the signal again commits nothing twice.
-    await conversations.settle(record, target.attemptIndex, target.runId);
+    await conversations.settle(current, target.attemptIndex, target.runId);
 
     const finishReason: FinishReason = reading.result.finishReason;
     const cost = reading.result.costEstimate?.totalCost;

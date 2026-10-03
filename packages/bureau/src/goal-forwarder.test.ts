@@ -371,6 +371,78 @@ describe('createAttemptForwarder', () => {
     close();
   });
 
+  it('stands down without committing the transcript when a cancellation landed after it read the goal', async () => {
+    // The cost estimator runs between the forwarder's first read of the goal and
+    // its commit, so a cancellation requested there is exactly the stale-record
+    // window: the first read saw a running goal.
+    const { durable, order, settled, sent, forwarder, store } = await world(
+      { maximumTotalCostUsd: 5 },
+      {
+        resolveCostEstimation: async () => {
+          await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+          return { model: 'gpt-4o' };
+        },
+      },
+    );
+    await finishedRun(durable);
+
+    expect(await forwarder.reconcile(target)).toBe('not-needed');
+
+    expect(settled).toEqual([]);
+    expect(order).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  it('never reports an empty run for an attempt whose checkpoint could not be read', async () => {
+    const { durable, sent, forwarder } = await world();
+    await finishedRun(durable);
+    const load = durable.checkpointStore.loadCheckpoint.bind(durable.checkpointStore);
+    let failures = 1;
+    durable.checkpointStore.loadCheckpoint = (runId) => {
+      if (failures > 0) {
+        failures -= 1;
+        return Promise.reject(new Error('checkpoint store unavailable'));
+      }
+      return load(runId);
+    };
+
+    let caught: unknown;
+    try {
+      await forwarder.reconcile(target);
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as Error | undefined)?.message).toBe('checkpoint store unavailable');
+    expect(sent).toEqual([]);
+
+    expect(await forwarder.reconcile(target)).toBe('signal-resent');
+    expect(sent.map((signal) => signal.payload)).toEqual([
+      { finishReason: 'stop-condition', steps: 1, tokens: 150 },
+    ]);
+  });
+
+  it('does not read a missing engine as an attempt that owes nothing', async () => {
+    const { store } = await world();
+    const withoutEngine = createAttemptForwarder({
+      store,
+      runtime,
+      getDurable: () => undefined,
+      resolveCostEstimation: () => Promise.resolve(undefined),
+      conversations: { settle: () => Promise.resolve() },
+      isClosing: () => false,
+      diagnose: () => {},
+    });
+
+    let caught: unknown;
+    try {
+      await withoutEngine.reconcile(target);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect((caught as Error | undefined)?.message).toContain('no durable engine');
+  });
+
   it('does not report a signal that failed because the controller had just ended', async () => {
     const { durable, forwarder, store, diagnostics } = await world();
     await finishedRun(durable);

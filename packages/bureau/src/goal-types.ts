@@ -159,8 +159,9 @@ export type BureauGoalActiveWork =
       /** The run's own workflow status, read now; `null` when it has no workflow. */
       readonly runStatus: string | null;
       /**
-       * Set when reading the run failed. `runStatus` is then `null` too, but that
-       * does not mean the run has no workflow; this says why it could not be read.
+       * Set when reading the run failed, or when the bureau has no durable engine
+       * to read it with. `runStatus` is then `null` too, but that does not mean the
+       * run has no workflow; this says why it could not be read.
        */
       readonly runStatusError?: string | undefined;
     }
@@ -179,7 +180,8 @@ export type BureauGoalCloseOutcome =
    * retention to the controller workflow's history: `not-required` when the
    * policy keeps everything or the goal never had a controller, `completed`
    * once pruned, and `unresolved` or `failed` when it could not be, which
-   * `close()` again retries.
+   * `close()` again retries. A bureau with no durable engine cannot look for a
+   * controller, so it answers `unresolved` (`unreachable`), never `not-required`.
    */
   | {
       readonly outcome: 'closed';

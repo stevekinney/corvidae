@@ -400,6 +400,11 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     const record = await store.get(request.goalRunId);
     const attempt = record?.attempts[request.attemptIndex];
     const durable = getDurable();
+    // An absent engine is a fault to retry, not a verdict on the attempt: an
+    // `error` outcome would end the goal over something the next try may not have.
+    if (record !== undefined && attempt !== undefined && durable === undefined) {
+      throw new Error("The bureau has no durable engine to read the attempt's result with.");
+    }
     if (record === undefined || attempt === undefined || durable === undefined) {
       return unavailable(
         'error',

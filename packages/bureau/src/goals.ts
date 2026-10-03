@@ -34,6 +34,7 @@ import {
   GoalRunIdError,
   type GoalState,
   goalWorkflowId,
+  InvalidGoalStateError,
   isTerminalGoalStatus,
 } from './goal-state';
 import type {
@@ -63,6 +64,9 @@ export interface BureauGoalsDependencies extends GoalControlDependencies {
    */
   readonly cleanupController: (workflowId: string) => Promise<CleanupAcknowledgement>;
 }
+
+const NO_ENGINE_TO_READ_RUN =
+  "This bureau has no durable engine, so the run's workflow status cannot be read.";
 
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -231,6 +235,11 @@ export function createBureauGoals<TName extends string = string>(
       if (error instanceof GoalConfigurationError) {
         return rejected('invalid-configuration', `${error.reason}: ${error.message}`);
       }
+      // A request the record decoder would refuse is a configuration to correct,
+      // not an exception: `createGoalState` names the invariant it broke.
+      if (error instanceof InvalidGoalStateError) {
+        return rejected('invalid-configuration', error.message);
+      }
       throw error;
     }
 
@@ -316,13 +325,19 @@ export function createBureauGoals<TName extends string = string>(
     }
     // A read that fails is not a run with no workflow: `runStatus` is `null` for
     // both, so the fault is named beside it.
+    // Neither is a bureau with no durable engine: it cannot look, which is not
+    // the same as looking and finding no workflow.
     let runStatusError: string | undefined;
-    const run = await getEngine()
-      ?.get(work.runId)
-      .catch((error: unknown) => {
+    const engine = getEngine();
+    let run: Awaited<ReturnType<NonNullable<typeof engine>['get']>> | undefined;
+    if (engine === undefined) {
+      runStatusError = NO_ENGINE_TO_READ_RUN;
+    } else {
+      run = await engine.get(work.runId).catch((error: unknown) => {
         runStatusError = describe(error);
         return null;
       });
+    }
     return {
       kind: 'attempt',
       attemptId: work.attemptId,
@@ -389,7 +404,12 @@ export function createBureauGoals<TName extends string = string>(
       // A closed goal leaves the boot sweep, so a cancellation whose controller,
       // finalizer, or attempt run is not yet read back as ended must not be
       // closed over: nothing would be left to finish it.
-      const settled = await settleCanceledGoal(dependencies, record);
+      const settled = await settleCanceledGoal(dependencies, record, {
+        scoped: query?.principal !== undefined,
+      });
+      if (settled.outcome === 'not-found' || settled.outcome === 'record-unreadable') {
+        return settled;
+      }
       if (settled.outcome === 'cancellation-pending') {
         return {
           outcome: 'cancellation-pending',
@@ -424,9 +444,13 @@ export function createBureauGoals<TName extends string = string>(
   /** The controller's workflow history, pruned under the bureau's retention; `not-required` with no controller. */
   async function cleanUp(goalRunId: string): Promise<CleanupAcknowledgement> {
     const workflowId = goalWorkflowId(goalRunId);
+    // No engine is not no controller: the workflow may exist and simply cannot
+    // be looked for from here, so its history is not known to need nothing.
+    const engine = getEngine();
+    if (engine === undefined) return { status: 'unresolved', reason: 'unreachable' };
     try {
-      const controller = await getEngine()?.get(workflowId);
-      if (controller === null || controller === undefined) return { status: 'not-required' };
+      const controller = await engine.get(workflowId);
+      if (controller === null) return { status: 'not-required' };
       return await dependencies.cleanupController(workflowId);
     } catch (error) {
       return { status: 'failed', error };

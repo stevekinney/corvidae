@@ -7,10 +7,12 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
+  AgentContractError,
   createAgent,
   createCheckpointStore,
   createRunEngine,
   createRunWorkflow,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
   stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
@@ -169,6 +171,56 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         (error: unknown) => error,
       ),
     ).toEqual(expect.objectContaining({ message: 'recovery record write failed' }));
+  });
+
+  it('never runs the agent directly when a lazy agent turns out not to resolve durably', async () => {
+    // A lazy-wrapped agent only discovers, once invoked, that its module cannot
+    // resolve run options. An ordinary run falls back to the agent's own `run()`;
+    // a goal attempt must not, since that run is untracked and a retry would
+    // launch a second one.
+    let ranDirectly = 0;
+    const lazy = {
+      name: 'worker',
+      hasOutput: false,
+      run: () => {
+        ranDirectly += 1;
+        throw new Error('a goal attempt must never run the agent directly');
+      },
+      [OPERATIVE_RESOLVE_RUN_OPTIONS]: () => {
+        throw new AgentContractError('This agent does not support durable resolution.');
+      },
+    };
+    const runtime = {
+      durable: { engine: {}, checkpointStore: {} },
+      createBureauInvariantHooks: () => undefined,
+      claimCatalogRunRecoveryRecord: async () => true,
+      persistCatalogRunRecoveryRecord: async () => {},
+    } as unknown as RuntimeComposition;
+    const runAttribution = new Map<string, RunAttribution>();
+    const dispatcher = createCatalogDispatcher({
+      agentCatalog: { find: () => lazy as never },
+      runtime,
+      runtimeServices: createManualRuntimeServices(),
+      getShutdownPromise: () => undefined,
+      catalogRuns: new Set(),
+      runAttribution,
+      detachBestEffortPromise: () => {},
+      createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+      validateAgentRunInput: () => {},
+      validateBureauRunOptions: () => {},
+      onDurableRunAborted: () => {},
+    });
+
+    const started = dispatcher.startGoalAttemptRun(attempt);
+    const reason = await started.durablyStarted.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    const result = await started.run.result();
+
+    expect(reason).toEqual(expect.objectContaining({ code: 'CONFLICT' }));
+    expect(ranDirectly).toBe(0);
+    expect(result.finishReason).toBe('error');
   });
 
   describe('a claim already holding the attempt id', () => {

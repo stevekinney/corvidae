@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { cancelGoal } from './goal-cancellation';
+import { cancelGoal, settleCanceledGoal } from './goal-cancellation';
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
 import { goalTransitionId } from './goal-state';
 import type { GoalStore } from './goal-store';
@@ -332,5 +332,39 @@ describe('the read-back of a run it cannot read', () => {
     expect(diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(
       'run record goal-g1-a0 is corrupt',
     );
+  });
+});
+
+describe('the read-back of a record that vanished', () => {
+  /** A canceled goal whose record the fresh read no longer finds. */
+  async function vanished(unreadable: boolean) {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({ workflows: settled });
+    const first = dependencies(store, engine);
+    await cancelGoal(first.control, (await store.get('g1'))!, {});
+    const canceled = (await store.get('g1'))!;
+    expect(canceled.status).toBe('canceled');
+    const gone: GoalStore = {
+      ...store,
+      get: () => Promise.resolve(undefined),
+      isUnreadable: () => Promise.resolve(unreadable),
+    };
+    return { canceled, ...dependencies(gone, engine) };
+  }
+
+  it('does not acknowledge a cancellation it cannot find the record for: missing reads not-found', async () => {
+    const { canceled, control } = await vanished(false);
+
+    expect(await settleCanceledGoal(control, canceled)).toEqual({ outcome: 'not-found' });
+    expect(await cancelGoal(control, canceled, {})).toEqual({ outcome: 'not-found' });
+  });
+
+  it('reports the record fault when the record no longer decodes, and hides it from a scoped caller', async () => {
+    const { canceled, control } = await vanished(true);
+
+    expect(await settleCanceledGoal(control, canceled)).toEqual({ outcome: 'record-unreadable' });
+    expect(await settleCanceledGoal(control, canceled, { scoped: true })).toEqual({
+      outcome: 'not-found',
+    });
   });
 });

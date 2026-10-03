@@ -272,6 +272,16 @@ export function createCatalogDispatcher({
         // own `run()`, matching what direct registration would have done.
         // Anything else is a genuine resolver failure and must propagate.
         if (error instanceof AgentContractError) {
+          // COR-851: a goal attempt's run is untracked and its activity retries
+          // on failure, so a direct run here would be work no restart can find,
+          // launched again by the retry. There is no fallback for an attempt.
+          if (goalAttempt !== undefined) {
+            runAttribution.delete(runId);
+            throw createBureauError(
+              `Agent "${name}" cannot resolve its run options durably, so it cannot run a goal attempt: ${error.message}`,
+              'CONFLICT',
+            );
+          }
           // AB-241: this fallback abandons `runId` entirely — the agent's
           // own `run()` mints (or is given) a DIFFERENT run identity, so
           // an attribution entry recorded above under `runId` would

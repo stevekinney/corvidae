@@ -804,17 +804,18 @@ function passes(check: () => void): boolean {
   }
 }
 
+const BOUNDS_KEYS: readonly string[] = [
+  'maximumAttempts',
+  'maximumTotalDurationMs',
+  'maximumTotalSteps',
+  'maximumTotalTokens',
+  'maximumTotalCostUsd',
+];
+
 function isBounds(value: unknown): value is GoalBudget {
   if (!isPlainRecord(value)) return false;
-  const keys = [
-    'maximumAttempts',
-    'maximumTotalDurationMs',
-    'maximumTotalSteps',
-    'maximumTotalTokens',
-    'maximumTotalCostUsd',
-  ];
   return (
-    hasExactKeys(value, keys) &&
+    hasExactKeys(value, BOUNDS_KEYS) &&
     passes(() => validateBudget(value as unknown as GoalBudget)) &&
     (value['maximumAttempts'] as number) <= GOAL_MAXIMUM_ATTEMPTS
   );
@@ -1044,6 +1045,78 @@ function validateGoalRunId(goalRunId: string, maximumAttempts: number): void {
   }
 }
 
+/**
+ * Every invariant the record decoder holds a stored goal to that no other
+ * create-time check already enforces (the budget, retry policy, conversation
+ * policy, objective size, and goal id are checked by their own validators), so
+ * a request the decoder would refuse is refused here, by name, instead of
+ * surfacing as a generic decode failure or an exception:
+ *
+ * - `identity` and `validator`: exactly `name` and `version`, both non-empty text.
+ * - `objective`: a non-empty `agentName`, text `prompt`, text or absent `instructions`.
+ * - `requireDeterministicValidation`: a boolean, or absent.
+ * - `validatorTimeoutMs`: a finite number above zero, or absent.
+ * - `principal`: text or absent.
+ * - `bounds`, `retryPolicy`, and `conversationPolicy`: no keys the record does not hold.
+ * - `now`: non-empty text.
+ */
+export function describeCreateDefect(input: CreateGoalStateInput): string | undefined {
+  const named = (value: unknown): boolean =>
+    isPlainRecord(value) &&
+    hasExactKeys(value, ['name', 'version']) &&
+    isNonEmptyString(value['name']) &&
+    isNonEmptyString(value['version']);
+  if (!named(input.identity)) {
+    return 'The goal identity must be exactly a non-empty name and version.';
+  }
+  if (!named(input.validator)) {
+    return 'The goal validator must be exactly a non-empty name and version.';
+  }
+  const objective = input.objective as unknown;
+  if (
+    !isPlainRecord(objective) ||
+    !hasExactKeys(objective, ['agentName', 'prompt', 'instructions']) ||
+    !isNonEmptyString(objective['agentName']) ||
+    !isString(objective['prompt']) ||
+    !isOptionalString(objective['instructions'])
+  ) {
+    return 'The goal objective must be a non-empty agent name, a text prompt, and optional text instructions.';
+  }
+  if (
+    input.requireDeterministicValidation !== undefined &&
+    typeof input.requireDeterministicValidation !== 'boolean'
+  ) {
+    return 'requireDeterministicValidation must be a boolean.';
+  }
+  if (
+    input.validatorTimeoutMs !== undefined &&
+    !(isNonNegativeNumber(input.validatorTimeoutMs) && input.validatorTimeoutMs > 0)
+  ) {
+    return `validatorTimeoutMs must be a finite number above zero; got ${String(input.validatorTimeoutMs)}.`;
+  }
+  if (!isOptionalString(input.principal)) return 'The goal principal must be text.';
+  if (!isNonEmptyString(input.now)) return 'The creation time must be non-empty text.';
+  const exact = (value: unknown, keys: readonly string[]): boolean =>
+    value === undefined || (isPlainRecord(value) && hasExactKeys(value, keys));
+  if (!exact(input.bounds, BOUNDS_KEYS)) {
+    return `The goal budget must hold only ${BOUNDS_KEYS.join(', ')}.`;
+  }
+  if (!exact(input.retryPolicy, ['retryOn'])) return 'The retry policy must hold only retryOn.';
+  const policy = input.conversationPolicy as unknown;
+  if (isPlainRecord(policy)) {
+    const keys =
+      policy['kind'] === 'fork-from-baseline'
+        ? ['kind', 'throughRun']
+        : policy['kind'] === 'fresh-from-artifact'
+          ? ['kind', 'artifact']
+          : ['kind'];
+    if (!hasExactKeys(policy, keys)) {
+      return `A ${String(policy['kind'])} conversation policy must hold only ${keys.join(', ')}.`;
+    }
+  }
+  return undefined;
+}
+
 const zeroUsage: DurableGoalUsage = { attempts: 0, steps: 0, tokens: 0, durationMs: 0 };
 
 /**
@@ -1065,6 +1138,8 @@ export function createGoalState(input: CreateGoalStateInput): GoalState {
   validateGoalRunId(input.goalRunId, input.bounds.maximumAttempts);
   validateRetryPolicy(input.retryPolicy);
   validateConversationPolicy(input.conversationPolicy, input.objective.instructions);
+  const defect = describeCreateDefect(input);
+  if (defect !== undefined) throw new InvalidGoalStateError(defect);
   const objectiveBytes = objectiveByteLength(input.objective);
   if (objectiveBytes > GOAL_OBJECTIVE_MAXIMUM_BYTES) {
     throw new GoalObjectiveTooLargeError(objectiveBytes);

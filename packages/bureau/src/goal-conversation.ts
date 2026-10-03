@@ -241,7 +241,13 @@ export function createGoalConversations(
     const ref = session?.runs.find((candidate) => candidate.runId === runId);
     if (ref === undefined || ref.status !== 'running') return;
     const durable = getDurable();
-    if (durable === undefined) return;
+    // Returning here would read as a transcript committed: the forwarder would
+    // then tell the controller the attempt ended without it.
+    if (durable === undefined) {
+      throw new Error(
+        `The bureau has no durable engine to read attempt ${attemptIndex}'s transcript with.`,
+      );
+    }
     // A transcript that cannot be read is an error to retry, never a ref
     // recorded as ended without it: a terminal ref is not reconciled again,
     // so the next attempt would be seeded without this one.

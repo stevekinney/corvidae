@@ -122,6 +122,8 @@ interface WorldOptions {
   readonly policy?: GoalConversationPolicy;
   readonly resolveCostEstimation?: Parameters<typeof createGoalPorts>[0]['resolveCostEstimation'];
   readonly instructions?: string;
+  /** The ports see no durable engine, as a bureau built without one would. */
+  readonly withoutEngine?: boolean;
   readonly resolveFreshAttemptSource?: FreshAttemptSourceResolver;
   /** A clock the test shares with the artifact it builds; a fresh manual one otherwise. */
   readonly runtime?: ReturnType<typeof createManualRuntimeServices>;
@@ -214,7 +216,7 @@ async function world(options: WorldOptions = {}) {
     runtime,
     forwarder,
     conversations,
-    getDurable: () => durable,
+    getDurable: () => (options.withoutEngine === true ? undefined : durable),
     readRunRecord: (runId) => {
       if (runRecordReadFaults.remaining > 0) {
         runRecordReadFaults.remaining -= 1;
@@ -479,6 +481,25 @@ describe('startAttempt', () => {
   });
 });
 
+describe('committing an attempt transcript without a durable engine', () => {
+  it('fails instead of returning as though the transcript were committed', async () => {
+    const { store, sessions, runtime } = await world();
+    const record = (await store.get('g1'))!;
+    const request = { attemptIndex: 0, runId: goalAttemptRunId('g1', 0) };
+    const engineless = createGoalConversations({
+      sessionStore: sessions,
+      runtime,
+      getDurable: () => undefined,
+      resolveFreshAttemptSource: undefined,
+    });
+    await engineless.recordStart(record, request);
+
+    expect(await throwingRejectionOf(engineless.settle(record, 0, request.runId))).toThrow(
+      'no durable engine',
+    );
+  });
+});
+
 describe('abortAttempt', () => {
   const request = { goalRunId: 'g1', attemptIndex: 0, attemptId: 'g1:a0', runId: 'goal-g1-a0' };
 
@@ -624,6 +645,37 @@ describe('runValidator', () => {
     expect(await throwingRejectionOf(ports.runValidator(request))).toThrow('storage hiccup');
     // The retry reads the result and judges it: one storage fault did not cost the goal.
     expect(await ports.runValidator(request)).toMatchObject({ outcome: { kind: 'pass' } });
+  });
+
+  it('fails the activity, to be retried, when the checkpoint cannot be read, rather than judging an empty conversation', async () => {
+    const seen: number[] = [];
+    const { ports, checkpointReadFaults } = await evaluating({
+      validators: [
+        {
+          identity: CHECK,
+          validate: ({ result }) => {
+            seen.push(result.steps.length);
+            return { kind: 'pass', evidence: [] };
+          },
+        },
+      ],
+    });
+    checkpointReadFaults.remaining = 1;
+
+    expect(await throwingRejectionOf(ports.runValidator(request))).toThrow('storage hiccup');
+    expect(seen).toEqual([]);
+    // The retry reads the real checkpoint, with the step the run took.
+    expect(await ports.runValidator(request)).toMatchObject({ outcome: { kind: 'pass' } });
+    expect(seen).toEqual([1]);
+  });
+
+  it('fails the activity, to be retried, when the bureau has no durable engine, rather than recording an error outcome', async () => {
+    const { ports } = await evaluating({
+      withoutEngine: true,
+      validators: [{ identity: CHECK, validate: () => ({ kind: 'pass', evidence: [] }) }],
+    });
+
+    expect(await throwingRejectionOf(ports.runValidator(request))).toThrow('no durable engine');
   });
 
   it('fails the activity, to be retried, when the run reads as not yet ended, but answers an error for a run that is gone', async () => {

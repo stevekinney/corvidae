@@ -136,4 +136,73 @@ describe('readDurableRunResult', () => {
       context.engine[Symbol.dispose]();
     }
   });
+  it('rejects instead of fabricating an empty run when the checkpoint cannot be read', async () => {
+    const context = await buildContext();
+    try {
+      await startDurableRunResult(context, {
+        runId: 'unreadable-checkpoint-run',
+        sessionId: 'unreadable-checkpoint-run',
+        options: runOptions(async () => ({
+          content: 'finished',
+          toolCalls: [],
+          usage: { prompt: 10, completion: 5, total: 15 },
+        })),
+        prompt: 'go',
+      });
+      const failing = {
+        ...context,
+        checkpointStore: {
+          ...context.checkpointStore,
+          loadCheckpoint: async () => {
+            throw new Error('checkpoint store unavailable');
+          },
+        },
+      };
+
+      let caught: unknown;
+      try {
+        await readDurableRunResult(failing, 'unreadable-checkpoint-run', { runtime });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe('checkpoint store unavailable');
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
+  it('rejects for an ended run whose checkpoint cannot be read', async () => {
+    const context = await buildContext();
+    try {
+      const hanging = createActiveRun(
+        runOptions(() => new Promise(() => {})),
+        { ...context, runId: 'ended-unreadable-run', prompt: 'go' },
+      );
+      void hanging;
+      await waitForCondition(
+        async () => (await context.engine.get('ended-unreadable-run')) !== null,
+        'the hanging run never started',
+      );
+      await context.engine.cancel('ended-unreadable-run');
+      const failing = {
+        ...context,
+        checkpointStore: {
+          ...context.checkpointStore,
+          loadCheckpoint: async () => {
+            throw new Error('checkpoint store unavailable');
+          },
+        },
+      };
+      let caught: unknown;
+      try {
+        await readDurableRunResult(failing, 'ended-unreadable-run', { runtime });
+      } catch (error) {
+        caught = error;
+      }
+      expect((caught as Error | undefined)?.message).toBe('checkpoint store unavailable');
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
 });

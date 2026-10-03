@@ -14,7 +14,7 @@ import { computeCostEstimate } from '../run-lifecycle';
 import type { FinishReason, RunOptions, RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
 import {
-  loadRunStateFromCheckpoint,
+  readRunStateFromCheckpoint,
   reconstructRunResult,
 } from './active-run-result-reconstruction';
 import { normalizeAgentRunWorkflowResult } from './run-workflow-result';
@@ -51,7 +51,12 @@ function withCost(result: RunResult, options: ReadDurableRunResultOptions): RunR
   return costEstimate === undefined ? result : { ...result, costEstimate };
 }
 
-/** Reads how `runId`'s workflow ended. Never starts, resumes, or cancels anything. */
+/**
+ * Reads how `runId`'s workflow ended. Never starts, resumes, or cancels anything.
+ * Rejects when the engine or the checkpoint cannot be read: the callers account a
+ * goal's budget and validate its transcript from this, so a read failure must
+ * retry rather than read as an empty run.
+ */
 export async function readDurableRunResult(
   context: DurableActiveRunContext,
   runId: string,
@@ -61,13 +66,15 @@ export async function readDurableRunResult(
   if (state === null) return { status: 'missing' };
   if (state.status === 'completed') {
     const summary = normalizeAgentRunWorkflowResult(state.result);
-    const { result } = await reconstructRunResult(context, runId, summary, options.runtime);
+    const { result } = await reconstructRunResult(context, runId, summary, options.runtime, {
+      strictCheckpointRead: true,
+    });
     return { status: 'completed', result: withCost(result, options) };
   }
   if (state.status !== 'cancelled' && state.status !== 'failed' && state.status !== 'timed-out') {
     return { status: 'not-terminal' };
   }
-  const { runState, conversation } = await loadRunStateFromCheckpoint(
+  const { runState, conversation } = await readRunStateFromCheckpoint(
     context,
     runId,
     options.runtime,

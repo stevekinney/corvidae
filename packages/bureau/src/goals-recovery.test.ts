@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { commitCancellation } from './goal-controller';
 import { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
-import { createGoalState, goalRecordKey, type GoalState } from './goal-state';
+import { createGoalState, goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
 import {
   cancelUntilSettled,
   CHECK,
@@ -1026,5 +1026,55 @@ describe('a goal whose stored record cannot be read', () => {
     expect(await bureau.goals.list(scoped)).toEqual([]);
     const sweep = await bureau.goals.recover(undefined, scoped);
     expect(sweep).toEqual({ goals: [], failures: [] });
+  });
+});
+
+describe('a goal read by a bureau with no durable engine', () => {
+  async function bootWithoutEngine() {
+    const bureau = await createBureau({
+      agents: { worker: workerAgent(hangForever) },
+      validators: [createCheckValidator()],
+      storage: { type: 'sqlite', path: database.path },
+      durableExecution: false,
+      onDiagnostic: createDiagnostics().onDiagnostic,
+    });
+    return track(bureau as unknown as Bureau);
+  }
+
+  it('does not call a missing engine a missing run: active() names the fault', async () => {
+    database = createTestDatabase('no-engine-active');
+    await seedRunning(await inspection());
+    const bureau = await bootWithoutEngine();
+
+    const active = await bureau.goals.active('g1');
+
+    expect(active).toMatchObject({ kind: 'attempt', runStatus: null });
+    expect(
+      active !== undefined && 'runStatusError' in active ? active.runStatusError : undefined,
+    ).toContain('durable engine');
+  });
+
+  it('does not call a controller it could not look for one it never had: close() leaves cleanup unresolved', async () => {
+    database = createTestDatabase('no-engine-close');
+    const view = await inspection();
+    await seedRunning(view);
+    await view.store.applyTransition({
+      goalRunId: 'g1',
+      seq: 2,
+      transitionId: goalTransitionId('g1', 2),
+      to: 'failed',
+      at: '2026-10-02T12:00:00.000Z',
+      cause: 'attempt run failed',
+      terminalReason: 'attempt-run-failed',
+    });
+    const bureau = await bootWithoutEngine();
+
+    const closed = await bureau.goals.close('g1');
+
+    expect(closed).toMatchObject({
+      outcome: 'closed',
+      goal: { status: 'failed' },
+      cleanup: { status: 'unresolved', reason: 'unreachable' },
+    });
   });
 });

@@ -439,6 +439,14 @@ async function settleCommittedCancellation(
   record: GoalState,
 ): Promise<BureauGoalRecoveryEntry> {
   const settled = await settleCanceledGoal(dependencies, record);
+  if (settled.outcome === 'not-found') return { goalRunId: record.goalRunId, outcome: 'not-found' };
+  if (settled.outcome === 'record-unreadable') {
+    return {
+      goalRunId: record.goalRunId,
+      outcome: 'unrecoverable',
+      detail: UNREADABLE_RECORD_DETAIL(record.goalRunId),
+    };
+  }
   if (settled.outcome === 'cancellation-pending') {
     return {
       goalRunId: record.goalRunId,
