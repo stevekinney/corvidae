@@ -700,6 +700,110 @@ describe('restarting a controller that ended abnormally', () => {
     expect(entry.detail).toContain('audit log');
   });
 
+  describe('the final permitted restart, counted but not yet started', () => {
+    const countedAt = Date.parse(NOW);
+
+    async function spent() {
+      const store = await runningGoal();
+      for (let restart = 0; restart < MAXIMUM_CONTROLLER_RESTARTS; restart += 1) {
+        expect((await store.recordControllerRestart('g1', NOW, restart)).status).toBe('updated');
+      }
+      return store;
+    }
+
+    /** The old, ended controller: it predates the newest count, so that restart has not started. */
+    const endedBefore = (createdAt: number) =>
+      engineWith(scriptedEngine({ workflows: { 'goal-g1-a0': 'running' } }).engine, {
+        get: ((id: string) =>
+          Promise.resolve(
+            id === 'goal:g1' ? { id, status: 'failed', createdAt } : { id, status: 'running' },
+          )) as unknown as GoalEngine['get'],
+      });
+
+    it('is in progress, not unrecoverable, so a second recovery does not fence the attempt the first is about to start under', async () => {
+      const store = await spent();
+      const { control, fenced, stopped } = dependencies(store, endedBefore(countedAt - 60_000));
+
+      const entry = await recoverGoal(control, 'g1');
+
+      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'running' });
+      expect(entry.detail).toContain('counted');
+      expect(fenced).toEqual([]);
+      expect(stopped).toEqual([]);
+    });
+
+    it('lets the counting recovery finish its restart when another read the count mid-restart', async () => {
+      const store = await runningGoal();
+      for (let restart = 0; restart < MAXIMUM_CONTROLLER_RESTARTS - 1; restart += 1) {
+        await store.recordControllerRestart('g1', NOW, restart);
+      }
+      const workflows: Record<string, string> = { 'goal:g1': 'failed', 'goal-g1-a0': 'running' };
+      const base = scriptedEngine({ workflows });
+      const starts: string[] = [];
+      let counted!: () => void;
+      let release!: () => void;
+      const paused = new Promise<void>((resolve) => (counted = resolve));
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      const engine = engineWith(base.engine, {
+        get: ((id: string) =>
+          Promise.resolve(
+            id === 'goal:g1'
+              ? { id, status: workflows[id], createdAt: countedAt - 60_000 }
+              : { id, status: workflows[id] },
+          )) as unknown as GoalEngine['get'],
+        start: (_type, _input, options) => {
+          starts.push((options as { id?: string }).id ?? '');
+          workflows['goal:g1'] = 'running';
+          return Promise.resolve();
+        },
+      });
+      const counting = {
+        ...store,
+        recordControllerRestart: async (...args: Parameters<typeof store.recordControllerRestart>) => {
+          const result = await store.recordControllerRestart(...args);
+          counted();
+          await gate;
+          return result;
+        },
+      };
+      const first = dependencies(counting, engine);
+      const second = dependencies(store, engine);
+
+      const recovering = recoverGoal(first.control, 'g1');
+      await paused;
+      expect((await store.get('g1'))?.controllerRestarts).toBe(MAXIMUM_CONTROLLER_RESTARTS);
+      const overlapped = await recoverGoal(second.control, 'g1');
+      release();
+      const finished = await recovering;
+
+      expect(overlapped).toMatchObject({ outcome: 'running' });
+      expect(second.fenced).toEqual([]);
+      expect(finished).toMatchObject({ outcome: 'restarted' });
+      expect(starts).toEqual(['goal:g1']);
+      expect(first.fenced).toEqual([]);
+    });
+
+    it('is given up on once the restart has been pending past its grace, as when the counting recovery crashed', async () => {
+      const store = await spent();
+      const later = countedAt + GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS + 1;
+      const { control, fenced } = dependencies(store, endedBefore(countedAt - 60_000), {
+        clock: { now: () => later, nowISO: () => new Date(later).toISOString() },
+      });
+
+      const entry = await recoverGoal(control, 'g1');
+
+      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+      expect(fenced).toContain('goal-g1-a0');
+    });
+
+    it('is given up on at once when the controller it started has itself ended', async () => {
+      const store = await spent();
+      const { control } = dependencies(store, endedBefore(countedAt));
+
+      expect(await recoverGoal(control, 'g1')).toMatchObject({ outcome: 'unrecoverable' });
+    });
+  });
+
   describe('a goal recovery gives up on', () => {
     async function spentGoal() {
       const store = await runningGoal();

@@ -33,7 +33,10 @@
  * goal is reported `unrecoverable` and left exactly as it is, except that no run
  * is left working for it: its attempt claims are tombstoned and the attempt run is
  * cancelled (`stopOrphanedAttempts`). COR-638's terminal reasons are not extended
- * to cover it.
+ * to cover it. A restart is counted before its controller is started, so a
+ * controller found ended at the limit may belong to a final restart another
+ * recovery is starting: that is `running` until `RESTART_START_GRACE_MS` has passed
+ * since the count (a recovery that crashed after counting is then given up on).
  *
  * ## The attempt
  *
@@ -85,7 +88,12 @@ import {
 } from './goal-controller';
 import { GoalOwnershipError } from './goal-ownership';
 import { goalIdentifiers } from './goal-ports';
-import { type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
+import {
+  type GoalState,
+  goalRestartId,
+  goalWorkflowId,
+  isTerminalGoalStatus,
+} from './goal-state';
 import type {
   BureauGoalAttemptRecovery,
   BureauGoalCancellationWait,
@@ -363,6 +371,39 @@ async function stopOrphanedAttempts(
   return parts.length === 0 ? '' : ` ${parts.join(' ')}`;
 }
 
+/**
+ * How long a counted restart that has not started a controller is presumed to be
+ * on its way, measured from the restart's own audit entry: the budget a
+ * controller's start is given. A recovery that crashed between counting and
+ * starting never starts it, so past the grace the restart is spent and the goal
+ * is given up on, which is the bound erring toward giving up and never toward a
+ * second controller.
+ */
+export const RESTART_START_GRACE_MS = GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS;
+
+/**
+ * Whether the newest counted restart is still waiting to start its controller.
+ * It is when the controller found ended is older than that restart's audit entry
+ * (a controller the restart started is newer, so the restart was observed and
+ * its replacement ended too) and the entry is within `RESTART_START_GRACE_MS`. A
+ * controller whose creation time is unknown cannot be told apart, and counts as
+ * ended after the restart: the goal is given up on, never held open on a guess.
+ */
+function finalRestartIsInFlight(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+  controller: { readonly createdAt?: number | undefined },
+): boolean {
+  const entry = record.auditLog.find(
+    (candidate) =>
+      candidate.transitionId === goalRestartId(record.goalRunId, record.controllerRestarts),
+  );
+  const countedAt = Date.parse(entry?.events[0]?.at ?? '');
+  const createdAt = controller.createdAt;
+  if (!Number.isFinite(countedAt) || typeof createdAt !== 'number') return false;
+  return createdAt < countedAt && dependencies.clock.now() - countedAt < RESTART_START_GRACE_MS;
+}
+
 async function recoverController(
   dependencies: GoalControlDependencies,
   record: GoalState,
@@ -432,6 +473,16 @@ async function recoverController(
 
   // Failed, timed out, or completed while the goal is not terminal.
   if (record.controllerRestarts >= MAXIMUM_CONTROLLER_RESTARTS) {
+    // The count is written before the replacement is started, so a controller
+    // that has ended at the limit may be one whose final restart another recovery
+    // has counted and is about to start. Giving up on it now would tombstone and
+    // cancel the attempt that restart is starting under.
+    if (finalRestartIsInFlight(dependencies, record, state)) {
+      return {
+        outcome: 'running',
+        detail: `Another recovery has counted restart ${record.controllerRestarts} and has not started its controller yet; if it never does, a later recover() gives up on the goal.`,
+      };
+    }
     return {
       outcome: 'unrecoverable',
       detail: `The controller ended ${state.status} and has already been restarted ${record.controllerRestarts} times.${await stopOrphanedAttempts(dependencies, record)}`,
