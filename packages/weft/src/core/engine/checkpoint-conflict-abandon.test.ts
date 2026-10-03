@@ -21,6 +21,7 @@ import { RemoteActivityCancellationRequestedEvent } from '../events.ts';
 import { activity, workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { clearPurgedWorkflowInMemoryState } from './bulk-operations-purge.ts';
 import {
+  abandonParentOfAbandonedChild,
   abandonWorkflowAfterCheckpointConflict,
   emitCheckpointConflictWarning,
   persistCheckpointAbandoningOnConflict,
@@ -169,8 +170,6 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
       internals.workflowHeaders.has(workflowId),
       internals.workflowVersionTuples.has(workflowId),
       internals.cancelHandlersByWorkflow.has(workflowId),
-      internals.workflowFeedListeners.has(workflowFeedListenerKey(workflowId, 'events')),
-      internals.workflowFeedListeners.has(workflowFeedListenerKey(workflowId, 'tokens')),
       internals.workflowNestingDepths.has(workflowId),
       internals.deliveredPendingUpdateIds.has(workflowId),
       internals.workflowTypeByWorkflowId.has(workflowId),
@@ -191,6 +190,14 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
 
     expect(holdsState('lost').some(Boolean)).toBe(false);
     expect(holdsState('bystander').every(Boolean)).toBe(true);
+    // Externally owned feed subscriptions survive, so a later local resume
+    // still delivers to them; terminal cleanup is what drops them.
+    expect(internals.workflowFeedListeners.has(workflowFeedListenerKey('lost', 'events'))).toBe(
+      true,
+    );
+    expect(internals.workflowFeedListeners.has(workflowFeedListenerKey('lost', 'tokens'))).toBe(
+      true,
+    );
     expect(internals.checkpointConflicts.get('lost')?.error).toBe(error);
     expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual(['lost']);
     // The winner owns the durable task behind a pending async activity.
@@ -279,6 +286,65 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     await failWorkflow(internals, 'gone', new Error('late failure'), {} as never);
 
     expect(reads).toEqual([]);
+  });
+
+  it('drops a failure already in flight when the run is abandoned before its terminal commit', async () => {
+    const storage = new MemoryStorage();
+    const parked = workflow({ name: 'failure-in-flight' }).execute(async function* (
+      ctx: WorkflowContext,
+    ) {
+      yield* ctx.waitForSignal('continue');
+      return 'completed';
+    });
+    await using engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'failure-in-flight': parked },
+    });
+    await engine.start('failure-in-flight', null, { id: 'in-flight' });
+    const internals = getInternals(engine);
+    // Hold the failure at its first storage read, as an interleaving turn would.
+    const reachedRead = createDeferred();
+    const releaseRead = createDeferred();
+    internals.storage = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (key === KEYS.attribute('in-flight')) {
+              reachedRead.resolve();
+              await releaseRead.promise;
+            }
+            return original.call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+
+    const failing = failWorkflow(
+      internals,
+      'in-flight',
+      new Error('late failure'),
+      // The post-commit callbacks are irrelevant here: the assertion is whether
+      // the terminal write lands at all.
+      new Proxy({}, { get: () => () => {} }) as never,
+    );
+    await reachedRead.promise;
+    const warning = collectConflictWarnings();
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('in-flight'),
+      { swallowPromiseRejection },
+    );
+    await warning.received;
+    warning.stop();
+    releaseRead.resolve();
+    await failing;
+    internals.storage = storage;
+
+    expect(await readStatus(storage, 'in-flight')).toBe('running');
   });
 
   it('fails a once-abandoned workflow durably when a later local resume fails before launching it', async () => {
@@ -607,6 +673,29 @@ describe('a checkpoint conflict raised outside the generator checkpoint message'
     const internals = getInternals(engine);
     expect(internals.inlineStrategy?.hasGenerator('abandoned-child-parent')).toBe(false);
     expect(internals.checkpoints.has('abandoned-child-parent')).toBe(false);
+  });
+
+  it('leaves a parent id reused by a new generation alone when an old child conflict settles', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpoints.set('reused-parent', { workflowExecutionToken: 'generation-a' } as never);
+    const childResult = createDeferred<unknown>();
+    const parentView = abandonParentOfAbandonedChild(
+      internals,
+      'old-child',
+      'reused-parent',
+      childResult.promise,
+    );
+    // The awaiting generation is gone and the id now runs a new generation.
+    internals.checkpoints.set('reused-parent', { workflowExecutionToken: 'generation-b' } as never);
+
+    childResult.reject(new WorkflowCheckpointConflictError('old-child'));
+    expect(
+      await Promise.race([parentView, new Promise((resolve) => setImmediate(resolve, 'pending'))]),
+    ).toBe('pending');
+
+    expect(internals.checkpointConflicts.has('reused-parent')).toBe(false);
+    expect(internals.checkpoints.get('reused-parent')?.workflowExecutionToken).toBe('generation-b');
   });
 
   it('rejects a parent that awaits an already-abandoned child, and still surfaces other child failures', async () => {

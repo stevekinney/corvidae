@@ -123,12 +123,18 @@ export function abandonParentOfAbandonedChild(
   parentWorkflowId: string,
   childResult: Promise<unknown>,
 ): Promise<unknown> {
+  // Scope the cascade to the generation that is awaiting the child: by the time
+  // the child's loss settles, that parent may be gone and its id reused locally.
+  const awaitingGeneration = workflowExecutionTokenForWorkflow(internals, parentWorkflowId);
   return childResult.catch((error: unknown) => {
     if (
       !(error instanceof WorkflowCheckpointConflictError) ||
       error.workflowId !== childWorkflowId
     ) {
       throw error;
+    }
+    if (workflowExecutionTokenForWorkflow(internals, parentWorkflowId) !== awaitingGeneration) {
+      return new Promise<never>(() => {});
     }
     abandonWorkflowAfterCheckpointConflict(
       internals,

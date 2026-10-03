@@ -613,6 +613,8 @@ export async function failWorkflow(
       // resume whose services are unavailable can fail the run (the fail path runs
       // before the suspended→running flip) instead of stranding it 'suspended'.
       allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
+      // Rechecked after the reads above: abandonment can land while they await.
+      skipCommitIf: () => internals.checkpointConflicts.has(workflowId),
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);

@@ -384,6 +384,13 @@ export function cleanupTerminalWorkflowMemory(
     callbacks.dispatchEvent(new RemoteActivityCancellationRequestedEvent(token, workflowId));
   });
   cleanupWaiters(internals, workflowId, callbacks);
+  // Drop any remaining feed-listener buckets for this workflow. Transports
+  // normally unsubscribe when their subscription ends, but a crashed or leaked
+  // connection would otherwise retain its closure for the engine's lifetime.
+  // Terminal-only: an abandoned run keeps its externally owned subscriptions,
+  // so a later local resume still delivers to them.
+  internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'events'));
+  internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'tokens'));
 }
 
 /**
@@ -391,7 +398,7 @@ export function cleanupTerminalWorkflowMemory(
  * it executes: the committed-checkpoint snapshot, in-memory checkpoint,
  * heartbeat details, pending async activities, event-log head, pending timeline
  * entry, staged atomic side effects, parked-inline marker and retained context,
- * version tuple, cancel handlers, feed listeners, and any recorded checkpoint
+ * version tuple, cancel handlers, and any recorded checkpoint
  * conflict. Never touches storage and never calls a waiter, so it is shared by
  * terminal cleanup and by abandoning a run to another engine.
  *
@@ -430,13 +437,6 @@ export function releaseWorkflowExecutionMemory(
   internals.inlineStrategy?.clearParkedContext(workflowId);
   internals.workflowVersionTuples.delete(workflowId);
   internals.cancelHandlersByWorkflow.delete(workflowId);
-  // Drop any remaining feed-listener buckets for this workflow.
-  // Transports normally unsubscribe when their subscription ends,
-  // but a crashed or leaked connection would otherwise retain its
-  // closure for the engine's lifetime. Per-workflow cleanup here
-  // matches the other maps above and prevents unbounded growth.
-  internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'events'));
-  internals.workflowFeedListeners.delete(workflowFeedListenerKey(workflowId, 'tokens'));
 }
 
 /**
