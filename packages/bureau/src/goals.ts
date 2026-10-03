@@ -158,8 +158,25 @@ export function createBureauGoals<TName extends string = string>(
       ...(availableVersions === undefined ? {} : { availableVersions }),
     });
 
+    // `create` takes input the type system does not reach (a JSON body, a script),
+    // so each field is read defensively: a malformed one is a typed rejection,
+    // never an exception, and nothing is written for it.
+    if (typeof request !== 'object' || request === null) {
+      return rejected('invalid-configuration', 'The goal request must be an object.');
+    }
+    if (request.goalRunId !== undefined && typeof request.goalRunId !== 'string') {
+      return rejected('invalid-goal-run-id', 'The goal id must be text.');
+    }
     const conversationPolicy = request.conversationPolicy;
     const goalRunId = request.goalRunId ?? runtime.identifiers.next('goal-run');
+    const validatorRequest: unknown = request.validator;
+    const validator =
+      typeof validatorRequest === 'object' && validatorRequest !== null
+        ? {
+            name: (validatorRequest as typeof request.validator).name,
+            version: (validatorRequest as typeof request.validator).version,
+          }
+        : undefined;
 
     // The record this request describes, built from the request alone: nothing
     // in it depends on what the bureau can do today (the validator's identity is
@@ -177,10 +194,13 @@ export function createBureauGoals<TName extends string = string>(
             prompt: request.prompt,
             ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
           },
-          validator: { name: request.validator.name, version: request.validator.version },
+          // A request with no validator object is carried through as it is, for the
+          // record's own check to name (`describeCreateDefect`).
+          validator: validator ?? (validatorRequest as typeof request.validator),
           requireDeterministicValidation: request.requireDeterministicValidation,
           validatorTimeoutMs: request.validatorTimeoutMs,
-          conversationPolicy: request.conversationPolicy ?? { kind: 'continue' },
+          conversationPolicy:
+            conversationPolicy === undefined ? { kind: 'continue' } : conversationPolicy,
           retryPolicy: request.retryPolicy,
           bounds: request.bounds,
           principal: request.principal,
@@ -255,16 +275,22 @@ export function createBureauGoals<TName extends string = string>(
         `Agent "${request.agentName}" cannot run durably, so it cannot run a goal attempt.`,
       );
     }
-    const resolution = catalog.resolve(request.validator);
+    if (validator === undefined) {
+      return rejected(
+        'invalid-configuration',
+        'The goal validator must be exactly a non-empty name and version.',
+      );
+    }
+    const resolution = catalog.resolve(validator);
     if (!resolution.ok) {
       return resolution.reason === 'missing'
         ? rejected(
             'validator-missing',
-            `The validator "${request.validator.name}@${request.validator.version}" is not registered.`,
+            `The validator "${String(validator.name)}@${String(validator.version)}" is not registered.`,
           )
         : rejected(
             'validator-version-mismatch',
-            `The validator "${request.validator.name}" has no version "${request.validator.version}".`,
+            `The validator "${String(validator.name)}" has no version "${String(validator.version)}".`,
             resolution.availableVersions,
           );
     }

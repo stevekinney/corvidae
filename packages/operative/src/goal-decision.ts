@@ -249,7 +249,9 @@ export function validateBudget(budget: GoalBudget | undefined): void {
 
 export function validateRetryPolicy(policy: GoalRetryPolicy | undefined): void {
   if (policy === undefined) return;
-  const retryOn: unknown = policy.retryOn;
+  // `null` is not `undefined`: an untyped caller can send it, and it must read as
+  // a policy with no list, not throw.
+  const retryOn: unknown = (policy as { retryOn?: unknown } | null)?.retryOn;
   if (
     !Array.isArray(retryOn) ||
     retryOn.length === 0 ||
