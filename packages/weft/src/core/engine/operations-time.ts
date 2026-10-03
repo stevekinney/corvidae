@@ -162,10 +162,11 @@ export async function startDelayedWorkflow(
     return;
   }
 
-  const checkpoint = await loadDelayedWorkflowCheckpoint(internals, entry, callbacks);
-  if (!checkpoint) {
+  const loadedCheckpoint = await loadDelayedWorkflowCheckpoint(internals, entry, callbacks);
+  if (!loadedCheckpoint) {
     return;
   }
+  const { checkpoint, serialized: serializedCheckpoint } = loadedCheckpoint;
 
   const resolvedRegistration = await resolveDelayedStartRegistrationOrFail(
     internals,
@@ -308,7 +309,9 @@ export async function startDelayedWorkflow(
     internals.workflowsNeedingTerminalCleanup.add(entry.workflowId);
   }
 
-  adoptLaunchCheckpoint(internals, entry.workflowId, checkpoint);
+  // Prime the checkpoint compare-and-swap baseline from the bytes just loaded, so
+  // this run's first commit is conditioned on them like start and resume.
+  adoptLaunchCheckpoint(internals, entry.workflowId, checkpoint, serializedCheckpoint);
   internals.workflowVersionTuples.set(
     entry.workflowId,
     callbacks.workflowVersionTupleFromState(runningState),
@@ -340,7 +343,7 @@ async function loadDelayedWorkflowCheckpoint(
   internals: EngineInternals,
   entry: TimerEntry,
   callbacks: Pick<TimeOperationCallbacks, 'failWorkflow'>,
-): Promise<Checkpoint | null> {
+): Promise<{ checkpoint: Checkpoint; serialized: Uint8Array } | null> {
   const checkpointBytes = await internals.storage.get(KEYS.checkpoint(entry.workflowId));
   if (!checkpointBytes) {
     await callbacks.failWorkflow(
@@ -350,7 +353,7 @@ async function loadDelayedWorkflowCheckpoint(
     return null;
   }
 
-  return deserializeCheckpoint(checkpointBytes);
+  return { checkpoint: deserializeCheckpoint(checkpointBytes), serialized: checkpointBytes };
 }
 
 async function resolveDelayedExecutionDeadline(
