@@ -1032,6 +1032,7 @@ function isShape(value: PlainRecord): boolean {
   return (
     value['schemaVersion'] === GOAL_STATE_SCHEMA_VERSION &&
     isNonEmptyString(value['goalRunId']) &&
+    value['goalRunId'].isWellFormed() &&
     isNonEmptyString(value['workflowId']) &&
     typeof value['revision'] === 'number' &&
     Number.isInteger(value['revision']) &&

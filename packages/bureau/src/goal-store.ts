@@ -291,6 +291,9 @@ export function createGoalStore(
    * names the next record, which is stamped with `revision + 1`.
    */
   async function get(goalRunId: string): Promise<GoalState | undefined> {
+    // An id that is not well-formed text cannot key a record (its percent
+    // encoding throws), so it names no goal: absent, as every lookup answers.
+    if (!goalRunId.isWellFormed()) return undefined;
     const stored = await read(goalRecordKey(goalRunId));
     return stored.kind === 'found' ? stored.record : undefined;
   }
@@ -312,6 +315,7 @@ export function createGoalStore(
     stale: (current: GoalState) => Result,
     written: (record: GoalState) => Result,
   ): Promise<Result | { status: 'missing' } | { status: 'corrupt' }> {
+    if (!goalRunId.isWellFormed()) return { status: 'missing' };
     const key = goalRecordKey(goalRunId);
     let latest: GoalState | undefined;
     for (let attempt = 0; attempt < MAXIMUM_CAS_ATTEMPTS; attempt += 1) {
@@ -422,6 +426,7 @@ export function createGoalStore(
       return unreadable;
     },
     async isUnreadable(goalRunId) {
+      if (!goalRunId.isWellFormed()) return false;
       const stored = await read(goalRecordKey(goalRunId));
       return stored.kind === 'corrupt';
     },
