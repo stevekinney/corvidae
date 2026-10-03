@@ -125,7 +125,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "audit": "bun audit --audit-level=high",
+    "audit": "bun scripts/check-audit-exceptions.ts",
     "clean": "turbo run clean",
     "coverage": "turbo run test:coverage",
     "dev": "turbo run dev",

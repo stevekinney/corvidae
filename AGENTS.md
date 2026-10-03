@@ -48,13 +48,15 @@ bun run test
 bun run format:check
 bun run test:self
 bun run validate
-bun audit --audit-level=high
+bun run audit
 bun run --filter=@lostgradient/weft test:benchmarks
 bun run --filter=@lostgradient/markdown test:benchmarks
 bun run --filter=@lostgradient/cinder test:benchmarks
 ```
 
 Run local quality commands explicitly. This repository has no Git hooks or automated release pipeline.
+
+`bun run audit` runs `bun audit --audit-level=high` through `scripts/check-audit-exceptions.ts`. An advisory may be tolerated only by an entry in `scripts/audit-exceptions.ts`, which needs an owner decision, a tracking issue, a review-by date, and the exact dependency chains that may reach the package; the guard fails on a stale, expired, or widened exception. Never add a bare `--ignore`.
 
 The `test:benchmarks` commands are the workspace-scoped entries in that list, because each belongs to a single package and `bun run --filter` is how the root invokes one workspace's script. `bun run test` excludes what they run: a suite that asserts a wall-clock or memory target measures the machine as much as the code, and on a host running several agents at once those measurements swing far enough that they cannot gate validation. They record numbers on demand instead. Their targets are unchanged. A root lint guard, `scripts/check-wall-clock-assertions.ts`, fails the build when a `*.test.ts` outside `scripts/benchmarks/` asserts an upper bound on a duration or a rate it can derive from a timing reading.
 

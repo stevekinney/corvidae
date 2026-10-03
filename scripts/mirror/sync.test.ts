@@ -991,6 +991,82 @@ describe('the foreign-commit guard', () => {
     }
   });
 
+  test('accepts a hand edit to an emitted file only when its bytes and mode match the trusted plan', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-emitted-match-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      const path = 'packages/weft/README.md';
+      await Bun.write(join(root, path), 'Six binaries.\n');
+      await git(root, 'add', '-A');
+      await git(
+        root,
+        'commit',
+        '--quiet',
+        '-m',
+        `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`,
+      );
+
+      await Bun.write(join(root, path), 'Five signed binaries.\n');
+      await Bun.write(join(root, 'packages/weft/scripts/build-binary.ts'), 'export {};\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Sign compiled binaries');
+      const policy = await loadTargetOwnedPolicy();
+      const ownership = (contents: string, executable = false) => ({
+        policy,
+        target: 'weft',
+        transform: { files: new Set([path]), prefixes: [] },
+        generatedFiles: new Map([
+          [path, { contents: new TextEncoder().encode(contents), executable }],
+        ]),
+      });
+      const foreignSubjects = async (
+        options: Parameters<typeof findForeignCommits>[1],
+      ): Promise<string[]> => {
+        const foreign = await findForeignCommits(root, options);
+        return foreign.map(({ subject }) => subject);
+      };
+
+      expect(await foreignSubjects(ownership('Five signed binaries.\n'))).toEqual([]);
+      expect(await foreignSubjects(ownership('Six binaries.\n'))).toEqual([
+        'Sign compiled binaries',
+      ]);
+      expect(
+        await foreignSubjects({
+          ...ownership('Five signed binaries.\n'),
+          generatedFiles: undefined,
+        }),
+      ).toEqual(['Sign compiled binaries']);
+      expect(await foreignSubjects(ownership('Five signed binaries.\n', true))).toEqual([
+        'Sign compiled binaries',
+      ]);
+
+      await chmod(join(root, path), 0o755);
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Mark the readme executable');
+      expect(await foreignSubjects(ownership('Five signed binaries.\n'))).toEqual([
+        'Mark the readme executable',
+      ]);
+
+      await git(root, 'rm', '--quiet', path);
+      await git(root, 'commit', '--quiet', '-m', 'Delete the emitted readme');
+      expect(await foreignSubjects(ownership('Five signed binaries.\n'))).toEqual([
+        'Delete the emitted readme',
+        'Mark the readme executable',
+      ]);
+
+      await Bun.write(join(root, path), 'Five signed binaries.\n');
+      await git(root, 'add', '-A');
+      await git(root, 'commit', '--quiet', '-m', 'Restore the emitted readme');
+      expect(await foreignSubjects(ownership('Five signed binaries.\n'))).toEqual([
+        'Restore the emitted readme',
+        'Delete the emitted readme',
+        'Mark the readme executable',
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('recognizes a squash that dropped provenance only when its pull-request head has the same tree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-'));
     const remote = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-remote-'));
