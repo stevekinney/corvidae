@@ -539,7 +539,7 @@ export function createBureauGoals<TName extends string = string>(
           const unsettledAfterRace = await settleBeforeClosing(closed.record, query);
           if (unsettledAfterRace !== undefined) return unsettledAfterRace;
         }
-        return await finishClosure(closed.record);
+        return await finishClosure(closed.record, query);
       }
       case 'rejected':
         return { outcome: 'not-terminal', goal: closed.record };
@@ -612,17 +612,35 @@ export function createBureauGoals<TName extends string = string>(
    */
   async function finishClosure(
     record: GoalState,
-  ): Promise<Extract<BureauGoalCloseOutcome, { outcome: 'closed' }>> {
+    query: BureauGoalQuery | undefined,
+  ): Promise<BureauGoalCloseOutcome> {
     const cleanup = await cleanUpGoal(dependencies, record);
     if (!isCleanupDone(cleanup) || record.cleanedUpAt !== undefined) {
       return { outcome: 'closed', goal: record, cleanup };
     }
     const marked = await store.markCleanedUp(record.goalRunId, clock.nowISO());
-    return {
-      outcome: 'closed',
-      goal: marked.status === 'updated' || marked.status === 'unchanged' ? marked.record : record,
-      cleanup,
-    };
+    switch (marked.status) {
+      case 'updated':
+      case 'unchanged':
+        return { outcome: 'closed', goal: marked.record, cleanup };
+      case 'missing':
+        return { outcome: 'not-found' };
+      case 'corrupt':
+        // The record decoded a moment ago and no longer does.
+        return query?.principal === undefined
+          ? { outcome: 'record-unreadable' }
+          : { outcome: 'not-found' };
+      case 'rejected':
+      case 'stale':
+        // The pruning is done but not recorded, so the goal still owes it as far
+        // as every later read can tell: reporting it closed and cleaned would
+        // hide that nothing has marked it, and the next close() or boot does.
+        return {
+          outcome: 'cleanup-pending',
+          goal: marked.record,
+          detail: `The closed goal's checkpoint cleanup finished, but recording it did not (${marked.status}); the next boot or close() records it.`,
+        };
+    }
   }
 
   return { create, get: authorized, list, active, cancel, recover, close };

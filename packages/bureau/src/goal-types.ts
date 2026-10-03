@@ -209,7 +209,9 @@ export type BureauGoalCloseOutcome =
    * the aggregate duration abandoned, which created its run afterwards) could
    * not be stopped (`detail`). A closed, cleaned goal leaves the boot sweep, so
    * closing one with that run alive would strand it. `closedAt` is not set; call
-   * again once it can be stopped.
+   * again once it can be stopped. It is also the answer for a closed goal whose
+   * checkpoint cleanup finished but could not be recorded (`cleanedUpAt` is
+   * unset), which the next `close()` or boot records.
    */
   | {
       readonly outcome: 'cleanup-pending';
