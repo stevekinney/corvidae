@@ -42,6 +42,7 @@ import {
   reattachDurableActiveRun,
   type RecoveredRunHandle,
   type RequestHumanInputResult,
+  reservedIdentifierReason,
   // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
   // import because `./types` exports an unrelated string-union type under
   // the same name (armorer's shutdown-owner outcome vocabulary). The two are
@@ -178,7 +179,6 @@ import { leaseEvidenceFromLostHealth } from './liveness-projection';
 import { createModelCatalogService } from './model-catalog-refresh';
 import { createModelPolicyPlanner } from './model-policy';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
-import { reservedIdentifierReason } from './reserved-identifiers';
 import {
   buildPartialRunReport,
   buildTerminalReportFromAbortedEvent,

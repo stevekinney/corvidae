@@ -302,6 +302,14 @@ export type {
   ValidatorOutcome,
   ValidatorResult,
 } from './goal-decision';
+export {
+  GOAL_AUDIT_WORKFLOW_ID_PREFIX,
+  GOAL_RESERVED_IDENTIFIER_PREFIXES,
+  GOAL_RUN_AND_SESSION_ID_PREFIX,
+  GOAL_WORKFLOW_ID_PREFIX,
+  reservedGoalIdentifierPrefix,
+  reservedIdentifierReason,
+} from './goal-reserved-identifiers';
 export { startGoal } from './goal-run';
 export type {
   GoalAttemptRecord,

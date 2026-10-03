@@ -24,6 +24,8 @@
 import {
   type FinishReason,
   freshAttemptHandoffArtifactSchema,
+  GOAL_RUN_AND_SESSION_ID_PREFIX,
+  GOAL_WORKFLOW_ID_PREFIX,
   type GoalBudget,
   GoalConfigurationError,
   type GoalConversationPolicy,
@@ -42,8 +44,6 @@ import {
   VALIDATOR_ERROR_KINDS,
   type ValidatorIdentity,
 } from '@lostgradient/operative';
-
-import { GOAL_RUN_AND_SESSION_ID_PREFIX, GOAL_WORKFLOW_ID_PREFIX } from './reserved-identifiers';
 
 // ---------------------------------------------------------------------------
 // Caps, keys, and identifiers

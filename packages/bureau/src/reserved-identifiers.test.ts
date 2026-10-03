@@ -2,16 +2,16 @@
  * COR-851 — the namespaces a durable goal owns, and the guarantee that every id
  * it derives lies inside them.
  */
-import { describe, expect, it } from 'bun:test';
-
-import { encodeOwner } from './durable-event-history';
-import { attemptSessionId, goalAttemptRunId, goalSessionId, goalWorkflowId } from './goal-state';
 import {
   GOAL_AUDIT_WORKFLOW_ID_PREFIX,
   GOAL_RESERVED_IDENTIFIER_PREFIXES,
   reservedGoalIdentifierPrefix,
   reservedIdentifierReason,
-} from './reserved-identifiers';
+} from '@lostgradient/operative';
+import { describe, expect, it } from 'bun:test';
+
+import { encodeOwner } from './durable-event-history';
+import { attemptSessionId, goalAttemptRunId, goalSessionId, goalWorkflowId } from './goal-state';
 
 describe('the identifiers a goal derives', () => {
   const goalRunIds = ['g1', 'nightly:build', 'a-a0', 'x y'];

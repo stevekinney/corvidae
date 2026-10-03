@@ -63,6 +63,7 @@ import {
   DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD,
   isAgentRunWorkflowInput,
   isScheduledAgentRunInput,
+  reservedIdentifierReason,
   ScheduleAttemptedEvent,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
@@ -3395,6 +3396,19 @@ export async function createRuntimeComposition(
       existingStatelessSessionId ??
       `sched-${recoveredScheduleId ?? 'unknown'}-${runId}`;
 
+    // COR-851: a goal's sessions are the goal's alone. A schedule can name any
+    // session (an agent registers one itself through `scheduleSelf`, and one
+    // persisted before the reservation existed is still live), and the fire
+    // would load that conversation, append to it, and write it back. The id is
+    // refused before anything is read.
+    const reservedSession = reservedIdentifierReason('scheduled session', sessionId);
+    if (reservedSession !== undefined) {
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which durable goals own: ${reservedSession}`,
+      };
+    }
+
     // Always check for an existing session at this id. A recurring fire
     // continues its stored session; a fresh-per-fire (stateless) session's id
     // embeds this exact runId, so a live (never-before-run) fire finds nothing
@@ -3403,6 +3417,14 @@ export async function createRuntimeComposition(
     // persisted (partially or fully) before this resume — which is exactly the
     // case `isRecoveredFireReplay` below needs to detect.
     const existing = await store.load(sessionId);
+    // Defence in depth behind the id check above: a session a goal wrote carries
+    // its `goalRunId`, whatever id it sits under, and no schedule fire reads it.
+    if (existing !== undefined && existing.metadata['goalRunId'] !== undefined) {
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which belongs to a durable goal`,
+      };
+    }
     // The session's own metadata — not `info.schedule` — is the source of
     // truth for "have we already run this exact fire": `info.schedule` is
     // populated on BOTH a live tick and a recovered one, so it cannot

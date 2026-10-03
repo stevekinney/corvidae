@@ -123,6 +123,7 @@ import type {
   SessionSavedEvent,
   Subscription,
 } from '@lostgradient/operative';
+import { GOAL_AUDIT_WORKFLOW_ID_PREFIX } from '@lostgradient/operative';
 import {
   createFleetEventFeed,
   decodeCursor,
@@ -146,7 +147,6 @@ import type {
   ReviewSupersededEvent,
   RunRemovedEvent,
 } from './events';
-import { GOAL_AUDIT_WORKFLOW_ID_PREFIX } from './reserved-identifiers';
 import { resolveDiagnosticSink, serializeActionDetail } from './serialization';
 import type { Bureau, DiagnosticSink } from './types';
 

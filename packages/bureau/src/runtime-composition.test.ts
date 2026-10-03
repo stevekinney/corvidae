@@ -2051,6 +2051,95 @@ describe('createRuntimeComposition durable execution', () => {
     }
   });
 
+  // COR-851: the scheduled-fire session load is the second layer behind the
+  // reservation at registration, so a schedule persisted before the reservation
+  // existed, or registered straight on the engine, still cannot reach a goal's
+  // conversation.
+  describe('a scheduled fire naming a goal-owned session', () => {
+    async function composition() {
+      const runtime = await createRuntimeComposition({
+        generate: async () => ({ content: 'x', toolCalls: [] }),
+        toolbox: createToolbox([], { context: {} }),
+        storage: { type: 'memory' },
+        durableExecution: true,
+      });
+      return runtime;
+    }
+
+    const fire = (sessionId: string) => ({
+      workflowId: 'scheduled-goal-session',
+      workflowType: 'agentRun',
+      input: { agentName: 'agent', input: 'read it', scheduleId: 'sneaky', sessionId },
+      schedule: { id: 'sneaky' },
+    });
+
+    it.each(['goal-g1-s0', 'goal-victim-a0', 'goal:g1', 'bureau-goal-audit:g1'])(
+      'is unavailable for the reserved session id %s, without loading it',
+      async (sessionId) => {
+        const runtime = await composition();
+        try {
+          const loaded: string[] = [];
+          const store = {
+            ...runtime.sessionStore!,
+            load: (id: string) => {
+              loaded.push(id);
+              return runtime.sessionStore!.load(id);
+            },
+          };
+
+          const resolution = await runtime.buildScheduledRunServices(fire(sessionId), store);
+
+          expect(resolution).toMatchObject({ status: 'unavailable' });
+          expect(resolution.status === 'unavailable' && resolution.reason).toContain(
+            'reserved-identifier',
+          );
+          expect(loaded).toEqual([]);
+        } finally {
+          runtime.durable?.engine[Symbol.dispose]?.();
+        }
+      },
+    );
+
+    it('is unavailable for a session a goal wrote, whatever its id', async () => {
+      const runtime = await composition();
+      try {
+        await runtime.sessionStore!.save(
+          createAgentSession({
+            id: 'owned-by-a-goal',
+            agentName: 'agent',
+            conversationHistory: createConversationHistory(),
+            metadata: { goalRunId: 'victim' },
+          }),
+        );
+
+        const resolution = await runtime.buildScheduledRunServices(
+          fire('owned-by-a-goal'),
+          runtime.sessionStore!,
+        );
+
+        expect(resolution).toMatchObject({ status: 'unavailable' });
+        const untouched = await runtime.sessionStore!.load('owned-by-a-goal');
+        expect(getMessages(untouched!.conversationHistory)).toEqual([]);
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+
+    it('still resolves an ordinary recurring session', async () => {
+      const runtime = await composition();
+      try {
+        const resolution = await runtime.buildScheduledRunServices(
+          fire('nightly-digest'),
+          runtime.sessionStore!,
+        );
+
+        expect(resolution).toMatchObject({ status: 'available' });
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    });
+  });
+
   it("mints AgentSession.incarnation from this composition's own injected runtime, not a second default one (AB-384, Codex P2 review finding, PR #592)", async () => {
     // Two independently seeded manual runtimes, each composed with its own
     // `createRuntimeComposition` call: if `sessionStore` were built from a

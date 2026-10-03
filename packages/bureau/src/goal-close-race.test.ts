@@ -74,6 +74,7 @@ describe('close() racing a cancellation', () => {
     });
 
     expect(await goals.close('g1')).toMatchObject({ outcome: 'closed' });
-    expect((await store.get('g1'))?.cleanedUpAt).toBeDefined();
+    const after = await store.get('g1');
+    expect(after?.cleanedUpAt).toBeDefined();
   });
 });
