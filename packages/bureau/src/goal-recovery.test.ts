@@ -727,8 +727,9 @@ describe('restarting a controller that ended abnormally', () => {
 
       const entry = await recoverGoal(control, 'g1');
 
-      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'running' });
+      expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'restart-pending' });
       expect(entry.detail).toContain('counted');
+      expect(recoveryEntryFailure(entry)).toContain('counted');
       expect(fenced).toEqual([]);
       expect(stopped).toEqual([]);
     });
@@ -780,7 +781,7 @@ describe('restarting a controller that ended abnormally', () => {
       release();
       const finished = await recovering;
 
-      expect(overlapped).toMatchObject({ outcome: 'running' });
+      expect(overlapped).toMatchObject({ outcome: 'restart-pending' });
       expect(second.fenced).toEqual([]);
       expect(finished).toMatchObject({ outcome: 'restarted' });
       expect(starts).toEqual(['goal:g1']);

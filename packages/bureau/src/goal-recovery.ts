@@ -35,8 +35,9 @@
  * cancelled (`stopOrphanedAttempts`). COR-638's terminal reasons are not extended
  * to cover it. A restart is counted before its controller is started, so a
  * controller found ended at the limit may belong to a final restart another
- * recovery is starting: that is `running` until `RESTART_START_GRACE_MS` has passed
- * since the count (a recovery that crashed after counting is then given up on).
+ * recovery is starting: that is `restart-pending` (a failure in the boot report,
+ * so a crash-then-quick-reboot is seen) until `RESTART_START_GRACE_MS` has passed
+ * since the count, after which `recover()` gives up on the goal.
  *
  * ## The attempt
  *
@@ -473,8 +474,12 @@ async function recoverController(
     // has counted and is about to start. Giving up on it now would tombstone and
     // cancel the attempt that restart is starting under.
     if (finalRestartIsInFlight(dependencies, record, state)) {
+      // `restart-pending`, never `running`: the boot sweep runs once, and a
+      // recovery that crashed after counting and rebooted inside the grace leaves
+      // a goal with no controller that nothing else revisits. It is reported a
+      // failure so that it is seen, and a `recover()` after the grace gives up.
       return {
-        outcome: 'running',
+        outcome: 'restart-pending',
         detail: `Another recovery has counted restart ${record.controllerRestarts} and has not started its controller yet; if it never does, a later recover() gives up on the goal.`,
       };
     }
