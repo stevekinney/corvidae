@@ -104,6 +104,19 @@ export function createGoalWorkflowActivities(ports: GoalWorkflowPorts) {
       idempotent: true,
       execute: (input: GoalWorkflowAbortRequest): Promise<void> => ports.abortAttempt(input),
     }),
+
+    /**
+     * The definition-level finalizer: Weft drives it after a `cancelled` or
+     * `timed-out` terminal, with the state the controller last staged, so a
+     * hard `engine.cancel` that killed the generator mid-flight still stops the
+     * active attempt's run. The same idempotent port call as `abortAttempt`,
+     * under its own name so the finalizer is recognizable in a history.
+     */
+    finalizeGoal: activity({
+      name: 'finalizeGoal',
+      idempotent: true,
+      execute: (input: GoalWorkflowAbortRequest): Promise<void> => ports.abortAttempt(input),
+    }),
   };
 }
 

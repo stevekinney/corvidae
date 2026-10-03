@@ -86,11 +86,24 @@
  * above. If the owner escalates to `engine.cancel`, the generator dies
  * mid-flight and nothing here can commit the terminal transition, so the host
  * completes it: it reads the engine's `cancelled` status together with the
- * record's cancellation marker and commits `canceled` through the store. (A
- * definition-level Weft finalizer is not used: `ctx.setFinalizerState` throws on
- * a recovered context, because Weft's resume path builds its context without the
- * `recordFinalizerState` callback, so a workflow that staged state at start could
- * not be replayed.) The deadline timer is a race branch: Weft anchors it to the
+ * record's cancellation marker and commits `canceled` through the store.
+ *
+ * The workflow also declares a definition-level finalizer, `finalizeGoal`, so
+ * the run an attempt left behind is stopped even when the generator never got
+ * to. At every decision point, right after the record read, the controller
+ * stages `ctx.setFinalizerState` with the run a cancellation must stop (the
+ * same target `abortAttempt` names: the attempt in flight, or the next
+ * attempt's deterministic id for an orphan a crashed start left). Staging is
+ * not a durable slot: it is a pure function of the recorded read, it is
+ * committed with the next checkpoint, and a recovered workflow re-stages it
+ * from the same history, so the slot sequence above is unchanged. After a
+ * `cancelled` or `timed-out` terminal Weft drives the finalizer with the last
+ * staged value, retrying and re-driving it across a crash, and it calls the
+ * same idempotent `abortAttempt` port. A workflow that ends `completed` or
+ * `failed` owes no finalizer, and one that never reached a decision point
+ * staged nothing, so `getFinalizerStatus` answers `null` for both: nothing owed.
+ *
+ * The deadline timer is a race branch: Weft anchors it to the
  * checkpoint time on resume, so a restart re-arms the same absolute deadline
  * rather than a fresh one, and the elapsed bound is checked again from a fresh
  * clock reading at every decision point regardless.
@@ -123,6 +136,7 @@ import {
   type GoalAttemptTerminalSignal,
   goalAttemptTerminalSignalName,
   GoalControllerError,
+  type GoalWorkflowAbortRequest,
   type GoalWorkflowCommit,
   type GoalWorkflowInput,
   type GoalWorkflowPorts,
@@ -212,6 +226,23 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
   const activities = createGoalWorkflowActivities(ports);
   const { identifiers } = ports;
 
+  /**
+   * The run a cancellation must stop. An attempt in flight has one. Otherwise a
+   * start may have crashed just short of its commit and left an orphan under the
+   * next attempt's deterministic id, so name that one; stopping a run that never
+   * existed is a no-op.
+   */
+  function runToStop(view: GoalWorkflowView): GoalWorkflowAbortRequest {
+    const current = currentAttemptOf(view);
+    const attemptIndex = isAttemptInFlight(current) ? current.attemptIndex : view.attempts.length;
+    return {
+      goalRunId: view.goalRunId,
+      attemptIndex,
+      attemptId: identifiers.attemptId(view.goalRunId, attemptIndex),
+      runId: identifiers.attemptRunId(view.goalRunId, attemptIndex),
+    };
+  }
+
   function* commit(
     ctx: GoalContext,
     request: GoalWorkflowTransition,
@@ -225,18 +256,7 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
     nowMs: number,
     decision: GoalDecision,
   ): Segment {
-    const current = currentAttemptOf(view);
-    // An attempt in flight has a run to stop. Otherwise a start may have
-    // crashed just short of its commit and left an orphan under the next
-    // attempt's deterministic id, so name that one; stopping a run that never
-    // existed is a no-op.
-    const attemptIndex = isAttemptInFlight(current) ? current.attemptIndex : view.attempts.length;
-    yield* ctx.run(activities.abortAttempt, {
-      goalRunId: view.goalRunId,
-      attemptIndex,
-      attemptId: identifiers.attemptId(view.goalRunId, attemptIndex),
-      runId: identifiers.attemptRunId(view.goalRunId, attemptIndex),
-    });
+    yield* ctx.run(activities.abortAttempt, runToStop(view));
     return yield* commit(ctx, buildGoalForcedFinish(view, identifiers, nowMs, decision));
   }
 
@@ -368,7 +388,7 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
   }
 
   return (
-    workflow({ name: GOAL_WORKFLOW_TYPE })
+    workflow({ name: GOAL_WORKFLOW_TYPE, finalizer: activities.finalizeGoal })
       // eslint-disable-next-line @typescript-eslint/require-await -- Weft durable generator: async work flows through yield*, not a top-level await.
       .execute(async function* (
         ctx,
@@ -381,6 +401,11 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
           const { view, nowMs } = yield* ctx.run(activities.loadGoalState, { goalRunId });
           if (view === undefined) return recordUnavailable(goalRunId);
           if (isTerminalStatus(view.status)) return terminalResult(view);
+          // Stage what the finalizer needs, last write wins: the run a hard
+          // cancel from here on must stop. It is committed with the next
+          // checkpoint, and the replay of a recovered workflow re-stages it
+          // from the same recorded read, so it is never a durable slot.
+          ctx.setFinalizerState(runToStop(view));
 
           const committed = yield* advance(ctx, view, nowMs);
           if (committed === undefined) {

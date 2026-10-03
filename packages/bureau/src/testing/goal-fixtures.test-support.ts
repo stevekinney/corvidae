@@ -24,6 +24,7 @@ import {
   type ValidatorOutcome,
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { expect } from 'bun:test';
 
 import type { GoalState } from '../goal-state';
 import type { BureauGoalRequest } from '../goal-types';
@@ -163,6 +164,32 @@ export function goalRequest(
     goalRunId: 'g1',
     ...overrides,
   };
+}
+
+type CancelOutcome = Awaited<ReturnType<Bureau['goals']['cancel']>>;
+
+/**
+ * Cancels a goal and retries until it answers `canceled`. Under the default
+ * ownership the controller's finalizer runs in the background after the hard
+ * cancel, so the first read may find it still owed: `cancellation-pending`,
+ * awaiting only the finalizer. Anything else unfinished, or a failed
+ * finalizer, is a defect and fails the test.
+ */
+export async function cancelUntilSettled(
+  bureau: Bureau,
+  goalRunId = 'g1',
+  options?: Parameters<Bureau['goals']['cancel']>[1],
+): Promise<{ first: CancelOutcome; settled: CancelOutcome }> {
+  const first = await bureau.goals.cancel(goalRunId, options);
+  let latest = first;
+  const done = await pollUntil(async () => {
+    if (latest.outcome === 'canceled') return true;
+    expect(latest).toMatchObject({ outcome: 'cancellation-pending', awaiting: ['finalizer'] });
+    latest = await bureau.goals.cancel(goalRunId, options);
+    return false;
+  });
+  expect(done).toBe(true);
+  return { first, settled: latest };
 }
 
 export const TERMINAL_STATUSES = ['succeeded', 'exhausted', 'failed', 'canceled'] as const;

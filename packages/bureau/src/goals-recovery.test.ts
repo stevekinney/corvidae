@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
 import { createGoalState, goalRecordKey, type GoalState } from './goal-state';
 import {
+  cancelUntilSettled,
   CHECK,
   createCheckValidator,
   createDiagnostics,
@@ -421,9 +422,20 @@ describe('a cancellation that a process died in the middle of', () => {
     expect(await bureau.cancelDurableRun('goal:g1')).toEqual({ status: 'requested' });
     expect(await goalStatus(bureau, 'g1')).toBe('running');
 
-    expect(await bureau.goals.recover('g1')).toMatchObject({
-      goals: [{ goalRunId: 'g1', outcome: 'canceled' }],
-    });
+    // The controller's finalizer stops the attempt in the background, so recovery
+    // may find it still owed. It has committed the cancellation either way.
+    const recovered = await bureau.goals.recover('g1');
+    expect(recovered.failures).toEqual([]);
+    expect(recovered.goals).toHaveLength(1);
+    const [result] = recovered.goals;
+    expect(['canceled', 'cancellation-pending']).toContain(result?.outcome ?? '');
+    if (result?.outcome === 'cancellation-pending') {
+      expect(result.detail).toBe('Still waiting on: finalizer.');
+    }
+    const stopped = await pollUntil(
+      async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled',
+    );
+    expect(stopped).toBe(true);
     const goal = await bureau.goals.get('g1');
     expect(goal).toMatchObject({
       status: 'canceled',
@@ -462,7 +474,8 @@ describe('a controller left running in a superseded process', () => {
     });
     await track(bureau);
     await bureau.waitForRecovery?.();
-    expect(await bureau.goals.cancel('g1')).toMatchObject({ outcome: 'canceled' });
+    const { settled } = await cancelUntilSettled(bureau);
+    expect(settled).toMatchObject({ outcome: 'canceled' });
     const canceled = await bureau.goals.get('g1');
 
     // The superseded controller's verdict arrives late and passes. Its commit is refused.

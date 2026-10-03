@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import type { GoalState } from './goal-state';
 import {
+  cancelUntilSettled,
   CHECK,
   createCheckValidator,
   createDiagnostics,
@@ -400,7 +401,7 @@ describe('bureau.goals', () => {
       await bureau.goals.create(goalRequest({ principal: 'alice' }));
       await reaches(bureau, 'running');
 
-      const outcome = await bureau.goals.cancel('g1', {
+      const { settled: outcome } = await cancelUntilSettled(bureau, 'g1', {
         principal: 'alice',
         reason: 'no longer wanted',
       });
@@ -432,6 +433,45 @@ describe('bureau.goals', () => {
       expect(diagnostics.scope('goals')).toEqual([]);
     });
 
+    it('stops the attempt run through the controller finalizer when only the controller is hard-cancelled', async () => {
+      // The default ownership is 'workflow-lease': the finalizer is driven by
+      // the engine, not by the control plane, so nothing here calls
+      // `goals.cancel` or `goals.recover` to stop the attempt.
+      const { bureau, diagnostics } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+      await bureau.goals.create(goalRequest());
+      await reaches(bureau, 'running');
+      expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('running');
+
+      expect(await bureau.cancelDurableRun('goal:g1')).toEqual({ status: 'requested' });
+
+      const stopped = await pollUntil(
+        async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled',
+      );
+      expect(stopped).toBe(true);
+      expect(await workflowStatus(bureau, 'goal:g1')).toBe('cancelled');
+      expect(diagnostics.scope('goals')).toEqual([]);
+    });
+
+    it('answers cancel() with canceled only once the controller finalizer has settled, retrying through cancellation-pending', async () => {
+      const { bureau, diagnostics } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+      await bureau.goals.create(goalRequest());
+      await reaches(bureau, 'running');
+
+      const { first, settled } = await cancelUntilSettled(bureau);
+
+      // The first read may find the finalizer still owed; the retry is what settles it.
+      expect(['canceled', 'cancellation-pending']).toContain(first.outcome);
+      expect(settled).toMatchObject({ outcome: 'canceled', goal: { status: 'canceled' } });
+      expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('cancelled');
+      expect(diagnostics.scope('goals')).toEqual([]);
+    });
+
     it('cancels a goal while its validator is running and ignores the verdict that arrives afterwards', async () => {
       const validating = createLatch();
       const verdictDelivered = createLatch();
@@ -449,7 +489,7 @@ describe('bureau.goals', () => {
       await bureau.goals.create(goalRequest());
       await reaches(bureau, 'evaluating');
 
-      const outcome = await bureau.goals.cancel('g1');
+      const { settled: outcome } = await cancelUntilSettled(bureau);
       expect(outcome).toMatchObject({ outcome: 'canceled' });
       const canceled = await bureau.goals.get('g1');
 
