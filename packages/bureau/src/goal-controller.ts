@@ -17,7 +17,7 @@ import { WorkflowAlreadyExistsError } from '@lostgradient/weft';
 
 import type { AttemptForwarder } from './goal-forwarder';
 import { goalIdentifiers } from './goal-ports';
-import { type GoalState, goalWorkflowId } from './goal-state';
+import { type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type { GoalStore, GoalTransitionResult } from './goal-store';
 import type { BureauGoalControllerStart, GoalEngine } from './goal-types';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
@@ -170,8 +170,18 @@ export async function ensureController(
     GoalControlDependencies,
     'store' | 'catalog' | 'clock' | 'diagnose' | 'getEngine'
   >,
-  record: GoalState,
+  stale: GoalState,
 ): Promise<{ readonly goal: GoalState; readonly controller: BureauGoalControllerStart }> {
+  // The caller's copy may be older than the store's: a cancel or a close can land
+  // while the caller awaited something else (a store observer, a repeat's read).
+  // A controller started for a goal that has ended, or whose cancellation is
+  // recorded, would run history that escapes retention and recovery, so the
+  // decision is made on a read taken here, and a goal that no longer wants a
+  // controller gets none. Recovery finishes a recorded cancellation.
+  const record = (await dependencies.store.get(stale.goalRunId)) ?? stale;
+  if (isTerminalGoalStatus(record.status) || record.cancellation !== undefined) {
+    return { goal: record, controller: { status: 'not-needed' } };
+  }
   const ended = await enforceDeterminism(dependencies, record);
   if (ended !== undefined) return { goal: ended, controller: { status: 'not-needed' } };
   const engine = dependencies.getEngine();

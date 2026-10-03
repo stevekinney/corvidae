@@ -100,7 +100,7 @@ export type BureauGoalControllerStart =
   | { readonly status: 'started' }
   /** The record exists but its workflow did not start; `recover()` starts it. */
   | { readonly status: 'start-failed'; readonly reason: string }
-  /** The goal ended at creation (`unsupported-validation`), so there is no controller. */
+  /** The goal ended (at creation as `unsupported-validation`, or by a cancel or close since), or a cancellation is recorded, so there is no controller to start. */
   | { readonly status: 'not-needed' };
 
 export type BureauGoalCreateOutcome =

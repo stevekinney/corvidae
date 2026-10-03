@@ -5,10 +5,11 @@
 import { WorkflowAlreadyExistsError } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { ensureController } from './goal-controller';
+import { commitCancellation, ensureController } from './goal-controller';
 import type { GoalEngine } from './goal-types';
 import {
   dependencies,
+  NOW,
   runningGoal,
   scriptedEngine,
 } from './testing/goal-control-fixtures.test-support';
@@ -45,4 +46,37 @@ describe('ensureController', () => {
       expect(controller.status === 'start-failed' && controller.reason).toContain('recover()');
     },
   );
+
+  // A cancel or a close can land while a caller awaited something else (a store
+  // observer in `create`, a repeat's read), after it read the goal as running.
+  describe('when the goal changed after the caller read it', () => {
+    it('starts no controller for a goal whose cancellation is now recorded', async () => {
+      const store = await runningGoal();
+      const stale = (await store.get('g1'))!;
+      await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+      const { engine, calls } = scriptedEngine({ workflows: {} });
+      const { control } = dependencies(store, engine);
+
+      const ensured = await ensureController(control, stale);
+
+      expect(ensured.controller).toEqual({ status: 'not-needed' });
+      expect(ensured.goal.cancellation).toBeDefined();
+      expect(calls.filter((call) => call.startsWith('start:'))).toEqual([]);
+    });
+
+    it('starts no controller for a goal that has since ended', async () => {
+      const store = await runningGoal();
+      const stale = (await store.get('g1'))!;
+      await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+      await commitCancellation(store, (await store.get('g1'))!, Date.parse(NOW));
+      const { engine, calls } = scriptedEngine({ workflows: {} });
+      const { control } = dependencies(store, engine);
+
+      const ensured = await ensureController(control, stale);
+
+      expect(ensured.controller).toEqual({ status: 'not-needed' });
+      expect(ensured.goal.status).toBe('canceled');
+      expect(calls.filter((call) => call.startsWith('start:'))).toEqual([]);
+    });
+  });
 });
