@@ -167,6 +167,37 @@ describe('finalizer teardown under ownership: workflow-lease (COR-1415)', () => 
     expect(destroyed).toHaveLength(1);
   });
 
+  it('treats an undecodable marker as not live: backs off a held claim, then takes over and clears it', async () => {
+    const storage = new MemoryStorage();
+    const clock: Clock = { now: 3_500_000 };
+    const { destroy, destroyed } = countingFinalizer('destroy-lease-corrupt');
+    await using engine1 = await createLeaseEngine(storage, clock);
+    registerTeardownType(engine1, 'lease-corrupt', destroy);
+    await startAndCancel(engine1, storage, 'lease-corrupt', 'lease-corrupt-1');
+
+    // The marker is corrupted, and another engine holds the workflow's claim.
+    const corruptBytes = new Uint8Array([0xff, 0xfe, 0xfd]);
+    await storage.batch([
+      { type: 'put', key: KEYS.teardownOwed('lease-corrupt-1'), value: corruptBytes },
+    ]);
+    await using deadEngine = await createLeaseEngine(storage, clock);
+    const deadClaim =
+      await getInternals(deadEngine).workflowClaimRegistry!.acquire('lease-corrupt-1');
+    expect(deadClaim.status).toBe('acquired');
+
+    // An undecodable marker carries no token to mismatch and is not a live `running` drive,
+    // so the drive only backs off because the claim is still held.
+    await engine1.scheduler.tick(clock.now);
+    expect(destroyed).toEqual([]);
+    expect(await storage.get(KEYS.teardownOwed('lease-corrupt-1'))).toEqual(corruptBytes);
+
+    // Once the claim expires the drive takes it over and resolves the corrupt marker under
+    // the fence instead of waiting on it forever.
+    clock.now += CLAIM_TTL_MS * 4;
+    await engine1.scheduler.tick(clock.now);
+    expect(await storage.get(KEYS.teardownOwed('lease-corrupt-1'))).toBeNull();
+  });
+
   it('two engines racing for the same teardown never both run the finalizer', async () => {
     const storage = new MemoryStorage();
     const clock: Clock = { now: 4_000_000 };
