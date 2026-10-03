@@ -24,14 +24,6 @@ import {
   parseTaskResultBody,
 } from './task-result-submission.ts';
 
-export {
-  authorizeWorkerPrincipal,
-  awaitTaskLedgerRecovery,
-  handleTaskResultRequest,
-  parseTaskResultBody,
-} from './task-result-submission.ts';
-export type { LongPollTaskResultRejectionReason } from './task-result-submission.ts';
-
 const TASK_POLL_RE = /^\/v1\/tasks\/([\w-]+)$/;
 const TASK_HEARTBEAT_RE = /^\/v1\/tasks\/([\w-]+)\/heartbeat$/;
 const TASK_DIAGNOSTICS_PATH = '/v1/tasks/diagnostics';
