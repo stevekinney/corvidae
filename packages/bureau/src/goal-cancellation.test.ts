@@ -192,6 +192,8 @@ describe('cancelGoal', () => {
       at: NOW,
       cause: 'attempt run failed',
       terminalReason: 'attempt-run-failed',
+      attempt: { ...(await store.get('g1'))!.attempts[0]!, status: 'failed' },
+      active: null,
     });
     const ended = (await store.get('g1'))!;
     const { engine, calls } = scriptedEngine({ workflows: settled });

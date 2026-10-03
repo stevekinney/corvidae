@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { commitCancellation } from './goal-controller';
 import { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
-import { createGoalState, goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
+import { goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import {
   cancelUntilSettled,
@@ -42,6 +42,7 @@ import {
   bootOver,
   inspect,
   pendingGoal,
+  repairPoisoned,
   seedFinishedRun,
   seedPoisoned,
   seedRetrying,
@@ -953,7 +954,7 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
     // No terminal reason is invented: the goal is exactly as it was.
     const goal = await bureau.goals.get('g1');
     expect(goal).toMatchObject({
-      status: 'running',
+      status: 'pending',
       controllerRestarts: MAXIMUM_CONTROLLER_RESTARTS,
     });
     expect(goal?.terminalReason).toBeUndefined();
@@ -979,7 +980,10 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
     await track(next.bureau);
     const report = await next.bureau.waitForRecovery?.();
 
-    expect(report?.outcome).toBe('partial');
+    // The bytes that keep the controller from starting its attempt are also a run
+    // record the engine's own batch recovery cannot read, so the batch failed too.
+    expect(report?.outcome).toBe('failed');
+    expect(report?.batchFailure).toBeDefined();
     expect(report?.perRunFailures).toEqual([
       { runId: 'g1', reason: expect.stringContaining('restarted') },
     ]);
@@ -996,20 +1000,8 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
     await bureau.goals.recover('g1');
     expect(await controllerFailed(bureau)).toBe(true);
 
-    // Repaired: the record is back to the state the first attempt starts from.
-    const poisoned = await view.store.get('g1');
-    const repaired = createGoalState({
-      goalRunId: 'g1',
-      identity: pendingGoal().identity,
-      objective: pendingGoal().objective,
-      validator: CHECK,
-      conversationPolicy: { kind: 'continue' },
-      retryPolicy: pendingGoal().retryPolicy,
-      bounds: pendingGoal().bounds,
-      now: '2026-10-02T12:00:00.000Z',
-    });
-    await view.overwrite({ ...repaired, revision: (poisoned?.revision ?? 0) + 1 });
-    expect(await view.kv.get(goalRecordKey('g1'))).not.toBeNull();
+    // Repaired: the goal session can be read, so the first attempt can start.
+    await repairPoisoned(view);
 
     expect(await bureau.goals.recover('g1')).toMatchObject({
       goals: [{ goalRunId: 'g1', outcome: 'restarted' }],
@@ -1018,6 +1010,48 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
     const goal = await ended(bureau);
     expect(goal).toMatchObject({ status: 'succeeded', controllerRestarts: 1 });
     expect(goal.attempts).toHaveLength(1);
+  });
+});
+
+describe('a goal record that contradicts itself', () => {
+  it('is reported unreadable at boot, never handed to a controller that would burn its restart allowance', async () => {
+    database = createTestDatabase('self-contradicting');
+    const view = await inspection();
+    await seedRunning(view);
+    // Running, but with no attempt and no active work behind it.
+    const stored = JSON.parse((await view.kv.get(goalRecordKey('g1'))) as string) as Record<
+      string,
+      unknown
+    >;
+    stored['attempts'] = [];
+    delete stored['active'];
+    await view.kv.set(goalRecordKey('g1'), JSON.stringify(stored));
+    const { bureau, diagnostics } = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(hangForever) },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+
+    const report = await bureau.waitForRecovery?.();
+    const recovered = await bureau.goals.recover('g1');
+
+    expect(report?.perRunFailures).toEqual([
+      { runId: 'g1', reason: expect.stringContaining('unreadable') },
+    ]);
+    expect(recovered.failures).toEqual([]);
+    expect(recovered.goals).toEqual([
+      {
+        goalRunId: 'g1',
+        outcome: 'unrecoverable',
+        detail: expect.stringContaining('unreadable'),
+      },
+    ]);
+    expect(await bureau.goals.get('g1')).toBeUndefined();
+    expect(await durableIds(bureau, 'goal:')).toEqual([]);
+    expect(
+      diagnostics.scope('goals').filter((diagnostic) => diagnostic.message.includes('restart')),
+    ).toEqual([]);
   });
 });
 
@@ -1207,7 +1241,7 @@ describe('a goal read by a bureau with no durable engine', () => {
   it('does not call a controller it could not look for one it never had: close() leaves cleanup unresolved', async () => {
     database = createTestDatabase('no-engine-close');
     const view = await inspection();
-    await seedRunning(view);
+    const attempt = await seedRunning(view);
     await view.store.applyTransition({
       goalRunId: 'g1',
       seq: 2,
@@ -1216,6 +1250,8 @@ describe('a goal read by a bureau with no durable engine', () => {
       at: '2026-10-02T12:00:00.000Z',
       cause: 'attempt run failed',
       terminalReason: 'attempt-run-failed',
+      attempt: { ...attempt, status: 'failed' },
+      active: null,
     });
     const bureau = await bootWithoutEngine();
 
@@ -1245,7 +1281,7 @@ describe('a goal read by a bureau with no durable engine', () => {
     it('answers existing for a goal that has ended, whatever the bureau can do now', async () => {
       database = createTestDatabase('repeat-terminal');
       const view = await inspection();
-      await seedRunning(view);
+      const attempt = await seedRunning(view);
       await view.store.applyTransition({
         goalRunId: 'g1',
         seq: 2,
@@ -1254,6 +1290,8 @@ describe('a goal read by a bureau with no durable engine', () => {
         at: '2026-10-02T12:00:00.000Z',
         cause: 'attempt run failed',
         terminalReason: 'attempt-run-failed',
+        attempt: { ...attempt, status: 'failed' },
+        active: null,
       });
       const bureau = await bootWithoutEngine();
 

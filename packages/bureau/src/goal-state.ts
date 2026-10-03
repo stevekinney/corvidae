@@ -912,6 +912,58 @@ function isAuditLogConsistent(value: PlainRecord): boolean {
   return transitions === value['transitionSeq'] && restarts === value['controllerRestarts'];
 }
 
+const isInFlight = (attempt: DurableGoalAttempt | undefined): attempt is DurableGoalAttempt =>
+  attempt !== undefined && (attempt.status === 'running' || attempt.status === 'evaluating');
+
+/**
+ * The status, the attempts, and the active work describe one situation, so a
+ * record that contradicts itself is corrupt rather than something recovery
+ * could act on:
+ *
+ * - no attempt but the last is in flight;
+ * - `pending`: no attempts and no active work;
+ * - `running`: the last attempt is `running`, and the active work is that
+ *   attempt's own run;
+ * - `evaluating`: the last attempt is `evaluating`, and the active work is the
+ *   validation of that attempt;
+ * - `retrying`: a last attempt that ended without passing, and no active work;
+ * - a terminal status: no attempt in flight and no active work (the
+ *   terminal reason's agreement with the status is {@link isTerminalPairing}).
+ */
+function isStatusRelationConsistent(value: PlainRecord): boolean {
+  const status = value['status'] as GoalRunStatus;
+  const attempts = value['attempts'] as readonly DurableGoalAttempt[];
+  const active = value['active'] as ActiveGoalWork | undefined;
+  const last = attempts.at(-1);
+  if (attempts.slice(0, -1).some((attempt) => isInFlight(attempt))) return false;
+  switch (status) {
+    case 'pending':
+      return attempts.length === 0 && active === undefined;
+    case 'running':
+      return (
+        last?.status === 'running' &&
+        active?.kind === 'attempt' &&
+        active.attemptId === last.attemptId &&
+        active.runId === last.runId &&
+        active.startedAt === last.startedAt
+      );
+    case 'evaluating':
+      return (
+        last?.status === 'evaluating' &&
+        active?.kind === 'validation' &&
+        active.attemptId === last.attemptId
+      );
+    case 'retrying':
+      return (
+        last !== undefined &&
+        (last.status === 'failed' || last.status === 'aborted') &&
+        active === undefined
+      );
+    default:
+      return active === undefined && !isInFlight(last);
+  }
+}
+
 function isConsistent(value: PlainRecord): boolean {
   const transition = value['currentTransition'] as GoalTransitionRecord;
   const attempts = value['attempts'] as readonly DurableGoalAttempt[];
@@ -922,6 +974,7 @@ function isConsistent(value: PlainRecord): boolean {
     transition.to === value['status'] &&
     transition.transitionId === goalTransitionId(value['goalRunId'] as string, transition.seq) &&
     attempts.every((attempt, index) => attempt.attemptIndex === index) &&
+    isStatusRelationConsistent(value) &&
     isTerminalPairing(value)
   );
 }

@@ -12,7 +12,14 @@ import {
   stopWhen,
   type Validator,
 } from '@lostgradient/operative';
-import { decode, encode, resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import {
+  decode,
+  encode,
+  KEYS,
+  resolveStorage,
+  type Storage,
+  textValueStore,
+} from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 
@@ -255,20 +262,23 @@ export async function seedRetrying(inspection: Inspection, goal = pendingGoal())
 }
 
 /**
- * Walks a pending record to `running` with no attempt behind it. A controller
- * that reads it cannot reason about it and fails, which is how a test makes a
- * controller end abnormally.
+ * A pending goal whose first attempt's run id holds bytes the engine cannot
+ * decode, so starting that attempt throws and the controller ends abnormally.
+ * The record itself is legal (a record that contradicts itself no longer
+ * decodes), so this is how a test makes a controller fail from a goal the bureau
+ * accepts.
  */
 export async function seedPoisoned(inspection: Inspection, goal = pendingGoal()) {
   await inspection.store.create(goal);
-  await inspection.store.applyTransition({
-    goalRunId: goal.goalRunId,
-    seq: 1,
-    transitionId: goalTransitionId(goal.goalRunId, 1),
-    to: 'running',
-    at: NOW,
-    cause: 'poisoned',
-  });
+  await inspection.storage.put(
+    KEYS.workflow(goalAttemptRunId(goal.goalRunId, 0)),
+    new Uint8Array([1, 2, 3]),
+  );
+}
+
+/** Removes what {@link seedPoisoned} left, so the goal's first attempt can start. */
+export async function repairPoisoned(inspection: Inspection, goal = pendingGoal()) {
+  await inspection.storage.delete(KEYS.workflow(goalAttemptRunId(goal.goalRunId, 0)));
 }
 
 /**

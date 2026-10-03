@@ -752,6 +752,7 @@ describe('runValidator', () => {
         status: 'running',
       },
       usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
+      active: { kind: 'attempt', attemptId: 'g1:a0', runId: 'goal-g1-a0', startedAt: NOW },
     });
     return context;
   }
@@ -945,6 +946,7 @@ describe('runValidator', () => {
       at: NOW,
       cause: 'attempt 0 reached stop-condition',
       attempt: { ...attemptZero, finishReason: 'stop-condition', status: 'evaluating' },
+      active: { kind: 'validation', attemptId: 'g1:a0', validator: CHECK, startedAt: NOW },
     });
     await store.applyTransition({
       goalRunId: 'g1',
@@ -967,6 +969,7 @@ describe('runValidator', () => {
         },
         status: 'failed',
       },
+      active: null,
     });
     await startDurableRunResult(durable, {
       runId: 'goal-g1-a1',
@@ -990,6 +993,7 @@ describe('runValidator', () => {
         usage: { steps: 0, tokens: 0 },
         status: 'running',
       },
+      active: { kind: 'attempt', attemptId: 'g1:a1', runId: 'goal-g1-a1', startedAt: NOW },
     });
 
     await ports.runValidator({ ...request, attemptId: 'g1:a1', attemptIndex: 1 });
@@ -1038,6 +1042,7 @@ describe('runValidator', () => {
         usage: { steps: 0, tokens: 0 },
         status: 'running',
       },
+      active: { kind: 'attempt', attemptId: 'g1:a0', runId: 'goal-g1-a0', startedAt: NOW },
     });
 
     const result = await ports.runValidator(request);

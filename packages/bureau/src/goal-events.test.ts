@@ -335,7 +335,7 @@ describe('a goal history across a restart', () => {
     const history = await goalEvents(bureau);
     const recovered = history.filter((event) => event.kind === 'goal.recovered');
     expect(recovered.map((event) => event.payload)).toMatchObject([
-      { goalRunId: 'g1', controllerRestarts: 1, status: 'running' },
+      { goalRunId: 'g1', controllerRestarts: 1, status: 'pending' },
     ]);
   });
 });

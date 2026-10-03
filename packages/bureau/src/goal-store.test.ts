@@ -87,6 +87,15 @@ function attempt(index: number, overrides: Partial<DurableGoalAttempt> = {}): Du
   };
 }
 
+/** The in-flight attempt work a `running` record must carry. */
+const attemptWork = (index: number) =>
+  ({
+    kind: 'attempt',
+    attemptId: goalAttemptId(GOAL, index),
+    runId: goalAttemptRunId(GOAL, index),
+    startedAt: '2026-10-02T00:00:05.000Z',
+  }) as const;
+
 function transition(
   seq: number,
   to: GoalRunStatus,
@@ -678,6 +687,7 @@ describe('createGoalStore applyTransition', () => {
         transition(4, 'running', {
           attempt: attempt(1),
           usage: { attempts: 2, steps: 0, tokens: 0, durationMs: 0 },
+          active: attemptWork(1),
         }),
       ),
     );
@@ -696,7 +706,14 @@ describe('createGoalStore applyTransition', () => {
       await toEvaluating(store);
 
       const result = await store.applyTransition(
-        transition(3, TERMINAL_STATUS_BY_REASON[reason], { terminalReason: reason, active: null }),
+        transition(3, TERMINAL_STATUS_BY_REASON[reason], {
+          terminalReason: reason,
+          attempt: attempt(0, {
+            status: reason === 'validator-passed' ? 'passed' : 'aborted',
+            finishReason: 'stop-condition',
+          }),
+          active: null,
+        }),
       );
 
       expect(applied(result)).toMatchObject({
@@ -729,6 +746,7 @@ describe('createGoalStore applyTransition', () => {
       const request = transition(1, 'running', {
         attempt: attempt(0),
         usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
+        active: attemptWork(0),
       });
       const first = applied(await store.applyTransition(request));
       const stored = await kv.get(goalRecordKey(GOAL));
@@ -745,6 +763,7 @@ describe('createGoalStore applyTransition', () => {
       await toEvaluating(store);
       const request = transition(3, 'succeeded', {
         terminalReason: 'validator-passed',
+        attempt: attempt(0, { status: 'passed', finishReason: 'stop-condition' }),
         usage: { attempts: 1, steps: 4, tokens: 90, durationMs: 1000 },
         active: null,
       });
@@ -759,7 +778,7 @@ describe('createGoalStore applyTransition', () => {
     it('lets exactly one of two concurrent identical commits apply', async () => {
       const { store } = setup();
       await created(store);
-      const request = transition(1, 'running', { attempt: attempt(0) });
+      const request = transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) });
 
       const results = await Promise.all([
         store.applyTransition(request),
@@ -774,7 +793,11 @@ describe('createGoalStore applyTransition', () => {
     it('treats the same transition id at a different target as a conflicting writer', async () => {
       const { store } = setup();
       await created(store);
-      const first = applied(await store.applyTransition(transition(1, 'running')));
+      const first = applied(
+        await store.applyTransition(
+          transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) }),
+        ),
+      );
 
       const conflicting = await store.applyTransition({
         ...transition(1, 'failed', { terminalReason: 'attempt-run-failed' }),
@@ -799,9 +822,21 @@ describe('createGoalStore applyTransition', () => {
     it('reports a replay of an older transition as stale with the authoritative record', async () => {
       const { store } = setup();
       await created(store);
-      const first = transition(1, 'running');
+      const first = transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) });
       applied(await store.applyTransition(first));
-      const current = applied(await store.applyTransition(transition(2, 'evaluating')));
+      const current = applied(
+        await store.applyTransition(
+          transition(2, 'evaluating', {
+            attempt: attempt(0, { status: 'evaluating' }),
+            active: {
+              kind: 'validation',
+              attemptId: goalAttemptId(GOAL, 0),
+              validator: { name: 'tests@bureau', version: '1.0.0' },
+              startedAt: '2026-10-02T00:00:06.000Z',
+            },
+          }),
+        ),
+      );
 
       expect(await store.applyTransition(first)).toEqual({ status: 'stale', record: current });
     });
@@ -812,7 +847,11 @@ describe('createGoalStore applyTransition', () => {
       await toEvaluating(store);
       const canceled = applied(
         await store.applyTransition(
-          transition(3, 'canceled', { terminalReason: 'goal-canceled', active: null }),
+          transition(3, 'canceled', {
+            terminalReason: 'goal-canceled',
+            attempt: attempt(0, { status: 'aborted' }),
+            active: null,
+          }),
         ),
       );
 
@@ -908,6 +947,7 @@ describe('createGoalStore applyTransition', () => {
               status: 'failed',
               validation: { ...passed, outcome: { kind: 'canceled' } },
             }),
+            active: null,
           }),
         ),
       );
@@ -978,7 +1018,11 @@ describe('createGoalStore applyTransition', () => {
       };
       const racingStore = createGoalStore(racing);
 
-      const result = applied(await racingStore.applyTransition(transition(1, 'running')));
+      const result = applied(
+        await racingStore.applyTransition(
+          transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) }),
+        ),
+      );
 
       expect(result).toMatchObject({ status: 'running', controllerRestarts: 1, revision: 3 });
     });
@@ -998,7 +1042,9 @@ describe('createGoalStore applyTransition', () => {
         },
       } as unknown as typeof kv;
 
-      const result = await createGoalStore(losing).applyTransition(transition(1, 'running'));
+      const result = await createGoalStore(losing).applyTransition(
+        transition(1, 'running', { attempt: attempt(0), active: attemptWork(0) }),
+      );
 
       expect(result).toEqual({ status: 'stale', record: original });
       expect(attempts).toBe(16);
@@ -1023,7 +1069,11 @@ describe('createGoalStore applyTransition', () => {
     const retry = await store.applyTransition(transition(3, 'retrying'));
     const canceled = applied(
       await store.applyTransition(
-        transition(3, 'canceled', { terminalReason: 'goal-canceled', active: null }),
+        transition(3, 'canceled', {
+          terminalReason: 'goal-canceled',
+          attempt: attempt(0, { status: 'aborted' }),
+          active: null,
+        }),
       ),
     );
 
@@ -1405,6 +1455,12 @@ describe('the audit transition log', () => {
       await store.applyTransition(
         transition(2, 'evaluating', {
           attempt: attempt(0, { status: 'evaluating', finishReason: 'stop-condition' }),
+          active: {
+            kind: 'validation',
+            attemptId: goalAttemptId(GOAL, 0),
+            validator: { name: 'tests@bureau', version: '1.0.0' },
+            startedAt: '2026-10-02T00:00:06.000Z',
+          },
         }),
       ),
     );
