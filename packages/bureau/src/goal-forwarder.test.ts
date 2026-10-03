@@ -119,13 +119,15 @@ async function world(
   );
   const diagnostics: BureauDiagnostic[] = [];
   const costLookups: string[] = [];
+  const costRunIds: string[] = [];
   let closing = false;
   const forwarder = createAttemptForwarder({
     store,
     runtime,
     getDurable: () => durable,
-    resolveCostEstimation: (agentName) => {
+    resolveCostEstimation: (agentName, runId) => {
       costLookups.push(agentName);
+      costRunIds.push(runId);
       return forwarding.resolveCostEstimation?.() ?? Promise.resolve({ model: 'gpt-4o' });
     },
     conversations: {
@@ -149,6 +151,7 @@ async function world(
     forwarder,
     diagnostics,
     costLookups,
+    costRunIds,
     close: () => {
       closing = true;
     },
@@ -227,6 +230,17 @@ describe('createAttemptForwarder', () => {
     expect(costLookups).toEqual(['worker']);
     const payload = sent[0]?.payload as { costUsd?: number };
     expect(payload.costUsd).toBeGreaterThan(0);
+  });
+
+  it('prices the run from the attempt run it is reading, never from the goal prompt', async () => {
+    const { durable, forwarder, costRunIds } = await world({ maximumTotalCostUsd: 1 });
+    await finishedRun(durable);
+
+    await forwarder.reconcile(target);
+
+    // A retry starts with a seeded conversation, not the prompt, so the
+    // estimator must be resolved from the run's own recorded input.
+    expect(costRunIds).toEqual([target.runId]);
   });
 
   it('retries a cost estimator that failed in passing instead of reporting the attempt as unaccounted', async () => {

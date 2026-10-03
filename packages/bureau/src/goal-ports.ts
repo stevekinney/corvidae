@@ -161,7 +161,7 @@ export interface GoalPortsDependencies {
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
   readonly resolveCostEstimation: (
     agentName: string,
-    prompt: string,
+    runId: string,
     principal: string | undefined,
   ) => Promise<RunOptions['costEstimation'] | undefined>;
 }
@@ -415,7 +415,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         ? undefined
         : await resolveCostEstimation(
             record.objective.agentName,
-            record.objective.prompt,
+            attempt.runId,
             record.principal,
           );
     const reading = await readDurableRunResult(durable, attempt.runId, {

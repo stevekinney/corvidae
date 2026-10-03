@@ -65,7 +65,7 @@ export interface AttemptForwarderDependencies {
    */
   readonly resolveCostEstimation: (
     agentName: string,
-    prompt: string,
+    runId: string,
     principal: string | undefined,
   ) => Promise<RunOptions['costEstimation'] | undefined>;
   /** Commits a finished attempt's transcript to its session before the controller is told it ended. */
@@ -135,7 +135,7 @@ export function createAttemptForwarder(
         ? undefined
         : await resolveCostEstimation(
             record.objective.agentName,
-            record.objective.prompt,
+            target.runId,
             record.principal,
           );
     const reading = await readDurableRunResult(durable, target.runId, { runtime, costEstimation });

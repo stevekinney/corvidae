@@ -30,6 +30,8 @@ import { createAttemptForwarder } from './goal-forwarder';
 import {
   createOwnedGoalEngine,
   createOwnedRunCanceller,
+  GoalCorruptOwnershipRecordError,
+  GoalOwnershipUnknownError,
   type RunRecordReader,
 } from './goal-ownership';
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
@@ -111,15 +113,26 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
   });
   const { catalog } = dependencies;
 
-  /** The cost estimation the agent's own run options declare, for a goal with a cost bound. */
+  /**
+   * The cost estimation the agent's own run options declare for the attempt's
+   * run, for a goal with a cost bound. Resolved from the exact input the run was
+   * started with (the recovery record's, which for a retry is the seeded
+   * conversation, not the goal's prompt), so an agent whose options depend on
+   * its input is priced the way the run was configured.
+   */
   async function resolveCostEstimation(
     agentName: string,
-    prompt: string,
+    runId: string,
     principal: string | undefined,
   ): Promise<RunOptions['costEstimation'] | undefined> {
     const agent = agentCatalog.find(agentName);
     if (agent === undefined || !hasDefinitionResolver(agent)) return undefined;
-    const options = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](prompt, {
+    const load = await readRunRecord(runId);
+    // No record means no run was started under this id, so there is nothing to price.
+    if (load.status === 'missing') return undefined;
+    if (load.status === 'read-error') throw new GoalOwnershipUnknownError(runId, load.error);
+    if (load.status === 'corrupt') throw new GoalCorruptOwnershipRecordError(runId);
+    const options = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](load.record.input, {
       agentName,
       ...(principal === undefined ? {} : { principal }),
     });

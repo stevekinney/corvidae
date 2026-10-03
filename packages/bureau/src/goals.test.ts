@@ -6,7 +6,12 @@
  * operations themselves: create (and its refusals), get, list, active, cancel,
  * and close.
  */
-import { createAgent, type RunnableAgent, stopWhen } from '@lostgradient/operative';
+import {
+  createAgent,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type RunnableAgent,
+  stopWhen,
+} from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -17,6 +22,7 @@ import {
   createCheckValidator,
   createDiagnostics,
   createLatch,
+  GOAL_BOUNDS,
   goalRequest,
   goalStatus,
   hangUntilAborted,
@@ -631,5 +637,51 @@ describe('bureau.goals', () => {
     expect(result.content).toBe('done');
     const ended = await finished(bureau);
     expect(ended.status).toBe('succeeded');
+  });
+
+  it('prices a retry from the input its run was started with, not from the goal prompt', async () => {
+    let calls = 0;
+    const base = workerAgent(() => {
+      calls += 1;
+      return Promise.resolve({
+        content: calls === 1 ? 'nope' : 'done',
+        toolCalls: [],
+        usage: { prompt: 10, completion: 10, total: 20 },
+      });
+    });
+    const resolveOptions = (
+      base as unknown as Record<
+        symbol,
+        (input: unknown, context: unknown) => Promise<Record<string, unknown>>
+      >
+    )[OPERATIVE_RESOLVE_RUN_OPTIONS];
+    if (resolveOptions === undefined)
+      throw new Error('the worker agent has no run-option resolver');
+    const resolved: unknown[] = [];
+    const priced = Object.create(base, {
+      [OPERATIVE_RESOLVE_RUN_OPTIONS]: {
+        value: (input: unknown, context: unknown) => {
+          resolved.push(input);
+          return resolveOptions
+            .call(base, input, context)
+            .then((options) => ({ ...options, costEstimation: { model: 'gpt-4o' } }));
+        },
+      },
+    }) as RunnableAgent<unknown, boolean>;
+    const { bureau } = await boot({
+      agents: { worker: priced },
+      validators: [createCheckValidator()],
+    });
+
+    await bureau.goals.create(
+      goalRequest({ bounds: { ...GOAL_BOUNDS, maximumTotalCostUsd: 100 } }),
+    );
+    const goal = await finished(bureau);
+
+    expect(goal).toMatchObject({ status: 'succeeded' });
+    // A retry is started with a seeded conversation; its own cost lookups must
+    // resolve the estimator from that input too, never from the prompt string.
+    const seeded = resolved.filter((input) => typeof input !== 'string');
+    expect(seeded.length).toBeGreaterThanOrEqual(2);
   });
 });
