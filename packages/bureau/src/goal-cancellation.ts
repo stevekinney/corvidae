@@ -47,11 +47,12 @@
 import { GOAL_CANCEL_SIGNAL } from '@lostgradient/operative';
 import {
   TERMINAL_CONTROLLER_STATUSES,
-  attemptToStop,
+  attemptIndexesToStop,
   commitCancellation,
   fenceOvertakenAttempts,
   type GoalControlDependencies,
 } from './goal-controller';
+import { goalIdentifiers } from './goal-ports';
 import { cancelSignalId, goalWorkflowId, isTerminalGoalStatus, type GoalState } from './goal-state';
 import type {
   BureauGoalCancelOptions,
@@ -186,9 +187,11 @@ export async function settleCanceledGoal(
  * names, and, once the goal has moved past it, the attempt that was in flight.
  */
 export function runsToStop(record: GoalState): readonly string[] {
-  const named = attemptToStop(record).runId;
-  const last = record.attempts.at(-1)?.runId;
-  return last === undefined || last === named ? [named] : [named, last];
+  // The same indexes the claims are fenced for, so an exhausted goal, whose next
+  // index is one no start can mint, names no run that cannot exist.
+  return attemptIndexesToStop(record).map((attemptIndex) =>
+    goalIdentifiers.attemptRunId(record.goalRunId, attemptIndex),
+  );
 }
 
 /**

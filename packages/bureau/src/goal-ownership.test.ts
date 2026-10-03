@@ -79,7 +79,8 @@ const unmarked: CatalogRunRecoveryLoad = {
 const missing: CatalogRunRecoveryLoad = { status: 'missing' };
 
 /** The goal's own agent and principal, as the goal record names them. */
-const goalOwner = () => Promise.resolve({ agentName: 'worker', principal: undefined });
+const goalOwner = () =>
+  Promise.resolve({ agentName: 'worker', principal: undefined, maximumAttempts: 10 });
 
 const ownController: FakeWorkflow = {
   type: GOAL_WORKFLOW_TYPE,
@@ -233,6 +234,7 @@ describe('an unreadable run record is unknown, never foreign or absent', () => {
       attemptIndex: 0,
       agentName: 'worker',
       principal: undefined,
+      maximumAttempts: 10,
     };
     const unreadable = (): Promise<CatalogRunRecoveryLoad> =>
       Promise.resolve({ status: 'read-error', error: new Error('storage is down') });
@@ -287,6 +289,7 @@ describe('a present but invalid run record is corrupt, never absent', () => {
       attemptIndex: 0,
       agentName: 'worker',
       principal: undefined,
+      maximumAttempts: 10,
     };
     const outcome = await verifyAttemptRun({ engine, readRunRecord: corrupt }, expected, id);
     expect(outcome.status).toBe('corrupt');
@@ -343,7 +346,7 @@ describe("a run is the goal's only when its recovery record names the goal's own
     },
   });
   const ownedBy = (agentName: string, principal: string | undefined) => () =>
-    Promise.resolve({ agentName, principal });
+    Promise.resolve({ agentName, principal, maximumAttempts: 10 });
   const impostors: Array<[string, CatalogRunRecoveryLoad]> = [
     ['another agent', recordFor({ agentName: 'intruder' })],
     ['another principal', recordFor({ principal: 'mallory' })],
@@ -481,4 +484,57 @@ describe('the goal control plane over a foreign controller workflow', () => {
       expect(calls).toEqual([]);
     },
   );
+});
+
+describe("a run is the goal's only when its attempt index is below the goal's attempt bound", () => {
+  const MAXIMUM_ATTEMPTS = 3;
+  const owner = () =>
+    Promise.resolve({
+      agentName: 'worker',
+      principal: undefined,
+      maximumAttempts: MAXIMUM_ATTEMPTS,
+    });
+
+  it.each([
+    ['the last index the goal can open', MAXIMUM_ATTEMPTS - 1, true],
+    ['an index at the bound', MAXIMUM_ATTEMPTS, false],
+    ['an index far past the bound', MAXIMUM_ATTEMPTS + 7, false],
+  ])('treats a self-reproducing marker for %s accordingly', async (_name, attemptIndex, owned) => {
+    const id = goalAttemptRunId('g1', attemptIndex);
+    const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+    const stopped: string[] = [];
+    const ownedEngine = createOwnedGoalEngine(
+      engine,
+      () => Promise.resolve(marked('g1', attemptIndex)),
+      owner,
+    );
+    const cancel = createOwnedRunCanceller(
+      (runId) => {
+        stopped.push(runId);
+        return Promise.resolve({ status: 'requested' });
+      },
+      () => Promise.resolve(marked('g1', attemptIndex)),
+      owner,
+    );
+    expect((await ownedEngine.get(id)) !== null).toBe(owned);
+    expect(await cancel(id)).toEqual(owned ? { status: 'requested' } : { status: 'not-found' });
+    expect(stopped).toEqual(owned ? [id] : []);
+  });
+
+  it("refuses to verify an attempt run at an index past the bound as the goal's own", async () => {
+    const { engine } = fakeEngine({});
+    const id = goalAttemptRunId('g1', MAXIMUM_ATTEMPTS);
+    const outcome = await verifyAttemptRun(
+      { engine, readRunRecord: () => Promise.resolve(marked('g1', MAXIMUM_ATTEMPTS)) },
+      {
+        goalRunId: 'g1',
+        attemptIndex: MAXIMUM_ATTEMPTS,
+        agentName: 'worker',
+        principal: undefined,
+        maximumAttempts: MAXIMUM_ATTEMPTS,
+      },
+      id,
+    );
+    expect(outcome.status).toBe('foreign');
+  });
 });

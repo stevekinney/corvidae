@@ -48,7 +48,7 @@ const own = (engine: RegistryAgnosticEngine) =>
   createOwnedGoalEngine(
     engine as unknown as GoalEngine,
     () => Promise.resolve({ status: 'missing' }),
-    () => Promise.resolve({ agentName: 'worker', principal: undefined }),
+    () => Promise.resolve({ agentName: 'worker', principal: undefined, maximumAttempts: 10 }),
   );
 
 describe('createOwnedGoalEngine over a real Weft engine', () => {

@@ -1060,6 +1060,26 @@ describe('abortAttempt', () => {
     expect(order).toEqual(['cancel:goal-g1-a0']);
   });
 
+  it("names no claim and no run for the index at the goal's attempt bound, which no start can mint", async () => {
+    const stopped: string[] = [];
+    const { ports, fenced } = await world({
+      cancelRun: (runId) => {
+        stopped.push(runId);
+        return Promise.resolve({ status: 'requested' });
+      },
+    });
+    const atTheBound = 3;
+
+    await ports.abortAttempt({
+      ...request,
+      attemptIndex: atTheBound,
+      runId: `goal-g1-a${atTheBound}`,
+    });
+
+    expect(fenced).toEqual([]);
+    expect(stopped).toEqual([]);
+  });
+
   it('fails the activity, so it is retried, when the claim could not be fenced', async () => {
     const { ports } = await world({
       fenceAttempt: () => Promise.reject(new Error('claim storage is down')),

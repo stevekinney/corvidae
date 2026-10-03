@@ -131,7 +131,11 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     const record = await store.get(goalRunId);
     return record === undefined
       ? undefined
-      : { agentName: record.objective.agentName, principal: record.principal };
+      : {
+          agentName: record.objective.agentName,
+          principal: record.principal,
+          maximumAttempts: record.bounds.maximumAttempts,
+        };
   };
   const getDurable = (): ReturnType<typeof dependencies.getDurable> => {
     const durable = dependencies.getDurable();

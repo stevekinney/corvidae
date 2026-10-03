@@ -8,9 +8,9 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { cancelGoal, settleCanceledGoal } from './goal-cancellation';
+import { cancelGoal, runsToStop, settleCanceledGoal } from './goal-cancellation';
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
-import { goalTransitionId } from './goal-state';
+import { type GoalState, goalTransitionId } from './goal-state';
 import type { GoalStore } from './goal-store';
 import {
   dependencies,
@@ -30,6 +30,33 @@ async function cancelWith(script: Script, extra: Partial<GoalControlDependencies
   const outcome = await cancelGoal(control, record, { principal: 'alice', reason: 'stop' });
   return { outcome, calls, diagnostics, stopped, store };
 }
+
+describe('runsToStop', () => {
+  it('names no run for the index at the attempt bound, which no start can mint', async () => {
+    const store = await runningGoal();
+    const record = (await store.get('g1'))!;
+    const [first] = record.attempts;
+    // An exhausted goal at `maximumAttempts` (2): both attempts ended, so the
+    // "next" attempt is index 2, a run id nothing ever starts.
+    const exhausted = {
+      ...record,
+      status: 'exhausted' as const,
+      attempts: [
+        { ...first!, status: 'completed' as const },
+        { ...first!, attemptIndex: 1, runId: 'goal-g1-a1', status: 'completed' as const },
+      ],
+    };
+    expect(runsToStop(exhausted as unknown as GoalState)).toEqual(['goal-g1-a1']);
+  });
+
+  it('still names the next attempt for a goal with room to open one', async () => {
+    const store = await runningGoal();
+    const record = (await store.get('g1'))!;
+    const [first] = record.attempts;
+    const between = { ...record, attempts: [{ ...first!, status: 'completed' as const }] };
+    expect(runsToStop(between as unknown as GoalState)).toEqual(['goal-g1-a1', 'goal-g1-a0']);
+  });
+});
 
 describe('cancelGoal', () => {
   it('stays pending on the durable engine when the bureau has none, and never claims an acknowledgement', async () => {

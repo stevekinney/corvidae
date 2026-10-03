@@ -356,6 +356,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
           attemptIndex: request.attemptIndex,
           agentName,
           principal: record.principal,
+          maximumAttempts: record.bounds.maximumAttempts,
         },
         request.runId,
       );
@@ -397,6 +398,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         attemptIndex: request.attemptIndex,
         agentName,
         principal: record.principal,
+        maximumAttempts: record.bounds.maximumAttempts,
       },
       request.runId,
     );
@@ -599,6 +601,11 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // record is missing or unreadable (`goal-attempt-fence.ts`), and a read that
     // throws rejects here and retries.
     const record = await store.get(request.goalRunId);
+    // The controller names the next attempt's index when none is in flight, and
+    // for a goal at `maximumAttempts` that index is one no start can mint: there
+    // is no claim to tombstone and no run to stop, and a tombstone written for it
+    // would be a record nothing ever reads or prunes.
+    if (record !== undefined && request.attemptIndex >= record.bounds.maximumAttempts) return;
     if (record !== undefined) await fenceAttempt(record, request.attemptIndex);
     const outcome = await cancelRun(request.runId);
     if (outcome.status === 'failed') {

@@ -195,6 +195,7 @@ export function createGoalAttemptFence(dependencies: {
         isGoalOwnedRunRecord(load.record, target.runId, {
           agentName: record.objective.agentName,
           principal: record.principal,
+          maximumAttempts: record.bounds.maximumAttempts,
         })
       )) {
         return REFUSE;

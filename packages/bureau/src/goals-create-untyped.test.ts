@@ -29,8 +29,9 @@ async function boot(): Promise<Bureau> {
     durableExecution: true,
     onDiagnostic: createDiagnostics().onDiagnostic,
   });
-  open.push(bureau);
-  return bureau;
+  const typed = bureau as unknown as Bureau;
+  open.push(typed);
+  return typed;
 }
 
 const MALFORMED: ReadonlyArray<readonly [string, Record<string, unknown>]> = [

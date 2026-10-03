@@ -89,6 +89,8 @@ export interface ExpectedAttemptOwner {
   readonly attemptIndex: number;
   readonly agentName: string;
   readonly principal: string | undefined;
+  /** The goal's attempt bound: no start mints an index at or past it. */
+  readonly maximumAttempts: number;
 }
 
 /** Whether a run's recovery record is the goal's own for exactly this attempt. */
@@ -120,11 +122,15 @@ export function isGoalOwnedRunRecord(
   const marker = record.goalAttempt;
   if (marker === undefined) return false;
   if (goalAttemptRunId(marker.goalRunId, marker.attemptIndex) !== runId) return false;
+  // The goal never opens an attempt at or past its bound, so a marker that
+  // reproduces the id of such an index names a run no start of this goal made.
+  if (!(marker.attemptIndex < owner.maximumAttempts)) return false;
   return isOwnAttemptRecord(record, {
     goalRunId: marker.goalRunId,
     attemptIndex: marker.attemptIndex,
     agentName: owner.agentName,
     principal: owner.principal,
+    maximumAttempts: owner.maximumAttempts,
   });
 }
 
@@ -198,6 +204,8 @@ export function isOwnController(
 export interface GoalOwner {
   readonly agentName: string;
   readonly principal: string | undefined;
+  /** The goal's attempt bound; a run for an index at or past it is nobody's. */
+  readonly maximumAttempts: number;
 }
 
 /**
