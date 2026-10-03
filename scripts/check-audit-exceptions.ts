@@ -13,10 +13,13 @@
  *     dependency rather than a development one;
  *   - any other high or critical advisory remains once the exceptions are ignored.
  *
- * Reachability is read from `bun.lock`: production and development edges of workspaces, and the
- * `dependencies` and `optionalDependencies` of locked packages. Peer dependencies are not edges,
- * because the importer that satisfies a peer is itself a path the guard already walks.
+ * Reachability is read from `bun.lock`: production, development, and required peer edges of
+ * workspaces, and the `dependencies`, `optionalDependencies`, and required peer dependencies of
+ * locked packages. Bun installs unmet peers, so a peer is a real path; only peers the lockfile
+ * marks optional are ignored. A workspace's peer is a runtime edge. The guard fails closed: a
+ * workspace missing from the lockfile, or an installed package no workspace reaches, is reported.
  */
+import { join, resolve as resolvePath } from 'node:path';
 import { auditExceptions, type AuditException } from './audit-exceptions';
 
 const ADVISORY_PATTERN = /^GHSA(-[23456789cfghjmpqrvwx]{4}){3}$/;
@@ -30,6 +33,8 @@ type Graph = {
   readonly nodes: ReadonlyMap<string, { readonly name: string; readonly workspace: boolean }>;
   readonly edges: ReadonlyMap<string, readonly Edge[]>;
   readonly workspaces: readonly string[];
+  /** Structural faults in the lockfile that make the graph untrustworthy. */
+  readonly problems: readonly string[];
 };
 
 export type CommandResult = {
@@ -146,7 +151,18 @@ type LockWorkspace = {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean } | undefined>;
+  optionalPeers?: string[];
 };
+
+/** The names of a lockfile section's peer dependencies that are required rather than optional. */
+function requiredPeers(section: LockWorkspace): string[] {
+  const optional = new Set(Array.isArray(section.optionalPeers) ? section.optionalPeers : []);
+  return Object.keys(section.peerDependencies ?? {}).filter(
+    (name) => !optional.has(name) && section.peerDependenciesMeta?.[name]?.optional !== true,
+  );
+}
 
 export function buildGraph(lockfileText: string): Graph {
   const lockfile = Bun.JSONC.parse(lockfileText) as {
@@ -158,13 +174,27 @@ export function buildGraph(lockfileText: string): Graph {
   const edges = new Map<string, Edge[]>();
   const workspaceNames = new Set<string>();
   const workspaceSections = new Map<string, LockWorkspace>();
-  for (const section of Object.values(lockfile.workspaces ?? {})) {
+  const lockedWorkspaceNames = new Set<string>();
+  for (const [path, section] of Object.entries(lockfile.workspaces ?? {})) {
     if (isNonEmptyString(section.name)) {
       workspaceNames.add(section.name);
       workspaceSections.set(section.name, section);
+      // The root workspace (empty path) is the importer itself and has no package entry.
+      if (path !== '') lockedWorkspaceNames.add(section.name);
     }
   }
   const workspaceId = (name: string): string => `workspace:${name}`;
+  const problems: string[] = [];
+  const packageWorkspaces = new Set(
+    Object.values(packages)
+      .filter((entry) => typeof entry[0] === 'string' && entry[0].includes('@workspace:'))
+      .map((entry) => packageNameOf(entry[0])),
+  );
+  for (const name of lockedWorkspaceNames) {
+    if (!packageWorkspaces.has(name)) {
+      problems.push(`workspace "${name}" not found in lockfile packages.`);
+    }
+  }
 
   for (const name of workspaceNames) {
     nodes.set(workspaceId(name), { name, workspace: true });
@@ -186,7 +216,8 @@ export function buildGraph(lockfileText: string): Graph {
   };
   const nodeFor = (key: string): string => {
     const name = packageNameOf(packages[key]?.[0] ?? key);
-    if (workspaceNames.has(name) && (packages[key]?.[0] ?? '').includes('@workspace:')) {
+    const locked = packages[key]?.[0];
+    if (workspaceNames.has(name) && (locked === undefined || locked.includes('@workspace:'))) {
       return workspaceId(name);
     }
     nodes.set(key, { name, workspace: false });
@@ -199,13 +230,14 @@ export function buildGraph(lockfileText: string): Graph {
   };
 
   for (const [name, section] of workspaceSections) {
-    const groups: [Record<string, string> | undefined, EdgeKind][] = [
-      [section.dependencies, 'runtime'],
-      [section.optionalDependencies, 'runtime'],
-      [section.devDependencies, 'development'],
+    const groups: [string[], EdgeKind][] = [
+      [Object.keys(section.dependencies ?? {}), 'runtime'],
+      [Object.keys(section.optionalDependencies ?? {}), 'runtime'],
+      [requiredPeers(section), 'runtime'],
+      [Object.keys(section.devDependencies ?? {}), 'development'],
     ];
     for (const [group, kind] of groups) {
-      for (const dependency of Object.keys(group ?? {})) {
+      for (const dependency of group) {
         const key = resolve(null, dependency);
         if (key !== null) addEdge(workspaceId(name), nodeFor(key), kind);
       }
@@ -215,14 +247,18 @@ export function buildGraph(lockfileText: string): Graph {
     const source = nodeFor(key);
     if (source.startsWith('workspace:')) continue;
     const metadata = (entry[2] ?? {}) as LockWorkspace;
-    for (const group of [metadata.dependencies, metadata.optionalDependencies]) {
-      for (const dependency of Object.keys(group ?? {})) {
+    for (const group of [
+      Object.keys(metadata.dependencies ?? {}),
+      Object.keys(metadata.optionalDependencies ?? {}),
+      requiredPeers(metadata),
+    ]) {
+      for (const dependency of group) {
         const target = resolve(key, dependency);
         if (target !== null) addEdge(source, nodeFor(target), 'runtime');
       }
     }
   }
-  return { nodes, edges, workspaces: [...workspaceNames].map(workspaceId) };
+  return { nodes, edges, workspaces: [...workspaceNames].map(workspaceId), problems };
 }
 
 function containsChain(path: readonly string[], chain: readonly string[]): number {
@@ -288,6 +324,11 @@ export function findUnauthorizedPaths(
   for (const workspace of graph.workspaces) {
     if (reaches.has(workspace)) walk([workspace], []);
   }
+  if (!targets.some((id) => reaches.has(id) && graph.workspaces.some((w) => reaches.has(w)))) {
+    offending.push(
+      `${packageName} is installed but not reachable from any workspace; the lockfile graph cannot explain it`,
+    );
+  }
   if (walked > MAXIMUM_PATHS)
     offending.push(`more than ${MAXIMUM_PATHS} dependency paths; refusing to guess`);
   return offending;
@@ -311,6 +352,7 @@ export async function checkExceptions(
     return problems;
   }
   const graph = buildGraph(lockfileText);
+  problems.push(...graph.problems);
   for (const entry of registry) {
     const stillReports = advisories.some(
       (advisory) => advisory.package === entry.package && advisory.id === entry.advisory,
@@ -366,8 +408,14 @@ export async function runAuditGate(
   return gate.exitCode !== 0 || problems.length > 0 ? 1 : 0;
 }
 
+export const repositoryRoot = resolvePath(import.meta.dir, '..');
+
 async function runBun(argumentsList: readonly string[]): Promise<CommandResult> {
-  const child = Bun.spawn(['bun', ...argumentsList], { stdout: 'pipe', stderr: 'pipe' });
+  const child = Bun.spawn(['bun', ...argumentsList], {
+    cwd: repositoryRoot,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -376,15 +424,19 @@ async function runBun(argumentsList: readonly string[]): Promise<CommandResult> 
   return { exitCode, stdout, stderr };
 }
 
+export function createRepositoryDependencies(): Pick<
+  AuditGateDependencies,
+  'run' | 'readLockfile'
+> {
+  return { run: runBun, readLockfile: () => Bun.file(join(repositoryRoot, 'bun.lock')).text() };
+}
+
 async function main(): Promise<void> {
   try {
-    process.exitCode = await runAuditGate(
-      { run: runBun, readLockfile: () => Bun.file('bun.lock').text() },
-      {
-        stdout: (text) => void process.stdout.write(text),
-        stderr: (text) => void process.stderr.write(text),
-      },
-    );
+    process.exitCode = await runAuditGate(createRepositoryDependencies(), {
+      stdout: (text) => void process.stdout.write(text),
+      stderr: (text) => void process.stderr.write(text),
+    });
   } catch (error: unknown) {
     process.stderr.write(`check-audit-exceptions failed: ${String(error)}\n`);
     process.exitCode = 1;

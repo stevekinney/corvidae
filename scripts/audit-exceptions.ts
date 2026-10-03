@@ -17,7 +17,8 @@ export type AuditException = {
    * packages, an importer first, and every dependency path from a workspace to `package` must
    * contain one of them. When the importer is a workspace, its edge to the next package must be
    * a development dependency, so a runtime path can never match. `corvidae` is the root
-   * workspace, which declares Stylelint for the repository's own lint.
+   * workspace, which declares Stylelint and its `stylelint-use-logical` plugin (a peer-dependency
+   * importer of Stylelint) for the repository's own lint.
    */
   readonly allowedChains: readonly (readonly string[])[];
   readonly reason: string;
@@ -34,6 +35,7 @@ export const auditExceptions: readonly AuditException[] = [
     allowedChains: [
       ['@lostgradient/cinder', 'stylelint'],
       ['corvidae', 'stylelint'],
+      ['corvidae', 'stylelint-use-logical', 'stylelint'],
     ],
     reason:
       'braces <= 3.0.3 has a stack-exhaustion denial of service on deeply nested patterns and no patched release exists (upstream fix: micromatch/braces#72). It is reached only through the Stylelint development toolchain, which expands the repository’s own glob patterns and never untrusted input.',

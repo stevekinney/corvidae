@@ -1,12 +1,17 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AuditException } from './audit-exceptions';
 import { auditExceptions } from './audit-exceptions';
 import {
   buildGraph,
   checkExceptions,
+  createRepositoryDependencies,
   findExpiredExceptions,
   findUnauthorizedPaths,
   parseAdvisories,
+  repositoryRoot,
   runAuditGate,
   validateRegistry,
   type CommandResult,
@@ -128,16 +133,89 @@ describe('reachability from the lockfile', () => {
     expect(paths).toEqual(['root > other > micromatch > braces']);
   });
 
-  test('ignores peer dependencies and reports an absent package as null', () => {
-    const peerOnly = lockfile().replace(
+  test('reports an absent package as null', () => {
+    expect(findUnauthorizedPaths(buildGraph(lockfile()), 'absent', entry.allowedChains)).toBeNull();
+  });
+
+  const withOther = (otherMetadata: string) =>
+    lockfile({ rootDependencies: { other: '^1' } }).replace(
       '"other": ["other@1.0.0", "", { "dependencies": { "micromatch": "^4" } }, "sha"]',
-      '"other": ["other@1.0.0", "", { "peerDependencies": { "micromatch": "^4" } }, "sha"]',
+      `"other": ["other@1.0.0", "", ${otherMetadata}, "sha"]`,
     );
+
+  test('treats a required peer dependency of a runtime package as a path', () => {
+    const graph = buildGraph(withOther('{ "peerDependencies": { "micromatch": "^4" } }'));
+    expect(findUnauthorizedPaths(graph, 'braces', entry.allowedChains)).toEqual([
+      'root > other > micromatch > braces',
+    ]);
+  });
+
+  test('ignores a peer dependency the lockfile lists as optional', () => {
     const graph = buildGraph(
-      peerOnly.replace('"app": "workspace:*"', '"app": "workspace:*", "other": "^1"'),
+      withOther('{ "peerDependencies": { "micromatch": "^4" }, "optionalPeers": ["micromatch"] }'),
     );
     expect(findUnauthorizedPaths(graph, 'braces', entry.allowedChains)).toEqual([]);
-    expect(findUnauthorizedPaths(graph, 'absent', entry.allowedChains)).toBeNull();
+    expect(
+      buildGraph(withOther('{ "peerDependencies": { "micromatch": "^4" } }')).edges,
+    ).not.toEqual(graph.edges);
+  });
+
+  test('ignores a peer dependency marked optional in peerDependenciesMeta', () => {
+    const graph = buildGraph(
+      withOther(
+        '{ "peerDependencies": { "micromatch": "^4" }, "peerDependenciesMeta": { "micromatch": { "optional": true } } }',
+      ),
+    );
+    expect(findUnauthorizedPaths(graph, 'braces', entry.allowedChains)).toEqual([]);
+  });
+
+  test('classifies a workspace peer dependency as runtime, not development', () => {
+    const peer = lockfile({ uiDevelopment: {} }).replace(
+      '"dependencies": {}, },',
+      '"peerDependencies": { "stylelint": "^1" }, },',
+    );
+    const paths = findUnauthorizedPaths(buildGraph(peer), 'braces', entry.allowedChains) ?? [];
+    expect(paths).toContain('ui > stylelint > micromatch > braces');
+  });
+
+  test('ignores an optional peer dependency of a workspace', () => {
+    const peer = lockfile({ uiDevelopment: {} }).replace(
+      '"dependencies": {}, },',
+      '"peerDependencies": { "stylelint": "^1" }, "optionalPeers": ["stylelint"], },',
+    );
+    const paths = findUnauthorizedPaths(buildGraph(peer), 'braces', entry.allowedChains) ?? [];
+    expect(paths.filter((path) => path.includes(' > '))).toEqual([]);
+  });
+
+  test('fails closed when the package is installed but no workspace reaches it', () => {
+    const orphan = lockfile({ uiDevelopment: { unrelated: '^1' } });
+    const paths = findUnauthorizedPaths(buildGraph(orphan), 'braces', entry.allowedChains);
+    expect(paths?.join('\n')).toContain('not reachable from any workspace');
+  });
+
+  test('reports a workspace missing from the lockfile packages', async () => {
+    const broken = lockfile().replace('"ui": ["ui@workspace:components/ui"],', '');
+    const problems = await checkExceptions([entry], beforeReview, reporting, broken);
+    expect(problems.join('\n')).toContain('workspace "ui" not found in lockfile packages');
+  });
+});
+
+describe('repository root anchoring', () => {
+  test('reads the lockfile and runs bun in the repository root from any directory', async () => {
+    const original = process.cwd();
+    const elsewhere = mkdtempSync(join(tmpdir(), 'audit-guard-'));
+    try {
+      process.chdir(elsewhere);
+      const dependencies = createRepositoryDependencies();
+      expect(await dependencies.readLockfile()).toBe(
+        await Bun.file(join(repositoryRoot, 'bun.lock')).text(),
+      );
+      const result = await dependencies.run(['-e', 'console.log(process.cwd())']);
+      expect(realpathSync(result.stdout.trim())).toBe(realpathSync(repositoryRoot));
+    } finally {
+      process.chdir(original);
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
   });
 });
 
