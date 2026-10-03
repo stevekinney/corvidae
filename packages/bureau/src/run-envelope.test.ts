@@ -216,11 +216,20 @@ describe('createRunFrameForwarder', () => {
   });
 
   it('emits one error notification before the terminal observer when a real run exceeds its budget', async () => {
+    const noopTool = createTool({
+      name: 'noop',
+      description: 'does nothing',
+      input: z.object({}),
+      execute: async () => ({}),
+    });
     const activeRun = createActiveRun({
-      generate: () => Promise.reject(new BudgetExceededError('cost budget reached')),
-      toolbox: createToolbox<readonly Tool[]>([]),
+      generate: async ({ step }) =>
+        step === 0
+          ? { content: '', toolCalls: [{ name: 'noop', arguments: {} }] }
+          : Promise.reject(new BudgetExceededError('cost budget reached')),
+      toolbox: createToolbox<readonly Tool[]>([noopTool]),
       conversation: new Conversation(),
-      maximumSteps: 1,
+      maximumSteps: 5,
       runId: 'run-budget-exceeded',
     });
     const frames: RunFrame[] = [];
@@ -253,7 +262,7 @@ describe('createRunFrameForwarder', () => {
       expect(notification.level).toBe('error');
       expect(notification.code).toBe('budget.exceeded');
       expect(notification.message).toBe('Cost budget exceeded');
-      expect(notification.step).toBe(frames.findLast((frame) => frame.type === 'step')?.step);
+      expect(notification.step).toBe(1);
       expect(notification.timestamp).toBe(4242);
     }
   });
