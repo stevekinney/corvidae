@@ -301,6 +301,40 @@ describe('createGoalWorkflow', () => {
       expect(statusesOf(harness.world)).toEqual(['failed']);
       expect(harness.world.record().attempts).toEqual([]);
     });
+
+    it('ends the goal exhausted, not failed, when the start took until after the aggregate deadline before answering failed', async () => {
+      // eslint-disable-next-line prefer-const -- the hook closes over the harness it is passed to.
+      let harness: GoalHarness;
+      harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 60_000 },
+        // The start is slow: the bound elapses while it runs, and it answers failed.
+        onStart: () => {
+          harness.clock.advance(120_000);
+        },
+      });
+      harness.world.failNextStart('Starting the inner run failed: no capacity');
+      const result = await runGoal(harness, () => Promise.resolve());
+      expect(result).toMatchObject({
+        status: 'exhausted',
+        terminalReason: 'aggregate-budget-exceeded',
+      });
+      expect(statusesOf(harness.world)).toEqual(['exhausted']);
+    });
+
+    it('commits a failed start with the time after the start, not the time before it', async () => {
+      // eslint-disable-next-line prefer-const -- the hook closes over the harness it is passed to.
+      let harness: GoalHarness;
+      harness = createHarness({
+        bounds: { maximumAttempts: 2, maximumTotalDurationMs: 3_600_000 },
+        onStart: () => {
+          harness.clock.advance(30_000);
+        },
+      });
+      harness.world.failNextStart('Starting the inner run failed: no capacity');
+      const result = await runGoal(harness, () => Promise.resolve());
+      expect(result).toMatchObject({ status: 'failed', terminalReason: 'attempt-run-failed' });
+      expect(harness.world.transitions[0]?.usage?.durationMs).toBe(30_000);
+    });
   });
 
   describe('cancellation', () => {

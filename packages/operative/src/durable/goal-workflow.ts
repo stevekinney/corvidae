@@ -56,7 +56,11 @@
  *                                          per-try timeout, retry, and (with a duration bound)
  *                                          scheduleToCloseTimeout bound a hung one (see below)
  *       started | adopted -> C commitTransition -> running   attempt N, usage.attempts = N + 1, active = attempt
- *       failed            -> S' commitTransition -> failed (attempt-run-failed) in place of C
+ *       failed            -> L2 loadGoalState    re-read: the start may have outlasted the bound
+ *                              marker set or status moved -> nothing more; the next L handles it
+ *                              aggregate duration elapsed -> A abortAttempt, C -> exhausted
+ *                              S' commitTransition -> failed (attempt-run-failed) in place of C,
+ *                              stamped with the re-read's clock
  *       stood-down        -> nothing more (the port created nothing: the goal was canceled, ended,
  *                            or out of time before the start wrote anything); the next L reads the
  *                            marker or the elapsed bound with a fresh clock and ends the goal
@@ -442,8 +446,26 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts, options: GoalWorkfl
     // the start wrote anything. The next decision point reads which.
     if (started.status === 'stood-down') return undefined;
     if (started.status === 'failed') {
+      // The start can take as long as Weft's per-try timeout and its retries, so
+      // `nowMs` is the time before it. The verdict is committed with the time
+      // after it, read through the same recorded slot as every other re-read, and
+      // a goal whose duration ran out meanwhile ends as exhausted, as it would at
+      // any other decision point.
+      const reread = yield* ctx.run(activities.loadGoalState, { goalRunId: view.goalRunId });
+      const fresh = reread.view;
+      if (
+        fresh === undefined ||
+        fresh.cancellation !== undefined ||
+        fresh.status !== view.status ||
+        fresh.transitionSeq !== view.transitionSeq
+      ) {
+        return undefined;
+      }
+      if (isDeadlineElapsed(fresh, reread.nowMs)) {
+        return yield* finishForced(ctx, fresh, reread.nowMs, decideDurationElapsed());
+      }
       const decision = decideAttemptRunFailure(started.detail);
-      return yield* commit(ctx, buildStartFailure(view, identifiers, nowMs, decision));
+      return yield* commit(ctx, buildStartFailure(fresh, identifiers, reread.nowMs, decision));
     }
     return yield* commit(
       ctx,
