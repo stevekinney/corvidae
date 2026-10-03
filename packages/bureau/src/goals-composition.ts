@@ -311,7 +311,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
             });
           }
         } finally {
-          timers.clearTimeout(handle!);
+          timers.clearTimeout(handle);
         }
       }
       await forwarder.drain();

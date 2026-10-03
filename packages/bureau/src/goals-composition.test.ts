@@ -153,7 +153,7 @@ describe('shutdown after a boot sweep blocked outside the attempt start', () => 
     await runningGoal('g1', createGoalStore(kv));
     const base = compose({ kv, workflows: {} });
     // The controller read never settles, and nothing the shutdown signal reaches is waiting on it.
-    base.engine.get = (() => new Promise<never>(() => {})) as never;
+    base.engine.get = () => new Promise<never>(() => {});
 
     let report: Awaited<ReturnType<typeof base.composition.recoverAtBoot>> | undefined;
     void base.composition.recoverAtBoot().then((done) => {

@@ -645,9 +645,8 @@ describe('a terminal goal and its cancellation marker', () => {
         now: '2026-10-02T00:00:00.000Z',
       }),
     );
-    expect((await store.requestCancellation(GOAL, { requestedAt: at() }, at())).status).toBe(
-      'updated',
-    );
+    const marked = await store.requestCancellation(GOAL, { requestedAt: at() }, at());
+    expect(marked.status).toBe('updated');
     const record = await send(store, 'canceled', { terminalReason: 'goal-canceled' });
     return JSON.parse(JSON.stringify(record)) as Record<string, unknown>;
   }
@@ -665,7 +664,8 @@ describe('a terminal goal and its cancellation marker', () => {
   it.each(['succeeded', 'retrying', 'running'] as const)(
     'accepts only a terminal goal that is canceled to carry a marker (%s)',
     async (name) => {
-      const record = JSON.parse(JSON.stringify((await records())[name])) as Record<string, unknown>;
+      const every = await records();
+      const record = JSON.parse(JSON.stringify(every[name])) as Record<string, unknown>;
       record['cancellation'] = { requestedAt: at() };
       // A marker on a goal that has not ended is a request the controller has not acted on yet.
       expect(isGoalState(record)).toBe(name !== 'succeeded');
