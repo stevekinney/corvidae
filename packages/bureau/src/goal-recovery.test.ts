@@ -9,8 +9,8 @@ import { MemoryStorage, textValueStore, WorkflowTeardownPendingError } from '@lo
 import { describe, expect, it } from 'bun:test';
 
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
-import { recoverEveryGoal, recoverGoal } from './goal-recovery';
-import { createGoalState } from './goal-state';
+import { recoverEveryGoal, recoverGoal, recoveryEntryFailure } from './goal-recovery';
+import { createGoalState, goalRecordKey } from './goal-state';
 import { createGoalStore } from './goal-store';
 import type { GoalEngine } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
@@ -32,7 +32,12 @@ function validator(determinism: 'deterministic' | 'stochastic'): Validator {
 /** The scripted engine, with `start` and `get` replaced so a test sees and shapes them. */
 function engineWith(
   base: GoalEngine,
-  overrides: { get?: GoalEngine['get']; start?: (...args: unknown[]) => Promise<unknown> },
+  overrides: {
+    get?: GoalEngine['get'];
+    start?: (...args: unknown[]) => Promise<unknown>;
+    signal?: (...args: unknown[]) => Promise<unknown>;
+    getFinalizerStatus?: (...args: unknown[]) => Promise<unknown>;
+  },
 ): GoalEngine {
   return { ...base, ...overrides } as unknown as GoalEngine;
 }
@@ -319,7 +324,9 @@ describe('restarting a controller that ended abnormally', () => {
 
     const entry = await recoverGoal(control, 'g1');
 
-    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'running' });
+    // Nothing re-triggers the restart once the finalizer settles, so this is not
+    // `running`: a goal with no controller must not read as one that has it.
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'restart-pending' });
     expect(entry.detail).toContain('finalizer');
     expect(started).toEqual([]);
     const unspent = await store.get('g1');
@@ -336,7 +343,53 @@ describe('restarting a controller that ended abnormally', () => {
       }),
     );
 
-    expect(await recoverGoal(control, 'g1')).toMatchObject({ goalRunId: 'g1', outcome: 'running' });
+    expect(await recoverGoal(control, 'g1')).toMatchObject({
+      goalRunId: 'g1',
+      outcome: 'restart-pending',
+    });
+  });
+
+  it('spends no restart, and says the restart is pending, when the finalizer cannot be read', async () => {
+    const store = await runningGoal();
+    const started: unknown[][] = [];
+    const { engine } = scriptedEngine({ workflows: { 'goal:g1': 'failed' } });
+    const { control } = dependencies(
+      store,
+      engineWith(engine, {
+        getFinalizerStatus: () => Promise.reject(new Error('finalizer read fault')),
+        start: (...args) => {
+          started.push(args);
+          return Promise.resolve();
+        },
+      }),
+    );
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'restart-pending' });
+    expect(entry.detail).toContain('finalizer read fault');
+    expect(started).toEqual([]);
+    const unspent = await store.get('g1');
+    expect(unspent?.controllerRestarts).toBe(0);
+  });
+
+  it('reports the goal unrecoverable, not already terminal, when its audit log has no room for the restart', async () => {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({ workflows: { 'goal:g1': 'failed' } });
+    const full = {
+      ...store,
+      recordControllerRestart: async () => ({
+        status: 'rejected' as const,
+        reason: 'audit-log-full' as const,
+        record: (await store.get('g1'))!,
+      }),
+    };
+    const { control } = dependencies(full, engineWith(engine, { start: () => Promise.resolve() }));
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+    expect(entry.detail).toContain('audit log');
   });
 
   it('restarts once the finalizer has settled', async () => {
@@ -404,5 +457,121 @@ describe('recoverEveryGoal', () => {
 
     expect(hidden).toEqual({ goals: [], failures: [] });
     expect(visible.goals.map((entry) => entry.goalRunId)).toEqual(['g1']);
+  });
+
+  it('reports a record it cannot read as a failure of the sweep, but only to a caller who may see every goal', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const store = createGoalStore(kv);
+    await kv.set(goalRecordKey('broken'), 'not json');
+    const { engine } = scriptedEngine({ workflows: {} });
+    const { control } = dependencies(store, engine);
+
+    const scoped = await recoverEveryGoal(control, () => true);
+    const unscoped = await recoverEveryGoal(control, () => true, true);
+
+    expect(scoped).toEqual({ goals: [], failures: [] });
+    expect(unscoped.failures).toEqual([
+      { goalRunId: 'broken', reason: expect.stringContaining('unreadable') },
+    ]);
+  });
+});
+
+describe('a goal recovery meets with no durable engine', () => {
+  it('commits a recorded cancellation and says it is waiting on the engine, rather than leaving the marker', async () => {
+    const store = await runningGoal();
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    const { control } = dependencies(store, undefined as never, { getEngine: () => undefined });
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({
+      goalRunId: 'g1',
+      outcome: 'cancellation-pending',
+      awaiting: ['durable-engine'],
+    });
+    const committed = await store.get('g1');
+    expect(committed?.status).toBe('canceled');
+  });
+
+  it('still reports a goal with no cancellation as unrecoverable', async () => {
+    const store = await runningGoal();
+    const { control } = dependencies(store, undefined as never, { getEngine: () => undefined });
+
+    expect(await recoverGoal(control, 'g1')).toMatchObject({ outcome: 'unrecoverable' });
+  });
+});
+
+describe('a running controller whose recorded cancellation cannot be signalled', () => {
+  it('is diagnosed and ended, rather than left parked while the forwarder stands down', async () => {
+    const store = await runningGoal();
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    const workflows: Record<string, string> = { 'goal:g1': 'running', 'goal-g1-a0': 'running' };
+    const { engine, calls } = scriptedEngine({
+      workflows,
+      onCancel: () => {
+        workflows['goal:g1'] = 'cancelled';
+        return Promise.resolve();
+      },
+    });
+    const { control, diagnostics } = dependencies(
+      store,
+      engineWith(engine, { signal: () => Promise.reject(new Error('signal fault')) }),
+      {
+        cancelRun: (runId) => {
+          workflows[runId] = 'cancelled';
+          return Promise.resolve({ status: 'requested' });
+        },
+      },
+    );
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(
+      'signal fault',
+    );
+    expect(calls).toContain('cancel:goal:g1');
+    expect(entry).toEqual({ goalRunId: 'g1', outcome: 'canceled' });
+    const committed = await store.get('g1');
+    expect(committed?.status).toBe('canceled');
+  });
+});
+
+describe('recoveryEntryFailure', () => {
+  const entry = (overrides: Parameters<typeof recoveryEntryFailure>[0]) => overrides;
+
+  it.each([
+    [entry({ goalRunId: 'g', outcome: 'unrecoverable', detail: 'gave up' }), 'gave up'],
+    [entry({ goalRunId: 'g', outcome: 'restart-pending', detail: 'finalizer' }), 'finalizer'],
+    [entry({ goalRunId: 'g', outcome: 'running', attempt: 'failed', detail: 'no run' }), 'no run'],
+    [
+      entry({
+        goalRunId: 'g',
+        outcome: 'cancellation-pending',
+        awaiting: ['finalizer-failed'],
+        detail: 'dead-lettered',
+      }),
+      'dead-lettered',
+    ],
+    [
+      entry({
+        goalRunId: 'g',
+        outcome: 'cancellation-pending',
+        awaiting: ['durable-engine'],
+        detail: 'no engine',
+      }),
+      'no engine',
+    ],
+  ])('is a failure for %j', (given, reason) => {
+    expect(recoveryEntryFailure(given)).toContain(reason);
+  });
+
+  it.each([
+    entry({ goalRunId: 'g', outcome: 'running' }),
+    entry({ goalRunId: 'g', outcome: 'running', attempt: 'watching' }),
+    entry({ goalRunId: 'g', outcome: 'started' }),
+    entry({ goalRunId: 'g', outcome: 'canceled' }),
+    entry({ goalRunId: 'g', outcome: 'cancellation-pending', awaiting: ['controller'] }),
+  ])('is not a failure for %j', (given) => {
+    expect(recoveryEntryFailure(given)).toBeUndefined();
   });
 });

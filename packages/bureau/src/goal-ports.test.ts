@@ -607,6 +607,25 @@ describe('runValidator', () => {
     expect(await ports.runValidator(request)).toMatchObject({ outcome: { kind: 'pass' } });
   });
 
+  it('fails the activity, to be retried, when reading the attempt result throws, rather than recording a permanent error outcome', async () => {
+    const { ports, engine } = await evaluating({
+      validators: [{ identity: CHECK, validate: () => ({ kind: 'pass', evidence: [] }) }],
+    });
+    const realGet = engine.get.bind(engine);
+    let faults = 1;
+    (engine as { get: typeof engine.get }).get = (workflowId) => {
+      if (faults > 0 && workflowId === 'goal-g1-a0') {
+        faults -= 1;
+        return Promise.reject(new Error('storage hiccup'));
+      }
+      return realGet(workflowId);
+    };
+
+    expect(await throwingRejectionOf(ports.runValidator(request))).toThrow('storage hiccup');
+    // The retry reads the result and judges it: one storage fault did not cost the goal.
+    expect(await ports.runValidator(request)).toMatchObject({ outcome: { kind: 'pass' } });
+  });
+
   it('hands the validator the attempts before this one', async () => {
     const seen: Array<{ feedback: (string | undefined)[]; outcome: (string | undefined)[] }> = [];
     const { ports, store, durable } = await evaluating({
@@ -923,6 +942,32 @@ describe('startAttempt after a crash between a session write and the run start',
       'assistant: nope',
       'user: work\n\nsay done',
     ]);
+  });
+
+  it('under fork-from-baseline, retries rather than ending the goal when the fork could be neither written nor read back', async () => {
+    const { state, startAttemptRun } = dyingStarter();
+    state.dies = false;
+    const w = await world({
+      startAttemptRun,
+      policy: { kind: 'fork-from-baseline', throughRun: 0 },
+    });
+    await finishAttemptZero(w);
+    // A store that answers neither the write nor the read for a moment: that is a
+    // fault to retry, not a conversation policy the goal failed.
+    const realUpdate = w.sessions.update.bind(w.sessions);
+    let lagging = true;
+    (w.sessions as { update: typeof realUpdate }).update = (id, mutate) =>
+      lagging && id === 'goal-g1-s1' ? Promise.resolve(undefined) : realUpdate(id, mutate);
+
+    expect(await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')))).toThrow(
+      'could not be created',
+    );
+
+    lagging = false;
+    expect(await w.ports.startAttempt(startRequest('say done'))).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s1',
+    });
   });
 
   it('under fresh-from-artifact, creates the fresh session once and reads it back on the second try', async () => {

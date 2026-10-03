@@ -78,7 +78,8 @@ export async function cancelGoal(
     },
     now,
   );
-  if (marked.status === 'missing' || marked.status === 'corrupt') return { outcome: 'not-found' };
+  if (marked.status === 'corrupt') return { outcome: 'record-unreadable' };
+  if (marked.status === 'missing') return { outcome: 'not-found' };
   if (marked.status === 'rejected') {
     // The goal ended between the caller's read and the marker. One that ended
     // canceled is read back like any other; one that ended otherwise is done.
@@ -228,7 +229,23 @@ export async function unfinishedAfterCancellation(
   // acknowledged: the answer is never `canceled` on the strength of the record.
   if (engine === undefined) return [...awaiting, 'durable-engine'];
 
-  const controller = await engine.get(goalWorkflowId(goalRunId)).catch(() => undefined);
+  // A read that fails is unfinished, never settled, and it is named: a record
+  // that is corrupt cannot be retried into health, and an answer that only says
+  // `attempt-run` reads as one still in progress.
+  const unreadable =
+    (what: string) =>
+    (error: unknown): undefined => {
+      diagnose?.({
+        level: 'error',
+        scope: 'goals',
+        message: `[bureau] Could not read ${what} of goal "${goalRunId}" to confirm its cancellation: ${describe(error)}`,
+        cause: error,
+      });
+      return undefined;
+    };
+  const controller = await engine
+    .get(goalWorkflowId(goalRunId))
+    .catch(unreadable('the controller'));
   if (
     controller === undefined ||
     (controller !== null && !TERMINAL_CONTROLLER_STATUSES.has(controller.status))
@@ -237,7 +254,7 @@ export async function unfinishedAfterCancellation(
   }
   const finalizer = await engine
     .getFinalizerStatus(goalWorkflowId(goalRunId))
-    .catch(() => undefined);
+    .catch(unreadable("the controller's finalizer"));
   if (finalizer !== undefined && finalizer !== null && finalizer.status === 'failed') {
     // Dead-lettered: the engine has stopped retrying, so asking again will not
     // settle it. Say so, rather than letting it read as one still in progress.
@@ -251,7 +268,7 @@ export async function unfinishedAfterCancellation(
     awaiting.push('finalizer');
   }
   const runs = await Promise.all(
-    attemptRunIds.map((runId) => engine.get(runId).catch(() => undefined)),
+    attemptRunIds.map((runId) => engine.get(runId).catch(unreadable(`run "${runId}"`))),
   );
   if (
     runs.some(

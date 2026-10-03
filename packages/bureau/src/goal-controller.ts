@@ -178,7 +178,21 @@ export async function ensureController(
     };
   }
   try {
-    await startController(engine, record.goalRunId, false);
+    if ((await startController(engine, record.goalRunId, false)) === 'exists') {
+      // A workflow under the controller's id was already there, which is not the
+      // same as one running: a controller that ended while its goal was not
+      // terminal is still nothing to wait on, and only `recover()` replaces it.
+      const existing = await engine.get(goalWorkflowId(record.goalRunId));
+      if (existing !== null && TERMINAL_CONTROLLER_STATUSES.has(existing.status)) {
+        return {
+          goal: record,
+          controller: {
+            status: 'start-failed',
+            reason: `The goal's controller already ended ${existing.status}; recover() restarts it.`,
+          },
+        };
+      }
+    }
     return { goal: record, controller: { status: 'started' } };
   } catch (error) {
     dependencies.diagnose({

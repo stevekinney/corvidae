@@ -604,6 +604,29 @@ describe('the attempt behind a running goal', () => {
     expect(await workflowStatus(bureau, 'goal-g1-a0')).toBeUndefined();
   });
 
+  it('does not report a run it cannot read as a run with no workflow, in active()', async () => {
+    database = createTestDatabase('active-corrupt-record');
+    // A run that exists, whose ownership record is then damaged: the engine
+    // cannot say whether it is the goal's, so reading it fails.
+    await seedFinishedRun(database.path, 'goal-g1-a0');
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(hangForever) },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+    const view = await inspection();
+    await seedRunning(view);
+    await view.corruptRunRecord('goal-g1-a0');
+
+    const active = await bureau.goals.active('g1');
+
+    // `null` alone would say no workflow exists; the read fault is named.
+    expect(active).toMatchObject({ kind: 'attempt', runId: 'goal-g1-a0', runStatus: null });
+    expect(active).toHaveProperty('runStatusError', expect.stringContaining('goal-g1-a0'));
+  });
+
   it("does not adopt a run something else created at the attempt's id, and leaves it as it was", async () => {
     database = createTestDatabase('foreign-run');
     let steps = 0;
@@ -893,6 +916,30 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
     expect(stillOpen?.closedAt).toBeUndefined();
   });
 
+  it('has its marked cancellation committed at boot, and the boot report says the goal cannot be verified', async () => {
+    database = createTestDatabase('no-engine-marked');
+    const view = await inspection();
+    await seedRunning(view);
+    const marked = await view.store.requestCancellation(
+      'g1',
+      { requestedAt: '2026-10-02T12:00:00.000Z' },
+      '2026-10-02T12:00:00.000Z',
+    );
+    expect(marked.status).toBe('updated');
+    const bureau = await bootWithoutEngine();
+
+    const report = await bureau.waitForRecovery?.();
+
+    // The boot sweep ran without an engine: the marker the user asked for is committed.
+    const committed = await bureau.goals.get('g1');
+    expect(committed?.status).toBe('canceled');
+    // But nothing was read back, so the boot is not clean.
+    expect(report?.outcome).toBe('partial');
+    expect(report?.perRunFailures).toEqual([
+      { runId: 'g1', reason: expect.stringContaining('durable engine') },
+    ]);
+  });
+
   it('is acknowledged and closed once a bureau with an engine reads its workflow ended', async () => {
     database = createTestDatabase('no-engine-then-engine');
     await seedCanceled();
@@ -914,5 +961,46 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
     });
     const closedGoal = await bureau.goals.get('g1');
     expect(typeof closedGoal?.closedAt).toBe('string');
+  });
+});
+
+describe('a goal whose stored record cannot be read', () => {
+  async function bootOverUnreadable() {
+    database = createTestDatabase('unreadable-record');
+    const view = await inspection();
+    await seedRunning(view);
+    await view.kv.set(goalRecordKey('g1'), 'not json');
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(hangForever) },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    return bureau;
+  }
+
+  it('is a failure of the boot, not a clean recovery', async () => {
+    const bureau = await bootOverUnreadable();
+
+    const report = await bureau.waitForRecovery?.();
+
+    expect(report?.outcome).toBe('partial');
+    expect(report?.perRunFailures).toEqual([
+      { runId: 'g1', reason: expect.stringContaining('unreadable') },
+    ]);
+  });
+
+  it('is not called not-found by cancel, close, or recover', async () => {
+    const bureau = await bootOverUnreadable();
+    await bureau.waitForRecovery?.();
+
+    expect(await bureau.goals.cancel('g1')).toEqual({ outcome: 'record-unreadable' });
+    expect(await bureau.goals.close('g1')).toEqual({ outcome: 'record-unreadable' });
+    const recovered = await bureau.goals.recover('g1');
+    expect(recovered.goals).toEqual([
+      { goalRunId: 'g1', outcome: 'unrecoverable', detail: expect.stringContaining('unreadable') },
+    ]);
+    // An id nothing was ever stored under is still absent.
+    expect(await bureau.goals.cancel('nobody')).toEqual({ outcome: 'not-found' });
   });
 });

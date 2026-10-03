@@ -309,3 +309,28 @@ describe('cancelGoal', () => {
     expect(stopped).toEqual([]);
   });
 });
+
+describe('the read-back of a run it cannot read', () => {
+  it('names the fault in a diagnostic, so a retry that cannot settle is not mistaken for one in progress', async () => {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({ workflows: settled });
+    const unreadable = {
+      ...engine,
+      get: (id: string) =>
+        id === 'goal-g1-a0'
+          ? Promise.reject(new Error('run record goal-g1-a0 is corrupt'))
+          : (engine.get as (id: string) => Promise<unknown>)(id),
+    } as unknown as typeof engine;
+    const { control, diagnostics } = dependencies(store, unreadable);
+
+    const outcome = await cancelGoal(control, (await store.get('g1'))!, {});
+
+    expect(outcome).toMatchObject({
+      outcome: 'cancellation-pending',
+      awaiting: ['attempt-run'],
+    });
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join('\n')).toContain(
+      'run record goal-g1-a0 is corrupt',
+    );
+  });
+});

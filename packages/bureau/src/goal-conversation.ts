@@ -212,7 +212,10 @@ export function createGoalConversations(
     );
     const session = stored ?? (await sessionStore.load(candidate.id));
     if (session === undefined) {
-      throw new GoalConversationError(`Session "${candidate.id}" could not be created.`);
+      // Neither written nor readable back: the store lagging or failing, not a
+      // conversation policy the goal violated. A plain error, so the activity
+      // retries instead of ending the goal.
+      throw new Error(`Session "${candidate.id}" could not be created.`);
     }
     return owned(record, session);
   }

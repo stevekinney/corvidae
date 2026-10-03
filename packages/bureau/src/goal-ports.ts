@@ -414,10 +414,18 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       record.bounds.maximumTotalCostUsd === undefined
         ? undefined
         : await resolveCostEstimation(record.objective.agentName, attempt.runId, record.principal);
+    // A read that throws is a fault, not a verdict: it propagates so the
+    // activity is retried, the same as a failing resolver above. Recording it as
+    // an `error` outcome would end the goal over a storage hiccup that the next
+    // try does not have. `not-terminal` is the same kind of fault, since the
+    // forwarder only signals an attempt whose run it read as ended.
     const reading = await readDurableRunResult(durable, attempt.runId, {
       runtime,
       costEstimation,
-    }).catch((error: unknown) => ({ status: 'unreadable' as const, detail: describe(error) }));
+    });
+    if (reading.status === 'not-terminal') {
+      throw new Error(`Run "${attempt.runId}" is not yet readable as ended; the read is retried.`);
+    }
     if (reading.status !== 'completed') {
       return unavailable(
         'error',

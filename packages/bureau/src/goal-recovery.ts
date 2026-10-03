@@ -14,9 +14,9 @@
  * | no workflow                             | start one (the crash between record and start)      |
  * | running or pending                      | nothing; a controller is alive                      |
  * | suspended                               | resume it; cancel it when a cancellation is marked  |
- * | cancelled, or a cancellation marker     | commit `canceled` from the host                     |
+ * | cancelled, or a cancellation marker     | commit `canceled` from the host (also with no engine)|
  * | failed, timed out, or completed early   | restart it from the record, up to a bound           |
- * | its finalizer is still owed             | nothing; the restart waits and is not counted       |
+ * | its finalizer is still owed, or unread  | restart-pending; not counted; recover() retries it  |
  * | a workflow that is not the goal's       | never touched: it reads as absent (goal-ownership)  |
  *
  * A goal whose `canceled` is already committed is not skipped: its controller
@@ -58,6 +58,7 @@ import { goalIdentifiers } from './goal-ports';
 import { cancelSignalId, type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type {
   BureauGoalAttemptRecovery,
+  BureauGoalCancellationWait,
   BureauGoalRecoveryEntry,
   BureauGoalRecoveryOutcome,
   BureauGoalRecoveryReport,
@@ -72,6 +73,7 @@ const describe = (error: unknown): string =>
 interface ControllerRecovery {
   readonly outcome: BureauGoalRecoveryOutcome;
   readonly detail?: string | undefined;
+  readonly awaiting?: readonly BureauGoalCancellationWait[] | undefined;
 }
 
 /** The controller's own cancellation was requested, or its workflow was cancelled out from under it. */
@@ -133,7 +135,31 @@ async function completeCancellation(
   );
   return awaiting.length === 0
     ? { outcome: 'canceled' }
-    : { outcome: 'cancellation-pending', detail: `Still waiting on: ${awaiting.join(', ')}.` };
+    : {
+        outcome: 'cancellation-pending',
+        awaiting,
+        detail: `Still waiting on: ${awaiting.join(', ')}.`,
+      };
+}
+
+/** Ends the controller's workflow, then completes the cancellation the record asks for. */
+async function endControllerAndCompleteCancellation(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+): Promise<ControllerRecovery> {
+  const engine = dependencies.getEngine();
+  const { goalRunId } = record;
+  try {
+    await engine?.cancel(goalWorkflowId(goalRunId));
+  } catch (error) {
+    dependencies.diagnose({
+      level: 'error',
+      scope: 'goals',
+      message: `[bureau] Could not cancel the controller of goal "${goalRunId}": ${describe(error)}`,
+      cause: error,
+    });
+  }
+  return completeCancellation(dependencies, record);
 }
 
 async function recoverController(
@@ -143,6 +169,19 @@ async function recoverController(
   const { store, clock, getEngine } = dependencies;
   const engine = getEngine();
   if (engine === undefined) {
+    if (record.cancellation !== undefined) {
+      // The user asked for the cancellation, and committing it needs no engine.
+      // Everything the engine would have stopped is unread, so the answer is
+      // `cancel()`'s own: pending, awaiting the engine, never `canceled`.
+      const committed = await commitCancellation(store, record, clock.now());
+      if (committed.status === 'applied' || committed.status === 'duplicate') {
+        return {
+          outcome: 'cancellation-pending',
+          awaiting: ['durable-engine'],
+          detail: 'The cancellation is recorded, but there is no durable engine to read it back.',
+        };
+      }
+    }
     return { outcome: 'unrecoverable', detail: 'There is no durable engine to run a controller.' };
   }
   const { goalRunId } = record;
@@ -168,14 +207,25 @@ async function recoverController(
     // and the process that wrote the marker may have died before sending it.
     // The signal id is stable, so sending it again is harmless.
     if (record.cancellation !== undefined) {
-      await engine
-        .signal(
+      try {
+        await engine.signal(
           goalWorkflowId(goalRunId),
           GOAL_CANCEL_SIGNAL,
           {},
           { signalId: cancelSignalId(goalRunId) },
-        )
-        .catch(() => undefined);
+        );
+      } catch (error) {
+        // The forwarder stands down for a marked goal, so a controller that
+        // never hears the signal stays parked and its attempt keeps running. End
+        // the workflow and finish the cancellation here, as for a suspended one.
+        dependencies.diagnose({
+          level: 'error',
+          scope: 'goals',
+          message: `[bureau] Could not signal the controller of goal "${goalRunId}" to cancel; ending it instead: ${describe(error)}`,
+          cause: error,
+        });
+        return endControllerAndCompleteCancellation(dependencies, record);
+      }
     }
     return { outcome: 'running' };
   }
@@ -185,17 +235,7 @@ async function recoverController(
       // in the store never wakes it, so the cancellation it was asked for would
       // hang with the attempt running. Ending the suspended workflow is what
       // `cancel()` does to a controller; the rest is settled the same way.
-      try {
-        await engine.cancel(goalWorkflowId(goalRunId));
-      } catch (error) {
-        dependencies.diagnose({
-          level: 'error',
-          scope: 'goals',
-          message: `[bureau] Could not cancel the suspended controller of goal "${goalRunId}": ${describe(error)}`,
-          cause: error,
-        });
-      }
-      return completeCancellation(dependencies, record);
+      return endControllerAndCompleteCancellation(dependencies, record);
     }
     await engine.resume(goalWorkflowId(goalRunId));
     return { outcome: 'running' };
@@ -216,12 +256,23 @@ async function recoverController(
   }
   // A controller that ended still owes its finalizer until Weft says it does
   // not, and Weft refuses to replace a run in that state. Nothing is counted
-  // for a restart that cannot happen yet: the next recovery tries again.
-  const finalizer = await engine.getFinalizerStatus(goalWorkflowId(goalRunId)).catch(() => null);
+  // for a restart that cannot happen yet. Nothing retries it either, so it is
+  // reported `restart-pending` (a failure in the boot report), and the next
+  // `recover()` tries again. A finalizer that cannot be read is no evidence it
+  // is settled: restarting on it would spend a count on a restart Weft refuses.
+  let finalizer: Awaited<ReturnType<typeof engine.getFinalizerStatus>>;
+  try {
+    finalizer = await engine.getFinalizerStatus(goalWorkflowId(goalRunId));
+  } catch (error) {
+    return {
+      outcome: 'restart-pending',
+      detail: `The controller ended ${state.status} and its finalizer could not be read: ${describe(error)}`,
+    };
+  }
   if (finalizer !== null && (finalizer.status === 'pending' || finalizer.status === 'running')) {
     return {
-      outcome: 'running',
-      detail: `The controller ended ${state.status} and its finalizer is still ${finalizer.status}; it is restarted once that settles.`,
+      outcome: 'restart-pending',
+      detail: `The controller ended ${state.status} and its finalizer is still ${finalizer.status}; recover() restarts it once that settles.`,
     };
   }
   // The count is a compare-and-swap on the value this recovery read, so of
@@ -234,7 +285,17 @@ async function recoverController(
     clock.nowISO(),
     record.controllerRestarts,
   );
-  if (counted.status === 'rejected') return { outcome: 'already-terminal' };
+  if (counted.status === 'rejected') {
+    // Only a terminal goal is done. A full audit log leaves the goal running
+    // with no controller and no room to record a restart: that is a goal
+    // recovery gave up on, and it must not read as one that ended.
+    return counted.reason === 'terminal'
+      ? { outcome: 'already-terminal' }
+      : {
+          outcome: 'unrecoverable',
+          detail: `The controller ended ${state.status}, but the goal's audit log has no room to record a restart.`,
+        };
+  }
   if (counted.status === 'stale') {
     return { outcome: 'running', detail: 'Another recovery is restarting the controller.' };
   }
@@ -251,7 +312,7 @@ async function recoverController(
     // from consuming the bound.
     if (error instanceof WorkflowTeardownPendingError) {
       return {
-        outcome: 'running',
+        outcome: 'restart-pending',
         detail: `The restart waits for the controller's teardown: ${error.message}`,
       };
     }
@@ -312,6 +373,7 @@ async function settleCommittedCancellation(
     return {
       goalRunId: record.goalRunId,
       outcome: 'cancellation-pending',
+      awaiting: settled.awaiting,
       detail: `Still waiting on: ${settled.awaiting.join(', ')}.`,
     };
   }
@@ -354,6 +416,7 @@ export async function recoverGoal(
   if (
     controller.outcome === 'canceled' ||
     controller.outcome === 'cancellation-pending' ||
+    controller.outcome === 'restart-pending' ||
     controller.outcome === 'unsupported-validation'
   ) {
     return { goalRunId, ...controller };
@@ -372,11 +435,19 @@ export async function recoverGoal(
   };
 }
 
+export const UNREADABLE_RECORD_DETAIL = (goalRunId: string): string =>
+  `The record stored for goal "${goalRunId}" is unreadable, so recovery cannot tell what it was doing.`;
+
 /** The boot sweep: every goal that is not terminal, and every canceled one not yet closed, whose cleanup may be owed. */
 export async function recoverEveryGoal(
   dependencies: GoalControlDependencies,
   /** Narrows the sweep to the goals the caller may see; every goal when omitted. */
   allows: (record: GoalState) => boolean = () => true,
+  /**
+   * Also report the records that cannot be decoded as failures. They have no
+   * principal to check, so this is for a caller who may see every goal.
+   */
+  includeUnreadable = false,
 ): Promise<BureauGoalRecoveryReport> {
   const goals: BureauGoalRecoveryEntry[] = [];
   const failures: { goalRunId: string; reason: string }[] = [];
@@ -384,6 +455,11 @@ export async function recoverEveryGoal(
   try {
     const stored = await dependencies.store.list();
     records = stored.filter((record) => needsRecovery(record) && allows(record));
+    if (includeUnreadable) {
+      for (const goalRunId of await dependencies.store.listUnreadable()) {
+        failures.push({ goalRunId, reason: UNREADABLE_RECORD_DETAIL(goalRunId) });
+      }
+    }
   } catch (error) {
     return { goals, failures: [{ goalRunId: '*', reason: describe(error) }] };
   }
@@ -399,4 +475,32 @@ export async function recoverEveryGoal(
     }
   }
   return { goals, failures };
+}
+
+/**
+ * Why an entry of a recovery report is a failure rather than news, or
+ * `undefined` when it is not one. The boot report folds these into its
+ * per-run failures, so `waitForRecovery()` does not read clean over a goal that
+ * is stuck: one recovery gave up on, one with no controller and nothing to
+ * restart it, one whose attempt could not be reconciled, or a cancellation
+ * that cannot settle (a dead-lettered finalizer, or no engine to read it with).
+ * A cancellation still waiting on a controller, finalizer, or run in progress is
+ * not one: those finish on their own.
+ */
+export function recoveryEntryFailure(entry: BureauGoalRecoveryEntry): string | undefined {
+  const reason = (fallback: string): string => entry.detail ?? fallback;
+  if (entry.outcome === 'unrecoverable') return reason('The goal could not be recovered.');
+  if (entry.outcome === 'restart-pending') {
+    return reason('The controller ended and its restart is pending.');
+  }
+  if (entry.attempt === 'failed') {
+    return reason("The goal's attempt could not be reconciled.");
+  }
+  if (
+    entry.outcome === 'cancellation-pending' &&
+    entry.awaiting?.some((wait) => wait === 'finalizer-failed' || wait === 'durable-engine')
+  ) {
+    return reason('The cancellation cannot settle.');
+  }
+  return undefined;
 }

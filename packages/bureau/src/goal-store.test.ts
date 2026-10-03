@@ -334,6 +334,19 @@ describe('createGoalStore create, get, and list', () => {
     expect(corrupt).toContain(goalRecordKey(GOAL));
   });
 
+  it('names the goals whose stored record is unreadable, which list() leaves out', async () => {
+    const { kv, store } = setup();
+    await store.create(createGoalState(input()));
+    await kv.set(goalRecordKey('bad:id'), 'not json');
+
+    const listed = await store.list();
+    expect(listed.map((record) => record.goalRunId)).toEqual([GOAL]);
+    expect(await store.listUnreadable()).toEqual(['bad:id']);
+    expect(await store.isUnreadable('bad:id')).toBe(true);
+    expect(await store.isUnreadable(GOAL)).toBe(false);
+    expect(await store.isUnreadable('never-stored')).toBe(false);
+  });
+
   it('refuses to create a record that is not a fresh pending one', async () => {
     const { store } = setup();
     const state = createGoalState(input());

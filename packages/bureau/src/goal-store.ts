@@ -157,7 +157,16 @@ export interface GoalStore {
    */
   create(state: GoalState): Promise<GoalCreation>;
   get(goalRunId: string): Promise<GoalState | undefined>;
+  /** Every readable record. One that cannot be decoded is left out: see `listUnreadable`. */
   list(): Promise<GoalState[]>;
+  /**
+   * The goal ids whose stored record exists but cannot be decoded. `get` and
+   * `list` treat such a record as absent (they fail closed), so this is how a
+   * caller tells a permanent fault from absence.
+   */
+  listUnreadable(): Promise<string[]>;
+  /** Whether a record is stored under this id that cannot be decoded. */
+  isUnreadable(goalRunId: string): Promise<boolean>;
   applyTransition(request: GoalTransitionRequest): Promise<GoalTransitionResult>;
   /** First marker wins; later requests are `unchanged`. A terminal goal is `rejected`. */
   requestCancellation(
@@ -209,6 +218,16 @@ export interface GoalStoreOptions {
 
 /** A re-read-and-retry bound for compare-and-swap loss; past it a write reports `stale`. */
 const MAXIMUM_CAS_ATTEMPTS = 16;
+
+/** The goal id a record key was built from; the raw suffix when it does not decode. */
+function decodeGoalRunIdFromKey(key: string): string {
+  const encoded = key.slice(GOAL_RECORD_KEY_PREFIX.length);
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+}
 
 type Stored =
   | { readonly kind: 'found'; readonly raw: string; readonly record: GoalState }
@@ -366,6 +385,17 @@ export function createGoalStore(
       const keys = await kv.list(GOAL_RECORD_KEY_PREFIX);
       const stored = await Promise.all(keys.map((key) => read(key)));
       return stored.flatMap((entry) => (entry.kind === 'found' ? [entry.record] : []));
+    },
+    async listUnreadable() {
+      const keys = await kv.list(GOAL_RECORD_KEY_PREFIX);
+      const stored = await Promise.all(keys.map(async (key) => ({ key, entry: await read(key) })));
+      return stored
+        .filter(({ entry }) => entry.kind === 'corrupt')
+        .map(({ key }) => decodeGoalRunIdFromKey(key));
+    },
+    async isUnreadable(goalRunId) {
+      const stored = await read(goalRecordKey(goalRunId));
+      return stored.kind === 'corrupt';
     },
     async applyTransition(request) {
       const result = await mutate<GoalTransitionResult>(

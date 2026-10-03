@@ -86,8 +86,8 @@ export type BureauGoalCreateRejectionCode =
   | 'invalid-configuration'
   /**
    * The goal id cannot name the workflows and signals a goal is made of: it is
-   * empty, it has a control character, or an identifier derived from it would pass Weft's
-   * 128-byte limit (an over-long signal id is never delivered, so the goal
+   * empty, it has a control character or a lone surrogate, or an identifier derived from it
+   * would pass Weft's 128-byte limit (an over-long signal id is never delivered, so the goal
    * would wait forever).
    */
   | 'invalid-goal-run-id'
@@ -158,6 +158,11 @@ export type BureauGoalActiveWork =
       readonly startedAt: string;
       /** The run's own workflow status, read now; `null` when it has no workflow. */
       readonly runStatus: string | null;
+      /**
+       * Set when reading the run failed. `runStatus` is then `null` too, but that
+       * does not mean the run has no workflow; this says why it could not be read.
+       */
+      readonly runStatusError?: string | undefined;
     }
   | {
       readonly kind: 'validation';
@@ -196,6 +201,8 @@ export type BureauGoalCloseOutcome =
     }
   /** Lost the write to concurrent writers too many times in a row; call again. */
   | { readonly outcome: 'contended'; readonly goal: GoalState }
+  /** A record is stored under this id but cannot be decoded: a permanent fault, not absence. */
+  | { readonly outcome: 'record-unreadable' }
   | { readonly outcome: 'not-found' };
 
 // ---------------------------------------------------------------------------
@@ -258,6 +265,8 @@ export type BureauGoalCancellationWait =
  *   won the compare-and-swap every time the store retried. Nothing was
  *   recorded and nothing will cancel the goal; call `cancel()` again.
  * - `not-found`: no such goal, or one this principal does not own.
+ * - `record-unreadable`: a record is stored under the id but cannot be
+ *   decoded. That is a fault to repair, not absence; nothing was changed.
  *
  * What `canceled` does not say: a validator that was executing when the goal
  * was canceled is not told to stop. Durable validation runs with a signal that
@@ -275,6 +284,8 @@ export type BureauGoalCancelOutcome =
     }
   | { readonly outcome: 'already-terminal'; readonly goal: GoalState }
   | { readonly outcome: 'contended'; readonly goal: GoalState }
+  /** A record is stored under this id but cannot be decoded: a permanent fault, not absence. */
+  | { readonly outcome: 'record-unreadable' }
   | { readonly outcome: 'not-found' };
 
 // ---------------------------------------------------------------------------
@@ -291,6 +302,11 @@ export type BureauGoalCancelOutcome =
  *   advanced.
  * - `running`: a controller is alive, under this engine or another; recovery
  *   only reconciled the attempt behind it.
+ * - `restart-pending`: the controller ended abnormally and its restart could not
+ *   happen yet (its finalizer is still owed, its teardown is pending, or the
+ *   finalizer could not be read). The goal has no controller, and nothing
+ *   retries on its own: `recover()` again does. It is a failure in the boot
+ *   report, not a clean boot.
  * - `canceled`: an operator's cancellation (or an engine-level cancel of the
  *   controller) was completed by committing `canceled`, and a fresh read found
  *   the controller and the attempt's run terminal.
@@ -309,6 +325,7 @@ export type BureauGoalRecoveryOutcome =
   | 'started'
   | 'restarted'
   | 'running'
+  | 'restart-pending'
   | 'canceled'
   | 'cancellation-pending'
   | 'unsupported-validation'
@@ -331,6 +348,8 @@ export interface BureauGoalRecoveryEntry {
   readonly goalRunId: string;
   readonly outcome: BureauGoalRecoveryOutcome;
   readonly attempt?: BureauGoalAttemptRecovery | undefined;
+  /** For `cancellation-pending`: what the read-back found unfinished. */
+  readonly awaiting?: readonly BureauGoalCancellationWait[] | undefined;
   readonly detail?: string | undefined;
 }
 

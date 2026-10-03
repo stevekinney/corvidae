@@ -170,6 +170,7 @@ import {
   RunRemovedEvent,
 } from './events';
 import { createGoalWorkflowHost } from './goal-ports';
+import { recoveryEntryFailure } from './goal-recovery';
 import type { BureauGoals } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
@@ -4195,6 +4196,36 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-851 — the boot sweep over every unfinished goal. Recovery reports what it
+   * could not do rather than throwing; each goal it found stuck (see
+   * `recoveryEntryFailure`) is a failure of the boot, not a clean one, and is
+   * diagnosed.
+   */
+  async function recoverGoalsAtBoot(): Promise<{ runId: string; reason: string }[]> {
+    const failures: { runId: string; reason: string }[] = [];
+    const goalRecovery = await goalsComposition.recoverAtBoot();
+    for (const failure of goalRecovery.failures) {
+      failures.push({ runId: failure.goalRunId, reason: failure.reason });
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Could not recover goal "${failure.goalRunId}": ${failure.reason}`,
+      });
+    }
+    for (const entry of goalRecovery.goals) {
+      const reason = recoveryEntryFailure(entry);
+      if (reason === undefined) continue;
+      failures.push({ runId: entry.goalRunId, reason });
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Goal "${entry.goalRunId}" is ${entry.attempt === 'failed' ? 'running with an attempt that could not be reconciled' : entry.outcome}: ${reason}`,
+      });
+    }
+    return failures;
+  }
+
+  /**
    * Boot-single-shot: called at most once per bureau, either immediately
    * during `createBureau()` or once from the deferred-authority-validator
    * path (never both — `durableRecoveryStarted` guards it). Resolves a
@@ -4250,7 +4281,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     if (!runtime.durable) {
       await childTopology.reconcileRecovery();
-      return { outcome: 'clean', perRunFailures: [] };
+      // A goal's stored record is settled without an engine too: a marked
+      // cancellation is committed, and what cannot be read back is reported.
+      const goalFailures = dedupeRecoveryPerRunFailures(await recoverGoalsAtBoot());
+      return {
+        outcome: goalFailures.length > 0 ? 'partial' : 'clean',
+        perRunFailures: goalFailures,
+      };
     }
 
     const durable = runtime.durable;
@@ -4605,31 +4642,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // COR-851 — every unfinished goal, now that its controller and its
       // attempt's run have both been resumed by `recoverAll()` above. Recovery
       // reports what it could not do rather than throwing.
-      const goalRecovery = await goalsComposition.recoverAtBoot();
-      for (const failure of goalRecovery.failures) {
-        currentRecoveryPerRunFailures?.push({
-          runId: failure.goalRunId,
-          reason: failure.reason,
-        });
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Could not recover goal "${failure.goalRunId}": ${failure.reason}`,
-        });
-      }
-      // A goal recovery found it could not bring back (its controller kept
-      // ending, or something else holds its workflow) is a failure too, not a
-      // clean boot: it is reported by outcome rather than thrown.
-      for (const entry of goalRecovery.goals) {
-        if (entry.outcome !== 'unrecoverable') continue;
-        const reason = entry.detail ?? 'The goal could not be recovered.';
-        currentRecoveryPerRunFailures?.push({ runId: entry.goalRunId, reason });
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Goal "${entry.goalRunId}" is unrecoverable: ${reason}`,
-        });
-      }
+      currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
     }
 
     const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
