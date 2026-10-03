@@ -74,6 +74,70 @@ describe('completing a cancellation', () => {
   });
 });
 
+describe('a suspended controller', () => {
+  it('is resumed when no cancellation was asked for', async () => {
+    const store = await runningGoal();
+    const { engine, calls } = scriptedEngine({
+      workflows: { 'goal:g1': 'suspended', 'goal-g1-a0': 'running' },
+    });
+    const { control } = dependencies(store, engine);
+
+    expect(await recoverGoal(control, 'g1')).toMatchObject({ outcome: 'running' });
+
+    expect(calls).toContain('resume:goal:g1');
+    expect(calls).not.toContain('cancel:goal:g1');
+  });
+
+  it('is cancelled, not resumed, when the process died after marking a cancellation and before acting on it', async () => {
+    const store = await runningGoal();
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    const workflows: Record<string, string> = {
+      'goal:g1': 'suspended',
+      'goal-g1-a0': 'running',
+    };
+    const { engine, calls } = scriptedEngine({
+      workflows,
+      // The cancel ends the workflow; the run is stopped through `cancelRun`.
+      onCancel: () => {
+        workflows['goal:g1'] = 'cancelled';
+        return Promise.resolve();
+      },
+    });
+    const stopped: string[] = [];
+    const { control } = dependencies(store, engine, {
+      cancelRun: (runId) => {
+        stopped.push(runId);
+        workflows[runId] = 'cancelled';
+        return Promise.resolve({ status: 'requested' });
+      },
+    });
+
+    const entry = await recoverGoal(control, 'g1');
+
+    // A resumed controller would re-park on an attempt signal the marker never sends.
+    expect(calls).not.toContain('resume:goal:g1');
+    expect(calls).toContain('cancel:goal:g1');
+    expect(stopped).toContain('goal-g1-a0');
+    expect(entry).toEqual({ goalRunId: 'g1', outcome: 'canceled' });
+    expect((await store.get('g1'))?.status).toBe('canceled');
+  });
+
+  it('stays pending on the controller when a marked cancellation cannot end it', async () => {
+    const store = await runningGoal();
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    const { engine } = scriptedEngine({
+      workflows: { 'goal:g1': 'suspended', 'goal-g1-a0': 'cancelled' },
+      cancelThrows: true,
+    });
+    const { control } = dependencies(store, engine);
+
+    const entry = await recoverGoal(control, 'g1');
+
+    expect(entry).toMatchObject({ outcome: 'cancellation-pending' });
+    expect(entry.detail).toContain('controller');
+  });
+});
+
 describe('a goal whose cancellation committed but whose cleanup is still owed', () => {
   async function committedCanceled() {
     const store = await runningGoal();

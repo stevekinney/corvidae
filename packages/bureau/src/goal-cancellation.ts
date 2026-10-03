@@ -23,6 +23,11 @@
  * and answers from the same read-back, so `already-terminal` is reserved for a
  * goal that ended for some other reason.
  *
+ * A bureau with no durable engine (`durableExecution: false` over a store that
+ * still holds goals) cannot do steps 1 to 3 or read anything in step 5, so it
+ * records the marker and the commit and answers `cancellation-pending`
+ * awaiting `durable-engine`; it never claims a workflow-level acknowledgement.
+ *
  * There is no polling after step 2. What the read finds in step 5 is the answer:
  * every condition terminal is `canceled`, anything else is
  * `cancellation-pending` and names what it saw unfinished, because
@@ -219,7 +224,9 @@ export async function unfinishedAfterCancellation(
 ): Promise<BureauGoalCancellationWait[]> {
   const awaiting: BureauGoalCancellationWait[] = [];
   if (!recordCanceled) awaiting.push('goal-record');
-  if (engine === undefined) return awaiting;
+  // Without an engine nothing about the workflow can be read, so nothing can be
+  // acknowledged: the answer is never `canceled` on the strength of the record.
+  if (engine === undefined) return [...awaiting, 'durable-engine'];
 
   const controller = await engine.get(goalWorkflowId(goalRunId)).catch(() => undefined);
   if (

@@ -413,11 +413,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     const costEstimation =
       record.bounds.maximumTotalCostUsd === undefined
         ? undefined
-        : await resolveCostEstimation(
-            record.objective.agentName,
-            attempt.runId,
-            record.principal,
-          );
+        : await resolveCostEstimation(record.objective.agentName, attempt.runId, record.principal);
     const reading = await readDurableRunResult(durable, attempt.runId, {
       runtime,
       costEstimation,

@@ -13,7 +13,7 @@
  * | --------------------------------------- | --------------------------------------------------- |
  * | no workflow                             | start one (the crash between record and start)      |
  * | running or pending                      | nothing; a controller is alive                      |
- * | suspended                               | resume it                                           |
+ * | suspended                               | resume it; cancel it when a cancellation is marked  |
  * | cancelled, or a cancellation marker     | commit `canceled` from the host                     |
  * | failed, timed out, or completed early   | restart it from the record, up to a bound           |
  * | its finalizer is still owed             | nothing; the restart waits and is not counted       |
@@ -180,6 +180,23 @@ async function recoverController(
     return { outcome: 'running' };
   }
   if (state.status === 'suspended') {
+    if (record.cancellation !== undefined) {
+      // A resumed controller would re-park on its attempt signal and the marker
+      // in the store never wakes it, so the cancellation it was asked for would
+      // hang with the attempt running. Ending the suspended workflow is what
+      // `cancel()` does to a controller; the rest is settled the same way.
+      try {
+        await engine.cancel(goalWorkflowId(goalRunId));
+      } catch (error) {
+        dependencies.diagnose({
+          level: 'error',
+          scope: 'goals',
+          message: `[bureau] Could not cancel the suspended controller of goal "${goalRunId}": ${describe(error)}`,
+          cause: error,
+        });
+      }
+      return completeCancellation(dependencies, record);
+    }
     await engine.resume(goalWorkflowId(goalRunId));
     return { outcome: 'running' };
   }

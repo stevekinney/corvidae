@@ -133,11 +133,7 @@ export function createAttemptForwarder(
     const costEstimation =
       record.bounds.maximumTotalCostUsd === undefined
         ? undefined
-        : await resolveCostEstimation(
-            record.objective.agentName,
-            target.runId,
-            record.principal,
-          );
+        : await resolveCostEstimation(record.objective.agentName, target.runId, record.principal);
     const reading = await readDurableRunResult(durable, target.runId, { runtime, costEstimation });
     if (reading.status === 'missing') return 'missing';
     if (reading.status === 'not-terminal') return 'watching';

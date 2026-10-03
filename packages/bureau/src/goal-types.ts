@@ -182,6 +182,18 @@ export type BureauGoalCloseOutcome =
       readonly cleanup: CleanupAcknowledgement;
     }
   | { readonly outcome: 'not-terminal'; readonly goal: GoalState }
+  /**
+   * The goal is `canceled`, but a fresh read still finds something its
+   * cancellation must stop unfinished (`awaiting`, as `cancel()` names it). A
+   * closed goal leaves the boot sweep, so closing one before the world agrees
+   * would leave a suspended controller, finalizer, or attempt run active with
+   * nothing left to settle it. `closedAt` is not set; call again once it settles.
+   */
+  | {
+      readonly outcome: 'cancellation-pending';
+      readonly goal: GoalState;
+      readonly awaiting: readonly BureauGoalCancellationWait[];
+    }
   /** Lost the write to concurrent writers too many times in a row; call again. */
   | { readonly outcome: 'contended'; readonly goal: GoalState }
   | { readonly outcome: 'not-found' };
@@ -210,7 +222,14 @@ export type BureauGoalCancellationWait =
    */
   | 'finalizer-failed'
   /** The in-flight attempt's run has not reached a terminal status. */
-  | 'attempt-run';
+  | 'attempt-run'
+  /**
+   * This bureau has no durable engine, so it can neither stop nor even read the
+   * controller, its finalizer, or the attempt's run. The goal's cancellation is
+   * recorded, but nothing here can acknowledge that the workflow ended; a bureau
+   * with an engine settles it (the boot sweep does, or `cancel()` again).
+   */
+  | 'durable-engine';
 
 /**
  * What a `cancel()` outcome means. It is an answer about durable state read

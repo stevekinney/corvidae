@@ -76,6 +76,10 @@ export function scriptedEngine(script: Script) {
       await script.onCancel?.();
       if (script.cancelThrows === true) throw new Error('engine unavailable');
     },
+    resume: (id: string) => {
+      calls.push(`resume:${id}`);
+      return Promise.resolve();
+    },
     getFinalizerStatus: () => Promise.resolve(script.finalizer ?? null),
   } as unknown as GoalEngine;
   return { engine, calls };

@@ -25,7 +25,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { cancelGoal } from './goal-cancellation';
+import { cancelGoal, settleCanceledGoal } from './goal-cancellation';
 import { ensureController, type GoalControlDependencies } from './goal-controller';
 import { recoverEveryGoal, recoverGoal } from './goal-recovery';
 import {
@@ -343,7 +343,21 @@ export function createBureauGoals<TName extends string = string>(
     goalRunId: string,
     query?: BureauGoalQuery,
   ): Promise<BureauGoalCloseOutcome> {
-    if ((await authorized(goalRunId, query)) === undefined) return { outcome: 'not-found' };
+    const record = await authorized(goalRunId, query);
+    if (record === undefined) return { outcome: 'not-found' };
+    if (record.status === 'canceled') {
+      // A closed goal leaves the boot sweep, so a cancellation whose controller,
+      // finalizer, or attempt run is not yet read back as ended must not be
+      // closed over: nothing would be left to finish it.
+      const settled = await settleCanceledGoal(dependencies, record);
+      if (settled.outcome === 'cancellation-pending') {
+        return {
+          outcome: 'cancellation-pending',
+          goal: settled.goal,
+          awaiting: settled.awaiting,
+        };
+      }
+    }
     const closed = await store.close(goalRunId, clock.nowISO());
     switch (closed.status) {
       case 'updated':

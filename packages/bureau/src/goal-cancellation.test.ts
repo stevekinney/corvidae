@@ -32,6 +32,26 @@ async function cancelWith(script: Script, extra: Partial<GoalControlDependencies
 }
 
 describe('cancelGoal', () => {
+  it('stays pending on the durable engine when the bureau has none, and never claims an acknowledgement', async () => {
+    const store = await runningGoal();
+    const { engine } = scriptedEngine({ workflows: settled });
+    const { control, stopped } = dependencies(store, engine, { getEngine: () => undefined });
+
+    const outcome = await cancelGoal(control, (await store.get('g1'))!, { reason: 'stop' });
+
+    expect(outcome).toMatchObject({
+      outcome: 'cancellation-pending',
+      awaiting: ['durable-engine'],
+      goal: { status: 'canceled' },
+    });
+    // Nothing could be stopped, so nothing was attempted.
+    expect(stopped).toEqual([]);
+
+    // Asking again is no more able to acknowledge it.
+    const again = await cancelGoal(control, (await store.get('g1'))!, {});
+    expect(again).toMatchObject({ outcome: 'cancellation-pending', awaiting: ['durable-engine'] });
+  });
+
   it('answers canceled only when the record, the controller, the finalizer, and the attempt are all terminal', async () => {
     const { outcome, calls, stopped } = await cancelWith({ workflows: settled });
 

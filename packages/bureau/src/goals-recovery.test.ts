@@ -14,6 +14,8 @@ import { readGenerationProfile } from '@lostgradient/operative';
 import { KEYS } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { createBureau } from './create-bureau';
+import { commitCancellation } from './goal-controller';
 import { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
 import { createGoalState, goalRecordKey, type GoalState } from './goal-state';
 import {
@@ -825,5 +827,72 @@ describe('a controller that ends abnormally while its goal is unfinished', () =>
     const goal = await ended(bureau);
     expect(goal).toMatchObject({ status: 'succeeded', controllerRestarts: 1 });
     expect(goal.attempts).toHaveLength(1);
+  });
+});
+
+describe('a canceled goal whose workflow this bureau cannot read', () => {
+  /** A canceled record with its marker, as a process that committed it and then died left it. */
+  async function seedCanceled() {
+    const view = await inspection();
+    await seedRunning(view);
+    const marked = await view.store.requestCancellation(
+      'g1',
+      { requestedAt: '2026-10-02T12:00:00.000Z' },
+      '2026-10-02T12:00:00.000Z',
+    );
+    if (marked.status !== 'updated')
+      throw new Error(`could not mark the cancellation: ${marked.status}`);
+    const committed = await commitCancellation(view.store, marked.record, Date.now());
+    expect(committed.status).toBe('applied');
+  }
+
+  async function bootWithoutEngine() {
+    const bureau = await createBureau({
+      agents: { worker: workerAgent(hangForever) },
+      validators: [createCheckValidator()],
+      storage: { type: 'sqlite', path: database.path },
+      durableExecution: false,
+      onDiagnostic: createDiagnostics().onDiagnostic,
+    });
+    return track(bureau as unknown as Bureau);
+  }
+
+  it('is not acknowledged by a bureau with no durable engine, and is not closed over either', async () => {
+    database = createTestDatabase('no-engine');
+    await seedCanceled();
+    const bureau = await bootWithoutEngine();
+
+    expect(await bureau.goals.cancel('g1')).toMatchObject({
+      outcome: 'cancellation-pending',
+      awaiting: ['durable-engine'],
+    });
+    // Closing would take it out of the boot sweep with its workflow unconfirmed.
+    expect(await bureau.goals.close('g1')).toMatchObject({
+      outcome: 'cancellation-pending',
+      awaiting: ['durable-engine'],
+    });
+    expect((await bureau.goals.get('g1'))?.closedAt).toBeUndefined();
+  });
+
+  it('is acknowledged and closed once a bureau with an engine reads its workflow ended', async () => {
+    database = createTestDatabase('no-engine-then-engine');
+    await seedCanceled();
+    const idle = await bootWithoutEngine();
+    expect(await idle.goals.close('g1')).toMatchObject({ outcome: 'cancellation-pending' });
+    await idle.dispose();
+
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: { worker: workerAgent(hangForever) },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+
+    expect(await bureau.goals.close('g1')).toMatchObject({
+      outcome: 'closed',
+      goal: { status: 'canceled' },
+    });
+    expect(typeof (await bureau.goals.get('g1'))?.closedAt).toBe('string');
   });
 });
