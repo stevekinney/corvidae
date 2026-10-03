@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  type BureauEventEnvelope,
   createBureauEventFeed,
   projectBureauEvent,
   PUBLISHED_BUREAU_EVENT_KINDS,
   publishedBureauEventKinds,
-  type BureauEventEnvelope,
 } from './bureau-event-feed.ts';
 import {
   ActionEvent,

@@ -118,9 +118,9 @@ import type {
 } from '@lostgradient/operative';
 import {
   createFleetEventFeed,
+  type Cursor,
   decodeCursor,
   encode,
-  type Cursor,
   type FleetEventEnvelope,
   type FleetEventFeed,
   type Storage,

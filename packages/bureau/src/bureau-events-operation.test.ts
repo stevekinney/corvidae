@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { createBureauEventFeed, type BureauEventEnvelope } from './bureau-event-feed.ts';
+import { type BureauEventEnvelope,createBureauEventFeed } from './bureau-event-feed.ts';
 import {
   bureauEventEnvelopeSchema,
+  type BureauEventsOperationEngine,
   bureauEventsSubscriptionOperation,
   createBureauEventRegistry,
-  type BureauEventsOperationEngine,
 } from './bureau-events-operation.ts';
 import { BureauDisposedEvent, RunRegisteredEvent, RunRemovedEvent } from './events.ts';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
