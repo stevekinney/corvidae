@@ -115,14 +115,8 @@ async function completeCancellation(
       });
     }
   }
-  const committed = await commitCancellation(store, marked, clock.now());
-  if (
-    committed.status !== 'applied' &&
-    committed.status !== 'duplicate' &&
-    committed.status !== 'not-needed'
-  ) {
-    return { outcome: 'running', detail: `cancellation commit: ${committed.status}` };
-  }
+  const commit = await settleCancellationCommit(dependencies, marked);
+  if (commit.kind === 'settled') return commit.outcome;
   // The record says `canceled`; whether the world agrees is a separate read, the
   // same one `cancel()` answers from. A run that could not be stopped keeps the
   // goal pending here rather than being reported done.
@@ -163,77 +157,91 @@ async function endControllerAndCompleteCancellation(
 }
 
 /** How many times a commit that lost to a concurrent writer is retried against the record it lost to. */
-const ENGINE_LESS_COMMIT_ATTEMPTS = 3;
+const CANCELLATION_COMMIT_ATTEMPTS = 3;
 
 /**
- * A recorded cancellation with no durable engine: the user asked for it and
- * committing it needs no engine, but everything the engine would have stopped is
- * unread, so a committed record is `cancellation-pending` awaiting the engine,
- * never `canceled`. Every answer the commit can give has its own honest outcome.
+ * Commits the cancellation a record's marker asks for and says what the answer
+ * means, for the path with an engine and the path without one alike. Every
+ * answer the commit can give is its own case, so a new one fails the compiler.
+ *
+ * - `committed`: the record says `canceled` (this call or another wrote it);
+ *   what the world says is a separate read.
+ * - `settled`: the commit cannot end in `canceled` and this is the honest answer.
  */
-async function commitWithoutEngine(
+type CancellationCommit =
+  | { readonly kind: 'committed' }
+  | { readonly kind: 'settled'; readonly outcome: ControllerRecovery };
+
+async function settleCancellationCommit(
   dependencies: GoalControlDependencies,
   record: GoalState,
-): Promise<ControllerRecovery> {
+): Promise<CancellationCommit> {
   const { store, clock } = dependencies;
   let current = record;
-  for (let attempt = 0; attempt < ENGINE_LESS_COMMIT_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < CANCELLATION_COMMIT_ATTEMPTS; attempt += 1) {
     const committed = await commitCancellation(store, current, clock.now());
     switch (committed.status) {
       case 'applied':
       case 'duplicate':
       case 'not-needed':
-        return {
-          outcome: 'cancellation-pending',
-          awaiting: ['durable-engine'],
-          detail: 'The cancellation is recorded, but there is no durable engine to read it back.',
-        };
+        return { kind: 'committed' };
       case 'stale':
+      case 'rejected':
         // Late, out of order, or conflicting: the record it carries is the
         // authoritative one, so the decision is made again against it.
+        if (committed.record.status === 'canceled') return { kind: 'committed' };
         if (isTerminalGoalStatus(committed.record.status)) {
-          return committed.record.status === 'canceled'
-            ? {
-                outcome: 'cancellation-pending',
-                awaiting: ['durable-engine'],
-                detail:
-                  'The cancellation is recorded, but there is no durable engine to read it back.',
-              }
-            : { outcome: 'already-terminal' };
+          return { kind: 'settled', outcome: { outcome: 'already-terminal' } };
+        }
+        if (committed.status === 'rejected') {
+          return {
+            kind: 'settled',
+            outcome: {
+              outcome: 'unrecoverable',
+              detail: `The cancellation could not be committed: ${committed.reason}.`,
+            },
+          };
         }
         current = committed.record;
         break;
-      case 'rejected':
-        if (committed.reason === 'terminal') {
-          return committed.record.status === 'canceled'
-            ? {
-                outcome: 'cancellation-pending',
-                awaiting: ['durable-engine'],
-                detail:
-                  'The cancellation is recorded, but there is no durable engine to read it back.',
-              }
-            : { outcome: 'already-terminal' };
-        }
-        return {
-          outcome: 'unrecoverable',
-          detail: `The cancellation could not be committed: ${committed.reason}.`,
-        };
       case 'missing':
-        return { outcome: 'not-found' };
+        return { kind: 'settled', outcome: { outcome: 'not-found' } };
       case 'corrupt':
         return {
-          outcome: 'unrecoverable',
-          detail: UNREADABLE_RECORD_DETAIL(record.goalRunId),
+          kind: 'settled',
+          outcome: { outcome: 'unrecoverable', detail: UNREADABLE_RECORD_DETAIL(record.goalRunId) },
         };
     }
   }
   // Every round lost to a concurrent writer and the goal is still not canceled.
   // The marker is recorded and the next sweep commits it.
   return {
-    outcome: 'cancellation-pending',
-    awaiting: ['goal-record'],
-    detail: 'The cancellation is recorded, but committing it kept losing to concurrent writers.',
+    kind: 'settled',
+    outcome: {
+      outcome: 'cancellation-pending',
+      awaiting: ['goal-record'],
+      detail: 'The cancellation is recorded, but committing it kept losing to concurrent writers.',
+    },
   };
+}
+
+/**
+ * A recorded cancellation with no durable engine: committing it needs no
+ * engine, but everything the engine would have stopped is unread, so a
+ * committed record is `cancellation-pending` awaiting the engine, never `canceled`.
+ */
+async function commitWithoutEngine(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+): Promise<ControllerRecovery> {
+  const result = await settleCancellationCommit(dependencies, record);
+  return result.kind === 'settled'
+    ? result.outcome
+    : {
+        outcome: 'cancellation-pending',
+        awaiting: ['durable-engine'],
+        detail: 'The cancellation is recorded, but there is no durable engine to read it back.',
+      };
 }
 
 async function recoverController(

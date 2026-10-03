@@ -583,6 +583,84 @@ describe('a goal recovery meets with no durable engine', () => {
   });
 });
 
+describe('a recorded cancellation of a goal whose controller was cancelled, with an engine', () => {
+  type Commit = Awaited<ReturnType<ReturnType<typeof createGoalStore>['applyTransition']>>;
+
+  async function recoverWithCommit(
+    answer: (calls: number, real: () => Promise<Commit>, marked: GoalState) => Promise<Commit>,
+  ) {
+    const store = await runningGoal();
+    await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    const marked = await store.get('g1');
+    if (marked === undefined) throw new Error('the marked goal is missing');
+    let calls = 0;
+    const scripted = {
+      ...store,
+      applyTransition: (...args: Parameters<typeof store.applyTransition>) => {
+        calls += 1;
+        return answer(calls, () => store.applyTransition(...args), marked);
+      },
+    };
+    const workflows: Record<string, string> = { 'goal:g1': 'cancelled', 'goal-g1-a0': 'cancelled' };
+    const { engine } = scriptedEngine({ workflows });
+    const { control } = dependencies(scripted, engine);
+    return { entry: await recoverGoal(control, 'g1'), store, calls: () => calls };
+  }
+
+  it('retries a commit that lost to a concurrent writer and then reads the world back', async () => {
+    const { entry, store, calls } = await recoverWithCommit((call, real, marked) =>
+      call === 1 ? Promise.resolve({ status: 'stale', record: marked }) : real(),
+    );
+
+    expect(entry).toMatchObject({ outcome: 'canceled' });
+    expect(calls()).toBeGreaterThan(1);
+    const committed = await store.get('g1');
+    expect(committed?.status).toBe('canceled');
+  });
+
+  it('answers pending on the goal record, not running, when every commit loses', async () => {
+    const { entry } = await recoverWithCommit((_call, _real, marked) =>
+      Promise.resolve({ status: 'stale', record: marked }),
+    );
+
+    expect(entry).toMatchObject({ outcome: 'cancellation-pending', awaiting: ['goal-record'] });
+  });
+
+  it('answers already-terminal when the record ended another way', async () => {
+    const { entry } = await recoverWithCommit((_call, _real, marked) =>
+      Promise.resolve({
+        status: 'rejected',
+        reason: 'terminal',
+        record: { ...marked, status: 'failed' },
+      }),
+    );
+
+    expect(entry).toMatchObject({ outcome: 'already-terminal' });
+  });
+
+  it('answers not-found when the record is gone', async () => {
+    const { entry } = await recoverWithCommit(() => Promise.resolve({ status: 'missing' }));
+
+    expect(entry).toMatchObject({ outcome: 'not-found' });
+  });
+
+  it('names the cause when the record is unreadable or the write is refused', async () => {
+    const corrupt = await recoverWithCommit(() => Promise.resolve({ status: 'corrupt' }));
+    expect(corrupt.entry).toMatchObject({
+      outcome: 'unrecoverable',
+      detail: expect.stringContaining('unreadable'),
+    });
+
+    const refused = await recoverWithCommit((_call, _real, marked) =>
+      Promise.resolve({ status: 'rejected', reason: 'oversized', record: marked }),
+    );
+    expect(refused.entry).toMatchObject({
+      outcome: 'unrecoverable',
+      detail: expect.stringContaining('oversized'),
+    });
+  });
+});
+
 describe('a running controller whose recorded cancellation cannot be signalled', () => {
   it('is diagnosed and ended, rather than left parked while the forwarder stands down', async () => {
     const store = await runningGoal();
