@@ -45,6 +45,7 @@ import { GOAL_CANCEL_SIGNAL, goalInputFeedbackFor } from '@lostgradient/operativ
 import { WorkflowTeardownPendingError } from '@lostgradient/weft';
 
 import { settleCanceledGoal, unfinishedAfterCancellation } from './goal-cancellation';
+import { cleanUpGoal, isCleanupDone } from './goal-cleanup';
 import {
   attemptToStop,
   commitCancellation,
@@ -458,10 +459,41 @@ async function settleCommittedCancellation(
   return { goalRunId: record.goalRunId, outcome: 'already-terminal' };
 }
 
+/** A closure was committed but the cleanup it owes was not recorded as finished. */
+const owesCleanup = (record: GoalState): boolean =>
+  record.closedAt !== undefined && record.cleanedUpAt === undefined;
+
 /** Whether a record still has anything for recovery to do. */
 const needsRecovery = (record: GoalState): boolean =>
   !isTerminalGoalStatus(record.status) ||
-  (record.status === 'canceled' && record.closedAt === undefined);
+  (record.status === 'canceled' && record.closedAt === undefined) ||
+  owesCleanup(record);
+
+/**
+ * Finishes the checkpoint cleanup a closed goal still owes: the process that
+ * committed the closure died before it finished, or a part could not be pruned
+ * then. Recorded on the goal only once nothing is left owed, so a part that
+ * still cannot be pruned is tried again by the next boot or `close()`.
+ */
+async function finishOwedCleanup(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+): Promise<void> {
+  if (!owesCleanup(record) || dependencies.isClosing()) return;
+  const cleanup = await cleanUpGoal(dependencies, record);
+  if (isCleanupDone(cleanup)) {
+    await dependencies.store.markCleanedUp(record.goalRunId, dependencies.clock.nowISO());
+    return;
+  }
+  if (cleanup.status === 'failed') {
+    dependencies.diagnose({
+      level: 'error',
+      scope: 'goals',
+      message: `[bureau] Could not apply checkpoint retention to the closed goal "${record.goalRunId}"; it is retried at the next boot or close(): ${describe(cleanup.error)}`,
+      cause: cleanup.error,
+    });
+  }
+}
 
 /** Recovers one goal. Never throws. */
 export async function recoverGoal(
@@ -473,9 +505,13 @@ export async function recoverGoal(
   if (isTerminalGoalStatus(record.status)) {
     // A goal whose `canceled` is committed may still have its controller or
     // attempt run to stop, if the process that committed it died first.
-    return record.status === 'canceled'
-      ? settleCommittedCancellation(dependencies, record)
-      : { goalRunId, outcome: 'already-terminal' };
+    const settled: BureauGoalRecoveryEntry =
+      record.status === 'canceled'
+        ? await settleCommittedCancellation(dependencies, record)
+        : { goalRunId, outcome: 'already-terminal' };
+    // Only once nothing is left to stop: pruning a history something still reads would lose it.
+    if (settled.outcome === 'already-terminal') await finishOwedCleanup(dependencies, record);
+    return settled;
   }
   let controller: ControllerRecovery;
   try {

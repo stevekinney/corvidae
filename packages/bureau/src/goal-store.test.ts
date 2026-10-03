@@ -1186,6 +1186,31 @@ describe('createGoalStore control-plane writes', () => {
     expect(again).toMatchObject({ status: 'unchanged', record: { closedAt: 'closed-at' } });
   });
 
+  it('records the cleanup a closure owes once, and only for a goal that was closed', async () => {
+    const { store } = setup();
+    await created(store);
+    applied(
+      await store.applyTransition(
+        transition(1, 'failed', { terminalReason: 'unsupported-validation' }),
+      ),
+    );
+
+    expect(await store.markCleanedUp(GOAL, at())).toMatchObject({
+      status: 'rejected',
+      reason: 'not-closed',
+    });
+    await store.close(GOAL, 'closed-at');
+    const cleaned = await store.markCleanedUp(GOAL, 'cleaned-at');
+    const again = await store.markCleanedUp(GOAL, 'later');
+
+    expect(cleaned).toMatchObject({
+      status: 'updated',
+      record: { closedAt: 'closed-at', cleanedUpAt: 'cleaned-at' },
+    });
+    expect(again).toMatchObject({ status: 'unchanged', record: { cleanedUpAt: 'cleaned-at' } });
+    expect(await store.markCleanedUp('missing', at())).toEqual({ status: 'missing' });
+  });
+
   it('is not affected by a transition request racing a cancellation request', async () => {
     const { store } = setup();
     await created(store);

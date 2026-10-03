@@ -275,6 +275,13 @@ export interface GoalState {
   readonly auditLog: readonly GoalAuditEntry[];
   /** Set once by `close()`; terminal records only. */
   readonly closedAt?: string | undefined;
+  /**
+   * Set once the bureau's checkpoint retention has been applied to everything
+   * the goal ran, and only on a closed goal. A goal closed without this is one
+   * whose cleanup is still owed (the process died after committing `closedAt`,
+   * or a part could not be pruned), which the boot sweep finishes.
+   */
+  readonly cleanedUpAt?: string | undefined;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -872,6 +879,7 @@ const TOP_LEVEL_KEYS = [
   'controllerRestarts',
   'auditLog',
   'closedAt',
+  'cleanedUpAt',
   'createdAt',
   'updatedAt',
 ];
@@ -879,7 +887,13 @@ const TOP_LEVEL_KEYS = [
 function isTerminalPairing(value: PlainRecord): boolean {
   const status = value['status'] as GoalRunStatus;
   const reason = value['terminalReason'];
-  if (!isTerminalGoalStatus(status)) return reason === undefined && value['closedAt'] === undefined;
+  if (!isTerminalGoalStatus(status)) {
+    return (
+      reason === undefined && value['closedAt'] === undefined && value['cleanedUpAt'] === undefined
+    );
+  }
+  // Cleanup is the work a closure owes, so only a closed goal can have done it.
+  if (value['cleanedUpAt'] !== undefined && value['closedAt'] === undefined) return false;
   return isGoalRunTerminalReason(reason) && TERMINAL_STATUS_BY_REASON[reason] === status;
 }
 
@@ -1011,6 +1025,7 @@ function isShape(value: PlainRecord): boolean {
     Array.isArray(value['auditLog']) &&
     value['auditLog'].every(isAuditEntry) &&
     isOptionalString(value['closedAt']) &&
+    isOptionalString(value['cleanedUpAt']) &&
     isNonEmptyString(value['createdAt']) &&
     isNonEmptyString(value['updatedAt'])
   );

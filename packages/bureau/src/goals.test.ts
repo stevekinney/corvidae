@@ -12,12 +12,10 @@ import {
   type RunnableAgent,
   stopWhen,
 } from '@lostgradient/operative';
-import { createToolbox } from 'armorer';
-import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { GoalState } from './goal-state';
-import { createRuntimeComposition } from './runtime-composition';
 import {
   cancelUntilSettled,
   CHECK,
@@ -36,6 +34,7 @@ import {
   workflowStatus,
 } from './testing/goal-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { spyOnPrune } from './testing/prune-spy.test-support';
 import type { Bureau } from './types';
 
 const open: Bureau[] = [];
@@ -667,34 +666,6 @@ describe('bureau.goals', () => {
     });
 
     describe("an attempt's checkpoint history", () => {
-      type Prune = (
-        workflowId: string,
-        options: { keepLast: number; signal?: AbortSignal },
-      ) => Promise<unknown>;
-
-      /** Spies on the durable engine's prune, which every bureau's engine shares through its prototype. */
-      async function spyOnPrune() {
-        const probe = await createRuntimeComposition({
-          generate: () => Promise.resolve({ content: 'x', toolCalls: [] }),
-          toolbox: createToolbox([]),
-          storage: { type: 'memory' },
-          durableExecution: true,
-          stopWhen: stopWhen.noToolCalls(),
-        });
-        const prototype = Object.getPrototypeOf(probe.durable!.engine) as {
-          pruneCheckpoints: Prune;
-        };
-        probe.durable!.engine[Symbol.dispose]?.();
-        probe.disposeStorage?.();
-        const original = prototype.pruneCheckpoints;
-        return {
-          spy: spyOn(prototype, 'pruneCheckpoints'),
-          original,
-          prunedIds: (spy: { mock: { calls: unknown[][] } }) =>
-            spy.mock.calls.map((call) => call[0] as string),
-        };
-      }
-
       async function retriedGoal() {
         let calls = 0;
         const { bureau } = await boot({
@@ -744,15 +715,28 @@ describe('bureau.goals', () => {
               : original.call(this, workflowId, options);
           });
 
-          expect(await bureau.goals.close('g1')).toMatchObject({
+          const unresolved = await bureau.goals.close('g1');
+          expect(unresolved).toMatchObject({
             outcome: 'closed',
             cleanup: { status: 'unresolved', reason: 'persistence-failed' },
           });
+          // Owed, so the next boot or close() finishes it.
+          expect(
+            unresolved.outcome === 'closed' ? unresolved.goal.cleanedUpAt : 'x',
+          ).toBeUndefined();
+          const unmarked = await bureau.goals.get('g1');
+          expect(unmarked?.cleanedUpAt).toBeUndefined();
           failing = false;
-          expect(await bureau.goals.close('g1')).toMatchObject({
+          const completed = await bureau.goals.close('g1');
+          expect(completed).toMatchObject({
             outcome: 'closed',
             cleanup: { status: 'completed' },
           });
+          expect(
+            completed.outcome === 'closed' ? completed.goal.cleanedUpAt : undefined,
+          ).toBeDefined();
+          const reread = await bureau.goals.get('g1');
+          expect(reread?.cleanedUpAt).toBeDefined();
         } finally {
           spy.mockRestore();
         }

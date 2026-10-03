@@ -109,6 +109,7 @@ export function dependencies(
     },
     startAttempt: () => Promise.reject(new Error('never starts an attempt')),
     isClosing: () => false,
+    cleanupWorkflow: () => Promise.resolve({ status: 'not-required' }),
     ...extra,
   };
   return { control, diagnostics, stopped };

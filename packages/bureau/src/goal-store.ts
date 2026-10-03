@@ -25,7 +25,7 @@
  *   state, so a replay of an older transition answers `stale` with the
  *   authoritative record, which a controller adopts.
  * - The control plane writes the cancellation marker, the controller
- *   restart count (with its audit entry, in the same commit), and `closedAt`. These advance `revision` but never
+ *   restart count (with its audit entry, in the same commit), `closedAt`, and `cleanedUpAt`. These advance `revision` but never
  *   `transitionSeq`, so they can interleave with a controller transition;
  *   the transition's CAS loop re-reads and re-evaluates. Once a
  *   cancellation marker is present the marker wins: the only transition the
@@ -133,6 +133,8 @@ export type GoalCreation =
 export type GoalControlRejection =
   | 'terminal'
   | 'not-terminal'
+  /** Cleanup is recorded only for a goal that was closed. */
+  | 'not-closed'
   /** The audit log is at its cap; a restart cannot be counted without dropping an entry. */
   | 'audit-log-full';
 
@@ -194,6 +196,11 @@ export interface GoalStore {
   ): Promise<GoalControlResult>;
   /** Sets `closedAt` once. A non-terminal goal is `rejected`. */
   close(goalRunId: string, at: string): Promise<GoalControlResult>;
+  /**
+   * Sets `cleanedUpAt` once, recording that a closed goal's checkpoint history
+   * has been pruned. A goal that is not closed is `rejected` (`not-closed`).
+   */
+  markCleanedUp(goalRunId: string, at: string): Promise<GoalControlResult>;
 }
 
 /** What a write left behind, as the store's observer sees it. */
@@ -457,6 +464,13 @@ export function createGoalStore(
         if (!isTerminal(current.status)) return refuse(current, 'not-terminal');
         if (current.closedAt !== undefined) return unchanged(current);
         return { outcome: 'write', next: { ...current, closedAt: at, updatedAt: at } };
+      });
+    },
+    markCleanedUp(goalRunId, at) {
+      return control(goalRunId, (current) => {
+        if (current.closedAt === undefined) return refuse(current, 'not-closed');
+        if (current.cleanedUpAt !== undefined) return unchanged(current);
+        return { outcome: 'write', next: { ...current, cleanedUpAt: at, updatedAt: at } };
       });
     },
   };

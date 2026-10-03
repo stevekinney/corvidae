@@ -48,6 +48,7 @@ export interface BootOptions<D extends AgentDefinitions> {
   readonly validators?: readonly Validator[];
   readonly resolveFreshAttemptSource?: FreshAttemptSourceResolver;
   readonly diagnostics?: ReturnType<typeof createDiagnostics>;
+  readonly checkpointRetention?: { readonly keepLast: number };
 }
 
 /** A bureau over `path` that recovers whatever an earlier process left behind. */
@@ -59,6 +60,9 @@ export async function bootOver<D extends AgentDefinitions>(options: BootOptions<
     ...(options.resolveFreshAttemptSource === undefined
       ? {}
       : { resolveFreshAttemptSource: options.resolveFreshAttemptSource }),
+    ...(options.checkpointRetention === undefined
+      ? {}
+      : { checkpointRetention: options.checkpointRetention }),
     storage: { type: 'sqlite', path: options.path },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },

@@ -181,7 +181,9 @@ export type BureauGoalCloseOutcome =
    * run, the least favorable of them: `not-required` when the policy keeps
    * everything or the goal never had a workflow, `completed` once pruned, and
    * `unresolved` or `failed` when any could not be, which `close()` again
-   * retries. A bureau with no durable engine cannot look for a
+   * retries. `cleanedUpAt` is set on the goal only once nothing is left owed, so a
+   * closure whose cleanup was interrupted (a crash, an unreachable engine) is
+   * finished by the next boot with no call. A bureau with no durable engine cannot look for a
    * controller, so it answers `unresolved` (`unreachable`), never `not-required`.
    */
   | {

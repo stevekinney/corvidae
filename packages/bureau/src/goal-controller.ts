@@ -6,6 +6,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   buildGoalForcedFinish,
+  type CleanupAcknowledgement,
   decideCancellation,
   decideDeterminismRequirement,
   GOAL_WORKFLOW_TYPE,
@@ -35,6 +36,12 @@ export interface GoalControlDependencies {
   /** The same start-or-adopt the controller's activity uses, for a recovery that must start a run itself. */
   readonly startAttempt: GoalWorkflowPorts['startAttempt'];
   readonly isClosing: () => boolean;
+  /**
+   * Applies the bureau's checkpoint retention to a terminal workflow's history
+   * (the goal's controller, or one of its attempts' runs) and says truthfully
+   * how it went. Never rejects.
+   */
+  readonly cleanupWorkflow: (workflowId: string) => Promise<CleanupAcknowledgement>;
 }
 
 /** Weft's own statuses for a workflow that has stopped for good. */
