@@ -72,7 +72,7 @@ describe('bureau.goals.create with input the types do not reach', () => {
     'answers a typed rejection for %s and writes nothing',
     async (_name, override) => {
       const bureau = await boot();
-      const outcome = await bureau.goals.create(goalRequest(override as never));
+      const outcome = await bureau.goals.create(goalRequest(override));
       expect(outcome.outcome).toBe('rejected');
       expect(await bureau.goals.list()).toEqual([]);
     },

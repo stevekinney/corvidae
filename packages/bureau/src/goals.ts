@@ -286,11 +286,11 @@ export function createBureauGoals<TName extends string = string>(
       return resolution.reason === 'missing'
         ? rejected(
             'validator-missing',
-            `The validator "${String(validator.name)}@${String(validator.version)}" is not registered.`,
+            `The validator "${validator.name}@${validator.version}" is not registered.`,
           )
         : rejected(
             'validator-version-mismatch',
-            `The validator "${String(validator.name)}" has no version "${String(validator.version)}".`,
+            `The validator "${validator.name}" has no version "${validator.version}".`,
             resolution.availableVersions,
           );
     }

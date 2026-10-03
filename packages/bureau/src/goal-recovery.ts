@@ -537,7 +537,7 @@ async function startWithinBudget(
 ): Promise<Awaited<ReturnType<GoalControlDependencies['startAttempt']>> | 'timed-out'> {
   const { timers, diagnose } = dependencies;
   const abandon = new AbortController();
-  let handle: ReturnType<typeof timers.setTimeout> | undefined;
+  let handle: ReturnType<typeof timers.setTimeout>;
   const expired = new Promise<'timed-out'>((resolve) => {
     handle = timers.setTimeout(() => {
       abandon.abort();
