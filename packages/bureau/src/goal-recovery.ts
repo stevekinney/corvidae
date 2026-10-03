@@ -527,10 +527,10 @@ export async function recoverEveryGoal(
   const failures: { goalRunId: string; reason: string }[] = [];
   let records: GoalState[];
   try {
-    const stored = await dependencies.store.list();
-    records = stored.filter((record) => needsRecovery(record) && allows(record));
+    const scanned = await dependencies.store.scan();
+    records = scanned.records.filter((record) => needsRecovery(record) && allows(record));
     if (includeUnreadable) {
-      for (const goalRunId of await dependencies.store.listUnreadable()) {
+      for (const goalRunId of scanned.unreadable) {
         failures.push({ goalRunId, reason: UNREADABLE_RECORD_DETAIL(goalRunId) });
       }
     }

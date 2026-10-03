@@ -347,6 +347,35 @@ describe('createGoalStore create, get, and list', () => {
     expect(await store.isUnreadable('never-stored')).toBe(false);
   });
 
+  // The boot sweep runs while recovered runs are already executing, so each
+  // extra pass it makes over the store lets those runs get further ahead of the
+  // boot that recovered them (the AB-15 and human-wait recovery tests, among
+  // others, subscribe once `createBureau()` returns). It reads the store once.
+  it('finds readable and unreadable records in a single pass over the keys', async () => {
+    const kv = createKv();
+    let listings = 0;
+    const counted: typeof kv = {
+      ...kv,
+      get: (key) => kv.get(key),
+      set: (key, value) => kv.set(key, value),
+      delete: (key) => kv.delete(key),
+      list: (prefix) => {
+        listings += 1;
+        return kv.list(prefix);
+      },
+    };
+    const store = createGoalStore(counted);
+    await store.create(createGoalState(input()));
+    await kv.set(goalRecordKey('bad:id'), 'not json');
+    listings = 0;
+
+    const scanned = await store.scan();
+
+    expect(scanned.records.map((record) => record.goalRunId)).toEqual([GOAL]);
+    expect(scanned.unreadable).toEqual(['bad:id']);
+    expect(listings).toBe(1);
+  });
+
   it('refuses to create a record that is not a fresh pending one', async () => {
     const { store } = setup();
     const state = createGoalState(input());
@@ -946,7 +975,7 @@ describe('createGoalStore applyTransition', () => {
           }
           return kv.conditionalBatch(...args);
         },
-      } as typeof kv;
+      };
       const racingStore = createGoalStore(racing);
 
       const result = applied(await racingStore.applyTransition(transition(1, 'running')));

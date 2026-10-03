@@ -160,6 +160,13 @@ export interface GoalStore {
   /** Every readable record. One that cannot be decoded is left out: see `listUnreadable`. */
   list(): Promise<GoalState[]>;
   /**
+   * `list` and `listUnreadable` from one read of the store. The boot sweep uses
+   * this: it runs while recovered runs are already executing, so a second pass
+   * over the same keys is time those runs spend ahead of the boot that
+   * recovered them.
+   */
+  scan(): Promise<GoalScan>;
+  /**
    * The goal ids whose stored record exists but cannot be decoded. `get` and
    * `list` treat such a record as absent (they fail closed), so this is how a
    * caller tells a permanent fault from absence.
@@ -215,6 +222,12 @@ export interface GoalStoreOptions {
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
+
+/** What one read of every goal record found. */
+export interface GoalScan {
+  readonly records: GoalState[];
+  readonly unreadable: string[];
+}
 
 /** A re-read-and-retry bound for compare-and-swap loss; past it a write reports `stale`. */
 const MAXIMUM_CAS_ATTEMPTS = 16;
@@ -273,6 +286,17 @@ export function createGoalStore(
   async function get(goalRunId: string): Promise<GoalState | undefined> {
     const stored = await read(goalRecordKey(goalRunId));
     return stored.kind === 'found' ? stored.record : undefined;
+  }
+
+  async function scan(): Promise<GoalScan> {
+    const keys = await kv.list(GOAL_RECORD_KEY_PREFIX);
+    const stored = await Promise.all(keys.map(async (key) => ({ key, entry: await read(key) })));
+    return {
+      records: stored.flatMap(({ entry }) => (entry.kind === 'found' ? [entry.record] : [])),
+      unreadable: stored
+        .filter(({ entry }) => entry.kind === 'corrupt')
+        .map(({ key }) => decodeGoalRunIdFromKey(key)),
+    };
   }
 
   async function mutate<Result extends GoalTransitionResult | GoalControlResult>(
@@ -381,17 +405,14 @@ export function createGoalStore(
       return existing === undefined ? { status: 'duplicate' } : { status: 'duplicate', existing };
     },
     get,
+    scan,
     async list() {
-      const keys = await kv.list(GOAL_RECORD_KEY_PREFIX);
-      const stored = await Promise.all(keys.map((key) => read(key)));
-      return stored.flatMap((entry) => (entry.kind === 'found' ? [entry.record] : []));
+      const { records } = await scan();
+      return records;
     },
     async listUnreadable() {
-      const keys = await kv.list(GOAL_RECORD_KEY_PREFIX);
-      const stored = await Promise.all(keys.map(async (key) => ({ key, entry: await read(key) })));
-      return stored
-        .filter(({ entry }) => entry.kind === 'corrupt')
-        .map(({ key }) => decodeGoalRunIdFromKey(key));
+      const { unreadable } = await scan();
+      return unreadable;
     },
     async isUnreadable(goalRunId) {
       const stored = await read(goalRecordKey(goalRunId));
