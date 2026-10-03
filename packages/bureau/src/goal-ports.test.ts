@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
 import {
+  GoalAttemptInvalidCostEstimationError,
   GoalAttemptNotDurableCapableError,
   type GoalAttemptRun,
   type GoalAttemptStart,
@@ -573,6 +574,21 @@ describe('startAttempt', () => {
     },
   );
 
+  it('ends the attempt with invalid-cost-estimation instead of retrying an estimator that cannot be persisted', async () => {
+    const { ports, watched } = await world({
+      startAttemptRun: () => ({
+        run: {} as never,
+        durablyStarted: Promise.reject(new GoalAttemptInvalidCostEstimationError('has a cycle')),
+      }),
+    });
+
+    expect(await ports.startAttempt(startRequest())).toEqual({
+      status: 'failed',
+      detail: 'Starting the inner run failed: invalid-cost-estimation: has a cycle',
+    });
+    expect(watched).toEqual([]);
+  });
+
   describe('a cancellation landing between the first read and each write', () => {
     // Requests the cancellation as the Nth read of the attempt's session begins.
     const cancelOnSessionRead = async (nth: number, options: Parameters<typeof world>[0] = {}) => {
@@ -783,6 +799,28 @@ describe('runValidator', () => {
       });
     },
   );
+
+  it('reads the result with the persisted estimator even when the goal has no cost bound', async () => {
+    const seen: Array<number | undefined> = [];
+    const { ports } = await evaluating({
+      validators: [
+        {
+          identity: CHECK,
+          validate: ({ result }) => {
+            seen.push(result.costEstimate?.totalCost);
+            return { kind: 'pass', evidence: [] };
+          },
+        },
+      ],
+      resolveCostEstimation: () => Promise.resolve({ model: 'gpt-4o' }),
+    });
+
+    await ports.runValidator(request);
+
+    // The validator sees what the live run and the in-memory controller show it.
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeDefined();
+  });
 
   it('fails the activity, to be retried, when the cost estimator fails for a goal with a cost bound', async () => {
     let fail = true;

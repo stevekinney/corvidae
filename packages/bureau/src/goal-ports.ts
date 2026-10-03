@@ -56,6 +56,7 @@ import {
 } from '@lostgradient/operative';
 
 import {
+  GoalAttemptInvalidCostEstimationError,
   GoalAttemptNotDurableCapableError,
   type GoalAttemptRun,
   type GoalAttemptStart,
@@ -379,7 +380,10 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       if (raced !== undefined) return raced;
       // A permanent property of the agent is a verdict on the attempt, not a
       // fault to retry.
-      if (error instanceof GoalAttemptNotDurableCapableError) {
+      if (
+        error instanceof GoalAttemptNotDurableCapableError ||
+        error instanceof GoalAttemptInvalidCostEstimationError
+      ) {
         return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(`${error.reason}: ${error.message}`));
       }
       throw error;
@@ -447,13 +451,12 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         `Attempt ${request.attemptIndex} of goal "${request.goalRunId}" cannot be read.`,
       );
     }
-    // A failing resolver fails this activity, which is retried, rather than
-    // reading the result without an estimate and recording the attempt's cost as
-    // unaccounted for good.
-    const costEstimation =
-      record.bounds.maximumTotalCostUsd === undefined
-        ? undefined
-        : await resolveCostEstimation(attempt.runId);
+    // Always rebuilt with the estimator the run was started with, so the
+    // validator sees the same `costEstimate` the live run and the in-memory
+    // controller show it, bound or not. A failing resolver fails this activity,
+    // which is retried, rather than reading the result without an estimate and
+    // recording the attempt's cost as unaccounted for good.
+    const costEstimation = await resolveCostEstimation(attempt.runId);
     // A read that throws is a fault, not a verdict: it propagates so the
     // activity is retried, the same as a failing resolver above. Recording it as
     // an `error` outcome would end the goal over a storage hiccup that the next

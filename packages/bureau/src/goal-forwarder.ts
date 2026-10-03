@@ -60,9 +60,8 @@ export interface AttemptForwarderDependencies {
   readonly getDurable: () => DurableActiveRunContext | undefined;
   /**
    * The cost estimation the attempt's run was started with, as persisted with it
-   * (never resolved from the catalog afterwards). Asked only for
-   * a goal with a cost bound, because only then does a missing estimate change a
-   * decision (the attempt cannot be accounted, so it fails).
+   * (never resolved from the catalog afterwards). Always asked: the result is
+   * rebuilt with it whether or not the goal bounds cost.
    */
   readonly resolveCostEstimation: (runId: string) => Promise<RunOptions['costEstimation']>;
   /** Commits a finished attempt's transcript to its session before the controller is told it ended. */
@@ -129,14 +128,15 @@ export function createAttemptForwarder(
     ) {
       return 'not-needed';
     }
-    // A resolver that fails here is not an attempt that has no cost: reading the
+    // The result is always rebuilt with the estimator the run was started with,
+    // so the signal and the goal's usage carry the cost the live run had whether
+    // or not the goal bounds cost. The bound only decides whether a MISSING
+    // estimate is fatal (the controller fails an attempt it cannot account). A
+    // resolver that fails here is not an attempt that has no cost: reading the
     // result without an estimate would be recorded as `costUnaccounted` and end
     // the goal over a fault that may be gone by the next try. The failure
     // propagates, so the forwarder retries it and recovery sends the signal.
-    const costEstimation =
-      record.bounds.maximumTotalCostUsd === undefined
-        ? undefined
-        : await resolveCostEstimation(target.runId);
+    const costEstimation = await resolveCostEstimation(target.runId);
     const reading = await readDurableRunResult(durable, target.runId, { runtime, costEstimation });
     if (reading.status === 'missing') return 'missing';
     if (reading.status === 'not-terminal') return 'watching';

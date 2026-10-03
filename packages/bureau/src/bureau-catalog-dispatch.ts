@@ -83,10 +83,22 @@ export interface GoalAttemptStart {
 function goalAttemptCostEstimation(
   costEstimation: GoalAttemptCostEstimation | undefined,
 ): GoalAttemptCostEstimation {
-  const selection: unknown =
-    costEstimation === undefined ? null : JSON.parse(JSON.stringify(costEstimation));
+  let selection: unknown;
+  try {
+    selection = costEstimation === undefined ? null : JSON.parse(JSON.stringify(costEstimation));
+  } catch (error) {
+    // A cycle, a bigint, or a throwing `toJSON`: the agent resolves the same
+    // way on every try, so this is the agent's property, not a transient fault.
+    throw new GoalAttemptInvalidCostEstimationError(
+      `The agent declared a cost estimation that cannot be persisted as plain JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
   if (!isGoalAttemptCostEstimation(selection)) {
-    throw new Error('The agent declared a cost estimation that cannot be persisted as plain JSON.');
+    throw new GoalAttemptInvalidCostEstimationError(
+      'The agent declared a cost estimation that cannot be persisted as plain JSON.',
+    );
   }
   return selection;
 }
@@ -107,6 +119,21 @@ export class GoalAttemptNotDurableCapableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'GoalAttemptNotDurableCapableError';
+  }
+}
+
+/**
+ * COR-851 — a goal attempt's agent declared a cost estimator that cannot be
+ * persisted as plain JSON (a cycle, a bigint, a throwing `toJSON`, fields the
+ * decoder does not know, or an invalid price). The agent resolves the same way
+ * on every try, so the attempt ends with this reason instead of failing an
+ * activity that would retry the same refusal forever.
+ */
+export class GoalAttemptInvalidCostEstimationError extends Error {
+  readonly reason = 'invalid-cost-estimation';
+  constructor(message: string) {
+    super(message);
+    this.name = 'GoalAttemptInvalidCostEstimationError';
   }
 }
 
@@ -258,6 +285,29 @@ export function createCatalogDispatcher({
     // handle (already fully built by the time this resolver settles) in a
     // one-shot synthetic agent reuses its buffering/abort-forwarding
     // machinery instead of reimplementing it.
+    /**
+     * AB-260: a catalog agent's own resolver builds its RunOptions independently
+     * of `runtime.createRunRuntime` (AB-240's dispatch path), so without this it
+     * would fall back to operative's OWN default RuntimeServices rather than this
+     * bureau's composed instance — breaking "two bureaus in one process never
+     * share a clock" for catalog-dispatched runs. Never overrides a resolver that
+     * deliberately set its own `runtime`.
+     *
+     * COR-1265 criterion 3b. The agent's own tier is already inside
+     * `resolvedOptions.hooks`, from its own `buildRunOptions`. Bureau's
+     * invariants — identity and both guardrails, the registrations that close
+     * over nothing run-specific — go in front of it, so a durably dispatched
+     * catalog run is governed by the same policy every other dispatch shape is.
+     * AB-240's separation is untouched: this adds a hook tier, not a provider, a
+     * toolbox or a generate.
+     */
+    const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
+      const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
+      return {
+        ...withRuntime,
+        hooks: mergeHookRegistries(runtime.createBureauInvariantHooks(), withRuntime.hooks),
+      };
+    };
     const resolveDurableAgent = async (): Promise<RunnableAgent<unknown, boolean>> => {
       let resolvedOptions: RunOptions;
       try {
@@ -268,26 +318,9 @@ export function createCatalogDispatcher({
         // arrow-function implementation) would otherwise lose its receiver
         // under strict-mode ESM. Matches `createLazyAgent`'s own resolver
         // forwarding for the same reason.
-        resolvedOptions = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](input, context);
-        // AB-260: a catalog agent's own resolver builds its RunOptions
-        // independently of `runtime.createRunRuntime` (AB-240's dispatch
-        // path), so without this it would fall back to operative's OWN
-        // default RuntimeServices rather than this bureau's composed
-        // instance — breaking "two bureaus in one process never share a
-        // clock" for catalog-dispatched runs. Never overrides a resolver
-        // that deliberately set its own `runtime`.
-        resolvedOptions = { runtime: runtimeServices, ...resolvedOptions };
-        // COR-1265 criterion 3b. The agent's own tier is already inside
-        // `resolvedOptions.hooks`, from its own `buildRunOptions`. Bureau's
-        // invariants — identity and both guardrails, the registrations that
-        // close over nothing run-specific — go in front of it, so a durably
-        // dispatched catalog run is governed by the same policy every other
-        // dispatch shape is. AB-240's separation is untouched: this adds a hook
-        // tier, not a provider, a toolbox or a generate.
-        resolvedOptions = {
-          ...resolvedOptions,
-          hooks: mergeHookRegistries(runtime.createBureauInvariantHooks(), resolvedOptions.hooks),
-        };
+        resolvedOptions = composeResolvedOptions(
+          await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](input, context),
+        );
       } catch (error) {
         // Review round 2 (Codex): `typeof resolver === 'function'` above
         // is true for EVERY `createLazyAgent`-wrapped agent unconditionally
@@ -363,9 +396,8 @@ export function createCatalogDispatcher({
         if (goalAttempt === undefined) {
           throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
         }
-        // Only the same attempt's own claim, left by a start that died before
-        // its workflow existed, may be completed. A claim another run, another
-        // goal, or another principal holds is never overwritten.
+        // Only the same attempt's own claim may be continued. A claim another
+        // run, another goal, or another principal holds is never touched.
         const existing = await runtime.loadCatalogRunRecoveryRecord(runId);
         const owned =
           existing.status === 'found' &&
@@ -379,7 +411,25 @@ export function createCatalogDispatcher({
             'CONFLICT',
           );
         }
-        await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
+        // The winning claim is immutable. Two at-least-once executions of one
+        // attempt can overlap, and either may be the one whose workflow the
+        // engine accepts, so a loser never rewrites what the winner wrote: the
+        // record has to describe the workflow that runs, and the one claim
+        // does. A workflow this execution still has to start is built from that
+        // claim's own input and estimator, not from what this execution
+        // resolved. The claim's definition revision cannot be rebuilt (the
+        // catalog holds only the current one); recovery pins it and warns on a
+        // drift, and this start is no different.
+        const claimed = existing.record;
+        resolvedOptions = composeResolvedOptions(
+          await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](claimed.input, context),
+        );
+        if (claimed.costEstimation !== undefined) {
+          resolvedOptions = {
+            ...resolvedOptions,
+            costEstimation: claimed.costEstimation ?? undefined,
+          };
+        }
       }
       const activeRun = createActiveRun(
         resolvedOptions,

@@ -175,7 +175,10 @@ const finishedRun = async (context: DurableActiveRunContext, content = 'all done
 
 describe('createAttemptForwarder', () => {
   it('sends the ended attempt to its controller under a stable signal id', async () => {
-    const { durable, sent, forwarder, costRunIds } = await world();
+    const { durable, sent, forwarder, costRunIds } = await world(
+      {},
+      { resolveCostEstimation: () => Promise.resolve(undefined) },
+    );
     await finishedRun(durable);
 
     expect(await forwarder.reconcile(target)).toBe('signal-resent');
@@ -189,8 +192,22 @@ describe('createAttemptForwarder', () => {
       },
     ]);
     expect(attemptSignalId('g1', 0)).toBe('attempt-terminal:g1:0');
-    // No cost bound, so the agent's cost estimation is never even asked for.
-    expect(costRunIds).toEqual([]);
+    // The run's persisted estimator is always read, bound or not; this one declared none.
+    expect(costRunIds).toEqual([target.runId]);
+  });
+
+  it('reports the cost of the run even when the goal has no cost bound', async () => {
+    const { durable, sent, forwarder, costRunIds } = await world();
+    await finishedRun(durable);
+
+    await forwarder.reconcile(target);
+
+    // The bound only decides whether a missing estimate is fatal: the terminal
+    // result is rebuilt with the persisted estimator either way, so the signal
+    // and the goal's aggregate usage account for the cost the live run had.
+    expect(costRunIds).toEqual([target.runId]);
+    const payload = sent[0]?.payload as { costUsd?: number };
+    expect(payload.costUsd).toBeGreaterThan(0);
   });
 
   it("commits the attempt's transcript to its session before it tells the controller the attempt ended", async () => {
@@ -414,7 +431,7 @@ describe('createAttemptForwarder', () => {
 
     expect(await forwarder.reconcile(target)).toBe('signal-resent');
     expect(sent.map((signal) => signal.payload)).toEqual([
-      { finishReason: 'stop-condition', steps: 1, tokens: 150 },
+      { finishReason: 'stop-condition', steps: 1, tokens: 150, costUsd: expect.any(Number) },
     ]);
   });
 

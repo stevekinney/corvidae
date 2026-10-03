@@ -20,10 +20,12 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
   createCatalogDispatcher,
+  GoalAttemptInvalidCostEstimationError,
   GoalAttemptNotDurableCapableError,
 } from './bureau-catalog-dispatch';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
+import { lastPromptOf } from './testing/goal-fixtures.test-support';
 
 function createDispatcher(
   shuttingDown: boolean,
@@ -116,6 +118,12 @@ describe('createCatalogDispatcher — startChildRun', () => {
     );
   });
 });
+
+const settle = (started: { durablyStarted: Promise<void> }) =>
+  started.durablyStarted.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
 
 describe('createCatalogDispatcher — startGoalAttemptRun', () => {
   const disposers: Array<() => void> = [];
@@ -246,12 +254,6 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       } as unknown as RuntimeComposition;
       return { runtime, persisted };
     };
-    const settle = (started: { durablyStarted: Promise<void> }) =>
-      started.durablyStarted.then(
-        () => undefined,
-        (error: unknown) => error,
-      );
-
     it.each([
       [
         'a claim another goal holds',
@@ -280,7 +282,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       expect(persisted).toEqual([]);
     });
 
-    it('completes its own claim, rewriting it with the marker', async () => {
+    it('adopts its own claim as it stands and never rewrites it', async () => {
       const { runtime, persisted } = conflicting({
         agentName: 'worker',
         goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
@@ -288,9 +290,248 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
 
       await settle(createDispatcher(false, { runtime }).startGoalAttemptRun(attempt));
 
-      expect(persisted).toEqual([
-        expect.objectContaining({ goalAttempt: { goalRunId: 'g1', attemptIndex: 0 } }),
-      ]);
+      // The winning claim is immutable: a loser of the claim race adopts it, so
+      // the record can only ever describe the execution that wins the workflow.
+      expect(persisted).toEqual([]);
+    });
+  });
+
+  describe('overlapping executions of one attempt', () => {
+    const PRICING = (rate: number) => ({
+      customPricing: {
+        m: { promptCostPerMillionTokens: rate, completionCostPerMillionTokens: rate },
+      },
+    });
+
+    /** A worker whose resolver always declares the given estimator, and which records what it ran. */
+    function priced(costEstimation: unknown, ran: string[]) {
+      const base = createAgent({
+        name: 'worker',
+        generate: async ({ conversation }) => {
+          ran.push(lastPromptOf(conversation));
+          return {
+            content: 'done',
+            toolCalls: [],
+            usage: { prompt: 1_000_000, completion: 1_000_000, total: 2_000_000 },
+          };
+        },
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      const resolve = (
+        base as unknown as Record<
+          symbol,
+          (input: unknown, context: unknown) => Promise<Record<string, unknown>>
+        >
+      )[OPERATIVE_RESOLVE_RUN_OPTIONS];
+      if (resolve === undefined) throw new Error('the worker has no run-option resolver');
+      return Object.create(base, {
+        [OPERATIVE_RESOLVE_RUN_OPTIONS]: {
+          value: (input: unknown, context: unknown) =>
+            resolve.call(base, input, context).then((options) => ({ ...options, costEstimation })),
+        },
+      });
+    }
+
+    async function world(agent: unknown, seeded?: Record<string, unknown>) {
+      const storage = new MemoryStorage();
+      const checkpointStore = createCheckpointStore(
+        textValueStore(storage, { disposeUnderlyingStorage: false }),
+      );
+      const { engine } = await createRunEngine({
+        storage,
+        runWorkflow: createRunWorkflow(checkpointStore),
+        recover: false,
+      });
+      disposers.push(() => engine[Symbol.dispose]());
+      const records = new Map<string, Record<string, unknown>>();
+      if (seeded !== undefined) records.set(attempt.runId, seeded);
+      const writes: unknown[] = [];
+      const runtime = {
+        durable: { engine, checkpointStore },
+        createBureauInvariantHooks: () => undefined,
+        claimCatalogRunRecoveryRecord: async (runId: string, record: Record<string, unknown>) => {
+          if (records.has(runId)) return false;
+          records.set(runId, { schemaVersion: 1, ...record });
+          return true;
+        },
+        loadCatalogRunRecoveryRecord: async (runId: string) => {
+          const record = records.get(runId);
+          return record === undefined ? { status: 'missing' } : { status: 'found', record };
+        },
+        persistCatalogRunRecoveryRecord: async (runId: string, record: Record<string, unknown>) => {
+          writes.push(record);
+          records.set(runId, { schemaVersion: 1, ...record });
+        },
+      } as unknown as RuntimeComposition;
+      const runAttribution = new Map<string, RunAttribution>();
+      const dispatcher = createCatalogDispatcher({
+        agentCatalog: { find: () => agent as never },
+        runtime,
+        runtimeServices: createManualRuntimeServices(),
+        getShutdownPromise: () => undefined,
+        catalogRuns: new Set(),
+        runAttribution,
+        detachBestEffortPromise: () => {},
+        createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+        validateAgentRunInput: () => {},
+        validateBureauRunOptions: () => {},
+        onDurableRunAborted: () => {},
+      });
+      return { dispatcher, records, writes, engine, runAttribution };
+    }
+
+    const firstClaim = {
+      schemaVersion: 1,
+      agentName: 'worker',
+      definitionRevision: 1,
+      input: 'first input',
+      goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+      costEstimation: { model: 'm', pricing: PRICING(1) },
+    };
+
+    it('starts a workflow from the winning claim, never from what it resolves itself', async () => {
+      const ran: string[] = [];
+      const { dispatcher, records, writes } = await world(
+        priced({ model: 'm', pricing: PRICING(10) }, ran),
+        firstClaim,
+      );
+
+      const started = dispatcher.startGoalAttemptRun({ ...attempt, input: 'second input' });
+      await started.durablyStarted;
+      const result = await started.run.result();
+
+      // The claim is exactly what the first execution wrote.
+      expect(writes).toEqual([]);
+      expect(records.get(attempt.runId)).toEqual(firstClaim);
+      // And the workflow ran its input at its rate, not the second execution's.
+      expect(ran).toHaveLength(1);
+      expect(ran[0]).toContain('first input');
+      expect(ran[0]).not.toContain('second input');
+      expect(result.costEstimate?.totalCost).toBeCloseTo(2, 5);
+    });
+
+    it('adopts the claim of an execution whose workflow already exists', async () => {
+      const ran: string[] = [];
+      const { dispatcher, records, writes, engine } = await world(
+        priced({ model: 'm', pricing: PRICING(1) }, ran),
+      );
+      const winner = dispatcher.startGoalAttemptRun({ ...attempt, input: 'first input' });
+      await winner.durablyStarted;
+      const claimed = structuredClone(records.get(attempt.runId));
+
+      const loser = createCatalogDispatcher({
+        agentCatalog: { find: () => priced({ model: 'm', pricing: PRICING(10) }, ran) as never },
+        runtime: {
+          durable: { engine, checkpointStore: {} },
+          createBureauInvariantHooks: () => undefined,
+          claimCatalogRunRecoveryRecord: async () => false,
+          loadCatalogRunRecoveryRecord: async () => ({ status: 'found', record: claimed }),
+          persistCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
+            writes.push(record);
+          },
+        } as unknown as RuntimeComposition,
+        runtimeServices: createManualRuntimeServices(),
+        getShutdownPromise: () => undefined,
+        catalogRuns: new Set(),
+        runAttribution: new Map(),
+        detachBestEffortPromise: () => {},
+        createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+        validateAgentRunInput: () => {},
+        validateBureauRunOptions: () => {},
+        onDurableRunAborted: () => {},
+      });
+      const refusal = await settle(
+        loser.startGoalAttemptRun({ ...attempt, input: 'second input' }),
+      );
+
+      // The workflow is the winner's, so the loser's start is refused by the
+      // engine (the goal port adopts it), and the claim is left alone.
+      expect(refusal).toEqual(expect.objectContaining({ code: 'WorkflowAlreadyExistsError' }));
+      expect(writes).toEqual([]);
+      expect(records.get(attempt.runId)).toEqual(claimed);
+      await winner.run.result();
+    });
+  });
+
+  describe('a resolver that declares an estimator that cannot be persisted', () => {
+    const cyclic: Record<string, unknown> = { model: 'm' };
+    cyclic['self'] = cyclic;
+    const throwingToJson = {
+      model: 'm',
+      toJSON: () => {
+        throw new Error('toJSON failed');
+      },
+    };
+    const price = (value: number) => ({
+      model: 'm',
+      pricing: {
+        customPricing: {
+          m: { promptCostPerMillionTokens: value, completionCostPerMillionTokens: 1 },
+        },
+      },
+    });
+
+    it.each([
+      ['a cycle', cyclic],
+      ['a bigint', { model: 'm', pricing: { customPricing: { m: { x: 1n } } } }],
+      ['a throwing toJSON', throwingToJson],
+      ['extra fields', { model: 'm', extra: true }],
+      ['a negative price', price(-1)],
+      ['a non-finite price', price(Number.NaN)],
+      ['an empty model', { model: '' }],
+    ])('ends the attempt permanently for %s, writing no claim', async (_label, costEstimation) => {
+      const base = createAgent({
+        name: 'worker',
+        generate: async () => ({ content: 'done', toolCalls: [] }),
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      const resolve = (
+        base as unknown as Record<
+          symbol,
+          (input: unknown, context: unknown) => Promise<Record<string, unknown>>
+        >
+      )[OPERATIVE_RESOLVE_RUN_OPTIONS];
+      if (resolve === undefined) throw new Error('the worker has no run-option resolver');
+      const agent = Object.create(base, {
+        [OPERATIVE_RESOLVE_RUN_OPTIONS]: {
+          value: (input: unknown, context: unknown) =>
+            resolve.call(base, input, context).then((options) => ({ ...options, costEstimation })),
+        },
+      });
+      const claims: unknown[] = [];
+      const runtime = {
+        durable: { engine: {}, checkpointStore: {} },
+        createBureauInvariantHooks: () => undefined,
+        claimCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
+          claims.push(record);
+          return true;
+        },
+        persistCatalogRunRecoveryRecord: async () => {},
+      } as unknown as RuntimeComposition;
+      const dispatcher = createCatalogDispatcher({
+        agentCatalog: { find: () => agent as never },
+        runtime,
+        runtimeServices: createManualRuntimeServices(),
+        getShutdownPromise: () => undefined,
+        catalogRuns: new Set(),
+        runAttribution: new Map(),
+        detachBestEffortPromise: () => {},
+        createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+        validateAgentRunInput: () => {},
+        validateBureauRunOptions: () => {},
+        onDurableRunAborted: () => {},
+      });
+
+      const error = await dispatcher.startGoalAttemptRun(attempt).durablyStarted.then(
+        () => undefined,
+        (reason: unknown) => reason,
+      );
+
+      expect(error).toBeInstanceOf(GoalAttemptInvalidCostEstimationError);
+      expect((error as GoalAttemptInvalidCostEstimationError).reason).toBe(
+        'invalid-cost-estimation',
+      );
+      expect(claims).toEqual([]);
     });
   });
 });
