@@ -269,7 +269,9 @@ export function createOwnedGoalEngine<E extends GoalEngine>(
       const options = args[2] as { readonly id?: string } | undefined;
       const id = options?.id;
       if (id !== undefined && isController(id) && !(await ownedController(id))) refuse(id);
-      return (engine.start as (...a: unknown[]) => unknown)(...args);
+      // With the engine as the receiver, stated rather than left to how a cast
+      // call is emitted: Weft's `Engine` reads its internals through `this`.
+      return Reflect.apply(engine.start as (...a: unknown[]) => unknown, engine, args);
     },
     getFinalizerStatus: async (id: string) =>
       isController(id) && !(await ownedController(id)) ? null : engine.getFinalizerStatus(id),
@@ -277,7 +279,7 @@ export function createOwnedGoalEngine<E extends GoalEngine>(
   for (const method of ['signal', 'cancel', 'resume'] as const) {
     overrides[method] = async (id: string, ...rest: unknown[]) => {
       if (isController(id) && !(await ownedController(id))) refuse(id);
-      return (engine[method] as (...a: unknown[]) => unknown)(id, ...rest);
+      return Reflect.apply(engine[method] as (...a: unknown[]) => unknown, engine, [id, ...rest]);
     };
   }
 
