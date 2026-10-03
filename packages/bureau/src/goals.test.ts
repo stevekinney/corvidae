@@ -131,6 +131,40 @@ describe('bureau.goals on input the type system does not reach', () => {
     },
   );
 
+  it.each([[42], [null], [{}], [['why']]])(
+    'cancels a goal whose cancel reason is not text (%p), recording no reason, instead of rejecting over a record the store would refuse',
+    async (reason) => {
+      const bureau = await bootWithGoal();
+
+      const outcome = await bureau.goals.cancel('g-real', { reason } as never);
+
+      expect(['canceled', 'cancellation-pending']).toContain(outcome.outcome);
+      const stored = await bureau.goals.get('g-real');
+      expect(stored?.cancellation).toBeDefined();
+      expect(stored?.cancellation?.reason).toBeUndefined();
+    },
+  );
+
+  it('keeps a text cancel reason', async () => {
+    const bureau = await bootWithGoal();
+
+    await bureau.goals.cancel('g-real', { reason: 'operator asked' });
+
+    expect((await bureau.goals.get('g-real'))?.cancellation?.reason).toBe('operator asked');
+  });
+
+  it.each([[42], [null], [{}]])(
+    'answers a principal that is not text (%p) as no goal, and marks nothing',
+    async (principal) => {
+      const bureau = await bootWithGoal();
+
+      expect(await bureau.goals.cancel('g-real', { principal } as never)).toEqual({
+        outcome: 'not-found',
+      });
+      expect((await bureau.goals.get('g-real'))?.cancellation).toBeUndefined();
+    },
+  );
+
   it.each([
     ['a number', 5],
     ['an array', ['worker']],

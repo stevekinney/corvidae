@@ -45,6 +45,7 @@ import {
 import type {
   BureauGoalActiveWork,
   BureauGoalCancelOptions,
+  BureauGoalCancelOutcome,
   BureauGoalCloseOutcome,
   BureauGoalCreateOutcome,
   BureauGoalListOptions,
@@ -453,10 +454,24 @@ export function createBureauGoals<TName extends string = string>(
     };
   }
 
-  async function cancel(goalRunId: string, given?: BureauGoalCancelOptions) {
+  async function cancel(
+    goalRunId: string,
+    given?: BureauGoalCancelOptions,
+  ): Promise<BureauGoalCancelOutcome> {
     // Untyped input: only an object is a set of options, and `null` is none.
-    const options: BureauGoalCancelOptions =
-      typeof given === 'object' && given !== null ? given : {};
+    const supplied: Record<string, unknown> =
+      typeof given === 'object' && given !== null ? (given as Record<string, unknown>) : {};
+    // Every field is untyped too, and the store refuses a marker whose fields are
+    // not text, which would reject the whole call. A principal that is not text
+    // names no one, so it may act on nothing (fail closed, answered as no goal);
+    // a reason that is not text is dropped, because it only annotates the marker.
+    if (supplied['principal'] !== undefined && typeof supplied['principal'] !== 'string') {
+      return { outcome: 'not-found' };
+    }
+    const options: BureauGoalCancelOptions = {
+      ...(supplied['principal'] === undefined ? {} : { principal: supplied['principal'] }),
+      ...(typeof supplied['reason'] === 'string' ? { reason: supplied['reason'] } : {}),
+    };
     const record = await authorized(goalRunId, options);
     return record === undefined
       ? await absent(goalRunId, options)
