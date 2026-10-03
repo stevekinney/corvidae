@@ -179,6 +179,14 @@ export function createCatalogDispatcher({
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
   startGoalAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
 } {
+  /**
+   * The goal attempt each attribution entry this dispatcher made for one stands
+   * for. Keyed by the entry itself, so it lives and dies with it and an entry
+   * set anywhere else (a recovery reseed, an ordinary run) is never mistaken for
+   * a goal attempt's.
+   */
+  const goalAttemptAttributions = new WeakMap<RunAttribution, GoalAttemptOwner>();
+
   function trackCatalogRun(handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> {
     catalogRuns.add(handle);
     // `detachBestEffortPromise`, not a bare `void ... .finally(...)`: AB-15's
@@ -230,8 +238,24 @@ export function createCatalogDispatcher({
       throw createBureauError('Durable runtime unavailable', 'CONFLICT');
     }
     const runId = runIdOverride ?? runtimeServices.identifiers.next('agent-run');
-    if (runIdOverride !== undefined && runAttribution.has(runId)) {
-      throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
+    if (runIdOverride !== undefined) {
+      const held = runAttribution.get(runId);
+      // An attribution already under this id is another run's, unless it is this
+      // very goal attempt's own from an earlier execution of the same start (a
+      // resolver that outlived the start timeout inserted it before Weft retried
+      // the activity). Verified by what this dispatcher recorded when it set the
+      // entry: the same goal and attempt, and the same agent and principal. Any
+      // other holder, and an entry nothing here recorded, still conflicts.
+      const sameAttempt =
+        held !== undefined &&
+        goalAttempt !== undefined &&
+        goalAttemptAttributions.get(held)?.goalRunId === goalAttempt.goalRunId &&
+        goalAttemptAttributions.get(held)?.attemptIndex === goalAttempt.attemptIndex &&
+        held.agentName === name &&
+        held.principal === principal;
+      if (held !== undefined && !sameAttempt) {
+        throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
+      }
     }
     // AB-241 — recorded BEFORE any async work, mirroring
     // `createRunFromRequest`'s own `runAttribution.set` (it writes before
@@ -244,7 +268,9 @@ export function createCatalogDispatcher({
     // dispatch and settle keeps its attribution indefinitely (see
     // `trackCatalogRun`'s own doc comment) — it is not cleaned up here.
     if (principal !== undefined) {
-      runAttribution.set(runId, { agentName: name, principal });
+      const attribution: RunAttribution = { agentName: name, principal };
+      runAttribution.set(runId, attribution);
+      if (goalAttempt !== undefined) goalAttemptAttributions.set(attribution, goalAttempt);
     }
     // Captured so the wrapper below can forward an abort straight to the
     // dispatched durable `ActiveRun` even in the race `createDeferredAgentRun`

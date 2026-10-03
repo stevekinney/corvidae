@@ -237,6 +237,107 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     expect(result.finishReason).toBe('error');
   });
 
+  describe('a start whose first execution outlived its start timeout', () => {
+    /** A resolver that never answers on its first call, as a hung one does, and resolves normally after. */
+    async function hungFirstResolver(runtimeOverrides: Record<string, unknown> = {}) {
+      const storage = new MemoryStorage();
+      const checkpointStore = createCheckpointStore(
+        textValueStore(storage, { disposeUnderlyingStorage: false }),
+      );
+      const { engine } = await createRunEngine({
+        storage,
+        runWorkflow: createRunWorkflow(checkpointStore),
+        recover: false,
+      });
+      disposers.push(() => engine[Symbol.dispose]());
+      const worker = createAgent({
+        name: 'worker',
+        generate: async () => ({ content: 'done', toolCalls: [] }),
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      let calls = 0;
+      const agent = new Proxy(worker, {
+        get(target, property) {
+          const value = Reflect.get(target, property, target) as unknown;
+          if (property !== OPERATIVE_RESOLVE_RUN_OPTIONS || typeof value !== 'function') {
+            return value;
+          }
+          return (...resolverArguments: unknown[]) => {
+            calls += 1;
+            return calls === 1
+              ? new Promise<never>(() => {})
+              : (Reflect.apply(value, target, resolverArguments) as unknown);
+          };
+        },
+      });
+      const runtime = {
+        durable: { engine, checkpointStore },
+        createBureauInvariantHooks: () => undefined,
+        claimCatalogRunRecoveryRecord: async () => true,
+        persistCatalogRunRecoveryRecord: async () => {},
+        ...runtimeOverrides,
+      } as unknown as RuntimeComposition;
+      const runAttribution = new Map<string, RunAttribution>();
+      const dispatcher = createCatalogDispatcher({
+        agentCatalog: { find: () => agent as never },
+        runtime,
+        runtimeServices: createManualRuntimeServices(),
+        getShutdownPromise: () => undefined,
+        catalogRuns: new Set(),
+        runAttribution,
+        detachBestEffortPromise: () => {},
+        createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+        validateAgentRunInput: () => {},
+        validateBureauRunOptions: () => {},
+        onDurableRunAborted: () => {},
+      });
+      return { dispatcher, engine, runAttribution };
+    }
+
+    it('lets the retry of the same attempt, agent, and principal reach the claim and start the workflow', async () => {
+      const { dispatcher, engine, runAttribution } = await hungFirstResolver();
+
+      // The first execution recorded its attribution and never got past its resolver.
+      void dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      expect(runAttribution.get(attempt.runId)).toEqual({
+        agentName: 'worker',
+        principal: 'alice',
+      });
+
+      const retry = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      await retry.durablyStarted;
+
+      expect(await engine.get(attempt.runId)).not.toBeNull();
+      await retry.run.result();
+    });
+
+    it.each([
+      ['another principal', { ...attempt, principal: 'mallory' }],
+      ['another attempt of the goal', { ...attempt, principal: 'alice', attemptIndex: 1 }],
+      ['another goal', { ...attempt, principal: 'alice', goalRunId: 'g2' }],
+    ])('still refuses %s under the attempt’s run id', async (_label, other) => {
+      const { dispatcher, runAttribution } = await hungFirstResolver();
+      void dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+
+      expect(() => dispatcher.startGoalAttemptRun(other)).toThrow(
+        expect.objectContaining({ code: 'CONFLICT' }),
+      );
+      expect(runAttribution.get(attempt.runId)).toEqual({
+        agentName: 'worker',
+        principal: 'alice',
+      });
+    });
+
+    it('still refuses an attribution an ordinary run holds, whatever agent and principal it names', async () => {
+      const { dispatcher, runAttribution } = await hungFirstResolver();
+      runAttribution.set(attempt.runId, { agentName: 'worker', principal: 'alice' });
+
+      expect(() => dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' })).toThrow(
+        expect.objectContaining({ code: 'CONFLICT' }),
+      );
+    });
+  });
+
   describe('a claim already holding the attempt id', () => {
     const conflicting = (record: Record<string, unknown> | undefined) => {
       const persisted: unknown[] = [];
