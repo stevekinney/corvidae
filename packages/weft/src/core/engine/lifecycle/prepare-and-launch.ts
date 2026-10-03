@@ -402,7 +402,7 @@ export async function launchPreparedWorkflow(
       );
     }
 
-    adoptLaunchCheckpoint(internals, context.workflowId, checkpoint);
+    adoptLaunchCheckpoint(internals, context.workflowId, checkpoint, checkpointBytes);
     internals.workflowVersionTuples.set(
       context.workflowId,
       workflowVersionTupleFromState(internals, runningState, callbacks),
