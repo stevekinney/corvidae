@@ -13,7 +13,7 @@
 import { GoalConfigurationError, VALIDATOR_ERROR_KINDS, type ValidatorError } from './errors';
 import type { GoalEventTerminalReason } from './events';
 import type { ConversationPolicy } from './fresh-attempt/conversation-policy';
-import type { FinishReason } from './types';
+import type { FinishReason, JSONValue } from './types';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -638,9 +638,6 @@ export function freezeValidatorOutcome(outcome: ValidatorOutcome): ValidatorOutc
 // JSON-safe projection
 // ---------------------------------------------------------------------------
 
-export type JsonValue =
-  null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
-
 const MAXIMUM_PROJECTION_DEPTH = 32;
 const CIRCULAR = '[Circular]';
 const TRUNCATED = '[Truncated]';
@@ -651,7 +648,7 @@ function isOmitted(value: unknown): boolean {
   return value === undefined || typeof value === 'function' || typeof value === 'symbol';
 }
 
-function projectNode(value: unknown, ancestors: object[], depth: number): JsonValue {
+function projectNode(value: unknown, ancestors: object[], depth: number): JSONValue {
   if (value === null) return null;
   switch (typeof value) {
     case 'string':
@@ -673,9 +670,9 @@ function projectNode(value: unknown, ancestors: object[], depth: number): JsonVa
     return Number.isNaN(object.getTime()) ? null : object.toISOString();
   }
   const nextAncestors = [...ancestors, object];
-  const projectChild = (child: unknown): JsonValue => projectNode(child, nextAncestors, depth + 1);
+  const projectChild = (child: unknown): JSONValue => projectNode(child, nextAncestors, depth + 1);
   if (object instanceof Error) {
-    const projected: Record<string, JsonValue> = {
+    const projected: Record<string, JSONValue> = {
       name: object.name,
       message: object.message,
     };
@@ -691,7 +688,7 @@ function projectNode(value: unknown, ancestors: object[], depth: number): JsonVa
   if (typeof withToJson.toJSON === 'function') {
     return projectChild((withToJson.toJSON as () => unknown).call(object));
   }
-  const entries: [string, JsonValue][] = [];
+  const entries: [string, JSONValue][] = [];
   for (const key of Object.keys(object)) {
     let child: unknown;
     try {
@@ -712,7 +709,7 @@ function projectNode(value: unknown, ancestors: object[], depth: number): JsonVa
  * never a stack), maps, and sets are all handled. A durable layer persists
  * the projection, never the original.
  */
-export function toJsonSafe(value: unknown): JsonValue {
+export function toJsonSafe(value: unknown): JSONValue {
   try {
     return projectNode(value, [], 0);
   } catch {
@@ -724,12 +721,12 @@ export interface ProjectedValidatorError {
   readonly kind: ValidatorError['kind'];
   readonly code: string;
   readonly message: string;
-  readonly cause?: JsonValue;
+  readonly cause?: JSONValue;
 }
 
 export interface ProjectedValidatorEvidence {
   readonly source: string;
-  readonly detail: JsonValue;
+  readonly detail: JSONValue;
 }
 
 export type ProjectedValidatorOutcome =

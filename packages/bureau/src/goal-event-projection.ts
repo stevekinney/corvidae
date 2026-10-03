@@ -42,7 +42,7 @@
  */
 
 import { sha256HexSync } from '@lostgradient/cryptography';
-import type { JsonValue, ProjectedValidatorOutcome } from '@lostgradient/operative';
+import type { JSONValue, ProjectedValidatorOutcome } from '@lostgradient/operative';
 
 import type { DurableEventHistory } from './durable-event-history';
 import type { GoalAuditEvent, GoalState } from './goal-state';
@@ -154,7 +154,7 @@ function terminalEvent(record: GoalState): GoalAuditEvent[] {
   const reason = record.terminalReason;
   if (reason === undefined) return [];
   const base = { goalRunId: record.goalRunId, terminalReason: reason };
-  const draft = (kind: string, payload: Readonly<Record<string, JsonValue>>): GoalAuditEvent[] => [
+  const draft = (kind: string, payload: Readonly<Record<string, JSONValue>>): GoalAuditEvent[] => [
     { kind, payload, dedupeKey: keyFor(record), at: record.currentTransition.at },
   ];
   switch (record.status) {

@@ -31,7 +31,7 @@ import {
   type GoalRetryPolicy,
   type GoalRunStatus,
   type GoalRunTerminalReason,
-  type JsonValue,
+  type JSONValue,
   type ProjectedValidatorError,
   type ProjectedValidatorOutcome,
   TERMINAL_STATUS_BY_REASON,
@@ -189,7 +189,7 @@ export type ActiveGoalWork =
  */
 export interface GoalAuditEvent {
   readonly kind: string;
-  readonly payload: Readonly<Record<string, JsonValue>>;
+  readonly payload: Readonly<Record<string, JSONValue>>;
   /** The durable history's idempotency key for this event. */
   readonly dedupeKey: string;
   /** ISO-8601: the commit's own timestamp, never the moment of a replay. */
@@ -337,7 +337,7 @@ const TEXT_MAXIMUM_CHARACTERS = 4096;
 const truncateText = (text: string): string =>
   text.length <= TEXT_MAXIMUM_CHARACTERS ? text : `${text.slice(0, TEXT_MAXIMUM_CHARACTERS)}…`;
 
-function truncationMarker(value: JsonValue): JsonValue {
+function truncationMarker(value: JSONValue): JSONValue {
   return { truncated: true, originalByteLength: utf8ByteLength(JSON.stringify(value)) };
 }
 
@@ -363,7 +363,7 @@ export function boundValidationOutcome(
   maximumBytes: number = GOAL_VALIDATION_MAXIMUM_BYTES,
 ): ProjectedValidatorOutcome {
   if (utf8ByteLength(JSON.stringify(outcome)) <= maximumBytes) return outcome;
-  const evidence = (items: readonly { source: string; detail: JsonValue }[]) =>
+  const evidence = (items: readonly { source: string; detail: JSONValue }[]) =>
     items.map((item) => ({ source: item.source, detail: truncationMarker(item.detail) }));
   switch (outcome.kind) {
     case 'pass':
@@ -414,7 +414,7 @@ const hasExactKeys = (value: PlainRecord, allowed: readonly string[]): boolean =
 
 const MAXIMUM_JSON_DEPTH = 64;
 
-function isJsonValue(value: unknown, depth = 0): value is JsonValue {
+function isJsonValue(value: unknown, depth = 0): value is JSONValue {
   if (depth > MAXIMUM_JSON_DEPTH) return false;
   if (value === null) return true;
   switch (typeof value) {

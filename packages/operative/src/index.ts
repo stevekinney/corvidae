@@ -292,7 +292,6 @@ export type {
   GoalRunTerminalReason,
   GoalRunTerminalStatus,
   GoalUsage,
-  JsonValue,
   ProjectedValidatorError,
   ProjectedValidatorEvidence,
   ProjectedValidatorOutcome,
