@@ -461,19 +461,71 @@ describe('the goal event projection', () => {
       expect(await events()).toEqual(before);
     });
 
-    it('repairs only the creation and the current transition, so an earlier lost projection stays lost', async () => {
-      // The record keeps no transition history, so there is nothing to re-project
-      // a superseded transition from. This pins that limit rather than hiding it.
+    it('repairs a failed projection of an earlier transition after later transitions commit', async () => {
+      // The first transitions' audit writes fail; every later one succeeds.
+      const storage = await resolveStorage({ type: 'memory' });
+      const history = createDurableEventHistory(storage, createManualRuntimeServices());
+      let failing = true;
+      const diagnostics: BureauDiagnostic[] = [];
+      const recorder = createGoalEventRecorder(
+        {
+          record: (...recordArguments) =>
+            failing
+              ? Promise.reject(new Error('the history is unavailable'))
+              : history.record(...recordArguments),
+        },
+        (diagnostic) => diagnostics.push(diagnostic),
+      );
+      const store = createGoalStore(textValueStore(new MemoryStorage()), { observe: recorder });
+      await store.create(newGoal());
+      await toEvaluating(store);
+      failing = false;
+      await store.applyTransition(
+        transition(3, 'succeeded', {
+          terminalReason: 'validator-passed',
+          attempt: attempt(0, {
+            status: 'passed',
+            validation: validation({ kind: 'pass', evidence: [] }),
+          }),
+          active: null,
+        }),
+      );
+      const page = async () => {
+        const result = await history.page({ kind: 'goal', id: GOAL });
+        if ('outcome' in result) throw new Error('unexpected gap');
+        return summary(result.events);
+      };
+      // Only the transitions committed after the outage were recorded.
+      expect(await page()).toEqual(['goal.attempt.validated', 'goal.succeeded']);
+
+      await projectGoalHistory(await store.list(), recorder);
+
+      expect(await page()).toEqual([
+        'goal.attempt.validated',
+        'goal.succeeded',
+        'goal.started',
+        'goal.attempt.started',
+      ]);
+      // Replaying the same boot pass changes nothing.
+      await projectGoalHistory(await store.list(), recorder);
+      expect(await page()).toHaveLength(4);
+    });
+
+    it('re-projects a restart whose event was lost, after a later restart', async () => {
       const plain = createGoalStore(textValueStore(new MemoryStorage()));
       await plain.create(newGoal());
-      await toEvaluating(plain);
-      const repaired = await setup();
+      await plain.recordControllerRestart(GOAL, '2026-10-02T00:05:00.000Z');
+      await plain.recordControllerRestart(GOAL, '2026-10-02T00:06:00.000Z');
+      const fresh = await setup();
 
-      await projectGoalHistory(await plain.list(), repaired.recorder);
+      await projectGoalHistory(await plain.list(), fresh.recorder);
 
-      const recorded = summary(await repaired.events());
-      expect(recorded).toContain('goal.started');
-      expect(recorded).not.toContain('goal.attempt.started');
+      const history = await fresh.events();
+      expect(
+        history
+          .filter((event) => event.kind === 'goal.recovered')
+          .map((event) => (event.payload as { controllerRestarts: number }).controllerRestarts),
+      ).toEqual([1, 2]);
     });
 
     it('does not change a commit when the observer throws', async () => {

@@ -4,6 +4,7 @@
  * fail-closed decoding of corrupt records.
  */
 import {
+  GoalConfigurationError,
   type GoalRunStatus,
   type GoalRunTerminalReason,
   TERMINAL_STATUS_BY_REASON,
@@ -18,6 +19,8 @@ import {
   createGoalState,
   type CreateGoalStateInput,
   type DurableGoalAttempt,
+  GOAL_AUDIT_LOG_MAXIMUM_ENTRIES,
+  GOAL_MAXIMUM_ATTEMPTS,
   GOAL_OBJECTIVE_MAXIMUM_BYTES,
   GOAL_RECORD_KEY_PREFIX,
   GOAL_VALIDATION_MAXIMUM_BYTES,
@@ -187,7 +190,7 @@ describe('createGoalState', () => {
     const state = createGoalState(input());
 
     expect(state).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       goalRunId: GOAL,
       workflowId: 'goal:goal-1',
       revision: 1,
@@ -261,7 +264,7 @@ describe('createGoalState', () => {
     };
 
     it('accepts the longest id whose every derived signal and workflow id still fits', () => {
-      for (const maximumAttempts of [1, 3, 10, 1000]) {
+      for (const maximumAttempts of [1, 3, 10, 256]) {
         let longest = '';
         for (let length = 1; length <= 200; length += 1) {
           const candidate = 'g'.repeat(length);
@@ -341,7 +344,7 @@ describe('createGoalStore create, get, and list', () => {
       InvalidGoalStateError,
     );
     expect(
-      await throwingRejectionOf(store.create({ ...state, schemaVersion: 2 } as never)),
+      await throwingRejectionOf(store.create({ ...state, schemaVersion: 1 } as never)),
     ).toThrow(InvalidGoalStateError);
     expect(await store.list()).toEqual([]);
   });
@@ -370,7 +373,33 @@ describe('fail-closed decoding', () => {
     ['text that is not JSON', () => 'not json'],
     ['a JSON array', () => '[]'],
     ['JSON null', () => 'null'],
-    ['a different schema version', () => mutated((r) => (r['schemaVersion'] = 2))],
+    ['the pre-audit-log schema version', () => mutated((r) => (r['schemaVersion'] = 1))],
+    ['a missing audit log', () => mutated((r) => delete r['auditLog'])],
+    [
+      'an audit log that omits a committed transition',
+      () =>
+        mutated(
+          (r) => (
+            (r['transitionSeq'] = 1),
+            (r['currentTransition'] = {
+              seq: 1,
+              transitionId: 'goal-1:t1',
+              from: 'pending',
+              to: 'pending',
+              at: 'x',
+              cause: 'c',
+            })
+          ),
+        ),
+    ],
+    [
+      'an audit entry with an unknown extra field',
+      () =>
+        mutated((r) => {
+          r['transitionSeq'] = 0;
+          r['auditLog'] = [{ seq: 0, transitionId: 'goal-1:restart-1', events: [], extra: 1 }];
+        }),
+    ],
     ['a missing identity', () => mutated((r) => delete r['identity'])],
     ['an unknown extra field', () => mutated((r) => (r['extra'] = 1))],
     ['a revision of zero', () => mutated((r) => (r['revision'] = 0))],
@@ -1122,5 +1151,158 @@ describe('boundValidationOutcome', () => {
 
     expect(bounded.kind === 'indeterminate' && bounded.reason.length).toBeLessThan(5000);
     expect(boundValidationOutcome({ kind: 'canceled' }, 1)).toEqual({ kind: 'canceled' });
+  });
+});
+
+describe('the audit transition log', () => {
+  const key = goalRecordKey(GOAL);
+  const runningRequest = () =>
+    transition(1, 'running', {
+      attempt: attempt(0),
+      usage: { attempts: 1, steps: 0, tokens: 0, durationMs: 0 },
+      active: {
+        kind: 'attempt',
+        attemptId: goalAttemptId(GOAL, 0),
+        runId: goalAttemptRunId(GOAL, 0),
+        startedAt: '2026-10-02T00:00:05.000Z',
+      },
+    });
+
+  it('appends one entry per transition in the same commit as the transition', async () => {
+    const { kv, store } = setup();
+    await created(store);
+
+    const running = applied(await store.applyTransition(runningRequest()));
+
+    expect(running.auditLog).toEqual([
+      {
+        seq: 1,
+        transitionId: 'goal-1:t1',
+        events: [expect.objectContaining({ kind: 'goal.attempt.started', dedupeKey: 'goal-1:1' })],
+      },
+    ]);
+    // The stored text is the committed record: the log is inside it, not beside it.
+    const stored = JSON.parse((await kv.get(key)) ?? 'null') as GoalState;
+    const read = await store.get(GOAL);
+    expect(read).toEqual(stored);
+  });
+
+  it('keeps an entry for a transition that implies no event, and never rewrites earlier ones', async () => {
+    const { store } = setup();
+    await created(store);
+    const first = applied(await store.applyTransition(runningRequest()));
+    const second = applied(
+      await store.applyTransition(
+        transition(2, 'evaluating', {
+          attempt: attempt(0, { status: 'evaluating', finishReason: 'stop-condition' }),
+          active: {
+            kind: 'validation',
+            attemptId: goalAttemptId(GOAL, 0),
+            validator: { name: 'tests@bureau', version: '1.0.0' },
+            startedAt: '2026-10-02T00:01:00.000Z',
+          },
+        }),
+      ),
+    );
+
+    expect(second.auditLog.map((entry) => [entry.seq, entry.events.length])).toEqual([
+      [1, 1],
+      [2, 0],
+    ]);
+    expect(second.auditLog[0]).toEqual(first.auditLog[0]);
+  });
+
+  it('does not append for a duplicate, stale, or rejected transition', async () => {
+    const { store } = setup();
+    await created(store);
+    const running = applied(await store.applyTransition(runningRequest()));
+
+    const duplicate = await store.applyTransition(runningRequest());
+    const stale = await store.applyTransition(transition(5, 'evaluating'));
+    const rejected = await store.applyTransition(transition(2, 'pending'));
+
+    expect([duplicate.status, stale.status, rejected.status]).toEqual([
+      'duplicate',
+      'stale',
+      'rejected',
+    ]);
+    const after = await store.get(GOAL);
+    expect(after?.auditLog).toEqual(running.auditLog);
+  });
+
+  it('appends a restart entry in the same commit as the restart count', async () => {
+    const { store } = setup();
+    await created(store);
+    applied(await store.applyTransition(runningRequest()));
+
+    const restarted = await store.recordControllerRestart(GOAL, '2026-10-02T00:05:00.000Z');
+    const stale = await store.recordControllerRestart(GOAL, at(), 0);
+
+    if (restarted.status !== 'updated') throw new Error('expected an updated record');
+    expect(restarted.record.auditLog.map((entry) => [entry.seq, entry.transitionId])).toEqual([
+      [1, 'goal-1:t1'],
+      [1, 'goal-1:restart-1'],
+    ]);
+    expect(restarted.record.auditLog[1]?.events[0]).toMatchObject({
+      kind: 'goal.recovered',
+      dedupeKey: 'goal-1:1:restart-1',
+      at: '2026-10-02T00:05:00.000Z',
+    });
+    expect(stale.status).toBe('stale');
+    const after = await store.get(GOAL);
+    expect(after?.auditLog).toHaveLength(2);
+  });
+
+  it('still decodes a transition that follows a restart', async () => {
+    const { store } = setup();
+    await created(store);
+    applied(await store.applyTransition(runningRequest()));
+    await store.recordControllerRestart(GOAL, at());
+
+    const next = applied(
+      await store.applyTransition(
+        transition(2, 'evaluating', {
+          attempt: attempt(0, { status: 'evaluating', finishReason: 'stop-condition' }),
+        }),
+      ),
+    );
+
+    expect(next.auditLog.map((entry) => entry.transitionId)).toEqual([
+      'goal-1:t1',
+      'goal-1:restart-1',
+      'goal-1:t2',
+    ]);
+    expect(await store.get(GOAL)).toEqual(next);
+  });
+
+  it('refuses a goal bounded to more attempts than the log can hold', () => {
+    expect(() =>
+      createGoalState(
+        input({ bounds: { maximumAttempts: GOAL_MAXIMUM_ATTEMPTS + 1, maximumTotalTokens: 1 } }),
+      ),
+    ).toThrow(GoalConfigurationError);
+    expect(GOAL_AUDIT_LOG_MAXIMUM_ENTRIES).toBeGreaterThan(3 * GOAL_MAXIMUM_ATTEMPTS + 1);
+  });
+
+  it('refuses to grow a full log rather than drop an entry', async () => {
+    const { kv, store } = setup();
+    const base = createGoalState(input());
+    const entries = Array.from({ length: GOAL_AUDIT_LOG_MAXIMUM_ENTRIES }, (_, index) => ({
+      seq: 0,
+      transitionId: `goal-1:restart-${index + 1}`,
+      events: [],
+    }));
+    await kv.set(
+      key,
+      JSON.stringify({ ...base, controllerRestarts: entries.length, auditLog: entries }),
+    );
+
+    const transitioned = await store.applyTransition(transition(1, 'running'));
+    const restarted = await store.recordControllerRestart(GOAL, at());
+
+    expect(transitioned).toMatchObject({ status: 'rejected', reason: 'oversized' });
+    expect(restarted).toMatchObject({ status: 'rejected', reason: 'audit-log-full' });
+    const after = await store.get(GOAL);
+    expect(after?.auditLog).toHaveLength(GOAL_AUDIT_LOG_MAXIMUM_ENTRIES);
   });
 });

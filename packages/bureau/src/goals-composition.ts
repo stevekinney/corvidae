@@ -145,12 +145,10 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       return record !== undefined && goalWorkflowId(record.goalRunId) === workflowId;
     },
     async recoverAtBoot() {
-      // Close the window between a goal's latest write and its projection: a
-      // crash there left that transition unrecorded. This repairs each record's
-      // creation and current transition only. Weft recovers a controller at
-      // engine boot, before this runs, so a replayed controller can commit one
-      // more transition first, and a projection lost before that one is not
-      // recoverable: the record keeps no history to re-project it from.
+      // Replay every record's audit log into the event history. Each commit
+      // stored its audit events in the record, so a projection that failed at
+      // any point, at any depth in the log, is repaired here; the dedupe keys
+      // make a replay of what is already recorded a no-op.
       if (recordEvents !== undefined) {
         await projectGoalHistory(await store.list(), recordEvents).catch((error: unknown) =>
           diagnose({

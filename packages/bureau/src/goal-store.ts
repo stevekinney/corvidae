@@ -16,14 +16,16 @@
  *   duplicated delivery of the transition that is already the record's
  *   current one is a `duplicate` (success, no write), and anything late,
  *   conflicting, out of order, or illegal under COR-638's transition table
- *   is `rejected` or `stale` with no mutation. Terminal statuses have no
- *   outgoing edges, so a late attempt completion can neither double count
- *   usage nor resurrect a finished goal. Only the CURRENT transition is
- *   provably idempotent: the record keeps no history, so a replay of an
- *   older transition answers `stale` with the authoritative record, which a
- *   controller adopts.
+ *   is `rejected` or `stale` with no mutation. The same commit appends the
+ *   transition's audit entry to the record's append-only `auditLog` (see
+ *   `GoalAuditEntry`), so no audit event depends on a later write surviving.
+ *   Terminal statuses have no outgoing edges, so a late attempt completion can
+ *   neither double count usage nor resurrect a finished goal. Only the CURRENT
+ *   transition is provably idempotent: the log records audit events, not
+ *   state, so a replay of an older transition answers `stale` with the
+ *   authoritative record, which a controller adopts.
  * - The control plane writes the cancellation marker, the controller
- *   restart count, and `closedAt`. These advance `revision` but never
+ *   restart count (with its audit entry, in the same commit), and `closedAt`. These advance `revision` but never
  *   `transitionSeq`, so they can interleave with a controller transition;
  *   the transition's CAS loop re-reads and re-evaluates. Once a
  *   cancellation marker is present the marker wins: the only transition the
@@ -42,13 +44,20 @@ import {
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
 
 import {
+  auditEventForRestart,
+  auditEventsForTransition,
+  restartEntryId,
+} from './goal-event-projection';
+import {
   type ActiveGoalWork,
   decodeGoalState,
   type DurableGoalAttempt,
   type DurableGoalUsage,
+  GOAL_AUDIT_LOG_MAXIMUM_ENTRIES,
   GOAL_RECORD_KEY_PREFIX,
   GOAL_VALIDATION_MAXIMUM_BYTES,
   goalAttemptId,
+  type GoalAuditEntry,
   type GoalCancellationMarker,
   goalRecordKey,
   type GoalState,
@@ -121,7 +130,11 @@ export type GoalCreation =
   /** `existing` is absent when the record already stored there is unreadable. */
   | { readonly status: 'duplicate'; readonly existing?: GoalState };
 
-export type GoalControlRejection = 'terminal' | 'not-terminal';
+export type GoalControlRejection =
+  | 'terminal'
+  | 'not-terminal'
+  /** The audit log is at its cap; a restart cannot be counted without dropping an entry. */
+  | 'audit-log-full';
 
 export type GoalControlResult =
   | { readonly status: 'updated'; readonly record: GoalState }
@@ -289,6 +302,8 @@ export function createGoalStore(
       return done({ status: 'stale', record: current });
     }
     if (isTerminal(current.status)) return reject(current, 'terminal');
+    if (current.auditLog.length >= GOAL_AUDIT_LOG_MAXIMUM_ENTRIES)
+      return reject(current, 'oversized');
     if (current.cancellation !== undefined && request.to !== 'canceled') {
       return reject(current, 'cancellation-requested');
     }
@@ -377,14 +392,9 @@ export function createGoalStore(
           ? refuse(current, 'terminal')
           : expectedCount !== undefined && current.controllerRestarts !== expectedCount
             ? { outcome: 'done', result: { status: 'stale', record: current } }
-            : {
-                outcome: 'write',
-                next: {
-                  ...current,
-                  controllerRestarts: current.controllerRestarts + 1,
-                  updatedAt: now,
-                },
-              },
+            : current.auditLog.length >= GOAL_AUDIT_LOG_MAXIMUM_ENTRIES
+              ? refuse(current, 'audit-log-full')
+              : { outcome: 'write', next: withRestart(current, now) },
       );
       if (result.status === 'updated') {
         await notify({ kind: 'controller-restarted', record: result.record });
@@ -443,6 +453,21 @@ function applyAttempt(
   return attempts;
 }
 
+/** The restart's post-state, with its audit entry appended in the same commit. */
+function withRestart(current: GoalState, now: string): GoalState {
+  const counted: GoalState = {
+    ...current,
+    controllerRestarts: current.controllerRestarts + 1,
+    updatedAt: now,
+  };
+  const entry: GoalAuditEntry = {
+    seq: counted.transitionSeq,
+    transitionId: restartEntryId(counted),
+    events: [auditEventForRestart(counted)],
+  };
+  return { ...counted, auditLog: [...current.auditLog, entry] };
+}
+
 function buildNext(
   current: GoalState,
   request: GoalTransitionRequest,
@@ -450,7 +475,7 @@ function buildNext(
 ): GoalState {
   const { active: _active, terminalReason: _reason, failureDetail: _detail, ...rest } = current;
   const active = request.active === undefined ? current.active : (request.active ?? undefined);
-  return {
+  const next: GoalState = {
     ...rest,
     transitionSeq: request.seq,
     status: request.to,
@@ -469,4 +494,12 @@ function buildNext(
     ...(request.failureDetail === undefined ? {} : { failureDetail: request.failureDetail }),
     ...(active === undefined ? {} : { active }),
   };
+  // The audit entry is derived from the post-transition record and committed
+  // with it, so a transition and its audit events can never be separated.
+  const entry: GoalAuditEntry = {
+    seq: request.seq,
+    transitionId: request.transitionId,
+    events: auditEventsForTransition(next),
+  };
+  return { ...next, auditLog: [...current.auditLog, entry] };
 }

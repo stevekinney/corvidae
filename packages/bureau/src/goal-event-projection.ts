@@ -40,14 +40,21 @@
  */
 
 import { sha256HexSync } from '@lostgradient/cryptography';
-import type { ProjectedValidatorOutcome } from '@lostgradient/operative';
+import type { JsonValue, ProjectedValidatorOutcome } from '@lostgradient/operative';
 
 import type { DurableEventHistory } from './durable-event-history';
-import type { GoalState } from './goal-state';
+import type { GoalAuditEvent, GoalState } from './goal-state';
+import { goalRestartId, goalTransitionId } from './goal-state';
 import type { GoalStoreObservation } from './goal-store';
 import type { DiagnosticSink } from './types';
 
-export type GoalObservation = GoalStoreObservation;
+/**
+ * What a goal write left behind, plus `replayed`: every audit entry the
+ * record's log holds, which boot recovery uses to repair events whose live
+ * projection failed.
+ */
+export type GoalObservation =
+  GoalStoreObservation | { readonly kind: 'replayed'; readonly record: GoalState };
 
 /** One event to record under the goal's `{ kind: 'goal' }` owner. */
 export interface GoalEventDraft {
@@ -77,18 +84,28 @@ function validatorErrorOf(
 const keyFor = (record: GoalState): string => `${record.goalRunId}:${record.transitionSeq}`;
 
 function startedEvent(record: GoalState): GoalEventDraft {
-  return {
+  return toDraft({
     kind: 'goal.started',
     payload: {
       goalRunId: record.goalRunId,
       goalIdentity: { name: record.identity.name, version: record.identity.version },
     },
     dedupeKey: `${record.goalRunId}:0`,
-    emittedAtMs: timestampOf(record.createdAt),
+    at: record.createdAt,
+  });
+}
+
+function toDraft(event: GoalAuditEvent): GoalEventDraft {
+  const emittedAtMs = timestampOf(event.at);
+  return {
+    kind: event.kind,
+    payload: event.payload,
+    dedupeKey: event.dedupeKey,
+    ...(emittedAtMs === undefined ? {} : { emittedAtMs }),
   };
 }
 
-function attemptStartedEvent(record: GoalState): GoalEventDraft[] {
+function attemptStartedEvent(record: GoalState): GoalAuditEvent[] {
   const attempt = record.attempts.at(-1);
   if (attempt === undefined) return [];
   return [
@@ -101,12 +118,12 @@ function attemptStartedEvent(record: GoalState): GoalEventDraft[] {
         runId: attempt.runId,
       },
       dedupeKey: keyFor(record),
-      emittedAtMs: timestampOf(record.currentTransition.at),
+      at: record.currentTransition.at,
     },
   ];
 }
 
-function attemptValidatedEvent(record: GoalState): GoalEventDraft[] {
+function attemptValidatedEvent(record: GoalState): GoalAuditEvent[] {
   const attempt = record.attempts.at(-1);
   const validation = attempt?.validation;
   if (attempt === undefined || validation === undefined) return [];
@@ -126,22 +143,17 @@ function attemptValidatedEvent(record: GoalState): GoalEventDraft[] {
         ...(outcome.kind === 'fail' ? { feedbackDigest: sha256HexSync(outcome.feedback) } : {}),
       },
       dedupeKey: keyFor(record),
-      emittedAtMs: timestampOf(validation.completedAt),
+      at: validation.completedAt,
     },
   ];
 }
 
-function terminalEvent(record: GoalState): GoalEventDraft[] {
+function terminalEvent(record: GoalState): GoalAuditEvent[] {
   const reason = record.terminalReason;
   if (reason === undefined) return [];
   const base = { goalRunId: record.goalRunId, terminalReason: reason };
-  const draft = (kind: string, payload: Readonly<Record<string, unknown>>): GoalEventDraft[] => [
-    {
-      kind,
-      payload,
-      dedupeKey: keyFor(record),
-      emittedAtMs: timestampOf(record.currentTransition.at),
-    },
+  const draft = (kind: string, payload: Readonly<Record<string, JsonValue>>): GoalAuditEvent[] => [
+    { kind, payload, dedupeKey: keyFor(record), at: record.currentTransition.at },
   ];
   switch (record.status) {
     case 'succeeded':
@@ -164,9 +176,16 @@ function terminalEvent(record: GoalState): GoalEventDraft[] {
   }
 }
 
-function transitionEvents(record: GoalState): GoalEventDraft[] {
+/**
+ * The audit events the transition that produced `record` implies, with no
+ * recording done. The goal store calls this while committing the transition
+ * and stores the result in the record's audit log in the same write, so the
+ * log is the one source both the live observer and boot replay read. Pure; a
+ * transition with none (`evaluating`, `retrying`) yields `[]`.
+ */
+export function auditEventsForTransition(record: GoalState): GoalAuditEvent[] {
   const { from, to } = record.currentTransition;
-  const events: GoalEventDraft[] = [];
+  const events: GoalAuditEvent[] = [];
   if (to === 'running') events.push(...attemptStartedEvent(record));
   // The validator's verdict commits together with the decision it produced.
   if (from === 'evaluating') events.push(...attemptValidatedEvent(record));
@@ -174,28 +193,49 @@ function transitionEvents(record: GoalState): GoalEventDraft[] {
   return events;
 }
 
-/** The events a goal write implies. Pure; a transition with none (`evaluating`, `retrying`) yields `[]`. */
+/**
+ * The event a counted controller restart implies. The goal store stores it in
+ * the log entry it appends in the same commit as the restart count.
+ */
+export function auditEventForRestart(record: GoalState): GoalAuditEvent {
+  return {
+    kind: 'goal.recovered',
+    payload: {
+      goalRunId: record.goalRunId,
+      controllerRestarts: record.controllerRestarts,
+      status: record.status,
+      transitionSeq: record.transitionSeq,
+    },
+    dedupeKey: `${keyFor(record)}:restart-${record.controllerRestarts}`,
+    at: record.updatedAt,
+  };
+}
+
+/** The id of the log entry `auditEventForRestart` belongs to. */
+export const restartEntryId = (record: GoalState): string =>
+  goalRestartId(record.goalRunId, record.controllerRestarts);
+
+function entryEvents(record: GoalState, transitionId: string): GoalEventDraft[] {
+  const entry = record.auditLog.find((candidate) => candidate.transitionId === transitionId);
+  return (entry?.events ?? []).map(toDraft);
+}
+
+/**
+ * The events a goal write implies, read from the record's audit log. A live
+ * observation projects its own commit's entry; `replayed`
+ * projects every entry. Pure; a transition with none yields `[]`.
+ */
 export function projectGoalObservation(observation: GoalObservation): GoalEventDraft[] {
   const { record } = observation;
   switch (observation.kind) {
     case 'created':
       return [startedEvent(record)];
     case 'transitioned':
-      return transitionEvents(record);
+      return entryEvents(record, goalTransitionId(record.goalRunId, record.currentTransition.seq));
     case 'controller-restarted':
-      return [
-        {
-          kind: 'goal.recovered',
-          payload: {
-            goalRunId: record.goalRunId,
-            controllerRestarts: record.controllerRestarts,
-            status: record.status,
-            transitionSeq: record.transitionSeq,
-          },
-          dedupeKey: `${keyFor(record)}:restart-${record.controllerRestarts}`,
-          emittedAtMs: timestampOf(record.updatedAt),
-        },
-      ];
+      return entryEvents(record, restartEntryId(record));
+    case 'replayed':
+      return record.auditLog.flatMap((entry) => entry.events.map(toDraft));
   }
 }
 
@@ -230,8 +270,12 @@ export function createGoalEventRecorder(
 }
 
 /**
- * Projects what each record says happened at its creation and in its current
- * transition. Idempotent, so boot recovery runs it over every goal.
+ * Projects what each record says happened: its creation, then every entry of
+ * its audit log, so a transition whose projection failed is repaired however
+ * many transitions have committed since. Idempotent through each event's
+ * `dedupeKey`, so boot recovery runs it over every goal. A repaired event is
+ * appended after the events recorded since, so the feed's order can differ
+ * from commit order, but each carries its commit's own `emittedAtMs`.
  */
 export async function projectGoalHistory(
   records: readonly GoalState[],
@@ -239,6 +283,6 @@ export async function projectGoalHistory(
 ): Promise<void> {
   for (const goal of records) {
     await record({ kind: 'created', record: goal });
-    if (goal.transitionSeq > 0) await record({ kind: 'transitioned', record: goal });
+    await record({ kind: 'replayed', record: goal });
   }
 }

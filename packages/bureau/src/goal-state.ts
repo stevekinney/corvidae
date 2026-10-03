@@ -47,7 +47,29 @@ import {
 // Caps, keys, and identifiers
 // ---------------------------------------------------------------------------
 
-export const GOAL_STATE_SCHEMA_VERSION = 1 as const;
+/**
+ * Version 2 added `auditLog`. The decoder accepts exactly this version and
+ * nothing older: the template is pre-release, so a version-1 record is
+ * reported corrupt rather than migrated.
+ */
+export const GOAL_STATE_SCHEMA_VERSION = 2 as const;
+
+/**
+ * The most attempts a durable goal may be bounded to. It bounds the record
+ * itself (one entry per attempt) and, through it, {@link GOAL_AUDIT_LOG_MAXIMUM_ENTRIES}.
+ */
+export const GOAL_MAXIMUM_ATTEMPTS = 256;
+
+/**
+ * The most entries `auditLog` may hold. Each attempt commits at most three
+ * transitions (`running`, `evaluating`, then `retrying` or a terminal one)
+ * plus the first `pending -> running`, and boot recovery restarts a
+ * controller a handful of times, so `4 * GOAL_MAXIMUM_ATTEMPTS + 8` is above
+ * anything a goal bounded by {@link GOAL_MAXIMUM_ATTEMPTS} can reach. The store
+ * refuses a write that would pass it rather than drop an entry, so an audit
+ * event is never silently lost to the cap.
+ */
+export const GOAL_AUDIT_LOG_MAXIMUM_ENTRIES = 4 * GOAL_MAXIMUM_ATTEMPTS + 8;
 
 /**
  * The objective is stored inline. `prompt` plus `instructions` (UTF-8 bytes)
@@ -81,6 +103,9 @@ export const attemptSignalId = (goalRunId: string, attemptIndex: number): string
 /** The Weft workflow that owns this goal; an explicit id makes a duplicate start refusable. */
 export const goalWorkflowId = (goalRunId: string): string => `goal:${goalRunId}`;
 export const goalTransitionId = (goalRunId: string, seq: number): string => `${goalRunId}:t${seq}`;
+/** The id of the log entry for a goal's `count`-th counted controller restart. */
+export const goalRestartId = (goalRunId: string, count: number): string =>
+  `${goalRunId}:restart-${count}`;
 export const goalAttemptId = (goalRunId: string, attemptIndex: number): string =>
   `${goalRunId}:a${attemptIndex}`;
 /** Deterministic, so a restart that re-starts attempt N finds attempt N's run, never N+1's. */
@@ -155,6 +180,36 @@ export type ActiveGoalWork =
       readonly startedAt: string;
     };
 
+/**
+ * One audit event, already derived and JSON-safe. It carries exactly what the
+ * durable event history would record (ids, statuses, reasons, a digest of
+ * feedback; never evidence, raw feedback, or `ValidatorError.cause`), so a
+ * replay needs nothing but the log.
+ */
+export interface GoalAuditEvent {
+  readonly kind: string;
+  readonly payload: Readonly<Record<string, JsonValue>>;
+  /** The durable history's idempotency key for this event. */
+  readonly dedupeKey: string;
+  /** ISO-8601: the commit's own timestamp, never the moment of a replay. */
+  readonly at: string;
+}
+
+/**
+ * One committed write that implies audit events: a controller transition or a
+ * counted controller restart. Appended in the SAME compare-and-swap commit as
+ * the write, so the log and the state can never disagree, and it is never
+ * rewritten. `events` may be empty (a transition such as `evaluating` implies
+ * none). A transition entry's `transitionId` is `goalTransitionId(id, seq)`; a
+ * restart entry's is `goalRestartId(id, n)` and its `seq` is the transition
+ * the goal was at.
+ */
+export interface GoalAuditEntry {
+  readonly seq: number;
+  readonly transitionId: string;
+  readonly events: readonly GoalAuditEvent[];
+}
+
 export interface GoalTransitionRecord {
   /** Equals the record's `transitionSeq`. */
   readonly seq: number;
@@ -207,6 +262,13 @@ export interface GoalState {
   readonly cancellation?: GoalCancellationMarker | undefined;
   /** How many times boot recovery restarted a controller that ended abnormally. */
   readonly controllerRestarts: number;
+  /**
+   * The append-only audit transition log, bounded by
+   * {@link GOAL_AUDIT_LOG_MAXIMUM_ENTRIES}. Boot re-projection replays it, so an
+   * audit event whose live projection failed is repaired whenever it was
+   * committed, not only while it is the current transition.
+   */
+  readonly auditLog: readonly GoalAuditEntry[];
   /** Set once by `close()`; terminal records only. */
   readonly closedAt?: string | undefined;
   readonly createdAt: string;
@@ -550,6 +612,29 @@ function isTransitionRecord(value: unknown): value is GoalTransitionRecord {
   );
 }
 
+function isAuditEvent(value: unknown): value is GoalAuditEvent {
+  return (
+    isPlainRecord(value) &&
+    hasExactKeys(value, ['kind', 'payload', 'dedupeKey', 'at']) &&
+    isNonEmptyString(value['kind']) &&
+    isPlainRecord(value['payload']) &&
+    isJsonValue(value['payload']) &&
+    isNonEmptyString(value['dedupeKey']) &&
+    isNonEmptyString(value['at'])
+  );
+}
+
+function isAuditEntry(value: unknown): value is GoalAuditEntry {
+  return (
+    isPlainRecord(value) &&
+    hasExactKeys(value, ['seq', 'transitionId', 'events']) &&
+    isNonNegativeInteger(value['seq']) &&
+    isNonEmptyString(value['transitionId']) &&
+    Array.isArray(value['events']) &&
+    value['events'].every(isAuditEvent)
+  );
+}
+
 function isCancellationMarker(value: unknown): value is GoalCancellationMarker {
   return (
     isPlainRecord(value) &&
@@ -612,7 +697,11 @@ function isBounds(value: unknown): value is GoalBudget {
     'maximumTotalTokens',
     'maximumTotalCostUsd',
   ];
-  return hasExactKeys(value, keys) && passes(() => validateBudget(value as unknown as GoalBudget));
+  return (
+    hasExactKeys(value, keys) &&
+    passes(() => validateBudget(value as unknown as GoalBudget)) &&
+    (value['maximumAttempts'] as number) <= GOAL_MAXIMUM_ATTEMPTS
+  );
 }
 
 function isRetryPolicy(value: unknown): value is GoalRetryPolicy {
@@ -664,6 +753,7 @@ const TOP_LEVEL_KEYS = [
   'active',
   'cancellation',
   'controllerRestarts',
+  'auditLog',
   'closedAt',
   'createdAt',
   'updatedAt',
@@ -676,10 +766,40 @@ function isTerminalPairing(value: PlainRecord): boolean {
   return isGoalRunTerminalReason(reason) && TERMINAL_STATUS_BY_REASON[reason] === status;
 }
 
+/**
+ * The log holds exactly one entry per committed transition (seq 1 through
+ * `transitionSeq`, in order) and one per counted restart (1 through
+ * `controllerRestarts`, in order), interleaved by commit order, never past
+ * the cap.
+ */
+function isAuditLogConsistent(value: PlainRecord): boolean {
+  const goalRunId = value['goalRunId'] as string;
+  const log = value['auditLog'] as readonly GoalAuditEntry[];
+  if (log.length > GOAL_AUDIT_LOG_MAXIMUM_ENTRIES) return false;
+  let transitions = 0;
+  let restarts = 0;
+  let lastSeq = 0;
+  for (const entry of log) {
+    if (entry.seq < lastSeq) return false;
+    lastSeq = entry.seq;
+    if (entry.transitionId === goalRestartId(goalRunId, restarts + 1)) {
+      if (entry.seq !== transitions) return false;
+      restarts += 1;
+    } else if (entry.transitionId === goalTransitionId(goalRunId, transitions + 1)) {
+      if (entry.seq !== transitions + 1) return false;
+      transitions += 1;
+    } else {
+      return false;
+    }
+  }
+  return transitions === value['transitionSeq'] && restarts === value['controllerRestarts'];
+}
+
 function isConsistent(value: PlainRecord): boolean {
   const transition = value['currentTransition'] as GoalTransitionRecord;
   const attempts = value['attempts'] as readonly DurableGoalAttempt[];
   return (
+    isAuditLogConsistent(value) &&
     value['workflowId'] === goalWorkflowId(value['goalRunId'] as string) &&
     transition.seq === value['transitionSeq'] &&
     transition.to === value['status'] &&
@@ -718,6 +838,8 @@ function isShape(value: PlainRecord): boolean {
     (value['active'] === undefined || isActiveWork(value['active'])) &&
     (value['cancellation'] === undefined || isCancellationMarker(value['cancellation'])) &&
     isNonNegativeInteger(value['controllerRestarts']) &&
+    Array.isArray(value['auditLog']) &&
+    value['auditLog'].every(isAuditEntry) &&
     isOptionalString(value['closedAt']) &&
     isNonEmptyString(value['createdAt']) &&
     isNonEmptyString(value['updatedAt'])
@@ -810,6 +932,12 @@ const zeroUsage: DurableGoalUsage = { attempts: 0, steps: 0, tokens: 0, duration
  */
 export function createGoalState(input: CreateGoalStateInput): GoalState {
   validateBudget(input.bounds);
+  if (input.bounds.maximumAttempts > GOAL_MAXIMUM_ATTEMPTS) {
+    throw new GoalConfigurationError(
+      'invalid-maximum-attempts',
+      `GoalBudget.maximumAttempts must be at most ${GOAL_MAXIMUM_ATTEMPTS} for a durable goal, so its audit log stays bounded.`,
+    );
+  }
   validateGoalRunId(input.goalRunId, input.bounds.maximumAttempts);
   validateRetryPolicy(input.retryPolicy);
   validateConversationPolicy(input.conversationPolicy, input.objective.instructions);
@@ -845,6 +973,7 @@ export function createGoalState(input: CreateGoalStateInput): GoalState {
       attempts: [],
       usage: zeroUsage,
       controllerRestarts: 0,
+      auditLog: [],
       createdAt: input.now,
       updatedAt: input.now,
     }),
