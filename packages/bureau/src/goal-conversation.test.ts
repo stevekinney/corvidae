@@ -29,7 +29,13 @@ const sessionWithRuns = (runIds: readonly string[]) =>
     conversationHistory: createConversationHistory(undefined, { runtime }),
     id: 'goal-g1-s0',
     metadata: goalSessionMetadata(record),
-    runs: runIds.map((runId, sequence) => ({ runId, sequence, status: 'completed' as const })),
+    runs: runIds.map((runId, sequence) => ({
+      runId,
+      sequence,
+      status: 'completed' as const,
+      startedAt: record.createdAt,
+      agentName: 'worker',
+    })),
     runtime,
   });
 

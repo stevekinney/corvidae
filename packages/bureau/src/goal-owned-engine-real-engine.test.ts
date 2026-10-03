@@ -69,7 +69,10 @@ describe('createOwnedGoalEngine over a real Weft engine', () => {
 
     await owned.cancel('goal:g2');
 
-    await pollUntil(async () => (await engine.get('goal:g2'))?.status === 'cancelled');
+    await pollUntil(async () => {
+      const state = await engine.get('goal:g2');
+      return state?.status === 'cancelled';
+    });
   });
 
   it('resumes a controller a stopped engine left behind', async () => {
