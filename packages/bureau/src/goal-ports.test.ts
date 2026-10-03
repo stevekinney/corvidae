@@ -626,6 +626,31 @@ describe('runValidator', () => {
     expect(await ports.runValidator(request)).toMatchObject({ outcome: { kind: 'pass' } });
   });
 
+  it('fails the activity, to be retried, when the run reads as not yet ended, but answers an error for a run that is gone', async () => {
+    const { ports, engine } = await evaluating({
+      validators: [{ identity: CHECK, validate: () => ({ kind: 'pass', evidence: [] }) }],
+    });
+    const realGet = engine.get.bind(engine);
+    let reading: 'running' | 'gone' | 'real' = 'running';
+    (engine as { get: typeof engine.get }).get = async (workflowId) => {
+      if (workflowId !== 'goal-g1-a0' || reading === 'real') return realGet(workflowId);
+      if (reading === 'gone') return null;
+      const real = await realGet(workflowId);
+      return real === null ? null : { ...real, status: 'running' };
+    };
+
+    // The forwarder only signals a run it read as ended, so "running" now is a
+    // lagging read: retry.
+    expect(await throwingRejectionOf(ports.runValidator(request))).toThrow('not yet readable');
+    // A run that no longer exists will not come back, so retrying would spin.
+    reading = 'gone';
+    expect(await ports.runValidator(request)).toMatchObject({
+      outcome: { kind: 'error', error: { code: 'ATTEMPT_RESULT_UNAVAILABLE' } },
+    });
+    reading = 'real';
+    expect(await ports.runValidator(request)).toMatchObject({ outcome: { kind: 'pass' } });
+  });
+
   it('hands the validator the attempts before this one', async () => {
     const seen: Array<{ feedback: (string | undefined)[]; outcome: (string | undefined)[] }> = [];
     const { ports, store, durable } = await evaluating({

@@ -317,9 +317,11 @@ export type BureauGoalCancelOutcome =
  *   supply the deterministic evidence it requires, so recovery ended it
  *   `failed`/`unsupported-validation` without starting a controller.
  * - `already-terminal`, `not-found`: nothing to do.
- * - `unrecoverable`: the controller has already been restarted the maximum
- *   number of times. The goal is left exactly as it is; no terminal reason is
- *   invented for it.
+ * - `unrecoverable`: recovery gave up on the goal, which is left exactly as it
+ *   is (no terminal reason is invented for it): its controller has already been
+ *   restarted the maximum number of times, something else holds its workflow,
+ *   its audit log has no room to record another restart, its stored record
+ *   cannot be decoded, or the bureau has no durable engine to run a controller.
  */
 export type BureauGoalRecoveryOutcome =
   | 'started'
