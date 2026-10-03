@@ -91,6 +91,12 @@ export interface GoalsComposition {
   drain(): Promise<void>;
 }
 
+/**
+ * How long shutdown waits for a boot sweep that outlived its own budget: it
+ * aborts the starts it can reach, and does not wait past this for the rest.
+ */
+export const GOAL_DRAIN_BUDGET_MS = 5_000;
+
 export function composeBureauGoals(dependencies: GoalsCompositionDependencies): GoalsComposition {
   const { runtimeServices, host, diagnose, readRunRecord } = dependencies;
   const fenceAttempt = (record: GoalState, attemptIndex: number): Promise<GoalAttemptClaimFence> =>
@@ -280,7 +286,28 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
       // background: abort their starts and wait for them to settle, so none
       // touches the engine or storage once the bureau disposes them.
       shutdown.abort();
-      await Promise.all([forwarder.drain(), backgroundSweep]);
+      // Only the attempt start honours the signal; a recovery blocked in a read
+      // of the engine or the store does not. Waiting for it forever would hang
+      // `close()` before storage is disposed, so the wait is bounded: past the
+      // budget the sweep is diagnosed and left, as a recovery that outlived it.
+      const { timers } = runtimeServices;
+      let handle: ReturnType<typeof timers.setTimeout>;
+      const expired = new Promise<'expired'>((resolve) => {
+        handle = timers.setTimeout(() => resolve('expired'), GOAL_DRAIN_BUDGET_MS);
+      });
+      try {
+        const sweep = await Promise.race([backgroundSweep.then(() => 'settled' as const), expired]);
+        if (sweep === 'expired') {
+          diagnose({
+            level: 'warn',
+            scope: 'goals',
+            message: `[bureau] The goal recovery sweep did not settle within ${GOAL_DRAIN_BUDGET_MS} ms of shutdown and was left running.`,
+          });
+        }
+      } finally {
+        timers.clearTimeout(handle!);
+      }
+      await forwarder.drain();
     },
   };
 }

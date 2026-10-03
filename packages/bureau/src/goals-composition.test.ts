@@ -14,7 +14,7 @@ import { GOAL_BOOT_SWEEP_BUDGET_MS } from './goal-recovery';
 import { createGoalState } from './goal-state';
 import { createGoalStore } from './goal-store';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
-import { composeBureauGoals } from './goals-composition';
+import { composeBureauGoals, GOAL_DRAIN_BUDGET_MS } from './goals-composition';
 import { NOW, runningGoal, scriptedEngine } from './testing/goal-control-fixtures.test-support';
 import { CHECK } from './testing/goal-fixtures.test-support';
 import type { BureauDiagnostic } from './types';
@@ -143,6 +143,42 @@ describe('shutdown after a boot sweep that outlived its budget', () => {
 
     expect(drained).toBe(true);
     await draining;
+    expect(base.runtime.pendingTimers()).toEqual([]);
+  });
+});
+
+describe('shutdown after a boot sweep blocked outside the attempt start', () => {
+  it('stops waiting for the sweep once the drain budget passes, diagnoses it, and leaves no timer behind', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    await runningGoal('g1', createGoalStore(kv));
+    const base = compose({ kv, workflows: {} });
+    // The controller read never settles, and nothing the shutdown signal reaches is waiting on it.
+    base.engine.get = (() => new Promise<never>(() => {})) as never;
+
+    let report: Awaited<ReturnType<typeof base.composition.recoverAtBoot>> | undefined;
+    void base.composition.recoverAtBoot().then((done) => {
+      report = done;
+    });
+    await turns();
+    await base.runtime.advance(GOAL_BOOT_SWEEP_BUDGET_MS);
+    await turns();
+    expect(report?.failures.map((failure) => failure.goalRunId)).toEqual(['g1']);
+
+    let drained = false;
+    const draining = base.composition.drain().then(() => {
+      drained = true;
+    });
+    await turns();
+    expect(drained).toBe(false);
+
+    await base.runtime.advance(GOAL_DRAIN_BUDGET_MS);
+    await turns();
+
+    expect(drained).toBe(true);
+    await draining;
+    expect(base.diagnostics.map((diagnostic) => diagnostic.message)).toContainEqual(
+      expect.stringContaining('did not settle'),
+    );
     expect(base.runtime.pendingTimers()).toEqual([]);
   });
 });
