@@ -12,9 +12,11 @@ import { describe, expect, it } from 'bun:test';
 import { GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS } from './goal-attempt-fence';
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
 import {
+  GOAL_BOOT_SWEEP_BUDGET_MS,
   MAXIMUM_CONTROLLER_RESTARTS,
   recoverEveryGoal,
   recoverGoal,
+  recoverGoalsAtBoot,
   recoveryEntryFailure,
 } from './goal-recovery';
 import { createGoalState, goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
@@ -1273,5 +1275,114 @@ describe("recovery's own start of an attempt whose run is gone", () => {
     expect(diagnostics.some((diagnostic) => diagnostic.message.includes('resolver fault'))).toBe(
       true,
     );
+  });
+});
+
+describe("the boot sweep's own budget over goals whose start never settles", () => {
+  /** Goals `g1`..`gN`, each running with a live controller and an attempt whose run is gone. */
+  async function goneRuns(
+    ids: readonly string[],
+    startAttempt: GoalControlDependencies['startAttempt'],
+  ) {
+    const store = await runningGoal(ids[0]);
+    for (const id of ids.slice(1)) await runningGoal(id, store);
+    const { engine } = scriptedEngine({
+      workflows: Object.fromEntries(ids.map((id) => [`goal:${id}`, 'running'])),
+    });
+    const runtime = createManualRuntimeServices();
+    const forwarder = {
+      watch: () => {},
+      reconcile: () => Promise.resolve('missing' as const),
+      drain: () => Promise.resolve(),
+    };
+    const { control, diagnostics } = dependencies(store, engine, {
+      startAttempt,
+      forwarder,
+      timers: runtime.timers,
+    });
+    return { control, diagnostics, runtime };
+  }
+
+  const turns = async (count = 200) => {
+    for (let turn = 0; turn < count; turn += 1) await Promise.resolve();
+  };
+
+  it('returns once its budget is spent however many goals are stuck, reporting each as a failure, not after a start budget per goal', async () => {
+    const started: string[] = [];
+    const { control, runtime } = await goneRuns(['g1', 'g2', 'g3'], (request) => {
+      started.push(request.goalRunId);
+      return new Promise(() => {});
+    });
+
+    let report: Awaited<ReturnType<typeof recoverGoalsAtBoot>> | undefined;
+    void recoverGoalsAtBoot(control).then((done) => {
+      report = done;
+    });
+    await turns();
+    // One stuck goal does not hold the others back from being tried.
+    expect(started.toSorted()).toEqual(['g1', 'g2', 'g3']);
+    expect(report).toBeUndefined();
+
+    await runtime.advance(GOAL_BOOT_SWEEP_BUDGET_MS);
+    await turns();
+
+    expect(report).toBeDefined();
+    expect(GOAL_BOOT_SWEEP_BUDGET_MS).toBeLessThan(GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS);
+    expect(report?.failures.map((failure) => failure.goalRunId).toSorted()).toEqual([
+      'g1',
+      'g2',
+      'g3',
+    ]);
+    expect(report?.failures[0]?.reason).toContain('boot');
+  });
+
+  it('reports the goals that finished inside the budget as they ended, and only the ones still recovering as failures', async () => {
+    const { control, runtime } = await goneRuns(['g1', 'g2'], (request) =>
+      request.goalRunId === 'g1'
+        ? new Promise(() => {})
+        : Promise.resolve({ status: 'started', sessionId: 's' } as never),
+    );
+
+    let report: Awaited<ReturnType<typeof recoverGoalsAtBoot>> | undefined;
+    void recoverGoalsAtBoot(control).then((done) => {
+      report = done;
+    });
+    await turns();
+    await runtime.advance(GOAL_BOOT_SWEEP_BUDGET_MS);
+    await turns();
+
+    expect(report?.goals).toMatchObject([{ goalRunId: 'g2', attempt: 'run-started' }]);
+    expect(report?.failures.map((failure) => failure.goalRunId)).toEqual(['g1']);
+  });
+
+  it('lets a recovery that outlives the budget end on its own, leaving no timer behind', async () => {
+    const { control, runtime, diagnostics } = await goneRuns(['g1'], () => new Promise(() => {}));
+
+    let report: Awaited<ReturnType<typeof recoverGoalsAtBoot>> | undefined;
+    void recoverGoalsAtBoot(control).then((done) => {
+      report = done;
+    });
+    await turns();
+    await runtime.advance(GOAL_BOOT_SWEEP_BUDGET_MS);
+    await turns();
+    const reported = report;
+    await runtime.advance(GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS);
+    await turns();
+
+    expect(report).toBe(reported);
+    expect(runtime.pendingTimers()).toEqual([]);
+    expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([]);
+  });
+
+  it('does not wait for the budget when every goal finishes, and leaves no timer behind', async () => {
+    const { control, runtime } = await goneRuns(['g1', 'g2'], () =>
+      Promise.resolve({ status: 'started', sessionId: 's' } as never),
+    );
+
+    const report = await recoverGoalsAtBoot(control);
+
+    expect(report.failures).toEqual([]);
+    expect(report.goals.map((entry) => entry.goalRunId)).toEqual(['g1', 'g2']);
+    expect(runtime.pendingTimers()).toEqual([]);
   });
 });

@@ -167,6 +167,11 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
   if (!session.runs.every((ref) => isAttemptRun(ref.runId))) {
     return refuse("holds a run that is not one of this goal's attempts");
   }
+  // Each of those runs is the goal's own agent's too: a ref the goal's start
+  // wrote carries the agent it ran, and one for any other agent is not its.
+  if (!session.runs.every((ref) => ref.agentName === record.objective.agentName)) {
+    return refuse('holds a run of a different agent');
+  }
   return undefined;
 }
 

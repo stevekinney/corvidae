@@ -816,6 +816,29 @@ async function finishOwedCleanup(
   };
 }
 
+/**
+ * How long the boot sweep holds `createBureau()` for goals that have not
+ * finished recovering, however many there are. It is well under one start's own
+ * budget (`GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS`): recovery that is simply
+ * working finishes long before it, and one stuck on a resolver or a store that
+ * never settles is not worth a bureau that cannot be used.
+ */
+export const GOAL_BOOT_SWEEP_BUDGET_MS = 30_000;
+
+/** How many goals the sweep recovers at once, so one stuck goal does not hold the rest back. */
+const SWEEP_CONCURRENCY = 4;
+
+export interface RecoverEveryGoalOptions {
+  /**
+   * Returns once this long has passed even if goals are still recovering. Each
+   * goal still recovering is reported as a failure, and carries on in the
+   * background (its own start budget, shutdown, and `recover()` bound it); a
+   * result it reaches later is not added to the report. Unset, the sweep waits
+   * for every goal.
+   */
+  readonly budgetMs?: number;
+}
+
 /** Recovers one goal. Never throws. */
 export async function recoverGoal(
   dependencies: GoalControlDependencies,
@@ -892,6 +915,7 @@ export async function recoverEveryGoal(
    * principal to check, so this is for a caller who may see every goal.
    */
   includeUnreadable = false,
+  options: RecoverEveryGoalOptions = {},
 ): Promise<BureauGoalRecoveryReport> {
   const goals: BureauGoalRecoveryEntry[] = [];
   const failures: { goalRunId: string; reason: string }[] = [];
@@ -907,18 +931,85 @@ export async function recoverEveryGoal(
   } catch (error) {
     return { goals, failures: [{ goalRunId: '*', reason: describe(error) }] };
   }
-  for (const record of records) {
+  // Recovered a few at a time, each result kept at its goal's place in the
+  // order, so the report reads the same however the goals interleave.
+  const entries = new Map<
+    number,
+    BureauGoalRecoveryEntry | { readonly failure: string } | 'quiet'
+  >();
+  let reported = false;
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < records.length) {
+      const index = next;
+      next += 1;
+      const record = records[index]!;
+      let result: BureauGoalRecoveryEntry | { readonly failure: string } | 'quiet';
+      try {
+        const entry = await recoverGoal(dependencies, record.goalRunId);
+        // A canceled goal is in the sweep only to have its cleanup finished; one
+        // with nothing left to finish is no more news than any other ended goal.
+        result =
+          isTerminalGoalStatus(record.status) && entry.outcome === 'already-terminal'
+            ? 'quiet'
+            : entry;
+      } catch (error) {
+        result = { failure: describe(error) };
+      }
+      if (!reported) entries.set(index, result);
+    }
+  }
+  const everyGoal = Promise.all(
+    Array.from({ length: Math.min(SWEEP_CONCURRENCY, records.length) }, worker),
+  );
+  const budgetMs = options.budgetMs;
+  let overBudget = false;
+  if (budgetMs === undefined) {
+    await everyGoal;
+  } else {
+    const { timers } = dependencies;
+    let handle: ReturnType<typeof timers.setTimeout>;
+    const expired = new Promise<'expired'>((resolve) => {
+      handle = timers.setTimeout(() => resolve('expired'), budgetMs);
+    });
     try {
-      const entry = await recoverGoal(dependencies, record.goalRunId);
-      // A canceled goal is in the sweep only to have its cleanup finished; one
-      // with nothing left to finish is no more news than any other ended goal.
-      if (isTerminalGoalStatus(record.status) && entry.outcome === 'already-terminal') continue;
-      goals.push(entry);
-    } catch (error) {
-      failures.push({ goalRunId: record.goalRunId, reason: describe(error) });
+      overBudget =
+        (await Promise.race([everyGoal.then(() => 'done' as const), expired])) === 'expired';
+    } finally {
+      timers.clearTimeout(handle);
+    }
+  }
+  reported = true;
+  for (const [index, record] of records.entries()) {
+    const result = entries.get(index);
+    if (result === undefined) {
+      // Nothing recorded for it: recovery had not finished when the budget ended.
+      if (overBudget) {
+        failures.push({
+          goalRunId: record.goalRunId,
+          reason: `The goal was still recovering when the boot sweep's ${budgetMs} ms budget ended; recovery carries on in the background, and recover() reports where it stands.`,
+        });
+      }
+    } else if (result === 'quiet') {
+      continue;
+    } else if ('failure' in result) {
+      failures.push({ goalRunId: record.goalRunId, reason: result.failure });
+    } else {
+      goals.push(result);
     }
   }
   return { goals, failures };
+}
+
+/**
+ * The sweep `createBureau()` runs at boot: every goal, including the records
+ * that cannot be decoded, held to `GOAL_BOOT_SWEEP_BUDGET_MS` so a stuck goal
+ * never keeps the bureau from being returned.
+ */
+export function recoverGoalsAtBoot(
+  dependencies: GoalControlDependencies,
+): Promise<BureauGoalRecoveryReport> {
+  return recoverEveryGoal(dependencies, () => true, true, { budgetMs: GOAL_BOOT_SWEEP_BUDGET_MS });
 }
 
 /**

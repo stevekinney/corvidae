@@ -34,11 +34,12 @@ import {
   type RunRecordReader,
 } from './goal-ownership';
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
+import { recoverGoalsAtBoot } from './goal-recovery';
 import { goalAttemptRunId, type GoalState, goalWorkflowId } from './goal-state';
 import { createGoalStore } from './goal-store';
 import type { BureauGoalRecoveryReport, BureauGoals, GoalEngine } from './goal-types';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
-import { createBureauGoals } from './goals';
+import { type BureauGoalsDependencies, createBureauGoals } from './goals';
 import type { GoalAttemptClaimFence, GoalAttemptClaimOwner } from './runtime-composition';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
@@ -215,7 +216,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     createGoalAttemptFence({ store, readRunRecord, clock: runtimeServices.clock }),
   );
 
-  const goals = createBureauGoals({
+  const goalDependencies = {
     store,
     catalog,
     runtime: runtimeServices,
@@ -231,7 +232,8 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     timers: runtimeServices.timers,
     isClosing: dependencies.isClosing,
     planAgent: dependencies.planAgent,
-  });
+  } satisfies BureauGoalsDependencies;
+  const goals = createBureauGoals(goalDependencies);
 
   return {
     goals,
@@ -255,7 +257,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
           }),
         );
       }
-      return goals.recover();
+      return recoverGoalsAtBoot(goalDependencies);
     },
     drain: () => forwarder.drain(),
   };

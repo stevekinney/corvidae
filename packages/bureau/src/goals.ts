@@ -265,6 +265,11 @@ export function createBureauGoals<TName extends string = string>(
         'Durable goals need a durable engine; this bureau has none.',
       );
     }
+    // Looked up by name only when there is one: any other value is a request
+    // that cannot be built, whatever the bureau's agents are.
+    if (typeof request.agentName !== 'string') {
+      return rejected('invalid-configuration', 'The goal agent name must be text.');
+    }
     const plan = planAgent(request.agentName);
     if (plan === undefined) {
       return rejected('agent-not-found', `Unknown agent "${request.agentName}".`);
@@ -378,12 +383,17 @@ export function createBureauGoals<TName extends string = string>(
   }
 
   async function list(options?: BureauGoalListOptions): Promise<GoalState[]> {
+    // The filter is untyped input too: one that is not a status or a list of
+    // them matches no goal, and is never widened to match every one.
+    const requested: unknown = options?.status;
     const wanted: readonly GoalRunStatus[] | undefined =
-      options?.status === undefined
+      requested === undefined
         ? undefined
-        : typeof options.status === 'string'
-          ? [options.status]
-          : options.status;
+        : typeof requested === 'string'
+          ? [requested as GoalRunStatus]
+          : Array.isArray(requested)
+            ? (requested as GoalRunStatus[])
+            : [];
     const records = await store.list();
     return records
       .filter(
@@ -443,7 +453,10 @@ export function createBureauGoals<TName extends string = string>(
     };
   }
 
-  async function cancel(goalRunId: string, options: BureauGoalCancelOptions = {}) {
+  async function cancel(goalRunId: string, given?: BureauGoalCancelOptions) {
+    // Untyped input: only an object is a set of options, and `null` is none.
+    const options: BureauGoalCancelOptions =
+      typeof given === 'object' && given !== null ? given : {};
     const record = await authorized(goalRunId, options);
     return record === undefined
       ? await absent(goalRunId, options)

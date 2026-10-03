@@ -72,6 +72,85 @@ async function reaches(bureau: Bureau, status: GoalState['status'], goalRunId = 
   expect(reached).toBe(true);
 }
 
+describe('bureau.goals on input the type system does not reach', () => {
+  async function bootWithGoal() {
+    const { bureau } = await boot({
+      agents: { worker: workerAgent(hangUntilAborted) },
+      validators: [createCheckValidator()],
+    });
+    expect(await bureau.goals.create(goalRequest({ goalRunId: 'g-real' }))).toMatchObject({
+      outcome: 'created',
+    });
+    return bureau;
+  }
+
+  const NOT_TEXT = [
+    ['a number', 7],
+    ['null', null],
+    ['undefined', undefined],
+    ['an object', {}],
+    ['an array', ['g-real']],
+    ['a boolean', true],
+  ] as const;
+
+  it.each(NOT_TEXT)(
+    'answers an id that is %s as no goal on every lookup, instead of throwing',
+    async (_label, id) => {
+      const bureau = await bootWithGoal();
+      const goals = bureau.goals as unknown as Record<
+        'get' | 'active' | 'cancel' | 'close',
+        (id: unknown) => Promise<unknown>
+      >;
+
+      expect(await goals.get(id)).toBeUndefined();
+      expect(await goals.active(id)).toBeUndefined();
+      expect(await goals.cancel(id)).toEqual({ outcome: 'not-found' });
+      expect(await goals.close(id)).toEqual({ outcome: 'not-found' });
+      expect(await bureau.goals.get('g-real')).toBeDefined();
+    },
+  );
+
+  it.each([[5], [null], [{}], [[7]]])(
+    'lists nothing for a status filter that is not a status or a list of them (%p), instead of throwing',
+    async (status) => {
+      const bureau = await bootWithGoal();
+
+      expect(await bureau.goals.list({ status } as never)).toEqual([]);
+      expect(await bureau.goals.list({ status: 'pending' })).toHaveLength(1);
+    },
+  );
+
+  it.each([[null], [5], ['text']])(
+    'treats cancel options that are not an object (%p) as none, instead of throwing',
+    async (options) => {
+      const bureau = await bootWithGoal();
+
+      expect(await bureau.goals.cancel('g-real', options as never)).toMatchObject({
+        outcome: expect.any(String),
+      });
+    },
+  );
+
+  it.each([
+    ['a number', 5],
+    ['an array', ['worker']],
+    ['an object with no usable toString', { toString: 5 }],
+  ])(
+    'refuses an agent name that is %s as an invalid configuration, before looking the agent up',
+    async (_label, agentName) => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+
+      const outcome = await bureau.goals.create(goalRequest({ agentName } as never));
+
+      expect(outcome).toMatchObject({ outcome: 'rejected', code: 'invalid-configuration' });
+      expect(await bureau.goals.list()).toEqual([]);
+    },
+  );
+});
+
 describe('bureau.goals', () => {
   it('fails startup when two validators are registered under one name and version', async () => {
     const error = await rejectionOf(

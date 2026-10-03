@@ -21,11 +21,13 @@ import type { BureauDiagnostic } from '../types';
 
 export const NOW = '2026-10-02T12:00:00.000Z';
 
-export async function runningGoal(): Promise<GoalStore> {
-  const store = createGoalStore(textValueStore(new MemoryStorage()));
+export async function runningGoal(
+  goalRunId = 'g1',
+  store: GoalStore = createGoalStore(textValueStore(new MemoryStorage())),
+): Promise<GoalStore> {
   await store.create(
     createGoalState({
-      goalRunId: 'g1',
+      goalRunId,
       identity: { name: 'goal', version: '1' },
       objective: { agentName: 'worker', prompt: 'work' },
       validator: { name: 'check', version: '1' },
@@ -34,12 +36,12 @@ export async function runningGoal(): Promise<GoalStore> {
       now: NOW,
     }),
   );
-  const attemptId = goalAttemptId('g1', 0);
-  const runId = goalAttemptRunId('g1', 0);
+  const attemptId = goalAttemptId(goalRunId, 0);
+  const runId = goalAttemptRunId(goalRunId, 0);
   await store.applyTransition({
-    goalRunId: 'g1',
+    goalRunId,
     seq: 1,
-    transitionId: goalTransitionId('g1', 1),
+    transitionId: goalTransitionId(goalRunId, 1),
     to: 'running',
     at: NOW,
     cause: 'attempt 0 started',
@@ -47,7 +49,7 @@ export async function runningGoal(): Promise<GoalStore> {
       attemptId,
       attemptIndex: 0,
       runId,
-      sessionId: goalSessionId('g1', 0),
+      sessionId: goalSessionId(goalRunId, 0),
       startedAt: NOW,
       usage: { steps: 0, tokens: 0 },
       status: 'running',

@@ -45,6 +45,15 @@ describe('foreignSessionReason and the runs a session holds', () => {
     expect(reason).toContain('belongs to a different agent');
   });
 
+  it("refuses a session holding a run that was started by a different agent than the goal's", () => {
+    const session = sessionWithRuns([goalAttemptRunId('g1', 0)]);
+    const foreign = {
+      ...session,
+      runs: session.runs.map((ref) => ({ ...ref, agentName: 'other-agent' })),
+    };
+    expect(foreignSessionReason(record, foreign)).toContain('different agent');
+  });
+
   it("accepts a session holding exactly the goal's own attempt run ids", () => {
     const session = sessionWithRuns([goalAttemptRunId('g1', 0), goalAttemptRunId('g1', 2)]);
     expect(foreignSessionReason(record, session)).toBeUndefined();

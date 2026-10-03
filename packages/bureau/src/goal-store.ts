@@ -242,6 +242,16 @@ export interface GoalScan {
 const MAXIMUM_CAS_ATTEMPTS = 16;
 
 /** The goal id a record key was built from; the raw suffix when it does not decode. */
+/**
+ * Whether `value` can name a record: text that is well-formed, which is what
+ * its percent encoding needs. The store's lookups take ids from callers the
+ * type system does not reach (a JSON body, a script), so a number or a missing
+ * id names no goal rather than throwing.
+ */
+function isKeyableGoalRunId(value: unknown): value is string {
+  return typeof value === 'string' && value.isWellFormed();
+}
+
 function decodeGoalRunIdFromKey(key: string): string {
   const encoded = key.slice(GOAL_RECORD_KEY_PREFIX.length);
   try {
@@ -299,7 +309,7 @@ export function createGoalStore(
   async function get(goalRunId: string): Promise<GoalState | undefined> {
     // An id that is not well-formed text cannot key a record (its percent
     // encoding throws), so it names no goal: absent, as every lookup answers.
-    if (!goalRunId.isWellFormed()) return undefined;
+    if (!isKeyableGoalRunId(goalRunId)) return undefined;
     const stored = await read(goalRecordKey(goalRunId));
     return stored.kind === 'found' ? stored.record : undefined;
   }
@@ -321,7 +331,7 @@ export function createGoalStore(
     stale: (current: GoalState) => Result,
     written: (record: GoalState) => Result,
   ): Promise<Result | { status: 'missing' } | { status: 'corrupt' }> {
-    if (!goalRunId.isWellFormed()) return { status: 'missing' };
+    if (!isKeyableGoalRunId(goalRunId)) return { status: 'missing' };
     const key = goalRecordKey(goalRunId);
     let latest: GoalState | undefined;
     for (let attempt = 0; attempt < MAXIMUM_CAS_ATTEMPTS; attempt += 1) {
@@ -432,7 +442,7 @@ export function createGoalStore(
       return unreadable;
     },
     async isUnreadable(goalRunId) {
-      if (!goalRunId.isWellFormed()) return false;
+      if (!isKeyableGoalRunId(goalRunId)) return false;
       const stored = await read(goalRecordKey(goalRunId));
       return stored.kind === 'corrupt';
     },
