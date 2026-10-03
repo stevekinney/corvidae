@@ -8,21 +8,27 @@
  * settle, re-arm, dead-letter, stale horizon, backoff) live in `./finalizer-claim.ts`;
  * this module is the orchestration that decides which to call.
  *
- * Concurrency model — a single durable, TIME-based claim: the durable `teardownOwed`
- * marker carries a `{ status, attempts, token, claimedAt }` claim ({@link TeardownClaim}).
- * A holder fenced-CAS's `owed → running` (stamping `claimedAt`) before running, and
- * settle-CAS's the exact `running` bytes it wrote when clearing or rescheduling — so a
- * concurrent reclaimer can never clobber a fresher claim. Liveness is decided purely by
- * the clock: a `running` claim is reclaimable once `claimedAt` is older than
- * {@link teardownStaleThresholdMs}. There is NO in-memory liveness set and NO epoch in
- * the record; crash recovery is an ordinary stale-claim retry driven by the timer that
- * survived the terminal batch — the tradeoff is a finalizer running past the stale
- * threshold may be re-driven concurrently, which is why finalizers must be idempotent.
+ * Concurrency model — the marker's byte-for-byte CAS is the sole arbiter between engines,
+ * in every ownership mode. The durable `teardownOwed` marker carries a
+ * `{ status, attempts, token, claimedAt }` claim ({@link TeardownClaim}). A holder CAS's
+ * `owed → running` (stamping `claimedAt`) before running, and settle-CAS's the exact
+ * `running` bytes it wrote when clearing or rescheduling — so a concurrent reclaimer can never
+ * clobber a fresher claim. Every marker and timer write is engine-scoped (`workflowId: null`),
+ * never fenced on `wf-owner-epoch`: the workflow's claim is already released or rotated away
+ * by the terminal that owes the teardown, and no teardown hold ever enters the workflow claim
+ * registry (so the reclaim scan cannot take one over). Liveness is decided purely by the
+ * clock: a `running` claim is reclaimable once `claimedAt` is older than
+ * {@link teardownStaleThresholdMs}, and the claim CAS arms a watchdog timer at exactly that
+ * deadline in the same batch. A finalizer running past the stale threshold may be re-driven
+ * concurrently, which is why finalizers must be idempotent.
  *
- * Self-heal invariant: every exit that does NOT settle the claim (a lost claim CAS, a
- * presumed-live `running` claim, a shutdown-aborted attempt, or a missing registration)
- * re-arms a future `wf-teardown:` timer before returning — the scheduler deletes the fired
- * timer on return, so a non-settling exit that forgot to re-arm strands the marker.
+ * Timer ownership: the first timer rides the terminal commit. A drive that wins the claim CAS
+ * owns the next timer (the watchdog, or the backoff timer a retry settle writes under a NEW
+ * token); a drive that loses a claim or settle CAS stays silent. Only the exits with no
+ * winner — a missing registration, a failed corrupt-marker clear, an unexpected error — re-arm
+ * a self-heal timer, at a slot every engine shares so concurrent re-arms collapse to one key.
+ * A timer whose token no longer matches the marker (a leftover watchdog, a stray self-heal) is
+ * inert: it resolves to nothing owed.
  *
  * @module core/engine/termination/finalizer
  */
@@ -41,20 +47,19 @@ import {
   deadLetterTeardown,
   encodeOwedClaim,
   MAX_TEARDOWN_ATTEMPTS,
+  newTeardownToken,
+  observedMarkerHold,
   rearmTeardownTimer,
+  reassertOwedAfterShutdown,
   runningClaimIsStale,
   settleOnRunningClaim,
   TEARDOWN_SELF_HEAL_DELAY_MS,
   teardownBackoffMs,
   teardownStaleThresholdMs,
   teardownTimerOperations,
+  type TeardownHold,
 } from './finalizer-claim.ts';
 import { resolveFinalizerRegistration } from './finalizer-registration.ts';
-import {
-  reassertOwedAfterShutdown,
-  TERMINAL_STATUSES_OWED_TEARDOWN,
-  withTeardownDriveClaim,
-} from './finalizer-teardown-claim.ts';
 
 export { teardownStaleThresholdMs, type TeardownDeadLetterRecord } from './finalizer-claim.ts';
 
@@ -65,24 +70,14 @@ export interface FinalizerDriveCallbacks {
   handleCleanupError: (source: string, error: unknown, workflowId?: string) => void;
 }
 
+/** Terminal statuses that owe a definition-level finalizer teardown. */
+const TERMINAL_STATUSES_OWED_TEARDOWN = new Set<WorkflowState['status']>([
+  'cancelled',
+  'timed-out',
+]);
+
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-
-/**
- * Re-arm a self-heal timer after a settle CAS lost its race (the `running` bytes we wrote
- * were reclaimed by another holder). The scheduler deletes the fired `wf-teardown:` timer
- * once the drive returns, so without this the marker could be stranded with no follow-up
- * timer — violating the self-heal invariant. Symmetric with the lost-CLAIM-CAS re-arm in
- * {@link driveResolvedTeardown}. Idempotent and bounded: a redundant timer just makes the
- * next drive re-read the marker; the dead-letter horizon caps total attempts.
- */
-async function rearmOnLostSettle(
-  internals: EngineInternals,
-  workflowId: string,
-  token: string,
-): Promise<void> {
-  await rearmTeardownTimer(internals, workflowId, token, TEARDOWN_SELF_HEAL_DELAY_MS);
-}
 
 /**
  * Clear the marker (conditioned on `markerBytes`) and report the resolution: `'cleared'`
@@ -116,13 +111,15 @@ interface ResolvedTeardownDrive {
 /**
  * The outcome of resolving a fired teardown timer into actionable drive inputs.
  * `'run'` carries the resolved inputs; `'cleared'` means the marker was deleted or there
- * is nothing left to do (a settle — no re-arm); `'rearm'` means the drive must re-arm its
- * timer before returning (a non-settling exit such as a missing registration or a
- * presumed-live claim) and carries the token to re-arm.
+ * is nothing left to do (a settle — no re-arm); `'yield'` means a live sibling owns the
+ * marker and its own timer, so this drive stays silent; `'rearm'` means no winner owns the
+ * next timer (a missing registration, a failed clear), so the drive must re-arm a self-heal
+ * timer before returning and carries the token to re-arm.
  */
 type TeardownResolution =
   | { kind: 'run'; drive: ResolvedTeardownDrive }
   | { kind: 'cleared' }
+  | { kind: 'yield' }
   | { kind: 'rearm'; token: string };
 
 /**
@@ -168,8 +165,9 @@ async function readDriveableClaim(
 /**
  * Resolve a fired `wf-teardown:` timer into a drive outcome. The marker is cleared for a
  * corrupt marker (see {@link readDriveableClaim}), a vanished/ineligible workflow, or a
- * stale (re-armed) token; an unavailable definition or a presumed-live `running` claim
- * re-arms; absent finalizer state dead-letters in place.
+ * stale (re-armed) token; a presumed-live `running` claim yields to its holder, whose
+ * watchdog owns the next fire; an unavailable definition re-arms; absent finalizer state
+ * dead-letters in place.
  */
 async function resolveTeardownDrive(
   internals: EngineInternals,
@@ -218,7 +216,9 @@ async function resolveTeardownDrive(
   }
 
   if (!runningClaimIsStale(internals, claim, finalizer)) {
-    return { kind: 'rearm', token }; // a genuine live sibling drive owns it — back off and self-heal.
+    // A genuine live sibling drive owns it, and the CAS that claimed it armed its watchdog in
+    // the same batch — stay silent. Re-arming here is what multiplied timers across engines.
+    return { kind: 'yield' };
   }
 
   const finalizerStateBytes = await internals.storage.get(KEYS.finalizerState(workflowId));
@@ -231,7 +231,7 @@ async function resolveTeardownDrive(
       workflowId,
       state,
       claim.attempts,
-      markerBytes,
+      observedMarkerHold(markerBytes),
       callbacks,
     );
     return { kind: 'cleared' };
@@ -253,7 +253,7 @@ async function deadLetterMissingState(
   workflowId: string,
   state: WorkflowState,
   attempts: number,
-  expectedBytes: Uint8Array,
+  expected: TeardownHold,
   callbacks: FinalizerDriveCallbacks,
 ): Promise<void> {
   const lastError = 'finalizer state missing — recorded resource cannot be torn down';
@@ -262,7 +262,7 @@ async function deadLetterMissingState(
     workflowId,
     state.type,
     attempts,
-    expectedBytes,
+    expected,
     {
       lastError,
       finalizerInput: undefined,
@@ -303,28 +303,20 @@ export async function runWorkflowFinalizer(
   }
 
   try {
-    await withTeardownDriveClaim(
-      internals,
-      workflowId,
-      token,
-      callbacks.loadWorkflowState,
-      async () => {
-        const resolution = await resolveTeardownDrive(internals, workflowId, token, callbacks);
-        if (resolution.kind === 'cleared') {
-          return;
-        }
-        if (resolution.kind === 'rearm') {
-          await rearmTeardownTimer(
-            internals,
-            workflowId,
-            resolution.token,
-            TEARDOWN_SELF_HEAL_DELAY_MS,
-          );
-          return;
-        }
-        await driveResolvedTeardown(internals, workflowId, token, resolution.drive, callbacks);
-      },
-    );
+    const resolution = await resolveTeardownDrive(internals, workflowId, token, callbacks);
+    if (resolution.kind === 'cleared' || resolution.kind === 'yield') {
+      return;
+    }
+    if (resolution.kind === 'rearm') {
+      await rearmTeardownTimer(
+        internals,
+        workflowId,
+        resolution.token,
+        TEARDOWN_SELF_HEAL_DELAY_MS,
+      );
+      return;
+    }
+    await driveResolvedTeardown(internals, workflowId, token, resolution.drive, callbacks);
   } catch (error) {
     // Never propagate — a thrown timer callback re-fires with no backoff. Re-arm a
     // self-heal timer first so an error mid-drive (after the marker was read, before a
@@ -348,17 +340,17 @@ async function driveResolvedTeardown(
   const { state, claim, markerBytes, finalizer, finalizerInput } = drive;
   const attempt = claim.attempts + 1;
 
-  // Reclaim/claim CAS, fenced on the lease epoch. A lost CAS means another holder
-  // claimed it — back off and self-heal so the marker is never stranded.
-  const runningBytes = await claimTeardownMarker(
+  // Claim/reclaim CAS (also arming the watchdog). A lost CAS means another engine claimed
+  // it and owns the next timer — stay silent: a loser's re-arm is what multiplied timers.
+  const hold = await claimTeardownMarker(
     internals,
     workflowId,
     markerBytes,
     claim.attempts,
     token,
+    finalizer,
   );
-  if (runningBytes === null) {
-    await rearmTeardownTimer(internals, workflowId, token, TEARDOWN_SELF_HEAL_DELAY_MS);
+  if (hold === null) {
     return;
   }
 
@@ -376,46 +368,38 @@ async function driveResolvedTeardown(
       workflowId,
       state.type,
       state.workflowExecutionToken,
-      token,
       attempt,
-      runningBytes,
+      hold,
       callbacks,
     );
     return;
   }
   if (result.abortedByShutdown) {
     // A clean engine disposal aborted the attempt — NOT a finalizer failure. Re-assert
-    // `owed` at the UNCHANGED attempt count and re-arm, so the next owner retries from the
-    // same count and the resource is never dead-lettered just because the engine was
-    // disposed. (Codex MF4 / junior MF2; Cursor Bugbot round 4.)
-    await reassertOwedAfterShutdown(internals, workflowId, runningBytes, claim.attempts, token);
+    // `owed` at the UNCHANGED attempt count under a new token and arm a near-future timer, so
+    // the next owner retries from the same count and the resource is never dead-lettered just
+    // because the engine was disposed. This is the same engine-scoped CAS as every other
+    // settle, so it lands under `workflow-lease` too, where the earlier drive-claim design had
+    // to leave the marker `running` for the stale horizon. Under global `'lease'` disposal may
+    // release the lease first; the marker then stays `running` and the watchdog reclaims it.
+    await reassertOwedAfterShutdown(internals, workflowId, hold, claim.attempts);
     return;
   }
-  await settleTeardownFailure(
-    internals,
-    workflowId,
-    state,
-    attempt,
-    token,
-    runningBytes,
-    result.error,
-    callbacks,
-  );
+  await settleTeardownFailure(internals, workflowId, state, attempt, hold, result.error, callbacks);
 }
 
 /**
  * Finalizer succeeded: clear both active keys and write the durable run-qualified outcome,
- * conditioned on still owning the `running` claim. Emit only after commit; a lost CAS
- * re-arms without emitting.
+ * conditioned on still owning the `running` claim. Emit only after commit; a lost CAS means a
+ * reclaimer owns the marker and its watchdog, so it stays silent without emitting.
  */
 async function settleTeardownSuccess(
   internals: EngineInternals,
   workflowId: string,
   workflowType: string,
   workflowExecutionToken: string | undefined,
-  token: string,
   attempt: number,
-  runningBytes: Uint8Array,
+  hold: TeardownHold,
   callbacks: FinalizerDriveCallbacks,
 ): Promise<void> {
   const operations = buildTeardownSuccessOperations(
@@ -424,9 +408,8 @@ async function settleTeardownSuccess(
     internals.options.getNow(),
     workflowExecutionToken,
   );
-  const settled = await settleOnRunningClaim(internals, workflowId, runningBytes, operations);
+  const settled = await settleOnRunningClaim(internals, workflowId, hold, operations);
   if (!settled) {
-    await rearmOnLostSettle(internals, workflowId, token);
     return;
   }
   callbacks.dispatchEvent(
@@ -440,8 +423,7 @@ async function settleTeardownFailure(
   workflowId: string,
   state: WorkflowState,
   attempt: number,
-  token: string,
-  runningBytes: Uint8Array,
+  hold: TeardownHold,
   error: unknown,
   callbacks: FinalizerDriveCallbacks,
 ): Promise<void> {
@@ -453,7 +435,7 @@ async function settleTeardownFailure(
       workflowId,
       state.type,
       attempt,
-      runningBytes,
+      hold,
       {
         lastError: message,
         finalizerInput: finalizerStateBytes === null ? undefined : decode(finalizerStateBytes),
@@ -461,11 +443,9 @@ async function settleTeardownFailure(
       state.workflowExecutionToken,
       state.revision,
     );
-    // A lost settle CAS means a reclaimer took the running bytes (it will settle/re-arm).
-    // Re-arm anyway so the marker is never stranded after the fired timer is deleted —
-    // symmetric with the lost-CLAIM-CAS re-arm. (Cursor Bugbot round 4.)
+    // A lost settle CAS means a reclaimer took the running bytes; it armed its own watchdog
+    // in the same batch and owns the marker, so there is nothing to re-arm.
     if (!settled) {
-      await rearmOnLostSettle(internals, workflowId, token);
       return;
     }
     callbacks.dispatchEvent(
@@ -474,15 +454,21 @@ async function settleTeardownFailure(
     return;
   }
 
-  // Persist the incremented attempt back as `owed`, then reschedule the timer at the
-  // backoff deadline — conditioned on still owning the `running` claim we wrote.
+  // Persist the incremented attempt back as `owed` under a NEW token, then reschedule the
+  // timer at the backoff deadline — conditioned on still owning the `running` claim we wrote.
+  // The new token is what keeps the backoff honest: the watchdog and any stray timer carry the
+  // old token, so they resolve to nothing owed instead of starting the next attempt early.
+  const retryToken = newTeardownToken();
   const fireAt = internals.options.getNow() + teardownBackoffMs(attempt);
-  const settled = await settleOnRunningClaim(internals, workflowId, runningBytes, [
-    { type: 'put', key: KEYS.teardownOwed(workflowId), value: encodeOwedClaim(attempt, token) },
-    ...teardownTimerOperations(token, workflowId, fireAt),
+  const settled = await settleOnRunningClaim(internals, workflowId, hold, [
+    {
+      type: 'put',
+      key: KEYS.teardownOwed(workflowId),
+      value: encodeOwedClaim(attempt, retryToken),
+    },
+    ...teardownTimerOperations(retryToken, workflowId, fireAt),
   ]);
   if (!settled) {
-    await rearmOnLostSettle(internals, workflowId, token);
     return;
   }
   callbacks.dispatchEvent(
