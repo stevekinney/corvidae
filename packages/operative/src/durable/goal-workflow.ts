@@ -550,9 +550,10 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts, options: GoalWorkfl
         `Goal "${view.goalRunId}" is evaluating with no evaluating attempt.`,
       );
     }
-    // The validator is code the goal's owner supplied, and the port runs it
-    // without an abort signal, so the aggregate duration cannot stop it from
-    // outside. It is raced against the deadline, and told not to outlast it.
+    // The validator is code the goal's owner supplied. The activity's abort
+    // signal reaches it, so cancelling the goal stops one that honors it, but one
+    // that ignores it cannot be stopped from outside. It is raced against the
+    // deadline, and told not to outlast it.
     const remaining = remainingMilliseconds(view, nowMs);
     const timeoutMs =
       remaining === undefined

@@ -1141,6 +1141,20 @@ function isTerminalOutcomeConsistent(value: PlainRecord): boolean {
   }
 }
 
+/**
+ * A goal ends `canceled` exactly when a cancellation was asked for. The store
+ * accepts only the transition to `canceled` once a marker is present, and
+ * nothing commits `canceled` (recovery writes the marker first) without one, so
+ * a terminal `canceled` record with no marker, or a terminal record of any other
+ * status carrying one, was not written by this code. A goal that is not yet
+ * terminal may hold a marker the controller has not acted on.
+ */
+function isCancellationConsistent(value: PlainRecord): boolean {
+  const status = value['status'] as GoalRunStatus;
+  if (!isTerminalGoalStatus(status)) return true;
+  return (status === 'canceled') === (value['cancellation'] !== undefined);
+}
+
 function isConsistent(value: PlainRecord): boolean {
   const transition = value['currentTransition'] as GoalTransitionRecord;
   const attempts = value['attempts'] as readonly DurableGoalAttempt[];
@@ -1156,7 +1170,8 @@ function isConsistent(value: PlainRecord): boolean {
     isStatusRelationConsistent(value) &&
     isTerminalPairing(value) &&
     areAttemptOutcomesConsistent(value) &&
-    isTerminalOutcomeConsistent(value)
+    isTerminalOutcomeConsistent(value) &&
+    isCancellationConsistent(value)
   );
 }
 

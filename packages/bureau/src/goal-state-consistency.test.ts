@@ -431,6 +431,13 @@ describe('a terminal goal and what its last attempt shows', () => {
     ['goal-canceled', 'an aborted attempt', { status: 'aborted' }],
   ];
 
+  /** A goal ends canceled only after a cancellation was asked for, as the control plane does. */
+  async function markCancellation(store: GoalStore, reason: GoalRunTerminalReason): Promise<void> {
+    if (reason !== 'goal-canceled') return;
+    const marked = await store.requestCancellation(GOAL, { requestedAt: at() }, at());
+    expect(marked.status).toBe('updated');
+  }
+
   async function terminal(
     reason: GoalRunTerminalReason,
     overrides: Partial<DurableGoalAttempt>,
@@ -457,6 +464,7 @@ describe('a terminal goal and what its last attempt shows', () => {
       attempt: attempt(0, { status: 'evaluating', finishReason: 'stop-condition' }),
       active: validationWork(0),
     });
+    await markCancellation(store, reason);
     const record = await send(store, status(reason), {
       attempt: attempt(0, { finishReason: 'stop-condition', ...overrides }),
       active: null,
@@ -488,6 +496,7 @@ describe('a terminal goal and what its last attempt shows', () => {
           now: '2026-10-02T00:00:00.000Z',
         }),
       );
+      await markCancellation(store, reason);
       const record = await send(store, status(reason), { terminalReason: reason });
       expect(isGoalState(JSON.parse(JSON.stringify(record)))).toBe(true);
     },
@@ -619,4 +628,47 @@ describe('a terminal goal and what its last attempt shows', () => {
       expect(isGoalState(record)).toBe(false);
     }
   });
+});
+
+describe('a terminal goal and its cancellation marker', () => {
+  async function canceled(): Promise<Record<string, unknown>> {
+    sequence = 0;
+    const store = createGoalStore(textValueStore(new MemoryStorage()));
+    await store.create(
+      createGoalState({
+        goalRunId: GOAL,
+        identity: { name: 'goal', version: '1' },
+        objective: { agentName: 'builder', prompt: 'p' },
+        validator: VALIDATOR,
+        conversationPolicy: { kind: 'continue' },
+        bounds: { maximumAttempts: 2, maximumTotalTokens: 1000 },
+        now: '2026-10-02T00:00:00.000Z',
+      }),
+    );
+    expect((await store.requestCancellation(GOAL, { requestedAt: at() }, at())).status).toBe(
+      'updated',
+    );
+    const record = await send(store, 'canceled', { terminalReason: 'goal-canceled' });
+    return JSON.parse(JSON.stringify(record)) as Record<string, unknown>;
+  }
+
+  it('decodes a goal canceled after a cancellation was requested', async () => {
+    expect(isGoalState(await canceled())).toBe(true);
+  });
+
+  it('refuses a canceled goal that carries no cancellation marker', async () => {
+    const record = await canceled();
+    delete record['cancellation'];
+    expect(isGoalState(record)).toBe(false);
+  });
+
+  it.each(['succeeded', 'retrying', 'running'] as const)(
+    'accepts only a terminal goal that is canceled to carry a marker (%s)',
+    async (name) => {
+      const record = JSON.parse(JSON.stringify((await records())[name])) as Record<string, unknown>;
+      record['cancellation'] = { requestedAt: at() };
+      // A marker on a goal that has not ended is a request the controller has not acted on yet.
+      expect(isGoalState(record)).toBe(name !== 'succeeded');
+    },
+  );
 });
