@@ -345,7 +345,8 @@ export function createCatalogDispatcher({
       return {
         ...withRuntime,
         // A goal attempt's run is also fenced against its goal: it takes no step
-        // once the goal ended or its own claim was tombstoned (goal-attempt-fence.ts).
+        // once the goal ended or its own claim was tombstoned, and none until the
+        // goal's record shows this attempt opened as running (goal-attempt-fence.ts).
         hooks: mergeHookRegistries(
           runtime.createBureauInvariantHooks(
             goalAttempt === undefined ? undefined : { ...goalAttempt, runId },
@@ -460,7 +461,8 @@ export function createCatalogDispatcher({
         // A tombstoned claim is the goal saying it is over this attempt. It is the
         // pre-start half of the fence: the start stops here, before the engine is
         // asked for a workflow. A start that already passed this point is stopped
-        // by the run's own fence instead (see goal-attempt-fence.ts).
+        // by the run's own fence instead, which also refuses any step until the goal
+        // acknowledges the attempt as running (see goal-attempt-fence.ts).
         if (existing.record.goalAttempt?.tombstonedAt !== undefined) {
           runAttribution.delete(runId);
           throw new GoalAttemptTombstonedError(runId);

@@ -127,6 +127,22 @@
  * controller fails and Bureau restarts it from the record (a bounded number of
  * times), and the restarted controller ends the goal at its deadline.
  *
+ * A try that Weft timed out, even the last one, may still complete later and
+ * create its run with no controller left to adopt or stop it. That run is
+ * harmless by one invariant, owned by Bureau's attempt fence
+ * (`goal-attempt-fence.ts`): acknowledged-only runs. A goal attempt's run takes
+ * no agent step until the goal's record shows this attempt opened as running,
+ * which is the `commit -> running` slot above, made after `startAttempt`
+ * returns. The slot order here is unchanged and the run's wait cannot hold the
+ * controller up: the commit follows the start's return and waits on nothing the
+ * run does. In the window between the engine's start and the commit the run
+ * polls the record for at most `START_ATTEMPT_MAXIMUM_TRIES` tries of
+ * `START_ATTEMPT_TIMEOUT_MS` (or the goal's remaining duration if less); a
+ * controller that crashed after the start returned replays the memoized result
+ * and commits, while a controller that failed for good never does, so the late
+ * run takes zero steps. What it leaves is a zero-step workflow record under the
+ * attempt's deterministic id, which `cleanUpGoal` prunes.
+ *
  * What remains is the crash an at-least-once activity always has, between the
  * engine's start committing the run and the port finishing its stand-down check,
  * and its background twin: a timed-out try that was still running when the goal

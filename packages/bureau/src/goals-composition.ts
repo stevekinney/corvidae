@@ -207,7 +207,9 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
   });
   host.bind(ports);
   // Every attempt's run reads the goal and its own claim before each step.
-  dependencies.fenceHost.bind(createGoalAttemptFence({ store, readRunRecord }));
+  dependencies.fenceHost.bind(
+    createGoalAttemptFence({ store, readRunRecord, clock: runtimeServices.clock }),
+  );
 
   const goals = createBureauGoals({
     store,

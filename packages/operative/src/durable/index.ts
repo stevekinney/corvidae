@@ -33,7 +33,11 @@ export type {
   DurableEventOwnerKind,
   DurableEventPage,
 } from './event-history-types';
-export { createGoalWorkflow } from './goal-workflow';
+export {
+  START_ATTEMPT_MAXIMUM_TRIES,
+  START_ATTEMPT_TIMEOUT_MS,
+  createGoalWorkflow,
+} from './goal-workflow';
 export {
   GOAL_CANCEL_SIGNAL,
   GOAL_WORKFLOW_RESULT_SCHEMA_VERSION,
@@ -68,6 +72,7 @@ export {
   buildGoalForcedFinish,
   goalInputFeedbackFor,
   isDeadlineElapsed,
+  remainingMilliseconds,
 } from './goal-workflow-transitions';
 export { readDurableRunResult } from './read-run-result';
 export type { DurableRunReading, ReadDurableRunResultOptions } from './read-run-result';

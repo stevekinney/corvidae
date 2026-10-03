@@ -24,18 +24,23 @@ import { createConversationHistory } from 'conversationalist';
 import {
   createGoalAttemptFence,
   createGoalAttemptFenceHost,
+  GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS,
   GOAL_ATTEMPT_FENCE_HOOK_ID,
   GOAL_ATTEMPT_FENCE_READ_TRIES,
   type GoalAttemptFence,
   type GoalAttemptFenceRegistration,
   type GoalAttemptTarget,
+  type GoalAttemptVerdict,
   registerGoalAttemptFence,
 } from './goal-attempt-fence';
-import { createGoalState } from './goal-state';
+import { createGoalState, goalAttemptId, goalSessionId } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { type CatalogRunRecoveryLoad, createRuntimeComposition } from './runtime-composition';
 
 const NOW = '2026-10-02T12:00:00.000Z';
+const RUN: GoalAttemptVerdict = { status: 'run' };
+const REFUSE: GoalAttemptVerdict = { status: 'refuse' };
+const clock = { now: () => Date.parse(NOW) };
 const target: GoalAttemptTarget = { goalRunId: 'g1', attemptIndex: 0, runId: 'goal-g1-a0' };
 
 const claimOf = (
@@ -58,7 +63,10 @@ const claimOf = (
   },
 });
 
-async function liveGoal(principal?: string): Promise<GoalStore> {
+async function liveGoal(
+  principal?: string,
+  bounds: { maximumAttempts: number; maximumTotalDurationMs?: number } = { maximumAttempts: 2 },
+): Promise<GoalStore> {
   const store = createGoalStore(textValueStore(new MemoryStorage()));
   await store.create(
     createGoalState({
@@ -67,7 +75,7 @@ async function liveGoal(principal?: string): Promise<GoalStore> {
       objective: { agentName: 'worker', prompt: 'work' },
       validator: { name: 'check', version: '1' },
       conversationPolicy: { kind: 'continue' },
-      bounds: { maximumAttempts: 2, maximumTotalSteps: 10 },
+      bounds: { maximumTotalSteps: 10, ...bounds },
       ...(principal === undefined ? {} : { principal }),
       now: NOW,
     }),
@@ -75,24 +83,67 @@ async function liveGoal(principal?: string): Promise<GoalStore> {
   return store;
 }
 
+/** Commits what the controller commits when it opens an attempt: the attempt running and the goal's active work. */
+async function openAttempt(
+  store: GoalStore,
+  options: { attemptIndex?: number; runId?: string; status?: 'running' | 'aborted' } = {},
+): Promise<void> {
+  const attemptIndex = options.attemptIndex ?? 0;
+  const runId = options.runId ?? `goal-g1-a${attemptIndex}`;
+  const current = await store.get('g1');
+  if (current === undefined) throw new Error('the goal is missing');
+  const attemptId = goalAttemptId('g1', attemptIndex);
+  const result = await store.applyTransition({
+    goalRunId: 'g1',
+    seq: current.transitionSeq + 1,
+    transitionId: `g1:t${current.transitionSeq + 1}`,
+    to: 'running',
+    at: NOW,
+    cause: 'attempt started',
+    attempt: {
+      attemptId,
+      attemptIndex,
+      runId,
+      sessionId: goalSessionId('g1', 0),
+      startedAt: NOW,
+      usage: { steps: 0, tokens: 0 },
+      status: options.status ?? 'running',
+    },
+    usage: { ...current.usage, attempts: attemptIndex + 1 },
+    active: { kind: 'attempt', attemptId, runId, startedAt: NOW },
+  });
+  if (result.status !== 'applied') {
+    throw new Error(
+      `the attempt did not open: ${result.status} ${result.status === 'rejected' ? result.reason : ''}`,
+    );
+  }
+}
+
 describe('createGoalAttemptFence', () => {
   const own = claimOf({ goalRunId: 'g1', attemptIndex: 0 });
 
-  it('lets a live goal’s own, untombstoned attempt run', async () => {
+  it('lets a live goal’s own, untombstoned attempt run once the goal shows it open', async () => {
+    const store = await liveGoal();
+    await openAttempt(store);
     const fence = createGoalAttemptFence({
-      store: await liveGoal(),
+      store,
       readRunRecord: () => Promise.resolve(own),
+      clock,
     });
 
-    expect(await fence.mayRun(target)).toBe(true);
+    expect(await fence.mayRun(target)).toEqual(RUN);
   });
 
   it('refuses once the goal’s cancellation is recorded', async () => {
     const store = await liveGoal();
     await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
-    const fence = createGoalAttemptFence({ store, readRunRecord: () => Promise.resolve(own) });
+    const fence = createGoalAttemptFence({
+      store,
+      readRunRecord: () => Promise.resolve(own),
+      clock,
+    });
 
-    expect(await fence.mayRun(target)).toBe(false);
+    expect(await fence.mayRun(target)).toEqual(REFUSE);
   });
 
   it('refuses once the goal is terminal', async () => {
@@ -106,18 +157,23 @@ describe('createGoalAttemptFence', () => {
       cause: 'fail: unsupported-validation',
       terminalReason: 'unsupported-validation',
     });
-    const fence = createGoalAttemptFence({ store, readRunRecord: () => Promise.resolve(own) });
+    const fence = createGoalAttemptFence({
+      store,
+      readRunRecord: () => Promise.resolve(own),
+      clock,
+    });
 
-    expect(await fence.mayRun(target)).toBe(false);
+    expect(await fence.mayRun(target)).toEqual(REFUSE);
   });
 
   it('refuses a goal that cannot be found or read', async () => {
     const fence = createGoalAttemptFence({
       store: { get: () => Promise.resolve(undefined) },
       readRunRecord: () => Promise.resolve(own),
+      clock,
     });
 
-    expect(await fence.mayRun(target)).toBe(false);
+    expect(await fence.mayRun(target)).toEqual(REFUSE);
   });
 
   it.each([
@@ -130,9 +186,10 @@ describe('createGoalAttemptFence', () => {
     const fence = createGoalAttemptFence({
       store: await liveGoal(),
       readRunRecord: () => Promise.resolve(load),
+      clock,
     });
 
-    expect(await fence.mayRun(target)).toBe(false);
+    expect(await fence.mayRun(target)).toEqual(REFUSE);
   });
 
   it.each([
@@ -172,20 +229,24 @@ describe('createGoalAttemptFence', () => {
       const fence = createGoalAttemptFence({
         store: await liveGoal(goalPrincipal),
         readRunRecord: () => Promise.resolve(load),
+        clock,
       });
 
-      expect(await fence.mayRun({ ...target, runId })).toBe(false);
+      expect(await fence.mayRun({ ...target, runId })).toEqual(REFUSE);
     },
   );
 
   it('lets a claim held by the goal’s own agent and principal run', async () => {
+    const store = await liveGoal('alice');
+    await openAttempt(store);
     const fence = createGoalAttemptFence({
-      store: await liveGoal('alice'),
+      store,
       readRunRecord: () =>
         Promise.resolve(claimOf({ goalRunId: 'g1', attemptIndex: 0 }, { principal: 'alice' })),
+      clock,
     });
 
-    expect(await fence.mayRun(target)).toBe(true);
+    expect(await fence.mayRun(target)).toEqual(RUN);
   });
 
   it('rejects when the claim cannot be read, which is not a verdict', async () => {
@@ -193,6 +254,7 @@ describe('createGoalAttemptFence', () => {
       store: await liveGoal(),
       readRunRecord: () =>
         Promise.resolve({ status: 'read-error', error: new Error('storage is down') }),
+      clock,
     });
 
     let caught: unknown;
@@ -218,8 +280,8 @@ describe('the late-bound fence', () => {
     }
     expect((caught as Error | undefined)?.name).toBe('GoalAttemptFenceUnboundError');
 
-    host.bind({ mayRun: () => Promise.resolve(true) });
-    expect(await host.fence.mayRun(target)).toBe(true);
+    host.bind({ mayRun: () => Promise.resolve(RUN) });
+    expect(await host.fence.mayRun(target)).toEqual(RUN);
   });
 });
 
@@ -249,6 +311,7 @@ async function fencedRun(
     registration?: GoalAttemptFenceRegistration;
     contextManagement?: RunOptions['contextManagement'];
     signal?: AbortSignal;
+    onGenerate?: () => void;
   } = {},
 ) {
   const context = await durableContext();
@@ -262,6 +325,7 @@ async function fencedRun(
     options: {
       generate: () => {
         generates += 1;
+        extras.onGenerate?.();
         return Promise.resolve({ content: 'done', toolCalls: [] });
       },
       toolbox: createToolbox([]),
@@ -292,7 +356,7 @@ describe('registerGoalAttemptFence', () => {
   it('registers a replay-safe prepareStep handler under its own id', () => {
     const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
 
-    registerGoalAttemptFence(hooks, { mayRun: () => Promise.resolve(true) }, target);
+    registerGoalAttemptFence(hooks, { mayRun: () => Promise.resolve(RUN) }, target);
 
     expect(hooks.getHandlers('prepareStep').map((entry) => entry.id)).toEqual([
       GOAL_ATTEMPT_FENCE_HOOK_ID,
@@ -306,7 +370,7 @@ describe('registerGoalAttemptFence', () => {
   });
 
   it('lets an allowed run take its step', async () => {
-    const { result, generates } = await fencedRun({ mayRun: () => Promise.resolve(true) });
+    const { result, generates } = await fencedRun({ mayRun: () => Promise.resolve(RUN) });
 
     expect(result.finishReason).toBe('stop-condition');
     expect(generates()).toBe(1);
@@ -314,7 +378,7 @@ describe('registerGoalAttemptFence', () => {
 
   it('stops a run the goal no longer allows before its first agent step, ending it cleanly', async () => {
     const { result, generates, context } = await fencedRun({
-      mayRun: () => Promise.resolve(false),
+      mayRun: () => Promise.resolve(REFUSE),
     });
 
     expect(generates()).toBe(0);
@@ -331,6 +395,7 @@ describe('registerGoalAttemptFence', () => {
       const fence = createGoalAttemptFence({
         store: await liveGoal(),
         readRunRecord: () => Promise.resolve(claimOf({ goalRunId: 'g1', attemptIndex: 0 }, holder)),
+        clock,
       });
       const { result, generates } = await fencedRun(fence);
 
@@ -347,7 +412,7 @@ describe('registerGoalAttemptFence', () => {
         reads += 1;
         return reads < GOAL_ATTEMPT_FENCE_READ_TRIES
           ? Promise.reject(new Error('storage hiccup'))
-          : Promise.resolve(true);
+          : Promise.resolve(RUN);
       },
     });
 
@@ -392,7 +457,7 @@ describe('registerGoalAttemptFence', () => {
           // The store recovers only once the fence has waited twice, which no
           // number of back-to-back reads could produce.
           return waits >= 2
-            ? Promise.resolve(true)
+            ? Promise.resolve(RUN)
             : Promise.reject(new Error('storage is briefly down'));
         },
       },
@@ -408,7 +473,7 @@ describe('registerGoalAttemptFence', () => {
   it('does not compact the conversation of a step it refuses, since compaction can reach a model', async () => {
     let compactions = 0;
     const { result, generates } = await fencedRun(
-      { mayRun: () => Promise.resolve(false) },
+      { mayRun: () => Promise.resolve(REFUSE) },
       {
         contextManagement: {
           maxTokens: 100_000,
@@ -430,7 +495,7 @@ describe('registerGoalAttemptFence', () => {
   it('leaves the compaction of a step it allows to run', async () => {
     let compactions = 0;
     const { result } = await fencedRun(
-      { mayRun: () => Promise.resolve(true) },
+      { mayRun: () => Promise.resolve(RUN) },
       {
         contextManagement: {
           maxTokens: 100_000,
@@ -454,7 +519,7 @@ describe('registerGoalAttemptFence', () => {
       {
         mayRun: () => {
           reads += 1;
-          return Promise.resolve(true);
+          return Promise.resolve(RUN);
         },
       },
       { contextManagement: overThreshold(() => undefined) },
@@ -520,7 +585,7 @@ describe('registerGoalAttemptFence', () => {
   it('is not a handler an onError hook can retry or skip', async () => {
     const context = await durableContext();
     const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
-    registerGoalAttemptFence(hooks, { mayRun: () => Promise.resolve(false) }, target);
+    registerGoalAttemptFence(hooks, { mayRun: () => Promise.resolve(REFUSE) }, target);
     // An agent-tier hook that answers every error with `retry` and then `skip`.
     hooks.on('onError', () => Promise.resolve('skip'));
     let generates = 0;
@@ -568,16 +633,19 @@ describe('the fence over the real tombstone', () => {
       durableExecution: true,
     });
     disposers.push(() => runtime.durable?.engine[Symbol.dispose]?.());
+    const store = await liveGoal();
     const fence = createGoalAttemptFence({
-      store: await liveGoal(),
+      store,
       readRunRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+      clock,
     });
-    return { runtime, fence };
+    return { runtime, fence, store };
   }
 
   it('lets a run work under the claim a start made, as the control for the tombstone', async () => {
-    const { runtime, fence } = await composed();
+    const { runtime, fence, store } = await composed();
     await runtime.claimCatalogRunRecoveryRecord(target.runId, claim);
+    await openAttempt(store);
 
     const { result, generates } = await fencedRun(fence);
 
@@ -612,5 +680,244 @@ describe('the fence over the real tombstone', () => {
 
     expect(generates()).toBe(0);
     expect(result.finishReason).toBe('tripwire');
+  });
+});
+
+describe('acknowledged-only runs', () => {
+  const own = claimOf({ goalRunId: 'g1', attemptIndex: 0 });
+  const fenceOver = (store: Pick<GoalStore, 'get'>, now: () => number = clock.now) =>
+    createGoalAttemptFence({
+      store,
+      readRunRecord: () => Promise.resolve(own),
+      clock: { now },
+    });
+
+  /** Timers that fire on the next turn whatever the delay, recording each delay; `onWait` runs before the callback. */
+  function virtualRuntime(onWait: (wait: number) => Promise<void> | void = () => undefined) {
+    const base = createDefaultRuntimeServices();
+    const waits: number[] = [];
+    const runtime = {
+      timers: {
+        ...base.timers,
+        setTimeout: (callback: () => void, milliseconds?: number) => {
+          waits.push(milliseconds ?? 0);
+          const wait = waits.length;
+          return base.timers.setTimeout(async () => {
+            await onWait(wait);
+            callback();
+          }, 0);
+        },
+      },
+    };
+    return { runtime, waits };
+  }
+
+  it('waits, rather than refuses, for a live goal that has not yet opened the attempt', async () => {
+    const fence = fenceOver(await liveGoal());
+
+    expect(await fence.mayRun(target)).toEqual({
+      status: 'await-open',
+      budgetMs: GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS,
+    });
+  });
+
+  it('bounds the wait by what remains of the goal’s aggregate duration, when that is less', async () => {
+    const store = await liveGoal(undefined, { maximumAttempts: 2, maximumTotalDurationMs: 30_000 });
+
+    expect(await fenceOver(store).mayRun(target)).toEqual({
+      status: 'await-open',
+      budgetMs: 30_000,
+    });
+    expect(await fenceOver(store, () => Date.parse(NOW) + 12_000).mayRun(target)).toEqual({
+      status: 'await-open',
+      budgetMs: 18_000,
+    });
+    expect(await fenceOver(store, () => Date.parse(NOW) + 30_000).mayRun(target)).toEqual(REFUSE);
+  });
+
+  it('refuses a run for an attempt later than the next one, which has no open attempt to wait for', async () => {
+    const fence = fenceOver(await liveGoal());
+
+    expect(await fence.mayRun({ ...target, attemptIndex: 1, runId: 'goal-g1-a1' })).toEqual(REFUSE);
+  });
+
+  describe('a run whose attempt the record shows another way', () => {
+    async function opened() {
+      const store = await liveGoal();
+      await openAttempt(store);
+      const record = await store.get('g1');
+      if (record === undefined) throw new Error('the goal is missing');
+      return record;
+    }
+    const over = (record: unknown) => fenceOver({ get: () => Promise.resolve(record as never) });
+
+    it('refuses a run whose id is not the one the open attempt names', async () => {
+      const record = await opened();
+      const attempt = record.attempts[0]!;
+
+      expect(
+        await over({ ...record, attempts: [{ ...attempt, runId: 'goal-g1-other' }] }).mayRun(
+          target,
+        ),
+      ).toEqual(REFUSE);
+    });
+
+    it('refuses a run for attempt N when the record shows attempt N+1 open', async () => {
+      const record = await opened();
+      const first = record.attempts[0]!;
+      const second = {
+        ...first,
+        attemptId: goalAttemptId('g1', 1),
+        attemptIndex: 1,
+        runId: 'goal-g1-a1',
+      };
+      const updated = {
+        ...record,
+        attempts: [{ ...first, status: 'failed' }, second],
+        active: {
+          kind: 'attempt',
+          attemptId: second.attemptId,
+          runId: second.runId,
+          startedAt: NOW,
+        },
+      };
+      const fence = over(updated);
+
+      expect(await fence.mayRun(target)).toEqual(REFUSE);
+      // The control: the attempt the record does show open is let through.
+      const next = createGoalAttemptFence({
+        store: { get: () => Promise.resolve(updated as never) },
+        readRunRecord: () => Promise.resolve(claimOf({ goalRunId: 'g1', attemptIndex: 1 })),
+        clock,
+      });
+      expect(await next.mayRun({ ...target, attemptIndex: 1, runId: 'goal-g1-a1' })).toEqual(RUN);
+    });
+
+    it.each([
+      ['an attempt that is no longer running', { status: 'evaluating' }],
+      ['an attempt that was aborted', { status: 'aborted' }],
+    ])('refuses a run for %s', async (_label, patch) => {
+      const record = await opened();
+
+      expect(
+        await over({ ...record, attempts: [{ ...record.attempts[0]!, ...patch }] }).mayRun(target),
+      ).toEqual(REFUSE);
+    });
+
+    it('refuses a run the goal’s active work does not name', async () => {
+      const record = await opened();
+
+      expect(await over({ ...record, active: undefined }).mayRun(target)).toEqual(REFUSE);
+      expect(
+        await over({
+          ...record,
+          active: {
+            kind: 'validation',
+            attemptId: record.attempts[0]!.attemptId,
+            validator: record.validator,
+            startedAt: NOW,
+          },
+        }).mayRun(target),
+      ).toEqual(REFUSE);
+    });
+  });
+
+  it('takes zero steps, and finishes cleanly after its bounded wait, for a run no controller ever opens (a start that outlived its last try)', async () => {
+    const store = await liveGoal();
+    const { runtime, waits } = virtualRuntime();
+
+    const { result, generates, context } = await fencedRun(fenceOver(store), {
+      registration: { runtime },
+    });
+
+    expect(generates()).toBe(0);
+    expect(result.steps).toHaveLength(0);
+    expect(result.finishReason).toBe('tripwire');
+    expect(String(result.error)).toContain('never acknowledged');
+    expect(waits.reduce((total, wait) => total + wait, 0)).toBe(
+      GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS,
+    );
+    const ended = await context.engine.get(target.runId);
+    expect(ended?.status).toBe('completed');
+  });
+
+  it('waits for the controller’s open-attempt commit, then proceeds exactly once', async () => {
+    const store = await liveGoal();
+    const order: string[] = [];
+    const { runtime, waits } = virtualRuntime(async (wait) => {
+      if (wait === 3) {
+        order.push('commit');
+        await openAttempt(store);
+      }
+    });
+
+    const { result, generates } = await fencedRun(fenceOver(store), {
+      registration: { runtime },
+      onGenerate: () => order.push('step'),
+    });
+
+    expect(order).toEqual(['commit', 'step']);
+    expect(waits).toHaveLength(3);
+    expect(generates()).toBe(1);
+    expect(result.finishReason).toBe('stop-condition');
+  });
+
+  it('proceeds after a replayed commit and does not step twice for a resumed run', async () => {
+    // The controller crashed after the start returned and before its commit; its
+    // replay commits the memoized result. Both the run and a resumed copy of it wait.
+    const store = await liveGoal();
+    const { runtime } = virtualRuntime(async (wait) => {
+      if (wait === 2) await openAttempt(store);
+    });
+    const first = await fencedRun(fenceOver(store), { registration: { runtime } });
+    const resumed = await fencedRun(fenceOver(store), { registration: { runtime } });
+
+    expect(first.generates()).toBe(1);
+    expect(resumed.generates()).toBe(1);
+    const recorded = await store.get('g1');
+    expect(recorded?.attempts).toHaveLength(1);
+  });
+
+  it('stops with zero steps when the goal ends or is canceled during the wait', async () => {
+    const store = await liveGoal();
+    const { runtime } = virtualRuntime(async () => {
+      await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+    });
+
+    const { result, generates } = await fencedRun(fenceOver(store), { registration: { runtime } });
+
+    expect(generates()).toBe(0);
+    expect(result.finishReason).toBe('tripwire');
+  });
+
+  it('ends the wait promptly when the run is aborted during it', async () => {
+    const base = createDefaultRuntimeServices();
+    const controller = new AbortController();
+    const runtime = {
+      timers: {
+        ...base.timers,
+        // The abort lands as the wait begins; a wait that cannot be aborted would
+        // sit out the hour-long delay below.
+        setTimeout: (callback: () => void, milliseconds?: number) => {
+          controller.abort();
+          return base.timers.setTimeout(callback, milliseconds);
+        },
+      },
+    };
+    let reads = 0;
+    const fence = fenceOver(await liveGoal());
+
+    const { generates } = await fencedRun(
+      {
+        mayRun: (candidate) => {
+          reads += 1;
+          return fence.mayRun(candidate);
+        },
+      },
+      { registration: { runtime, delaysMs: [3_600_000] }, signal: controller.signal },
+    );
+
+    expect(generates()).toBe(0);
+    expect(reads).toBe(1);
   });
 });

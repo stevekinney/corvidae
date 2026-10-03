@@ -454,7 +454,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
             fenceTargets.push(goalAttempt);
             registerGoalAttemptFence(
               hooks,
-              { mayRun: () => Promise.resolve(!tombstoned) },
+              { mayRun: () => Promise.resolve({ status: tombstoned ? 'refuse' : 'run' }) },
               goalAttempt as never,
             );
           }

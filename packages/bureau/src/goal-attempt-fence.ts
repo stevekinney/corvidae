@@ -53,7 +53,13 @@
  */
 
 import type { HookRegistry, RuntimeServices, RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
-import { GuardrailTripwireError, type OperativeHookMap } from '@lostgradient/operative';
+import {
+  GuardrailTripwireError,
+  type OperativeHookMap,
+  remainingMilliseconds,
+  START_ATTEMPT_MAXIMUM_TRIES,
+  START_ATTEMPT_TIMEOUT_MS,
+} from '@lostgradient/operative';
 
 import { isGoalOwnedRunRecord, type RunRecordReader } from './goal-ownership';
 import { isTerminalGoalStatus } from './goal-state';
@@ -66,14 +72,35 @@ export interface GoalAttemptTarget {
   readonly runId: string;
 }
 
+/**
+ * What the fence concluded from its reads of the goal and the attempt's claim.
+ * `await-open` is a goal that is alive and a claim that is its own, with the
+ * attempt not yet acknowledged as running; `budgetMs` is how long the run may wait
+ * for the controller's open-attempt commit.
+ */
+export type GoalAttemptVerdict =
+  | { readonly status: 'run' }
+  | { readonly status: 'refuse' }
+  | { readonly status: 'await-open'; readonly budgetMs: number };
+
 export interface GoalAttemptFence {
   /**
-   * Whether the attempt's run may take a step, from reads made now. `false` is a
-   * verdict; a rejection is a read that could not be made, which the hook treats
-   * as a refusal after its tries.
+   * Whether the attempt's run may take a step, from reads made now. A rejection
+   * is a read that could not be made, which the hook treats as a refusal after its
+   * tries.
    */
-  mayRun(target: GoalAttemptTarget): Promise<boolean>;
+  mayRun(target: GoalAttemptTarget): Promise<GoalAttemptVerdict>;
 }
+
+const RUN: GoalAttemptVerdict = { status: 'run' };
+const REFUSE: GoalAttemptVerdict = { status: 'refuse' };
+
+/**
+ * The longest a run waits for its attempt to be acknowledged: the start activity's
+ * own bound, never invented separately from it.
+ */
+export const GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS =
+  START_ATTEMPT_MAXIMUM_TRIES * START_ATTEMPT_TIMEOUT_MS;
 
 /** The id the fence's hook is registered under. */
 export const GOAL_ATTEMPT_FENCE_HOOK_ID = 'bureau:goal-attempt-fence';
@@ -96,6 +123,8 @@ export const GOAL_ATTEMPT_FENCE_READ_TRIES = GOAL_ATTEMPT_FENCE_READ_DELAYS_MS.l
 export function createGoalAttemptFence(dependencies: {
   readonly store: Pick<GoalStore, 'get'>;
   readonly readRunRecord: RunRecordReader;
+  /** The clock the goal's aggregate duration is measured on, which bounds the acknowledgement wait. */
+  readonly clock: { now(): number };
 }): GoalAttemptFence {
   return {
     async mayRun(target) {
@@ -105,17 +134,17 @@ export function createGoalAttemptFence(dependencies: {
         record.cancellation !== undefined ||
         isTerminalGoalStatus(record.status)
       ) {
-        return false;
+        return REFUSE;
       }
       const load = await dependencies.readRunRecord(target.runId);
       if (load.status === 'read-error') throw load.error;
-      if (load.status !== 'found') return false;
+      if (load.status !== 'found') return REFUSE;
       const claimed = load.record.goalAttempt;
       // The goal's own claim for this attempt, by the one test every ownership
       // decision shares: the marker reproduces the run's id, and the agent and
       // principal are the goal's own, read from the goal's record above and not
       // from the claim.
-      return (
+      if (!(
         claimed?.goalRunId === target.goalRunId &&
         claimed.attemptIndex === target.attemptIndex &&
         claimed.tombstonedAt === undefined &&
@@ -123,7 +152,30 @@ export function createGoalAttemptFence(dependencies: {
           agentName: record.objective.agentName,
           principal: record.principal,
         })
-      );
+      )) {
+        return REFUSE;
+      }
+      // Acknowledged-only runs: the record must show this attempt open.
+      const attempt = record.attempts[target.attemptIndex];
+      if (attempt === undefined) {
+        // The attempt the controller is about to open is the next one; a run for
+        // any later index has no attempt to wait for.
+        if (record.attempts.length !== target.attemptIndex) return REFUSE;
+        const remaining = remainingMilliseconds(record, dependencies.clock.now());
+        const budgetMs = Math.min(
+          GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS,
+          remaining ?? GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS,
+        );
+        return budgetMs > 0 ? { status: 'await-open', budgetMs } : REFUSE;
+      }
+      const open =
+        attempt.runId === target.runId &&
+        attempt.status === 'running' &&
+        target.attemptIndex === record.attempts.length - 1 &&
+        record.active?.kind === 'attempt' &&
+        record.active.attemptId === attempt.attemptId &&
+        record.active.runId === target.runId;
+      return open ? RUN : REFUSE;
     },
   };
 }
@@ -211,9 +263,13 @@ function waitFor(
 
 const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
 
-/** What the fence concluded from its reads: a verdict, or `undefined` and the fault that kept it from one. */
+/**
+ * What the fence concluded from its reads: a verdict, or `undefined` and the fault
+ * that kept it from one. `unacknowledged` is a run whose attempt never opened
+ * within its budget (or could not be waited for).
+ */
 interface FenceReading {
-  readonly verdict: boolean | undefined;
+  readonly verdict: 'run' | 'refuse' | 'unacknowledged' | undefined;
   readonly cause: unknown;
 }
 
@@ -222,7 +278,7 @@ async function readFence(
   target: GoalAttemptTarget,
   registration: GoalAttemptFenceRegistration,
   signal: AbortSignal | undefined,
-): Promise<FenceReading> {
+): Promise<{ readonly verdict: GoalAttemptVerdict | undefined; readonly cause: unknown }> {
   const delays = registration.delaysMs ?? GOAL_ATTEMPT_FENCE_READ_DELAYS_MS;
   let cause: unknown;
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
@@ -241,6 +297,43 @@ async function readFence(
     }
   }
   return { verdict: undefined, cause };
+}
+
+/**
+ * Reads the fence until it has a verdict, waiting for the attempt to be
+ * acknowledged when the only thing missing is the controller's open-attempt
+ * commit. The wait polls on the runtime's clock with the reads' own backoff (its
+ * last delay repeated), for at most the budget the first `await-open` carried; an
+ * abort ends it with no further read. A fault in a read keeps `readFence`'s
+ * fail-closed retries, and a verdict of `undefined` still means unknown.
+ */
+async function readSettled(
+  fence: GoalAttemptFence,
+  target: GoalAttemptTarget,
+  registration: GoalAttemptFenceRegistration,
+  signal: AbortSignal | undefined,
+): Promise<FenceReading> {
+  const delays = registration.delaysMs ?? GOAL_ATTEMPT_FENCE_READ_DELAYS_MS;
+  let waitedMs = 0;
+  let budgetMs: number | undefined;
+  for (let polls = 0; ; polls += 1) {
+    const { verdict, cause } = await readFence(fence, target, registration, signal);
+    if (verdict === undefined) return { verdict: undefined, cause };
+    if (verdict.status !== 'await-open') return { verdict: verdict.status, cause: undefined };
+    budgetMs ??= verdict.budgetMs;
+    // Without a runtime there is no clock to wait on: the run is not acknowledged.
+    if (registration.runtime === undefined || isAborted(signal) || waitedMs >= budgetMs) {
+      return { verdict: 'unacknowledged', cause: undefined };
+    }
+    const delay = Math.min(
+      delays[Math.min(polls, delays.length - 1)] ?? budgetMs - waitedMs,
+      budgetMs - waitedMs,
+    );
+    await waitFor(registration.runtime, delay, signal);
+    // An abort that ended the wait ends the reading, with no further read.
+    if (isAborted(signal)) return { verdict: 'unacknowledged', cause: undefined };
+    waitedMs += delay;
+  }
 }
 
 /**
@@ -270,12 +363,18 @@ export function registerGoalAttemptFence(
       compactionReading = undefined;
       const { verdict, cause } = await (shared?.step === context.step
         ? shared.reading
-        : readFence(fence, target, registration, context.signal));
-      if (verdict === true) return;
-      throw verdict === false
+        : readSettled(fence, target, registration, context.signal));
+      if (verdict === 'run') return;
+      if (verdict === 'unacknowledged') {
+        throw refusal(
+          target,
+          'the goal never acknowledged this attempt as running, and a run takes no step until it has',
+        );
+      }
+      throw verdict === 'refuse'
         ? refusal(
             target,
-            'the goal ended, was canceled, or no longer holds this attempt (its claim is tombstoned)',
+            'the goal ended, was canceled, or no longer holds this attempt (its claim is tombstoned, or its record shows another attempt or run)',
           )
         : refusal(
             target,
@@ -293,10 +392,10 @@ export function registerGoalAttemptFence(
     // (`undefined` is no verdict); one it does not allow is not compacted, and the
     // `prepareStep` handler above then refuses it. The same reading serves that
     // handler.
-    const reading = readFence(fence, target, registration, context.signal);
+    const reading = readSettled(fence, target, registration, context.signal);
     compactionReading = { step: context.step, reading };
     const { verdict } = await reading;
-    return verdict === true ? undefined : false;
+    return verdict === 'run' ? undefined : false;
   };
   registry.on('beforeCompaction', decideCompaction, {
     id: `${GOAL_ATTEMPT_FENCE_HOOK_ID}:compaction`,

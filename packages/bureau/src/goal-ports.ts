@@ -477,7 +477,14 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       return standDown();
     }
     // A try Weft timed out ends here without writing the session reference or
-    // attaching a forwarder: the retry adopts this run and does both.
+    // attaching a forwarder: the retry adopts this run and does both. When this
+    // was the last try there is no retry, and the run is left alive and
+    // unadopted. That is harmless by the acknowledged-only invariant of the run's
+    // own fence (`goal-attempt-fence.ts`): the run takes no step until the goal's
+    // record shows this attempt open, which the controller (failed, with no
+    // commit to make) never does, so it waits out its bounded budget and stops
+    // with zero steps. The named residual is that zero-step workflow record,
+    // which `cleanUpGoal` prunes.
     if (timedOut()) return standDown();
     await conversations.recordStart(record, request);
     forwarder.watch(target, started.run);
