@@ -8,7 +8,10 @@ import {
   createCheckpointStore,
   createRunEngine,
   createRunWorkflow,
+  createSessionStore,
   type DurableActiveRunContext,
+  type FreshAttemptSourceResolver,
+  type GoalConversationPolicy,
   type GoalWorkflowPorts,
   type RunOptions,
   startDurableRunResult,
@@ -20,9 +23,10 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
+import { createGoalConversations } from './goal-conversation';
 import type { AttemptForwarder, AttemptTarget } from './goal-forwarder';
 import {
-  attemptPromptFor,
   createGoalPorts,
   createGoalWorkflowHost,
   goalIdentifiers,
@@ -37,23 +41,11 @@ import {
 } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
-import { pollUntil } from './testing/goal-fixtures.test-support';
+import { freshHandoff, pollUntil, transcriptOf } from './testing/goal-fixtures.test-support';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
 const NOW = '2026-10-02T12:00:00.000Z';
 const CHECK = { name: 'check', version: '1' } as const;
-
-describe('attemptPromptFor', () => {
-  const objective = { agentName: 'worker', prompt: 'work' };
-  it.each([
-    { kind: 'continue', index: 0, feedback: undefined, expected: 'work' },
-    { kind: 'continue', index: 0, feedback: 'ignored', expected: 'work' },
-    { kind: 'continue', index: 1, feedback: undefined, expected: 'work' },
-    { kind: 'continue', index: 1, feedback: 'say done', expected: 'work\n\nsay done' },
-  ] as const)('$kind attempt $index with feedback $feedback is "$expected"', (row) => {
-    expect(attemptPromptFor({ objective }, row.index, row.feedback)).toBe(row.expected);
-  });
-});
 
 describe('createGoalWorkflowHost', () => {
   const request = { goalRunId: 'g1' };
@@ -124,6 +116,11 @@ interface WorldOptions {
   readonly plan?: { durable: boolean; agentVersion: string } | undefined;
   readonly startAttemptRun?: Parameters<typeof createGoalPorts>[0]['startAttemptRun'];
   readonly cancelRun?: Parameters<typeof createGoalPorts>[0]['cancelRun'];
+  readonly policy?: GoalConversationPolicy;
+  readonly instructions?: string;
+  readonly resolveFreshAttemptSource?: FreshAttemptSourceResolver;
+  /** A clock the test shares with the artifact it builds; a fresh manual one otherwise. */
+  readonly runtime?: ReturnType<typeof createManualRuntimeServices>;
   readonly bounds?: {
     maximumAttempts: number;
     maximumTotalSteps?: number;
@@ -148,9 +145,13 @@ async function world(options: WorldOptions = {}) {
     createGoalState({
       goalRunId: 'g1',
       identity: { name: 'goal', version: '1' },
-      objective: { agentName: 'worker', prompt: 'work' },
+      objective: {
+        agentName: 'worker',
+        prompt: 'work',
+        ...(options.instructions === undefined ? {} : { instructions: options.instructions }),
+      },
       validator: CHECK,
-      conversationPolicy: { kind: 'continue' },
+      conversationPolicy: options.policy ?? { kind: 'continue' },
       retryPolicy: { retryOn: ['validator-fail-retryable'] },
       bounds: options.bounds ?? { maximumAttempts: 3, maximumTotalSteps: 10 },
       principal: 'alice',
@@ -163,12 +164,20 @@ async function world(options: WorldOptions = {}) {
     reconcile: () => Promise.resolve('not-needed'),
     drain: () => Promise.resolve(),
   };
-  const runtime = createManualRuntimeServices();
+  const runtime = options.runtime ?? createManualRuntimeServices();
+  const sessions = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
+  const conversations = createGoalConversations({
+    sessionStore: sessions,
+    runtime,
+    getDurable: () => durable,
+    resolveFreshAttemptSource: options.resolveFreshAttemptSource,
+  });
   const ports: GoalWorkflowPorts = createGoalPorts({
     store,
     catalog: createGoalValidatorCatalog(options.validators ?? []),
     runtime,
     forwarder,
+    conversations,
     getDurable: () => durable,
     planAgent: () => ('plan' in options ? options.plan : { durable: true, agentVersion: '1' }),
     startAttemptRun:
@@ -179,7 +188,7 @@ async function world(options: WorldOptions = {}) {
     cancelRun: options.cancelRun ?? (() => Promise.resolve({ status: 'requested' })),
     resolveCostEstimation: () => Promise.resolve(undefined),
   });
-  return { durable, engine, store, ports, watched, runtime };
+  return { durable, engine, store, ports, watched, runtime, sessions, conversations };
 }
 
 const startRequest = (feedback?: string) => ({
@@ -194,22 +203,28 @@ describe('startAttempt', () => {
   it("starts the run under the attempt's deterministic id, as the goal's principal, and watches it", async () => {
     const starts: unknown[] = [];
     const live = { marker: 'live run' };
-    const { ports, watched } = await world({
+    const { ports, watched, sessions } = await world({
       startAttemptRun: (start) => {
         starts.push(start);
         return { run: live as never, durablyStarted: Promise.resolve() };
       },
     });
 
-    const outcome = await ports.startAttempt(startRequest('say done'));
+    const outcome = await ports.startAttempt(startRequest());
 
-    expect(outcome).toEqual({ status: 'started', sessionId: 'goal-g1-a1' });
+    expect(outcome).toEqual({ status: 'started', sessionId: 'goal-g1-s0' });
     expect(starts).toEqual([
-      { agentName: 'worker', input: 'work\n\nsay done', runId: 'goal-g1-a1', principal: 'alice' },
+      { agentName: 'worker', input: 'work', runId: 'goal-g1-a0', principal: 'alice' },
     ]);
     expect(watched).toEqual([
-      { target: { goalRunId: 'g1', attemptIndex: 1, runId: 'goal-g1-a1' }, live },
+      { target: { goalRunId: 'g1', attemptIndex: 0, runId: 'goal-g1-a0' }, live },
     ]);
+    // The run is recorded in the goal's session, owned by the goal's principal.
+    const session = await sessions.load('goal-g1-s0');
+    expect(session?.runs.map((ref) => [ref.runId, ref.status])).toEqual([
+      ['goal-g1-a0', 'running'],
+    ]);
+    expect(session?.metadata['lastRequestAuthority']).toMatchObject({ principalId: 'alice' });
   });
 
   it("adopts a run that already exists under the attempt's id instead of starting another", async () => {
@@ -223,7 +238,7 @@ describe('startAttempt', () => {
 
     const outcome = await ports.startAttempt(startRequest());
 
-    expect(outcome).toEqual({ status: 'adopted', sessionId: 'goal-g1-a0' });
+    expect(outcome).toEqual({ status: 'adopted', sessionId: 'goal-g1-s0' });
     expect(watched).toHaveLength(1);
     expect(watched[0]?.live).toBeUndefined();
   });
@@ -262,7 +277,7 @@ describe('startAttempt', () => {
 
     expect(await raced.ports.startAttempt(startRequest())).toEqual({
       status: 'adopted',
-      sessionId: 'goal-g1-a0',
+      sessionId: 'goal-g1-s0',
     });
     expect(created).toBe(true);
 
@@ -296,7 +311,7 @@ describe('startAttempt', () => {
     expect(watched).toEqual([]);
 
     started.resolve();
-    expect(await answer).toEqual({ status: 'started', sessionId: 'goal-g1-a0' });
+    expect(await answer).toEqual({ status: 'started', sessionId: 'goal-g1-s0' });
     expect(watched).toHaveLength(1);
   });
 
@@ -333,7 +348,7 @@ describe('startAttempt', () => {
 
     expect(await racer.ports.startAttempt(startRequest())).toEqual({
       status: 'adopted',
-      sessionId: 'goal-g1-a0',
+      sessionId: 'goal-g1-s0',
     });
   });
 
@@ -686,5 +701,215 @@ describe('runValidator', () => {
       evidence: [{ source: 'big', detail: { truncated: true, originalByteLength: 200_002 } }],
     });
     expect(JSON.stringify(result.outcome).length).toBeLessThan(65_536);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The windows a crash can leave between a session write and a run start
+// ---------------------------------------------------------------------------
+
+type World = Awaited<ReturnType<typeof world>>;
+
+/** Runs attempt 0 for real, and records it in the goal's session as the ports would have. */
+async function finishAttemptZero(w: World, reply = 'nope') {
+  await startDurableRunResult(w.durable, {
+    runId: 'goal-g1-a0',
+    sessionId: 'goal-g1-a0',
+    options: agentOptions(() => Promise.resolve({ content: reply, toolCalls: [] })),
+    prompt: 'work',
+  });
+  const record = await w.store.get('g1');
+  if (record === undefined) throw new Error('the goal record is missing');
+  await w.conversations.recordStart(record, { attemptIndex: 0, runId: 'goal-g1-a0' });
+  await w.conversations.settle(record, 0, 'goal-g1-a0');
+}
+
+/** A start that fails the first time, as a process dying right after the session write would. */
+function dyingStarter() {
+  const state = { dies: true, starts: [] as GoalAttemptStart[] };
+  const startAttemptRun = (start: GoalAttemptStart): GoalAttemptRun => {
+    if (state.dies) throw new Error('process died');
+    state.starts.push(start);
+    return { run: {} as never, durablyStarted: Promise.resolve() };
+  };
+  return { state, startAttemptRun };
+}
+
+function seededTranscript(input: GoalAttemptStart['input']): string[] {
+  if (typeof input === 'string') return [`string: ${input}`];
+  const { conversation } = input;
+  return conversation.ids.map((id) => {
+    const message = conversation.messages[id]!;
+    return `${message.role}: ${typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}`;
+  });
+}
+
+async function sessionIds(w: World): Promise<string[]> {
+  const summaries = await w.sessions.list();
+  return summaries.map((summary) => summary.id).toSorted();
+}
+
+async function runsOf(w: World, sessionId: string) {
+  const session = await w.sessions.load(sessionId);
+  return session?.runs.map((run) => [run.runId, run.status]);
+}
+
+describe('startAttempt after a crash between a session write and the run start', () => {
+  it('under continue, records the retry once and seeds it from the committed transcript', async () => {
+    const { state, startAttemptRun } = dyingStarter();
+    const w = await world({ startAttemptRun });
+    await finishAttemptZero(w);
+
+    expect(await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')))).toThrow(
+      'process died',
+    );
+    // The first try left nothing of the retry behind but the committed baseline.
+    expect(await runsOf(w, 'goal-g1-s0')).toEqual([['goal-g1-a0', 'completed']]);
+
+    state.dies = false;
+    expect(await w.ports.startAttempt(startRequest('say done'))).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s0',
+    });
+
+    expect(state.starts.map((start) => start.runId)).toEqual(['goal-g1-a1']);
+    expect(seededTranscript(state.starts[0]!.input)).toEqual([
+      'user: work',
+      'assistant: nope',
+      'user: say done',
+    ]);
+    const session = await w.sessions.load('goal-g1-s0');
+    expect(session?.runs.map((run) => [run.runId, run.status])).toEqual([
+      ['goal-g1-a0', 'completed'],
+      ['goal-g1-a1', 'running'],
+    ]);
+    // The feedback turn is in the run's seed, not yet in the session.
+    expect(
+      transcriptOf({
+        getMessages: () =>
+          session!.conversationHistory.ids.map((id) => session!.conversationHistory.messages[id]!),
+      }),
+    ).toEqual(['user: work', 'assistant: nope']);
+  });
+
+  it('under fork-from-baseline, creates the fork once and reads it back on the second try', async () => {
+    const { state, startAttemptRun } = dyingStarter();
+    const w = await world({
+      startAttemptRun,
+      policy: { kind: 'fork-from-baseline', throughRun: 0 },
+    });
+    await finishAttemptZero(w);
+
+    await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')));
+    const forkedOnce = await w.sessions.load('goal-g1-s1');
+    expect(forkedOnce?.runs).toEqual([]);
+
+    state.dies = false;
+    expect(await w.ports.startAttempt(startRequest('say done'))).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s1',
+    });
+
+    expect(await sessionIds(w)).toEqual(['goal-g1-s0', 'goal-g1-s1']);
+    const forked = await w.sessions.load('goal-g1-s1');
+    // The second try found the first try's session and did not write another.
+    expect(forked?.conversationHistory).toEqual(forkedOnce?.conversationHistory);
+    expect(forked?.runs.map((run) => [run.runId, run.status])).toEqual([['goal-g1-a1', 'running']]);
+    expect(seededTranscript(state.starts[0]!.input)).toEqual([
+      'user: work',
+      'assistant: nope',
+      'user: work\n\nsay done',
+    ]);
+  });
+
+  it('under fresh-from-artifact, creates the fresh session once and reads it back on the second try', async () => {
+    const runtime = createManualRuntimeServices();
+    const { artifact, resolveSource } = await freshHandoff(
+      'Make the check pass.',
+      new Date(runtime.clock.now()),
+    );
+    const { state, startAttemptRun } = dyingStarter();
+    const w = await world({
+      runtime,
+      startAttemptRun,
+      policy: { kind: 'fresh-from-artifact', artifact },
+      instructions: 'Be careful.',
+      resolveFreshAttemptSource: resolveSource,
+    });
+    await finishAttemptZero(w);
+
+    await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')));
+    const createdOnce = await w.sessions.load('goal-g1-s1');
+    expect(createdOnce?.runs).toEqual([]);
+
+    state.dies = false;
+    expect(await w.ports.startAttempt(startRequest('say done'))).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s1',
+    });
+
+    expect(await sessionIds(w)).toEqual(['goal-g1-s0', 'goal-g1-s1']);
+    const fresh = await w.sessions.load('goal-g1-s1');
+    expect(fresh?.conversationHistory).toEqual(createdOnce?.conversationHistory);
+    const seeded = seededTranscript(state.starts[0]!.input);
+    expect(seeded).toHaveLength(3);
+    expect(seeded[0]).toBe('system: Be careful.');
+    expect(seeded[2]).toBe('user: work');
+    // The transcript of attempt 0 is nowhere in it.
+    expect(seeded.join('\n')).not.toContain('nope');
+  });
+
+  it('ends the goal, rather than retrying the activity, when the artifact can no longer be vouched for', async () => {
+    const runtime = createManualRuntimeServices();
+    const { artifact, resolveSource } = await freshHandoff(
+      undefined,
+      new Date(runtime.clock.now()),
+    );
+    let vouching = true;
+    const w = await world({
+      runtime,
+      startAttemptRun: () => {
+        throw new Error('no run should start');
+      },
+      policy: { kind: 'fresh-from-artifact', artifact },
+      instructions: 'Be careful.',
+      resolveFreshAttemptSource: (source) => (vouching ? resolveSource(source) : undefined),
+    });
+    await finishAttemptZero(w);
+    vouching = false;
+
+    const outcome = await w.ports.startAttempt(startRequest('say done'));
+
+    expect(outcome).toMatchObject({ status: 'failed' });
+    expect((outcome as { detail: string }).detail).toContain(
+      'Applying the conversation policy failed',
+    );
+    expect(await sessionIds(w)).toEqual(['goal-g1-s0']);
+  });
+});
+
+describe('startAttempt after a crash between the engine start and the session write', () => {
+  it('records the adopted run in its session once, however often the start repeats', async () => {
+    const w = await world();
+    await finishAttemptZero(w);
+    // The previous process started attempt 1's workflow and died before recording it.
+    createActiveRun(
+      agentOptions(() => new Promise(() => {})),
+      { ...w.durable, runId: 'goal-g1-a1', prompt: 'say done' },
+    );
+    await pollUntil(async () => (await w.engine.get('goal-g1-a1')) !== null);
+    expect(await runsOf(w, 'goal-g1-s0')).toHaveLength(1);
+
+    for (let repeat = 0; repeat < 3; repeat += 1) {
+      expect(await w.ports.startAttempt(startRequest('say done'))).toEqual({
+        status: 'adopted',
+        sessionId: 'goal-g1-s0',
+      });
+    }
+
+    expect(await runsOf(w, 'goal-g1-s0')).toEqual([
+      ['goal-g1-a0', 'completed'],
+      ['goal-g1-a1', 'running'],
+    ]);
   });
 });

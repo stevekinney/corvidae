@@ -37,17 +37,23 @@ export interface BureauGoalRequest<TName extends string = string> {
   /** The catalog agent that runs each attempt. It must be able to run durably. */
   readonly agentName: TName;
   readonly prompt: string;
-  /** Stored with the objective. Only the `fresh-from-artifact` policy needs it, and a durable goal refuses that policy. */
+  /** Stored with the objective. The `fresh-from-artifact` policy seeds each fresh conversation with it, and requires it. */
   readonly instructions?: string | undefined;
   readonly identity: GoalIdentity;
   /** Resolved from `BureauOptions.validators` by exact name and version. */
   readonly validator: ValidatorIdentity;
   readonly bounds: GoalBudget;
   /**
-   * Defaults to `{ kind: 'continue' }`, which is the only policy a durable goal
-   * supports: each attempt is a fresh durable run whose prompt carries the
-   * validator's feedback. The other policies are rejected as
-   * `unsupported-conversation-policy`.
+   * Defaults to `{ kind: 'continue' }`. Each policy keeps the goal's
+   * conversation in the bureau's session store, so it survives a restart:
+   *
+   * - `continue`: every attempt runs in one session, and a retry's turn is the
+   *   validator's feedback appended to the transcript.
+   * - `fork-from-baseline`: attempt 0 runs in the goal's session and every retry
+   *   runs in a fork of it through `throughRun`. A goal has no session before
+   *   its first attempt, so the run a retry can fork through is run 0.
+   * - `fresh-from-artifact`: every retry starts a new conversation from
+   *   `instructions` and the validated handoff artifact, with no transcript.
    */
   readonly conversationPolicy?: GoalConversationPolicy | undefined;
   readonly retryPolicy?: GoalRetryPolicy | undefined;
@@ -71,15 +77,12 @@ export type BureauGoalCreateRejectionCode =
   | 'agent-not-durable'
   | 'validator-missing'
   | 'validator-version-mismatch'
-  /** COR-638's budget, retry-policy, or conversation-policy rules refused the request. */
-  | 'invalid-configuration'
   /**
-   * `fork-from-baseline` and `fresh-from-artifact` need a live conversation to
-   * fork or an artifact handoff that a durable goal has no way to carry, so a
-   * durable goal accepts only `continue`. Refused rather than silently run as
-   * something else.
+   * COR-638's budget, retry-policy, or conversation-policy rules refused the
+   * request, or a `fresh-from-artifact` artifact failed COR-894's validation
+   * (including that `BureauOptions.resolveFreshAttemptSource` cannot vouch for it).
    */
-  | 'unsupported-conversation-policy'
+  | 'invalid-configuration'
   /**
    * The goal id cannot name the workflows and signals a goal is made of: it has
    * a control character, or an identifier derived from it would pass Weft's

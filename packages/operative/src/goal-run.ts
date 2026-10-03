@@ -56,6 +56,7 @@ import {
   decideRetryOrExhaust,
   decideRunFinish,
   freezeValidatorOutcome,
+  goalAttemptInput,
   isFailedReason,
   OPERATOR_ABORT_DETAIL,
   stripValidatorErrorCause,
@@ -516,15 +517,8 @@ export function startGoal(options: StartGoalOptions): GoalRun {
 
   // ---- one attempt -----------------------------------------------------------
 
-  const attemptInput = (index: number, feedback: string | undefined): string => {
-    if (index === 0) return prompt;
-    const policy = conversationPolicy;
-    if (policy.kind === 'continue') return feedback ?? prompt;
-    if (policy.kind === 'fork-from-baseline' && feedback !== undefined) {
-      return `${prompt}\n\n${feedback}`;
-    }
-    return prompt;
-  };
+  const attemptInput = (index: number, feedback: string | undefined): string =>
+    goalAttemptInput(conversationPolicy.kind, prompt, index, feedback);
 
   /**
    * Maps a pure decision onto the state machine. `goal.retrying` is not

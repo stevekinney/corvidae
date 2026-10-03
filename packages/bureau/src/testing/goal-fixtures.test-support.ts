@@ -14,6 +14,8 @@ import { join } from 'node:path';
 
 import {
   createAgent,
+  finalizeFreshAttemptHandoffArtifact,
+  type FreshAttemptSourceResolver,
   type GenerateFunction,
   type GoalBudget,
   stopWhen,
@@ -210,4 +212,73 @@ export function lastPromptOf(conversation: {
 }): string {
   const content = conversation.getMessages().at(-1)?.content;
   return typeof content === 'string' ? content : JSON.stringify(content);
+}
+
+// ---------------------------------------------------------------------------
+// Conversations
+// ---------------------------------------------------------------------------
+
+/** One line per message, `role: text`, in transcript order. */
+export function transcriptOf(conversation: {
+  getMessages(): readonly { role: string; content: unknown }[];
+}): string[] {
+  return conversation
+    .getMessages()
+    .map(
+      ({ role, content }) =>
+        `${role}: ${typeof content === 'string' ? content : JSON.stringify(content)}`,
+    );
+}
+
+/**
+ * Answers `replies[n]` to its nth call (the last reply once they run out) and
+ * records the transcript that call was given, so a test can say exactly what
+ * each attempt saw.
+ */
+export function scriptedGenerate(
+  replies: readonly string[],
+  seen: string[][] = [],
+): GenerateFunction {
+  let calls = 0;
+  return ({ conversation }) => {
+    seen.push(transcriptOf(conversation));
+    const reply = replies[Math.min(calls, replies.length - 1)] ?? '';
+    calls += 1;
+    return Promise.resolve({ content: reply, toolCalls: [] });
+  };
+}
+
+export const HANDOFF_ACTOR = 'operator:test';
+
+/** A valid COR-894 handoff artifact dated now, and the resolver that vouches for its source run. */
+export async function freshHandoff(objective = 'Make the check pass.', at = new Date()) {
+  const artifact = await finalizeFreshAttemptHandoffArtifact({
+    artifactId: 'handoff-1',
+    revision: 1,
+    objective,
+    successRevision: 'check#1',
+    constraints: ['Say done.'],
+    completedWork: ['Tried once.'],
+    validatedFacts: [],
+    evidenceReferences: [],
+    knownFailures: [],
+    unresolvedQuestions: [],
+    nextRequestedAction: 'Say the word done.',
+    allowedCarryForwardContext: [],
+    producer: { agentName: 'worker', runId: 'source:0', sessionId: 'source' },
+    sourceRunOrAttempt: { sessionId: 'source', runId: 'source:0', sequence: 0 },
+    timestamp: at.toISOString(),
+    lineage: { sourceRevision: 1 },
+    provenance: { producedAt: at.toISOString(), producingActor: HANDOFF_ACTOR },
+  });
+  const resolveSource: FreshAttemptSourceResolver = () => ({
+    epoch: {
+      epochId: 'epoch-1',
+      sources: [],
+      baselineDigest: '0'.repeat(16),
+      firstConsumedBy: { runId: 'source:0', step: 0, attempt: 0 },
+    },
+    permittedActors: [HANDOFF_ACTOR],
+  });
+  return { artifact, resolveSource };
 }

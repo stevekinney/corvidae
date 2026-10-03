@@ -4,11 +4,18 @@
  * at a precise point would have left it.
  */
 
-import type { Validator } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  createSessionStore,
+  type FreshAttemptSourceResolver,
+  type Validator,
+} from '@lostgradient/operative';
 import { encode, resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import { Conversation } from 'conversationalist';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
+import { goalSessionId } from '../goal-conversation';
 import {
   createGoalState,
   type DurableGoalAttempt,
@@ -29,6 +36,7 @@ export interface BootOptions<D extends AgentDefinitions> {
   readonly path: string;
   readonly agents: D;
   readonly validators?: readonly Validator[];
+  readonly resolveFreshAttemptSource?: FreshAttemptSourceResolver;
   readonly diagnostics?: ReturnType<typeof createDiagnostics>;
 }
 
@@ -38,6 +46,9 @@ export async function bootOver<D extends AgentDefinitions>(options: BootOptions<
   const bureau = await createBureau({
     agents: options.agents,
     ...(options.validators === undefined ? {} : { validators: options.validators }),
+    ...(options.resolveFreshAttemptSource === undefined
+      ? {}
+      : { resolveFreshAttemptSource: options.resolveFreshAttemptSource }),
     storage: { type: 'sqlite', path: options.path },
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
@@ -82,7 +93,7 @@ function attemptAt(goalRunId: string, index: number, overrides: Partial<DurableG
     attemptId: goalAttemptId(goalRunId, index),
     attemptIndex: index,
     runId: goalAttemptRunId(goalRunId, index),
-    sessionId: goalAttemptRunId(goalRunId, index),
+    sessionId: goalSessionId(goalRunId, 0),
     startedAt: NOW,
     usage: { steps: 0, tokens: 0 },
     status: 'running',
@@ -130,10 +141,41 @@ export async function seedRunning(inspection: Inspection, goal = pendingGoal()) 
   return attempt;
 }
 
+/**
+ * The goal's session as the forwarder leaves it once attempt 0 has ended: one
+ * completed run, and the transcript that run committed. A goal that died in
+ * `retrying` has this, because the controller is told an attempt ended only
+ * after its transcript is committed.
+ */
+export async function seedTrunk(inspection: Inspection, goal = pendingGoal()) {
+  const conversation = new Conversation();
+  conversation.appendUserMessage(goal.objective.prompt);
+  conversation.appendAssistantMessage('nope');
+  const sessions = createSessionStore(inspection.kv);
+  await sessions.save(
+    createAgentSession({
+      agentName: goal.objective.agentName,
+      conversationHistory: conversation.current,
+      id: goalSessionId(goal.goalRunId, 0),
+      runs: [
+        {
+          runId: goalAttemptRunId(goal.goalRunId, 0),
+          sequence: 0,
+          status: 'completed',
+          startedAt: NOW,
+          agentName: goal.objective.agentName,
+          outcome: { finishReason: 'stop-condition' },
+        },
+      ],
+    }),
+  );
+}
+
 /** Walks a seeded `running` goal on to `retrying`: attempt 0 failed retryably with feedback. */
 export async function seedRetrying(inspection: Inspection, goal = pendingGoal()) {
   const { goalRunId } = goal;
   const attempt = await seedRunning(inspection, goal);
+  await seedTrunk(inspection, goal);
   await inspection.store.applyTransition({
     goalRunId,
     seq: 2,

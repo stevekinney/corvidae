@@ -116,8 +116,8 @@ describe('bureau.goals', () => {
       kind: 'fail',
       feedback: 'say done',
     });
-    // The retry's prompt carries the feedback; the validator saw the earlier attempt.
-    expect(prompts).toEqual(['work', 'work\n\nsay done']);
+    // The retry's turn is the feedback alone, because its transcript holds the prompt.
+    expect(prompts).toEqual(['work', 'say done']);
     expect(validatorCalls[1]?.history.map((attempt) => attempt.feedback)).toEqual(['say done']);
     expect(validatorCalls[1]?.result.content).toBe('done');
 
@@ -239,30 +239,34 @@ describe('bureau.goals', () => {
     });
 
     it.each([
-      { kind: 'fork-from-baseline', throughRun: 1 },
-      { kind: 'fresh-from-artifact', artifact: { kind: 'handoff' } },
-    ] as const)(
-      'refuses the $kind conversation policy, which a durable goal cannot honor',
-      async (policy) => {
-        const { bureau } = await boot({
-          agents: { worker: workerAgent(hangUntilAborted) },
-          validators: [createCheckValidator()],
-        });
-
-        const outcome = await bureau.goals.create(
-          goalRequest({
-            conversationPolicy: policy as never,
-            instructions: 'approved instructions',
-          }),
-        );
-
-        expect(outcome).toMatchObject({
-          outcome: 'rejected',
-          code: 'unsupported-conversation-policy',
-        });
-        expect(await bureau.goals.list()).toEqual([]);
+      {
+        label: 'a fork-from-baseline policy with no baseline run',
+        policy: { kind: 'fork-from-baseline' },
+        instructions: undefined,
       },
-    );
+      {
+        label: 'a fresh-from-artifact policy with no instructions',
+        policy: { kind: 'fresh-from-artifact', artifact: {} },
+        instructions: undefined,
+      },
+      {
+        label: 'a fresh-from-artifact policy whose artifact is not a handoff artifact',
+        policy: { kind: 'fresh-from-artifact', artifact: { kind: 'handoff' } },
+        instructions: 'approved instructions',
+      },
+    ] as const)('refuses $label, before writing anything', async ({ policy, instructions }) => {
+      const { bureau } = await boot({
+        agents: { worker: workerAgent(hangUntilAborted) },
+        validators: [createCheckValidator()],
+      });
+
+      const outcome = await bureau.goals.create(
+        goalRequest({ conversationPolicy: policy as never, instructions }),
+      );
+
+      expect(outcome).toMatchObject({ outcome: 'rejected', code: 'invalid-configuration' });
+      expect(await bureau.goals.list()).toEqual([]);
+    });
 
     it('refuses a validator that is missing or registered at another version, before writing anything', async () => {
       const { bureau } = await boot({

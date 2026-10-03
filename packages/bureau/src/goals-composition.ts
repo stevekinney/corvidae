@@ -11,16 +11,20 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type CleanupAcknowledgement,
+  createSessionStore,
   type DurableActiveRunContext,
+  type FreshAttemptSourceResolver,
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type RunOptions,
+  type SessionStore,
 } from '@lostgradient/operative';
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
 import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
 import type { DurableEventHistory } from './durable-event-history';
+import { createGoalConversations } from './goal-conversation';
 import { createGoalEventRecorder, projectGoalHistory } from './goal-event-projection';
 import { createAttemptForwarder } from './goal-forwarder';
 import { createGoalPorts, type GoalWorkflowHost } from './goal-ports';
@@ -35,6 +39,10 @@ export interface GoalsCompositionDependencies {
   /** Built by the caller before the durable engine, so a bad registration fails startup first. */
   readonly catalog: GoalValidatorCatalog;
   readonly kv: ConditionalTextValueStore | undefined;
+  /** Where goal conversations live; absent when the bureau has no persistent store, as with `kv`. */
+  readonly sessionStore: SessionStore | undefined;
+  /** See `BureauOptions.resolveFreshAttemptSource`. */
+  readonly resolveFreshAttemptSource: FreshAttemptSourceResolver | undefined;
   readonly runtimeServices: RuntimeServices;
   readonly host: GoalWorkflowHost;
   readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'>;
@@ -101,11 +109,20 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     return options.costEstimation;
   }
 
+  const conversations = createGoalConversations({
+    sessionStore:
+      dependencies.sessionStore ??
+      createSessionStore(textValueStore(new MemoryStorage()), { runtime: runtimeServices }),
+    runtime: runtimeServices,
+    getDurable,
+    resolveFreshAttemptSource: dependencies.resolveFreshAttemptSource,
+  });
   const forwarder = createAttemptForwarder({
     store,
     runtime: runtimeServices,
     getDurable,
     resolveCostEstimation,
+    conversations,
     isClosing: dependencies.isClosing,
     diagnose,
   });
@@ -114,6 +131,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     catalog,
     runtime: runtimeServices,
     forwarder,
+    conversations,
     getDurable,
     planAgent: dependencies.planAgent,
     startAttemptRun: dependencies.startAttemptRun,
@@ -132,6 +150,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     cancelRun: dependencies.cancelRun,
     cleanupController: dependencies.cleanupController,
     forwarder,
+    resolveFreshAttemptSource: dependencies.resolveFreshAttemptSource,
     startAttempt: (request) => ports.startAttempt(request),
     isClosing: dependencies.isClosing,
     planAgent: dependencies.planAgent,

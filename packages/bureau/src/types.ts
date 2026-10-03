@@ -20,6 +20,7 @@ import type {
   DurableEventPage,
   EnhancedStreamingOptions,
   FlowControlPolicy,
+  FreshAttemptSourceResolver,
   GenerateFunction,
   GuardrailsOptions,
   LivenessSnapshot,
@@ -358,6 +359,15 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * version. Two validators with the same name and version are a startup error.
    */
   validators?: readonly Validator[];
+  /**
+   * COR-851 — resolves the producing run of a `fresh-from-artifact` goal's
+   * handoff artifact: its sealed context epoch and the actors permitted to
+   * publish for it. A goal validates its artifact at `create` and again before
+   * every attempt that consumes it, and an artifact this cannot resolve is
+   * unauthorized. Omitted, no `fresh-from-artifact` goal can be created, because
+   * nothing can vouch for any artifact's source run.
+   */
+  resolveFreshAttemptSource?: FreshAttemptSourceResolver;
   /**
    * AB-64/AB-250 — deployment/Bureau model-policy invariants and the
    * per-principal user configuration `Bureau.planSelection`/a run's

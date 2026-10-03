@@ -293,6 +293,27 @@ export function validateConversationPolicy(
   );
 }
 
+/**
+ * The user turn attempt `attemptIndex` is given, shared by the in-memory
+ * controller and the durable one so the two cannot drift. The first attempt
+ * runs the prompt. A retry under `continue` is the feedback alone, because the
+ * transcript already holds the prompt; under `fork-from-baseline` it is the
+ * prompt followed by the feedback, because the fork dropped the attempts that
+ * carried it; under `fresh-from-artifact` it is the prompt again, because the
+ * artifact is how the earlier attempt reaches the new conversation.
+ */
+export function goalAttemptInput(
+  kind: GoalConversationPolicy['kind'],
+  prompt: string,
+  attemptIndex: number,
+  feedback: string | undefined,
+): string {
+  if (attemptIndex === 0) return prompt;
+  if (kind === 'continue') return feedback ?? prompt;
+  if (kind === 'fork-from-baseline' && feedback !== undefined) return `${prompt}\n\n${feedback}`;
+  return prompt;
+}
+
 export function validateGoalConfiguration(input: GoalConfigurationInput): void {
   const validator = input.validator as
     { identity?: { name?: unknown; version?: unknown }; validate?: unknown } | null | undefined;

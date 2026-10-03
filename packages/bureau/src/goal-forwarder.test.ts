@@ -89,10 +89,14 @@ async function world(goalOverrides: { maximumTotalCostUsd?: number } = {}) {
   });
   disposers.push(() => engine[Symbol.dispose]());
   const sent: SentSignal[] = [];
+  // Settling and signalling share one log, so a test can say which came first.
+  const order: string[] = [];
   const spy = withSignal(engine, (workflowId, name, payload, deliveryOptions) => {
+    order.push('signal');
     sent.push({ workflowId, name, payload, signalId: deliveryOptions?.signalId });
     return Promise.resolve();
   });
+  const settled: Array<{ attemptIndex: number; runId: string }> = [];
   const durable: DurableActiveRunContext = { engine: spy, checkpointStore };
   const store: GoalStore = createGoalStore(textValueStore(new MemoryStorage()));
   await store.create(
@@ -117,6 +121,13 @@ async function world(goalOverrides: { maximumTotalCostUsd?: number } = {}) {
       costLookups.push(agentName);
       return Promise.resolve({ model: 'gpt-4o' });
     },
+    conversations: {
+      settle: (_record, attemptIndex, runId) => {
+        order.push('settle');
+        settled.push({ attemptIndex, runId });
+        return Promise.resolve();
+      },
+    },
     isClosing: () => closing,
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
   });
@@ -125,6 +136,8 @@ async function world(goalOverrides: { maximumTotalCostUsd?: number } = {}) {
     engine,
     store,
     sent,
+    order,
+    settled,
     forwarder,
     diagnostics,
     costLookups,
@@ -170,6 +183,31 @@ describe('createAttemptForwarder', () => {
     expect(attemptSignalId('g1', 0)).toBe('attempt-terminal:g1:0');
     // No cost bound, so the agent's cost estimation is never even asked for.
     expect(costLookups).toEqual([]);
+  });
+
+  it("commits the attempt's transcript to its session before it tells the controller the attempt ended", async () => {
+    const { durable, order, settled, forwarder } = await world();
+    await finishedRun(durable);
+
+    await forwarder.reconcile(target);
+
+    expect(order).toEqual(['settle', 'signal']);
+    expect(settled).toEqual([{ attemptIndex: 0, runId: 'goal-g1-a0' }]);
+  });
+
+  it('commits nothing for a run that has not ended', async () => {
+    const { durable, order, forwarder } = await world();
+    startDurableRunResult(durable, {
+      runId: target.runId,
+      sessionId: target.runId,
+      options: options(() => new Promise(() => {})),
+      prompt: 'go',
+    }).catch(() => undefined);
+    await pollUntil(async () => (await durable.engine.get(target.runId)) !== null);
+
+    expect(await forwarder.reconcile(target)).toBe('watching');
+
+    expect(order).toEqual([]);
   });
 
   it('reports the cost of the run when the goal has a cost bound', async () => {
@@ -283,6 +321,7 @@ describe('createAttemptForwarder', () => {
       runtime,
       getDurable: () => failing,
       resolveCostEstimation: () => Promise.resolve(undefined),
+      conversations: { settle: () => Promise.resolve() },
       isClosing: () => false,
       diagnose: (diagnostic) => diagnostics.push(diagnostic),
     });

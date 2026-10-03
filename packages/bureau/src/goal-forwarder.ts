@@ -7,6 +7,10 @@
  * state and checkpoint (never from a live handle, so the payload is the same
  * whichever process reads it) and sends the signal under a stable id.
  *
+ * Before sending, it commits the attempt's transcript to the goal's session
+ * (`GoalConversations.settle`), so the next attempt and the validator always
+ * find it, on the live path and the recovery path alike.
+ *
  * Three things keep a lost forwarder from parking a goal forever:
  *
  * - The signal id is `attempt-terminal:<goalRunId>:<n>`, so sending it twice
@@ -35,6 +39,7 @@ import {
   type RunOptions,
 } from '@lostgradient/operative';
 
+import type { GoalConversations } from './goal-conversation';
 import { attemptSignalId, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type { GoalStore } from './goal-store';
 import type { DiagnosticSink } from './types';
@@ -59,6 +64,8 @@ export interface AttemptForwarderDependencies {
     prompt: string,
     principal: string | undefined,
   ) => Promise<RunOptions['costEstimation'] | undefined>;
+  /** Commits a finished attempt's transcript to its session before the controller is told it ended. */
+  readonly conversations: Pick<GoalConversations, 'settle'>;
   readonly isClosing: () => boolean;
   readonly diagnose: DiagnosticSink;
 }
@@ -87,7 +94,8 @@ const describe = (error: unknown): string =>
 export function createAttemptForwarder(
   dependencies: AttemptForwarderDependencies,
 ): AttemptForwarder {
-  const { store, runtime, getDurable, resolveCostEstimation, isClosing, diagnose } = dependencies;
+  const { store, runtime, getDurable, resolveCostEstimation, conversations, isClosing, diagnose } =
+    dependencies;
   const watching = new Map<string, Promise<void>>();
   const sending = new Set<Promise<unknown>>();
 
@@ -115,6 +123,10 @@ export function createAttemptForwarder(
     if (reading.status === 'missing') return 'missing';
     if (reading.status === 'not-terminal') return 'watching';
     if (isClosing()) return 'not-needed';
+    // Before the controller can start the next attempt or the validator, so a
+    // retry always finds this attempt's transcript in the session. Idempotent,
+    // so a recovery that sends the signal again commits nothing twice.
+    await conversations.settle(record, target.attemptIndex, target.runId);
 
     const finishReason: FinishReason = reading.result.finishReason;
     const cost = reading.result.costEstimate?.totalCost;

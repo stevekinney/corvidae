@@ -267,6 +267,7 @@ export {
   decideOutcome,
   decideRetryOrExhaust,
   decideRunFinish,
+  goalAttemptInput,
   isBudgetExceeded,
   normalizeValidatorOutcome,
   projectValidatorError,
@@ -359,6 +360,8 @@ export type {
   FreshAttemptProvenance,
   FreshAttemptSourceRunOrAttempt,
 } from './fresh-attempt/handoff-artifact';
+export { createFreshAttemptSession } from './fresh-attempt/start-fresh-attempt';
+export type { CreateFreshAttemptSessionOptions } from './fresh-attempt/start-fresh-attempt';
 export {
   FRESH_ATTEMPT_ARTIFACT_CLOCK_SKEW_MS,
   FRESH_ATTEMPT_ARTIFACT_ENTROPY_MINIMUM_TOKEN_LENGTH,

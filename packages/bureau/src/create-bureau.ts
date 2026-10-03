@@ -9210,6 +9210,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const goalsComposition = composeBureauGoals({
     catalog: goalValidatorCatalog,
     kv: runtime.kv,
+    sessionStore: runtime.sessionStore,
+    resolveFreshAttemptSource: options.resolveFreshAttemptSource,
     runtimeServices,
     host: goalWorkflowHost,
     agentCatalog,

@@ -251,7 +251,7 @@ describe('a goal across a process restart', () => {
       ['goal-g1-a0', 'failed'],
       ['goal-g1-a1', 'passed'],
     ]);
-    expect(prompts).toEqual(['work\n\nsay done']);
+    expect(prompts).toEqual(['say done']);
   });
 
   it('does not run again a goal that had already ended, whether it succeeded or was canceled', async () => {

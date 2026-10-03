@@ -22,11 +22,14 @@
  * - `abortAttempt` is `cancelDurableRun`, which is a no-op for a run that never
  *   existed or already ended.
  *
- * Each attempt is a fresh durable run, not a turn in a long conversation. The
- * in-memory controller continues, forks, or restarts a live session; a durable
- * goal has no live session to do that to, so the retry's prompt carries the
- * validator's feedback in its text. That is why a durable goal accepts only the
- * `continue` conversation policy.
+ * Each attempt is its own durable run, started under its deterministic id. What
+ * carries a conversation from one attempt to the next is the goal's session in
+ * the `SessionStore`, which `GoalConversations` owns: it decides which session
+ * an attempt runs in and what that attempt is seeded with, per the goal's
+ * conversation policy, and records each attempt's run in its session. Starting
+ * an attempt is therefore: adopt the run if it exists, otherwise seat it (build
+ * its seed), start it, and record it. The forwarder commits a finished
+ * attempt's transcript to its session before the controller hears of it.
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
@@ -53,6 +56,8 @@ import {
 } from '@lostgradient/operative';
 
 import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
+import type { GoalConversations } from './goal-conversation';
+import { attemptSessionId } from './goal-conversation';
 import type { AttemptForwarder } from './goal-forwarder';
 import {
   boundValidationOutcome,
@@ -60,7 +65,6 @@ import {
   goalAttemptId,
   goalAttemptRunId,
   goalDecisionId,
-  type GoalState,
   goalTransitionId,
   isTerminalGoalStatus,
 } from './goal-state';
@@ -140,6 +144,7 @@ export interface GoalPortsDependencies {
   readonly catalog: GoalValidatorCatalog;
   readonly runtime: RuntimeServices;
   readonly forwarder: AttemptForwarder;
+  readonly conversations: GoalConversations;
   readonly getDurable: () => DurableActiveRunContext | undefined;
   /** `undefined` when the catalog has no agent by this name. */
   readonly planAgent: (
@@ -152,21 +157,6 @@ export interface GoalPortsDependencies {
     prompt: string,
     principal: string | undefined,
   ) => Promise<RunOptions['costEstimation'] | undefined>;
-}
-
-/**
- * The prompt attempt `attemptIndex` runs. The first attempt runs the objective as
- * written; a retry that has validator feedback appends it. A durable goal accepts
- * only the `continue` conversation policy (`bureau.goals.create` refuses the
- * others), so there is no other way for an attempt to be seeded.
- */
-export function attemptPromptFor(
-  record: Pick<GoalState, 'objective'>,
-  attemptIndex: number,
-  feedback: string | undefined,
-): string {
-  const { prompt } = record.objective;
-  return attemptIndex === 0 || feedback === undefined ? prompt : `${prompt}\n\n${feedback}`;
 }
 
 const failed = (detail: string): GoalWorkflowStart => ({ status: 'failed', detail });
@@ -208,6 +198,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     catalog,
     runtime,
     forwarder,
+    conversations,
     getDurable,
     planAgent,
     startAttemptRun,
@@ -269,8 +260,18 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
           ),
         );
       }
+      // A crash between the engine's start and this write leaves a run with no
+      // ref in its session; repeating the write is idempotent.
+      await conversations.recordStart(record, request);
       forwarder.watch(target);
-      return { status: 'adopted', sessionId: request.runId };
+      return {
+        status: 'adopted',
+        sessionId: attemptSessionId(
+          record.goalRunId,
+          record.conversationPolicy.kind,
+          request.attemptIndex,
+        ),
+      };
     };
 
     // A cancellation that is already recorded must not be given a run to stop.
@@ -279,11 +280,13 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     }
     const adopted = await adopt();
     if (adopted !== undefined) return adopted;
+    const seat = await conversations.seat(record, request);
+    if (seat.status === 'failed') return failed(seat.detail);
     let started: GoalAttemptRun;
     try {
       started = startAttemptRun({
         agentName,
-        input: attemptPromptFor(record, request.attemptIndex, request.feedback),
+        input: seat.input,
         runId: request.runId,
         ...(record.principal === undefined ? {} : { principal: record.principal }),
       });
@@ -301,6 +304,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       if (raced !== undefined) return raced;
       throw error;
     }
+    await conversations.recordStart(record, request);
     // The cancellation marker is written before `cancelRun` looks for the run,
     // and the run existed before this read. So either this read sees the marker
     // and stops the run itself, or the marker lands after it and the
@@ -317,7 +321,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       );
     }
     forwarder.watch(target, started.run);
-    return { status: 'started', sessionId: request.runId };
+    return { status: 'started', sessionId: seat.sessionId };
   }
 
   async function runValidator(

@@ -155,6 +155,7 @@ export interface DurableGoalAttempt {
   readonly attemptId: string;
   readonly attemptIndex: number;
   readonly runId: string;
+  /** The goal session the attempt's run is recorded in (`goalSessionId`): the trunk, or the fork or fresh session of a retry. */
   readonly sessionId: string;
   readonly startedAt: string;
   readonly completedAt?: string | undefined;

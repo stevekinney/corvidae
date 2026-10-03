@@ -12,6 +12,7 @@ import {
   decideRetryOrExhaust,
   decideRunFinish,
   GOAL_RUN_TRANSITIONS,
+  goalAttemptInput,
   isBudgetExceeded,
   isFailedReason,
   normalizeValidatorOutcome,
@@ -789,4 +790,25 @@ describe('validator projection', () => {
     expect(JSON.parse(JSON.stringify(projected))).toEqual(projected);
     expect(projected.identity).toEqual({ name: 'v', version: '1' });
   });
+});
+
+describe('goalAttemptInput', () => {
+  const prompt = 'work';
+  const cases = [
+    ['continue', 0, 'ignored', 'work'],
+    ['continue', 1, 'fix it', 'fix it'],
+    ['continue', 1, undefined, 'work'],
+    ['fork-from-baseline', 0, 'ignored', 'work'],
+    ['fork-from-baseline', 2, 'fix it', 'work\n\nfix it'],
+    ['fork-from-baseline', 2, undefined, 'work'],
+    ['fresh-from-artifact', 0, 'ignored', 'work'],
+    ['fresh-from-artifact', 1, 'fix it', 'work'],
+  ] as const;
+
+  it.each(cases)(
+    'under %s, attempt %d with feedback %p is %p',
+    (kind, index, feedback, expected) => {
+      expect(goalAttemptInput(kind, prompt, index, feedback)).toBe(expected);
+    },
+  );
 });

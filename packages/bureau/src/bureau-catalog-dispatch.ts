@@ -55,7 +55,8 @@ export interface CatalogDispatcherDependencies {
  */
 export interface GoalAttemptStart {
   readonly agentName: string;
-  readonly input: string;
+  /** The first attempt's prompt, or a later attempt's seed conversation with its turn appended. */
+  readonly input: AgentInput;
   readonly runId: string;
   readonly principal?: string | undefined;
 }

@@ -79,6 +79,7 @@ export interface GoalWorkflowAttempt {
   readonly attemptId: string;
   readonly attemptIndex: number;
   readonly runId: string;
+  /** What `startAttempt` answered: the session the attempt's run is recorded in, which the port decides. */
   readonly sessionId: string;
   readonly startedAt: string;
   readonly completedAt?: string | undefined;

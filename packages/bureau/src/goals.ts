@@ -17,8 +17,11 @@
 
 import {
   type CleanupAcknowledgement,
+  FreshAttemptArtifactError,
+  type FreshAttemptSourceResolver,
   GoalConfigurationError,
   type GoalRunStatus,
+  validateFreshAttemptArtifact,
 } from '@lostgradient/operative';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
@@ -48,6 +51,8 @@ import { principalAllows } from './principal-allows';
 
 export interface BureauGoalsDependencies extends GoalControlDependencies {
   readonly runtime: Pick<RuntimeServices, 'identifiers'>;
+  /** See `BureauOptions.resolveFreshAttemptSource`. */
+  readonly resolveFreshAttemptSource: FreshAttemptSourceResolver | undefined;
   /** `undefined` when the catalog has no agent by this name. */
   readonly planAgent: (
     agentName: string,
@@ -80,7 +85,16 @@ function configurationOf(state: GoalState): string {
 export function createBureauGoals<TName extends string = string>(
   dependencies: BureauGoalsDependencies,
 ): BureauGoals<TName> {
-  const { store, catalog, runtime, clock, getEngine, planAgent, isClosing } = dependencies;
+  const {
+    store,
+    catalog,
+    runtime,
+    clock,
+    getEngine,
+    planAgent,
+    isClosing,
+    resolveFreshAttemptSource,
+  } = dependencies;
 
   async function authorized(
     goalRunId: string,
@@ -122,15 +136,6 @@ export function createBureauGoals<TName extends string = string>(
         `Agent "${request.agentName}" cannot run durably, so it cannot run a goal attempt.`,
       );
     }
-    // A durable goal has no live conversation to fork and no artifact handoff,
-    // so only `continue` is honored; the others are refused, never run as it.
-    const policy = request.conversationPolicy?.kind ?? 'continue';
-    if (policy !== 'continue') {
-      return rejected(
-        'unsupported-conversation-policy',
-        `A durable goal supports only the "continue" conversation policy, not "${policy}".`,
-      );
-    }
     const resolution = catalog.resolve(request.validator);
     if (!resolution.ok) {
       return resolution.reason === 'missing'
@@ -143,6 +148,25 @@ export function createBureauGoals<TName extends string = string>(
             `The validator "${request.validator.name}" has no version "${request.validator.version}".`,
             resolution.availableVersions,
           );
+    }
+
+    // Everything a `fresh-from-artifact` attempt will check about its artifact
+    // except that it is still inside its retention window when it is consumed:
+    // a goal whose artifact could never seed an attempt is refused before it is
+    // recorded, rather than failing on its first retry.
+    const conversationPolicy = request.conversationPolicy;
+    if (conversationPolicy?.kind === 'fresh-from-artifact') {
+      try {
+        await validateFreshAttemptArtifact(conversationPolicy.artifact, {
+          resolveSource: resolveFreshAttemptSource ?? (() => undefined),
+          now: clock.now(),
+        });
+      } catch (error) {
+        if (error instanceof FreshAttemptArtifactError) {
+          return rejected('invalid-configuration', `fresh-from-artifact: ${error.message}`);
+        }
+        throw error;
+      }
     }
 
     const goalRunId = request.goalRunId ?? runtime.identifiers.next('goal-run');
