@@ -23,9 +23,9 @@ const record = createGoalState({
   now: '2026-10-02T12:00:00.000Z',
 });
 
-const sessionWithRuns = (runIds: readonly string[]) =>
+const sessionWithRuns = (runIds: readonly string[], agentName = 'worker') =>
   createAgentSession({
-    agentName: 'worker',
+    agentName,
     conversationHistory: createConversationHistory(undefined, { runtime }),
     id: 'goal-g1-s0',
     metadata: goalSessionMetadata(record),
@@ -40,6 +40,11 @@ const sessionWithRuns = (runIds: readonly string[]) =>
   });
 
 describe('foreignSessionReason and the runs a session holds', () => {
+  it("refuses a session that belongs to a different agent than the goal's", () => {
+    const reason = foreignSessionReason(record, sessionWithRuns([], 'other-agent'));
+    expect(reason).toContain('belongs to a different agent');
+  });
+
   it("accepts a session holding exactly the goal's own attempt run ids", () => {
     const session = sessionWithRuns([goalAttemptRunId('g1', 0), goalAttemptRunId('g1', 2)]);
     expect(foreignSessionReason(record, session)).toBeUndefined();

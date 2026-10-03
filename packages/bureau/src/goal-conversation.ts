@@ -145,6 +145,11 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
       ? (authority as Record<string, unknown>)['principalId']
       : undefined;
   if (principalId !== record.principal) return refuse('belongs to a different principal');
+  // A goal runs one agent, and its session carries that agent's name. A session
+  // under the goal's id for any other agent is not the goal's conversation.
+  if (session.agentName !== record.objective.agentName) {
+    return refuse('belongs to a different agent');
+  }
   // The exact id the goal derives for an attempt it can have, never a pattern
   // that merely resembles one: `goal-g1-a00` and an index past `maximumAttempts`
   // are ids the goal never mints.
