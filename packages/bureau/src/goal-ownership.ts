@@ -46,6 +46,21 @@ export class GoalOwnershipError extends Error {
   }
 }
 
+/**
+ * Ownership could not be decided because the record that decides it could not
+ * be read. This is neither "foreign" nor "absent": it says nothing about who
+ * holds the id, and the same read can succeed once the fault clears. Nothing is
+ * adopted, replaced, started over, or cancelled on it, and callers retry.
+ */
+export class GoalOwnershipUnknownError extends Error {
+  constructor(runId: string, cause: unknown) {
+    super(`Ownership of run "${runId}" could not be determined: its record could not be read.`, {
+      cause,
+    });
+    this.name = 'GoalOwnershipUnknownError';
+  }
+}
+
 export type RunRecordReader = (runId: string) => Promise<CatalogRunRecoveryLoad>;
 
 export interface ExpectedAttemptOwner {
@@ -88,7 +103,7 @@ export async function verifyAttemptRun(
   runId: string,
 ): Promise<AttemptRunOwnership> {
   const load = await dependencies.readRunRecord(runId);
-  if (load.status === 'read-error') throw load.error;
+  if (load.status === 'read-error') throw new GoalOwnershipUnknownError(runId, load.error);
   if (load.status === 'found') {
     return isOwnAttemptRecord(load.record, expected)
       ? { status: 'owned' }
@@ -159,7 +174,11 @@ export function createOwnedGoalEngine<E extends GoalEngine>(
       if (state === null) return null;
       if (isController(id)) return isOwnController(state, id) ? state : null;
       if (id.startsWith(ATTEMPT_RUN_PREFIX)) {
-        return isGoalNamedRun(await readRunRecord(id), id) ? state : null;
+        const load = await readRunRecord(id);
+        // A record that cannot be read does not say the run is foreign or
+        // absent; surface it so the caller retries instead of acting on a guess.
+        if (load.status === 'read-error') throw new GoalOwnershipUnknownError(id, load.error);
+        return isGoalNamedRun(load, id) ? state : null;
       }
       return state;
     },
@@ -199,7 +218,10 @@ export function createOwnedRunCanceller(
 ): (runId: string) => Promise<CancelDurableRunOutcome> {
   return async (runId) => {
     const load = await readRunRecord(runId);
-    if (load.status === 'read-error') return { status: 'failed', error: load.error };
+    // Unknown is not foreign: report a retryable failure and cancel nothing.
+    if (load.status === 'read-error') {
+      return { status: 'failed', error: new GoalOwnershipUnknownError(runId, load.error) };
+    }
     // A claim with no workflow is cancelled too: that is the goal's own start
     // that died, and cancelling a run that never existed is a no-op.
     return isGoalNamedRun(load, runId) ? cancelRun(runId) : { status: 'not-found' };

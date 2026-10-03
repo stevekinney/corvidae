@@ -197,6 +197,8 @@ async function world(options: WorldOptions = {}) {
       goalAttempt: { goalRunId: 'g1', attemptIndex },
     });
   };
+  // A run-record read that fails for as many calls as `runRecordReadFaults.remaining` says.
+  const runRecordReadFaults = { remaining: 0 };
   const runtime = options.runtime ?? createManualRuntimeServices();
   const sessions = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
   const conversations = createGoalConversations({
@@ -213,6 +215,10 @@ async function world(options: WorldOptions = {}) {
     conversations,
     getDurable: () => durable,
     readRunRecord: (runId) => {
+      if (runRecordReadFaults.remaining > 0) {
+        runRecordReadFaults.remaining -= 1;
+        return Promise.resolve({ status: 'read-error', error: new Error('storage hiccup') });
+      }
       const record = runRecords.get(runId);
       return Promise.resolve(
         record === undefined ? { status: 'missing' } : { status: 'found', record },
@@ -237,6 +243,7 @@ async function world(options: WorldOptions = {}) {
     sessions,
     conversations,
     checkpointReadFaults,
+    runRecordReadFaults,
     runRecords,
     markRunAsGoals,
   };
@@ -1228,6 +1235,64 @@ describe("startAttempt when something else already holds one of the goal's deter
       expect(stillThere?.status).toBe('running');
     },
   );
+
+  it('does not call an attempt run foreign or absent when its record cannot be read, and adopts it once the fault clears', async () => {
+    const { starts, startAttemptRun } = refusingStarter();
+    const w = await world({ startAttemptRun });
+    createActiveRun(
+      agentOptions(() => new Promise(() => {})),
+      { ...w.durable, runId: 'goal-g1-a0', prompt: 'work' },
+    );
+    await pollUntil(async () => (await w.engine.get('goal-g1-a0')) !== null);
+    w.markRunAsGoals('goal-g1-a0');
+
+    // Every read of the record fails: the run is neither refused as foreign
+    // nor started over as absent; the activity fails so recovery retries.
+    w.runRecordReadFaults.remaining = 1;
+    expect(await throwingRejectionOf(w.ports.startAttempt(startRequest()))).toThrow(
+      'could not be read',
+    );
+    expect(starts).toEqual([]);
+    expect(w.watched).toEqual([]);
+    expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+    const stillRunning = await w.engine.get('goal-g1-a0');
+    expect(stillRunning?.status).toBe('running');
+
+    expect(await w.ports.startAttempt(startRequest())).toEqual({
+      status: 'adopted',
+      sessionId: 'goal-g1-s0',
+    });
+    expect(starts).toEqual([]);
+  });
+
+  it('does not treat a session it could not read as foreign or absent, and proceeds once the fault clears', async () => {
+    const { starts, startAttemptRun } = refusingStarter();
+    const w = await world({ startAttemptRun });
+    w.markRunAsGoals('goal-g1-a0');
+    const load = w.sessions.load.bind(w.sessions);
+    let faults = 1;
+    Object.defineProperty(w.sessions, 'load', {
+      configurable: true,
+      value: (...loadArguments: Parameters<typeof load>) => {
+        if (faults > 0) {
+          faults -= 1;
+          return Promise.reject(new Error('session storage hiccup'));
+        }
+        return load(...loadArguments);
+      },
+    });
+
+    expect(await throwingRejectionOf(w.ports.startAttempt(startRequest()))).toThrow(
+      'session storage hiccup',
+    );
+    expect(starts).toEqual([]);
+
+    expect(await w.ports.startAttempt(startRequest())).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s0',
+    });
+    expect(starts).toHaveLength(1);
+  });
 
   it('refuses a claim another run holds, even though no workflow exists yet', async () => {
     const { starts, startAttemptRun } = refusingStarter();

@@ -13,6 +13,8 @@ import {
   createOwnedGoalEngine,
   createOwnedRunCanceller,
   GoalOwnershipError,
+  GoalOwnershipUnknownError,
+  verifyAttemptRun,
 } from './goal-ownership';
 import { createGoalWorkflowHost } from './goal-ports';
 import { goalAttemptRunId } from './goal-state';
@@ -161,6 +163,76 @@ describe('createOwnedGoalEngine', () => {
     // Ids outside the goal namespaces are none of the goal's business.
     const ordinary = await owned.get('ordinary-run');
     expect(ordinary?.status).toBe('running');
+  });
+});
+
+describe('an unreadable run record is unknown, never foreign or absent', () => {
+  it('makes the owned engine fail the read, then show the run once the fault clears', async () => {
+    const id = goalAttemptRunId('g1', 0);
+    const { engine } = fakeEngine({ [id]: { type: 'agentRun', input: {}, status: 'running' } });
+    let faults = 1;
+    const owned = createOwnedGoalEngine(engine, () => {
+      if (faults > 0) {
+        faults -= 1;
+        return Promise.resolve({ status: 'read-error', error: new Error('storage is down') });
+      }
+      return Promise.resolve(marked('g1', 0));
+    });
+
+    const failure = await owned.get(id).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(GoalOwnershipUnknownError);
+    const visible = await owned.get(id);
+    expect(visible?.status).toBe('running');
+  });
+
+  it('makes the canceller report a failure without cancelling, then cancel once the fault clears', async () => {
+    const stopped: string[] = [];
+    let faults = 1;
+    const cancel = createOwnedRunCanceller(
+      (runId) => {
+        stopped.push(runId);
+        return Promise.resolve({ status: 'requested' });
+      },
+      () => {
+        if (faults > 0) {
+          faults -= 1;
+          return Promise.resolve({ status: 'read-error', error: new Error('storage is down') });
+        }
+        return Promise.resolve(marked('g1', 0));
+      },
+    );
+    const id = goalAttemptRunId('g1', 0);
+
+    const first = await cancel(id);
+    expect(first).toMatchObject({ status: 'failed' });
+    expect((first as { error: unknown }).error).toBeInstanceOf(GoalOwnershipUnknownError);
+    expect(stopped).toEqual([]);
+    expect(await cancel(id)).toEqual({ status: 'requested' });
+    expect(stopped).toEqual([id]);
+  });
+
+  it('makes verifyAttemptRun throw instead of answering absent or foreign', async () => {
+    const { engine } = fakeEngine({});
+    const expected = {
+      goalRunId: 'g1',
+      attemptIndex: 0,
+      agentName: 'worker',
+      principal: undefined,
+    };
+    const unreadable = (): Promise<CatalogRunRecoveryLoad> =>
+      Promise.resolve({ status: 'read-error', error: new Error('storage is down') });
+    const failure = await verifyAttemptRun(
+      { engine, readRunRecord: unreadable },
+      expected,
+      'goal-g1-a0',
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(GoalOwnershipUnknownError);
   });
 });
 
