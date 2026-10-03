@@ -59,15 +59,12 @@ export interface AttemptForwarderDependencies {
   readonly runtime: RuntimeServices;
   readonly getDurable: () => DurableActiveRunContext | undefined;
   /**
-   * The cost estimation the attempt's agent was configured with. Asked only for
+   * The cost estimation the attempt's run was started with, as persisted with it
+   * (never resolved from the catalog afterwards). Asked only for
    * a goal with a cost bound, because only then does a missing estimate change a
    * decision (the attempt cannot be accounted, so it fails).
    */
-  readonly resolveCostEstimation: (
-    agentName: string,
-    runId: string,
-    principal: string | undefined,
-  ) => Promise<RunOptions['costEstimation'] | undefined>;
+  readonly resolveCostEstimation: (runId: string) => Promise<RunOptions['costEstimation']>;
   /** Commits a finished attempt's transcript to its session before the controller is told it ended. */
   readonly conversations: Pick<GoalConversations, 'settle'>;
   readonly isClosing: () => boolean;
@@ -139,7 +136,7 @@ export function createAttemptForwarder(
     const costEstimation =
       record.bounds.maximumTotalCostUsd === undefined
         ? undefined
-        : await resolveCostEstimation(record.objective.agentName, target.runId, record.principal);
+        : await resolveCostEstimation(target.runId);
     const reading = await readDurableRunResult(durable, target.runId, { runtime, costEstimation });
     if (reading.status === 'missing') return 'missing';
     if (reading.status === 'not-terminal') return 'watching';

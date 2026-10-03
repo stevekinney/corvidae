@@ -118,15 +118,13 @@ async function world(
     }),
   );
   const diagnostics: BureauDiagnostic[] = [];
-  const costLookups: string[] = [];
   const costRunIds: string[] = [];
   let closing = false;
   const forwarder = createAttemptForwarder({
     store,
     runtime,
     getDurable: () => durable,
-    resolveCostEstimation: (agentName, runId) => {
-      costLookups.push(agentName);
+    resolveCostEstimation: (runId) => {
       costRunIds.push(runId);
       return forwarding.resolveCostEstimation?.() ?? Promise.resolve({ model: 'gpt-4o' });
     },
@@ -150,7 +148,6 @@ async function world(
     settled,
     forwarder,
     diagnostics,
-    costLookups,
     costRunIds,
     close: () => {
       closing = true;
@@ -178,7 +175,7 @@ const finishedRun = async (context: DurableActiveRunContext, content = 'all done
 
 describe('createAttemptForwarder', () => {
   it('sends the ended attempt to its controller under a stable signal id', async () => {
-    const { durable, sent, forwarder, costLookups } = await world();
+    const { durable, sent, forwarder, costRunIds } = await world();
     await finishedRun(durable);
 
     expect(await forwarder.reconcile(target)).toBe('signal-resent');
@@ -193,7 +190,7 @@ describe('createAttemptForwarder', () => {
     ]);
     expect(attemptSignalId('g1', 0)).toBe('attempt-terminal:g1:0');
     // No cost bound, so the agent's cost estimation is never even asked for.
-    expect(costLookups).toEqual([]);
+    expect(costRunIds).toEqual([]);
   });
 
   it("commits the attempt's transcript to its session before it tells the controller the attempt ended", async () => {
@@ -222,30 +219,30 @@ describe('createAttemptForwarder', () => {
   });
 
   it('reports the cost of the run when the goal has a cost bound', async () => {
-    const { durable, sent, forwarder, costLookups } = await world({ maximumTotalCostUsd: 1 });
+    const { durable, sent, forwarder, costRunIds } = await world({ maximumTotalCostUsd: 1 });
     await finishedRun(durable);
 
     await forwarder.reconcile(target);
 
-    expect(costLookups).toEqual(['worker']);
+    expect(costRunIds).toEqual([target.runId]);
     const payload = sent[0]?.payload as { costUsd?: number };
     expect(payload.costUsd).toBeGreaterThan(0);
   });
 
-  it('prices the run from the attempt run it is reading, never from the goal prompt', async () => {
+  it('prices the run from the attempt run it is reading, never from the goal or the catalog', async () => {
     const { durable, forwarder, costRunIds } = await world({ maximumTotalCostUsd: 1 });
     await finishedRun(durable);
 
     await forwarder.reconcile(target);
 
-    // A retry starts with a seeded conversation, not the prompt, so the
-    // estimator must be resolved from the run's own recorded input.
+    // The estimator is the one persisted with that run, whatever the goal's
+    // prompt or the catalog's agent now say.
     expect(costRunIds).toEqual([target.runId]);
   });
 
   it('retries a cost estimator that failed in passing instead of reporting the attempt as unaccounted', async () => {
     let failures = 2;
-    const { durable, sent, forwarder, diagnostics, costLookups } = await world(
+    const { durable, sent, forwarder, diagnostics, costRunIds } = await world(
       { maximumTotalCostUsd: 1 },
       {
         retryDelaysMs: [0, 0, 0],
@@ -264,7 +261,7 @@ describe('createAttemptForwarder', () => {
     await pollUntil(() => sent.length === 1);
 
     // The signal says what the run cost; it never went out without a cost.
-    expect(costLookups).toHaveLength(3);
+    expect(costRunIds).toHaveLength(3);
     const payload = sent[0]?.payload as { costUsd?: number } | undefined;
     expect(payload?.costUsd).toBeGreaterThan(0);
     expect(diagnostics).toEqual([]);

@@ -749,9 +749,12 @@ describe('bureau.goals', () => {
     const goal = await finished(bureau);
 
     expect(goal).toMatchObject({ status: 'succeeded' });
-    // A retry is started with a seeded conversation; its own cost lookups must
-    // resolve the estimator from that input too, never from the prompt string.
+    // A retry is started with a seeded conversation, so the estimator it is
+    // started with (and persists for pricing) is resolved from that input, never
+    // from the prompt string. Pricing afterwards reads the persisted selection
+    // and resolves nothing: the goal's cost bound was met with every attempt priced.
     const seeded = resolved.filter((input) => typeof input !== 'string');
-    expect(seeded.length).toBeGreaterThanOrEqual(2);
+    expect(seeded).toHaveLength(1);
+    expect(resolved).toHaveLength(2);
   });
 });

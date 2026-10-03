@@ -82,11 +82,15 @@ export async function inspect(path: string) {
         definitionRevision: number;
         input: string;
         goalAttempt?: { goalRunId: string; attemptIndex: number };
+        /** The persisted estimator selection; a goal attempt's claim carries `null` unless one is given. */
+        costEstimation?: unknown;
       },
     ) {
+      const selection =
+        record.goalAttempt === undefined ? {} : { costEstimation: record.costEstimation ?? null };
       await storage.put(
         `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`,
-        encode({ schemaVersion: 1, ...record }),
+        encode({ schemaVersion: 1, ...record, ...selection }),
       );
     },
     /** A value at a run's recovery key that decodes but is not a recovery record. */

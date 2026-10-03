@@ -163,11 +163,7 @@ export interface GoalPortsDependencies {
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   readonly startAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
-  readonly resolveCostEstimation: (
-    agentName: string,
-    runId: string,
-    principal: string | undefined,
-  ) => Promise<RunOptions['costEstimation'] | undefined>;
+  readonly resolveCostEstimation: (runId: string) => Promise<RunOptions['costEstimation']>;
 }
 
 const failed = (detail: string): GoalWorkflowStart => ({ status: 'failed', detail });
@@ -452,7 +448,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     const costEstimation =
       record.bounds.maximumTotalCostUsd === undefined
         ? undefined
-        : await resolveCostEstimation(record.objective.agentName, attempt.runId, record.principal);
+        : await resolveCostEstimation(attempt.runId);
     // A read that throws is a fault, not a verdict: it propagates so the
     // activity is retried, the same as a failing resolver above. Recording it as
     // an `error` outcome would end the goal over a storage hiccup that the next

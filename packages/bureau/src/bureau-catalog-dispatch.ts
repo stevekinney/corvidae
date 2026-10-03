@@ -20,6 +20,10 @@ import {
 } from '@lostgradient/operative';
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
 import type { ChildTopologyStart } from './child-topology';
+import {
+  type GoalAttemptCostEstimation,
+  isGoalAttemptCostEstimation,
+} from './goal-cost-estimation';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import type { BureauRunOptions } from './types';
@@ -71,6 +75,22 @@ export interface GoalAttemptStart {
  * they have, and rejects with whatever stopped them, so a caller can tell
  * "the run exists" from "a start is under way".
  */
+/**
+ * The persistable selection for a run's `costEstimation`: copied as plain JSON
+ * and checked with the decoder's own predicate, so a value the recovery record
+ * would be refused on read is never written.
+ */
+function goalAttemptCostEstimation(
+  costEstimation: GoalAttemptCostEstimation | undefined,
+): GoalAttemptCostEstimation {
+  const selection: unknown =
+    costEstimation === undefined ? null : JSON.parse(JSON.stringify(costEstimation));
+  if (!isGoalAttemptCostEstimation(selection)) {
+    throw new Error('The agent declared a cost estimation that cannot be persisted as plain JSON.');
+  }
+  return selection;
+}
+
 /** Which goal attempt a run was started for; see `CatalogRunRecoveryRecord.goalAttempt`. */
 interface GoalAttemptOwner {
   readonly goalRunId: string;
@@ -331,6 +351,11 @@ export function createCatalogDispatcher({
         // empty on the new process.
         ...(principal !== undefined ? { principal } : {}),
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
+        // COR-851: the estimator this run is configured with, written with the
+        // claim, so pricing the attempt later never resolves the agent again.
+        ...(goalAttempt === undefined
+          ? {}
+          : { costEstimation: goalAttemptCostEstimation(resolvedOptions.costEstimation) }),
       };
       if (runIdOverride === undefined) {
         await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);

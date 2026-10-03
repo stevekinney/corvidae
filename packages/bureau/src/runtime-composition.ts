@@ -122,6 +122,10 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 
+import {
+  type GoalAttemptCostEstimation,
+  isGoalAttemptCostEstimation,
+} from './goal-cost-estimation';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import type {
   BureauMemoryAuthorityOptions,
@@ -839,6 +843,15 @@ export interface CatalogRunRecoveryRecord {
    * goal adopts or stops an existing run only when it carries its own marker.
    */
   readonly goalAttempt?: { readonly goalRunId: string; readonly attemptIndex: number };
+  /**
+   * COR-851 — set with `goalAttempt` and only then: the cost estimator the
+   * attempt's run was started with (`null` when it declared none), written in
+   * the same conditional batch as the claim. A completed attempt is priced from
+   * this alone, never by resolving the agent again, so a catalog that has since
+   * moved to another revision or dropped the agent cannot change what the run
+   * cost. See `goal-cost-estimation.ts`.
+   */
+  readonly costEstimation?: GoalAttemptCostEstimation;
 }
 
 // Exported for tests only — lets `runtime-composition.test.ts` construct the
@@ -874,6 +887,16 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
       typeof goalAttempt['goalRunId'] === 'string' &&
       typeof goalAttempt['attemptIndex'] === 'number'
     )
+  ) {
+    return false;
+  }
+  // The estimator selection belongs to a goal attempt's record and to nothing
+  // else; a goal attempt's record without one cannot be priced, so it is not valid.
+  const costEstimation = value['costEstimation'];
+  if (
+    goalAttempt === undefined
+      ? costEstimation !== undefined
+      : !isGoalAttemptCostEstimation(costEstimation)
   ) {
     return false;
   }

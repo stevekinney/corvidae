@@ -326,7 +326,6 @@ describe('the goal control plane over a foreign controller workflow', () => {
       resolveFreshAttemptSource: undefined,
       runtimeServices: createManualRuntimeServices(),
       host: createGoalWorkflowHost(),
-      agentCatalog: { find: () => undefined },
       getDurable: () => ({ engine: engine as never, checkpointStore: {} as never }),
       planAgent: () => ({ durable: true, agentVersion: '1' }),
       startAttemptRun: () => {

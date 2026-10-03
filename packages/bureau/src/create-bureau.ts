@@ -9258,7 +9258,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     resolveFreshAttemptSource: options.resolveFreshAttemptSource,
     runtimeServices,
     host: goalWorkflowHost,
-    agentCatalog,
     getDurable: () => runtime.durable,
     planAgent: planChildRun,
     startAttemptRun: startGoalAttemptRun,

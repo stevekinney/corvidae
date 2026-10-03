@@ -11,13 +11,14 @@
  * writes them.
  */
 import { OPERATIVE_RESOLVE_RUN_OPTIONS, readGenerationProfile } from '@lostgradient/operative';
-import { KEYS } from '@lostgradient/weft';
+import { decode, KEYS } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { commitCancellation } from './goal-controller';
 import { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
 import { createGoalState, goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
+import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import {
   cancelUntilSettled,
   CHECK,
@@ -570,8 +571,8 @@ describe('the attempt behind a running goal', () => {
       }) as typeof base;
     }
 
-    /** A finished attempt run whose recovery record names `definitionRevision`, under a cost-bounded goal. */
-    async function finishedAttemptRecordedAt(definitionRevision: number) {
+    /** A finished attempt run whose recovery record persists `costEstimation` and names `definitionRevision`. */
+    async function finishedAttempt(definitionRevision: number, costEstimation: unknown) {
       await seedFinishedRun(database.path, 'goal-g1-a0');
       const view = await inspection();
       await view.claimRun('goal-g1-a0', {
@@ -579,72 +580,118 @@ describe('the attempt behind a running goal', () => {
         definitionRevision,
         input: 'work',
         goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+        costEstimation,
       });
       return view;
     }
 
-    it('prices it with the estimator of the revision that ran it when that is the revision the catalog holds', async () => {
-      database = createTestDatabase('priced-same-revision');
-      const resolutions = { count: 0 };
-      const worker = pricedWorker(resolutions);
-      const view = await finishedAttemptRecordedAt(readGenerationProfile(worker).revision);
+    async function recoverCostBounded(
+      view: Awaited<ReturnType<typeof inspection>>,
+      agents: Parameters<typeof bootOver>[0]['agents'],
+    ) {
       const { bureau } = await bootOver({
         path: database.path,
-        agents: { worker },
+        agents,
         validators: [createCheckValidator()],
       });
       await track(bureau);
       await bureau.waitForRecovery?.();
       await seedRunning(view, pendingGoal({ bounds: COST_BOUNDS }));
+      const report = await bureau.goals.recover('g1');
+      return { bureau, report };
+    }
 
-      await bureau.goals.recover('g1');
+    it('prices it with the persisted estimator after the catalog moved to another revision, without resolving the agent', async () => {
+      database = createTestDatabase('priced-persisted-newer');
+      const resolutions = { count: 0 };
+      const worker = pricedWorker(resolutions);
+      const view = await finishedAttempt(readGenerationProfile(worker).revision + 1, {
+        model: 'gpt-4o',
+      });
+      const { bureau } = await recoverCostBounded(view, { worker });
 
       expect(await ended(bureau)).toMatchObject({ status: 'succeeded' });
-      expect(resolutions.count).toBeGreaterThan(0);
+      expect(resolutions.count).toBe(0);
     });
 
-    it('never prices it with a newer revision of the agent, and says why it cannot be priced', async () => {
-      database = createTestDatabase('priced-newer-revision');
+    it('prices it with the persisted estimator after the catalog lost the agent', async () => {
+      database = createTestDatabase('priced-persisted-agent-gone');
+      const view = await finishedAttempt(1, { model: 'gpt-4o' });
+      const { bureau } = await recoverCostBounded(view, {
+        planner: workerAgent(hangUntilAborted, 'planner'),
+      });
+
+      expect(await ended(bureau)).toMatchObject({ status: 'succeeded' });
+    });
+
+    it('prices an attempt persisted with no estimator as unaccounted, whatever the catalog now declares', async () => {
+      database = createTestDatabase('priced-persisted-none');
       const resolutions = { count: 0 };
       const worker = pricedWorker(resolutions);
-      const view = await finishedAttemptRecordedAt(readGenerationProfile(worker).revision + 1);
-      const diagnostics = createDiagnostics();
+      const view = await finishedAttempt(readGenerationProfile(worker).revision, null);
+      const { bureau } = await recoverCostBounded(view, { worker });
+
+      expect(await ended(bureau)).toMatchObject({
+        status: 'failed',
+        terminalReason: 'attempt-run-failed',
+      });
+      expect(resolutions.count).toBe(0);
+    });
+
+    it('treats a corrupt persisted estimator as a corrupt record, leaving the goal as it was and naming the fault', async () => {
+      database = createTestDatabase('priced-persisted-corrupt');
+      const resolutions = { count: 0 };
+      const worker = pricedWorker(resolutions);
+      const view = await finishedAttempt(readGenerationProfile(worker).revision, { model: 7 });
+      const { bureau, report } = await recoverCostBounded(view, { worker });
+
+      expect(await goalStatus(bureau, 'g1')).toBe('running');
+      expect(resolutions.count).toBe(0);
+      expect(JSON.stringify(report)).toContain('corrupt-ownership-record');
+    });
+  });
+
+  describe('the estimator an attempt is started with', () => {
+    it.each([
+      { label: 'declared', declared: true, persisted: { model: 'gpt-4o' } },
+      { label: 'not declared', declared: false, persisted: null },
+    ])('is persisted with the run when it is $label', async ({ declared, persisted }) => {
+      database = createTestDatabase(`persisted-${declared}`);
+      const resolutions = { count: 0 };
+      const base = workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] }));
+      const resolveOptions = (
+        base as unknown as Record<
+          symbol,
+          (input: unknown, context: unknown) => Promise<Record<string, unknown>>
+        >
+      )[OPERATIVE_RESOLVE_RUN_OPTIONS];
+      if (resolveOptions === undefined) throw new Error('the worker has no run-option resolver');
+      const worker = Object.create(base, {
+        [OPERATIVE_RESOLVE_RUN_OPTIONS]: {
+          value: (input: unknown, context: unknown) => {
+            resolutions.count += 1;
+            return resolveOptions
+              .call(base, input, context)
+              .then((options) =>
+                declared ? { ...options, costEstimation: { model: 'gpt-4o' } } : options,
+              );
+          },
+        },
+      }) as typeof base;
       const { bureau } = await bootOver({
         path: database.path,
         agents: { worker },
         validators: [createCheckValidator()],
-        diagnostics,
       });
       await track(bureau);
-      await bureau.waitForRecovery?.();
-      await seedRunning(view, pendingGoal({ bounds: COST_BOUNDS }));
+      await bureau.goals.create(goalRequest());
+      await ended(bureau);
 
-      const report = await bureau.goals.recover('g1');
-
-      // The estimator of a revision this process does not hold is not the
-      // estimator of the run that ran, so it is not consulted; the goal stays
-      // as it was, and the fault is named rather than priced over.
-      expect(resolutions.count).toBe(0);
-      expect(await goalStatus(bureau, 'g1')).toBe('running');
-      expect(JSON.stringify(report)).toContain('revision');
-    });
-
-    it('names an agent that has left the catalog as the reason an attempt that ran cannot be priced', async () => {
-      database = createTestDatabase('priced-agent-gone');
-      const view = await finishedAttemptRecordedAt(1);
-      const { bureau } = await bootOver({
-        path: database.path,
-        agents: { planner: workerAgent(hangUntilAborted, 'planner') },
-        validators: [createCheckValidator()],
-      });
-      await track(bureau);
-      await bureau.waitForRecovery?.();
-      await seedRunning(view, pendingGoal({ bounds: COST_BOUNDS }));
-
-      const report = await bureau.goals.recover('g1');
-
-      expect(await goalStatus(bureau, 'g1')).toBe('running');
-      expect(JSON.stringify(report)).toContain('revision');
+      const view = await inspection();
+      const raw = await view.storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}goal-g1-a0`);
+      expect(raw).not.toBeNull();
+      const stored = decode(raw as Uint8Array) as Record<string, unknown>;
+      expect(stored['costEstimation']).toEqual(persisted);
     });
   });
 

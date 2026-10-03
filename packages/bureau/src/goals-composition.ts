@@ -14,15 +14,11 @@ import {
   createSessionStore,
   type DurableActiveRunContext,
   type FreshAttemptSourceResolver,
-  hasDefinitionResolver,
-  OPERATIVE_RESOLVE_RUN_OPTIONS,
-  readGenerationProfile,
   type RunOptions,
   type SessionStore,
 } from '@lostgradient/operative';
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 
-import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
 import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
 import type { DurableEventHistory } from './durable-event-history';
 import { createGoalConversations } from './goal-conversation';
@@ -43,21 +39,6 @@ import type { GoalValidatorCatalog } from './goal-validator-catalog';
 import { createBureauGoals } from './goals';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
-/**
- * The run being priced was started under an agent revision this process does
- * not hold, so the estimator it ran with cannot be reproduced. Retrying cannot
- * help until the catalog holds that revision again; nothing prices the run
- * with a different one in the meantime.
- */
-export class GoalAgentRevisionUnavailableError extends Error {
-  constructor(runId: string, agentName: string, recordedRevision: number, why: string) {
-    super(
-      `Run "${runId}" was started under revision ${recordedRevision} of agent "${agentName}", and ${why}, so its cost cannot be estimated.`,
-    );
-    this.name = 'GoalAgentRevisionUnavailableError';
-  }
-}
-
 export interface GoalsCompositionDependencies {
   /** Built by the caller before the durable engine, so a bad registration fails startup first. */
   readonly catalog: GoalValidatorCatalog;
@@ -68,7 +49,6 @@ export interface GoalsCompositionDependencies {
   readonly resolveFreshAttemptSource: FreshAttemptSourceResolver | undefined;
   readonly runtimeServices: RuntimeServices;
   readonly host: GoalWorkflowHost;
-  readonly agentCatalog: Pick<BureauAgentCatalog<AgentDefinitions>, 'find'>;
   readonly getDurable: () => (DurableActiveRunContext & { engine: GoalEngine }) | undefined;
   readonly planAgent: (
     agentName: string,
@@ -96,7 +76,7 @@ export interface GoalsComposition {
 }
 
 export function composeBureauGoals(dependencies: GoalsCompositionDependencies): GoalsComposition {
-  const { runtimeServices, host, agentCatalog, diagnose, readRunRecord } = dependencies;
+  const { runtimeServices, host, diagnose, readRunRecord } = dependencies;
   // Everything but the start-attempt port, which must tell an absent id from a
   // foreign one, sees the engine through the goal's ownership checks: a
   // workflow or run the goal does not own does not exist to it.
@@ -130,54 +110,27 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
   const { catalog } = dependencies;
 
   /**
-   * The cost estimation the agent's own run options declare for the attempt's
-   * run, for a goal with a cost bound. Resolved from the exact input the run was
-   * started with (the recovery record's, which for a retry is the seeded
-   * conversation, not the goal's prompt), so an agent whose options depend on
-   * its input is priced the way the run was configured.
-   *
-   * It is also resolved from the revision the run was started under. The
-   * recovery record names that revision, and the catalog holds only the
-   * agent's current one: after a restart onto a newer revision the estimator
-   * of the run that ran is gone, and pricing it with another would record a
-   * cost the run never had. So a catalog without that exact revision is a
-   * fault (it rejects, and the caller retries or reports it), never a quiet
-   * estimate from a different definition.
+   * The cost estimation an attempt's run was started with, for a goal with a
+   * cost bound. It is read from the selection persisted with the run's recovery
+   * record (see `goal-cost-estimation.ts`) and never resolved from the catalog,
+   * which may by now hold another revision of the agent or none: pricing a run
+   * that already ran with a different definition would record a cost it never
+   * had. `undefined` means the run declared no estimator (or no run was started
+   * under this id). A record that cannot be read, is not a valid record, or
+   * carries no selection rejects, so the caller retries or reports it.
    */
-  async function resolveCostEstimation(
-    agentName: string,
-    runId: string,
-    principal: string | undefined,
-  ): Promise<RunOptions['costEstimation'] | undefined> {
+  async function resolveCostEstimation(runId: string): Promise<RunOptions['costEstimation']> {
     const load = await readRunRecord(runId);
     // No record means no run was started under this id, so there is nothing to price.
     if (load.status === 'missing') return undefined;
     if (load.status === 'read-error') throw new GoalOwnershipUnknownError(runId, load.error);
     if (load.status === 'corrupt') throw new GoalCorruptOwnershipRecordError(runId);
-    const recorded = load.record.definitionRevision;
-    const agent = agentCatalog.find(agentName);
-    if (agent === undefined || !hasDefinitionResolver(agent)) {
-      throw new GoalAgentRevisionUnavailableError(
-        runId,
-        agentName,
-        recorded,
-        'the catalog no longer holds the agent',
-      );
+    // The decoder requires the selection on every goal attempt's record, so a
+    // record without one is not a goal attempt's: it has no estimator to read.
+    if (load.record.goalAttempt === undefined || load.record.costEstimation === undefined) {
+      throw new GoalCorruptOwnershipRecordError(runId);
     }
-    const current = readGenerationProfile(agent).revision;
-    if (current !== recorded) {
-      throw new GoalAgentRevisionUnavailableError(
-        runId,
-        agentName,
-        recorded,
-        `the catalog holds revision ${current}`,
-      );
-    }
-    const options = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](load.record.input, {
-      agentName,
-      ...(principal === undefined ? {} : { principal }),
-    });
-    return options.costEstimation;
+    return load.record.costEstimation ?? undefined;
   }
 
   const conversations = createGoalConversations({
