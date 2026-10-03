@@ -62,6 +62,7 @@ export type VerifyStepKind =
   | 'install'
   | 'build'
   | 'typecheck-published'
+  | 'binary-size'
   | 'pack'
   | 'pack-relocate'
   | 'readme'
@@ -297,6 +298,32 @@ export function buildVerifySteps(
         publicName: entry.publicName,
       });
     }
+  }
+
+  const weft = ordered.find((entry) => entry.publicName === '@lostgradient/weft');
+  if (weft) {
+    const cwd = env.resolveDirectory(weft.directory);
+    const payloadTests = ['scripts/build-binary.test.ts', 'scripts/build-binary-size.test.ts'];
+    // `bun test` treats its operands as patterns and exits 0 when any one of them matches, so a
+    // deleted or renamed size test would silently drop the payload gate. Both files are
+    // target-owned, so the foreign-commit guard would not catch the deletion either; require each
+    // one by name before running them.
+    for (const file of payloadTests) {
+      steps.push({
+        kind: 'binary-size',
+        description: `require ${weft.publicName} ${file}`,
+        cwd,
+        command: ['test', '-f', file],
+        publicName: weft.publicName,
+      });
+    }
+    steps.push({
+      kind: 'binary-size',
+      description: `verify ${weft.publicName} binary payload`,
+      cwd,
+      command: ['bun', 'test', ...payloadTests],
+      publicName: weft.publicName,
+    });
   }
 
   for (const entry of ordered) {
