@@ -16,12 +16,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.12",
+      "lastPublishedVersion": "0.27.14",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.12",
-        "gitHead": "195993101228ce4714ea17221a6f8eef4abd0a6d",
-        "corvidaeCommit": "81f2a58d8b6a244564e7d590f9ddc898ba1056f0",
+        "version": "0.27.14",
+        "gitHead": "1eb55a1a92689729149f3692d0492e772c5eae2f",
+        "corvidaeCommit": "f9f2b0ed9f2b1c09ada1fe22d3bca94db9fcf214",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -1170,7 +1170,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "82e308e562c709d6965e8647e511e1070674d4383b9ba77d157f058801ce123b"
+          "digest": "ad2a34d51b61d97a3e16bc878b179d93f561c0a9cf4210f27bbe101323883340"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1178,7 +1178,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "0dcfe67254b05f938aa95432d2552218cb04065edfd4da4296daf1cfe2740e4e"
+          "digest": "a99d326f97e6c4108420e33e11a26ffda8792415484974f0ae8c77c82a153058"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -9120,7 +9120,7 @@
               "executable": false
             }
           ],
-          "digest": "b8f752f920fcb61d03f1eb752fc9545f8f0a147d7cafaa4b5b336d63acf89d4c"
+          "digest": "fd491b7f2819fdc15cee43e7ec348bc06ad836807951567f349be5e42d2c1703"
         }
       }
     },
