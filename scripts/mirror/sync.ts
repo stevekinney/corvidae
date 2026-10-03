@@ -376,11 +376,24 @@ export interface ForeignCommitOwnership {
   /** Transform-owned manifest values freshly computed from the trusted source for this clone. */
   generatedManifestKeys?: ReadonlyMap<string, Readonly<Record<string, unknown>>> | undefined;
   /**
+   * The bytes and mode this sync writes for every emitted file other than a manifest, freshly
+   * computed from the trusted source for this clone. A hand edit to one of them is the target's
+   * own only when it already equals this emission, because the sync then writes it back
+   * unchanged and clobbers nothing.
+   */
+  generatedFiles?: ReadonlyMap<string, EmittedFile> | undefined;
+  /**
    * What this sync's plan writes, prunes and retires. A path outside all three is one the sync
    * leaves exactly as it is, so a hand change to it cannot be clobbered and is the target's own
    * (COR-1223's inversion, applied to the guard by COR-1198).
    */
   transform: TransformReach;
+}
+
+/** One file as the sync would write it. */
+export interface EmittedFile {
+  contents: string | Uint8Array;
+  executable: boolean;
 }
 
 /** The paths a sync can overwrite or delete: its emitted files and the prefixes it prunes or retires. */
@@ -409,7 +422,9 @@ function transformReaches(reach: TransformReach, path: string): boolean {
  * composes whose changed top-level keys are all outside the transform's own `manifestKeys`. A
  * manifest added or deleted outright is the transform's business, and so is any other path the
  * sync reaches: emitted source, a vendored tsconfig, the emitted workflow, a file inside a source
- * tree it prunes.
+ * tree it prunes. The one exception is an emitted file a commit modifies to exactly the bytes and
+ * mode the trusted source now emits: the source already carries that change, so the sync writes
+ * the file back unchanged. Weft PR1020 edited the emitted package README that way.
  */
 async function isTargetOwnedCommit(
   directory: string,
@@ -442,6 +457,7 @@ async function isTargetOwnedDelta(
     targetOwnedFiles,
     versionConstantPaths,
     generatedManifestKeys,
+    generatedFiles,
     transform,
   }: ForeignCommitOwnership,
 ): Promise<boolean> {
@@ -471,7 +487,17 @@ async function isTargetOwnedDelta(
     )
       continue;
     if (!transformReaches(transform, path)) continue;
-    if (basename(path) !== 'package.json' || !kind.startsWith('M')) return false;
+    if (basename(path) !== 'package.json') {
+      const emitted = generatedFiles?.get(path);
+      if (
+        emitted !== undefined &&
+        kind.startsWith('M') &&
+        (await matchesEmission(directory, sha, path, emitted))
+      )
+        continue;
+      return false;
+    }
+    if (!kind.startsWith('M')) return false;
     const before = await git(directory, 'show', `${parent}:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);
     const afterManifest = JSON.parse(after) as Record<string, unknown>;
@@ -486,6 +512,31 @@ async function isTargetOwnedDelta(
     }
   }
   return true;
+}
+
+/** Whether a path at one commit holds exactly the bytes and executable bit the sync would write. */
+async function matchesEmission(
+  directory: string,
+  sha: string,
+  path: string,
+  emitted: EmittedFile,
+): Promise<boolean> {
+  const entry = await git(directory, 'ls-tree', '-z', sha, '--', path);
+  const mode = entry.split(' ', 1)[0];
+  if (mode !== (emitted.executable ? '100755' : '100644')) return false;
+  const blob = Bun.spawn(['git', 'cat-file', 'blob', `${sha}:${path}`], {
+    cwd: directory,
+    env: gitEnvironment(),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [bytes, exitCode] = await Promise.all([new Response(blob.stdout).bytes(), blob.exited]);
+  if (exitCode !== 0) throw new SyncError(`Cannot read ${path} at ${sha}`);
+  const expected =
+    typeof emitted.contents === 'string'
+      ? new TextEncoder().encode(emitted.contents)
+      : emitted.contents;
+  return Buffer.from(bytes).equals(expected);
 }
 
 /**
@@ -543,6 +594,14 @@ export async function foreignCommitOwnership(options: {
           ? []
           : [[`${entry.directory}/${declared}`, entry.directory] as const];
       }),
+    ),
+    generatedFiles: new Map(
+      Object.entries(plan.files)
+        .filter(([path]) => basename(path) !== 'package.json')
+        .map(([path, contents]) => [
+          path,
+          { contents, executable: plan.source.executable.includes(path) },
+        ]),
     ),
     transform: {
       files: new Set(Object.keys(plan.files)),
@@ -828,6 +887,10 @@ export async function verifyTarget({
           result,
           `running ${step.kind === 'build' ? 'build' : 'typecheck'} for ${step.publicName}`,
         );
+        break;
+      }
+      case 'binary-size': {
+        assertSucceeded(result, `verifying binary payload for ${step.publicName}`);
         break;
       }
       case 'pack': {
