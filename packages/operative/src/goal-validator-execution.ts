@@ -10,8 +10,12 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 
-import { toValidatorError } from './errors';
-import { normalizeValidatorOutcome, type ValidatorOutcome } from './goal-decision';
+import { toValidatorError, type ValidatorError } from './errors';
+import {
+  freezeValidatorOutcome,
+  normalizeValidatorOutcome,
+  type ValidatorOutcome,
+} from './goal-decision';
 import type { Validator, ValidatorInput } from './goal-run';
 
 export interface ValidatorExecution {
@@ -72,16 +76,44 @@ export function executeValidator(
         validatorController.abort('validator-timeout');
       }, timeoutMs);
     }
-    const fail = (thrown: unknown): void =>
-      finish({
-        kind: 'error',
-        error: toValidatorError(thrown, { kind: 'execute', code: 'VALIDATOR_THREW' }),
-      });
+    const fail = (thrown: unknown): void => {
+      let error: ValidatorError;
+      try {
+        error = toValidatorError(thrown, { kind: 'execute', code: 'VALIDATOR_THREW' });
+      } catch {
+        // Describing what was thrown ran its code, and that threw too.
+        error = {
+          kind: 'execute',
+          code: 'VALIDATOR_THREW',
+          message: 'The validator threw a value that could not be described.',
+        };
+      }
+      finish({ kind: 'error', error });
+    };
+    // Reading a returned value runs the validator's own code (a getter, a proxy
+    // trap), so it can throw. That must settle the execution as a malformed
+    // output rather than reject inside the fulfillment callback, where nothing
+    // is listening and the goal would wait on a validation that never ends. The
+    // value is detached from the validator's objects in the same guarded step,
+    // so nothing downstream reads them again.
+    const settle = (value: unknown): void => {
+      let outcome: ValidatorOutcome;
+      try {
+        outcome = freezeValidatorOutcome(normalizeValidatorOutcome(value));
+      } catch {
+        outcome = {
+          kind: 'error',
+          error: {
+            kind: 'output',
+            code: 'MALFORMED_VALIDATOR_OUTPUT',
+            message: 'The validator returned a malformed outcome: reading it threw.',
+          },
+        };
+      }
+      finish(outcome);
+    };
     try {
-      Promise.resolve(validator.validate(input, validatorSignal)).then(
-        (value) => finish(normalizeValidatorOutcome(value)),
-        fail,
-      );
+      Promise.resolve(validator.validate(input, validatorSignal)).then(settle, fail);
     } catch (thrown) {
       fail(thrown);
     }

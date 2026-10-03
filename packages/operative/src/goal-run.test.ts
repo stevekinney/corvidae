@@ -829,6 +829,84 @@ describe('malformed validator output', () => {
     expect(run.attempts()).toHaveLength(1);
   });
 
+  /** An object whose named property throws when read, as a hostile or buggy validator may return. */
+  const throwsOn = (property: string, base: Record<string, unknown> = {}) =>
+    Object.defineProperty({ ...base }, property, {
+      enumerable: true,
+      get() {
+        throw new Error(`reading ${property} threw`);
+      },
+    });
+
+  it.each([
+    ['its kind', () => throwsOn('kind')],
+    [
+      'an error code',
+      () => ({ kind: 'error', error: throwsOn('code', { kind: 'execute', message: 'm' }) }),
+    ],
+    ['an evidence source', () => ({ kind: 'pass', evidence: [throwsOn('source')] })],
+    [
+      'an evidence detail',
+      () => ({ kind: 'pass', evidence: [throwsOn('detail', { source: 'unit' })] }),
+    ],
+    [
+      'a failure reason',
+      () => throwsOn('feedback', { kind: 'fail', evidence: [], retryable: true }),
+    ],
+    [
+      'any property at all',
+      () =>
+        new Proxy(
+          {},
+          {
+            get(_target, property) {
+              // `Promise.resolve` probes `then` first; only normalization reads the rest.
+              if (property === 'then') return undefined;
+              throw new Error('proxy get threw');
+            },
+          },
+        ),
+    ],
+  ])('settles the goal as an output error when reading %s throws', async (_label, hostile) => {
+    const fixture = createFixture();
+    const { result, run } = await runToEnd(
+      goalOptions(fixture, scriptedValidator([hostile()]), {
+        retryPolicy: {
+          retryOn: ['validator-fail-retryable', 'validator-unavailable', 'validator-canceled'],
+        },
+      }),
+    );
+    expect(result).toMatchObject({
+      status: 'failed',
+      terminalReason: 'validator-infrastructure-error',
+    });
+    expect(result.validatorError).toMatchObject({
+      kind: 'output',
+      code: 'MALFORMED_VALIDATOR_OUTPUT',
+    });
+    expect(run.attempts()).toHaveLength(1);
+    expect(fixture.runtime.pendingTimers()).toEqual([]);
+  });
+
+  it('settles a goal whose validator rejects with a value that cannot be described', async () => {
+    const fixture = createFixture();
+    const undescribable = Object.assign(new Error('hidden'), {});
+    Object.defineProperty(undescribable, 'message', {
+      get() {
+        throw new Error('message getter threw');
+      },
+    });
+    const { result, run } = await runToEnd(
+      goalOptions(fixture, scriptedValidator([() => Promise.reject(undescribable)])),
+    );
+    expect(result).toMatchObject({
+      status: 'failed',
+      terminalReason: 'validator-infrastructure-error',
+    });
+    expect(result.validatorError?.kind).toBe('execute');
+    expect(run.attempts()).toHaveLength(1);
+  });
+
   it('turns an elapsed validator timeout into a timeout error and clears its timer', async () => {
     const fixture = createFixture();
     const never = deferred<unknown>();
