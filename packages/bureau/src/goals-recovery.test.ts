@@ -1003,4 +1003,28 @@ describe('a goal whose stored record cannot be read', () => {
     // An id nothing was ever stored under is still absent.
     expect(await bureau.goals.cancel('nobody')).toEqual({ outcome: 'not-found' });
   });
+
+  it('reads to a principal-scoped caller exactly as a goal it does not own or that is not there', async () => {
+    const bureau = await bootOverUnreadable();
+    await bureau.waitForRecovery?.();
+    const scoped = { principal: 'alice' };
+
+    // The record has no readable owner, so a scoped caller has no claim on it
+    // and must not learn that a fault is stored there.
+    expect(await bureau.goals.cancel('g1', scoped)).toEqual(
+      await bureau.goals.cancel('nobody', scoped),
+    );
+    expect(await bureau.goals.close('g1', scoped)).toEqual(
+      await bureau.goals.close('nobody', scoped),
+    );
+    expect(await bureau.goals.recover('g1', scoped)).toEqual({
+      goals: [{ goalRunId: 'g1', outcome: 'not-found' }],
+      failures: [],
+    });
+    expect(await bureau.goals.get('g1', scoped)).toBeUndefined();
+    expect(await bureau.goals.active('g1', scoped)).toBeUndefined();
+    expect(await bureau.goals.list(scoped)).toEqual([]);
+    const sweep = await bureau.goals.recover(undefined, scoped);
+    expect(sweep).toEqual({ goals: [], failures: [] });
+  });
 });

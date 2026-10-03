@@ -78,7 +78,13 @@ export async function cancelGoal(
     },
     now,
   );
-  if (marked.status === 'corrupt') return { outcome: 'record-unreadable' };
+  if (marked.status === 'corrupt') {
+    // The record decoded a moment ago and no longer does; only a caller who may
+    // see every goal is told so.
+    return options.principal === undefined
+      ? { outcome: 'record-unreadable' }
+      : { outcome: 'not-found' };
+  }
   if (marked.status === 'missing') return { outcome: 'not-found' };
   if (marked.status === 'rejected') {
     // The goal ended between the caller's read and the marker. One that ended

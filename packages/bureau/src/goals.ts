@@ -109,12 +109,16 @@ export function createBureauGoals<TName extends string = string>(
   /**
    * What a caller is told when no goal is visible under an id: `not-found`,
    * unless a record is stored there that cannot be decoded, which is a fault and
-   * not absence (`create` says the same of the same id).
+   * not absence (`create` says the same of the same id). A record that cannot
+   * be decoded has no readable owner, so only a caller who may see every goal
+   * (no principal) is told so; a principal-scoped caller gets exactly the answer
+   * it gets for a goal it does not own or that does not exist.
    */
   async function absent(
     goalRunId: string,
+    query: BureauGoalQuery | undefined,
   ): Promise<{ readonly outcome: 'not-found' | 'record-unreadable' }> {
-    return (await store.isUnreadable(goalRunId))
+    return query?.principal === undefined && (await store.isUnreadable(goalRunId))
       ? { outcome: 'record-unreadable' }
       : { outcome: 'not-found' };
   }
@@ -333,7 +337,7 @@ export function createBureauGoals<TName extends string = string>(
   async function cancel(goalRunId: string, options: BureauGoalCancelOptions = {}) {
     const record = await authorized(goalRunId, options);
     return record === undefined
-      ? await absent(goalRunId)
+      ? await absent(goalRunId, options)
       : cancelGoal(dependencies, record, options);
   }
 
@@ -352,7 +356,7 @@ export function createBureauGoals<TName extends string = string>(
         );
       }
       if ((await authorized(goalRunId, query)) === undefined) {
-        const gone = await absent(goalRunId);
+        const gone = await absent(goalRunId, query);
         return {
           goals: [
             gone.outcome === 'record-unreadable'
@@ -380,7 +384,7 @@ export function createBureauGoals<TName extends string = string>(
     query?: BureauGoalQuery,
   ): Promise<BureauGoalCloseOutcome> {
     const record = await authorized(goalRunId, query);
-    if (record === undefined) return absent(goalRunId);
+    if (record === undefined) return absent(goalRunId, query);
     if (record.status === 'canceled') {
       // A closed goal leaves the boot sweep, so a cancellation whose controller,
       // finalizer, or attempt run is not yet read back as ended must not be
@@ -408,7 +412,10 @@ export function createBureauGoals<TName extends string = string>(
       case 'stale':
         return { outcome: 'contended', goal: closed.record };
       case 'corrupt':
-        return { outcome: 'record-unreadable' };
+        // The record decoded a moment ago and no longer does.
+        return query?.principal === undefined
+          ? { outcome: 'record-unreadable' }
+          : { outcome: 'not-found' };
       case 'missing':
         return { outcome: 'not-found' };
     }

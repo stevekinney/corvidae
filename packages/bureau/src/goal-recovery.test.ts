@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { commitCancellation, type GoalControlDependencies } from './goal-controller';
 import { recoverEveryGoal, recoverGoal, recoveryEntryFailure } from './goal-recovery';
-import { createGoalState, goalRecordKey } from './goal-state';
+import { createGoalState, goalRecordKey, type GoalState } from './goal-state';
 import { createGoalStore } from './goal-store';
 import type { GoalEngine } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
@@ -491,6 +491,88 @@ describe('a goal recovery meets with no durable engine', () => {
     });
     const committed = await store.get('g1');
     expect(committed?.status).toBe('canceled');
+  });
+
+  describe('whose recorded cancellation cannot be committed as asked', () => {
+    type Commit = Awaited<ReturnType<ReturnType<typeof createGoalStore>['applyTransition']>>;
+
+    /** A marked goal whose commit answers from `answer`, one call at a time. */
+    async function recoverWithCommit(
+      answer: (calls: number, real: () => Promise<Commit>, marked: GoalState) => Promise<Commit>,
+    ) {
+      const store = await runningGoal();
+      await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+      const marked = await store.get('g1');
+      if (marked === undefined) throw new Error('the marked goal is missing');
+      let calls = 0;
+      const scripted = {
+        ...store,
+        applyTransition: (...args: Parameters<typeof store.applyTransition>) => {
+          calls += 1;
+          return answer(calls, () => store.applyTransition(...args), marked);
+        },
+      };
+      const { control } = dependencies(scripted, undefined as never, {
+        getEngine: () => undefined,
+      });
+      return { entry: await recoverGoal(control, 'g1'), store, calls: () => calls };
+    }
+
+    it('retries a commit that lost to a concurrent writer and then answers pending', async () => {
+      const { entry, store, calls } = await recoverWithCommit((call, real, marked) =>
+        call === 1 ? Promise.resolve({ status: 'stale', record: marked }) : real(),
+      );
+
+      expect(entry).toMatchObject({
+        outcome: 'cancellation-pending',
+        awaiting: ['durable-engine'],
+      });
+      expect(calls()).toBeGreaterThan(1);
+      const committed = await store.get('g1');
+      expect(committed?.status).toBe('canceled');
+    });
+
+    it('answers pending on the goal record, not unrecoverable, when every commit loses', async () => {
+      const { entry } = await recoverWithCommit((_call, _real, marked) =>
+        Promise.resolve({ status: 'stale', record: marked }),
+      );
+
+      expect(entry).toMatchObject({ outcome: 'cancellation-pending', awaiting: ['goal-record'] });
+    });
+
+    it('answers already-terminal when the record turned out to have ended another way', async () => {
+      const { entry } = await recoverWithCommit((_call, _real, marked) =>
+        Promise.resolve({
+          status: 'rejected',
+          reason: 'terminal',
+          record: { ...marked, status: 'failed' },
+        }),
+      );
+
+      expect(entry).toMatchObject({ outcome: 'already-terminal' });
+    });
+
+    it('answers not-found when the record is gone', async () => {
+      const { entry } = await recoverWithCommit(() => Promise.resolve({ status: 'missing' }));
+
+      expect(entry).toMatchObject({ outcome: 'not-found' });
+    });
+
+    it('names the cause when the record is unreadable or the write is refused', async () => {
+      const corrupt = await recoverWithCommit(() => Promise.resolve({ status: 'corrupt' }));
+      expect(corrupt.entry).toMatchObject({
+        outcome: 'unrecoverable',
+        detail: expect.stringContaining('unreadable'),
+      });
+
+      const refused = await recoverWithCommit((_call, _real, marked) =>
+        Promise.resolve({ status: 'rejected', reason: 'oversized', record: marked }),
+      );
+      expect(refused.entry).toMatchObject({
+        outcome: 'unrecoverable',
+        detail: expect.stringContaining('oversized'),
+      });
+    });
   });
 
   it('still reports a goal with no cancellation as unrecoverable', async () => {

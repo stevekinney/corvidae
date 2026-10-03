@@ -162,6 +162,80 @@ async function endControllerAndCompleteCancellation(
   return completeCancellation(dependencies, record);
 }
 
+/** How many times a commit that lost to a concurrent writer is retried against the record it lost to. */
+const ENGINE_LESS_COMMIT_ATTEMPTS = 3;
+
+/**
+ * A recorded cancellation with no durable engine: the user asked for it and
+ * committing it needs no engine, but everything the engine would have stopped is
+ * unread, so a committed record is `cancellation-pending` awaiting the engine,
+ * never `canceled`. Every answer the commit can give has its own honest outcome.
+ */
+async function commitWithoutEngine(
+  dependencies: GoalControlDependencies,
+  record: GoalState,
+): Promise<ControllerRecovery> {
+  const { store, clock } = dependencies;
+  let current = record;
+  for (let attempt = 0; attempt < ENGINE_LESS_COMMIT_ATTEMPTS; attempt += 1) {
+    const committed = await commitCancellation(store, current, clock.now());
+    switch (committed.status) {
+      case 'applied':
+      case 'duplicate':
+      case 'not-needed':
+        return {
+          outcome: 'cancellation-pending',
+          awaiting: ['durable-engine'],
+          detail: 'The cancellation is recorded, but there is no durable engine to read it back.',
+        };
+      case 'stale':
+        // Late, out of order, or conflicting: the record it carries is the
+        // authoritative one, so the decision is made again against it.
+        if (isTerminalGoalStatus(committed.record.status)) {
+          return committed.record.status === 'canceled'
+            ? {
+                outcome: 'cancellation-pending',
+                awaiting: ['durable-engine'],
+                detail:
+                  'The cancellation is recorded, but there is no durable engine to read it back.',
+              }
+            : { outcome: 'already-terminal' };
+        }
+        current = committed.record;
+        break;
+      case 'rejected':
+        if (committed.reason === 'terminal') {
+          return committed.record.status === 'canceled'
+            ? {
+                outcome: 'cancellation-pending',
+                awaiting: ['durable-engine'],
+                detail:
+                  'The cancellation is recorded, but there is no durable engine to read it back.',
+              }
+            : { outcome: 'already-terminal' };
+        }
+        return {
+          outcome: 'unrecoverable',
+          detail: `The cancellation could not be committed: ${committed.reason}.`,
+        };
+      case 'missing':
+        return { outcome: 'not-found' };
+      case 'corrupt':
+        return {
+          outcome: 'unrecoverable',
+          detail: UNREADABLE_RECORD_DETAIL(record.goalRunId),
+        };
+    }
+  }
+  // Every round lost to a concurrent writer and the goal is still not canceled.
+  // The marker is recorded and the next sweep commits it.
+  return {
+    outcome: 'cancellation-pending',
+    awaiting: ['goal-record'],
+    detail: 'The cancellation is recorded, but committing it kept losing to concurrent writers.',
+  };
+}
+
 async function recoverController(
   dependencies: GoalControlDependencies,
   record: GoalState,
@@ -169,19 +243,7 @@ async function recoverController(
   const { store, clock, getEngine } = dependencies;
   const engine = getEngine();
   if (engine === undefined) {
-    if (record.cancellation !== undefined) {
-      // The user asked for the cancellation, and committing it needs no engine.
-      // Everything the engine would have stopped is unread, so the answer is
-      // `cancel()`'s own: pending, awaiting the engine, never `canceled`.
-      const committed = await commitCancellation(store, record, clock.now());
-      if (committed.status === 'applied' || committed.status === 'duplicate') {
-        return {
-          outcome: 'cancellation-pending',
-          awaiting: ['durable-engine'],
-          detail: 'The cancellation is recorded, but there is no durable engine to read it back.',
-        };
-      }
-    }
+    if (record.cancellation !== undefined) return commitWithoutEngine(dependencies, record);
     return { outcome: 'unrecoverable', detail: 'There is no durable engine to run a controller.' };
   }
   const { goalRunId } = record;
@@ -410,7 +472,11 @@ export async function recoverGoal(
     }
     throw error;
   }
-  if (controller.outcome === 'unrecoverable' || controller.outcome === 'already-terminal') {
+  if (
+    controller.outcome === 'unrecoverable' ||
+    controller.outcome === 'already-terminal' ||
+    controller.outcome === 'not-found'
+  ) {
     return { goalRunId, ...controller };
   }
   if (
