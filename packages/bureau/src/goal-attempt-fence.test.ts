@@ -190,6 +190,7 @@ async function fencedRun(
   extras: {
     registration?: GoalAttemptFenceRegistration;
     contextManagement?: RunOptions['contextManagement'];
+    signal?: AbortSignal;
   } = {},
 ) {
   const context = await durableContext();
@@ -199,6 +200,7 @@ async function fencedRun(
   const result = await startDurableRunResult(context, {
     runId: target.runId,
     sessionId: target.runId,
+    ...(extras.signal === undefined ? {} : { signal: extras.signal }),
     options: {
       generate: () => {
         generates += 1;
@@ -217,6 +219,17 @@ async function fencedRun(
   return { result, generates: () => generates, context };
 }
 
+/** Context management that is always over the synchronous threshold. */
+const overThreshold = (onCompact: () => void): RunOptions['contextManagement'] => ({
+  maxTokens: 100_000,
+  compactionThreshold: 10,
+  tokenEstimator: () => 50,
+  onCompact: () => {
+    onCompact();
+    return Promise.resolve();
+  },
+});
+
 describe('registerGoalAttemptFence', () => {
   it('registers a replay-safe prepareStep handler under its own id', () => {
     const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
@@ -228,6 +241,9 @@ describe('registerGoalAttemptFence', () => {
     ]);
     expect(hooks.getHandlers('beforeCompaction').map((entry) => entry.id)).toEqual([
       `${GOAL_ATTEMPT_FENCE_HOOK_ID}:compaction`,
+    ]);
+    expect(hooks.getHandlers('beforeBackgroundCompaction').map((entry) => entry.id)).toEqual([
+      `${GOAL_ATTEMPT_FENCE_HOOK_ID}:background-compaction`,
     ]);
   });
 
@@ -358,6 +374,75 @@ describe('registerGoalAttemptFence', () => {
 
     expect(compactions).toBe(1);
     expect(result.finishReason).toBe('stop-condition');
+  });
+
+  it('makes one decision for a step that compacts and then prepares, not one per hook', async () => {
+    let reads = 0;
+    const { result, generates } = await fencedRun(
+      {
+        mayRun: () => {
+          reads += 1;
+          return Promise.resolve(true);
+        },
+      },
+      { contextManagement: overThreshold(() => undefined) },
+    );
+
+    expect(reads).toBe(1);
+    expect(generates()).toBe(1);
+    expect(result.finishReason).toBe('stop-condition');
+  });
+
+  it('spends one run of tries, not two, on a read that never succeeds before a compacting step', async () => {
+    let reads = 0;
+    const { result } = await fencedRun(
+      {
+        mayRun: () => {
+          reads += 1;
+          return Promise.reject(new Error('storage is down'));
+        },
+      },
+      { contextManagement: overThreshold(() => undefined) },
+    );
+
+    expect(reads).toBe(GOAL_ATTEMPT_FENCE_READ_TRIES);
+    expect(result.finishReason).toBe('tripwire');
+  });
+
+  it('stops waiting out a backoff the moment the run is aborted during a compaction decision', async () => {
+    const base = createDefaultRuntimeServices();
+    const controller = new AbortController();
+    let compactions = 0;
+    const runtime = {
+      timers: {
+        ...base.timers,
+        // The abort lands as the wait begins; a wait that cannot be aborted would sit
+        // out the hour-long delay below.
+        setTimeout: (callback: () => void, milliseconds?: number) => {
+          controller.abort();
+          return base.timers.setTimeout(callback, milliseconds);
+        },
+      },
+    };
+    let reads = 0;
+    await fencedRun(
+      {
+        mayRun: () => {
+          reads += 1;
+          return Promise.reject(new Error('storage is down'));
+        },
+      },
+      {
+        registration: { runtime, delaysMs: [3_600_000, 3_600_000] },
+        signal: controller.signal,
+        contextManagement: overThreshold(() => {
+          compactions += 1;
+        }),
+      },
+    );
+
+    expect(reads).toBe(1);
+    expect(compactions).toBe(0);
   });
 
   it('is not a handler an onError hook can retry or skip', async () => {

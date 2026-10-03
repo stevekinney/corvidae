@@ -26,7 +26,12 @@
  * step-started event, context compaction, and the `selectTools` and
  * `selectToolChoice` hooks. Compaction is the one that can reach a model, so the
  * same verdict also gates it, through a `beforeCompaction` handler that cancels
- * the compaction of a step the goal does not allow. The event and the selection
+ * the compaction of a step the goal does not allow. Operative consults the
+ * same handler, registered as `beforeBackgroundCompaction`, before a step requests a
+ * background compaction, so a refused step starts neither. One reading serves a step's compaction and `prepareStep`
+ * handlers. A background candidate that the fence allowed and that is already
+ * running when the goal ends is withdrawn only by the run's own abort signal, and
+ * it publishes through the conversation's compare-and-swap. The event and the selection
  * hooks make no model or tool call, and the fence that follows them stops the
  * step before anything the step would do.
  *
@@ -47,7 +52,7 @@
  * so that record is retired with the rest of the goal's history.
  */
 
-import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
+import type { HookRegistry, RuntimeServices, RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import { GuardrailTripwireError, type OperativeHookMap } from '@lostgradient/operative';
 
 import { type RunRecordReader } from './goal-ownership';
@@ -180,15 +185,23 @@ function waitFor(
       resolve();
       return;
     }
-    const handle = runtime.timers.setTimeout(done, delay);
+    let handle: RuntimeTimeoutHandle;
+    let armed = false;
     function done(): void {
-      runtime.timers.clearTimeout(handle);
+      if (armed) runtime.timers.clearTimeout(handle);
       signal?.removeEventListener('abort', done);
       resolve();
     }
+    // Listen before arming the timer, so an abort that lands as the timer is set
+    // (or before it fires) ends the wait instead of being missed.
     signal?.addEventListener('abort', done, { once: true });
+    handle = runtime.timers.setTimeout(done, delay);
+    armed = true;
+    if (signal?.aborted) done();
   });
 }
+
+const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
 
 /** What the fence concluded from its reads: a verdict, or `undefined` and the fault that kept it from one. */
 interface FenceReading {
@@ -215,6 +228,8 @@ async function readFence(
     const delay = delays[attempt];
     if (delay !== undefined && registration.runtime !== undefined) {
       await waitFor(registration.runtime, delay, signal);
+      // An abort that ended the wait ends the reading, with no further read.
+      if (isAborted(signal)) break;
     }
   }
   return { verdict: undefined, cause };
@@ -225,6 +240,12 @@ async function readFence(
  * tier, and as a `beforeCompaction` handler that cancels the compaction of a step
  * it does not allow. The hooks read nothing they can change and write nothing, so
  * replaying them is safe.
+ *
+ * A step's boundary is decided once. Compaction runs first and the step's
+ * `prepareStep` right after it, so the compaction handler leaves its reading for
+ * that step in a slot and `prepareStep` takes it, rather than repeating the reads
+ * (and the backoff, if the store is down). `prepareStep` always empties the slot, so
+ * a later step, or a replay of this one, reads again.
  */
 export function registerGoalAttemptFence(
   registry: HookRegistry<OperativeHookMap>,
@@ -232,10 +253,16 @@ export function registerGoalAttemptFence(
   target: GoalAttemptTarget,
   registration: GoalAttemptFenceRegistration = {},
 ): void {
+  let compactionReading:
+    { readonly step: number; readonly reading: Promise<FenceReading> } | undefined;
   registry.on(
     'prepareStep',
     async (context) => {
-      const { verdict, cause } = await readFence(fence, target, registration, context.signal);
+      const shared = compactionReading;
+      compactionReading = undefined;
+      const { verdict, cause } = await (shared?.step === context.step
+        ? shared.reading
+        : readFence(fence, target, registration, context.signal));
       if (verdict === true) return;
       throw verdict === false
         ? refusal(
@@ -249,16 +276,26 @@ export function registerGoalAttemptFence(
     },
     { id: GOAL_ATTEMPT_FENCE_HOOK_ID, replay: 'safe' },
   );
-  registry.on(
-    'beforeCompaction',
-    async () => {
-      // Compaction may call a model, and it runs before `prepareStep`. A step the
-      // fence allows is left to the other handlers (`undefined` is no verdict); one
-      // it does not allow is not compacted, and the `prepareStep` handler above then
-      // refuses it.
-      const { verdict } = await readFence(fence, target, registration, undefined);
-      return verdict === true ? undefined : false;
-    },
-    { id: `${GOAL_ATTEMPT_FENCE_HOOK_ID}:compaction`, replay: 'safe' },
-  );
+  const decideCompaction = async (context: {
+    readonly step: number;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<false | undefined> => {
+    // Compaction, synchronous or background, may call a model, and it runs before
+    // `prepareStep`. A step the fence allows is left to the other handlers
+    // (`undefined` is no verdict); one it does not allow is not compacted, and the
+    // `prepareStep` handler above then refuses it. The same reading serves that
+    // handler.
+    const reading = readFence(fence, target, registration, context.signal);
+    compactionReading = { step: context.step, reading };
+    const { verdict } = await reading;
+    return verdict === true ? undefined : false;
+  };
+  registry.on('beforeCompaction', decideCompaction, {
+    id: `${GOAL_ATTEMPT_FENCE_HOOK_ID}:compaction`,
+    replay: 'safe',
+  });
+  registry.on('beforeBackgroundCompaction', decideCompaction, {
+    id: `${GOAL_ATTEMPT_FENCE_HOOK_ID}:background-compaction`,
+    replay: 'safe',
+  });
 }
