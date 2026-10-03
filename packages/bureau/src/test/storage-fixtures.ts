@@ -102,7 +102,7 @@ function trackLifetime(result: unknown, close: () => void): unknown {
   }
   if (typeof (result as { then?: unknown }).then === 'function') {
     try {
-      void Promise.resolve(result).then(close, close).catch(close);
+      void Promise.resolve((result as PromiseLike<unknown>).then(close, close)).catch(close);
     } catch {
       // A `then` that throws synchronously must not escape the verb call or
       // leak the handle; awaiting the value surfaces the failure as usual.
