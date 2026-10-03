@@ -46,6 +46,39 @@
  * try (the backoffs add up to a few seconds, and the goal's own store is down for
  * that long too) costs the goal that attempt.
  *
+ * Acknowledged-only runs. The fence also lets a step proceed only once the goal's
+ * record shows this attempt opened as running (the controller's open-attempt
+ * commit, after `startAttempt` returns). Until then the run waits, polling at the
+ * short acknowledgement cadence, for at most the start activity's own bound
+ * (tries times per-try timeout, or what remains of the goal's duration if less).
+ * The budget is measured from the run's first reading, on the runtime's
+ * monotonic clock, and is spent by that clock or by the delays waited, whichever
+ * is greater. The run is created inside the start activity, so its first reading
+ * falls after the activity began and the budget outlasts the activity by at
+ * least the gap between the two; the commit follows the activity's return.
+ * The budget is a bound, not a promise. A controller that commits later than it
+ * (a start that took both tries to their timeouts, a recovery or bounded restart
+ * that revives the controller after the budget) leaves the run stopped with zero
+ * steps, and the controller then reads that as the attempt's run failing: the
+ * attempt is lost, and no step was taken without an acknowledgement. That cost is
+ * accepted, because the alternative, a run that steps unacknowledged or waits
+ * without bound, is the very hazard this fence exists to remove.
+ *
+ * What the fence gates is the agent step: the generate call, the tool calls, and
+ * the compaction that can reach a model. What it does not gate is anything that
+ * runs before a run's first step and calls neither: the run's started event and
+ * its `onRunStart` hooks, which fire in the starting process before the engine
+ * creates the run (a late run's start already ran them, in the try that created
+ * it); the workflow's first `saveConversation` activity, which writes the
+ * conversation and the prompt to the store; the step's own events; and the
+ * `onRunError` and `onRunComplete` hooks of a run the fence stops. Bureau's
+ * invariant tier, which holds the fence, is composed ahead of every other tier,
+ * so no `prepareStep` or compaction handler of a lower tier runs before it, and
+ * the memory recall and the guardrail scans, which are `prepareStep` handlers,
+ * run after it. A hook that notifies or writes externally from `onRunStart` is
+ * therefore outside the fence, and the residual of this paragraph is its named
+ * bound.
+ *
  * Residual: a run whose start was overtaken still exists, as a workflow that
  * ended after zero steps under the attempt's deterministic id. `cleanUpGoal`
  * prunes every attempt id up to `maximumAttempts` at close and at the boot sweep,
@@ -101,6 +134,17 @@ const REFUSE: GoalAttemptVerdict = { status: 'refuse' };
  */
 export const GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS =
   START_ATTEMPT_MAXIMUM_TRIES * START_ATTEMPT_TIMEOUT_MS;
+
+/**
+ * How long a run waits before each further read of a goal whose attempt is not
+ * yet open, on the runtime's clock; the last delay repeats until the budget is
+ * spent. It is deliberately not the read-error backoff: the controller's
+ * open-attempt commit follows the start's return within milliseconds, and a
+ * backoff that grows toward seconds would delay the first agent step of nearly
+ * every attempt. Each poll is a read of the goal and of the run's claim, so the
+ * cadence settles at one every half second.
+ */
+export const GOAL_ATTEMPT_ACKNOWLEDGEMENT_POLL_DELAYS_MS: readonly number[] = [50, 100, 250, 500];
 
 /** The id the fence's hook is registered under. */
 export const GOAL_ATTEMPT_FENCE_HOOK_ID = 'bureau:goal-attempt-fence';
@@ -228,10 +272,16 @@ const refusal = (target: GoalAttemptTarget, detail: string): GuardrailTripwireEr
   );
 
 export interface GoalAttemptFenceRegistration {
-  /** The runtime whose timers the backoff between reads waits on; without one the reads are made back to back. */
-  readonly runtime?: Pick<RuntimeServices, 'timers'>;
-  /** The delay before each further read; defaults to `GOAL_ATTEMPT_FENCE_READ_DELAYS_MS`. */
+  /**
+   * The runtime whose timers the backoff between reads waits on; without one the
+   * reads are made back to back. Its monotonic clock, when it has one, measures
+   * the acknowledgement wait, so that slow reads cannot stretch it past its budget.
+   */
+  readonly runtime?: Pick<RuntimeServices, 'timers'> & Partial<Pick<RuntimeServices, 'monotonic'>>;
+  /** The delay before each further read of a read that failed; defaults to `GOAL_ATTEMPT_FENCE_READ_DELAYS_MS`. */
   readonly delaysMs?: readonly number[];
+  /** The delay before each further read while the attempt is not yet open; defaults to `GOAL_ATTEMPT_ACKNOWLEDGEMENT_POLL_DELAYS_MS`. */
+  readonly acknowledgementDelaysMs?: readonly number[];
 }
 
 /** Waits `delay` milliseconds on the runtime's timers, or until `signal` aborts. */
@@ -302,8 +352,11 @@ async function readFence(
 /**
  * Reads the fence until it has a verdict, waiting for the attempt to be
  * acknowledged when the only thing missing is the controller's open-attempt
- * commit. The wait polls on the runtime's clock with the reads' own backoff (its
- * last delay repeated), for at most the budget the first `await-open` carried; an
+ * commit. The wait polls on the runtime's clock at the acknowledgement cadence
+ * (its last delay repeated), for at most the budget the first `await-open`
+ * carried. The budget is spent by whichever is greater, the delays waited or the
+ * time the runtime's monotonic clock shows since that first reading, so slow
+ * reads cannot stretch it, and a delay of zero cannot spin without spending it. An
  * abort ends it with no further read. A fault in a read keeps `readFence`'s
  * fail-closed retries, and a verdict of `undefined` still means unknown.
  */
@@ -313,21 +366,29 @@ async function readSettled(
   registration: GoalAttemptFenceRegistration,
   signal: AbortSignal | undefined,
 ): Promise<FenceReading> {
-  const delays = registration.delaysMs ?? GOAL_ATTEMPT_FENCE_READ_DELAYS_MS;
+  const delays =
+    registration.acknowledgementDelaysMs ?? GOAL_ATTEMPT_ACKNOWLEDGEMENT_POLL_DELAYS_MS;
+  const monotonic = registration.runtime?.monotonic;
   let waitedMs = 0;
   let budgetMs: number | undefined;
+  let startedAt: number | undefined;
   for (let polls = 0; ; polls += 1) {
     const { verdict, cause } = await readFence(fence, target, registration, signal);
     if (verdict === undefined) return { verdict: undefined, cause };
     if (verdict.status !== 'await-open') return { verdict: verdict.status, cause: undefined };
     budgetMs ??= verdict.budgetMs;
+    startedAt ??= monotonic?.now();
+    const elapsedMs = Math.max(
+      waitedMs,
+      monotonic === undefined || startedAt === undefined ? 0 : monotonic.now() - startedAt,
+    );
     // Without a runtime there is no clock to wait on: the run is not acknowledged.
-    if (registration.runtime === undefined || isAborted(signal) || waitedMs >= budgetMs) {
+    if (registration.runtime === undefined || isAborted(signal) || elapsedMs >= budgetMs) {
       return { verdict: 'unacknowledged', cause: undefined };
     }
     const delay = Math.min(
-      delays[Math.min(polls, delays.length - 1)] ?? budgetMs - waitedMs,
-      budgetMs - waitedMs,
+      Math.max(delays[Math.min(polls, delays.length - 1)] ?? budgetMs - elapsedMs, 1),
+      budgetMs - elapsedMs,
     );
     await waitFor(registration.runtime, delay, signal);
     // An abort that ended the wait ends the reading, with no further read.

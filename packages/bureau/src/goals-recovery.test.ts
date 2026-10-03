@@ -481,6 +481,44 @@ describe('a goal that ended while its next attempt was still starting', () => {
   });
 });
 
+describe('a run that existed before its controller opened the attempt', () => {
+  /**
+   * The late-start window, over real runs on shared storage: the start created
+   * the attempt's run and returned, and the process died before the controller's
+   * open-attempt commit, with the controller itself gone. Bureau A really starts
+   * the run and parks it; the goal's record and the controller are then reset to
+   * what a controller that never committed leaves.
+   */
+  it('takes exactly one agent step, after a restarted controller adopts the run and commits it open', async () => {
+    database = createTestDatabase('late-adopted');
+    await crashWhileRunning();
+    const view = await inspection();
+    await view.overwrite(pendingGoal());
+    await view.storage.delete(KEYS.workflow('goal:g1'));
+
+    let steps = 0;
+    const { bureau } = await bootOver({
+      path: database.path,
+      agents: {
+        worker: workerAgent(() => {
+          steps += 1;
+          return Promise.resolve({ content: 'done', toolCalls: [] });
+        }),
+      },
+      validators: [createCheckValidator()],
+    });
+    await track(bureau);
+    await bureau.waitForRecovery?.();
+
+    const goal = await ended(bureau);
+    expect(goal).toMatchObject({ status: 'succeeded' });
+    expect(goal.attempts.map((attempt) => attempt.runId)).toEqual(['goal-g1-a0']);
+    // The run waited for the commit and then worked once; it neither stepped
+    // unacknowledged nor was refused for waiting.
+    expect(steps).toBe(1);
+  });
+});
+
 describe('a goal when the validator it names is no longer registered', () => {
   it.each([
     { label: 'removed', validators: [], code: 'VALIDATOR_MISSING' },

@@ -4,7 +4,11 @@
  * then creates must take no step. These tests drive real durable runs under the
  * hook, and the fence over the real goal store.
  */
-import { createDefaultRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
+import {
+  createDefaultRuntimeServices,
+  HookRegistry,
+  mergeHookRegistries,
+} from '@lostgradient/lifecycle';
 import {
   createCheckpointStore,
   createRunEngine,
@@ -312,11 +316,16 @@ async function fencedRun(
     contextManagement?: RunOptions['contextManagement'];
     signal?: AbortSignal;
     onGenerate?: () => void;
+    /** Hooks of a lower tier, composed behind Bureau's as the dispatcher composes them. */
+    agentTier?: (hooks: HookRegistry<OperativeHookMap>) => void;
   } = {},
 ) {
   const context = await durableContext();
-  const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
-  registerGoalAttemptFence(hooks, fence, target, extras.registration);
+  const bureauTier = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
+  registerGoalAttemptFence(bureauTier, fence, target, extras.registration);
+  const agentTier = new HookRegistry<OperativeHookMap>({ source: 'agent' });
+  extras.agentTier?.(agentTier);
+  const hooks = mergeHookRegistries(bureauTier, agentTier);
   let generates = 0;
   const result = await startDurableRunResult(context, {
     runId: target.runId,
@@ -922,5 +931,81 @@ describe('acknowledged-only runs', () => {
 
     expect(generates()).toBe(0);
     expect(reads).toBe(1);
+  });
+
+  it('polls for the open-attempt commit at its own short cadence, not at the read-error backoff', async () => {
+    const store = await liveGoal();
+    const { runtime, waits } = virtualRuntime(async (wait) => {
+      if (wait === 3) await openAttempt(store);
+    });
+
+    const { generates } = await fencedRun(fenceOver(store), { registration: { runtime } });
+
+    // The commit follows the start's return within milliseconds; a backoff that
+    // grew to seconds would hold the first step of nearly every attempt.
+    expect(waits).toEqual([50, 100, 250]);
+    expect(generates()).toBe(1);
+  });
+
+  it('spends its budget by the monotonic clock when reads are slow, not only by the delays it waited', async () => {
+    const store = await liveGoal();
+    const { runtime } = virtualRuntime();
+    let now = 0;
+    let reads = 0;
+    const fence = fenceOver(store);
+
+    const { result, generates } = await fencedRun(
+      {
+        mayRun: async (candidate) => {
+          reads += 1;
+          // Every read takes half the budget.
+          now += GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS / 2;
+          return fence.mayRun(candidate);
+        },
+      },
+      { registration: { runtime: { ...runtime, monotonic: { now: () => now } } } },
+    );
+
+    expect(generates()).toBe(0);
+    expect(result.finishReason).toBe('tripwire');
+    // Two readings spend the budget; waiting out its delays alone would have taken hundreds.
+    expect(reads).toBeLessThanOrEqual(3);
+  });
+
+  it('does not spin on a zero delay: every wait spends part of the budget', async () => {
+    const store = await liveGoal(undefined, { maximumAttempts: 2, maximumTotalDurationMs: 5 });
+    const { runtime, waits } = virtualRuntime();
+
+    const { result, generates } = await fencedRun(fenceOver(store), {
+      registration: { runtime, acknowledgementDelaysMs: [0] },
+    });
+
+    expect(generates()).toBe(0);
+    expect(result.finishReason).toBe('tripwire');
+    expect(waits.every((wait) => wait >= 1)).toBe(true);
+    expect(waits.reduce((total, wait) => total + wait, 0)).toBe(5);
+  });
+
+  it('is first in the composed plan, so an agent-tier compaction handler cannot decide for a step the goal does not allow', async () => {
+    let compactions = 0;
+    let agentDecisions = 0;
+    const { generates } = await fencedRun(
+      { mayRun: () => Promise.resolve(REFUSE) },
+      {
+        contextManagement: overThreshold(() => {
+          compactions += 1;
+        }),
+        agentTier: (agent) => {
+          agent.on('beforeCompaction', () => {
+            agentDecisions += 1;
+            return Promise.resolve(true);
+          });
+        },
+      },
+    );
+
+    expect(agentDecisions).toBe(0);
+    expect(compactions).toBe(0);
+    expect(generates()).toBe(0);
   });
 });
