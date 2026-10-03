@@ -226,7 +226,7 @@ describe('createRunFrameForwarder', () => {
       generate: async ({ step }) =>
         step === 0
           ? { content: '', toolCalls: [{ name: 'noop', arguments: {} }] }
-          : Promise.reject(new BudgetExceededError('cost budget reached')),
+          : Promise.reject(new BudgetExceededError('token limit reached')),
       toolbox: createToolbox<readonly Tool[]>([noopTool]),
       conversation: new Conversation(),
       maximumSteps: 5,
@@ -261,7 +261,7 @@ describe('createRunFrameForwarder', () => {
     if (notification?.type === 'notification') {
       expect(notification.level).toBe('error');
       expect(notification.code).toBe('budget.exceeded');
-      expect(notification.message).toBe('Cost budget exceeded');
+      expect(notification.message).toBe('Budget exceeded');
       expect(notification.step).toBe(1);
       expect(notification.timestamp).toBe(4242);
     }
