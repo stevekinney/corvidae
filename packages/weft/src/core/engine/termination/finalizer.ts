@@ -304,22 +304,28 @@ export async function runWorkflowFinalizer(
   }
 
   try {
-    await withTeardownDriveClaim(internals, workflowId, token, async () => {
-      const resolution = await resolveTeardownDrive(internals, workflowId, token, callbacks);
-      if (resolution.kind === 'cleared') {
-        return;
-      }
-      if (resolution.kind === 'rearm') {
-        await rearmTeardownTimer(
-          internals,
-          workflowId,
-          resolution.token,
-          TEARDOWN_SELF_HEAL_DELAY_MS,
-        );
-        return;
-      }
-      await driveResolvedTeardown(internals, workflowId, token, resolution.drive, callbacks);
-    });
+    await withTeardownDriveClaim(
+      internals,
+      workflowId,
+      token,
+      callbacks.loadWorkflowState,
+      async () => {
+        const resolution = await resolveTeardownDrive(internals, workflowId, token, callbacks);
+        if (resolution.kind === 'cleared') {
+          return;
+        }
+        if (resolution.kind === 'rearm') {
+          await rearmTeardownTimer(
+            internals,
+            workflowId,
+            resolution.token,
+            TEARDOWN_SELF_HEAL_DELAY_MS,
+          );
+          return;
+        }
+        await driveResolvedTeardown(internals, workflowId, token, resolution.drive, callbacks);
+      },
+    );
   } catch (error) {
     // Never propagate — a thrown timer callback re-fires with no backoff. Re-arm a
     // self-heal timer first so an error mid-drive (after the marker was read, before a

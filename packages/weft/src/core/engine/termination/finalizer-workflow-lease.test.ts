@@ -508,4 +508,183 @@ describe('finalizer teardown under ownership: workflow-lease (COR-1415)', () => 
       status: 'succeeded',
     });
   });
+
+  it('does not take over a claim whose drive is still running a fresh marker, and lets that drive settle', async () => {
+    const storage = new MemoryStorage();
+    const clock: Clock = { now: 13_000_000 };
+    let starts = 0;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const destroy = activity({
+      name: 'destroy-lease-slow',
+      execute: async () => {
+        starts += 1;
+        signalStarted();
+        await gate;
+      },
+    });
+    await using engineB = await createLeaseEngine(storage, clock);
+    await using engineA = await createLeaseEngine(storage, clock);
+    registerTeardownType(engineB, 'lease-slow', destroy);
+    registerTeardownType(engineA, 'lease-slow', destroy);
+    const eventsB = collectTeardownEvents(engineB);
+    await startAndCancel(engineB, storage, 'lease-slow', 'lease-slow-1');
+
+    const driveB = engineB.scheduler.tick(clock.now);
+    await started;
+
+    // B's claim expires because its renewal stalled, but its marker is still fresh: the
+    // finalizer is well inside the stale-running horizon.
+    clock.now += CLAIM_TTL_MS * 4;
+    await engineA.scheduler.tick(clock.now);
+    expect(starts).toBe(1);
+
+    release();
+    await driveB;
+    expect(eventsB).toEqual([{ workflowId: 'lease-slow-1', status: 'completed', attempts: 1 }]);
+    expect(await storage.get(KEYS.teardownOwed('lease-slow-1'))).toBeNull();
+
+    // Past the stale horizon nothing is left to re-run.
+    clock.now += STALE_RUNNING_HORIZON_MS;
+    await engineA.scheduler.tick(clock.now);
+    await engineB.scheduler.tick(clock.now);
+    expect(starts).toBe(1);
+    expect(await engineA.getFinalizerStatus('lease-slow-1')).toMatchObject({
+      status: 'succeeded',
+    });
+  });
+
+  it('backs off a second drive on the same engine while the first holds the claim', async () => {
+    const storage = new MemoryStorage();
+    const clock: Clock = { now: 14_000_000 };
+    let starts = 0;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const destroy = activity({
+      name: 'destroy-lease-concurrent',
+      execute: async () => {
+        starts += 1;
+        signalStarted();
+        await gate;
+      },
+    });
+    await using engine = await createLeaseEngine(storage, clock);
+    registerTeardownType(engine, 'lease-concurrent', destroy);
+    const events = collectTeardownEvents(engine);
+    await startAndCancel(engine, storage, 'lease-concurrent', 'lease-concurrent-1');
+
+    const firstDrive = engine.scheduler.tick(clock.now);
+    await started;
+    // A second tick (interval plus manual) lands while the first drive holds the claim.
+    await engine.scheduler.tick(clock.now);
+    expect(starts).toBe(1);
+    // The backed-off drive re-armed its timer rather than stranding or clearing the marker.
+    expect(await storage.count(TEARDOWN_TIMER_PREFIX)).toBeGreaterThan(0);
+    expect(await storage.get(KEYS.teardownOwed('lease-concurrent-1'))).not.toBeNull();
+
+    release();
+    await firstDrive;
+    expect(events).toEqual([
+      { workflowId: 'lease-concurrent-1', status: 'completed', attempts: 1 },
+    ]);
+    expect(
+      getInternals(engine).workflowClaimRegistry?.currentEpoch('lease-concurrent-1'),
+    ).toBeNull();
+    expect(await storage.get(KEYS.workflowOwnerHolder('lease-concurrent-1'))).toBeNull();
+  });
+
+  it("a concurrent drive that read a stale tracked claim never forgets the first drive's fresh claim", async () => {
+    const storage = new MemoryStorage();
+    const clock: Clock = { now: 15_000_000 };
+    let starts = 0;
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const destroy = activity({
+      name: 'destroy-lease-forget',
+      execute: async () => {
+        starts += 1;
+        signalStarted();
+        await gate;
+      },
+    });
+    const warnings: string[] = [];
+    const onWarning = (warning: Error): void => {
+      warnings.push(warning.name);
+    };
+    process.on('warning', onWarning);
+    try {
+      await using engine = await createLeaseEngine(storage, clock);
+      await using peer = await createLeaseEngine(storage, clock);
+      registerTeardownType(engine, 'lease-forget', destroy);
+      const events = collectTeardownEvents(engine);
+      const workflowId = 'lease-forget-1';
+      await startAndCancel(engine, storage, 'lease-forget', workflowId);
+
+      // The engine tracks a claim that a peer has since taken over and released: tracked
+      // bytes are stale, so every drive on this engine must forget them before acquiring.
+      const registry = getInternals(engine).workflowClaimRegistry!;
+      const ownAcquire = await registry.acquire(workflowId);
+      expect(ownAcquire.status).toBe('acquired');
+      clock.now += CLAIM_TTL_MS * 4;
+      const peerRegistry = getInternals(peer).workflowClaimRegistry!;
+      const peerTakeover = await peerRegistry.takeover(workflowId);
+      expect(peerTakeover.status).toBe('acquired');
+      const peerRelease = await peerRegistry.release(workflowId);
+      expect(peerRelease.status).toBe('released');
+
+      // Hold the SECOND drive's stored-epoch read until the first drive owns a fresh claim.
+      const epochKey = KEYS.workflowOwnerEpoch(workflowId);
+      const originalGet = storage.get.bind(storage);
+      let epochReads = 0;
+      let openSecondRead!: () => void;
+      const secondRead = new Promise<void>((resolve) => {
+        openSecondRead = resolve;
+      });
+      storage.get = async (key: string) => {
+        if (key === epochKey) {
+          epochReads += 1;
+          if (epochReads === 2) await secondRead;
+        }
+        return originalGet(key);
+      };
+
+      const firstDrive = engine.scheduler.tick(clock.now);
+      const secondDrive = engine.scheduler.tick(clock.now);
+      await started;
+      openSecondRead();
+      await secondDrive;
+      expect(starts).toBe(1);
+      expect(registry.currentEpoch(workflowId)).not.toBeNull();
+
+      release();
+      await firstDrive;
+      storage.get = originalGet;
+      expect(starts).toBe(1);
+      expect(events).toEqual([{ workflowId, status: 'completed', attempts: 1 }]);
+      expect(registry.currentEpoch(workflowId)).toBeNull();
+      expect(await storage.get(KEYS.workflowOwnerHolder(workflowId))).toBeNull();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(warnings).not.toContain('WeftWorkflowClaimLostWarning');
+    } finally {
+      process.off('warning', onWarning);
+    }
+  });
 });
