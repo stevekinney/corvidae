@@ -71,7 +71,7 @@ describe('buildVerifySteps', () => {
     const weft: PublishedPackage = {
       ...published[0]!,
       workspace: '@lostgradient/weft',
-      directory: 'packages/weft',
+      directory: 'packages/workflow-engine',
       publicName: '@lostgradient/weft',
     };
     for (const environment of [localEnvironment(), workflowEnvironment()]) {
@@ -79,23 +79,44 @@ describe('buildVerifySteps', () => {
         { installCommand: ['bun', 'install'], published: [weft], privateWorkspaces: [] },
         environment,
       );
-      const binary = steps.find((step) => step.kind === 'binary-size');
-      expect(binary).toEqual({
-        kind: 'binary-size',
-        description: 'verify @lostgradient/weft binary payload',
-        cwd: environment.resolveDirectory('packages/weft'),
-        command: [
-          'bun',
-          'test',
-          'scripts/build-binary.test.ts',
-          'scripts/build-binary-size.test.ts',
-        ],
-        publicName: '@lostgradient/weft',
-      });
-      expect(steps.indexOf(binary!)).toBeGreaterThan(
+      const cwd = environment.resolveDirectory('packages/workflow-engine');
+      const binary = steps.filter((step) => step.kind === 'binary-size');
+      // `bun test` treats its operands as patterns and passes when any one matches, so each
+      // payload test is required by name before it runs.
+      expect(binary).toEqual([
+        {
+          kind: 'binary-size',
+          description: 'require @lostgradient/weft scripts/build-binary.test.ts',
+          cwd,
+          command: ['test', '-f', 'scripts/build-binary.test.ts'],
+          publicName: '@lostgradient/weft',
+        },
+        {
+          kind: 'binary-size',
+          description: 'require @lostgradient/weft scripts/build-binary-size.test.ts',
+          cwd,
+          command: ['test', '-f', 'scripts/build-binary-size.test.ts'],
+          publicName: '@lostgradient/weft',
+        },
+        {
+          kind: 'binary-size',
+          description: 'verify @lostgradient/weft binary payload',
+          cwd,
+          command: [
+            'bun',
+            'test',
+            'scripts/build-binary.test.ts',
+            'scripts/build-binary-size.test.ts',
+          ],
+          publicName: '@lostgradient/weft',
+        },
+      ]);
+      expect(steps.indexOf(binary[0]!)).toBeGreaterThan(
         steps.findIndex((step) => step.kind === 'typecheck-published'),
       );
-      expect(steps.indexOf(binary!)).toBeLessThan(steps.findIndex((step) => step.kind === 'pack'));
+      expect(steps.indexOf(binary.at(-1)!)).toBeLessThan(
+        steps.findIndex((step) => step.kind === 'pack'),
+      );
       expect(
         buildVerifySteps(
           { installCommand: ['bun', 'install'], published, privateWorkspaces: [] },

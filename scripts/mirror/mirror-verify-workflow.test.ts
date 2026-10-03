@@ -219,6 +219,7 @@ describe('renderMirrorVerifyWorkflow', () => {
         privateWorkspaces: [],
       });
       expect(weftWorkflow).toContain('verify @lostgradient/weft binary payload');
+      expect(weftWorkflow).toContain('test -f scripts/build-binary-size.test.ts');
       expect(weftWorkflow).toContain(
         'bun test scripts/build-binary.test.ts scripts/build-binary-size.test.ts',
       );
