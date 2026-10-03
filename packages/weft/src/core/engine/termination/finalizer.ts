@@ -50,7 +50,11 @@ import {
   teardownTimerOperations,
 } from './finalizer-claim.ts';
 import { resolveFinalizerRegistration } from './finalizer-registration.ts';
-import { reassertOwedAfterShutdown, withTeardownDriveClaim } from './finalizer-teardown-claim.ts';
+import {
+  reassertOwedAfterShutdown,
+  TERMINAL_STATUSES_OWED_TEARDOWN,
+  withTeardownDriveClaim,
+} from './finalizer-teardown-claim.ts';
 
 export { teardownStaleThresholdMs, type TeardownDeadLetterRecord } from './finalizer-claim.ts';
 
@@ -60,11 +64,6 @@ export interface FinalizerDriveCallbacks {
   dispatchEvent: (event: Event) => void;
   handleCleanupError: (source: string, error: unknown, workflowId?: string) => void;
 }
-
-const TERMINAL_STATUSES_OWED_TEARDOWN = new Set<WorkflowState['status']>([
-  'cancelled',
-  'timed-out',
-]);
 
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);

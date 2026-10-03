@@ -66,10 +66,10 @@ export type TeardownClaimAcquisition = TeardownClaimHold | 'unavailable' | 'noth
 /** Loads a workflow's state, for the liveness judgment of a `running` marker. */
 type WorkflowStateLoader = (workflowId: string) => Promise<WorkflowState | null>;
 
-const TERMINAL_STATUSES_OWED_TEARDOWN = new Set<WorkflowState['status']>([
-  'cancelled',
-  'timed-out',
-]);
+/** Terminal statuses that owe a definition-level finalizer teardown. */
+export const TERMINAL_STATUSES_OWED_TEARDOWN: ReadonlySet<WorkflowState['status']> = new Set<
+  WorkflowState['status']
+>(['cancelled', 'timed-out']);
 
 const NO_CLAIM_NEEDED: TeardownClaimHold = { release: async () => undefined };
 
