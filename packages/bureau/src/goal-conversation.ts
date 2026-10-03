@@ -145,9 +145,20 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
       ? (authority as Record<string, unknown>)['principalId']
       : undefined;
   if (principalId !== record.principal) return refuse('belongs to a different principal');
+  // The exact id the goal derives for an attempt it can have, never a pattern
+  // that merely resembles one: `goal-g1-a00` and an index past `maximumAttempts`
+  // are ids the goal never mints.
   const runPrefix = goalAttemptRunId(record.goalRunId, 0).slice(0, -1);
-  const isAttemptRun = (runId: string): boolean =>
-    runId.startsWith(runPrefix) && /^\d+$/.test(runId.slice(runPrefix.length));
+  const isAttemptRun = (runId: string): boolean => {
+    if (!runId.startsWith(runPrefix)) return false;
+    const suffix = runId.slice(runPrefix.length);
+    if (!/^\d+$/.test(suffix)) return false;
+    const attemptIndex = Number(suffix);
+    return (
+      attemptIndex < record.bounds.maximumAttempts &&
+      goalAttemptRunId(record.goalRunId, attemptIndex) === runId
+    );
+  };
   if (!session.runs.every((ref) => isAttemptRun(ref.runId))) {
     return refuse("holds a run that is not one of this goal's attempts");
   }
