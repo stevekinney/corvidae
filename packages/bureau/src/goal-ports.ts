@@ -62,7 +62,6 @@ import {
   type GoalAttemptStart,
 } from './bureau-catalog-dispatch';
 import type { GoalConversations } from './goal-conversation';
-import { attemptSessionId } from './goal-conversation';
 import type { AttemptForwarder } from './goal-forwarder';
 import {
   GoalCorruptOwnershipRecordError,
@@ -70,6 +69,7 @@ import {
   verifyAttemptRun,
 } from './goal-ownership';
 import {
+  attemptSessionId,
   boundValidationOutcome,
   type DurableGoalAttempt,
   goalAttemptId,

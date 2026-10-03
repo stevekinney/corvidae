@@ -6,7 +6,13 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import type { GoalControlDependencies } from '../goal-controller';
-import { createGoalState, goalAttemptId, goalAttemptRunId, goalTransitionId } from '../goal-state';
+import {
+  createGoalState,
+  goalAttemptId,
+  goalAttemptRunId,
+  goalSessionId,
+  goalTransitionId,
+} from '../goal-state';
 import { createGoalStore, type GoalStore } from '../goal-store';
 import type { GoalEngine } from '../goal-types';
 import { createGoalValidatorCatalog } from '../goal-validator-catalog';
@@ -40,7 +46,7 @@ export async function runningGoal(): Promise<GoalStore> {
       attemptId,
       attemptIndex: 0,
       runId,
-      sessionId: runId,
+      sessionId: goalSessionId('g1', 0),
       startedAt: NOW,
       usage: { steps: 0, tokens: 0 },
       status: 'running',

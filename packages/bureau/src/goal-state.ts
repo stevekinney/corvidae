@@ -114,6 +114,18 @@ export const goalAttemptId = (goalRunId: string, attemptIndex: number): string =
 /** Deterministic, so a restart that re-starts attempt N finds attempt N's run, never N+1's. */
 export const goalAttemptRunId = (goalRunId: string, attemptIndex: number): string =>
   `${GOAL_RUN_AND_SESSION_ID_PREFIX}${goalRunId}-a${attemptIndex}`;
+/** The first session of a goal: attempt 0 runs here, and under `continue` so does every other attempt. */
+export const goalSessionId = (goalRunId: string, attemptIndex: number): string =>
+  `${GOAL_RUN_AND_SESSION_ID_PREFIX}${goalRunId}-s${attemptIndex}`;
+
+/** The session attempt `attemptIndex` runs in under the goal's policy. */
+export function attemptSessionId(
+  goalRunId: string,
+  kind: GoalConversationPolicy['kind'],
+  attemptIndex: number,
+): string {
+  return goalSessionId(goalRunId, kind === 'continue' || attemptIndex === 0 ? 0 : attemptIndex);
+}
 /** The first committed decision for an attempt wins; a re-executed validator cannot add a second. */
 export const goalDecisionId = (attemptId: string): string => `${attemptId}:decision`;
 
@@ -978,6 +990,28 @@ function isStatusRelationConsistent(value: PlainRecord): boolean {
   }
 }
 
+/**
+ * Every id an attempt carries is the one this goal's builders produce for its
+ * index and conversation policy. The decoder is the single gate for reads and
+ * for every write (the store checks each next record with it), so an attempt
+ * that names another goal's run, session, or decision can neither be stored nor
+ * be believed once read: a controller, a canceller, or the forwarder would
+ * otherwise act on a run that is not this goal's.
+ */
+function hasOwnDerivedIds(value: PlainRecord): boolean {
+  const goalRunId = value['goalRunId'] as string;
+  const kind = (value['conversationPolicy'] as GoalConversationPolicy).kind;
+  const attempts = value['attempts'] as readonly DurableGoalAttempt[];
+  return attempts.every(
+    (attempt, index) =>
+      attempt.attemptId === goalAttemptId(goalRunId, index) &&
+      attempt.runId === goalAttemptRunId(goalRunId, index) &&
+      attempt.sessionId === attemptSessionId(goalRunId, kind, index) &&
+      (attempt.validation === undefined ||
+        attempt.validation.decisionId === goalDecisionId(attempt.attemptId)),
+  );
+}
+
 function isConsistent(value: PlainRecord): boolean {
   const transition = value['currentTransition'] as GoalTransitionRecord;
   const attempts = value['attempts'] as readonly DurableGoalAttempt[];
@@ -988,6 +1022,7 @@ function isConsistent(value: PlainRecord): boolean {
     transition.to === value['status'] &&
     transition.transitionId === goalTransitionId(value['goalRunId'] as string, transition.seq) &&
     attempts.every((attempt, index) => attempt.attemptIndex === index) &&
+    hasOwnDerivedIds(value) &&
     isStatusRelationConsistent(value) &&
     isTerminalPairing(value)
   );

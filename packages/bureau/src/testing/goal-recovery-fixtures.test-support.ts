@@ -25,7 +25,7 @@ import { Conversation } from 'conversationalist';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
-import { goalSessionId, goalSessionMetadata } from '../goal-conversation';
+import { goalSessionMetadata } from '../goal-conversation';
 import {
   createGoalState,
   type DurableGoalAttempt,
@@ -33,6 +33,7 @@ import {
   goalAttemptRunId,
   goalDecisionId,
   goalRecordKey,
+  goalSessionId,
   type GoalState,
   goalTransitionId,
 } from '../goal-state';

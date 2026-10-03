@@ -10,6 +10,8 @@ import {
   type DurableGoalAttempt,
   goalAttemptId,
   goalAttemptRunId,
+  goalDecisionId,
+  goalSessionId,
   type GoalState,
   goalTransitionId,
   isGoalState,
@@ -27,7 +29,7 @@ function attempt(index: number, overrides: Partial<DurableGoalAttempt> = {}): Du
     attemptId: goalAttemptId(GOAL, index),
     attemptIndex: index,
     runId: goalAttemptRunId(GOAL, index),
-    sessionId: `session-${index}`,
+    sessionId: goalSessionId(GOAL, 0),
     startedAt: STARTED,
     usage: { steps: 0, tokens: 0 },
     status: 'running',
@@ -171,6 +173,115 @@ describe('the goal record decoder', () => {
     const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
     mutate(record);
     expect(isGoalState(record)).toBe(false);
+  });
+
+  describe('the ids derived from the record\'s own goal', () => {
+    const OTHER = 'goal-other';
+    const rewrite = (record: Record<string, unknown>, index: number, change: object) => {
+      attemptsOf(record)[index] = { ...attemptsOf(record)[index], ...change };
+    };
+    // Each mutation moves one derived id to the id another goal's builder produces
+    // (or to an id no builder produces), keeping the record otherwise consistent.
+    const mismatches: Array<[string, string, Mutation]> = [
+      [
+        'running',
+        'an attempt id built for another goal',
+        (r) => {
+          rewrite(r, 0, { attemptId: goalAttemptId(OTHER, 0) });
+          r['active'] = { ...attemptWork(0), attemptId: goalAttemptId(OTHER, 0) };
+        },
+      ],
+      [
+        'running',
+        'an attempt run id built for another goal, which the active work agrees with',
+        (r) => {
+          rewrite(r, 0, { runId: goalAttemptRunId(OTHER, 0) });
+          r['active'] = { ...attemptWork(0), runId: goalAttemptRunId(OTHER, 0) };
+        },
+      ],
+      [
+        'running',
+        'a session id built for another goal',
+        (r) => rewrite(r, 0, { sessionId: goalSessionId(OTHER, 0) }),
+      ],
+      [
+        'running',
+        'a session id no builder produces',
+        (r) => rewrite(r, 0, { sessionId: 'session-0' }),
+      ],
+      [
+        'succeeded',
+        'a later attempt in a session the continue policy never gives it',
+        (r) => rewrite(r, 1, { sessionId: goalSessionId(GOAL, 1) }),
+      ],
+      [
+        'retrying',
+        'a validation decision id built for another attempt',
+        (r) =>
+          rewrite(r, 0, {
+            validation: {
+              identity: VALIDATOR,
+              startedAt: STARTED,
+              completedAt: STARTED,
+              outcome: { kind: 'fail', feedback: 'no', evidence: [], retryable: true },
+              decisionId: goalDecisionId(goalAttemptId(OTHER, 0)),
+            },
+          }),
+      ],
+    ];
+
+    it.each(mismatches)('treats a %s goal with %s as corrupt', async (status, _name, mutate) => {
+      const base = (await records())[status] as GoalState;
+      const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
+      mutate(record);
+      expect(isGoalState(record)).toBe(false);
+    });
+
+    it('accepts the session a fork policy gives a later attempt, and refuses the trunk for it', async () => {
+      const base = (await records())['succeeded'] as GoalState;
+      const forked = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
+      forked['conversationPolicy'] = {
+        kind: 'fork-from-baseline',
+        throughRun: 0,
+      };
+      rewrite(forked, 1, { sessionId: goalSessionId(GOAL, 1) });
+      const trunk = JSON.parse(JSON.stringify(forked)) as Record<string, unknown>;
+      rewrite(trunk, 1, { sessionId: goalSessionId(GOAL, 0) });
+      expect(isGoalState(forked)).toBe(true);
+      expect(isGoalState(trunk)).toBe(false);
+    });
+
+    it('refuses to write a transition that carries them', async () => {
+      sequence = 0;
+      const store = createGoalStore(textValueStore(new MemoryStorage()));
+      await store.create(
+        createGoalState({
+          goalRunId: GOAL,
+          identity: { name: 'goal', version: '1' },
+          objective: { agentName: 'builder', prompt: 'p' },
+          validator: VALIDATOR,
+          conversationPolicy: { kind: 'continue' },
+          bounds: { maximumAttempts: 3, maximumTotalTokens: 1000 },
+          now: '2026-10-02T00:00:00.000Z',
+        }),
+      );
+      const foreign = {
+        ...attempt(0),
+        runId: goalAttemptRunId(OTHER, 0),
+      };
+      const result = await store.applyTransition({
+        goalRunId: GOAL,
+        seq: 1,
+        transitionId: goalTransitionId(GOAL, 1),
+        to: 'running',
+        at: at(),
+        cause: 'foreign run',
+        attempt: foreign,
+        active: { ...attemptWork(0), runId: foreign.runId },
+      });
+      expect(result.status).toBe('rejected');
+      expect((await store.get(GOAL))?.status).toBe('pending');
+    });
   });
 
   it('refuses a transition that would leave the record contradicting itself', async () => {

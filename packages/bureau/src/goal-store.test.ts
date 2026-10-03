@@ -36,6 +36,7 @@ import {
   goalWorkflowId,
   InvalidGoalStateError,
   isGoalState,
+  goalSessionId,
 } from './goal-state';
 import {
   createGoalStore,
@@ -79,7 +80,7 @@ function attempt(index: number, overrides: Partial<DurableGoalAttempt> = {}): Du
     attemptId: goalAttemptId(GOAL, index),
     attemptIndex: index,
     runId: goalAttemptRunId(GOAL, index),
-    sessionId: `session-${index}`,
+    sessionId: goalSessionId(GOAL, 0),
     startedAt: '2026-10-02T00:00:05.000Z',
     usage: { steps: 0, tokens: 0 },
     status: 'running',

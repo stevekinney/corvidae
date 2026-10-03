@@ -5,8 +5,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { encodeOwner } from './durable-event-history';
-import { attemptSessionId, goalSessionId } from './goal-conversation';
-import { goalAttemptRunId, goalWorkflowId } from './goal-state';
+import { attemptSessionId, goalAttemptRunId, goalSessionId, goalWorkflowId } from './goal-state';
 import {
   GOAL_AUDIT_WORKFLOW_ID_PREFIX,
   GOAL_RESERVED_IDENTIFIER_PREFIXES,
