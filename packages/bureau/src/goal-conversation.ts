@@ -49,8 +49,9 @@
  * Limits: a durable goal does not take a caller's existing session as its
  * baseline, so the trunk holds attempt 0 and nothing before it. For
  * `fork-from-baseline` the only run a retry can fork through is therefore run
- * 0; any other `throughRun` ends the goal as `attempt-run-failed` when the first
- * retry tries to fork, exactly as an out-of-range fork point does in memory.
+ * 0, and `goals.create` rejects any other `throughRun` as
+ * `invalid-configuration` rather than spend an attempt on a goal that could
+ * never retry.
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
@@ -191,12 +192,16 @@ export function createGoalConversations(
     if (ref === undefined || ref.status !== 'running') return;
     const durable = getDurable();
     if (durable === undefined) return;
+    // A transcript that cannot be read is an error to retry, never a ref
+    // recorded as ended without it: a terminal ref is not reconciled again,
+    // so the next attempt would be seeded without this one.
     await reconcileTerminalRunRef(
       sessionStore,
       durable.engine,
       durable.checkpointStore,
       sessionId,
       ref,
+      { requireConversation: true },
     );
   }
 
@@ -215,7 +220,12 @@ export function createGoalConversations(
     // Not a verdict on the goal: the engine said the run ended before the
     // controller was told, so a run still open here is a read that failed or
     // lagged, and the activity retries it.
-    if (ref.status === 'running') {
+    // A completed run is owed a transcript. One that has none was recorded by a
+    // read that failed, and seeding from it would drop the attempt.
+    if (
+      ref.status === 'running' ||
+      (ref.status === 'completed' && ref.conversationBoundary === undefined)
+    ) {
       throw new Error(
         `Attempt ${attemptIndex} has not committed its transcript to session "${trunkId}".`,
       );
@@ -233,6 +243,11 @@ export function createGoalConversations(
       const trunk = await committedTrunk(record, request.attemptIndex - 1);
       return trunk.conversationHistory;
     }
+    // A session an earlier try wrote is the seed, whatever has become of what
+    // it was built from: the artifact's retention window may have passed, or its
+    // source gone, in the time a crash and a recovery took.
+    const written = await sessionStore.load(sessionId);
+    if (written !== undefined) return written.conversationHistory;
     if (policy.kind === 'fork-from-baseline') {
       // The baseline is a run of the trunk, which is committed once attempt 0 ends.
       const trunk = await committedTrunk(record, 0);

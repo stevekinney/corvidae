@@ -152,6 +152,9 @@ export async function seedTrunk(inspection: Inspection, goal = pendingGoal()) {
   conversation.appendUserMessage(goal.objective.prompt);
   conversation.appendAssistantMessage('nope');
   const sessions = createSessionStore(inspection.kv);
+  // A committed run carries its transcript as a boundary; this one is
+  // self-contained, as the first run's always is.
+  const { ids, messages, ...rest } = conversation.current;
   await sessions.save(
     createAgentSession({
       agentName: goal.objective.agentName,
@@ -165,6 +168,7 @@ export async function seedTrunk(inspection: Inspection, goal = pendingGoal()) {
           startedAt: NOW,
           agentName: goal.objective.agentName,
           outcome: { finishReason: 'stop-condition' },
+          conversationBoundary: { conversation: rest, ids: [...ids], messages: { ...messages } },
         },
       ],
     }),

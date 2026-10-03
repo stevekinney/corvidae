@@ -27,10 +27,43 @@ export interface GoalWorkflowLoadResult {
   readonly nowMs: number;
 }
 
-function toView(record: GoalWorkflowRecord): GoalWorkflowView {
+/**
+ * Built field by field. `GoalState` satisfies `GoalWorkflowRecord` structurally
+ * and carries far more at runtime (the objective, the conversation policy and
+ * its artifact, the principal, the audit log), and every load is cached in the
+ * workflow's history, so a spread would copy all of it on every load.
+ */
+export function toGoalWorkflowView(record: GoalWorkflowRecord): GoalWorkflowView {
   return {
-    ...record,
-    attempts: record.attempts.map(({ validation: _validation, ...attempt }) => attempt),
+    goalRunId: record.goalRunId,
+    status: record.status,
+    transitionSeq: record.transitionSeq,
+    validator: record.validator,
+    ...(record.validatorTimeoutMs === undefined
+      ? {}
+      : { validatorTimeoutMs: record.validatorTimeoutMs }),
+    bounds: record.bounds,
+    ...(record.retryPolicy === undefined ? {} : { retryPolicy: record.retryPolicy }),
+    attempts: record.attempts.map((attempt) => ({
+      attemptId: attempt.attemptId,
+      attemptIndex: attempt.attemptIndex,
+      runId: attempt.runId,
+      sessionId: attempt.sessionId,
+      startedAt: attempt.startedAt,
+      ...(attempt.completedAt === undefined ? {} : { completedAt: attempt.completedAt }),
+      ...(attempt.finishReason === undefined ? {} : { finishReason: attempt.finishReason }),
+      ...(attempt.feedback === undefined ? {} : { feedback: attempt.feedback }),
+      usage: attempt.usage,
+      status: attempt.status,
+    })),
+    usage: record.usage,
+    ...(record.active === undefined ? {} : { active: record.active }),
+    ...(record.cancellation === undefined
+      ? {}
+      : { cancellation: { requestedAt: record.cancellation.requestedAt } }),
+    ...(record.terminalReason === undefined ? {} : { terminalReason: record.terminalReason }),
+    ...(record.failureDetail === undefined ? {} : { failureDetail: record.failureDetail }),
+    createdAt: record.createdAt,
   };
 }
 
@@ -41,7 +74,7 @@ export function createGoalWorkflowActivities(ports: GoalWorkflowPorts) {
       idempotent: true,
       execute: async (input: { goalRunId: string }): Promise<GoalWorkflowLoadResult> => {
         const { record, nowMs } = await ports.loadGoalState(input.goalRunId);
-        return { view: record === undefined ? undefined : toView(record), nowMs };
+        return { view: record === undefined ? undefined : toGoalWorkflowView(record), nowMs };
       },
     }),
 

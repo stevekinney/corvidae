@@ -41,6 +41,7 @@ import {
 } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
+import { isSessionAuthorityAuthorized } from './session-authority';
 import { freshHandoff, pollUntil, transcriptOf } from './testing/goal-fixtures.test-support';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
@@ -139,7 +140,24 @@ async function world(options: WorldOptions = {}) {
     recover: false,
   });
   disposers.push(() => engine[Symbol.dispose]());
-  const durable: DurableActiveRunContext = { engine, checkpointStore };
+  // A read that fails for as many calls as `checkpointReadFaults.remaining` says.
+  const checkpointReadFaults = { remaining: 0 };
+  const faultyCheckpointStore = new Proxy(checkpointStore, {
+    get(target, property) {
+      if (property === 'loadCheckpoint') {
+        return (...loadArguments: Parameters<typeof target.loadCheckpoint>) => {
+          if (checkpointReadFaults.remaining > 0) {
+            checkpointReadFaults.remaining -= 1;
+            return Promise.reject(new Error('storage hiccup'));
+          }
+          return target.loadCheckpoint(...loadArguments);
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === 'function' ? (value.bind(target) as unknown) : value;
+    },
+  });
+  const durable: DurableActiveRunContext = { engine, checkpointStore: faultyCheckpointStore };
   const store: GoalStore = createGoalStore(textValueStore(new MemoryStorage()));
   await store.create(
     createGoalState({
@@ -188,7 +206,17 @@ async function world(options: WorldOptions = {}) {
     cancelRun: options.cancelRun ?? (() => Promise.resolve({ status: 'requested' })),
     resolveCostEstimation: () => Promise.resolve(undefined),
   });
-  return { durable, engine, store, ports, watched, runtime, sessions, conversations };
+  return {
+    durable,
+    engine,
+    store,
+    ports,
+    watched,
+    runtime,
+    sessions,
+    conversations,
+    checkpointReadFaults,
+  };
 }
 
 const startRequest = (feedback?: string) => ({
@@ -911,5 +939,165 @@ describe('startAttempt after a crash between the engine start and the session wr
       ['goal-g1-a0', 'completed'],
       ['goal-g1-a1', 'running'],
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A transcript that cannot be read is never recorded as absent
+// ---------------------------------------------------------------------------
+
+describe("startAttempt when the previous attempt's transcript cannot be read", () => {
+  /** Attempt 0 has ended in the engine and is recorded in its session, but not yet settled. */
+  async function endedButUnsettled(w: World) {
+    await startDurableRunResult(w.durable, {
+      runId: 'goal-g1-a0',
+      sessionId: 'goal-g1-a0',
+      options: agentOptions(() => Promise.resolve({ content: 'nope', toolCalls: [] })),
+      prompt: 'work',
+    });
+    const record = await w.store.get('g1');
+    if (record === undefined) throw new Error('the goal record is missing');
+    await w.conversations.recordStart(record, { attemptIndex: 0, runId: 'goal-g1-a0' });
+  }
+
+  it('under continue, retries the read instead of seeding the retry without attempt 0', async () => {
+    const { state, startAttemptRun } = dyingStarter();
+    state.dies = false;
+    const w = await world({ startAttemptRun });
+    await endedButUnsettled(w);
+    w.checkpointReadFaults.remaining = 1;
+
+    expect(await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')))).toThrow(
+      'storage hiccup',
+    );
+    // Nothing was started, and the run is still open for the next try to settle.
+    expect(state.starts).toEqual([]);
+    expect(await runsOf(w, 'goal-g1-s0')).toEqual([['goal-g1-a0', 'running']]);
+
+    expect(await w.ports.startAttempt(startRequest('say done'))).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s0',
+    });
+    expect(seededTranscript(state.starts[0]!.input)).toEqual([
+      'user: work',
+      'assistant: nope',
+      'user: say done',
+    ]);
+  });
+
+  it('under continue, refuses a trunk whose completed run recorded no transcript', async () => {
+    const { state, startAttemptRun } = dyingStarter();
+    state.dies = false;
+    const w = await world({ startAttemptRun });
+    await finishAttemptZero(w);
+    // The shape a swallowed read left behind before settle required the transcript.
+    await w.sessions.update('goal-g1-s0', (session) =>
+      session === undefined
+        ? undefined
+        : {
+            ...session,
+            runs: session.runs.map(({ conversationBoundary: _boundary, ...run }) => run),
+          },
+    );
+
+    expect(await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')))).toThrow(
+      'has not committed its transcript',
+    );
+    expect(state.starts).toEqual([]);
+  });
+
+  it('under fork-from-baseline, retries the read rather than ending the goal over it', async () => {
+    const { state, startAttemptRun } = dyingStarter();
+    state.dies = false;
+    const w = await world({
+      startAttemptRun,
+      policy: { kind: 'fork-from-baseline', throughRun: 0 },
+    });
+    await endedButUnsettled(w);
+    w.checkpointReadFaults.remaining = 1;
+
+    expect(await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')))).toThrow(
+      'storage hiccup',
+    );
+    expect(await w.ports.startAttempt(startRequest('say done'))).toMatchObject({
+      status: 'started',
+    });
+  });
+});
+
+describe("startAttempt after the retry's session was written and its source went away", () => {
+  it('under fresh-from-artifact, continues in the stored session rather than ending the goal', async () => {
+    const runtime = createManualRuntimeServices();
+    const { artifact, resolveSource } = await freshHandoff(
+      'Make the check pass.',
+      new Date(runtime.clock.now()),
+    );
+    const { state, startAttemptRun } = dyingStarter();
+    let vouching = true;
+    const w = await world({
+      runtime,
+      startAttemptRun,
+      policy: { kind: 'fresh-from-artifact', artifact },
+      instructions: 'Be careful.',
+      resolveFreshAttemptSource: (source) => (vouching ? resolveSource(source) : undefined),
+    });
+    await finishAttemptZero(w);
+    await throwingRejectionOf(w.ports.startAttempt(startRequest('say done')));
+    const written = await w.sessions.load('goal-g1-s1');
+    expect(written).toBeDefined();
+
+    // Recovery finds the artifact's source gone, but the session it needs is stored.
+    vouching = false;
+    state.dies = false;
+    expect(await w.ports.startAttempt(startRequest('say done'))).toEqual({
+      status: 'started',
+      sessionId: 'goal-g1-s1',
+    });
+    const seeded = seededTranscript(state.starts[0]!.input);
+    expect(seeded[0]).toBe('system: Be careful.');
+    expect(seeded.at(-1)).toBe('user: work');
+  });
+});
+
+describe("the authority recorded on a goal's sessions", () => {
+  it.each([
+    ['continue', { kind: 'continue' }, 'goal-g1-s0'],
+    ['fork-from-baseline', { kind: 'fork-from-baseline', throughRun: 0 }, 'goal-g1-s1'],
+  ] as const)(
+    "under %s, the retry session belongs to the goal's principal",
+    async (_name, policy, sessionId) => {
+      const { state, startAttemptRun } = dyingStarter();
+      state.dies = false;
+      const w = await world({ startAttemptRun, policy });
+      await finishAttemptZero(w);
+      await w.ports.startAttempt(startRequest('say done'));
+
+      const session = await w.sessions.load(sessionId);
+      expect(isSessionAuthorityAuthorized(session!.metadata, 'alice')).toBe(true);
+      expect(isSessionAuthorityAuthorized(session!.metadata, 'bob')).toBe(false);
+    },
+  );
+
+  it("under fresh-from-artifact, the fresh session belongs to the goal's principal", async () => {
+    const runtime = createManualRuntimeServices();
+    const { artifact, resolveSource } = await freshHandoff(
+      'Make the check pass.',
+      new Date(runtime.clock.now()),
+    );
+    const { state, startAttemptRun } = dyingStarter();
+    state.dies = false;
+    const w = await world({
+      runtime,
+      startAttemptRun,
+      policy: { kind: 'fresh-from-artifact', artifact },
+      instructions: 'Be careful.',
+      resolveFreshAttemptSource: resolveSource,
+    });
+    await finishAttemptZero(w);
+    await w.ports.startAttempt(startRequest('say done'));
+
+    const session = await w.sessions.load('goal-g1-s1');
+    expect(isSessionAuthorityAuthorized(session!.metadata, 'alice')).toBe(true);
+    expect(isSessionAuthorityAuthorized(session!.metadata, 'bob')).toBe(false);
   });
 });

@@ -169,6 +169,16 @@ export function createBureauGoals<TName extends string = string>(
       }
     }
 
+    // A durable goal has no session before its first attempt, so the one run a
+    // retry can fork through is attempt 0. Any other baseline could never be
+    // satisfied, and would only be found out after an attempt had been spent.
+    if (conversationPolicy?.kind === 'fork-from-baseline' && conversationPolicy.throughRun !== 0) {
+      return rejected(
+        'invalid-configuration',
+        `fork-from-baseline: throughRun must be 0 for a durable goal, whose only baseline is its first attempt; got ${conversationPolicy.throughRun}.`,
+      );
+    }
+
     const goalRunId = request.goalRunId ?? runtime.identifiers.next('goal-run');
     let state: GoalState;
     try {

@@ -170,23 +170,21 @@ describe('a durable goal under the fork-from-baseline policy', () => {
     });
   });
 
-  it('ends the goal when the baseline run does not exist, as an out-of-range fork point does in memory', async () => {
+  it('refuses a baseline run no durable goal can have, before any attempt is spent on it', async () => {
     const seen: string[][] = [];
     const bureau = await boot({
       agents: { worker: workerAgent(scriptedGenerate(['nope'], seen)) },
       validators: [createCheckValidator()],
     });
 
-    await bureau.goals.create(
+    const outcome = await bureau.goals.create(
       goalRequest({ conversationPolicy: { kind: 'fork-from-baseline', throughRun: 5 } }),
     );
-    const goal = await ended(bureau);
 
-    expect(goal).toMatchObject({ status: 'failed', terminalReason: 'attempt-run-failed' });
-    expect(goal.failureDetail).toContain('Applying the conversation policy failed');
-    expect(goal.attempts).toHaveLength(1);
-    // Only attempt 0 ever ran.
-    expect(seen).toEqual([[WORK]]);
+    expect(outcome).toMatchObject({ outcome: 'rejected', code: 'invalid-configuration' });
+    expect((outcome as { reason: string }).reason).toContain('throughRun');
+    expect(await bureau.goals.list()).toEqual([]);
+    expect(seen).toEqual([]);
   });
 });
 

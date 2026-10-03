@@ -199,13 +199,17 @@ function engineStatusToRunRefStatus(
 async function loadTerminalConversationHistory(
   checkpointStore: CheckpointStore | undefined,
   runId: string,
+  requireConversation = false,
 ): Promise<ConversationHistory | undefined> {
   if (!checkpointStore) return undefined;
   try {
     const checkpoint = await checkpointStore.loadCheckpoint(runId);
     if (checkpoint.conversation === null) return undefined;
     return Conversation.from(checkpoint.conversation).current;
-  } catch {
+  } catch (error) {
+    // A caller that needs the transcript would rather retry than record the
+    // run as ended without it: a terminal ref is never reconciled again.
+    if (requireConversation) throw error;
     return undefined;
   }
 }
@@ -227,6 +231,7 @@ async function readTerminalRunOutcome(
   engine: RegistryAgnosticEngine,
   checkpointStore: CheckpointStore | undefined,
   runId: string,
+  requireConversation: boolean,
 ): Promise<{
   status: RunRef['status'];
   conversation?: ConversationHistory | undefined;
@@ -243,7 +248,13 @@ async function readTerminalRunOutcome(
     return null;
   }
 
-  const conversation = await loadTerminalConversationHistory(checkpointStore, runId);
+  // Only a run that completed is owed a transcript: one that failed or was
+  // cancelled may never have checkpointed a step.
+  const conversation = await loadTerminalConversationHistory(
+    checkpointStore,
+    runId,
+    requireConversation && state.status === 'completed',
+  );
 
   if (state.status !== 'completed') {
     const finishReason = state.status === 'cancelled' ? 'aborted' : 'error';
@@ -307,8 +318,21 @@ export async function reconcileTerminalRunRef(
   checkpointStore: CheckpointStore | undefined,
   sessionId: string,
   runningRef: RunRef,
+  options: {
+    /**
+     * Reject, leaving the ref `running`, when a completed run's checkpoint
+     * cannot be read, rather than recording the run as ended without its
+     * transcript. Defaults to `false`, which is what `recover()` has always done.
+     */
+    readonly requireConversation?: boolean;
+  } = {},
 ): Promise<void> {
-  const outcome = await readTerminalRunOutcome(engine, checkpointStore, runningRef.runId);
+  const outcome = await readTerminalRunOutcome(
+    engine,
+    checkpointStore,
+    runningRef.runId,
+    options.requireConversation ?? false,
+  );
   if (!outcome) return;
 
   const committed = await store.update(sessionId, (freshSession) => {

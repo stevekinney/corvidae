@@ -281,3 +281,77 @@ describe('recover() — terminal reconciliation', () => {
     expect(persisted?.runs.find((r) => r.runId === runId)?.status).toBe('running');
   });
 });
+
+describe('reconcileTerminalRunRef — a checkpoint that cannot be read', () => {
+  async function failingReadWorld() {
+    const sessionId = 'cor-851-unreadable-checkpoint';
+    const runId = `${sessionId}:0`;
+    const store = await seedRunningSession(sessionId, runId);
+    const engine = createSessionEngine({
+      get: async () => ({
+        id: runId,
+        status: 'completed',
+        result: {
+          schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          runId,
+          steps: 1,
+          content: 'done',
+          finishReason: 'stop-condition',
+        },
+      }),
+    });
+    let reads = 0;
+    const recovered = new Conversation(createConversationHistory());
+    recovered.appendUserMessage('hi');
+    const checkpointStore = createCheckpointStoreFixture(async () => {
+      reads += 1;
+      if (reads === 1) throw new Error('storage hiccup');
+      return {
+        conversation: recovered.snapshot(),
+        cursor: { totalUsage: {}, lastContent: 'done', schemaAttempts: 0 },
+        steps: [],
+      };
+    });
+    const running = {
+      runId,
+      sequence: 0,
+      status: 'running',
+      startedAt: fixtureRuntime.clock.nowISO(),
+      agentName: 'agent',
+    } as const;
+    return { sessionId, store, engine, checkpointStore, running };
+  }
+
+  it('by default marks the run terminal without its transcript, as recover() always has', async () => {
+    const { sessionId, store, engine, checkpointStore, running } = await failingReadWorld();
+
+    await reconcileTerminalRunRef(store, engine, checkpointStore, sessionId, running);
+
+    const session = await store.load(sessionId);
+    const ref = session?.runs[0];
+    expect(ref?.status).toBe('completed');
+    expect(ref?.conversationBoundary).toBeUndefined();
+  });
+
+  it('when the transcript is required, leaves the run open so the read can be retried', async () => {
+    const { sessionId, store, engine, checkpointStore, running } = await failingReadWorld();
+
+    expect(
+      await throwingRejectionOf(
+        reconcileTerminalRunRef(store, engine, checkpointStore, sessionId, running, {
+          requireConversation: true,
+        }),
+      ),
+    ).toThrow('storage hiccup');
+    const stranded = await store.load(sessionId);
+    expect(stranded?.runs[0]?.status).toBe('running');
+
+    await reconcileTerminalRunRef(store, engine, checkpointStore, sessionId, running, {
+      requireConversation: true,
+    });
+    const settled = await store.load(sessionId);
+    const ref = settled?.runs[0];
+    expect(ref?.status).toBe('completed');
+    expect(ref?.conversationBoundary).toBeDefined();
+  });
+});

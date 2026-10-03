@@ -51,7 +51,8 @@ export interface BureauGoalRequest<TName extends string = string> {
    *   validator's feedback appended to the transcript.
    * - `fork-from-baseline`: attempt 0 runs in the goal's session and every retry
    *   runs in a fork of it through `throughRun`. A goal has no session before
-   *   its first attempt, so the run a retry can fork through is run 0.
+   *   its first attempt, so the run a retry can fork through is run 0 and
+   *   `create` rejects any other `throughRun` as `invalid-configuration`.
    * - `fresh-from-artifact`: every retry starts a new conversation from
    *   `instructions` and the validated handoff artifact, with no transcript.
    */

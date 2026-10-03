@@ -11,6 +11,10 @@
  * (`GoalConversations.settle`), so the next attempt and the validator always
  * find it, on the live path and the recovery path alike.
  *
+ * A failure while forwarding (a session store or engine hiccup) is retried a
+ * few times with backoff before it is diagnosed, since nothing else would send
+ * the signal until the next boot.
+ *
  * Three things keep a lost forwarder from parking a goal forever:
  *
  * - The signal id is `attempt-terminal:<goalRunId>:<n>`, so sending it twice
@@ -68,7 +72,17 @@ export interface AttemptForwarderDependencies {
   readonly conversations: Pick<GoalConversations, 'settle'>;
   readonly isClosing: () => boolean;
   readonly diagnose: DiagnosticSink;
+  /**
+   * How long to wait before each further try when forwarding an attempt's end
+   * fails (a store or engine hiccup); one entry per retry. Defaults to
+   * {@link DEFAULT_FORWARD_RETRY_DELAYS_MS}. Once they are spent the failure is
+   * diagnosed and recovery is what sends the signal.
+   */
+  readonly retryDelaysMs?: readonly number[] | undefined;
 }
+
+/** Four retries over about eight seconds: long enough to ride out a hiccup, short enough to bound a dispose. */
+export const DEFAULT_FORWARD_RETRY_DELAYS_MS: readonly number[] = [100, 400, 1_600, 6_400];
 
 export type AttemptReconciliation =
   /** The run is alive; a watcher is attached. */
@@ -96,6 +110,7 @@ export function createAttemptForwarder(
 ): AttemptForwarder {
   const { store, runtime, getDurable, resolveCostEstimation, conversations, isClosing, diagnose } =
     dependencies;
+  const retryDelaysMs = dependencies.retryDelaysMs ?? DEFAULT_FORWARD_RETRY_DELAYS_MS;
   const watching = new Map<string, Promise<void>>();
   const sending = new Set<Promise<unknown>>();
 
@@ -191,16 +206,29 @@ export function createAttemptForwarder(
     const task = (async (): Promise<void> => {
       await untilEnded(target, live);
       if (isClosing()) return;
-      try {
-        await track(forward(target));
-      } catch (error) {
-        if (isClosing()) return;
-        diagnose({
-          level: 'error',
-          scope: 'goals',
-          message: `[bureau] Could not forward the end of attempt ${target.attemptIndex} of goal "${target.goalRunId}"; recovery will send it again: ${describe(error)}`,
-          cause: error,
-        });
+      // The controller waits on this signal with no deadline of its own, and
+      // recovery runs only at boot, so a transient failure is retried here.
+      for (let retry = 0; ; retry += 1) {
+        try {
+          await track(forward(target));
+          return;
+        } catch (error) {
+          if (isClosing()) return;
+          const delay = retryDelaysMs[retry];
+          if (delay === undefined) {
+            diagnose({
+              level: 'error',
+              scope: 'goals',
+              message: `[bureau] Could not forward the end of attempt ${target.attemptIndex} of goal "${target.goalRunId}"; recovery will send it again: ${describe(error)}`,
+              cause: error,
+            });
+            return;
+          }
+          await new Promise<void>((resolve) => {
+            runtime.timers.setTimeout(resolve, delay);
+          });
+          if (isClosing()) return;
+        }
       }
     })().finally(() => {
       watching.delete(target.runId);

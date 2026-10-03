@@ -77,7 +77,13 @@ function withSignal(
   });
 }
 
-async function world(goalOverrides: { maximumTotalCostUsd?: number } = {}) {
+async function world(
+  goalOverrides: { maximumTotalCostUsd?: number } = {},
+  forwarding: {
+    retryDelaysMs?: readonly number[];
+    settle?: (attemptIndex: number, runId: string) => Promise<void>;
+  } = {},
+) {
   const storage = new MemoryStorage();
   const checkpointStore = createCheckpointStore(
     textValueStore(storage, { disposeUnderlyingStorage: false }),
@@ -122,12 +128,13 @@ async function world(goalOverrides: { maximumTotalCostUsd?: number } = {}) {
       return Promise.resolve({ model: 'gpt-4o' });
     },
     conversations: {
-      settle: (_record, attemptIndex, runId) => {
+      settle: async (_record, attemptIndex, runId) => {
         order.push('settle');
         settled.push({ attemptIndex, runId });
-        return Promise.resolve();
+        await forwarding.settle?.(attemptIndex, runId);
       },
     },
+    ...(forwarding.retryDelaysMs === undefined ? {} : { retryDelaysMs: forwarding.retryDelaysMs }),
     isClosing: () => closing,
     diagnose: (diagnostic) => diagnostics.push(diagnostic),
   });
@@ -329,5 +336,48 @@ describe('createAttemptForwarder', () => {
     expect(await quiet.reconcile(target)).toBe('not-needed');
     void forwarder;
     expect(diagnostics).toEqual([]);
+  });
+
+  it('sends the ending again, in this process, when forwarding it failed in passing', async () => {
+    let failures = 2;
+    const { durable, sent, forwarder, diagnostics } = await world(
+      {},
+      {
+        retryDelaysMs: [0, 0, 0],
+        settle: async () => {
+          if (failures > 0) {
+            failures -= 1;
+            throw new Error('session store hiccup');
+          }
+        },
+      },
+    );
+    await finishedRun(durable);
+
+    forwarder.watch(target);
+    await pollUntil(() => sent.length === 1);
+
+    expect(failures).toBe(0);
+    expect(sent[0]).toMatchObject({ name: 'attempt-terminal:0' });
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('gives up with one diagnostic once its retries are spent, leaving the rest to recovery', async () => {
+    const { durable, sent, forwarder, diagnostics } = await world(
+      {},
+      {
+        retryDelaysMs: [0, 0],
+        settle: () => Promise.reject(new Error('session store is down')),
+      },
+    );
+    await finishedRun(durable);
+
+    forwarder.watch(target);
+    await pollUntil(() => diagnostics.length === 1);
+    await forwarder.drain();
+
+    expect(sent).toEqual([]);
+    expect(diagnostics[0]).toMatchObject({ level: 'error', scope: 'goals' });
+    expect(diagnostics[0]?.message).toContain('session store is down');
   });
 });
