@@ -1163,6 +1163,32 @@ describe('runValidator', () => {
     expect(JSON.parse(JSON.stringify(result))).toEqual(result);
   });
 
+  it("aborts the validator's own signal when the activity's signal aborts, so a cancelled goal's validator stops and the verdict reads as canceled", async () => {
+    let validatorSignal: AbortSignal | undefined;
+    const { ports } = await evaluating({
+      validators: [
+        {
+          identity: CHECK,
+          validate: (_input, signal) => {
+            validatorSignal = signal;
+            return new Promise(() => {});
+          },
+        },
+      ],
+    });
+    const cancelled = new AbortController();
+
+    const running = ports.runValidator(request, cancelled.signal);
+    for (let turn = 0; turn < 200 && validatorSignal === undefined; turn += 1) {
+      await Promise.resolve();
+    }
+    expect(validatorSignal?.aborted).toBe(false);
+    cancelled.abort();
+
+    expect(validatorSignal?.aborted).toBe(true);
+    expect(await running).toMatchObject({ outcome: { kind: 'canceled' } });
+  });
+
   it.each([
     ['a null entry', [null]],
     ['a string entry', ['unit']],

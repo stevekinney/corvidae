@@ -153,8 +153,8 @@ export function createGoalWorkflowHost(): GoalWorkflowHost {
       Promise.resolve().then(() => need('commitTransition').commitTransition(request)),
     startAttempt: (request, signal) =>
       Promise.resolve().then(() => need('startAttempt').startAttempt(request, signal)),
-    runValidator: (request) =>
-      Promise.resolve().then(() => need('runValidator').runValidator(request)),
+    runValidator: (request, signal) =>
+      Promise.resolve().then(() => need('runValidator').runValidator(request, signal)),
     abortAttempt: (request) =>
       Promise.resolve().then(() => need('abortAttempt').abortAttempt(request)),
   };
@@ -497,6 +497,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
 
   async function runValidator(
     request: GoalWorkflowValidatorRequest,
+    signal?: AbortSignal,
   ): Promise<ProjectedValidatorResult> {
     const startedAt = runtime.clock.nowISO();
     const unavailable = (
@@ -578,7 +579,10 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         result: reading.result,
         history: record.attempts.slice(0, request.attemptIndex).map(toAttemptRecord),
       },
-      noAbort,
+      // The activity's signal, which Weft aborts when the controller is cancelled
+      // or the try times out; the executor composes it with the validator's own
+      // timeout, so either stops a validator that honors its signal.
+      signal ?? noAbort,
       { timeoutMs: request.validatorTimeoutMs, runtime },
     );
     const projected = projectValidatorResult({

@@ -98,8 +98,10 @@ export function createGoalWorkflowActivities(ports: GoalWorkflowPorts) {
     runValidator: activity({
       name: 'runValidator',
       idempotent: true,
-      execute: (input: GoalWorkflowValidatorRequest): Promise<ProjectedValidatorResult> =>
-        ports.runValidator(input),
+      execute: (
+        input: GoalWorkflowValidatorRequest,
+        context?: ActivityContext,
+      ): Promise<ProjectedValidatorResult> => ports.runValidator(input, context?.signal),
     }),
 
     abortAttempt: activity({

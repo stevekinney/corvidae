@@ -264,9 +264,16 @@ export interface GoalWorkflowPorts {
    * Runs the catalogued validator, normalizes and projects its output, and
    * bounds it to the inline cap. A throwing or malformed validator is an
    * `error` outcome here, never a throw: the controller treats a throw as a
-   * controller failure, not a verdict.
+   * controller failure, not a verdict. `signal` is the activity's own: Weft
+   * aborts it when the controller is cancelled or the try times out, and it is
+   * composed into the validator's own signal so a validator that honors it stops
+   * instead of running on for a goal that is over (the verdict then reads as
+   * `canceled`, and is discarded by a controller that has been cancelled).
    */
-  runValidator(request: GoalWorkflowValidatorRequest): Promise<ProjectedValidatorResult>;
+  runValidator(
+    request: GoalWorkflowValidatorRequest,
+    signal?: AbortSignal,
+  ): Promise<ProjectedValidatorResult>;
   /** Stops the attempt's run. A no-op when the run was never started or already ended. */
   abortAttempt(request: GoalWorkflowAbortRequest): Promise<void>;
 }

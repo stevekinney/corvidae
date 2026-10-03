@@ -8,8 +8,10 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { toGoalWorkflowView } from './goal-workflow-activities';
-import type { GoalWorkflowRecord } from './goal-workflow-ports';
+import type { ActivityContext } from '@lostgradient/weft';
+
+import { createGoalWorkflowActivities, toGoalWorkflowView } from './goal-workflow-activities';
+import type { GoalWorkflowPorts, GoalWorkflowRecord } from './goal-workflow-ports';
 
 const record: GoalWorkflowRecord = {
   goalRunId: 'g1',
@@ -84,5 +86,36 @@ describe('toGoalWorkflowView', () => {
     expect(view.cancellation).toEqual({ requestedAt: '2026-10-02T12:00:03.000Z' });
     expect(Object.keys(view.attempts[0]!)).not.toContain('sessionMetadata');
     expect(JSON.stringify(view)).not.toContain('pppp');
+  });
+});
+
+describe('the activities the controller runs the host ports through', () => {
+  it("hands the validator activity's own signal to the port, so a cancelled goal's validator can stop", async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const activities = createGoalWorkflowActivities({
+      runValidator: (_request: unknown, signal?: AbortSignal) => {
+        seen.push(signal);
+        return Promise.resolve({
+          identity: { name: 'check', version: '1' },
+          startedAt: '2026-10-02T12:00:00.000Z',
+          completedAt: '2026-10-02T12:00:00.000Z',
+          outcome: { kind: 'canceled' },
+        });
+      },
+    } as unknown as GoalWorkflowPorts);
+    const controller = new AbortController();
+
+    await activities.runValidator(
+      {
+        goalRunId: 'g1',
+        attemptId: 'a0',
+        attemptIndex: 0,
+        validator: { name: 'check', version: '1' },
+        validatorTimeoutMs: undefined,
+      },
+      { signal: controller.signal } as ActivityContext,
+    );
+
+    expect(seen).toEqual([controller.signal]);
   });
 });
