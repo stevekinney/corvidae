@@ -43,8 +43,12 @@ export function abandonWorkflowAfterCheckpointConflict(
 ): void {
   const { workflowId } = error;
   if (internals.checkpointConflicts.has(workflowId)) return;
-  // Read before release: the run's identity lives in the in-memory checkpoint.
-  const workflowExecutionToken = workflowExecutionTokenForWorkflow(internals, workflowId);
+  // The loss belongs to the generation whose commit lost, which the error carries.
+  // A local replacement (start-new, resume) may have installed a new generation
+  // under this id while the loss was classified; that healthy run is not ours to
+  // abandon.
+  const { workflowExecutionToken } = error;
+  if (workflowExecutionTokenForWorkflow(internals, workflowId) !== workflowExecutionToken) return;
   try {
     internals.strategy.retireWorkflow(workflowId);
   } catch {
@@ -143,7 +147,10 @@ export function abandonParentOfAbandonedChild(
     }
     abandonWorkflowAfterCheckpointConflict(
       internals,
-      new WorkflowCheckpointConflictError(parentWorkflowId, { cause: error }),
+      new WorkflowCheckpointConflictError(parentWorkflowId, {
+        cause: error,
+        workflowExecutionToken: awaitingGeneration,
+      }),
       { swallowPromiseRejection },
     );
     return new Promise<never>(() => {});

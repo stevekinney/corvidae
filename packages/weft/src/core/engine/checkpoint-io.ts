@@ -502,16 +502,22 @@ async function throwCheckpointCommitLoss(
   workflowId: string,
   commit: CheckpointCommit,
 ): Promise<never> {
+  // Captured before the classification read awaits: a local replacement run can
+  // install itself under this id while that read is in flight.
+  const { workflowExecutionToken } = commit.checkpoint;
   let checkpointChanged: boolean;
   try {
     checkpointChanged = await checkpointBytesChangedUnderWriter(internals, workflowId, commit);
   } catch (readError) {
     // The compare-and-swap already lost. If the loss cannot be classified it
     // must stay on the write-free conflict path, never fail the run normally.
-    throw new WorkflowCheckpointConflictError(workflowId, { cause: readError });
+    throw new WorkflowCheckpointConflictError(workflowId, {
+      cause: readError,
+      workflowExecutionToken,
+    });
   }
   if (checkpointChanged) {
-    throw new WorkflowCheckpointConflictError(workflowId);
+    throw new WorkflowCheckpointConflictError(workflowId, { workflowExecutionToken });
   }
   throw new Error(
     `Checkpoint commit for workflow "${workflowId}" lost its CAS race against a newer checkpoint.`,

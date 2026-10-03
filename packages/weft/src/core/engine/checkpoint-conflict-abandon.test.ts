@@ -13,7 +13,7 @@ import { describe, expect, it, spyOn } from 'bun:test';
 
 import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { createDeferred } from '../../testing/fake-timers.test-support.ts';
+import { createDeferred, yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { DurableActivityScopeError, durableActivity } from '../context/durable-activity.ts';
@@ -36,7 +36,7 @@ import { getWorkflowResultPromise } from './handle-result.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { workflowFeedListenerKey } from './state-utilities.ts';
-import { swallowPromiseRejection } from './strategy-helpers.ts';
+import { swallowPromiseRejection, workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
 import { cleanupTerminalWorkflowMemory } from './termination/cleanup.ts';
 import { failWorkflow } from './termination/complete.ts';
 import { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
@@ -335,7 +335,9 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     const warning = collectConflictWarnings();
     abandonWorkflowAfterCheckpointConflict(
       internals,
-      new WorkflowCheckpointConflictError('in-flight'),
+      new WorkflowCheckpointConflictError('in-flight', {
+        workflowExecutionToken: workflowExecutionTokenForWorkflow(internals, 'in-flight'),
+      }),
       { swallowPromiseRejection },
     );
     await warning.received;
@@ -491,6 +493,97 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
 
     expect(reason).toBe(failure);
     expect(internals.checkpointConflicts.size).toBe(0);
+  });
+});
+
+describe('scoping abandonment to the generation that lost', () => {
+  it('leaves a replacement generation installed during loss classification alone', async () => {
+    const base = new MemoryStorage();
+    const armed = { value: false };
+    const { storage, state } = createLosingStorage(base, 'scoped-loss', armed);
+    const classificationReached = createDeferred();
+    const releaseClassification = createDeferred();
+    let held = false;
+    // Hold the read that classifies the lost commit, as an interleaved local
+    // start-new or resume would land while it awaits.
+    const classifying = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (property !== 'get' || typeof original !== 'function') {
+          return typeof original === 'function' ? original.bind(target) : original;
+        }
+        return async (key: string) => {
+          if (state.lost && !held && key === KEYS.checkpoint('scoped-loss')) {
+            held = true;
+            classificationReached.resolve();
+            await releaseClassification.promise;
+          }
+          return original.call(target, key);
+        };
+      },
+    });
+    const definition = workflow({ name: 'scoped-loss' }).execute(async function* (
+      context: WorkflowContext,
+    ) {
+      yield* context.run(() => {
+        armed.value = true;
+        return 'a';
+      });
+      yield* context.run(() => 'b');
+      return yield* context.waitForSignal<string>('go');
+    });
+    const warning = collectConflictWarnings();
+    await using engine = new Engine({ storage: classifying });
+    engine.register(definition);
+    await engine.start('scoped-loss', null, { id: 'scoped-loss' });
+    await classificationReached.promise;
+    const internals = getInternals(engine);
+    const replacement = {
+      ...internals.checkpoints.get('scoped-loss')!,
+      workflowExecutionToken: 'replacement-generation',
+    };
+    // A replacement launch drops the old generation's in-flight operation record.
+    internals.durableInlineOperations.delete('scoped-loss');
+    internals.checkpoints.set('scoped-loss', replacement);
+
+    releaseClassification.resolve();
+    await yieldToEventLoop();
+    warning.stop();
+
+    expect(warning.warnings).toEqual([]);
+    expect(internals.checkpointConflicts.has('scoped-loss')).toBe(false);
+    expect(internals.checkpoints.get('scoped-loss')).toBe(replacement);
+    expect(state.writesAfterLoss).toEqual([]);
+    expect(await readStatus(base, 'scoped-loss')).toBe('running');
+  });
+
+  it('records the token of the generation that lost, from the error', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpoints.set('lost-generation', {
+      workflowExecutionToken: 'current-generation',
+    } as never);
+
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('lost-generation', {
+        workflowExecutionToken: 'older-generation',
+      }),
+      { swallowPromiseRejection },
+    );
+    expect(internals.checkpointConflicts.has('lost-generation')).toBe(false);
+    expect(internals.checkpoints.has('lost-generation')).toBe(true);
+
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('lost-generation', {
+        workflowExecutionToken: 'current-generation',
+      }),
+      { swallowPromiseRejection },
+    );
+    expect(internals.checkpointConflicts.get('lost-generation')?.workflowExecutionToken).toBe(
+      'current-generation',
+    );
   });
 });
 

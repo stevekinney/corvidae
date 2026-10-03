@@ -88,15 +88,26 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
  */
 export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpointConflictError'> {
   readonly workflowId: string;
+  /**
+   * The durable execution token of the run whose checkpoint commit lost, captured
+   * from the commit itself before the loss was classified. It scopes the loss to
+   * that generation: a replacement run installed under the same workflow id while
+   * the loss was being classified is not the loser.
+   */
+  readonly workflowExecutionToken: string | undefined;
 
-  constructor(workflowId: string, options?: ErrorOptions) {
+  constructor(
+    workflowId: string,
+    options?: ErrorOptions & { readonly workflowExecutionToken?: string },
+  ) {
     super(
       'WorkflowCheckpointConflictError',
       `Checkpoint commit for workflow "${workflowId}" lost its CAS race against a newer checkpoint: ` +
         'another writer over the same store advanced this workflow. This engine stops driving it ' +
         'and writes nothing further; the winning writer owns its durable state.',
-      options,
+      options?.cause === undefined ? undefined : { cause: options.cause },
     );
     this.workflowId = workflowId;
+    this.workflowExecutionToken = options?.workflowExecutionToken;
   }
 }
