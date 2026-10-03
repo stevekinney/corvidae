@@ -186,6 +186,13 @@ export function createCatalogDispatcher({
    * a goal attempt's.
    */
   const goalAttemptAttributions = new WeakMap<RunAttribution, GoalAttemptOwner>();
+  /**
+   * How many live executions of a goal attempt hold each attribution object. A
+   * same-attempt retry reuses the held object instead of replacing it, so an
+   * older execution's failure must not delete what the retry still relies on:
+   * the entry goes only when its last holder lets go.
+   */
+  const attributionHolders = new WeakMap<RunAttribution, number>();
 
   function trackCatalogRun(handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> {
     catalogRuns.add(handle);
@@ -267,11 +274,33 @@ export function createCatalogDispatcher({
     // existed would otherwise be a permanent phantom. A run that DOES
     // dispatch and settle keeps its attribution indefinitely (see
     // `trackCatalogRun`'s own doc comment) — it is not cleaned up here.
+    let ownAttribution: RunAttribution | undefined;
     if (principal !== undefined) {
-      const attribution: RunAttribution = { agentName: name, principal };
-      runAttribution.set(runId, attribution);
-      if (goalAttempt !== undefined) goalAttemptAttributions.set(attribution, goalAttempt);
+      const retained = runIdOverride === undefined ? undefined : runAttribution.get(runId);
+      if (retained !== undefined) {
+        // The same attempt's retry (any other holder threw above): it takes a
+        // share of the held object rather than replacing it.
+        ownAttribution = retained;
+      } else {
+        ownAttribution = { agentName: name, principal };
+        runAttribution.set(runId, ownAttribution);
+        if (goalAttempt !== undefined) goalAttemptAttributions.set(ownAttribution, goalAttempt);
+      }
+      attributionHolders.set(ownAttribution, (attributionHolders.get(ownAttribution) ?? 0) + 1);
     }
+    // Lets go of this execution's share, once. The entry is deleted only when
+    // the map still holds the very object this execution holds and no other
+    // execution of the attempt does.
+    let attributionReleased = false;
+    const releaseAttribution = (): void => {
+      if (ownAttribution === undefined || attributionReleased) return;
+      attributionReleased = true;
+      const remaining = (attributionHolders.get(ownAttribution) ?? 1) - 1;
+      attributionHolders.set(ownAttribution, remaining);
+      if (remaining <= 0 && runAttribution.get(runId) === ownAttribution) {
+        runAttribution.delete(runId);
+      }
+    };
     // Captured so the wrapper below can forward an abort straight to the
     // dispatched durable `ActiveRun` even in the race `createDeferredAgentRun`
     // does not close: `resolveDurableAgent` unconditionally starts the
@@ -389,7 +418,7 @@ export function createCatalogDispatcher({
           // on failure, so a direct run here would be work no restart can find,
           // launched again by the retry. There is no fallback for an attempt.
           if (goalAttempt !== undefined) {
-            runAttribution.delete(runId);
+            releaseAttribution();
             throw new GoalAttemptNotDurableCapableError(
               `Agent "${name}" cannot resolve its run options durably, so it cannot run a goal attempt: ${error.message}`,
             );
@@ -399,7 +428,7 @@ export function createCatalogDispatcher({
           // an attribution entry recorded above under `runId` would
           // otherwise be a permanent phantom, keyed to a run that never
           // existed.
-          runAttribution.delete(runId);
+          releaseAttribution();
           return agent;
         }
         throw error;
@@ -464,7 +493,7 @@ export function createCatalogDispatcher({
         // by the run's own fence instead, which also refuses any step until the goal
         // acknowledges the attempt as running (see goal-attempt-fence.ts).
         if (existing.record.goalAttempt?.tombstonedAt !== undefined) {
-          runAttribution.delete(runId);
+          releaseAttribution();
           throw new GoalAttemptTombstonedError(runId);
         }
         // The winning claim is immutable. Two at-least-once executions of one
@@ -554,7 +583,7 @@ export function createCatalogDispatcher({
         // applies, mirroring `createRunFromRequest`'s own
         // `runAttribution.delete(runId)` for a run that "never reached
         // `store.register`" (see that catch block, below).
-        runAttribution.delete(runId);
+        releaseAttribution();
         throw error;
       } finally {
         dispatchSettled?.();

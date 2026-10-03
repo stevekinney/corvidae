@@ -256,6 +256,10 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         stopWhen: stopWhen.noToolCalls(),
       });
       let calls = 0;
+      let failFirst: (error: unknown) => void = () => {};
+      const firstResolver = new Promise<never>((_resolve, reject) => {
+        failFirst = reject;
+      });
       const agent = new Proxy(worker, {
         get(target, property) {
           const value = Reflect.get(target, property, target) as unknown;
@@ -265,7 +269,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
           return (...resolverArguments: unknown[]) => {
             calls += 1;
             return calls === 1
-              ? new Promise<never>(() => {})
+              ? firstResolver
               : (Reflect.apply(value, target, resolverArguments) as unknown);
           };
         },
@@ -291,7 +295,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         validateBureauRunOptions: () => {},
         onDurableRunAborted: () => {},
       });
-      return { dispatcher, engine, runAttribution };
+      return { dispatcher, engine, runAttribution, failFirst };
     }
 
     it('lets the retry of the same attempt, agent, and principal reach the claim and start the workflow', async () => {
@@ -309,6 +313,41 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
 
       expect(await engine.get(attempt.runId)).not.toBeNull();
       await retry.run.result();
+    });
+
+    it('keeps the retry’s attribution when the older execution fails after the retry took over', async () => {
+      const { dispatcher, runAttribution, failFirst } = await hungFirstResolver();
+      const older = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      const retry = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      await retry.durablyStarted;
+      const held = runAttribution.get(attempt.runId);
+
+      failFirst(new Error('the older resolver failed late'));
+      expect(await settle(older)).toEqual(expect.objectContaining({ message: expect.any(String) }));
+
+      // The retry's workflow is live: its owner's attribution is still held, by the
+      // very object the retry holds, so a foreign principal is still refused.
+      expect(runAttribution.get(attempt.runId)).toBe(held);
+      expect(held).toEqual({ agentName: 'worker', principal: 'alice' });
+      await retry.run.result();
+    });
+
+    it('drops the attribution once every execution holding it has failed', async () => {
+      const { dispatcher, runAttribution, failFirst } = await hungFirstResolver({
+        claimCatalogRunRecoveryRecord: async () => {
+          throw new Error('claim write failed');
+        },
+      });
+      const older = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      const retry = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+      expect(await settle(retry)).toBeInstanceOf(Error);
+      // The retry's failure leaves the older execution's hold in place.
+      expect(runAttribution.has(attempt.runId)).toBe(true);
+
+      failFirst(new Error('the older resolver failed late'));
+      await settle(older);
+
+      expect(runAttribution.has(attempt.runId)).toBe(false);
     });
 
     it.each([
