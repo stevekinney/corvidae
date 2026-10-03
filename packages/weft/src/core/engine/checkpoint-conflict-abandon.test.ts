@@ -265,6 +265,54 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(await storage.get(KEYS.workflowOwnerHolder('claimed'))).toEqual(holderBefore);
   });
 
+  it('evicts review handlers on abandonment but leaves the winner durable review timers alone', async () => {
+    const storage = new MemoryStorage();
+    await using engine = new Engine({ storage });
+    const internals = getInternals(engine);
+    const timerIds = ['review-escalation:review-1:1000', 'review-timeout:review-1'];
+    for (const id of timerIds) {
+      await internals.scheduler.schedule({
+        id,
+        workflowId: 'reviewed',
+        fireAt: Number.MAX_SAFE_INTEGER,
+        kind: 'sleep',
+      });
+    }
+    internals.reviewEscalationHandlers.set('review-1', async () => true);
+    internals.reviewTimerIds.set('review-1', timerIds);
+    internals.workflowReviewIds.set('reviewed', new Set(['review-1']));
+    // Calls through, so a cancel would also delete the durable record.
+    const cancel = spyOn(internals.scheduler, 'cancel');
+    const deletions: string[] = [];
+    internals.storage = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (['delete', 'deletePrefix'].includes(String(property))) deletions.push(String(property));
+        return typeof original === 'function' ? original.bind(target) : original;
+      },
+    });
+    const warning = collectConflictWarnings();
+
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('reviewed'),
+      { swallowPromiseRejection },
+    );
+    await warning.received;
+    warning.stop();
+    internals.storage = storage;
+    cancel.mockRestore();
+
+    expect(internals.reviewEscalationHandlers.has('review-1')).toBe(false);
+    expect(internals.reviewTimerIds.has('review-1')).toBe(false);
+    expect(internals.workflowReviewIds.has('reviewed')).toBe(false);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(deletions).toEqual([]);
+    for (const id of timerIds) {
+      expect(await storage.get(`timer-idx:${id}`)).not.toBeNull();
+    }
+  });
+
   it('refuses to fail an abandoned workflow durably, until the engine launches it again', async () => {
     const storage = new MemoryStorage();
     const parked = workflow({ name: 'refused-failure' }).execute(async function* (

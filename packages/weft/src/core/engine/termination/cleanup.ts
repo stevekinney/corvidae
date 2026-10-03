@@ -167,10 +167,20 @@ function evictConditionWaitersWithoutResolving(
   internals.conditionWaiters.delete(workflowId);
 }
 
+/**
+ * Drop a workflow's review escalation handlers and timer bookkeeping.
+ *
+ * `durableTimers: 'cancel'` also cancels each review's escalation and timeout
+ * timers in the scheduler, deleting their durable records: right when this
+ * engine owns the workflow's lifecycle (terminal, suspend). `'retain'` leaves
+ * the durable records alone, for a run this engine does not own: the winning
+ * engine still needs them to escalate or time the review out.
+ */
 function cleanupReviewEscalations(
   internals: EngineInternals,
   workflowId: string,
   callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
+  durableTimers: 'cancel' | 'retain' = 'cancel',
 ): void {
   const reviewIds = internals.workflowReviewIds.get(workflowId);
   if (!reviewIds) return;
@@ -178,8 +188,10 @@ function cleanupReviewEscalations(
     internals.reviewEscalationHandlers.delete(reviewId);
     const timers = internals.reviewTimerIds.get(reviewId);
     if (timers) {
-      for (const timerId of timers) {
-        void callbacks.swallowPromiseRejection(internals.scheduler.cancel(timerId, workflowId));
+      if (durableTimers === 'cancel') {
+        for (const timerId of timers) {
+          void callbacks.swallowPromiseRejection(internals.scheduler.cancel(timerId, workflowId));
+        }
       }
       internals.reviewTimerIds.delete(reviewId);
     }
@@ -242,6 +254,7 @@ export function evictSuspendedWorkflowWaiters(
   internals: EngineInternals,
   workflowId: string,
   callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
+  reviewTimers: 'cancel' | 'retain' = 'cancel',
 ): void {
   settleSleepTimerAcknowledgements(internals, workflowId, 'suspended');
   for (const kind of TRACKED_WAITER_KINDS) {
@@ -249,7 +262,7 @@ export function evictSuspendedWorkflowWaiters(
   }
   evictSleepResolversWithoutResolving(internals, workflowId);
   evictConditionWaitersWithoutResolving(internals, workflowId);
-  cleanupReviewEscalations(internals, workflowId, callbacks);
+  cleanupReviewEscalations(internals, workflowId, callbacks, reviewTimers);
 }
 
 /**
@@ -444,7 +457,8 @@ export function releaseWorkflowExecutionMemory(
  * (see `abandonWorkflowAfterCheckpointConflict`). Like
  * {@link evictSuspendedWorkflowWaiters}, waiters are evicted without being
  * resolved — the durable status is still the winner's `running`, so a woken
- * operation loop has nothing backstopping it — and nothing is written. Unlike
+ * operation loop has nothing backstopping it — and nothing is written; unlike
+ * suspend, the winner's durable review timers are not cancelled. Unlike
  * suspend it also drops the per-run `services`, headers, and the rest of the
  * in-memory execution state, and it does not ask a remote server to cancel
  * pending async activities, whose durable tasks belong to the winner.
@@ -454,7 +468,10 @@ export function releaseAbandonedWorkflowMemory(
   workflowId: string,
   callbacks: Pick<TerminationCallbacks, 'swallowPromiseRejection'>,
 ): void {
-  evictSuspendedWorkflowWaiters(internals, workflowId, callbacks);
+  // Review escalation and timeout timers are the winner's durable records: evict
+  // the handlers and bookkeeping, never cancel the timers. Every other eviction
+  // here (sleep, condition, signal, update waiters) is in-memory only.
+  evictSuspendedWorkflowWaiters(internals, workflowId, callbacks, 'retain');
   releaseWorkflowExecutionMemory(internals, workflowId);
   releaseWorkflowBookkeeping(internals, workflowId);
 }
