@@ -68,10 +68,11 @@
  *
  * evaluating
  *   V   runValidator                       at-least-once: a crash here re-runs it
- *   L2  loadGoalState                      re-read: the marker and the status (the aggregate
- *                                          duration is enforced by the decision itself, from
- *                                          the clock reading this read returns)
+ *   L2  loadGoalState                      re-read: the marker, the status, and the clock
  *       marker set or status moved -> nothing more; the next L handles it
+ *       aggregate duration elapsed while the validator ran (the verdict is not applied):
+ *         A   abortAttempt
+ *         C   commitTransition -> exhausted     aggregate-budget-exceeded
  *   C   commitTransition -> <decision>     the verdict and the decision, together
  * ```
  *

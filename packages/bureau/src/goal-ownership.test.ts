@@ -242,9 +242,10 @@ describe('the goal control plane over a foreign controller workflow', () => {
       expect(calls).toEqual([]);
 
       const recovered = await composition.goals.recover('g1');
-      expect(recovered.goals[0]?.outcome).not.toBe('started');
-      expect(recovered.goals[0]?.outcome).not.toBe('restarted');
-      expect(recovered.goals[0]?.outcome).not.toBe('running');
+      expect(recovered.failures).toEqual([]);
+      expect(recovered.goals).toHaveLength(1);
+      expect(recovered.goals[0]).toMatchObject({ goalRunId: 'g1', outcome: 'unrecoverable' });
+      expect(recovered.goals[0]?.detail).toContain('goal:g1');
 
       await composition.goals.cancel('g1');
       expect(calls).toEqual([]);

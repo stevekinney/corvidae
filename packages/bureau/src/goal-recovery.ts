@@ -53,6 +53,7 @@ import {
   startController,
   TERMINAL_CONTROLLER_STATUSES,
 } from './goal-controller';
+import { GoalOwnershipError } from './goal-ownership';
 import { goalIdentifiers } from './goal-ports';
 import { cancelSignalId, type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type {
@@ -319,7 +320,17 @@ export async function recoverGoal(
       ? settleCommittedCancellation(dependencies, record)
       : { goalRunId, outcome: 'already-terminal' };
   }
-  const controller = await recoverController(dependencies, record);
+  let controller: ControllerRecovery;
+  try {
+    controller = await recoverController(dependencies, record);
+  } catch (error) {
+    // Something that is not the goal's controller holds its workflow id: it was
+    // left alone, and the goal cannot run until that is resolved.
+    if (error instanceof GoalOwnershipError) {
+      return { goalRunId, outcome: 'unrecoverable', detail: error.message };
+    }
+    throw error;
+  }
   if (controller.outcome === 'unrecoverable' || controller.outcome === 'already-terminal') {
     return { goalRunId, ...controller };
   }
