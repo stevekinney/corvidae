@@ -972,6 +972,31 @@ describe('acknowledged-only runs', () => {
     expect(reads).toBeLessThanOrEqual(3);
   });
 
+  it('counts the first read against the budget: a first read that outlasts it is not given a further wait', async () => {
+    const store = await liveGoal();
+    const { runtime, waits } = virtualRuntime();
+    let now = 0;
+    let reads = 0;
+    const fence = fenceOver(store);
+
+    const { result, generates } = await fencedRun(
+      {
+        mayRun: async (candidate) => {
+          reads += 1;
+          // The first read alone takes the whole budget.
+          now += GOAL_ATTEMPT_ACKNOWLEDGEMENT_BUDGET_MS;
+          return fence.mayRun(candidate);
+        },
+      },
+      { registration: { runtime: { ...runtime, monotonic: { now: () => now } } } },
+    );
+
+    expect(generates()).toBe(0);
+    expect(result.finishReason).toBe('tripwire');
+    expect(reads).toBe(1);
+    expect(waits).toEqual([]);
+  });
+
   it('does not spin on a zero delay: every wait spends part of the budget', async () => {
     const store = await liveGoal(undefined, { maximumAttempts: 2, maximumTotalDurationMs: 5 });
     const { runtime, waits } = virtualRuntime();

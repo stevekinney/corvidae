@@ -51,7 +51,7 @@
  * commit, after `startAttempt` returns). Until then the run waits, polling at the
  * short acknowledgement cadence, for at most the start activity's own bound
  * (tries times per-try timeout, or what remains of the goal's duration if less).
- * The budget is measured from the run's first reading, on the runtime's
+ * The budget is measured from when the run's first reading began, on the runtime's
  * monotonic clock, and is spent by that clock or by the delays waited, whichever
  * is greater. The run is created inside the start activity, so its first reading
  * falls after the activity began and the budget outlasts the activity by at
@@ -355,7 +355,7 @@ async function readFence(
  * commit. The wait polls on the runtime's clock at the acknowledgement cadence
  * (its last delay repeated), for at most the budget the first `await-open`
  * carried. The budget is spent by whichever is greater, the delays waited or the
- * time the runtime's monotonic clock shows since that first reading, so slow
+ * time the runtime's monotonic clock shows since the first read began, so slow
  * reads cannot stretch it, and a delay of zero cannot spin without spending it. An
  * abort ends it with no further read. A fault in a read keeps `readFence`'s
  * fail-closed retries, and a verdict of `undefined` still means unknown.
@@ -371,13 +371,13 @@ async function readSettled(
   const monotonic = registration.runtime?.monotonic;
   let waitedMs = 0;
   let budgetMs: number | undefined;
-  let startedAt: number | undefined;
+  // Anchored before the first read, so that read's own duration counts against the budget.
+  const startedAt = monotonic?.now();
   for (let polls = 0; ; polls += 1) {
     const { verdict, cause } = await readFence(fence, target, registration, signal);
     if (verdict === undefined) return { verdict: undefined, cause };
     if (verdict.status !== 'await-open') return { verdict: verdict.status, cause: undefined };
     budgetMs ??= verdict.budgetMs;
-    startedAt ??= monotonic?.now();
     const elapsedMs = Math.max(
       waitedMs,
       monotonic === undefined || startedAt === undefined ? 0 : monotonic.now() - startedAt,
