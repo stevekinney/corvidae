@@ -482,9 +482,11 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     // unadopted. That is harmless by the acknowledged-only invariant of the run's
     // own fence (`goal-attempt-fence.ts`): the run takes no step until the goal's
     // record shows this attempt open, which the controller (failed, with no
-    // commit to make) never does, so it waits out its bounded budget and stops
-    // with zero steps. The named residual is that zero-step workflow record,
-    // which `cleanUpGoal` prunes.
+    // commit to make) does not do unless Bureau's bounded restart revives it
+    // within the run's budget, in which case its adoption of this run commits
+    // `running` and acknowledges it. Otherwise the run waits out its bounded budget
+    // and stops with zero steps. The named residual is that zero-step workflow
+    // record, which `cleanUpGoal` prunes.
     if (timedOut()) return standDown();
     await conversations.recordStart(record, request);
     forwarder.watch(target, started.run);

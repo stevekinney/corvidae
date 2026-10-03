@@ -862,9 +862,12 @@ describe('acknowledged-only runs', () => {
     expect(result.finishReason).toBe('stop-condition');
   });
 
-  it('proceeds after a replayed commit and does not step twice for a resumed run', async () => {
-    // The controller crashed after the start returned and before its commit; its
-    // replay commits the memoized result. Both the run and a resumed copy of it wait.
+  it('has two runs under one goal each wait for the open-attempt commit and then step once', async () => {
+    // The controller side of a crash between the start's return and the commit
+    // (the replay that commits, or adopts and commits) is covered by the crash-and-adopt
+    // tests of the controller in `goal-workflow-recovery.test.ts`. This test covers
+    // the run side: whichever run waits for the commit, however late the controller's
+    // replay makes it, steps exactly once after it.
     const store = await liveGoal();
     const { runtime } = virtualRuntime(async (wait) => {
       if (wait === 2) await openAttempt(store);

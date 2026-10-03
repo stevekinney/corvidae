@@ -139,8 +139,9 @@
  * polls the record for at most `START_ATTEMPT_MAXIMUM_TRIES` tries of
  * `START_ATTEMPT_TIMEOUT_MS` (or the goal's remaining duration if less); a
  * controller that crashed after the start returned replays the memoized result
- * and commits, while a controller that failed for good never does, so the late
- * run takes zero steps. What it leaves is a zero-step workflow record under the
+ * and commits, a controller that Bureau's bounded restart revives within the budget
+ * adopts the late run and commits `running`, which acknowledges it, and a controller
+ * that failed for good never commits, so the late run takes zero steps. What it leaves is a zero-step workflow record under the
  * attempt's deterministic id, which `cleanUpGoal` prunes.
  *
  * What remains is the crash an at-least-once activity always has, between the
