@@ -20,6 +20,7 @@ import {
   GOAL_RUN_ID,
   GOAL_WORKFLOW_ID,
   type GoalHarness,
+  identifiers,
   pollUntil,
   startGoalWorkflow,
   statusesOf,
@@ -108,6 +109,56 @@ describe('createGoalWorkflow finalizer', () => {
       expect(harness.world.abortedRuns).toEqual([runIdOf(1)]);
     } finally {
       run.engine[Symbol.dispose]();
+    }
+  });
+
+  it('stops the in-flight run when a hard cancel lands before the replaying controller reaches the live frontier', async () => {
+    const harness = createHarness();
+    const a = await createGoalEngine(harness);
+    await startGoalWorkflow(a);
+    await pollUntil(attemptRunning(harness, 0));
+
+    // The controller is down while the goal moves on: attempt 0 ends and attempt 1
+    // starts, so the record is two iterations ahead of what a replaying controller
+    // has read. The replay window is not externally steppable, so hold the
+    // adopted controller at that earlier iteration by advancing the record while
+    // it is down. It re-stages attempt 0's run, the last value it can stage until
+    // it reaches the frontier.
+    a.engine[Symbol.dispose]();
+    const [first] = harness.world.record().attempts;
+    if (first === undefined) throw new Error('Expected attempt 0 to be recorded.');
+    await harness.world.ports.startAttempt({
+      goalRunId: GOAL_RUN_ID,
+      attemptIndex: 1,
+      attemptId: identifiers.attemptId(GOAL_RUN_ID, 1),
+      runId: runIdOf(1),
+    });
+    harness.world.patchRecord({
+      attempts: [
+        { ...first, status: 'aborted' },
+        {
+          ...first,
+          attemptIndex: 1,
+          attemptId: identifiers.attemptId(GOAL_RUN_ID, 1),
+          runId: runIdOf(1),
+          status: 'running',
+        },
+      ],
+    });
+
+    const { adopter, handle } = await crashAndAdopt(harness, a);
+    try {
+      expect(harness.world.abortedRuns).toEqual([]);
+      await adopter.engine.cancel(GOAL_WORKFLOW_ID);
+      expect(await throwingRejectionOf(handle.result())).toThrow('Workflow cancelled');
+      await untilFinalized(adopter, harness);
+
+      // No recover() or cancel() follow-up: the finalizer alone must end the
+      // in-flight run. It also repeats the stale staged target, an idempotent
+      // no-op on a real run that already ended.
+      expect(harness.world.abortedRuns).toEqual([runIdOf(0), runIdOf(1)]);
+    } finally {
+      adopter.engine[Symbol.dispose]();
     }
   });
 

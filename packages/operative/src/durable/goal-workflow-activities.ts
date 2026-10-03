@@ -20,6 +20,7 @@ import type {
   GoalWorkflowValidatorRequest,
   GoalWorkflowView,
 } from './goal-workflow-ports';
+import { abortRequestFor } from './goal-workflow-transitions';
 
 export interface GoalWorkflowLoadResult {
   /** `undefined` when the record is missing or unreadable. */
@@ -111,11 +112,25 @@ export function createGoalWorkflowActivities(ports: GoalWorkflowPorts) {
      * hard `engine.cancel` that killed the generator mid-flight still stops the
      * active attempt's run. The same idempotent port call as `abortAttempt`,
      * under its own name so the finalizer is recognizable in a history.
+     *
+     * The staged value is only as fresh as the controller's last read. A
+     * crash-adopted controller re-stages every iteration's recorded read while
+     * it replays, so a cancel that lands before it reaches the live frontier
+     * flushes an older attempt's run. The finalizer runs live, never inside a
+     * replay, so it also reads the record now and stops the run that is in
+     * flight there. Both targets are idempotent aborts, and a staged target
+     * that is already terminal is a no-op, so stopping both is always safe.
      */
     finalizeGoal: activity({
       name: 'finalizeGoal',
       idempotent: true,
-      execute: (input: GoalWorkflowAbortRequest): Promise<void> => ports.abortAttempt(input),
+      execute: async (input: GoalWorkflowAbortRequest): Promise<void> => {
+        await ports.abortAttempt(input);
+        const { record } = await ports.loadGoalState(input.goalRunId);
+        if (record === undefined) return;
+        const live = abortRequestFor(toGoalWorkflowView(record), ports.identifiers);
+        if (live.runId !== input.runId) await ports.abortAttempt(live);
+      },
     }),
   };
 }

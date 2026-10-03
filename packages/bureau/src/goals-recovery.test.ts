@@ -432,10 +432,20 @@ describe('a cancellation that a process died in the middle of', () => {
     if (result?.outcome === 'cancellation-pending') {
       expect(result.detail).toBe('Still waiting on: finalizer.');
     }
-    const stopped = await pollUntil(
-      async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'cancelled',
-    );
-    expect(stopped).toBe(true);
+    // The run's own status cannot tell the finalizer from completeCancellation,
+    // which also stops it, so wait on the finalizer itself. The record is already
+    // `canceled`, which makes recover() answer `already-terminal`; cancel() is the
+    // operation that re-reads the finalizer on a committed record. It answers
+    // `canceled` only once the finalizer has succeeded or is not owed.
+    const pendingAnswers: (readonly string[])[] = [];
+    const settled = await pollUntil(async () => {
+      const answer = await bureau.goals.cancel('g1');
+      if (answer.outcome === 'cancellation-pending') pendingAnswers.push(answer.awaiting);
+      return answer.outcome === 'canceled';
+    });
+    expect(settled).toBe(true);
+    for (const awaiting of pendingAnswers) expect(awaiting).toEqual(['finalizer']);
+    expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('cancelled');
     const goal = await bureau.goals.get('g1');
     expect(goal).toMatchObject({
       status: 'canceled',

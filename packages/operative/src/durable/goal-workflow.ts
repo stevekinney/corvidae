@@ -99,7 +99,11 @@
  * from the same history, so the slot sequence above is unchanged. After a
  * `cancelled` or `timed-out` terminal Weft drives the finalizer with the last
  * staged value, retrying and re-driving it across a crash, and it calls the
- * same idempotent `abortAttempt` port. A workflow that ends `completed` or
+ * same idempotent `abortAttempt` port. A replaying controller re-stages each
+ * recorded iteration's older target until it reaches the live frontier, so
+ * `finalizeGoal` also re-reads the record when it runs (it is never replayed)
+ * and stops the in-flight run named there; a hard cancel that lands mid-replay
+ * still ends the right run. A workflow that ends `completed` or
  * `failed` owes no finalizer, and one that never reached a decision point
  * staged nothing, so `getFinalizerStatus` answers `null` for both: nothing owed.
  *
@@ -145,6 +149,7 @@ import {
   type GoalWorkflowView,
 } from './goal-workflow-ports';
 import {
+  abortRequestFor,
   buildEvaluationStarted,
   buildGoalForcedFinish,
   buildOpenAttempt,
@@ -154,7 +159,6 @@ import {
   currentAttemptOf,
   decisionContextFor,
   goalInputFeedbackFor,
-  isAttemptInFlight,
   isDeadlineElapsed,
   isTerminalStatus,
   remainingMilliseconds,
@@ -226,22 +230,8 @@ export function createGoalWorkflow(ports: GoalWorkflowPorts) {
   const activities = createGoalWorkflowActivities(ports);
   const { identifiers } = ports;
 
-  /**
-   * The run a cancellation must stop. An attempt in flight has one. Otherwise a
-   * start may have crashed just short of its commit and left an orphan under the
-   * next attempt's deterministic id, so name that one; stopping a run that never
-   * existed is a no-op.
-   */
-  function runToStop(view: GoalWorkflowView): GoalWorkflowAbortRequest {
-    const current = currentAttemptOf(view);
-    const attemptIndex = isAttemptInFlight(current) ? current.attemptIndex : view.attempts.length;
-    return {
-      goalRunId: view.goalRunId,
-      attemptIndex,
-      attemptId: identifiers.attemptId(view.goalRunId, attemptIndex),
-      runId: identifiers.attemptRunId(view.goalRunId, attemptIndex),
-    };
-  }
+  const runToStop = (view: GoalWorkflowView): GoalWorkflowAbortRequest =>
+    abortRequestFor(view, identifiers);
 
   function* commit(
     ctx: GoalContext,

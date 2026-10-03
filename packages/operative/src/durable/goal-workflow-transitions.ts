@@ -19,6 +19,7 @@ import {
 } from '../goal-decision';
 import type {
   GoalAttemptTerminalSignal,
+  GoalWorkflowAbortRequest,
   GoalWorkflowAttempt,
   GoalWorkflowAttemptStatus,
   GoalWorkflowIdentifiers,
@@ -87,6 +88,26 @@ export function currentAttemptOf(view: GoalWorkflowView): ViewAttempt | undefine
 
 export const isAttemptInFlight = (attempt: ViewAttempt | undefined): attempt is ViewAttempt =>
   attempt !== undefined && (attempt.status === 'running' || attempt.status === 'evaluating');
+
+/**
+ * The run a cancellation must stop. An attempt in flight has one. Otherwise a
+ * start may have crashed just short of its commit and left an orphan under the
+ * next attempt's deterministic id, so name that one; stopping a run that never
+ * existed is a no-op.
+ */
+export function abortRequestFor(
+  view: GoalWorkflowView,
+  identifiers: GoalWorkflowIdentifiers,
+): GoalWorkflowAbortRequest {
+  const current = currentAttemptOf(view);
+  const attemptIndex = isAttemptInFlight(current) ? current.attemptIndex : view.attempts.length;
+  return {
+    goalRunId: view.goalRunId,
+    attemptIndex,
+    attemptId: identifiers.attemptId(view.goalRunId, attemptIndex),
+    runId: identifiers.attemptRunId(view.goalRunId, attemptIndex),
+  };
+}
 
 function usageFor(
   view: GoalWorkflowView,
