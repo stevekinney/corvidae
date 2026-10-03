@@ -218,24 +218,6 @@ export const CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES = [
       'exactly 500/500 lines before that addition.',
   },
   {
-    path: 'src/server/runtime/task-polling.ts',
-    classification: 'tracked-elsewhere',
-    rationale:
-      'Three independent HTTP endpoints — poll, result submission, heartbeat — share only two ' +
-      'guards (worker authorization and startup task-ledger recovery), so the result-submission ' +
-      'half lifts out cleanly behind those. The split is a real seam rather than a line-count ' +
-      'trick, which is why this is not a justified exception; it is deliberately not bundled ' +
-      'into the gate-adoption change that first measured it.',
-  },
-  {
-    path: 'src/server/fleet-event-feed.ts',
-    classification: 'tracked-elsewhere',
-    rationale:
-      'One factory exposing three separable phases — append, replay, and live subscribe — behind ' +
-      'a single returned object. Splitting along those phases is a real seam; as with task-polling ' +
-      'it is a refactor of its own rather than part of adopting the gate that found it.',
-  },
-  {
     path: 'src/server/runtime/task-dispatch.ts',
     classification: 'justified-exception',
     rationale:

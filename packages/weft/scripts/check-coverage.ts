@@ -217,9 +217,9 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
     'scripts/check-implementation-file-sizes.ts',
     {
       reason:
-        'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), then shifted two lines by COR-1281’s registry rationale: the child-process CLI body now falls at lines 488-489 instead of upstream’s 392-393.',
+        'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), then shifted two lines by COR-1281’s registry rationale and back 18 lines when COR-1273 removed two completed classifications: the child-process CLI body now falls at lines 470-471.',
       functions: 1,
-      lines: new Set([488, 489]),
+      lines: new Set([470, 471]),
       requireUncoveredLines: true,
     },
   ],
