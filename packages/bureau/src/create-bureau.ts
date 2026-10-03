@@ -9264,9 +9264,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     cancelRun: cancelDurableRun,
     readRunRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
     // Not the memoized, audited step runs get: that records a run's cleanup
-    // under a run id, and a goal's controller is not a run. Pruning is
-    // idempotent, so asking again on every `close()` is safe.
-    cleanupController: classifyTerminalCheckpointCleanup,
+    // under a run id, and a goal's controller is not a run. An attempt's run is
+    // one, but a goal prunes it at close, once its terminal checkpoint has been
+    // read, and a memoized "not terminal yet" answer must not outlive that.
+    // Pruning is idempotent, so asking again on every `close()` is safe.
+    cleanupWorkflow: classifyTerminalCheckpointCleanup,
     isClosing: () => shutdownPromise !== undefined,
     diagnose,
     eventHistory: eventHistoryInstance,

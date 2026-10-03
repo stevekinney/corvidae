@@ -12,10 +12,12 @@ import {
   type RunnableAgent,
   stopWhen,
 } from '@lostgradient/operative';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { createToolbox } from 'armorer';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import type { GoalState } from './goal-state';
+import { createRuntimeComposition } from './runtime-composition';
 import {
   cancelUntilSettled,
   CHECK,
@@ -662,6 +664,99 @@ describe('bureau.goals', () => {
 
       expect(first).toMatchObject({ outcome: 'closed', cleanup: { status: 'completed' } });
       expect(again).toMatchObject({ outcome: 'closed', cleanup: { status: 'completed' } });
+    });
+
+    describe("an attempt's checkpoint history", () => {
+      type Prune = (
+        workflowId: string,
+        options: { keepLast: number; signal?: AbortSignal },
+      ) => Promise<unknown>;
+
+      /** Spies on the durable engine's prune, which every bureau's engine shares through its prototype. */
+      async function spyOnPrune() {
+        const probe = await createRuntimeComposition({
+          generate: () => Promise.resolve({ content: 'x', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          storage: { type: 'memory' },
+          durableExecution: true,
+          stopWhen: stopWhen.noToolCalls(),
+        });
+        const prototype = Object.getPrototypeOf(probe.durable!.engine) as {
+          pruneCheckpoints: Prune;
+        };
+        probe.durable!.engine[Symbol.dispose]?.();
+        probe.disposeStorage?.();
+        const original = prototype.pruneCheckpoints;
+        return {
+          spy: spyOn(prototype, 'pruneCheckpoints'),
+          original,
+          prunedIds: (spy: { mock: { calls: unknown[][] } }) =>
+            spy.mock.calls.map((call) => call[0] as string),
+        };
+      }
+
+      async function retriedGoal() {
+        let calls = 0;
+        const { bureau } = await boot({
+          agents: {
+            worker: workerAgent(() => {
+              calls += 1;
+              return Promise.resolve({ content: calls === 1 ? 'nope' : 'done', toolCalls: [] });
+            }),
+          },
+          validators: [createCheckValidator()],
+          checkpointRetention: { keepLast: 1 },
+        });
+        await bureau.goals.create(goalRequest());
+        await finished(bureau);
+        return bureau;
+      }
+
+      it('is pruned for every attempt of the goal on close, once nothing is left to read it', async () => {
+        const { spy, prunedIds } = await spyOnPrune();
+        try {
+          const bureau = await retriedGoal();
+          // Nothing prunes an attempt while the goal can still read its checkpoint.
+          expect(prunedIds(spy)).toEqual([]);
+
+          const closed = await bureau.goals.close('g1');
+
+          expect(closed).toMatchObject({ outcome: 'closed', cleanup: { status: 'completed' } });
+          // The controller and both attempts, and not an attempt the goal never started.
+          expect(prunedIds(spy).toSorted()).toEqual(['goal-g1-a0', 'goal-g1-a1', 'goal:g1']);
+          // The newest checkpoint survives, so what recovery reads is still there.
+          expect(await workflowStatus(bureau, 'goal-g1-a1')).toBe('completed');
+          expect(await bureau.goals.recover('g1')).toMatchObject({ failures: [] });
+          expect(await bureau.goals.get('g1')).toMatchObject({ status: 'succeeded' });
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
+      it('is acknowledged as unresolved when an attempt cannot be pruned, and retried by the next close', async () => {
+        const { spy, original } = await spyOnPrune();
+        try {
+          const bureau = await retriedGoal();
+          let failing = true;
+          spy.mockImplementation(function (this: unknown, workflowId, options) {
+            return failing && workflowId === 'goal-g1-a1'
+              ? Promise.reject(new Error('storage hiccup'))
+              : original.call(this, workflowId, options);
+          });
+
+          expect(await bureau.goals.close('g1')).toMatchObject({
+            outcome: 'closed',
+            cleanup: { status: 'unresolved', reason: 'persistence-failed' },
+          });
+          failing = false;
+          expect(await bureau.goals.close('g1')).toMatchObject({
+            outcome: 'closed',
+            cleanup: { status: 'completed' },
+          });
+        } finally {
+          spy.mockRestore();
+        }
+      });
     });
 
     it('has nothing to clean up for a goal that ended without a controller', async () => {

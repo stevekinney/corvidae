@@ -57,8 +57,8 @@ export interface GoalsCompositionDependencies {
   readonly cancelRun: (runId: string) => Promise<CancelDurableRunOutcome>;
   /** Reads the recovery record that marks which goal attempt a run was started for. */
   readonly readRunRecord: RunRecordReader;
-  /** Applies checkpoint retention to a terminal controller workflow; see `BureauGoalsDependencies`. */
-  readonly cleanupController: (workflowId: string) => Promise<CleanupAcknowledgement>;
+  /** Applies checkpoint retention to a terminal controller or attempt workflow; see `BureauGoalsDependencies`. */
+  readonly cleanupWorkflow: (workflowId: string) => Promise<CleanupAcknowledgement>;
   readonly isClosing: () => boolean;
   readonly diagnose: DiagnosticSink;
   /** Where a goal's audit events are recorded; absent when the bureau has no persistent history. */
@@ -175,7 +175,7 @@ export function composeBureauGoals(dependencies: GoalsCompositionDependencies): 
     diagnose,
     getEngine: () => getDurable()?.engine,
     cancelRun,
-    cleanupController: dependencies.cleanupController,
+    cleanupWorkflow: dependencies.cleanupWorkflow,
     forwarder,
     resolveFreshAttemptSource: dependencies.resolveFreshAttemptSource,
     startAttempt: (request) => ports.startAttempt(request),

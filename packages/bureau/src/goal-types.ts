@@ -177,10 +177,11 @@ export type BureauGoalCloseOutcome =
   /**
    * `closedAt` is set. The goal record and its workflow stay inspectable.
    * `cleanup` is the truthful result of applying the bureau's checkpoint
-   * retention to the controller workflow's history: `not-required` when the
-   * policy keeps everything or the goal never had a controller, `completed`
-   * once pruned, and `unresolved` or `failed` when it could not be, which
-   * `close()` again retries. A bureau with no durable engine cannot look for a
+   * retention to the history of the controller workflow and of every attempt's
+   * run, the least favorable of them: `not-required` when the policy keeps
+   * everything or the goal never had a workflow, `completed` once pruned, and
+   * `unresolved` or `failed` when any could not be, which `close()` again
+   * retries. A bureau with no durable engine cannot look for a
    * controller, so it answers `unresolved` (`unreachable`), never `not-required`.
    */
   | {

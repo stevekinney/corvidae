@@ -30,6 +30,7 @@ import { ensureController, type GoalControlDependencies } from './goal-controlle
 import { recoverEveryGoal, recoverGoal, UNREADABLE_RECORD_DETAIL } from './goal-recovery';
 import {
   createGoalState,
+  goalAttemptRunId,
   GoalObjectiveTooLargeError,
   GoalRunIdError,
   type GoalState,
@@ -59,14 +60,30 @@ export interface BureauGoalsDependencies extends GoalControlDependencies {
     agentName: string,
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   /**
-   * Applies the bureau's checkpoint retention to a terminal controller
-   * workflow's history and says truthfully how it went. Never rejects.
+   * Applies the bureau's checkpoint retention to a terminal workflow's history
+   * (the goal's controller, or one of its attempts' runs) and says truthfully
+   * how it went. Never rejects.
    */
-  readonly cleanupController: (workflowId: string) => Promise<CleanupAcknowledgement>;
+  readonly cleanupWorkflow: (workflowId: string) => Promise<CleanupAcknowledgement>;
 }
 
 const NO_ENGINE_TO_READ_RUN =
   "This bureau has no durable engine, so the run's workflow status cannot be read.";
+
+const CLEANUP_RANK: Record<CleanupAcknowledgement['status'], number> = {
+  'not-required': 0,
+  completed: 1,
+  unresolved: 2,
+  failed: 3,
+};
+
+/** The least favorable of the acknowledgements, so one part that could not be pruned is never reported as done. */
+function worstCleanup(acknowledgements: readonly CleanupAcknowledgement[]): CleanupAcknowledgement {
+  return acknowledgements.reduce<CleanupAcknowledgement>(
+    (worst, next) => (CLEANUP_RANK[next.status] > CLEANUP_RANK[worst.status] ? next : worst),
+    { status: 'not-required' },
+  );
+}
 
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -482,7 +499,7 @@ export function createBureauGoals<TName extends string = string>(
         return {
           outcome: 'closed',
           goal: closed.record,
-          cleanup: await cleanUp(goalRunId),
+          cleanup: await cleanUp(closed.record),
         };
       case 'rejected':
         return { outcome: 'not-terminal', goal: closed.record };
@@ -498,17 +515,50 @@ export function createBureauGoals<TName extends string = string>(
     }
   }
 
-  /** The controller's workflow history, pruned under the bureau's retention; `not-required` with no controller. */
-  async function cleanUp(goalRunId: string): Promise<CleanupAcknowledgement> {
-    const workflowId = goalWorkflowId(goalRunId);
-    // No engine is not no controller: the workflow may exist and simply cannot
-    // be looked for from here, so its history is not known to need nothing.
+  /**
+   * The checkpoint history of everything the goal ran, pruned under the
+   * bureau's retention: the controller workflow and every attempt's run (at most
+   * `maximumAttempts` of them). Closing is where it happens because a closed
+   * goal is terminal, so its controller has consumed every attempt's ending, the
+   * forwarder and validator have read what they needed, and the goal's session
+   * holds the transcripts. Pruning keeps the newest checkpoints, which is all a
+   * later read of a finished run uses.
+   *
+   * The acknowledgement is the worst of the parts, so a part that could not be
+   * pruned is never reported as done and the next `close()` retries it:
+   * `failed`, then `unresolved`, then `completed` when anything was pruned, and
+   * `not-required` when nothing needed it. An attempt that never started has no
+   * workflow, and one the goal does not own reads as absent.
+   */
+  async function cleanUp(record: GoalState): Promise<CleanupAcknowledgement> {
+    // No engine is not no workflow: they may exist and simply cannot be looked
+    // for from here, so their history is not known to need nothing.
     const engine = getEngine();
     if (engine === undefined) return { status: 'unresolved', reason: 'unreachable' };
+    // Not while a send the forwarder already has under way could still read an
+    // attempt's checkpoint.
+    await dependencies.forwarder.drain();
+    const workflowIds = [
+      goalWorkflowId(record.goalRunId),
+      ...Array.from({ length: record.bounds.maximumAttempts }, (_, attemptIndex) =>
+        goalAttemptRunId(record.goalRunId, attemptIndex),
+      ),
+    ];
+    const acknowledgements: CleanupAcknowledgement[] = [];
+    for (const workflowId of workflowIds) {
+      acknowledgements.push(await cleanUpWorkflow(engine, workflowId));
+    }
+    return worstCleanup(acknowledgements);
+  }
+
+  /** One workflow's history, pruned under the bureau's retention; `not-required` when there is no such workflow. */
+  async function cleanUpWorkflow(
+    engine: NonNullable<ReturnType<typeof getEngine>>,
+    workflowId: string,
+  ): Promise<CleanupAcknowledgement> {
     try {
-      const controller = await engine.get(workflowId);
-      if (controller === null) return { status: 'not-required' };
-      return await dependencies.cleanupController(workflowId);
+      if ((await engine.get(workflowId)) === null) return { status: 'not-required' };
+      return await dependencies.cleanupWorkflow(workflowId);
     } catch (error) {
       return { status: 'failed', error };
     }

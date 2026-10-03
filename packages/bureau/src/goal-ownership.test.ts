@@ -336,7 +336,7 @@ describe('the goal control plane over a foreign controller workflow', () => {
         return Promise.resolve({ status: 'requested' });
       },
       readRunRecord: () => Promise.resolve(missing),
-      cleanupController: () => Promise.resolve({ status: 'not-required' }),
+      cleanupWorkflow: () => Promise.resolve({ status: 'not-required' }),
       isClosing: () => false,
       diagnose: () => {},
     });
