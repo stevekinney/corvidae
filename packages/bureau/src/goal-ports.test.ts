@@ -24,7 +24,11 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
-import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
+import {
+  GoalAttemptNotDurableCapableError,
+  type GoalAttemptRun,
+  type GoalAttemptStart,
+} from './bureau-catalog-dispatch';
 import { createGoalConversations } from './goal-conversation';
 import type { AttemptForwarder, AttemptTarget } from './goal-forwarder';
 import {
@@ -446,8 +450,12 @@ describe('startAttempt', () => {
   it('stops the run it just created when a cancellation was recorded while it was starting', async () => {
     const started = Promise.withResolvers<void>();
     const stopped: string[] = [];
+    const requested = Promise.withResolvers<void>();
     const { ports, store, watched } = await world({
-      startAttemptRun: () => ({ run: {} as never, durablyStarted: started.promise }),
+      startAttemptRun: () => {
+        requested.resolve();
+        return { run: {} as never, durablyStarted: started.promise };
+      },
       cancelRun: (runId) => {
         stopped.push(runId);
         return Promise.resolve({ status: 'requested' });
@@ -456,6 +464,7 @@ describe('startAttempt', () => {
 
     const answer = ports.startAttempt(startRequest());
     // The canceller wrote its marker while the workflow was still being created.
+    await requested.promise;
     await store.requestCancellation('g1', { requestedAt: NOW }, NOW);
     started.resolve();
 
@@ -476,7 +485,100 @@ describe('startAttempt', () => {
     const inProcess = await world({ plan: { durable: false, agentVersion: '1' } });
     expect(await inProcess.ports.startAttempt(startRequest())).toEqual({
       status: 'failed',
-      detail: 'Starting the inner run failed: agent "worker" cannot run durably',
+      detail:
+        'Starting the inner run failed: agent "worker" cannot run durably (agent-not-durable-capable)',
+    });
+  });
+
+  it('throws, rather than recording a verdict, when a durable agent finds no durable engine', async () => {
+    const { ports } = await world({ withoutEngine: true });
+    expect(await throwingRejectionOf(ports.startAttempt(startRequest()))).toThrow(
+      'no durable engine',
+    );
+  });
+
+  it.each([
+    [
+      'rejects the deferred start',
+      () => ({
+        run: {} as never,
+        durablyStarted: Promise.reject(new GoalAttemptNotDurableCapableError('lazy agent')),
+      }),
+    ],
+    [
+      'throws while starting',
+      () => {
+        throw new GoalAttemptNotDurableCapableError('lazy agent');
+      },
+    ],
+  ])(
+    'ends the attempt with agent-not-durable-capable when the dispatcher %s',
+    async (_label, startAttemptRun) => {
+      const { ports, watched } = await world({ startAttemptRun });
+      expect(await ports.startAttempt(startRequest())).toEqual({
+        status: 'failed',
+        detail: 'Starting the inner run failed: agent-not-durable-capable: lazy agent',
+      });
+      expect(watched).toEqual([]);
+    },
+  );
+
+  describe('a cancellation landing between the first read and each write', () => {
+    // Requests the cancellation as the Nth read of the attempt's session begins.
+    const cancelOnSessionRead = async (nth: number, options: Parameters<typeof world>[0] = {}) => {
+      const w = await world(options);
+      const original = w.sessions.load.bind(w.sessions);
+      let reads = 0;
+      w.sessions.load = async (id: string) => {
+        reads += 1;
+        if (reads === nth) await w.store.requestCancellation('g1', { requestedAt: NOW }, NOW);
+        return original(id);
+      };
+      return { ...w, original };
+    };
+
+    it('writes no session and starts no run when it lands before the session is seated', async () => {
+      let starts = 0;
+      const w = await cancelOnSessionRead(1, {
+        startAttemptRun: () => {
+          starts += 1;
+          return { run: {} as never, durablyStarted: Promise.resolve() };
+        },
+      });
+      const outcome = await w.ports.startAttempt(startRequest());
+      expect(outcome).toMatchObject({ status: 'failed' });
+      expect((outcome as { detail: string }).detail).toContain('canceled');
+      expect(starts).toBe(0);
+      expect(await w.original('goal-g1-s0')).toBeUndefined();
+    });
+
+    it('starts no run when it lands after the session is seated', async () => {
+      let starts = 0;
+      const w = await cancelOnSessionRead(2, {
+        startAttemptRun: () => {
+          starts += 1;
+          return { run: {} as never, durablyStarted: Promise.resolve() };
+        },
+      });
+      const outcome = await w.ports.startAttempt(startRequest());
+      expect(outcome).toMatchObject({ status: 'failed' });
+      expect(starts).toBe(0);
+      expect(w.watched).toEqual([]);
+    });
+
+    it('does not write the session reference when it lands before an adopted run is recorded', async () => {
+      const w = await cancelOnSessionRead(1);
+      w.markRunAsGoals('goal-g1-a0');
+      await startDurableRunResult(w.durable, {
+        runId: 'goal-g1-a0',
+        sessionId: 'goal-g1-a0',
+        options: agentOptions(() => Promise.resolve({ content: 'done', toolCalls: [] })),
+        prompt: 'work',
+      });
+      const outcome = await w.ports.startAttempt(startRequest());
+      expect(outcome).toMatchObject({ status: 'failed' });
+      expect(w.watched).toEqual([]);
+      expect(await w.original('goal-g1-s0')).toBeUndefined();
     });
   });
 });

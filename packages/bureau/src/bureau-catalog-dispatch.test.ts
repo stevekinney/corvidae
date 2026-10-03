@@ -18,7 +18,10 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createCatalogDispatcher } from './bureau-catalog-dispatch';
+import {
+  createCatalogDispatcher,
+  GoalAttemptNotDurableCapableError,
+} from './bureau-catalog-dispatch';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 
@@ -218,7 +221,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     );
     const result = await started.run.result();
 
-    expect(reason).toEqual(expect.objectContaining({ code: 'CONFLICT' }));
+    expect(reason).toBeInstanceOf(GoalAttemptNotDurableCapableError);
     expect(ranDirectly).toBe(0);
     expect(result.finishReason).toBe('error');
   });

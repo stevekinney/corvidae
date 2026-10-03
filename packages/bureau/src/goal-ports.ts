@@ -55,7 +55,11 @@ import {
   type RunOptions,
 } from '@lostgradient/operative';
 
-import type { GoalAttemptRun, GoalAttemptStart } from './bureau-catalog-dispatch';
+import {
+  GoalAttemptNotDurableCapableError,
+  type GoalAttemptRun,
+  type GoalAttemptStart,
+} from './bureau-catalog-dispatch';
 import type { GoalConversations } from './goal-conversation';
 import { attemptSessionId } from './goal-conversation';
 import type { AttemptForwarder } from './goal-forwarder';
@@ -248,15 +252,42 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
         ATTEMPT_RUN_FAILURE_DETAIL.runStart(`agent "${agentName}" is no longer in the catalog`),
       );
     }
+    if (!plan.durable) {
+      return failed(
+        ATTEMPT_RUN_FAILURE_DETAIL.runStart(
+          `agent "${agentName}" cannot run durably (agent-not-durable-capable)`,
+        ),
+      );
+    }
+    // Inside an engine activity the engine exists, so its absence is a fault of
+    // this process, never a verdict on the goal: throwing lets the activity retry.
     const durable = getDurable();
-    if (!plan.durable || durable === undefined) {
-      return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(`agent "${agentName}" cannot run durably`));
+    if (durable === undefined) {
+      throw new Error('The bureau has no durable engine to start a goal attempt with.');
     }
     const target = {
       goalRunId: request.goalRunId,
       attemptIndex: request.attemptIndex,
       runId: request.runId,
     };
+
+    // The goal can be canceled or end at any await below, so the record is read
+    // again immediately before each write that would create or extend an attempt.
+    // The residual window is the gap between that read and the write it guards:
+    // a cancellation landing inside it is caught by the canceller, which stops
+    // the run (`cancelRun`) and by the forwarder, which re-reads the goal before
+    // it commits anything; at worst a session reference for a stopped run is
+    // written.
+    const mustStandDown = async (): Promise<boolean> => {
+      const latest = await store.get(request.goalRunId);
+      return (
+        latest === undefined ||
+        latest.cancellation !== undefined ||
+        isTerminalGoalStatus(latest.status)
+      );
+    };
+    const standDown = (): GoalWorkflowStart =>
+      failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal is canceled or has ended'));
 
     const adopt = async (): Promise<GoalWorkflowStart | undefined> => {
       let existing: Awaited<ReturnType<typeof durable.engine.get>>;
@@ -279,6 +310,7 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       }
       // A crash between the engine's start and this write leaves a run with no
       // ref in its session; repeating the write is idempotent.
+      if (await mustStandDown()) return standDown();
       await conversations.recordStart(record, request);
       forwarder.watch(target);
       return {
@@ -318,8 +350,10 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
     }
     const adopted = await adopt();
     if (adopted !== undefined) return adopted;
+    if (await mustStandDown()) return standDown();
     const seat = await conversations.seat(record, request);
     if (seat.status === 'failed') return failed(seat.detail);
+    if (await mustStandDown()) return standDown();
     let started: GoalAttemptRun;
     try {
       started = startAttemptRun({
@@ -342,24 +376,24 @@ export function createGoalPorts(dependencies: GoalPortsDependencies): GoalWorkfl
       // restarts, rather than ending the goal over a transient fault.
       const raced = await adopt();
       if (raced !== undefined) return raced;
+      // A permanent property of the agent is a verdict on the attempt, not a
+      // fault to retry.
+      if (error instanceof GoalAttemptNotDurableCapableError) {
+        return failed(ATTEMPT_RUN_FAILURE_DETAIL.runStart(`${error.reason}: ${error.message}`));
+      }
       throw error;
     }
-    await conversations.recordStart(record, request);
     // The cancellation marker is written before `cancelRun` looks for the run,
     // and the run existed before this read. So either this read sees the marker
     // and stops the run itself, or the marker lands after it and the
     // canceller's `cancelRun` finds the run: no start escapes both.
-    const latest = await store.get(request.goalRunId);
-    if (
-      latest === undefined ||
-      latest.cancellation !== undefined ||
-      isTerminalGoalStatus(latest.status)
-    ) {
+    if (await mustStandDown()) {
       await abortAttempt({ ...target, attemptId: request.attemptId });
       return failed(
         ATTEMPT_RUN_FAILURE_DETAIL.runStart('the goal was canceled while its attempt started'),
       );
     }
+    await conversations.recordStart(record, request);
     forwarder.watch(target, started.run);
     return { status: 'started', sessionId: seat.sessionId };
   }

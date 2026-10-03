@@ -77,6 +77,19 @@ interface GoalAttemptOwner {
   readonly attemptIndex: number;
 }
 
+/**
+ * COR-851 — a goal attempt cannot run because of a permanent property of its
+ * agent, not a transient fault. The attempt ends with this reason instead of
+ * failing an activity that would retry the same refusal forever.
+ */
+export class GoalAttemptNotDurableCapableError extends Error {
+  readonly reason = 'agent-not-durable-capable';
+  constructor(message: string) {
+    super(message);
+    this.name = 'GoalAttemptNotDurableCapableError';
+  }
+}
+
 export interface GoalAttemptRun {
   readonly run: AgentRun<unknown, boolean>;
   readonly durablyStarted: Promise<void>;
@@ -277,9 +290,8 @@ export function createCatalogDispatcher({
           // launched again by the retry. There is no fallback for an attempt.
           if (goalAttempt !== undefined) {
             runAttribution.delete(runId);
-            throw createBureauError(
+            throw new GoalAttemptNotDurableCapableError(
               `Agent "${name}" cannot resolve its run options durably, so it cannot run a goal attempt: ${error.message}`,
-              'CONFLICT',
             );
           }
           // AB-241: this fallback abandons `runId` entirely — the agent's
@@ -387,9 +399,8 @@ export function createCatalogDispatcher({
           // restart could find; a goal attempt must never end up there.
           if (dispatchedActiveRun === undefined) {
             durableStart.reject(
-              createBureauError(
+              new GoalAttemptNotDurableCapableError(
                 `Agent "${name}" did not run durably, so it cannot run a goal attempt`,
-                'CONFLICT',
               ),
             );
           } else {
@@ -660,7 +671,12 @@ export function createCatalogDispatcher({
     if (!agent) {
       throw createBureauError(`Unknown agent "${start.agentName}"`, 'NOT_FOUND');
     }
-    if (!runtime.durable || !hasDefinitionResolver(agent)) {
+    if (!hasDefinitionResolver(agent)) {
+      throw new GoalAttemptNotDurableCapableError(
+        `Agent "${start.agentName}" cannot run durably, so it cannot run a goal attempt`,
+      );
+    }
+    if (!runtime.durable) {
       throw createBureauError(
         `Agent "${start.agentName}" cannot run durably, so it cannot run a goal attempt`,
         'CONFLICT',
