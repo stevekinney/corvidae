@@ -733,6 +733,10 @@ describe('createGoalStore applyTransition', () => {
       await created(store, { bounds: { maximumAttempts: 1, maximumTotalTokens: 1000 } });
       await toEvaluating(store);
 
+      if (reason === 'goal-canceled') {
+        // A goal is canceled only after a cancellation was asked for.
+        await store.requestCancellation(GOAL, { requestedAt: at() }, at());
+      }
       const result = await store.applyTransition(
         transition(3, TERMINAL_STATUS_BY_REASON[reason], {
           terminalReason: reason,
@@ -887,6 +891,7 @@ describe('createGoalStore applyTransition', () => {
       const { store } = setup();
       await created(store);
       await toEvaluating(store);
+      await store.requestCancellation(GOAL, { requestedAt: at() }, at());
       const canceled = applied(
         await store.applyTransition(
           transition(3, 'canceled', {

@@ -333,6 +333,11 @@ describe('the goal event projection', () => {
           },
         }),
       );
+      if (to === 'canceled') {
+        // A goal is canceled only after a cancellation was asked for.
+        const at = '2026-10-02T00:00:06.000Z';
+        await store.requestCancellation(GOAL, { requestedAt: at }, at);
+      }
       await store.applyTransition(
         transition(2, to, {
           terminalReason: reason,
