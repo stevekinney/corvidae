@@ -55,7 +55,7 @@
 import type { HookRegistry, RuntimeServices, RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import { GuardrailTripwireError, type OperativeHookMap } from '@lostgradient/operative';
 
-import { type RunRecordReader } from './goal-ownership';
+import { isGoalOwnedRunRecord, type RunRecordReader } from './goal-ownership';
 import { isTerminalGoalStatus } from './goal-state';
 import type { GoalStore } from './goal-store';
 
@@ -111,10 +111,18 @@ export function createGoalAttemptFence(dependencies: {
       if (load.status === 'read-error') throw load.error;
       if (load.status !== 'found') return false;
       const claimed = load.record.goalAttempt;
+      // The goal's own claim for this attempt, by the one test every ownership
+      // decision shares: the marker reproduces the run's id, and the agent and
+      // principal are the goal's own, read from the goal's record above and not
+      // from the claim.
       return (
         claimed?.goalRunId === target.goalRunId &&
         claimed.attemptIndex === target.attemptIndex &&
-        claimed.tombstonedAt === undefined
+        claimed.tombstonedAt === undefined &&
+        isGoalOwnedRunRecord(load.record, target.runId, {
+          agentName: record.objective.agentName,
+          principal: record.principal,
+        })
       );
     },
   };

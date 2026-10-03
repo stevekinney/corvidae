@@ -38,23 +38,27 @@ import { type CatalogRunRecoveryLoad, createRuntimeComposition } from './runtime
 const NOW = '2026-10-02T12:00:00.000Z';
 const target: GoalAttemptTarget = { goalRunId: 'g1', attemptIndex: 0, runId: 'goal-g1-a0' };
 
-const claimOf = (goalAttempt: {
-  goalRunId: string;
-  attemptIndex: number;
-  tombstonedAt?: string;
-}): CatalogRunRecoveryLoad => ({
+const claimOf = (
+  goalAttempt: {
+    goalRunId: string;
+    attemptIndex: number;
+    tombstonedAt?: string;
+  },
+  holder: { agentName?: string; principal?: string } = {},
+): CatalogRunRecoveryLoad => ({
   status: 'found',
   record: {
     schemaVersion: 1,
-    agentName: 'worker',
+    agentName: holder.agentName ?? 'worker',
     definitionRevision: 1,
     input: 'work',
+    ...(holder.principal === undefined ? {} : { principal: holder.principal }),
     goalAttempt,
     costEstimation: null,
   },
 });
 
-async function liveGoal(): Promise<GoalStore> {
+async function liveGoal(principal?: string): Promise<GoalStore> {
   const store = createGoalStore(textValueStore(new MemoryStorage()));
   await store.create(
     createGoalState({
@@ -64,6 +68,7 @@ async function liveGoal(): Promise<GoalStore> {
       validator: { name: 'check', version: '1' },
       conversationPolicy: { kind: 'continue' },
       bounds: { maximumAttempts: 2, maximumTotalSteps: 10 },
+      ...(principal === undefined ? {} : { principal }),
       now: NOW,
     }),
   );
@@ -128,6 +133,59 @@ describe('createGoalAttemptFence', () => {
     });
 
     expect(await fence.mayRun(target)).toBe(false);
+  });
+
+  it.each([
+    [
+      'another agent',
+      'goal-g1-a0',
+      claimOf({ goalRunId: 'g1', attemptIndex: 0 }, { agentName: 'intruder' }),
+      undefined,
+    ],
+    [
+      'another principal',
+      'goal-g1-a0',
+      claimOf({ goalRunId: 'g1', attemptIndex: 0 }, { principal: 'mallory' }),
+      undefined,
+    ],
+    [
+      'no principal where the goal has one',
+      'goal-g1-a0',
+      claimOf({ goalRunId: 'g1', attemptIndex: 0 }),
+      'alice',
+    ],
+    [
+      'a different principal where the goal has one',
+      'goal-g1-a0',
+      claimOf({ goalRunId: 'g1', attemptIndex: 0 }, { principal: 'mallory' }),
+      'alice',
+    ],
+    [
+      'a marker that does not reproduce the run id',
+      'goal-g1-a7',
+      claimOf({ goalRunId: 'g1', attemptIndex: 0 }),
+      undefined,
+    ],
+  ] satisfies Array<[string, string, CatalogRunRecoveryLoad, string | undefined]>)(
+    'refuses a claim held by %s, which the goal did not start',
+    async (_label, runId, load, goalPrincipal) => {
+      const fence = createGoalAttemptFence({
+        store: await liveGoal(goalPrincipal),
+        readRunRecord: () => Promise.resolve(load),
+      });
+
+      expect(await fence.mayRun({ ...target, runId })).toBe(false);
+    },
+  );
+
+  it('lets a claim held by the goal’s own agent and principal run', async () => {
+    const fence = createGoalAttemptFence({
+      store: await liveGoal('alice'),
+      readRunRecord: () =>
+        Promise.resolve(claimOf({ goalRunId: 'g1', attemptIndex: 0 }, { principal: 'alice' })),
+    });
+
+    expect(await fence.mayRun(target)).toBe(true);
   });
 
   it('rejects when the claim cannot be read, which is not a verdict', async () => {
@@ -266,6 +324,20 @@ describe('registerGoalAttemptFence', () => {
     // The run ended: a workflow in a terminal state, not one left running.
     const state = await context.engine.get(target.runId);
     expect(state?.status).toBe('completed');
+  });
+
+  it('takes zero steps for a run whose claim another agent or principal holds, over the real fence', async () => {
+    for (const holder of [{ agentName: 'intruder' }, { principal: 'mallory' }]) {
+      const fence = createGoalAttemptFence({
+        store: await liveGoal(),
+        readRunRecord: () => Promise.resolve(claimOf({ goalRunId: 'g1', attemptIndex: 0 }, holder)),
+      });
+      const { result, generates } = await fencedRun(fence);
+
+      expect(generates()).toBe(0);
+      expect(result.steps).toHaveLength(0);
+      expect(result.finishReason).toBe('tripwire');
+    }
   });
 
   it('retries a read that failed, and lets the run go on once one succeeds', async () => {

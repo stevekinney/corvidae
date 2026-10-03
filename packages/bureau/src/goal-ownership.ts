@@ -104,6 +104,30 @@ export function isOwnAttemptRecord(
   );
 }
 
+/**
+ * The complete test for a run's recovery record, given the owner its goal's own
+ * record names: the marker reproduces the run's id, and the record was written
+ * for that marker's goal and attempt by that agent and principal. Everything
+ * that decides whether a run is a goal's own (the owned engine and canceller,
+ * the start port's verification and its adoption, the run's self-fence) asks
+ * this, so no two of them can disagree about who holds an id.
+ */
+export function isGoalOwnedRunRecord(
+  record: CatalogRunRecoveryRecord,
+  runId: string,
+  owner: GoalOwner,
+): boolean {
+  const marker = record.goalAttempt;
+  if (marker === undefined) return false;
+  if (goalAttemptRunId(marker.goalRunId, marker.attemptIndex) !== runId) return false;
+  return isOwnAttemptRecord(record, {
+    goalRunId: marker.goalRunId,
+    attemptIndex: marker.attemptIndex,
+    agentName: owner.agentName,
+    principal: owner.principal,
+  });
+}
+
 export type AttemptRunOwnership =
   | { readonly status: 'owned' }
   /** Nothing holds the id: no claim and no workflow. */
@@ -131,7 +155,9 @@ export async function verifyAttemptRun(
     return { status: 'corrupt', detail: new GoalCorruptOwnershipRecordError(runId).message };
   }
   if (load.status === 'found') {
-    return isOwnAttemptRecord(load.record, expected)
+    return isGoalOwnedRunRecord(load.record, runId, expected) &&
+      load.record.goalAttempt?.goalRunId === expected.goalRunId &&
+      load.record.goalAttempt.attemptIndex === expected.attemptIndex
       ? { status: 'owned' }
       : {
           status: 'foreign',
@@ -198,9 +224,8 @@ async function isOwnedGoalRun(
   if (load.status !== 'found') return false;
   const marker = load.record.goalAttempt;
   if (marker === undefined) return false;
-  if (goalAttemptRunId(marker.goalRunId, marker.attemptIndex) !== runId) return false;
   const owner = await resolveGoalOwner(marker.goalRunId);
-  return owner !== undefined && isOwnAttemptRecord(load.record, { ...marker, ...owner });
+  return owner !== undefined && isGoalOwnedRunRecord(load.record, runId, owner);
 }
 
 /**
