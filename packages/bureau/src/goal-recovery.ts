@@ -101,8 +101,17 @@ async function completeCancellation(
       { requestedAt: now, reason: 'The goal controller was cancelled.' },
       now,
     );
-    if (outcome.status === 'rejected') return { outcome: 'already-terminal' };
-    if (outcome.status !== 'updated' && outcome.status !== 'unchanged') {
+    // A goal that ended without this marker is over, but one that ended canceled
+    // still has what its cancellation stops to be read back, so it is settled
+    // exactly as a recorded one is; any other ending leaves nothing to do.
+    if (outcome.status === 'rejected' && outcome.record.status !== 'canceled') {
+      return { outcome: 'already-terminal' };
+    }
+    if (
+      outcome.status !== 'updated' &&
+      outcome.status !== 'unchanged' &&
+      outcome.status !== 'rejected'
+    ) {
       return { outcome: 'unrecoverable', detail: `cancellation marker: ${outcome.status}` };
     }
     marked = outcome.record;
@@ -143,6 +152,30 @@ async function completeCancellation(
         awaiting,
         detail: `Still waiting on: ${awaiting.join(', ')}.`,
       };
+}
+
+/**
+ * A fresh read taken immediately before a controller is started or replaced.
+ * The decision to start was made on a record read before several awaits (the
+ * engine's own read, the determinism check, the finalizer), and a cancellation
+ * or an ending can land in that gap: starting then would run history that
+ * escapes retention, and a replacement would spend a restart on a goal already
+ * being canceled. Returns what recovery answers instead of starting, or
+ * `undefined` when the goal still wants its controller.
+ */
+async function standDownIfOvertaken(
+  dependencies: GoalControlDependencies,
+  goalRunId: string,
+): Promise<ControllerRecovery | undefined> {
+  const fresh = await dependencies.store.get(goalRunId);
+  if (fresh === undefined) {
+    return (await dependencies.store.isUnreadable(goalRunId))
+      ? { outcome: 'unrecoverable', detail: UNREADABLE_RECORD_DETAIL(goalRunId) }
+      : { outcome: 'not-found' };
+  }
+  if (fresh.cancellation !== undefined)
+    return endControllerAndCompleteCancellation(dependencies, fresh);
+  return isTerminalGoalStatus(fresh.status) ? { outcome: 'already-terminal' } : undefined;
 }
 
 /** Ends the controller's workflow, then completes the cancellation the record asks for. */
@@ -280,9 +313,11 @@ async function recoverController(
     }
     // A controller is about to be started for a goal nothing has run yet.
     const ended = await enforceDeterminism(dependencies, record);
-    if (ended !== undefined) return { outcome: 'unsupported-validation' };
+    if (ended?.status === 'failed') return { outcome: 'unsupported-validation' };
   }
   if (state === null) {
+    const overtaken = await standDownIfOvertaken(dependencies, goalRunId);
+    if (overtaken !== undefined) return overtaken;
     return {
       outcome:
         (await startController(engine, goalRunId, false)) === 'started' ? 'started' : 'running',
@@ -350,6 +385,8 @@ async function recoverController(
   // restart for a controller that cannot be started. The window after this check,
   // between the count and the start, is a few awaits wide.
   if (dependencies.isClosing()) return SHUTTING_DOWN;
+  const overtaken = await standDownIfOvertaken(dependencies, goalRunId);
+  if (overtaken !== undefined) return overtaken;
   // The count is a compare-and-swap on the value this recovery read, so of
   // several recoveries that saw the same ended controller exactly one is
   // counted, and only that one starts a replacement. A restart counted but
@@ -585,8 +622,19 @@ async function finishOwedCleanup(
   if (dependencies.isClosing()) return { goalRunId: record.goalRunId, ...SHUTTING_DOWN };
   const cleanup = await cleanUpGoal(dependencies, record);
   if (isCleanupDone(cleanup)) {
-    await dependencies.store.markCleanedUp(record.goalRunId, dependencies.clock.nowISO());
-    return undefined;
+    const marked = await dependencies.store.markCleanedUp(
+      record.goalRunId,
+      dependencies.clock.nowISO(),
+    );
+    if (marked.status === 'updated' || marked.status === 'unchanged') return undefined;
+    // The pruning is done, but that was not recorded, so the goal still owes it as
+    // far as every later read can tell: it is not finished, and the next boot or
+    // close() records it.
+    return {
+      goalRunId: record.goalRunId,
+      outcome: 'cleanup-pending',
+      detail: `The closed goal's checkpoint cleanup finished, but recording it did not (${marked.status}); the next boot or close() records it.`,
+    };
   }
   const reason =
     dependencies.getEngine() === undefined

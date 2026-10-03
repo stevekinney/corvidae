@@ -25,12 +25,16 @@
  * themselves and never pass through that admission. Ownership verification stays
  * as defence in depth for a store written by something else.
  *
- * The host-level operate-by-id APIs (`cancelDurableRun`, `abortRun`, `deleteRun`,
- * `deleteSession`, `getDurableRun`, `signalDurableRun`) take no principal and
- * are not guarded for these ids: they are host-trusted by design, the same as
- * for every other run, and a host that forwards a caller-supplied id to one of
- * them owns authorizing it. The reservation closes squatting and purge
- * collisions, which no authorization at the point of use can.
+ * The host-level operate-by-id APIs take no principal and are not guarded for
+ * these ids: they are host-trusted by design, the same as for every other run,
+ * and a host that forwards a caller-supplied id to one of them owns authorizing
+ * it. That is the checklist: the operators (`cancelDurableRun`, `abortRun`,
+ * `deleteRun`, `deleteSession`) and the readers (`getDurableRun`, `getRun`,
+ * `getRunReport`, `getReview`, `subscribeRunSnapshot`, and the run event feeds
+ * keyed by run id). A goal's attempt run id is deterministic (`goal-<id>-a<n>`),
+ * where an ordinary run's is random, so it is guessable by anyone who knows the
+ * goal id. The reservation closes squatting and purge collisions, which no
+ * authorization at the point of use can.
  *
  * The prefixes are the single source: each builder of a goal-derived id starts
  * from one of them, and a test asserts that, so a new derived id cannot slip

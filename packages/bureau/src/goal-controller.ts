@@ -124,7 +124,10 @@ export async function commitCancellation(
  * catalog's descriptor can change in between.
  *
  * Applies only to a goal nothing has happened to yet (`pending`, transition 0).
- * Returns the ended record, or `undefined` when the goal may run. A validator
+ * Returns the ended record, or `undefined` when the goal may run. When the
+ * failure cannot be recorded because the goal was canceled or ended in the
+ * meantime, that record is returned instead (it is not a goal that may run, and
+ * it is not `failed`: callers tell the two apart by its status). A validator
  * the catalog no longer holds is not this check's business; the attempt's own
  * validation reports that.
  */
@@ -152,7 +155,17 @@ export async function enforceDeterminism(
       ? {}
       : { failureDetail: unsupported.failureDetail }),
   });
-  return ended.status === 'applied' || ended.status === 'duplicate' ? ended.record : undefined;
+  if (ended.status === 'applied' || ended.status === 'duplicate') return ended.record;
+  // A cancellation (or an ending) that landed after the caller read the goal makes
+  // the store refuse the failure. That is not a goal that may run: the record it
+  // carries no longer wants a controller, and the caller must not start one.
+  if (
+    (ended.status === 'rejected' || ended.status === 'stale') &&
+    (isTerminalGoalStatus(ended.record.status) || ended.record.cancellation !== undefined)
+  ) {
+    return ended.record;
+  }
+  return undefined;
 }
 
 const describeError = (error: unknown): string =>
@@ -178,7 +191,19 @@ export async function ensureController(
   // recorded, would run history that escapes retention and recovery, so the
   // decision is made on a read taken here, and a goal that no longer wants a
   // controller gets none. Recovery finishes a recorded cancellation.
-  const record = (await dependencies.store.get(stale.goalRunId)) ?? stale;
+  const record = await dependencies.store.get(stale.goalRunId);
+  if (record === undefined) {
+    // Missing or undecodable, not unchanged: the caller's copy is no evidence of
+    // what is stored, and a controller for a goal nobody can read has nothing to
+    // read its record from. `recover()` starts it once the record is readable.
+    return {
+      goal: stale,
+      controller: {
+        status: 'start-failed',
+        reason: `The record stored for goal "${stale.goalRunId}" cannot be read, so no controller was started.`,
+      },
+    };
+  }
   if (isTerminalGoalStatus(record.status) || record.cancellation !== undefined) {
     return { goal: record, controller: { status: 'not-needed' } };
   }
