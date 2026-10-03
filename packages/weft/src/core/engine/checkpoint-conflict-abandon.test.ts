@@ -584,11 +584,31 @@ describe('wakes for an abandoned generation', () => {
     loseGeneration(internals, 'remote-lost');
     await warning.received;
     warning.stop();
+    // A worker or revision-realm engine has no inline strategy: the completion
+    // would be fed to the execution strategy, which still holds the stale run.
+    const resumed: string[] = [];
+    const activeStrategy = internals.strategy;
+    internals.strategy = new Proxy(activeStrategy, {
+      get(target, property) {
+        if (property === 'resumeWorkflow') {
+          return (message: { workflowId: string }) => resumed.push(message.workflowId);
+        }
+        const member: unknown = Reflect.get(target, property, target);
+        return typeof member === 'function' ? member.bind(target) : member;
+      },
+    });
+    const inlineStrategy = internals.inlineStrategy;
+    internals.inlineStrategy = null;
+    try {
+      await engine.completeAsyncActivity(requests[0]!.operationId, 'charged');
+    } finally {
+      internals.inlineStrategy = inlineStrategy;
+      internals.strategy = activeStrategy;
+    }
 
-    await engine.completeAsyncActivity(requests[0]!.operationId, 'charged');
-
-    // Delivery stages the resolution record's deletion with the next checkpoint
-    // commit; a discarded delivery stages nothing and leaves the record alone.
+    // Delivery would stage the resolution record's deletion and resume the
+    // execution; a discarded delivery does neither and leaves the record alone.
+    expect(resumed).toEqual([]);
     expect(internals.pendingAtomicWorkflowCommitSideEffects.has('remote-lost')).toBe(false);
   });
 
