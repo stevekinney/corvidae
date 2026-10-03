@@ -5,10 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Avatar } from '@lostgradient/cinder/avatar';
-  import { Card } from '@lostgradient/cinder/card';
-  import { Container } from '@lostgradient/cinder/container';
-  import { Link } from '@lostgradient/cinder/link';
+  import { Avatar, Card, Container, Link } from '@lostgradient/cinder';
 
   const posts = [
     {

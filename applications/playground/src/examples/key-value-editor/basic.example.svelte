@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { KeyValueEditor } from '@lostgradient/cinder/key-value-editor';
+  import { KeyValueEditor } from '@lostgradient/cinder';
   let entries = $state([
     { id: 'host', key: 'HOST', value: 'localhost' },
     { id: 'port', key: 'PORT', value: '3000' },

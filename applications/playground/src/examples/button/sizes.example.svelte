@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
+  import { Button } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row">

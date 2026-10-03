@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DateRangeField } from '@lostgradient/cinder/date-range-field';
-  import type { DateRangeValue } from '@lostgradient/cinder/date-range-field';
+  import { DateRangeField, type DateRangeValue } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

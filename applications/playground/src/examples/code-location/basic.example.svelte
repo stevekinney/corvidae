@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { CodeLocation } from '@lostgradient/cinder/code-location';
+  import { CodeLocation } from '@lostgradient/cinder';
 </script>
 
 <CodeLocation file="src/routes/+page.svelte" />

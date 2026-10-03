@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Calendar } from '@lostgradient/cinder/calendar';
+  import { Calendar } from '@lostgradient/cinder';
 
   let value = $state<string | undefined>('2026-06-29');
 </script>

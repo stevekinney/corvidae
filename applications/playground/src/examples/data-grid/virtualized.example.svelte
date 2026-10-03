@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DataGrid, type DataGridColumnDef } from '@lostgradient/cinder/data-grid';
+  import { DataGrid, type DataGridColumnDef } from '@lostgradient/cinder';
 
   type LogEntry = {
     id: string;

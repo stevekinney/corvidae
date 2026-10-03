@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Collapsible } from '@lostgradient/cinder/collapsible';
+  import { Button, Collapsible } from '@lostgradient/cinder';
 
   let open = $state(false);
 </script>

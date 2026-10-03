@@ -4,9 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { CapabilityGate } from '@lostgradient/cinder/capability-gate';
-  import { Link } from '@lostgradient/cinder/link';
+  import { Button, CapabilityGate, Link } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 1rem;">

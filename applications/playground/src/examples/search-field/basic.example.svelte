@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { SearchField } from '@lostgradient/cinder/search-field';
+  import { SearchField } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

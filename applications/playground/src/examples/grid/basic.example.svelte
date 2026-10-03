@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Grid } from '@lostgradient/cinder/grid';
+  import { Grid } from '@lostgradient/cinder';
 </script>
 
 <Grid columns={12} gap="var(--cinder-space-4)" aria-label="Profile form layout">

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Feed } from '@lostgradient/cinder/feed';
+  import { Feed } from '@lostgradient/cinder';
 </script>
 
 <Feed kind="log" label="Webhook trace" connectionState="connected">

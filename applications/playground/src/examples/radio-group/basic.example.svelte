@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { RadioGroup } from '@lostgradient/cinder/radio-group';
+  import { RadioGroup } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

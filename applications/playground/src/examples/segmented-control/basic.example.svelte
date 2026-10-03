@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Segment } from '@lostgradient/cinder/segment';
-  import { SegmentedControl } from '@lostgradient/cinder/segmented-control';
+  import { Segment, SegmentedControl } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

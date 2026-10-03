@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Textarea } from '@lostgradient/cinder/textarea';
+  import { Textarea } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

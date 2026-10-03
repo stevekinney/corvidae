@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { PayloadInspector } from '@lostgradient/cinder/payload-inspector';
+  import { PayloadInspector } from '@lostgradient/cinder';
 
   const workflowInput = {
     workflowType: 'OrderFulfillment',

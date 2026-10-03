@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Card } from '@lostgradient/cinder/card';
+  import { Card } from '@lostgradient/cinder';
 </script>
 
 <Card title="Full-bleed image card" padding="none">

@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DataList } from '@lostgradient/cinder/data-list';
-  import { StackedListItem } from '@lostgradient/cinder/stacked-list-item';
-  import { StatusDot } from '@lostgradient/cinder/status-dot';
+  import { DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
 
   const services = [
     {

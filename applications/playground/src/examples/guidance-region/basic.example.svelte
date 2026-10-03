@@ -4,12 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import {
-    GuidanceRegion,
-    type GuidanceClaim,
-    useGuidance,
-  } from '@lostgradient/cinder/guidance-region';
+  import { Button, type GuidanceClaim, GuidanceRegion, useGuidance } from '@lostgradient/cinder';
 
   const claims = [
     { id: 'welcome', anchor: 'workspace-start', content: 'Start by exploring the workspace.' },

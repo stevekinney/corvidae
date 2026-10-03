@@ -5,11 +5,7 @@
 </script>
 
 <script lang="ts">
-  import {
-    ScheduleBuilder,
-    type ScheduleFire,
-    type ScheduleValue,
-  } from '@lostgradient/cinder/schedule-builder';
+  import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
   let value = $state<ScheduleValue>({ mode: 'interval', every: 15, unit: 'minutes' });
 

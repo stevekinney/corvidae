@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { CommandItem } from '@lostgradient/cinder/command-item';
-  import { CommandPalette } from '@lostgradient/cinder/command-palette';
+  import { CommandItem, CommandPalette } from '@lostgradient/cinder';
   // ── State ──────────────────────────────────────────────────────────────
   let open = $state(false);
   let query = $state('');

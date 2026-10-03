@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { JsonViewer } from '@lostgradient/cinder/json-viewer';
+  import { JsonViewer } from '@lostgradient/cinder';
 
   const payload = {
     id: 'act_9f2a1b',

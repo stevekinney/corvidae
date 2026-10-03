@@ -6,9 +6,7 @@
 </script>
 
 <script lang="ts">
-  import { FormField } from '@lostgradient/cinder/form-field';
-  import { FormSection } from '@lostgradient/cinder/form-section';
-  import { Input } from '@lostgradient/cinder/input';
+  import { FormField, FormSection, Input } from '@lostgradient/cinder';
   let firstName = $state('');
   let lastName = $state('');
   let email = $state('');

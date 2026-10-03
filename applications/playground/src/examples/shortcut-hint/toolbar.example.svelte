@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ShortcutHint } from '@lostgradient/cinder/shortcut-hint';
+  import { ShortcutHint } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">

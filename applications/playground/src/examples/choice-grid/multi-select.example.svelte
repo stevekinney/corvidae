@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ChoiceGrid } from '@lostgradient/cinder/choice-grid';
+  import { ChoiceGrid } from '@lostgradient/cinder';
 
   let selected = $state<string[]>([]);
 </script>

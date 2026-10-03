@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Stack } from '@lostgradient/cinder/stack';
+  import { Stack } from '@lostgradient/cinder';
 </script>
 
 <Stack gap="var(--cinder-space-3)">

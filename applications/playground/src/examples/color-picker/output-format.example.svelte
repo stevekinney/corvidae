@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ColorPicker } from '@lostgradient/cinder/color-picker';
-  import type { ColorPickerFormat } from '@lostgradient/cinder/color-picker';
-  import { Select } from '@lostgradient/cinder/select';
+  import { ColorPicker, type ColorPickerFormat, Select } from '@lostgradient/cinder';
 
   const formatOptions: { value: ColorPickerFormat; label: string }[] = [
     { value: 'hex', label: 'hex' },

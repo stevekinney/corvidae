@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { TableOfContents } from '@lostgradient/cinder/table-of-contents';
+  import { TableOfContents } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { MediaControls } from '@lostgradient/cinder/media-controls';
+  import { MediaControls } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;">

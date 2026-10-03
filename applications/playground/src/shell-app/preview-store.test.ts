@@ -28,8 +28,7 @@ type LocalStorageStub = {
   setItem: (key: string, value: string) => void;
 };
 type MatchMediaListener =
-  | EventListenerOrEventListenerObject
-  | ((this: MediaQueryList, event: MediaQueryListEvent) => void);
+  EventListenerOrEventListenerObject | ((this: MediaQueryList, event: MediaQueryListEvent) => void);
 
 const originalLocalStorage = (globalThis as { localStorage?: Storage }).localStorage;
 const originalSessionStorage = (globalThis as { sessionStorage?: Storage }).sessionStorage;

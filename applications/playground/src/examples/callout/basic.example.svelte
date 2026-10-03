@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Callout } from '@lostgradient/cinder/callout';
+  import { Callout } from '@lostgradient/cinder';
 </script>
 
 <Callout title="Note">

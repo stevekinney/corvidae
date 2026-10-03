@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DataTable } from '@lostgradient/cinder/data-table';
-  import type { TableSort } from '@lostgradient/cinder/table';
+  import { DataTable, type TableSort } from '@lostgradient/cinder';
 
   type Student = {
     name: string;

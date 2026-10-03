@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Select } from '@lostgradient/cinder/select';
+  import { Select } from '@lostgradient/cinder';
 
   // A `disabled` placeholder paired with `required` is the accessible pattern for
   // a "must pick one" Select: the empty value can be the initial state but cannot

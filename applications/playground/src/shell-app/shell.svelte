@@ -13,7 +13,7 @@
    * Its ColorPicker/Popover/Input graph loads when the reader opens the panel,
    * rather than making every landing-page visit pay for an advanced editor.
    */
-  import { Button } from '@lostgradient/cinder/button';
+  import { Button } from '@lostgradient/cinder';
   import Palette from 'lucide-svelte/icons/palette';
   import Table from 'lucide-svelte/icons/table';
   import type { Component } from 'svelte';

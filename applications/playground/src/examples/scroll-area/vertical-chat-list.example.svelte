@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ScrollArea } from '@lostgradient/cinder/scroll-area';
+  import { ScrollArea } from '@lostgradient/cinder';
 </script>
 
 <ScrollArea label="Chat transcript" maxHeight="16rem">

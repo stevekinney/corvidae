@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { AspectRatio } from '@lostgradient/cinder/aspect-ratio';
-  import { Button } from '@lostgradient/cinder/button';
-  import { Container } from '@lostgradient/cinder/container';
+  import { AspectRatio, Button, Container } from '@lostgradient/cinder';
 </script>
 
 <section style="padding-block: var(--cinder-space-10);">

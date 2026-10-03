@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ColorField } from '@lostgradient/cinder/color-field';
-  import type { ColorFieldOutputFormat } from '@lostgradient/cinder/color-field';
-  import { Select } from '@lostgradient/cinder/select';
+  import { ColorField, type ColorFieldOutputFormat, Select } from '@lostgradient/cinder';
 
   const formatOptions: { value: ColorFieldOutputFormat; label: string }[] = [
     { value: 'hex', label: 'hex' },

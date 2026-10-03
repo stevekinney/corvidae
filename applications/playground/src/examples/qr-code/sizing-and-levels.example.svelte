@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { QrCode } from '@lostgradient/cinder/qr-code';
+  import { QrCode } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1.25rem;">

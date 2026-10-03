@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Select } from '@lostgradient/cinder/select';
+  import { Select } from '@lostgradient/cinder';
   const options = [
     { value: 'free', label: 'Free' },
     { value: 'pro', label: 'Pro' },

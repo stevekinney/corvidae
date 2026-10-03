@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { HoverCard } from '@lostgradient/cinder/hover-card';
+  import { Button, HoverCard } from '@lostgradient/cinder';
 </script>
 
 <HoverCard openDelay={100} closeDelay={300}>

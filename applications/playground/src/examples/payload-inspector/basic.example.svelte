@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { PayloadInspector } from '@lostgradient/cinder/payload-inspector';
+  import { PayloadInspector } from '@lostgradient/cinder';
 
   const payload = {
     userId: 'u_8f2a3b',

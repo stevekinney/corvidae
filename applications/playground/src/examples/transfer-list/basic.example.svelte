@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { TransferList } from '@lostgradient/cinder/transfer-list';
+  import { TransferList } from '@lostgradient/cinder';
 
   const items = [
     { id: 'read', label: 'Read' },

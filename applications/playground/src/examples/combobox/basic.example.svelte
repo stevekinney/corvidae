@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Combobox } from '@lostgradient/cinder/combobox';
+  import { Combobox } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

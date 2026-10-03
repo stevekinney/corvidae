@@ -1,14 +1,9 @@
-import type { CodeBlockInfo } from '@lostgradient/markdown/rendering/types';
+import { type CodeBlockInfo } from '@lostgradient/markdown';
 
 import type { ComponentManifest } from './types.ts';
 
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 /**
  * One "avoid when" guidance entry: a reason not to use the component plus an

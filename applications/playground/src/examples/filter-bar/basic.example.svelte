@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { FilterBar } from '@lostgradient/cinder/filter-bar';
-  import type { AppliedFilter, FacetDefinition } from '@lostgradient/cinder/filter-bar';
+  import { type AppliedFilter, type FacetDefinition, FilterBar } from '@lostgradient/cinder';
 
   const facets: FacetDefinition[] = [
     {

@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Segment } from '@lostgradient/cinder/segment';
-  import { SegmentedControl } from '@lostgradient/cinder/segmented-control';
+  import { Segment, SegmentedControl } from '@lostgradient/cinder';
 
   // Each control uses the same three options so size comparisons are not
   // polluted by label/structure differences. The selected option is

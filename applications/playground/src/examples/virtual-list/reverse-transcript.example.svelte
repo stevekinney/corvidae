@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { VirtualList } from '@lostgradient/cinder/virtual-list';
+  import { Button, VirtualList } from '@lostgradient/cinder';
 
   type Message = {
     id: string;

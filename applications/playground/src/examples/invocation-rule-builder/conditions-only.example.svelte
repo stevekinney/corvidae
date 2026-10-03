@@ -6,11 +6,11 @@
 
 <script lang="ts">
   import {
-    InvocationRuleBuilder,
     type InvocationRule,
+    InvocationRuleBuilder,
     type InvocationRuleChange,
     type InvocationRuleOption,
-  } from '@lostgradient/cinder/invocation-rule-builder';
+  } from '@lostgradient/cinder';
 
   const fieldOptions: InvocationRuleOption[] = [
     { value: 'retry-count', label: 'Retry count', type: 'number' },

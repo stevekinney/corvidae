@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Banner } from '@lostgradient/cinder/banner';
+  import { Banner } from '@lostgradient/cinder';
 
   let visible = $state(true);
 </script>

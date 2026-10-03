@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DiffViewer } from '@lostgradient/editor/diff-viewer';
-  import { DiffReviewComments } from '@lostgradient/editor/diff-review-comments';
-  import { createDiffReviewState } from '@lostgradient/editor/diff-review-state';
+  import { createDiffReviewState, DiffReviewComments, DiffViewer } from '@lostgradient/editor';
 
   const original = 'line one\nline two\nline three';
   const current = 'line one\nline TWO\nline three';

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import Timeline from '@lostgradient/cinder/timeline';
+  import { Timeline } from '@lostgradient/cinder';
   import Check from 'lucide-svelte/icons/check';
   import TriangleAlert from 'lucide-svelte/icons/triangle-alert';
   import X from 'lucide-svelte/icons/x';

@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { AccessGate } from '@lostgradient/cinder/access-gate';
-  import { Button } from '@lostgradient/cinder/button';
+  import { AccessGate, Button } from '@lostgradient/cinder';
 
   const canCancelWorkflow = false;
 </script>

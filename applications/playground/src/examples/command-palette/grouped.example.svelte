@@ -4,9 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { CommandItem } from '@lostgradient/cinder/command-item';
-  import { CommandPalette } from '@lostgradient/cinder/command-palette';
+  import { Button, CommandItem, CommandPalette } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
 

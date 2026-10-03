@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Container } from '@lostgradient/cinder/container';
-  import { StatisticGroup } from '@lostgradient/cinder/statistic-group';
+  import { Container, StatisticGroup } from '@lostgradient/cinder';
 </script>
 
 <section style="padding-block: var(--cinder-space-10);">

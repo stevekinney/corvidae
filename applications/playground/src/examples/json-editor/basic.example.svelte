@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { JsonEditor } from '@lostgradient/cinder/json-editor';
+  import { JsonEditor } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

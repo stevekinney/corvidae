@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { EmptyState } from '@lostgradient/cinder/empty-state';
+  import { Button, EmptyState } from '@lostgradient/cinder';
 </script>
 
 <EmptyState title="No results found" description="Try adjusting your filters or search query.">

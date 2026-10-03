@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Input } from '@lostgradient/cinder/input';
-  import { SettingRow } from '@lostgradient/cinder/setting-row';
+  import { Input, SettingRow } from '@lostgradient/cinder';
 </script>
 
 <SettingRow id="display-name" label="Display name" description="Shown to collaborators.">

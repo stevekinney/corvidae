@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { SchemaForm } from '@lostgradient/cinder/schema-form';
+  import { SchemaForm } from '@lostgradient/cinder';
 
   const schema = {
     type: 'object',

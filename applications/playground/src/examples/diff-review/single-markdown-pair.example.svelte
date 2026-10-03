@@ -4,9 +4,11 @@
 </script>
 
 <script lang="ts">
-  import { DiffReview } from '@lostgradient/editor/diff-review';
-  import { createDiffReviewState } from '@lostgradient/editor/diff-review-state';
-  import type { DiffReviewTargetInput } from '@lostgradient/editor/diff-review-state';
+  import {
+    createDiffReviewState,
+    DiffReview,
+    type DiffReviewTargetInput,
+  } from '@lostgradient/editor';
 
   const targets: DiffReviewTargetInput[] = [
     {

@@ -1,6 +1,6 @@
 import { join, posix } from 'node:path';
 
-import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown/rendering';
+import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
 
 import { isA11yMetadata, isAvoidWhenArray } from './component-documentation-guards.ts';
 import type {
@@ -171,7 +171,9 @@ function isRawPackageManifest(value: unknown): value is RawPackageManifest {
  * manifest shape check uses, since a package.json with no version string is
  * just as unusable here.
  */
-async function readPackageVersionForDocumentation(componentSource: ComponentSource): Promise<string> {
+async function readPackageVersionForDocumentation(
+  componentSource: ComponentSource,
+): Promise<string> {
   const packageJsonPath = join(componentSource.packageRoot, 'package.json');
   const raw: unknown = await Bun.file(packageJsonPath).json();
   const version = isObject(raw) ? raw['version'] : undefined;
@@ -194,7 +196,8 @@ export async function loadPackageManifestForDocumentation(
       `${componentSource.manifestPath} does not match the documentation manifest shape`,
     );
   }
-  if (raw.package.version !== undefined) return { ...raw, package: { version: raw.package.version } };
+  if (raw.package.version !== undefined)
+    return { ...raw, package: { version: raw.package.version } };
   const version = await readPackageVersionForDocumentation(componentSource);
   return { ...raw, package: { version } };
 }

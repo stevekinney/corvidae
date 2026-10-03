@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { PricingCard } from '@lostgradient/cinder/pricing-card';
+  import { PricingCard } from '@lostgradient/cinder';
 </script>
 
 <div style="max-inline-size: 22rem;">

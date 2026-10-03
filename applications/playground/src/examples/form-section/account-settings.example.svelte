@@ -5,10 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { FormField } from '@lostgradient/cinder/form-field';
-  import { FormSection } from '@lostgradient/cinder/form-section';
-  import { Input } from '@lostgradient/cinder/input';
-  import { Toggle } from '@lostgradient/cinder/toggle';
+  import { FormField, FormSection, Input, Toggle } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

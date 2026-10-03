@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { CopyButton } from '@lostgradient/cinder/copy-button';
+  import { CopyButton } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row" style="align-items: center;">

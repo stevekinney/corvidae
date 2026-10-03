@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { FormSection } from '@lostgradient/cinder/form-section';
-  import { Toggle } from '@lostgradient/cinder/toggle';
+  import { FormSection, Toggle } from '@lostgradient/cinder';
 
   let emailNotifications = $state(true);
   let darkMode = $state(false);

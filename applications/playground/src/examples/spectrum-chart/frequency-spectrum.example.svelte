@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { SpectrumChart } from '@lostgradient/cinder/spectrum-chart';
+  import { SpectrumChart } from '@lostgradient/cinder';
 
   // Simulate a spectrum with a peak around 440 Hz (A4 note)
   const bins = [

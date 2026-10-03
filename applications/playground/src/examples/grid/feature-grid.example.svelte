@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Container } from '@lostgradient/cinder/container';
-  import { Grid } from '@lostgradient/cinder/grid';
+  import { Container, Grid } from '@lostgradient/cinder';
   import Accessibility from 'lucide-svelte/icons/accessibility';
   import Palette from 'lucide-svelte/icons/palette';
   import Zap from 'lucide-svelte/icons/zap';

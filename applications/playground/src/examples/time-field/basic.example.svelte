@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { TimeField } from '@lostgradient/cinder/time-field';
+  import { TimeField } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

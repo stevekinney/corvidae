@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-  import { Accordion } from '@lostgradient/cinder/accordion';
+  import { Accordion } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

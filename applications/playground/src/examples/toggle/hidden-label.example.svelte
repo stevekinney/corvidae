@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Toggle } from '@lostgradient/cinder/toggle';
+  import { Toggle } from '@lostgradient/cinder';
 
   let wordWrap = $state(true);
   let minimap = $state(false);

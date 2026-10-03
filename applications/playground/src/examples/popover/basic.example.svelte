@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Popover } from '@lostgradient/cinder/popover';
+  import { Button, Popover } from '@lostgradient/cinder';
 
   const popoverHeadingId = 'account-settings-popover-title';
 

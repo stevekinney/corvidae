@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import Button from '@lostgradient/cinder/button';
-  import SelectableRow from '@lostgradient/cinder/selectable-row';
+  import { Button, SelectableRow } from '@lostgradient/cinder';
 
   let opened = $state(0);
   let renamed = $state(0);

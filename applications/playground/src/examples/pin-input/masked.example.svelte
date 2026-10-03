@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { PinInput } from '@lostgradient/cinder/pin-input';
+  import { PinInput } from '@lostgradient/cinder';
   let pin = $state('');
 </script>
 

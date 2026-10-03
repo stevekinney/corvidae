@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Waveform } from '@lostgradient/cinder/waveform';
+  import { Waveform } from '@lostgradient/cinder';
 
   const sineData = Array.from({ length: 256 }, (_, index) => Math.sin((index / 256) * Math.PI * 8));
 </script>

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { ShareCard } from '@lostgradient/cinder/share-card';
+  import { ShareCard } from '@lostgradient/cinder';
 </script>
 
 <div style="max-width: 22rem;">

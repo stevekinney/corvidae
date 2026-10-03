@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DataTable } from '@lostgradient/cinder/data-table';
+  import { DataTable } from '@lostgradient/cinder';
 
   type LogRow = {
     event: string;

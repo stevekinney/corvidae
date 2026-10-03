@@ -5,11 +5,7 @@
 </script>
 
 <script lang="ts">
-  import {
-    ScheduleBuilder,
-    type ScheduleFire,
-    type ScheduleValue,
-  } from '@lostgradient/cinder/schedule-builder';
+  import { ScheduleBuilder, type ScheduleFire, type ScheduleValue } from '@lostgradient/cinder';
 
   // Weekdays at 09:00.
   let value = $state<ScheduleValue>({ mode: 'cron', expression: '0 9 * * 1-5' });

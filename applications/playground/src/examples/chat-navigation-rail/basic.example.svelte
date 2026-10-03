@@ -7,10 +7,10 @@
   import {
     appendAssistantMessage,
     appendUserMessage,
+    ChatNavigationRail,
     createConversation,
     getMessages,
   } from '@lostgradient/chat';
-  import { ChatNavigationRail } from '@lostgradient/chat/navigation-rail';
 
   let conversation = createConversation({ id: 'navigation-example' });
   conversation = appendUserMessage(conversation, 'Summarize the launch plan.');

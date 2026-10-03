@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Skeleton } from '@lostgradient/cinder/skeleton';
+  import { Skeleton } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 0.75rem;">

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CopyButton } from '@lostgradient/cinder/copy-button';
+  import { CopyButton } from '@lostgradient/cinder';
 
   type Props = {
     code: string;

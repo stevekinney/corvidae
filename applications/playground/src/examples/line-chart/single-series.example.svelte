@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { LineChart } from '@lostgradient/cinder/line-chart';
+  import { LineChart } from '@lostgradient/cinder';
 
   const series = [
     {

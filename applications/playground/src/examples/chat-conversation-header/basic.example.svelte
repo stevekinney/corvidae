@@ -4,8 +4,11 @@
 </script>
 
 <script lang="ts">
-  import { appendAssistantMessage, createConversation } from '@lostgradient/chat';
-  import { ChatConversationHeader } from '@lostgradient/chat/conversation-header';
+  import {
+    appendAssistantMessage,
+    ChatConversationHeader,
+    createConversation,
+  } from '@lostgradient/chat';
 
   let conversation = createConversation({
     id: 'launch-support',

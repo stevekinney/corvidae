@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { PreviewPanel } from '@lostgradient/cinder/preview-panel';
+  import { PreviewPanel } from '@lostgradient/cinder';
 </script>
 
 <PreviewPanel title="Artifact preview" status="ready">

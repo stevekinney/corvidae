@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Dropdown } from '@lostgradient/cinder/dropdown';
+  import { Dropdown } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

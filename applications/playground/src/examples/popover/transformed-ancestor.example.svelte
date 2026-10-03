@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Popover } from '@lostgradient/cinder/popover';
+  import { Popover } from '@lostgradient/cinder';
 
   let open = $state(false);
   let triggerElement: HTMLButtonElement | null = $state(null);

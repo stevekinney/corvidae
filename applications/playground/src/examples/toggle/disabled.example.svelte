@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Toggle } from '@lostgradient/cinder/toggle';
+  import { Toggle } from '@lostgradient/cinder';
 </script>
 
 <Toggle id="beta-features" checked={false} label="Beta features" disabled />

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Slider } from '@lostgradient/cinder/slider';
+  import { Slider } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 24rem;">

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Spectrogram } from '@lostgradient/cinder/spectrogram';
+  import { Spectrogram } from '@lostgradient/cinder';
 </script>
 
 <Spectrogram label="Voice spectrogram" frames={[]} height={220} loading>

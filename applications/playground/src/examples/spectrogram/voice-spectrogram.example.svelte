@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-  import { Spectrogram } from '@lostgradient/cinder/spectrogram';
+  import { Spectrogram } from '@lostgradient/cinder';
 
   const frequencyLabels = [
     '50 Hz',

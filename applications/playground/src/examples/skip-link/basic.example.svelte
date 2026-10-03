@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { SkipLink } from '@lostgradient/cinder/skip-link';
+  import { SkipLink } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

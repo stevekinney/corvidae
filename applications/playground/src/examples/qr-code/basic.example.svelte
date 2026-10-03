@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { QrCode } from '@lostgradient/cinder/qr-code';
+  import { QrCode } from '@lostgradient/cinder';
 </script>
 
 <QrCode value="https://cinder.design/components" label="Scan to open the cinder components page" />

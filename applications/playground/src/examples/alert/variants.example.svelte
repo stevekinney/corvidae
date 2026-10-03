@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Alert } from '@lostgradient/cinder/alert';
+  import { Alert } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 1rem;">

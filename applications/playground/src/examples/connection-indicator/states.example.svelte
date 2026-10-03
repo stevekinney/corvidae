@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ConnectionIndicator } from '@lostgradient/cinder/connection-indicator';
+  import { ConnectionIndicator } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row">

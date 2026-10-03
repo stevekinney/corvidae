@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { SelectionPopover } from '@lostgradient/cinder/selection-popover';
+  import { Button, SelectionPopover } from '@lostgradient/cinder';
 
   let showClamping = $state(false);
 </script>

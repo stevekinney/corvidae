@@ -35,8 +35,8 @@
 import {
   shikiHighlighter as createCuratedShikiHighlighter,
   createRetryingLoaderCache,
-} from '@lostgradient/cinder/highlighters/shiki/curated';
-import { BUNDLED_LANGUAGE_LOADERS } from '@lostgradient/markdown/rendering/highlighter';
+} from '@lostgradient/cinder';
+import { BUNDLED_LANGUAGE_LOADERS } from '@lostgradient/markdown';
 
 export { createRetryingLoaderCache };
 

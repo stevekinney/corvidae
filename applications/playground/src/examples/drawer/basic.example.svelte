@@ -5,11 +5,14 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Checkbox } from '@lostgradient/cinder/checkbox';
-  import { Drawer } from '@lostgradient/cinder/drawer';
-  import type { DrawerPlacement, DrawerSize } from '@lostgradient/cinder/drawer';
-  import { Select } from '@lostgradient/cinder/select';
+  import {
+    Button,
+    Checkbox,
+    Drawer,
+    type DrawerPlacement,
+    type DrawerSize,
+    Select,
+  } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

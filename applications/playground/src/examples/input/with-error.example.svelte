@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Input } from '@lostgradient/cinder/input';
+  import { Input } from '@lostgradient/cinder';
   let email = $state('not-an-email');
   const hasError = $derived(!email.includes('@'));
 </script>

@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { PayloadInspector } from '@lostgradient/cinder/payload-inspector';
+  import { Button, PayloadInspector } from '@lostgradient/cinder';
 
   type Scenario = 'empty' | 'null' | 'invalid-json' | 'truncated' | 'primitive';
 

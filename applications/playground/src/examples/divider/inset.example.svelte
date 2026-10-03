@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Divider } from '@lostgradient/cinder/divider';
+  import { Divider } from '@lostgradient/cinder';
 </script>
 
 <div

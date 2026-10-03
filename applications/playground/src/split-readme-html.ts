@@ -1,6 +1,5 @@
 export type ReadmeSegment =
-  | { type: 'html'; content: string }
-  | { type: 'code'; index: number; fallbackHtml: string };
+  { type: 'html'; content: string } | { type: 'code'; index: number; fallbackHtml: string };
 
 /**
  * Split rendered README HTML into alternating prose and code segments.

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Kbd } from '@lostgradient/cinder/kbd';
+  import { Kbd } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row" style="align-items: center;">

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { DonutChart } from '@lostgradient/cinder/donut-chart';
+  import { DonutChart } from '@lostgradient/cinder';
   const data = [
     { id: 'build', label: 'Build', value: 42 },
     { id: 'review', label: 'Review', value: 28 },

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Tree, type TreeDataItem } from '@lostgradient/cinder/tree';
+  import { Tree, type TreeDataItem } from '@lostgradient/cinder';
 
   const items: TreeDataItem[] = Array.from({ length: 10_000 }, (_, index) => ({
     id: `virtual-file-${index}`,

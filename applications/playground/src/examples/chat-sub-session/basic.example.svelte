@@ -7,9 +7,9 @@
   import {
     appendAssistantMessage,
     appendUserMessage,
+    ChatSubSession,
     createConversation,
   } from '@lostgradient/chat';
-  import { ChatSubSession } from '@lostgradient/chat/sub-session';
 
   let conversation = createConversation({ id: 'nested-example' });
   conversation = appendUserMessage(conversation, 'Inspect the deployment logs.');

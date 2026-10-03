@@ -5,10 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Checkbox } from '@lostgradient/cinder/checkbox';
-  import { Feed } from '@lostgradient/cinder/feed';
-  import type { FeedConnectionState } from '@lostgradient/cinder/feed';
-  import { Select } from '@lostgradient/cinder/select';
+  import { Checkbox, Feed, type FeedConnectionState, Select } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

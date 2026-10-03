@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Meter } from '@lostgradient/cinder/meter';
+  import { Meter } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 0.5rem;">

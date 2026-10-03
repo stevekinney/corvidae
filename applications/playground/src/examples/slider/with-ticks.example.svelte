@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Slider } from '@lostgradient/cinder/slider';
+  import { Slider } from '@lostgradient/cinder';
   let value = $state(50);
 </script>
 

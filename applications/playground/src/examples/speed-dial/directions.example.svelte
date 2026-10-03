@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { SpeedDial } from '@lostgradient/cinder/speed-dial';
+  import { SpeedDial } from '@lostgradient/cinder';
 </script>
 
 <div

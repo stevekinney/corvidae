@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Carousel } from '@lostgradient/cinder/carousel';
+  import { Carousel } from '@lostgradient/cinder';
 
   // Use inline SVG data URIs for deterministic snapshots — no third-party network dependency.
   const placeholder = (hue: number) =>

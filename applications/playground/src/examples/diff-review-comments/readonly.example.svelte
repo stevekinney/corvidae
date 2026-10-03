@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DiffReviewComments } from '@lostgradient/editor/diff-review-comments';
-  import { createDiffReviewState } from '@lostgradient/editor/diff-review-state';
+  import { createDiffReviewState, DiffReviewComments } from '@lostgradient/editor';
 
   const created = createDiffReviewState([
     {

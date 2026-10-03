@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Alert } from '@lostgradient/cinder/alert';
+  import { Alert } from '@lostgradient/cinder';
   let dismissed = $state(false);
 </script>
 

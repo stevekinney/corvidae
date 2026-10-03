@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Grid } from '@lostgradient/cinder/grid';
+  import { Grid } from '@lostgradient/cinder';
 </script>
 
 <Grid

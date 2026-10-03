@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { FormField } from '@lostgradient/cinder/form-field';
-  import { Input } from '@lostgradient/cinder/input';
+  import { FormField, Input } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

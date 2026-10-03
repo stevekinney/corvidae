@@ -1,10 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import { Button } from '@lostgradient/cinder/button';
-  import { ColorPicker } from '@lostgradient/cinder/color-picker';
-  import { Input } from '@lostgradient/cinder/input';
-  import { Popover } from '@lostgradient/cinder/popover';
+  import { Button, ColorPicker, Input, Popover } from '@lostgradient/cinder';
   import { RotateCcw } from 'lucide-svelte';
   import {
     COLOR_TOKEN_GROUPS,

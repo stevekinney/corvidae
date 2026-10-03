@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Feed } from '@lostgradient/cinder/feed';
-  import type { FeedEventTone } from '@lostgradient/cinder/feed-event';
+  import { Feed, type FeedEventTone } from '@lostgradient/cinder';
 
   const events: {
     id: string;

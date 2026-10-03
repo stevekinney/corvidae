@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { MegaMenu } from '@lostgradient/cinder/mega-menu';
+  import { MegaMenu } from '@lostgradient/cinder';
 
   const items = [
     {

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { PricingCard } from '@lostgradient/cinder/pricing-card';
+  import { PricingCard } from '@lostgradient/cinder';
 
   let selectedPlan = $state<'starter' | 'pro' | 'enterprise'>('pro');
 </script>

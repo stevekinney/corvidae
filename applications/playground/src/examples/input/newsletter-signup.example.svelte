@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Container } from '@lostgradient/cinder/container';
-  import { Input } from '@lostgradient/cinder/input';
+  import { Button, Container, Input } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

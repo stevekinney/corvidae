@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Banner } from '@lostgradient/cinder/banner';
+  import { Banner } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 0.75rem;">

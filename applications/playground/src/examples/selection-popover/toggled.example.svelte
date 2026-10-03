@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import type { SelectionPopoverPosition } from '@lostgradient/cinder/selection-popover';
-  import { SelectionPopover } from '@lostgradient/cinder/selection-popover';
+  import { Button, SelectionPopover, type SelectionPopoverPosition } from '@lostgradient/cinder';
 
   const popoverId = 'toggled-selection-popover';
   let isOpen = $state(false);

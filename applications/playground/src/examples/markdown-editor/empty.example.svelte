@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { MarkdownEditor } from '@lostgradient/editor/markdown-editor';
+  import { MarkdownEditor } from '@lostgradient/editor';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { ToastRegion, useToast } from '@lostgradient/cinder/toast-region';
+  import { Button, ToastRegion, useToast } from '@lostgradient/cinder';
 
   let count = $state(0);
 </script>

@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { ModalRegion, useModal } from '@lostgradient/cinder/modal-region';
+  import { Button, ModalRegion, useModal } from '@lostgradient/cinder';
 </script>
 
 <ModalRegion>

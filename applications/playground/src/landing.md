@@ -14,12 +14,7 @@ bun add @lostgradient/cinder svelte
 
 `svelte` is a peer dependency; Cinder targets Svelte `>=5.56.0 <6`.
 
-`lucide-svelte` is **not** a peer — Cinder owns it as a pinned regular dependency and installs it
-for you. That pin is deliberate: Cinder ships a prebuilt SSR bundle, so a consumer resolving a
-different `lucide-svelte` version on the client than the one baked into that bundle produces
-structurally different markup for the same icon and a `hydration_mismatch` on first load. Cinder
-uses Lucide for its own component chrome and does not provide a general icon library for your
-application-specific icons — install Lucide yourself if you want it for your own components.
+`lucide-svelte` is **not** a peer — Cinder owns it as a pinned regular dependency and installs it for you. That pin is deliberate: Cinder ships a prebuilt SSR bundle, so a consumer resolving a different `lucide-svelte` version on the client than the one baked into that bundle produces structurally different markup for the same icon and a `hydration_mismatch` on first load. Cinder uses Lucide for its own component chrome and does not provide a general icon library for your application-specific icons — install Lucide yourself if you want it for your own components.
 
 Install the Chat domain suite separately when you need it, alongside the Cinder install above:
 
@@ -35,18 +30,9 @@ Install the Editor domain suite separately for `MarkdownEditor`, `ReviewEditor`,
 bun add @lostgradient/editor
 ```
 
-See [`@lostgradient/editor`'s README](./packages/editor/README.md) for its own peer install list
-(Milkdown/ProseMirror and `@lostgradient/markdown`).
+See [`@lostgradient/editor`'s README](./packages/editor/README.md) for its own peer install list (Milkdown/ProseMirror and `@lostgradient/markdown`).
 
-Cinder no longer exposes any `./markdown/*`, `./editor/*`, or `./commentary/*` subpath — that
-surface moved to the two published sibling packages above during the
-[package-boundaries extraction](./docs/decisions/package-boundaries.md). If your app imports one
-of those removed subpaths, install `@lostgradient/markdown` directly (`bun add
-@lostgradient/markdown`) and update the import specifier — see
-[`@lostgradient/cinder`'s README](./packages/components/README.md) for the full removed-subpath
-migration table. Syntax-highlighting (`CodeBlock` automatic highlighting via `shiki`) needs no
-separate install — `shiki`, `@shikijs/engine-oniguruma`, and `@shikijs/types` are regular
-`dependencies` of Cinder and install automatically.
+Cinder no longer exposes any `./markdown/*`, `./editor/*`, or `./commentary/*` subpath — that surface moved to the two published sibling packages above during the [package-boundaries extraction](./docs/decisions/package-boundaries.md). If your app imports one of those removed subpaths, install `@lostgradient/markdown` directly (`bun add @lostgradient/markdown`) and update the import specifier — see [`@lostgradient/cinder`'s README](./packages/components/README.md) for the full removed-subpath migration table. Syntax-highlighting (`CodeBlock` automatic highlighting via `shiki`) needs no separate install — `shiki`, `@shikijs/engine-oniguruma`, and `@shikijs/types` are regular `dependencies` of Cinder and install automatically.
 
 ## Quickstart
 
@@ -173,13 +159,13 @@ Wire those pieces with your application stack and pass the resulting state, call
 
 This repository is a Bun workspace.
 
-| Workspace             | Purpose                                                                                                  |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| `packages/components` | Published `@lostgradient/cinder` package.                                                                |
-| `packages/playground` | Private component playground and static export.                                                          |
-| `packages/testing`    | Private workspace of small, target-owned checks the playground and components package depend on.         |
-| `packages/markdown`   | Published `@lostgradient/markdown` package (headless Markdown pipeline, rendering, diffing, templating). |
-| `packages/commentary` | Private review/comment anchoring and editor (ProseMirror/Milkdown) runtime utilities.                    |
+| Workspace | Purpose |
+| --- | --- |
+| `packages/components` | Published `@lostgradient/cinder` package. |
+| `packages/playground` | Private component playground and static export. |
+| `packages/testing` | Private workspace of small, target-owned checks the playground and components package depend on. |
+| `packages/markdown` | Published `@lostgradient/markdown` package (headless Markdown pipeline, rendering, diffing, templating). |
+| `packages/commentary` | Private review/comment anchoring and editor (ProseMirror/Milkdown) runtime utilities. |
 
 ## Development
 
@@ -188,8 +174,7 @@ bun install
 bun run dev
 ```
 
-The playground opens at `/` with this README as its landing page. Component examples live under
-`/c/<component-id>`; for example, `/c/accordion` opens the Accordion component page.
+The playground opens at `/` with this README as its landing page. Component examples live under `/c/<component-id>`; for example, `/c/accordion` opens the Accordion component page.
 
 Useful root commands:
 

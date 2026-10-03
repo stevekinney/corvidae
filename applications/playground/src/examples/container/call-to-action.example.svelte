@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Container } from '@lostgradient/cinder/container';
+  import { Button, Container } from '@lostgradient/cinder';
 </script>
 
 <section style="padding-block: var(--cinder-space-10);">

@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { CSS_VARIABLE_THEME } from '@lostgradient/markdown/rendering/highlighter';
+import { CSS_VARIABLE_THEME } from '@lostgradient/markdown';
 
 import {
   documentationJsonLd,

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Spinner } from '@lostgradient/cinder/spinner';
+  import { Spinner } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row" style="align-items: center;">

@@ -4,9 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { ToastRegion, useToast } from '@lostgradient/cinder/toast-region';
-  import type { ToastPosition } from '@lostgradient/cinder/toast-region';
+  import { Button, type ToastPosition, ToastRegion, useToast } from '@lostgradient/cinder';
 
   const positions: ToastPosition[] = [
     'top-left',

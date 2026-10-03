@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { DatePicker } from '@lostgradient/cinder/date-picker';
+  import { DatePicker } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

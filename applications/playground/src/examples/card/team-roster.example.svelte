@@ -5,10 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Avatar } from '@lostgradient/cinder/avatar';
-  import { AvatarGroup } from '@lostgradient/cinder/avatar-group';
-  import { Card } from '@lostgradient/cinder/card';
-  import { Container } from '@lostgradient/cinder/container';
+  import { Avatar, AvatarGroup, Card, Container } from '@lostgradient/cinder';
 
   const members = [
     {

@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Tooltip } from '@lostgradient/cinder/tooltip';
+  import { Button, Tooltip } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row" style="padding: 1rem;">

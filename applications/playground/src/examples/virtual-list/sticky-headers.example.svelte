@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { VirtualList } from '@lostgradient/cinder/virtual-list';
+  import { VirtualList } from '@lostgradient/cinder';
 
   type Row = {
     id: string;

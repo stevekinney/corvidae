@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { BarChart } from '@lostgradient/cinder/bar-chart';
+  import { BarChart } from '@lostgradient/cinder';
 </script>
 
 <BarChart label="Loading active users" loading data={[]} categoryKey="category" series={[]} />

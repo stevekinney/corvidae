@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Collapsible } from '@lostgradient/cinder/collapsible';
+  import { Collapsible } from '@lostgradient/cinder';
 </script>
 
 <Collapsible trigger="Shipping details">

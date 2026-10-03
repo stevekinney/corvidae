@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Container } from '@lostgradient/cinder/container';
-  import { PricingCard } from '@lostgradient/cinder/pricing-card';
+  import { Container, PricingCard } from '@lostgradient/cinder';
 
   const plans = [
     {

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { QuotaMeter } from '@lostgradient/cinder/quota-meter';
+  import { QuotaMeter } from '@lostgradient/cinder';
 </script>
 
 <QuotaMeter used={72} />

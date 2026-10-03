@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { FormField } from '@lostgradient/cinder/form-field';
-  import { FormSection } from '@lostgradient/cinder/form-section';
-  import { Input } from '@lostgradient/cinder/input';
+  import { FormField, FormSection, Input } from '@lostgradient/cinder';
   let street = $state('');
   let city = $state('');
   let postalCode = $state('');

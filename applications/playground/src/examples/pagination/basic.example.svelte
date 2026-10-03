@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Pagination } from '@lostgradient/cinder/pagination';
+  import { Pagination } from '@lostgradient/cinder';
   let currentPage = $state(1);
 </script>
 

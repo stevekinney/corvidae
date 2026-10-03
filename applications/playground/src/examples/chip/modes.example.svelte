@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Chip } from '@lostgradient/cinder/chip';
+  import { Chip } from '@lostgradient/cinder';
   let pressed = $state(false);
   let tags = $state(['JavaScript', 'TypeScript', 'Svelte']);
 </script>

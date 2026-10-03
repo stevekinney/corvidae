@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ApprovalCard } from '@lostgradient/cinder/approval-card';
+  import { ApprovalCard } from '@lostgradient/cinder';
 </script>
 
 <ApprovalCard

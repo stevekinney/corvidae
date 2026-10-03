@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Waveform } from '@lostgradient/cinder/waveform';
+  import { Waveform } from '@lostgradient/cinder';
 </script>
 
 <Waveform label="Voice recording waveform" data={[]} height={80}>

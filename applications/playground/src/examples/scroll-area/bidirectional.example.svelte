@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ScrollArea } from '@lostgradient/cinder/scroll-area';
+  import { ScrollArea } from '@lostgradient/cinder';
 </script>
 
 <ScrollArea direction="both" maxHeight="12rem" maxWidth="24rem">

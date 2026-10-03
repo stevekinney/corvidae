@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Carousel } from '@lostgradient/cinder/carousel';
+  import { Carousel } from '@lostgradient/cinder';
 
   const autoplayEnabled =
     typeof window === 'undefined'

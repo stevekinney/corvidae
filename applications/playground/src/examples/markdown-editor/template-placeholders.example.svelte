@@ -6,11 +6,7 @@
 
 <script lang="ts">
   import { Checkbox, RadioGroup } from '@lostgradient/cinder';
-  import {
-    MarkdownEditor,
-    type EditorMode,
-    type MarkdownEditorProps,
-  } from '@lostgradient/editor/markdown-editor';
+  import { type EditorMode, MarkdownEditor, type MarkdownEditorProps } from '@lostgradient/editor';
 
   type Definitions = MarkdownEditorProps['placeholderDefinitions'];
   type Values = MarkdownEditorProps['placeholderValues'];

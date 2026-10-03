@@ -1,19 +1,21 @@
 <!-- dev-only playground scaffold; immutable page data is injected server-side -->
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte';
-  import { Accordion } from '@lostgradient/cinder/accordion';
-  import { AccordionItem } from '@lostgradient/cinder/accordion-item';
-  import { Alert } from '@lostgradient/cinder/alert';
-  import { Badge } from '@lostgradient/cinder/badge';
-  import { Button } from '@lostgradient/cinder/button';
-  import { Callout } from '@lostgradient/cinder/callout';
-  import { CodeBlock } from '@lostgradient/cinder/code-block';
-  import { Collapsible } from '@lostgradient/cinder/collapsible';
-  import { Kbd } from '@lostgradient/cinder/kbd';
-  import { StatusDot } from '@lostgradient/cinder/status-dot';
-  import { Table } from '@lostgradient/cinder/table';
-  import { Toggle } from '@lostgradient/cinder/toggle';
-  import { Tooltip } from '@lostgradient/cinder/tooltip';
+  import {
+    Accordion,
+    AccordionItem,
+    Alert,
+    Badge,
+    Button,
+    Callout,
+    CodeBlock,
+    Collapsible,
+    Kbd,
+    StatusDot,
+    Table,
+    Toggle,
+    Tooltip,
+  } from '@lostgradient/cinder';
   import Accessibility from 'lucide-svelte/icons/accessibility';
   import ArrowUpRight from 'lucide-svelte/icons/arrow-up-right';
   import Check from 'lucide-svelte/icons/check';

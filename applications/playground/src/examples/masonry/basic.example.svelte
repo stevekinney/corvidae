@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Card } from '@lostgradient/cinder/card';
-  import { Masonry } from '@lostgradient/cinder/masonry';
+  import { Card, Masonry } from '@lostgradient/cinder';
 </script>
 
 <Masonry columns="3" gap="var(--cinder-space-4)" aria-label="Editorial cards">

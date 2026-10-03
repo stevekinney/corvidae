@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { FeedBoundary } from '@lostgradient/cinder/feed-boundary';
+  import { FeedBoundary } from '@lostgradient/cinder';
 </script>
 
 <ul

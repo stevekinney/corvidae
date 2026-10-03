@@ -10,7 +10,7 @@
     type InvocationRuleCondition,
     type InvocationRuleConditionChange,
     type InvocationRuleOption,
-  } from '@lostgradient/cinder/invocation-rule-builder';
+  } from '@lostgradient/cinder';
 
   const fieldOptions: InvocationRuleOption[] = [
     {

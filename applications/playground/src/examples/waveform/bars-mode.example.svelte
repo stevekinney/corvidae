@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Waveform } from '@lostgradient/cinder/waveform';
+  import { Waveform } from '@lostgradient/cinder';
 
   // Simulate a voice recording envelope (louder in the middle) with deterministic noise
   const voiceData = Array.from({ length: 128 }, (_, index) => {

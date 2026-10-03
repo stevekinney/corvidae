@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ColorField } from '@lostgradient/cinder/color-field';
+  import { ColorField } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

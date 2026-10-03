@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Tabs } from '@lostgradient/cinder/tabs';
-  import { Badge } from '@lostgradient/cinder/badge';
+  import { Badge, Tabs } from '@lostgradient/cinder';
 
   let active = $state('inbox');
 </script>

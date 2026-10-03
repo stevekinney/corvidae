@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { SecretValueField } from '@lostgradient/cinder/secret-value-field';
+  import { SecretValueField } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: var(--cinder-space-3); max-width: 480px;">

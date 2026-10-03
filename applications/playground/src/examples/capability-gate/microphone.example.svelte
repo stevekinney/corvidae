@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { CapabilityGate } from '@lostgradient/cinder/capability-gate';
-  import type { CapabilityGateState } from '@lostgradient/cinder/capability-gate';
+  import { Button, CapabilityGate, type CapabilityGateState } from '@lostgradient/cinder';
 
   let capabilityState = $state<CapabilityGateState>('permission-needed');
   const needsAction = $derived(capabilityState === 'permission-needed');

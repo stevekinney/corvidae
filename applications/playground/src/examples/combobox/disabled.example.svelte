@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Combobox } from '@lostgradient/cinder/combobox';
+  import { Combobox } from '@lostgradient/cinder';
   const options = [
     { value: 'free', label: 'Free' },
     { value: 'pro', label: 'Pro' },

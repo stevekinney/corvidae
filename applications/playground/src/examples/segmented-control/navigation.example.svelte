@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Segment } from '@lostgradient/cinder/segment';
-  import { SegmentedControl } from '@lostgradient/cinder/segmented-control';
+  import { Segment, SegmentedControl } from '@lostgradient/cinder';
 
   const sources = [
     { label: 'Actual', href: '/costs?source=actual', current: true },

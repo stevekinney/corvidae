@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { RunStepTimeline } from '@lostgradient/cinder/run-step-timeline';
-  import type { RunStep } from '@lostgradient/cinder/run-step-timeline';
+  import { type RunStep, RunStepTimeline } from '@lostgradient/cinder';
 
   const steps: RunStep[] = [
     {

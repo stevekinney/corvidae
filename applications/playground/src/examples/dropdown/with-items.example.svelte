@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Dropdown } from '@lostgradient/cinder/dropdown';
+  import { Dropdown } from '@lostgradient/cinder';
   let selected = $state('None');
 </script>
 

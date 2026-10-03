@@ -37,7 +37,7 @@
 import { type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 
-import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown/rendering';
+import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
 import { stripExampleHarness } from '../../components/scripts/lib/strip-example-harness.ts';
 import {
   findFixture,

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DiffViewer, type DiffViewerAnnotationSelection } from '@lostgradient/editor/diff-viewer';
+  import { DiffViewer, type DiffViewerAnnotationSelection } from '@lostgradient/editor';
 
   const original = '# Title\n\nkeep\nold line\nkeep end';
   const current = '# Title\n\nkeep\nnew line\nkeep end';

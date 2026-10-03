@@ -43,12 +43,8 @@
  * @module
  */
 
-import type { Highlighter } from '@lostgradient/cinder';
-import { shikiHighlighter } from '@lostgradient/cinder/highlighters/shiki/curated';
-import {
-  BUNDLED_LANGUAGE_LOADERS,
-  CSS_VARIABLE_THEME,
-} from '@lostgradient/markdown/rendering/highlighter';
+import { type Highlighter, shikiHighlighter } from '@lostgradient/cinder';
+import { BUNDLED_LANGUAGE_LOADERS, CSS_VARIABLE_THEME } from '@lostgradient/markdown';
 
 /**
  * Shared `depict`-themed highlighter for `<CodeBlock highlighter={…} />`.

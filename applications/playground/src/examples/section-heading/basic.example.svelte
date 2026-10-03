@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { SectionHeading } from '@lostgradient/cinder/section-heading';
+  import { Button, SectionHeading } from '@lostgradient/cinder';
 </script>
 
 <SectionHeading

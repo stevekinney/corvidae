@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Checkbox } from '@lostgradient/cinder/checkbox';
-  import { CheckboxGroup } from '@lostgradient/cinder/checkbox-group';
+  import { Checkbox, CheckboxGroup } from '@lostgradient/cinder';
 </script>
 
 <CheckboxGroup label="Notification channels" disabled>

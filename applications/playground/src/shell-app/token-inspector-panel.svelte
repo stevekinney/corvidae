@@ -30,12 +30,15 @@
    * because it means the two panels can legitimately disagree while the colour
    * panel has unsaved edits.
    */
-  import { Button } from '@lostgradient/cinder/button';
-  import { FormField } from '@lostgradient/cinder/form-field';
-  import { Input } from '@lostgradient/cinder/input';
+  import {
+    Button,
+    FormField,
+    Input,
+    resolvedLightTokens as lightContext,
+    TOKEN_REGISTRY,
+    type TokenRegistryEntry,
+  } from '@lostgradient/cinder';
   import X from 'lucide-svelte/icons/x';
-  import { TOKEN_REGISTRY, type TokenRegistryEntry } from '@lostgradient/cinder/tokens/registry';
-  import lightContext from '@lostgradient/cinder/tokens/resolved/light' with { type: 'json' };
 
   type Props = {
     onClose: () => void;

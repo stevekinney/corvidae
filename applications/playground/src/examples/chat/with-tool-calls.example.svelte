@@ -16,7 +16,7 @@
     type ChatRowContext,
     type ChatAdapter,
   } from '@lostgradient/chat';
-  import { Button } from '@lostgradient/cinder/button';
+  import { Button } from '@lostgradient/cinder';
 
   const adapter: ChatAdapter = {
     sendMessage: async () => {},

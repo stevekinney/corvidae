@@ -5,12 +5,14 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { ButtonGroup } from '@lostgradient/cinder/button-group';
-  import { Dropdown } from '@lostgradient/cinder/dropdown';
-  import { DropdownItem } from '@lostgradient/cinder/dropdown-item';
-  import { DropdownMenu } from '@lostgradient/cinder/dropdown-menu';
-  import { DropdownTrigger } from '@lostgradient/cinder/dropdown-trigger';
+  import {
+    Button,
+    ButtonGroup,
+    Dropdown,
+    DropdownItem,
+    DropdownMenu,
+    DropdownTrigger,
+  } from '@lostgradient/cinder';
 </script>
 
 <div dir="rtl">

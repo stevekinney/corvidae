@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { ButtonGroup } from '@lostgradient/cinder/button-group';
+  import { Button, ButtonGroup } from '@lostgradient/cinder';
 </script>
 
 <ButtonGroup label="Document actions">

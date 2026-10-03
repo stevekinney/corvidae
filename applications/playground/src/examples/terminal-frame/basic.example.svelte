@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { TerminalFrame } from '@lostgradient/cinder/terminal-frame';
+  import { TerminalFrame } from '@lostgradient/cinder';
 </script>
 
 <TerminalFrame title="Build shell" status="connected">

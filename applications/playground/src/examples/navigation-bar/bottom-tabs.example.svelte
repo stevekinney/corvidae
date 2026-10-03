@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { NavigationBar } from '@lostgradient/cinder/navigation-bar';
-  import { NavigationItem } from '@lostgradient/cinder/navigation-item';
+  import { NavigationBar, NavigationItem } from '@lostgradient/cinder';
 
   let active = $state('home');
 </script>

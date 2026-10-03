@@ -4,9 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { FileUpload } from '@lostgradient/cinder/file-upload';
-  import type { FileUploadEntry } from '@lostgradient/cinder/file-upload';
-  import { FormField } from '@lostgradient/cinder/form-field';
+  import { FileUpload, type FileUploadEntry, FormField } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { AreaChart } from '@lostgradient/cinder/area-chart';
+  import { AreaChart } from '@lostgradient/cinder';
 </script>
 
 <AreaChart label="Loading usage" loading series={[]} />

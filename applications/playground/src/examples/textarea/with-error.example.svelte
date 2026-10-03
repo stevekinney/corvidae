@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Textarea } from '@lostgradient/cinder/textarea';
+  import { Textarea } from '@lostgradient/cinder';
   let message = $state('');
   const hasError = $derived(message.length > 0 && message.length < 20);
 </script>

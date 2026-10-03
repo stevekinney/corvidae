@@ -48,9 +48,7 @@ const REPO_ROOT = join(PLAYGROUND_ROOT, '..', '..');
  *   belongs to exactly one component, so this scope is precise.
  */
 export type ChangeScope =
-  | { kind: 'shell' }
-  | { kind: 'components' }
-  | { kind: 'examples'; names: ReadonlySet<string> };
+  { kind: 'shell' } | { kind: 'components' } | { kind: 'examples'; names: ReadonlySet<string> };
 
 /**
  * Invalidation generation. Bumped synchronously by `invalidateCachesForChange`

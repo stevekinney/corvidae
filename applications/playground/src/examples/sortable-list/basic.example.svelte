@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { SortableList } from '@lostgradient/cinder/sortable-list';
-  import type { SortableListProps } from '@lostgradient/cinder/sortable-list';
+  import { SortableList, type SortableListProps } from '@lostgradient/cinder';
 
   type Task = { id: string; label: string };
 

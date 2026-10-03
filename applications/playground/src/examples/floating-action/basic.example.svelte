@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { FloatingAction } from '@lostgradient/cinder/floating-action';
+  import { FloatingAction } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">

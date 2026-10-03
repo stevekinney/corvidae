@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { StatisticGroup } from '@lostgradient/cinder/statistic-group';
+  import { StatisticGroup } from '@lostgradient/cinder';
 </script>
 
 <StatisticGroup label="Pipeline health" columns={3}>

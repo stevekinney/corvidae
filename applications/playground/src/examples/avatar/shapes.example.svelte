@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Avatar } from '@lostgradient/cinder/avatar';
+  import { Avatar } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row">

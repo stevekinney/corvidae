@@ -6,8 +6,7 @@
 </script>
 
 <script lang="ts">
-  import { Badge } from '@lostgradient/cinder/badge';
-  import { KanbanBoard, type KanbanBoardColumn } from '@lostgradient/cinder/kanban-board';
+  import { Badge, KanbanBoard, type KanbanBoardColumn } from '@lostgradient/cinder';
 
   type WorkItem = {
     id: string;

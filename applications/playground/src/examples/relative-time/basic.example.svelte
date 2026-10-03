@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { RelativeTime } from '@lostgradient/cinder/relative-time';
+  import { RelativeTime } from '@lostgradient/cinder';
 
   const yesterday = new Date(Date.now() - 86_400_000);
 </script>

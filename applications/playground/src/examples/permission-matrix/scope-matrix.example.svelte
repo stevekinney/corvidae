@@ -5,11 +5,11 @@
 </script>
 
 <script lang="ts">
-  import { PermissionMatrix } from '@lostgradient/cinder/permission-matrix';
-  import type {
-    PermissionMatrixAxisItem,
-    PermissionMatrixCellState,
-  } from '@lostgradient/cinder/permission-matrix';
+  import {
+    PermissionMatrix,
+    type PermissionMatrixAxisItem,
+    type PermissionMatrixCellState,
+  } from '@lostgradient/cinder';
 
   const rows = [
     { id: 'workflows-admin', label: 'workflows:admin' },

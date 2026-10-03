@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Steps } from '@lostgradient/cinder/steps';
-  import type { StepItem } from '@lostgradient/cinder/steps';
+  import { type StepItem, Steps } from '@lostgradient/cinder';
 
   let current = $state(1);
 

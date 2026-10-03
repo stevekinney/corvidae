@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { SideNavigation } from '@lostgradient/cinder/side-navigation';
+  import { SideNavigation } from '@lostgradient/cinder';
 </script>
 
 <div style="max-inline-size: 18rem;">

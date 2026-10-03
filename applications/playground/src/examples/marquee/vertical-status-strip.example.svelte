@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Marquee } from '@lostgradient/cinder/marquee';
+  import { Marquee } from '@lostgradient/cinder';
 </script>
 
 <div style="max-inline-size: 24rem;">

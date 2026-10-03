@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Pagination } from '@lostgradient/cinder/pagination';
+  import { Pagination } from '@lostgradient/cinder';
 
   type CursorPage = {
     page: number;

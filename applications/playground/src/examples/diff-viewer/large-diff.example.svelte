@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { DiffViewer } from '@lostgradient/editor/diff-viewer';
+  import { DiffViewer } from '@lostgradient/editor';
   const original = Array.from(
     { length: 140 },
     (_, index) => `- Item ${index + 1}: keep existing behavior stable.`,

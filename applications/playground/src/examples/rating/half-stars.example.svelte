@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Rating } from '@lostgradient/cinder/rating';
+  import { Rating } from '@lostgradient/cinder';
   let score = $state(0);
 </script>
 

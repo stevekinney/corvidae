@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Select } from '@lostgradient/cinder/select';
+  import { Select } from '@lostgradient/cinder';
 
   // `as const` narrows value types to the literal union 'us' | 'ca' | 'gb' | 'au'.
   // T is inferred from `options`; passing value="invalid" would be a compile error.

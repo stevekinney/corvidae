@@ -7,9 +7,12 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { SideNavigation } from '@lostgradient/cinder/side-navigation';
-  import { SIDEBAR_MOBILE_MEDIA_QUERY, Sidebar } from '@lostgradient/cinder/sidebar';
+  import {
+    Button,
+    Sidebar,
+    SIDEBAR_MOBILE_MEDIA_QUERY,
+    SideNavigation,
+  } from '@lostgradient/cinder';
   import { MediaQuery } from 'svelte/reactivity';
 
   const mobile = new MediaQuery(SIDEBAR_MOBILE_MEDIA_QUERY, false);

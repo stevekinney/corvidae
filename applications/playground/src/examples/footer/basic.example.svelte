@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Footer } from '@lostgradient/cinder/footer';
+  import { Footer } from '@lostgradient/cinder';
 
   const groups = [
     {

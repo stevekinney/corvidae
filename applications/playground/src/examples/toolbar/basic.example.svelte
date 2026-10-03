@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import Toolbar from '@lostgradient/cinder/toolbar';
-  import { Button } from '@lostgradient/cinder/button';
+  import { Button, Toolbar } from '@lostgradient/cinder';
 </script>
 
 <Toolbar aria-label="Document actions">

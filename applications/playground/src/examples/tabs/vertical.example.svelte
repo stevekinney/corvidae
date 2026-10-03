@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Tabs } from '@lostgradient/cinder/tabs';
+  import { Tabs } from '@lostgradient/cinder';
   let active = $state('design');
 </script>
 

@@ -5,10 +5,7 @@
 </script>
 
 <script lang="ts">
-  import Toolbar from '@lostgradient/cinder/toolbar';
-  import { Button } from '@lostgradient/cinder/button';
-  import Segment from '@lostgradient/cinder/segment';
-  import SegmentedControl from '@lostgradient/cinder/segmented-control';
+  import { Button, Segment, SegmentedControl, Toolbar } from '@lostgradient/cinder';
 </script>
 
 <Toolbar aria-label="Preview controls">

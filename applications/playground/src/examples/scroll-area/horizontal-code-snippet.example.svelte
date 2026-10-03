@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { ScrollArea } from '@lostgradient/cinder/scroll-area';
+  import { ScrollArea } from '@lostgradient/cinder';
 
   const command =
     '$ bun run --filter=@lostgradient/cinder build && bun run --filter=@lostgradient/cinder test --coverage --reporter=verbose --bail';

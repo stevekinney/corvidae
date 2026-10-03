@@ -4,8 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Tooltip } from '@lostgradient/cinder/tooltip';
+  import { Button, Tooltip } from '@lostgradient/cinder';
 </script>
 
 <Tooltip text="This is a helpful explanation.">

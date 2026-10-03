@@ -5,10 +5,12 @@
 </script>
 
 <script lang="ts">
-  import ChatComposerPopover, {
+  import {
+    Chat,
+    ChatComposerPopover,
     type ChatComposerPopoverSelection,
-  } from '@lostgradient/chat/composer-popover';
-  import { Chat, createConversation } from '@lostgradient/chat';
+    createConversation,
+  } from '@lostgradient/chat';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

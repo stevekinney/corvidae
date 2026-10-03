@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Badge } from '@lostgradient/cinder/badge';
+  import { Badge } from '@lostgradient/cinder';
 </script>
 
 <div class="example-preview-row">

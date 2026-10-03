@@ -4,9 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Form } from '@lostgradient/cinder/form';
-  import { Input } from '@lostgradient/cinder/input';
-  import { Button } from '@lostgradient/cinder/button';
+  import { Button, Form, Input } from '@lostgradient/cinder';
 </script>
 
 <Form onSubmit={() => undefined}>

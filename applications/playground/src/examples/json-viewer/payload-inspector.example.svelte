@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { CopyButton } from '@lostgradient/cinder/copy-button';
-  import { JsonViewer } from '@lostgradient/cinder/json-viewer';
+  import { CopyButton, JsonViewer } from '@lostgradient/cinder';
 
   const eventType = 'ActivityFailed';
   const payload = {

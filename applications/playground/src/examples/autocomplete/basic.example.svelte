@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-  import Autocomplete from '@lostgradient/cinder/autocomplete';
+  import { Autocomplete } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

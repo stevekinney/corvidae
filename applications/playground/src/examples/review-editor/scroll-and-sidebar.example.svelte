@@ -5,9 +5,8 @@
 </script>
 
 <script lang="ts">
-  import { ReviewEditor } from '@lostgradient/editor/review-editor';
-  import type { Thread } from '@lostgradient/editor/review-editor';
-  import Button from '@lostgradient/cinder/button';
+  import { ReviewEditor, type Thread } from '@lostgradient/editor';
+  import { Button } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

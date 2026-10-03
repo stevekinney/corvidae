@@ -5,9 +5,11 @@
 </script>
 
 <script lang="ts">
-  import { DiffReview } from '@lostgradient/editor/diff-review';
-  import { createDiffReviewState } from '@lostgradient/editor/diff-review-state';
-  import type { DiffReviewTargetInput } from '@lostgradient/editor/diff-review-state';
+  import {
+    createDiffReviewState,
+    DiffReview,
+    type DiffReviewTargetInput,
+  } from '@lostgradient/editor';
 
   const patch = `diff --git a/src/one.ts b/src/one.ts\n--- a/src/one.ts\n+++ b/src/one.ts\n@@ -1,2 +1,2 @@\n-const a = 1;\n+const a = 2;\n keep();\ndiff --git a/src/two.ts b/src/two.ts\n--- a/src/two.ts\n+++ b/src/two.ts\n@@ -1,2 +1,2 @@\n-const b = 1;\n+const b = 2;\n keep();\n`;
 

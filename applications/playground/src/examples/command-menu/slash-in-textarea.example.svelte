@@ -4,13 +4,13 @@
 </script>
 
 <script lang="ts">
-  import { CommandItem } from '@lostgradient/cinder/command-item';
   import {
+    CommandItem,
     CommandMenu,
-    detectTrigger,
     type CommandMenuCompletion,
-  } from '@lostgradient/cinder/command-menu';
-  import { Textarea } from '@lostgradient/cinder/textarea';
+    detectTrigger,
+    Textarea,
+  } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

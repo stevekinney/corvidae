@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { JsonSchemaEditor } from '@lostgradient/cinder/json-schema-editor';
-  import type { JsonSchemaValue } from '@lostgradient/cinder/json-schema-editor';
+  import { JsonSchemaEditor, type JsonSchemaValue } from '@lostgradient/cinder';
   const schema: JsonSchemaValue = {
     type: 'object',
     properties: {

@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Breadcrumbs } from '@lostgradient/cinder/breadcrumbs';
-  import { PageHeader } from '@lostgradient/cinder/page-header';
+  import { Breadcrumbs, Button, PageHeader } from '@lostgradient/cinder';
 </script>
 
 <div>

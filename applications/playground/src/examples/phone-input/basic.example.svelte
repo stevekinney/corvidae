@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { PhoneInput } from '@lostgradient/cinder/phone-input';
+  import { PhoneInput } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

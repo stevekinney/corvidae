@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { AccessGate } from '@lostgradient/cinder/access-gate';
+  import { AccessGate } from '@lostgradient/cinder';
 </script>
 
 <AccessGate

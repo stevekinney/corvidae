@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Checkbox } from '@lostgradient/cinder/checkbox';
+  import { Checkbox } from '@lostgradient/cinder';
 </script>
 
 <div style="display: flex; flex-direction: column; gap: 0.75rem;">

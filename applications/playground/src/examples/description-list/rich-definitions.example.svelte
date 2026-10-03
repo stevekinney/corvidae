@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DescriptionList } from '@lostgradient/cinder/description-list';
-  import type { DescriptionListItem } from '@lostgradient/cinder/description-list';
+  import { DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
 
   const items: DescriptionListItem[] = [
     { term: 'Run ID', definition: runIdDefinition },

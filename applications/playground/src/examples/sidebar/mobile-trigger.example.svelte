@@ -5,11 +5,14 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { NavigationItem } from '@lostgradient/cinder/navigation-item';
-  import { SideNavigation } from '@lostgradient/cinder/side-navigation';
-  import { SideNavigationItem } from '@lostgradient/cinder/side-navigation-item';
-  import { SIDEBAR_MOBILE_MEDIA_QUERY, Sidebar } from '@lostgradient/cinder/sidebar';
+  import {
+    Button,
+    NavigationItem,
+    Sidebar,
+    SIDEBAR_MOBILE_MEDIA_QUERY,
+    SideNavigation,
+    SideNavigationItem,
+  } from '@lostgradient/cinder';
   import { MediaQuery } from 'svelte/reactivity';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();

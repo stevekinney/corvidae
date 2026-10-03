@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Card } from '@lostgradient/cinder/card';
-  import { Grid } from '@lostgradient/cinder/grid';
+  import { Card, Grid } from '@lostgradient/cinder';
 </script>
 
 <Grid minItemWidth="14rem" gap="var(--cinder-space-4)">

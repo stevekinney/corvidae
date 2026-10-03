@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { LineChart } from '@lostgradient/cinder/line-chart';
+  import { LineChart } from '@lostgradient/cinder';
 </script>
 
 <LineChart label="Loading revenue" loading series={[]} />

@@ -5,8 +5,11 @@
 </script>
 
 <script lang="ts">
-  import { DateRangeField } from '@lostgradient/cinder/date-range-field';
-  import type { DateRangeDatePreset, DateRangeValue } from '@lostgradient/cinder/date-range-field';
+  import {
+    type DateRangeDatePreset,
+    DateRangeField,
+    type DateRangeValue,
+  } from '@lostgradient/cinder';
 
   let range: DateRangeValue = $state({ start: undefined, end: undefined });
 

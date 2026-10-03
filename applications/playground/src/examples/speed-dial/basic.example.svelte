@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { SpeedDial } from '@lostgradient/cinder/speed-dial';
+  import { SpeedDial } from '@lostgradient/cinder';
 
   let lastAction = $state('None');
 </script>

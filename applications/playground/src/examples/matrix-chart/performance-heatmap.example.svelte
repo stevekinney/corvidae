@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { MatrixChart } from '@lostgradient/cinder/matrix-chart';
+  import { MatrixChart } from '@lostgradient/cinder';
 
   const data = [
     { team: 'Engineering', quarter: 'Q1', score: 82 },

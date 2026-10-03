@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Container } from '@lostgradient/cinder/container';
+  import { Container } from '@lostgradient/cinder';
 
   const widths = ['narrow', 'wide', 'full'] as const;
 </script>

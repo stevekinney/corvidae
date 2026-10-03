@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { ZoomPanViewer } from '@lostgradient/cinder/zoom-pan-viewer';
+  import { ZoomPanViewer } from '@lostgradient/cinder';
 </script>
 
 <ZoomPanViewer ariaLabel="Architecture diagram">

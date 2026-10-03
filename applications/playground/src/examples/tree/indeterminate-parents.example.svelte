@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Tree } from '@lostgradient/cinder/tree';
+  import { Tree } from '@lostgradient/cinder';
 
   let selectedIds = $state<string[]>(['february']);
   let expandedIds = $state<string[]>(['archive']);

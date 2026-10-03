@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { Tooltip } from '@lostgradient/cinder/tooltip';
+  import { Button, Tooltip } from '@lostgradient/cinder';
 </script>
 
 <div data-testid="transformed-ancestor-example" style="display: grid; gap: 1rem; max-width: 40rem;">

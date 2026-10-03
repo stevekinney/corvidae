@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { ColorSwatchPicker } from '@lostgradient/cinder/color-swatch-picker';
+  import { ColorSwatchPicker } from '@lostgradient/cinder';
 
   const palette = [
     { color: '#ef4444', name: 'Red' },

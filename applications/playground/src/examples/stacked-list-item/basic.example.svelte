@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { DataList } from '@lostgradient/cinder/data-list';
-  import { StackedListItem } from '@lostgradient/cinder/stacked-list-item';
+  import { DataList, StackedListItem } from '@lostgradient/cinder';
 
   const members = [
     { id: 'alice', name: 'Alice Chen', role: 'Engineer' },

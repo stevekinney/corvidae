@@ -5,10 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Alert } from '@lostgradient/cinder/alert';
-  import { Button } from '@lostgradient/cinder/button';
-  import { FormField } from '@lostgradient/cinder/form-field';
-  import { Input } from '@lostgradient/cinder/input';
+  import { Alert, Button, FormField, Input } from '@lostgradient/cinder';
   let email = $state('');
   let password = $state('');
   let authError = $state<string | undefined>(undefined);

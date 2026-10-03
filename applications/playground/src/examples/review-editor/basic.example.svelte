@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { ReviewEditor } from '@lostgradient/editor/review-editor';
+  import { ReviewEditor } from '@lostgradient/editor';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { MultiSelect } from '@lostgradient/cinder/multi-select';
+  import { MultiSelect } from '@lostgradient/cinder';
 
   let { mountIdPrefix }: { mountIdPrefix?: string } = $props();
   const uid = $props.id();

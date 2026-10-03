@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Input } from '@lostgradient/cinder/input';
+  import { Input } from '@lostgradient/cinder';
 
   let token = $state('');
 </script>

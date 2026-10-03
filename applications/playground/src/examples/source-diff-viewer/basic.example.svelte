@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { SourceDiffViewer } from '@lostgradient/cinder/source-diff-viewer';
+  import { SourceDiffViewer } from '@lostgradient/cinder';
 
   const patch = `diff --git a/src/example.ts b/src/example.ts
 index 1111111..2222222 100644

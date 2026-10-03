@@ -5,9 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
-  import { ChoiceGrid } from '@lostgradient/cinder/choice-grid';
-  import type { ChoiceGridItemState } from '@lostgradient/cinder/choice-grid';
+  import { Button, ChoiceGrid, type ChoiceGridItemState } from '@lostgradient/cinder';
 
   let selected = $state<string | null>(null);
   let revealed = $state(false);

@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Button } from '@lostgradient/cinder/button';
+  import { Button } from '@lostgradient/cinder';
   let loading = $state(false);
 
   async function handleClick() {

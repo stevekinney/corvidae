@@ -5,8 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Container } from '@lostgradient/cinder/container';
-  import { Grid } from '@lostgradient/cinder/grid';
+  import { Container, Grid } from '@lostgradient/cinder';
 
   const logos = [
     { name: 'Acme', href: '#' },

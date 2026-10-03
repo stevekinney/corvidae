@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Sparkbar } from '@lostgradient/cinder/sparkbar';
+  import { Sparkbar } from '@lostgradient/cinder';
 </script>
 
 <div style="display: grid; gap: 0.75rem; max-width: 28rem;">
