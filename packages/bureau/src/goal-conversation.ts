@@ -79,10 +79,11 @@ import {
 } from 'conversationalist';
 
 import { goalAttemptRunId, type GoalState } from './goal-state';
+import { GOAL_RUN_AND_SESSION_ID_PREFIX } from './reserved-identifiers';
 
 /** The first session of a goal: attempt 0 runs here, and under `continue` so does every other attempt. */
 export const goalSessionId = (goalRunId: string, attemptIndex: number): string =>
-  `goal-${goalRunId}-s${attemptIndex}`;
+  `${GOAL_RUN_AND_SESSION_ID_PREFIX}${goalRunId}-s${attemptIndex}`;
 
 /** The session attempt `attemptIndex` runs in under the goal's policy. */
 export function attemptSessionId(

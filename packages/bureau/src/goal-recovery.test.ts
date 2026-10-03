@@ -119,7 +119,8 @@ describe('a suspended controller', () => {
     expect(calls).toContain('cancel:goal:g1');
     expect(stopped).toContain('goal-g1-a0');
     expect(entry).toEqual({ goalRunId: 'g1', outcome: 'canceled' });
-    expect((await store.get('g1'))?.status).toBe('canceled');
+    const committed = await store.get('g1');
+    expect(committed?.status).toBe('canceled');
   });
 
   it('stays pending on the controller when a marked cancellation cannot end it', async () => {

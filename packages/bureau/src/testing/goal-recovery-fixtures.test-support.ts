@@ -8,9 +8,12 @@ import {
   createAgentSession,
   createSessionStore,
   type FreshAttemptSourceResolver,
+  startDurableRunResult,
+  stopWhen,
   type Validator,
 } from '@lostgradient/operative';
 import { decode, encode, resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 
 import type { AgentDefinitions } from '../agent-catalog';
@@ -28,7 +31,7 @@ import {
 } from '../goal-state';
 import { createGoalStore, type GoalStore } from '../goal-store';
 import type { BureauGoalRequest } from '../goal-types';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from '../runtime-composition';
+import { CATALOG_RUN_RECOVERY_KEY_PREFIX, createRuntimeComposition } from '../runtime-composition';
 import type { Bureau } from '../types';
 import { createDiagnostics, goalRequest } from './goal-fixtures.test-support';
 
@@ -262,4 +265,39 @@ export async function seedPoisoned(inspection: Inspection, goal = pendingGoal())
     at: NOW,
     cause: 'poisoned',
   });
+}
+
+/**
+ * A durable run that has already completed under `runId`, written straight to
+ * the store. It stands for a run something other than Bureau's public surface
+ * put at a deterministic goal id, which admission itself now refuses to create.
+ */
+export async function seedFinishedRun(path: string, runId: string, content = 'done') {
+  const generate = () => Promise.resolve({ content, toolCalls: [] });
+  const toolbox = createToolbox([]);
+  const composition = await createRuntimeComposition({
+    generate,
+    toolbox,
+    storage: { type: 'sqlite', path },
+    durableExecution: true,
+  });
+  const { engine, checkpointStore } = composition.durable!;
+  try {
+    await startDurableRunResult(
+      { engine, checkpointStore },
+      {
+        runId,
+        sessionId: runId,
+        options: {
+          generate,
+          toolbox,
+          conversation: new Conversation(),
+          stopWhen: stopWhen.noToolCalls(),
+        },
+      },
+    );
+  } finally {
+    engine[Symbol.dispose]?.();
+    composition.disposeStorage?.();
+  }
 }

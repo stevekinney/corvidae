@@ -41,6 +41,7 @@ import {
   bootOver,
   inspect,
   pendingGoal,
+  seedFinishedRun,
   seedPoisoned,
   seedRetrying,
   seedRunning,
@@ -512,35 +513,27 @@ describe('a controller left running in a superseded process', () => {
 describe('the attempt behind a running goal', () => {
   it('is re-sent to a controller that never heard it end, once the run is found finished', async () => {
     database = createTestDatabase('lost-forwarder');
+    const worker = workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] }));
+    // The attempt's run finished while nobody was forwarding it: it is a durable
+    // run under the attempt's deterministic id, marked as the goal's own by the
+    // start that created it, and the goal's record says it was running. Ordinary
+    // callers cannot choose an id in the goal's namespace, so the run is written
+    // the way the goal's own start would have left it.
+    await seedFinishedRun(database.path, 'goal-g1-a0');
+    const view = await inspection();
+    await view.claimRun('goal-g1-a0', {
+      agentName: 'worker',
+      definitionRevision: readGenerationProfile(worker).revision,
+      input: 'work',
+      goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
+    });
     const { bureau } = await bootOver({
       path: database.path,
-      agents: {
-        worker: workerAgent(() => Promise.resolve({ content: 'done', toolCalls: [] })),
-        planner: workerAgent(hangUntilAborted, 'planner'),
-      },
+      agents: { worker, planner: workerAgent(hangUntilAborted, 'planner') },
       validators: [createCheckValidator()],
     });
     await track(bureau);
     await bureau.waitForRecovery?.();
-
-    // The attempt's run finished while nobody was forwarding it: it is a durable
-    // run under the attempt's deterministic id, and the goal's record says it was running.
-    bureau.run('planner', 'plan');
-    await pollUntil(async () => {
-      const runs = await durableIds(bureau, 'agent-run-');
-      return runs.length === 1;
-    });
-    const [parentRunId] = await durableIds(bureau, 'agent-run-');
-    await bureau.children.dispatch({
-      parentRunId: parentRunId!,
-      agentName: 'worker',
-      input: 'work',
-      childRunId: 'goal-g1-a0',
-    });
-    await pollUntil(async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'completed');
-    const view = await inspection();
-    // The run is the goal's own: its start recorded the marker a goal adopts by.
-    await view.markRunAsGoalAttempt('goal-g1-a0', 'g1', 0);
     await seedRunning(view);
 
     expect(await bureau.goals.recover('g1')).toMatchObject({
@@ -611,36 +604,29 @@ describe('the attempt behind a running goal', () => {
     expect(await workflowStatus(bureau, 'goal-g1-a0')).toBeUndefined();
   });
 
-  it("does not adopt a run an ordinary caller created at the attempt's id, and leaves it as it was", async () => {
+  it("does not adopt a run something else created at the attempt's id, and leaves it as it was", async () => {
     database = createTestDatabase('foreign-run');
     let steps = 0;
+    const worker = workerAgent(() => {
+      steps += 1;
+      return Promise.resolve({ content: 'done', toolCalls: [] });
+    });
+    // Admission refuses a caller-chosen id in the goal's namespace, so this is a
+    // run another writer left in the store: a catalog run with no goal marker.
+    await seedFinishedRun(database.path, 'goal-g1-a0');
+    const view = await inspection();
+    await view.claimRun('goal-g1-a0', {
+      agentName: 'worker',
+      definitionRevision: readGenerationProfile(worker).revision,
+      input: 'work',
+    });
     const { bureau } = await bootOver({
       path: database.path,
-      agents: {
-        worker: workerAgent(() => {
-          steps += 1;
-          return Promise.resolve({ content: 'done', toolCalls: [] });
-        }),
-        planner: workerAgent(hangUntilAborted, 'planner'),
-      },
+      agents: { worker, planner: workerAgent(hangUntilAborted, 'planner') },
       validators: [createCheckValidator()],
     });
     await track(bureau);
     await bureau.waitForRecovery?.();
-    bureau.run('planner', 'plan');
-    await pollUntil(async () => {
-      const runs = await durableIds(bureau, 'agent-run-');
-      return runs.length === 1;
-    });
-    const [parentRunId] = await durableIds(bureau, 'agent-run-');
-    await bureau.children.dispatch({
-      parentRunId: parentRunId!,
-      agentName: 'worker',
-      input: 'work',
-      childRunId: 'goal-g1-a0',
-    });
-    await pollUntil(async () => (await workflowStatus(bureau, 'goal-g1-a0')) === 'completed');
-    const view = await inspection();
     await seedRunning(view);
 
     const recovered = await bureau.goals.recover('g1');
@@ -648,7 +634,8 @@ describe('the attempt behind a running goal', () => {
     // The goal refuses the run; it neither forwards its result nor starts over it.
     expect(recovered.goals[0]).toMatchObject({ goalRunId: 'g1', attempt: 'failed' });
     expect(recovered.goals[0]?.detail).toContain('goal-g1-a0');
-    expect(steps).toBe(1);
+    // The goal's worker never ran: nothing was started over the foreign run.
+    expect(steps).toBe(0);
     expect(await workflowStatus(bureau, 'goal-g1-a0')).toBe('completed');
   });
 
@@ -902,7 +889,8 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
       outcome: 'cancellation-pending',
       awaiting: ['durable-engine'],
     });
-    expect((await bureau.goals.get('g1'))?.closedAt).toBeUndefined();
+    const stillOpen = await bureau.goals.get('g1');
+    expect(stillOpen?.closedAt).toBeUndefined();
   });
 
   it('is acknowledged and closed once a bureau with an engine reads its workflow ended', async () => {
@@ -924,6 +912,7 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
       outcome: 'closed',
       goal: { status: 'canceled' },
     });
-    expect(typeof (await bureau.goals.get('g1'))?.closedAt).toBe('string');
+    const closedGoal = await bureau.goals.get('g1');
+    expect(typeof closedGoal?.closedAt).toBe('string');
   });
 });

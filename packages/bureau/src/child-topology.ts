@@ -114,6 +114,7 @@ import type {
   ChildTopologyStore,
 } from './child-topology-store';
 import { principalAllows } from './principal-allows';
+import { reservedIdentifierReason } from './reserved-identifiers';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,8 @@ export type BureauChildDispatchRejection =
   | 'unknown-agent'
   | 'parent-terminal'
   | 'child-run-id-conflict'
+  /** The id begins with a prefix durable goals own; see `reserved-identifiers.ts`. */
+  | 'reserved-child-run-id'
   | 'delegation-invalid'
   | 'depth-exhausted'
   | 'authority-exceeded'
@@ -1175,6 +1178,15 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     request: BureauChildDispatchRequest,
   ): Promise<BureauChildDispatchOutcome> {
     validateDispatch(request);
+    // A goal's ids are its own (see `reserved-identifiers.ts`): a child that
+    // took one would be purged under the goal's audit trail or squat its run.
+    const reserved =
+      request.childRunId === undefined
+        ? undefined
+        : reservedIdentifierReason('child run identifier', request.childRunId);
+    if (reserved !== undefined) {
+      return { outcome: 'rejected', code: 'reserved-child-run-id', reason: reserved };
+    }
     const plan = dependencies.planChild(request.agentName);
     if (!plan) {
       return {

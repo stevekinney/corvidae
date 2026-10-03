@@ -177,6 +177,7 @@ import { leaseEvidenceFromLostHealth } from './liveness-projection';
 import { createModelCatalogService } from './model-catalog-refresh';
 import { createModelPolicyPlanner } from './model-policy';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
+import { reservedIdentifierReason } from './reserved-identifiers';
 import {
   buildPartialRunReport,
   buildTerminalReportFromAbortedEvent,
@@ -632,6 +633,16 @@ function toBadRequest(message: string): never {
 }
 
 /**
+ * COR-851 — an id an ordinary caller chooses may not sit in a namespace durable
+ * goals own (see `reserved-identifiers.ts`). Refused as `BAD_REQUEST` with a
+ * message beginning `reserved-identifier:`.
+ */
+function rejectReservedIdentifier(kind: string, id: string): void {
+  const reason = reservedIdentifierReason(kind, id);
+  if (reason !== undefined) toBadRequest(reason);
+}
+
+/**
  * The exact duration grammar weft's `parseDuration` accepts: a number (optionally
  * fractional, optionally space-separated from the unit) followed by a unit, where
  * the unit is `ms`/`s`/`m`/`h`/`d` or its full word (`seconds`, `minutes`, …).
@@ -703,6 +714,7 @@ function validateCreateRunRequest(request: CreateRunRequest): void {
     if (request.sessionId.trim().length === 0) {
       toBadRequest('"sessionId" must be a non-empty string');
     }
+    rejectReservedIdentifier('"sessionId"', request.sessionId.trim());
   }
 
   if (request.agentName !== undefined) {
@@ -762,6 +774,9 @@ function validateBureauRunOptions(
   }
   if (options.sessionId !== undefined && typeof options.sessionId !== 'string') {
     toBadRequest('"options.sessionId" must be a string');
+  }
+  if (options.sessionId !== undefined) {
+    rejectReservedIdentifier('"options.sessionId"', options.sessionId.trim());
   }
   if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) {
     toBadRequest('"options.signal" must be an AbortSignal');
@@ -8127,6 +8142,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function createSchedule(
     definition: DurableScheduleDefinition,
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
+    if (definition.sessionId !== undefined) {
+      rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
+    }
     if (!runtime.durable) return undefined;
     // A schedule whose every fire would fail is worse than rejecting up front:
     // without a configured generate/provider, each tick's `createRunRuntime` throws

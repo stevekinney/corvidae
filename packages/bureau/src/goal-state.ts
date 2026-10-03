@@ -43,6 +43,8 @@ import {
   type ValidatorIdentity,
 } from '@lostgradient/operative';
 
+import { GOAL_RUN_AND_SESSION_ID_PREFIX, GOAL_WORKFLOW_ID_PREFIX } from './reserved-identifiers';
+
 // ---------------------------------------------------------------------------
 // Caps, keys, and identifiers
 // ---------------------------------------------------------------------------
@@ -101,7 +103,8 @@ export const attemptSignalId = (goalRunId: string, attemptIndex: number): string
   `attempt-terminal:${goalRunId}:${attemptIndex}`;
 
 /** The Weft workflow that owns this goal; an explicit id makes a duplicate start refusable. */
-export const goalWorkflowId = (goalRunId: string): string => `goal:${goalRunId}`;
+export const goalWorkflowId = (goalRunId: string): string =>
+  `${GOAL_WORKFLOW_ID_PREFIX}${goalRunId}`;
 export const goalTransitionId = (goalRunId: string, seq: number): string => `${goalRunId}:t${seq}`;
 /** The id of the log entry for a goal's `count`-th counted controller restart. */
 export const goalRestartId = (goalRunId: string, count: number): string =>
@@ -110,7 +113,7 @@ export const goalAttemptId = (goalRunId: string, attemptIndex: number): string =
   `${goalRunId}:a${attemptIndex}`;
 /** Deterministic, so a restart that re-starts attempt N finds attempt N's run, never N+1's. */
 export const goalAttemptRunId = (goalRunId: string, attemptIndex: number): string =>
-  `goal-${goalRunId}-a${attemptIndex}`;
+  `${GOAL_RUN_AND_SESSION_ID_PREFIX}${goalRunId}-a${attemptIndex}`;
 /** The first committed decision for an attempt wins; a re-executed validator cannot add a second. */
 export const goalDecisionId = (attemptId: string): string => `${attemptId}:decision`;
 

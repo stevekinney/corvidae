@@ -18,12 +18,16 @@
  * - A session is checked by `goal-conversation.ts` against the `goalRunId` and
  *   authority its own writes recorded.
  *
- * Rather than reserve the ids, which would stop only callers that go through
- * Bureau's own verbs and would reject ids existing callers already chose, the
- * goal refuses what it does not own at the point of use. That covers every way
- * an id can come to be occupied, including a store written by something else.
+ * Ownership is checked at the point of use, and the ids are also reserved: an
+ * ordinary caller may not choose a run, child run, session, or schedule id in a
+ * goal's namespace (`reserved-identifiers.ts`). The reservation exists because
+ * ownership cannot protect everything: Weft purges every event carrying a
+ * workflow's id when it retires that workflow, so an ordinary workflow that
+ * merely shares a goal's audit id would erase the audit trail. The check at the
+ * point of use stays as defence in depth, and it covers every other way an id
+ * can come to be occupied, including a store written by something else.
  *
- * Two layers use it. The start-attempt port verifies explicitly, because it
+ * Two layers use that check. The start-attempt port verifies explicitly, because it
  * must tell "absent" from "foreign" and answer a typed failure. Everything
  * else (cancel, recovery, the read-back, the forwarder) sees the world through
  * `createOwnedGoalEngine` and `createOwnedRunCanceller`, under which a workflow

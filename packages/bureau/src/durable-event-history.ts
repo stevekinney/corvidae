@@ -146,6 +146,7 @@ import type {
   ReviewSupersededEvent,
   RunRemovedEvent,
 } from './events';
+import { GOAL_AUDIT_WORKFLOW_ID_PREFIX } from './reserved-identifiers';
 import { resolveDiagnosticSink, serializeActionDetail } from './serialization';
 import type { Bureau, DiagnosticSink } from './types';
 
@@ -642,9 +643,9 @@ export class UnsupportedDurableEventSchemaVersionError extends Error {
  * history. Nothing parses the encoded id back into a kind, so this is the one
  * place the difference lives.
  */
-const GOAL_OWNER_WORKFLOW_PREFIX = 'bureau-goal-audit:';
+const GOAL_OWNER_WORKFLOW_PREFIX = GOAL_AUDIT_WORKFLOW_ID_PREFIX;
 
-function encodeOwner(owner: DurableEventOwner): string {
+export function encodeOwner(owner: DurableEventOwner): string {
   return owner.kind === 'goal'
     ? `${GOAL_OWNER_WORKFLOW_PREFIX}${owner.id}`
     : `${owner.kind}:${owner.id}`;
