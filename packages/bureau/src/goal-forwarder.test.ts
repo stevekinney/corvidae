@@ -566,23 +566,65 @@ describe('createAttemptForwarder', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  it('gives up with one diagnostic once its retries are spent, leaving the rest to recovery', async () => {
+  it('reports once that its configured retries are spent and keeps retrying, so a dependency restored later still gets the signal without recover()', async () => {
+    let down = true;
+    let tries = 0;
     const { durable, sent, forwarder, diagnostics } = await world(
       {},
       {
         retryDelaysMs: [0, 0],
+        settle: async () => {
+          tries += 1;
+          if (down) throw new Error('session store is down');
+        },
+      },
+    );
+    await finishedRun(durable);
+
+    forwarder.watch(target);
+    // Past the first try and both configured retries, and still going.
+    await pollUntil(() => tries > 3);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ level: 'error', scope: 'goals' });
+    expect(diagnostics[0]?.message).toContain('session store is down');
+    expect(sent).toEqual([]);
+
+    down = false;
+    await pollUntil(() => sent.length === 1);
+
+    expect(sent[0]).toMatchObject({ name: 'attempt-terminal:0' });
+    // One report, however long it kept trying.
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it('repeats its last delay rather than growing past it, and drain() at shutdown ends the retrying', async () => {
+    const delays: number[] = [];
+    const timers = {
+      ...runtime.timers,
+      setTimeout: (callback: () => void, milliseconds?: number) => {
+        delays.push(milliseconds ?? 0);
+        return runtime.timers.setTimeout(callback, 0);
+      },
+    };
+    const { durable, forwarder, close } = await world(
+      {},
+      {
+        retryDelaysMs: [7, 11],
+        runtime: { ...runtime, timers },
         settle: () => Promise.reject(new Error('session store is down')),
       },
     );
     await finishedRun(durable);
 
     forwarder.watch(target);
-    await pollUntil(() => diagnostics.length === 1);
-    await forwarder.drain();
+    await pollUntil(() => delays.length >= 5);
+    expect(delays.slice(0, 5)).toEqual([7, 11, 11, 11, 11]);
 
-    expect(sent).toEqual([]);
-    expect(diagnostics[0]).toMatchObject({ level: 'error', scope: 'goals' });
-    expect(diagnostics[0]?.message).toContain('session store is down');
+    close();
+    await forwarder.drain();
+    const settledAt = delays.length;
+    for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
+    expect(delays.length).toBe(settledAt);
   });
 });
 

@@ -11,9 +11,10 @@
  * (`GoalConversations.settle`), so the next attempt and the validator always
  * find it, on the live path and the recovery path alike.
  *
- * A failure while forwarding (a session store or engine hiccup) is retried a
- * few times with backoff before it is diagnosed, since nothing else would send
- * the signal until the next boot.
+ * A failure while forwarding (a session store or engine hiccup) is retried with
+ * backoff, the last configured delay repeating, and diagnosed once when the
+ * configured retries are spent, since nothing else would send the signal until
+ * the next boot.
  *
  * A watch ends only when the attempt's run does. A wait that returns while the
  * run is still going (a handle that rejected on a persistence fault) is
@@ -78,12 +79,13 @@ export interface AttemptForwarderDependencies {
    * How long to wait before each further try when forwarding an attempt's end
    * fails (a store or engine hiccup); one entry per retry. Defaults to
    * {@link DEFAULT_FORWARD_RETRY_DELAYS_MS}. Once they are spent the failure is
-   * diagnosed and recovery is what sends the signal.
+   * diagnosed once and the last delay repeats until the signal is sent or the
+   * bureau closes.
    */
   readonly retryDelaysMs?: readonly number[] | undefined;
 }
 
-/** Four retries over about eight seconds: long enough to ride out a hiccup, short enough to bound a dispose. */
+/** Four delays over about eight seconds, the last one repeating for as long as the attempt is watched. */
 export const DEFAULT_FORWARD_RETRY_DELAYS_MS: readonly number[] = [100, 400, 1_600, 6_400];
 
 export type AttemptReconciliation =
@@ -294,30 +296,38 @@ export function createAttemptForwarder(
   /**
    * Forwards the attempt's ending, retrying a failure with backoff. The
    * controller waits on this signal with no deadline of its own, and recovery
-   * runs only at boot, so a transient failure is retried here. `done` once it
-   * was sent, found nothing to send, or the retries were spent (and diagnosed).
+   * runs only at boot, so a failure is retried for as long as the attempt is
+   * watched: the configured delays first, then the last one repeating. A count
+   * would end the only watcher while the controller is still parked on a
+   * dependency that may come back in a minute or an hour. The failure is
+   * diagnosed once, when the configured retries are spent, and every pause is
+   * one `drain()` can release. `done` once it was sent, found nothing to send,
+   * or the bureau is closing.
    */
   async function forwardWithRetries(
     target: AttemptTarget,
     watcher: Promise<void>,
   ): Promise<'done' | 'watching'> {
+    let reported = false;
     for (let retry = 0; ; retry += 1) {
       try {
         const outcome = await track(forward(target));
         return outcome === 'watching' ? 'watching' : 'done';
       } catch (error) {
         if (isClosing()) return 'done';
-        const delay = retryDelaysMs[retry];
-        if (delay === undefined) {
+        if (retry >= retryDelaysMs.length && !reported) {
+          reported = true;
           diagnose({
             level: 'error',
             scope: 'goals',
-            message: `[bureau] Could not forward the end of attempt ${target.attemptIndex} of goal "${target.goalRunId}"; recovery will send it again: ${describe(error)}`,
+            message: `[bureau] Could not forward the end of attempt ${target.attemptIndex} of goal "${target.goalRunId}"; still retrying, and recovery sends it again if this process ends first: ${describe(error)}`,
             cause: error,
           });
-          return 'done';
         }
-        await pause(delay, watcher);
+        // With no delays configured there is nothing to repeat: the failure is
+        // reported and left to recovery.
+        if (retryDelaysMs.length === 0) return 'done';
+        await pause(reattachDelay(retry), watcher);
         if (isClosing()) return 'done';
       }
     }
