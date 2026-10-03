@@ -314,7 +314,7 @@ describe('the goal event projection', () => {
   });
 
   it.each([
-    ['exhausted', 'attempt-limit-reached', 'goal.exhausted'],
+    ['exhausted', 'aggregate-budget-exceeded', 'goal.exhausted'],
     ['canceled', 'goal-canceled', 'goal.canceled'],
   ] as const)(
     'records %s as %s with no validation event when nothing was validated',

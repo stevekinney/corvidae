@@ -57,7 +57,8 @@ describe('close() when the cleanup is done but cannot be recorded', () => {
     const closed = await goalsOver(store).close('g1');
 
     expect(closed).toMatchObject({ outcome: 'closed', cleanup: { status: 'not-required' } });
-    expect((await store.get('g1'))?.cleanedUpAt).toBeDefined();
+    const stored = await store.get('g1');
+    expect(stored?.cleanedUpAt).toBeDefined();
   });
 
   it.each([
@@ -72,9 +73,7 @@ describe('close() when the cleanup is done but cannot be recorded', () => {
         ...store,
         markCleanedUp: (): Promise<GoalControlResult> =>
           Promise.resolve(
-            status === 'rejected'
-              ? { status, reason: 'not-closed', record }
-              : ({ status, record } as GoalControlResult),
+            status === 'rejected' ? { status, reason: 'not-closed', record } : { status, record },
           ),
       };
 

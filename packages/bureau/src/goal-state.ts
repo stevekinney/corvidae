@@ -1084,6 +1084,63 @@ function isUsageConsistent(value: PlainRecord): boolean {
   );
 }
 
+/** The status an attempt closes with for a validator's outcome, as the controller commits it. */
+const attemptStatusForOutcome = (
+  kind: ProjectedValidatorOutcome['kind'],
+): DurableGoalAttemptStatus =>
+  kind === 'pass' ? 'passed' : kind === 'canceled' ? 'aborted' : 'failed';
+
+/**
+ * An attempt's status and its validation say one thing. A validated attempt
+ * carries exactly the status its outcome produces (`pass` is `passed`, `canceled`
+ * is `aborted`, any other outcome is `failed`), and an attempt that was never
+ * validated cannot have `passed`.
+ */
+function areAttemptOutcomesConsistent(value: PlainRecord): boolean {
+  const attempts = value['attempts'] as readonly DurableGoalAttempt[];
+  return attempts.every((attempt) =>
+    attempt.validation === undefined
+      ? attempt.status !== 'passed'
+      : attempt.status === attemptStatusForOutcome(attempt.validation.outcome.kind),
+  );
+}
+
+/**
+ * A terminal status and reason agree with what the goal's attempts show, since
+ * the controller commits a terminal reason together with the attempt that earned
+ * it:
+ *
+ * - `succeeded` (`validator-passed`): the last attempt passed its validation, and
+ *   no other terminal status has an attempt that passed;
+ * - `validator-fail-non-retryable`: the last attempt's validation failed;
+ * - `validator-infrastructure-error`: the last attempt's validation ended in an
+ *   error, unavailable, canceled, or indeterminate outcome, never in a verdict;
+ * - `attempt-limit-reached`: as many attempts were made as the goal allows.
+ *
+ * The other reasons (`aggregate-budget-exceeded`, `attempt-run-failed`,
+ * `unsupported-validation`, `goal-canceled`) end a goal with or without a verdict
+ * on its last attempt, so no further agreement is required of them.
+ */
+function isTerminalOutcomeConsistent(value: PlainRecord): boolean {
+  const status = value['status'] as GoalRunStatus;
+  if (!isTerminalGoalStatus(status)) return true;
+  const attempts = value['attempts'] as readonly DurableGoalAttempt[];
+  const last = attempts.at(-1);
+  const verdict = last?.validation?.outcome.kind;
+  if (status === 'succeeded') return last?.status === 'passed' && verdict === 'pass';
+  if (attempts.some((attempt) => attempt.status === 'passed')) return false;
+  switch (value['terminalReason']) {
+    case 'validator-fail-non-retryable':
+      return verdict === 'fail';
+    case 'validator-infrastructure-error':
+      return verdict !== undefined && verdict !== 'pass' && verdict !== 'fail';
+    case 'attempt-limit-reached':
+      return attempts.length >= (value['bounds'] as GoalBudget).maximumAttempts;
+    default:
+      return true;
+  }
+}
+
 function isConsistent(value: PlainRecord): boolean {
   const transition = value['currentTransition'] as GoalTransitionRecord;
   const attempts = value['attempts'] as readonly DurableGoalAttempt[];
@@ -1097,7 +1154,9 @@ function isConsistent(value: PlainRecord): boolean {
     hasOwnDerivedIds(value) &&
     isUsageConsistent(value) &&
     isStatusRelationConsistent(value) &&
-    isTerminalPairing(value)
+    isTerminalPairing(value) &&
+    areAttemptOutcomesConsistent(value) &&
+    isTerminalOutcomeConsistent(value)
   );
 }
 

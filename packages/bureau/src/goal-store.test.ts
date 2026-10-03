@@ -703,20 +703,40 @@ describe('createGoalStore applyTransition', () => {
   });
 
   it('accepts a legal terminal transition for every terminal reason', async () => {
+    // What each reason's last attempt legally shows: the status its validation
+    // outcome produces, and a verdict where the reason is one.
+    const validated = (outcome: Record<string, unknown>) => ({ ...passed, outcome }) as never;
+    const failing = { kind: 'fail', feedback: 'no', evidence: [], retryable: true };
+    const legal: Record<GoalRunTerminalReason, Partial<DurableGoalAttempt>> = {
+      'validator-passed': { status: 'passed', validation: passed },
+      'attempt-limit-reached': { status: 'failed', validation: validated(failing) },
+      'aggregate-budget-exceeded': { status: 'failed', validation: validated(failing) },
+      'validator-fail-non-retryable': {
+        status: 'failed',
+        validation: validated({ ...failing, retryable: false }),
+      },
+      'validator-infrastructure-error': {
+        status: 'failed',
+        validation: validated({
+          kind: 'error',
+          error: { kind: 'execute', code: 'DOWN', message: 'down' },
+        }),
+      },
+      'unsupported-validation': { status: 'aborted' },
+      'attempt-run-failed': { status: 'failed' },
+      'goal-canceled': { status: 'aborted' },
+    };
     const reasons = Object.keys(TERMINAL_STATUS_BY_REASON) as GoalRunTerminalReason[];
 
     for (const reason of reasons) {
       const { store } = setup();
-      await created(store);
+      await created(store, { bounds: { maximumAttempts: 1, maximumTotalTokens: 1000 } });
       await toEvaluating(store);
 
       const result = await store.applyTransition(
         transition(3, TERMINAL_STATUS_BY_REASON[reason], {
           terminalReason: reason,
-          attempt: attempt(0, {
-            status: reason === 'validator-passed' ? 'passed' : 'aborted',
-            finishReason: 'stop-condition',
-          }),
+          attempt: attempt(0, { ...legal[reason], finishReason: 'stop-condition' }),
           active: null,
         }),
       );
@@ -770,6 +790,7 @@ describe('createGoalStore applyTransition', () => {
         terminalReason: 'validator-passed',
         attempt: attempt(0, {
           status: 'passed',
+          validation: passed,
           finishReason: 'stop-condition',
           usage: { steps: 4, tokens: 90 },
         }),
@@ -965,7 +986,7 @@ describe('createGoalStore applyTransition', () => {
         await store.applyTransition(
           transition(3, 'retrying', {
             attempt: attempt(0, {
-              status: 'failed',
+              status: 'aborted',
               validation: { ...passed, outcome: { kind: 'canceled' } },
             }),
             active: null,

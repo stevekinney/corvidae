@@ -150,7 +150,8 @@ describe('bureau.goals on input the type system does not reach', () => {
 
     await bureau.goals.cancel('g-real', { reason: 'operator asked' });
 
-    expect((await bureau.goals.get('g-real'))?.cancellation?.reason).toBe('operator asked');
+    const stored = await bureau.goals.get('g-real');
+    expect(stored?.cancellation?.reason).toBe('operator asked');
   });
 
   it.each([[42], [null], [{}]])(
@@ -161,7 +162,8 @@ describe('bureau.goals on input the type system does not reach', () => {
       expect(await bureau.goals.cancel('g-real', { principal } as never)).toEqual({
         outcome: 'not-found',
       });
-      expect((await bureau.goals.get('g-real'))?.cancellation).toBeUndefined();
+      const stored = await bureau.goals.get('g-real');
+      expect(stored?.cancellation).toBeUndefined();
     },
   );
 

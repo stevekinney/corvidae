@@ -5,6 +5,7 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import type { GoalRunTerminalReason } from '@lostgradient/operative';
 import {
   createGoalState,
   type DurableGoalAttempt,
@@ -113,7 +114,17 @@ async function records(): Promise<Record<string, GoalState>> {
     active: validationWork(1),
   });
   const succeeded = await send(store, 'succeeded', {
-    attempt: attempt(1, { status: 'passed', finishReason: 'stop-condition' }),
+    attempt: attempt(1, {
+      status: 'passed',
+      finishReason: 'stop-condition',
+      validation: {
+        identity: VALIDATOR,
+        startedAt: STARTED,
+        completedAt: STARTED,
+        outcome: { kind: 'pass', evidence: [] },
+        decisionId: goalDecisionId(goalAttemptId(GOAL, 1)),
+      },
+    }),
     active: null,
     terminalReason: 'validator-passed',
   });
@@ -341,5 +352,271 @@ describe('the goal record decoder', () => {
     expect(result.status).toBe('rejected');
     const stored = await store.get(GOAL);
     expect(stored?.status).toBe('pending');
+  });
+});
+
+describe('a terminal goal and what its last attempt shows', () => {
+  const validated = (outcome: Record<string, unknown>) =>
+    ({
+      identity: VALIDATOR,
+      startedAt: STARTED,
+      completedAt: STARTED,
+      outcome,
+      decisionId: goalDecisionId(goalAttemptId(GOAL, 0)),
+    }) as never;
+  const failing = { kind: 'fail', feedback: 'no', evidence: [], retryable: true };
+  const erroring = {
+    kind: 'error',
+    error: { kind: 'execute', code: 'DOWN', message: 'down', cause: undefined },
+  };
+  const status = (reason: GoalRunTerminalReason) =>
+    reason === 'validator-passed'
+      ? 'succeeded'
+      : reason === 'attempt-limit-reached' || reason === 'aggregate-budget-exceeded'
+        ? 'exhausted'
+        : reason === 'goal-canceled'
+          ? 'canceled'
+          : 'failed';
+
+  /** What each reason's last attempt legally shows, one attempt allowed by the bound. */
+  const legal: Array<[GoalRunTerminalReason, string, Partial<DurableGoalAttempt>]> = [
+    [
+      'validator-passed',
+      'a passed attempt',
+      { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) },
+    ],
+    [
+      'attempt-limit-reached',
+      'a failed attempt',
+      { status: 'failed', validation: validated(failing) },
+    ],
+    ['attempt-limit-reached', 'an aborted attempt', { status: 'aborted' }],
+    [
+      'aggregate-budget-exceeded',
+      'a failed attempt',
+      { status: 'failed', validation: validated(failing) },
+    ],
+    ['aggregate-budget-exceeded', 'an aborted attempt', { status: 'aborted' }],
+    [
+      'validator-fail-non-retryable',
+      'a failing verdict',
+      { status: 'failed', validation: validated({ ...failing, retryable: false }) },
+    ],
+    [
+      'validator-infrastructure-error',
+      'an error',
+      { status: 'failed', validation: validated(erroring) },
+    ],
+    [
+      'validator-infrastructure-error',
+      'an unavailable validator',
+      {
+        status: 'failed',
+        validation: validated({ kind: 'unavailable', error: erroring.error, reason: 'down' }),
+      },
+    ],
+    [
+      'validator-infrastructure-error',
+      'an indeterminate verdict',
+      { status: 'failed', validation: validated({ kind: 'indeterminate', reason: 'unclear' }) },
+    ],
+    [
+      'validator-infrastructure-error',
+      'a canceled validator',
+      { status: 'aborted', validation: validated({ kind: 'canceled' }) },
+    ],
+    ['attempt-run-failed', 'a failed run', { status: 'failed' }],
+    ['attempt-run-failed', 'an aborted run', { status: 'aborted' }],
+    ['unsupported-validation', 'an aborted attempt', { status: 'aborted' }],
+    ['goal-canceled', 'an aborted attempt', { status: 'aborted' }],
+  ];
+
+  async function terminal(
+    reason: GoalRunTerminalReason,
+    overrides: Partial<DurableGoalAttempt>,
+  ): Promise<Record<string, unknown>> {
+    sequence = 0;
+    const store = createGoalStore(textValueStore(new MemoryStorage()));
+    await store.create(
+      createGoalState({
+        goalRunId: GOAL,
+        identity: { name: 'goal', version: '1' },
+        objective: { agentName: 'builder', prompt: 'Make the tests pass.' },
+        validator: VALIDATOR,
+        conversationPolicy: { kind: 'continue' },
+        bounds: { maximumAttempts: 1, maximumTotalTokens: 1000 },
+        now: '2026-10-02T00:00:00.000Z',
+      }),
+    );
+    await send(store, 'running', {
+      attempt: attempt(0),
+      usage: usageAfter(1),
+      active: attemptWork(0),
+    });
+    await send(store, 'evaluating', {
+      attempt: attempt(0, { status: 'evaluating', finishReason: 'stop-condition' }),
+      active: validationWork(0),
+    });
+    const record = await send(store, status(reason), {
+      attempt: attempt(0, { finishReason: 'stop-condition', ...overrides }),
+      active: null,
+      terminalReason: reason,
+    });
+    return JSON.parse(JSON.stringify(record)) as Record<string, unknown>;
+  }
+
+  it.each(legal)(
+    'decodes a goal that ended %s with %s on its last attempt',
+    async (reason, _label, overrides) => {
+      expect(isGoalState(await terminal(reason, overrides))).toBe(true);
+    },
+  );
+
+  it.each(['unsupported-validation', 'goal-canceled', 'aggregate-budget-exceeded'] as const)(
+    'decodes a goal that ended %s before any attempt opened',
+    async (reason) => {
+      sequence = 0;
+      const store = createGoalStore(textValueStore(new MemoryStorage()));
+      await store.create(
+        createGoalState({
+          goalRunId: GOAL,
+          identity: { name: 'goal', version: '1' },
+          objective: { agentName: 'builder', prompt: 'p' },
+          validator: VALIDATOR,
+          conversationPolicy: { kind: 'continue' },
+          bounds: { maximumAttempts: 2, maximumTotalTokens: 1000 },
+          now: '2026-10-02T00:00:00.000Z',
+        }),
+      );
+      const record = await send(store, status(reason), { terminalReason: reason });
+      expect(isGoalState(JSON.parse(JSON.stringify(record)))).toBe(true);
+    },
+  );
+
+  const set = (index: number, change: Record<string, unknown>) => (r: Record<string, unknown>) => {
+    attemptsOf(r)[index] = { ...attemptsOf(r)[index], ...change };
+  };
+  const contradictory: Array<
+    [GoalRunTerminalReason, string, Partial<DurableGoalAttempt>, Mutation]
+  > = [
+    [
+      'validator-passed',
+      'a failed last attempt with a failing validation',
+      { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) },
+      set(0, { status: 'failed', validation: validated(failing) }),
+    ],
+    [
+      'validator-passed',
+      'a passed last attempt that was never validated',
+      { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) },
+      (r) => delete attemptsOf(r)[0]!['validation'],
+    ],
+    [
+      'validator-passed',
+      'a passing validation on an attempt that did not pass',
+      { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) },
+      set(0, { status: 'failed' }),
+    ],
+    [
+      'validator-passed',
+      'a failing validation on an attempt marked passed',
+      { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) },
+      set(0, { validation: validated(failing) }),
+    ],
+    [
+      'validator-passed',
+      'no attempts',
+      { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) },
+      (r) => (r['attempts'] = []),
+    ],
+    [
+      'validator-fail-non-retryable',
+      'a last attempt that was never validated',
+      { status: 'failed', validation: validated({ ...failing, retryable: false }) },
+      (r) => delete attemptsOf(r)[0]!['validation'],
+    ],
+    [
+      'validator-fail-non-retryable',
+      'an error where a failing verdict belongs',
+      { status: 'failed', validation: validated({ ...failing, retryable: false }) },
+      set(0, { validation: validated(erroring) }),
+    ],
+    [
+      'validator-fail-non-retryable',
+      'a passed attempt',
+      { status: 'failed', validation: validated({ ...failing, retryable: false }) },
+      set(0, { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) }),
+    ],
+    [
+      'validator-infrastructure-error',
+      'a failing verdict where an error belongs',
+      { status: 'failed', validation: validated(erroring) },
+      set(0, { validation: validated(failing) }),
+    ],
+    [
+      'validator-infrastructure-error',
+      'a last attempt that was never validated',
+      { status: 'failed', validation: validated(erroring) },
+      (r) => delete attemptsOf(r)[0]!['validation'],
+    ],
+    [
+      'validator-infrastructure-error',
+      'a canceled outcome on an attempt that failed',
+      { status: 'aborted', validation: validated({ kind: 'canceled' }) },
+      set(0, { status: 'failed' }),
+    ],
+    [
+      'attempt-limit-reached',
+      'fewer attempts than the bound allows',
+      { status: 'failed', validation: validated(failing) },
+      (r) => ((r['bounds'] as Record<string, unknown>)['maximumAttempts'] = 2),
+    ],
+    [
+      'aggregate-budget-exceeded',
+      'an attempt that passed',
+      { status: 'failed', validation: validated(failing) },
+      set(0, { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) }),
+    ],
+    [
+      'attempt-run-failed',
+      'an attempt that passed',
+      { status: 'failed' },
+      set(0, { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) }),
+    ],
+    [
+      'goal-canceled',
+      'a passed attempt',
+      { status: 'aborted' },
+      set(0, { status: 'passed', validation: validated({ kind: 'pass', evidence: [] }) }),
+    ],
+    [
+      'goal-canceled',
+      'an attempt marked passed that was never validated',
+      { status: 'aborted' },
+      set(0, { status: 'passed' }),
+    ],
+  ];
+
+  it.each(contradictory)(
+    'refuses a goal that ended %s with %s',
+    async (reason, _label, overrides, mutate) => {
+      const record = await terminal(reason, overrides);
+      mutate(record);
+      syncAttemptCount(record);
+      expect(isGoalState(record)).toBe(false);
+    },
+  );
+
+  it('refuses an attempt whose status contradicts its validation, even before the goal has ended', async () => {
+    const every = await records();
+    for (const change of [
+      { status: 'failed', validation: validated({ kind: 'pass', evidence: [] }) },
+      { status: 'aborted', validation: validated(failing) },
+      { status: 'failed', validation: validated({ kind: 'canceled' }) },
+    ]) {
+      const record = JSON.parse(JSON.stringify(every['retrying'])) as Record<string, unknown>;
+      set(0, change)(record);
+      expect(isGoalState(record)).toBe(false);
+    }
   });
 });

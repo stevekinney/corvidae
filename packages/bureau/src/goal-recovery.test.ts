@@ -327,8 +327,8 @@ describe('a goal that ended while its next attempt was still starting', () => {
       transitionId: goalTransitionId('g1', 1),
       to: 'failed',
       at: NOW,
-      cause: 'fail: validator-fail-non-retryable',
-      terminalReason: 'validator-fail-non-retryable',
+      cause: 'fail: unsupported-validation',
+      terminalReason: 'unsupported-validation',
     });
     const { engine } = scriptedEngine({
       workflows: { 'goal:g1': 'completed', 'goal-g1-a0': 'running' },
