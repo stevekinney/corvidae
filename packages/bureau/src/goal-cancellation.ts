@@ -45,19 +45,20 @@
  */
 
 import { GOAL_CANCEL_SIGNAL } from '@lostgradient/operative';
+
 import {
-  TERMINAL_CONTROLLER_STATUSES,
   attemptIndexesToStop,
   commitCancellation,
   fenceOvertakenAttempts,
   type GoalControlDependencies,
+  TERMINAL_CONTROLLER_STATUSES,
 } from './goal-controller';
 import { goalIdentifiers } from './goal-ports';
-import { cancelSignalId, goalWorkflowId, isTerminalGoalStatus, type GoalState } from './goal-state';
+import { cancelSignalId, type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type {
+  BureauGoalCancellationWait,
   BureauGoalCancelOptions,
   BureauGoalCancelOutcome,
-  BureauGoalCancellationWait,
   GoalEngine,
 } from './goal-types';
 

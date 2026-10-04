@@ -2,10 +2,10 @@
  * COR-851 — the goal record decoder refuses a record whose status, attempts, and
  * active work contradict each other, and the store can never write one.
  */
+import type { GoalRunTerminalReason } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import type { GoalRunTerminalReason } from '@lostgradient/operative';
 import {
   createGoalState,
   type DurableGoalAttempt,

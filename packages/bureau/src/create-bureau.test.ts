@@ -13708,7 +13708,9 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
 
       await waitForCondition(() => owned.length > 0, 'the attributed principal got no replay');
       // The stranger's replay races the attributed principal's; give a leak every chance to land.
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise<void>((resolve) =>
+        createDefaultRuntimeServices().timers.setTimeout(resolve, 50),
+      );
       expect(owned).toEqual(['run.completed']);
       expect(stolen).toEqual([]);
 

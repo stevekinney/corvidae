@@ -205,7 +205,7 @@ export function createAttemptForwarder(
     const release = (): void => {
       sending.delete(work);
     };
-    work.then(release, release);
+    void work.then(release, release);
     return work;
   }
 

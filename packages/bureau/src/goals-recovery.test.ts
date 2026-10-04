@@ -27,6 +27,7 @@ import {
   createDiagnostics,
   createLatch,
   createTestDatabase,
+  currentEpochMilliseconds,
   durableIds,
   goalRequest,
   goalStatus,
@@ -1312,7 +1313,11 @@ describe('a canceled goal whose workflow this bureau cannot read', () => {
     );
     if (marked.status !== 'updated')
       throw new Error(`could not mark the cancellation: ${marked.status}`);
-    const committed = await commitCancellation(view.store, marked.record, Date.now());
+    const committed = await commitCancellation(
+      view.store,
+      marked.record,
+      currentEpochMilliseconds(),
+    );
     expect(committed.status).toBe('applied');
   }
 
