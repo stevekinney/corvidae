@@ -3074,6 +3074,16 @@
   .readme-content :global(h3:first-child) {
     margin-top: 0;
   }
+  /* A README heading is a link target (`/page/table#readme-usage`), so a jump to it must clear the
+     sticky top bar, as a jump to a section does. */
+  .readme-content :global(h1[id]),
+  .readme-content :global(h2[id]),
+  .readme-content :global(h3[id]),
+  .readme-content :global(h4[id]),
+  .readme-content :global(h5[id]),
+  .readme-content :global(h6[id]) {
+    scroll-margin-block-start: calc(var(--dx-topbar-h) + 1.5rem);
+  }
   /* Component README titles are removed in the documentation transform; keep
      this defensive rule for fixture and malformed-content paths. The landing
      README title is instead omitted structurally in the server renderer, so it

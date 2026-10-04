@@ -2111,7 +2111,7 @@ describe('/api/documentation/:name', () => {
     // The Overview README drops the leading `# Button` title (the hero shows it)
     // and the generated reference sections, leaving only the hand-written prose.
     expect(body.readme.html).not.toContain('<h1>Button</h1>');
-    expect(body.readme.html).toContain('<h2>Usage</h2>');
+    expect(body.readme.html).toContain('<h2 id="readme-usage">Usage</h2>');
     expect(body.constraints).not.toBeNull();
     expect(body.examples).not.toBeNull();
   }, 30_000);

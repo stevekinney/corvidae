@@ -18,6 +18,11 @@ import {
 } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
 import { PACKAGE_MAP_PATH } from './playground-paths.ts';
+import {
+  addReadmeHeadingAnchors,
+  readmeAnchorId,
+  rewriteReadmeFragmentLinks,
+} from './readme-anchors.ts';
 import { repositorySourceHref, rewriteRelativeRenderedMarkdownLinks } from './repository-links.ts';
 import type { ComponentManifest } from './types.ts';
 
@@ -367,13 +372,18 @@ function componentReadmeHref(
   href: string,
   componentIds: ReadonlySet<string>,
 ): { href: string; attributes: string } {
-  const [path = ''] = href.split('#', 2);
+  const [path = '', fragment = ''] = href.split('#', 2);
   const linkedSlug = linkedComponentReadmeSlug(componentSource, componentName, path, componentIds);
   if (linkedSlug !== undefined) {
     // `/page/<name>` is the one documentation route. This used to emit
     // `/c/<name>`, which now 301s here — correct, but a needless redirect on
     // every cross-reference between component READMEs.
-    return { href: `/page/${linkedSlug}`, attributes: ' target="_top"' };
+    //
+    // The fragment names a heading of the linked README (`README.md#usage`), which the page
+    // renders with a README-namespaced id (see `readme-anchors.ts`), so it is kept in that form:
+    // dropping it landed the reader at the top of the page instead of at the section.
+    const target = fragment === '' ? '' : `#${readmeAnchorId(fragment)}`;
+    return { href: `/page/${linkedSlug}${target}`, attributes: ' target="_top"' };
   }
   return {
     href: componentReadmeSourceHref(componentSource, componentName, href),
@@ -397,7 +407,9 @@ export function renderReadmeDocumentation(rawMarkdown: string): DocumentationRea
   const rendered = renderMarkdown(normalizeReadmeMarkdownForRendering(trimmed));
   return {
     rawMarkdown: rendered.rawMarkdown,
-    html: rendered.html,
+    // The renderer emits headings without ids, so the fragments READMEs link with (`#usage`) named
+    // nothing on the page; see `readme-anchors.ts`.
+    html: rewriteReadmeFragmentLinks(addReadmeHeadingAnchors(rendered.html)),
     codeBlocks: rendered.codeBlocks,
     hadUnsafeContent: rendered.hadUnsafeContent,
   };

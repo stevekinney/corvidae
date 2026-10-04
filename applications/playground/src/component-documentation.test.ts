@@ -53,8 +53,9 @@ describe('buildComponentDocumentation', () => {
     // Subcomponents) — those render in the page's own dedicated sections — so
     // only the hand-written prose remains.
     expect(payload.readme.html).not.toContain('<h1>Button</h1>');
-    expect(payload.readme.html).toContain('<h2>Usage</h2>');
+    expect(payload.readme.html).toContain('<h2 id="readme-usage">Usage</h2>');
     expect(payload.readme.html).not.toContain('<h2>Props</h2>');
+    expect(payload.readme.html).not.toContain('>Props</h2>');
     expect(payload.readme.html).toContain('class="shiki');
     expect(payload.readme.hadUnsafeContent).toBe(false);
     expect(payload.schema).toBeDefined();
@@ -87,15 +88,111 @@ describe('buildComponentDocumentation', () => {
     expect(payload.readme.html).not.toContain('../confirm-dialog/README.md');
   });
 
-  it('drops README fragments from component route links because page anchors differ', async () => {
+  // The README links of the compose-only leaves send the reader to a section of their parent's
+  // README (`../table/README.md#usage`). Dropping the fragment landed them at the top of the page.
+  it('keeps the README fragment of a component route link, in the README anchor namespace', async () => {
     const payload = await buildComponentDocumentation(
       'table-cell',
       await componentManifest('table-cell'),
     );
 
-    expect(payload.readme.html).toContain('href="/page/table" target="_top"');
+    expect(payload.readme.html).toContain('href="/page/table#readme-usage" target="_top"');
     expect(payload.readme.html).not.toContain('href="/page/table#usage"');
+    // The leaf's first link names the whole README, and keeps pointing at the page.
+    expect(payload.readme.html).toContain('href="/page/table" target="_top"');
   });
+
+  it('gives the README headings the ids those links name', async () => {
+    const payload = await buildComponentDocumentation('table', await componentManifest('table'));
+
+    expect(payload.readme.html).toContain('<h2 id="readme-usage">Usage</h2>');
+  });
+
+  it('points a README link to its own headings at their README ids', async () => {
+    const manifest = await analyzeComponent(
+      join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'),
+      { importPath: '@lostgradient/chat' },
+    );
+    const payload = await buildComponentDocumentation(
+      'chat',
+      manifest,
+      await loadPackageManifestForDocumentation(CHAT_COMPONENT_SOURCE),
+      CHAT_COMPONENT_SOURCE,
+    );
+
+    expect(payload.readme.html).toContain('href="#readme-layout-and-sizing"');
+    expect(payload.readme.html).toContain('id="readme-layout-and-sizing"');
+    expect(payload.readme.html).not.toContain('href="#layout-and-sizing"');
+  });
+
+  it('keeps a component route link without a fragment as it was', () => {
+    const html = rewriteComponentReadmeLinks(
+      '<a href="../table/README.md">Table</a>',
+      'table-cell',
+      new Set(['table-cell', 'table']),
+    );
+
+    expect(html).toContain('href="/page/table" target="_top"');
+    expect(html).not.toContain('#');
+  });
+
+  it('keeps the fragment of a README link that falls back to the repository', () => {
+    const html = rewriteComponentReadmeLinks(
+      '<a href="../../../README.md#component-authoring-checklist">Checklist</a>',
+      'citation',
+      new Set(['citation']),
+    );
+
+    expect(html).toContain('/blob/main/');
+    expect(html).toContain('README.md#component-authoring-checklist"');
+  });
+
+  // The fragment a link carries has to name a heading the target page really has. A link that
+  // keeps its fragment but whose heading has no id is no better than the dropped fragment was.
+  it('links every README section reference to a heading that exists on the target page', async () => {
+    const packageManifest = await loadPackageManifestForDocumentation();
+    const readmePaths = Array.from(
+      new Bun.Glob('*/README.md').scanSync({ cwd: COMPONENTS_ROOT, absolute: false }),
+    );
+    const linkTargets = new Map<string, Set<string>>();
+    const referencedFrom = new Map<string, string>();
+    for (const readmePath of readmePaths) {
+      const componentName = readmePath.split('/')[0] ?? '';
+      const markdown = await Bun.file(join(COMPONENTS_ROOT, readmePath)).text();
+      if (!/\]\(\.\.\/[a-z0-9-]+\/README\.md#/.test(markdown)) continue;
+      const payload = await buildComponentDocumentation(
+        componentName,
+        await componentManifest(componentName),
+        packageManifest,
+      );
+      for (const [, slug, fragment] of payload.readme.html.matchAll(
+        /href="\/page\/([a-z0-9-]+)#([^"]+)"/g,
+      )) {
+        if (slug === undefined || fragment === undefined) continue;
+        linkTargets.set(slug, (linkTargets.get(slug) ?? new Set()).add(fragment));
+        referencedFrom.set(`${slug}#${fragment}`, componentName);
+      }
+    }
+    // The premise: the sweep found the section references the leaf READMEs make.
+    expect(linkTargets.size).toBeGreaterThan(5);
+
+    const dangling: string[] = [];
+    for (const [slug, fragments] of linkTargets) {
+      const target = await buildComponentDocumentation(
+        slug,
+        await componentManifest(slug),
+        packageManifest,
+      );
+      for (const fragment of fragments) {
+        if (!target.readme.html.includes(`id="${fragment}"`)) {
+          dangling.push(
+            `${referencedFrom.get(`${slug}#${fragment}`)} -> /page/${slug}#${fragment}`,
+          );
+        }
+      }
+    }
+    expect(dangling).toEqual([]);
+  }, 60_000);
 
   it('rewrites non-component README links to GitHub source URLs', async () => {
     const payload = await buildComponentDocumentation(
