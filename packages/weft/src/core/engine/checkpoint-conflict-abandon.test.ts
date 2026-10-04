@@ -848,7 +848,7 @@ describe('wakes for an abandoned generation', () => {
  */
 async function abandonGenerationAndFinishItOnTheWinner(
   id: string,
-  secondWorkflow: ReturnType<typeof workflow>,
+  secondWorkflow: ReturnType<typeof parkedOnSignal>,
 ) {
   const clock = { now: 1_000_000 };
   const storage = new MemoryStorage();
