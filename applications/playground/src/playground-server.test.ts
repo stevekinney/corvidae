@@ -28,7 +28,7 @@ import {
 } from './build-artifacts-shared.ts';
 import { isComponentDocumentationPayload } from './component-documentation-reference.ts';
 import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
-import { COMPOSE_ONLY_COMPONENTS } from './discover.ts';
+import { COMPOSE_ONLY_COMPONENTS, discoverComponentDefinitions } from './discover.ts';
 import {
   classifyPlaygroundSrcChange,
   scheduleRebuild,
@@ -46,6 +46,7 @@ import {
 import { loadFixtureFile, resolveFixtureFilePath } from './fixture-loader.ts';
 import {
   PORT,
+  analyzeComponentDefinitions,
   createSharedDisposer,
   eagerPrebuildComponents,
   handleRequest,
@@ -1903,6 +1904,44 @@ describe('generated schema metadata', () => {
         },
       }).isCompound,
     ).toBe(true);
+  });
+});
+
+describe('manifests analyzed in bulk', () => {
+  // `analyzeComponentDefinitions` is the bulk path: `getManifests` hands it every
+  // discovered definition, a started server warms it, every `/api/manifest` route reads
+  // it, and what it returns is published into the manifest caches that later
+  // single-component reads (documentation, pages) hit first. Analyzing all 211
+  // components would take tens of seconds, so these cases hand it the real definitions
+  // of the two components whose generated schemas differ from what the analyzer sees.
+  async function analyzeBulk(...componentNames: string[]): Promise<ComponentManifest[]> {
+    const definitions = await discoverComponentDefinitions();
+    return analyzeComponentDefinitions(
+      componentNames.map((componentName) => {
+        const definition = definitions.find((candidate) => candidate.name === componentName);
+        if (definition === undefined) throw new Error(`no component named ${componentName}`);
+        return definition;
+      }),
+    );
+  }
+
+  it('carries the generated schema default the analyzer cannot see', async () => {
+    // `maxVisible` has no default in the Svelte source; only the generated schema says 5.
+    const [manifest] = await analyzeBulk('avatar-group');
+    expect(manifest?.props.find((prop) => prop.name === 'maxVisible')?.defaultValue).toBe(5);
+  });
+
+  it('marks a component compound when its generated schema says so', async () => {
+    const [manifest] = await analyzeBulk('accordion-item');
+    expect(manifest?.isCompound).toBe(true);
+  });
+
+  it('returns manifests sorted by kebab name regardless of discovery order', async () => {
+    const manifests = await analyzeBulk('avatar-group', 'accordion-item');
+    expect(manifests.map((manifest) => manifest.kebabName)).toEqual([
+      'accordion-item',
+      'avatar-group',
+    ]);
   });
 });
 

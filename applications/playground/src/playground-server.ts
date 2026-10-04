@@ -58,6 +58,7 @@ import {
   discoverComponents,
   discoverExamples,
   discoverSidebarComponents,
+  type DiscoveredComponent,
 } from './discover.ts';
 import { readEnvironmentConfiguration } from './environment-configuration.ts';
 import { readExampleMetadata } from './example-metadata.ts';
@@ -184,14 +185,7 @@ async function getManifests(): Promise<ComponentManifest[]> {
   // same package sources. Discovery has already rejected duplicate route slugs.
   let inFlight = manifestPromise;
   if (inFlight === null) {
-    inFlight = discoverComponentDefinitions().then(async (definitions) => {
-      const manifests = await Promise.all(
-        definitions.map((definition) =>
-          analyzeComponent(definition.filePath, { importPath: definition.importPath }),
-        ),
-      );
-      return manifests.toSorted((left, right) => left.kebabName.localeCompare(right.kebabName));
-    });
+    inFlight = discoverComponentDefinitions().then(analyzeComponentDefinitions);
     setManifestPromise(inFlight);
   }
   try {
@@ -279,6 +273,41 @@ export function mergeGeneratedSchemaMetadata(
   };
 }
 
+/**
+ * Analyze one component and merge the defaults and compound marker its generated
+ * schema records. The analyzer reads only the Svelte source, so without the merge a
+ * manifest misses every default the source does not spell out and every
+ * `isCompound` the schema carries.
+ */
+async function analyzeComponentDefinition(
+  definition: DiscoveredComponent,
+): Promise<ComponentManifest> {
+  const analyzedManifest = await analyzeComponent(definition.filePath, {
+    importPath: definition.importPath,
+  });
+  const schema = await readGeneratedComponentSchema(
+    Bun.file(
+      join(definition.source.componentsRoot, definition.name, `${definition.name}.schema.json`),
+    ),
+  );
+  return schema === null
+    ? analyzedManifest
+    : mergeGeneratedSchemaMetadata(analyzedManifest, schema);
+}
+
+/**
+ * Analyze every definition for the bulk manifest. This is the path a started server
+ * warms and every `/api/manifest` route reads, and `getManifests` publishes what it
+ * returns into the caches that single-component reads (documentation, pages) hit
+ * first, so it must produce the same merged manifests `getComponentManifest` does.
+ */
+export async function analyzeComponentDefinitions(
+  definitions: readonly DiscoveredComponent[],
+): Promise<ComponentManifest[]> {
+  const manifests = await Promise.all(definitions.map(analyzeComponentDefinition));
+  return manifests.toSorted((left, right) => left.kebabName.localeCompare(right.kebabName));
+}
+
 async function getComponentManifest(componentName: string): Promise<ComponentManifest | null> {
   const cached = componentManifestCache.get(componentName);
   if (cached !== undefined) return cached;
@@ -288,21 +317,8 @@ async function getComponentManifest(componentName: string): Promise<ComponentMan
 
   const definition = await discoverComponentDefinition(componentName);
   if (definition === undefined) return null;
-  const generatedSchemaPath = join(
-    definition.source.componentsRoot,
-    componentName,
-    `${componentName}.schema.json`,
-  );
-  const generatedSchemaFile = Bun.file(generatedSchemaPath);
   const generationAtStart = getRebuildGeneration();
-  const analyzedManifest = await analyzeComponent(definition.filePath, {
-    importPath: definition.importPath,
-  });
-  let manifest = analyzedManifest;
-  const schema = await readGeneratedComponentSchema(generatedSchemaFile);
-  if (schema !== null) {
-    manifest = mergeGeneratedSchemaMetadata(analyzedManifest, schema);
-  }
+  const manifest = await analyzeComponentDefinition(definition);
   if (generationAtStart === getRebuildGeneration()) {
     componentManifestCache.set(componentName, manifest);
   }
