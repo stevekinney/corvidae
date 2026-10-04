@@ -19,15 +19,15 @@ import {
   isComponentDocumentationPayload,
   validateComponentDocumentationPayload,
   variablesList,
-} from './component-documentation-reference.ts';
-import { discoverComponents } from './discover.ts';
+} from '../src/component-documentation-reference.ts';
+import { discoverComponents } from '../src/discover.ts';
 // Shared with the runtime extractor in example-metadata.ts. That module has no
 // I/O and no import.meta.main guard, so importing it does not couple this
 // build-time gate to the runtime server's startup behavior — the concern a
 // previous version of this file duplicated the regex to avoid.
-import { TITLE_PATTERN } from './example-metadata.ts';
-import { type PlaygroundServer, PORT, startServer } from './playground-server.ts';
-import { triggerReload } from './sse-broadcast.ts';
+import { TITLE_PATTERN } from '../src/example-metadata.ts';
+import { type PlaygroundServer, PORT, startServer } from '../src/playground-server.ts';
+import { triggerReload } from '../src/sse-broadcast.ts';
 
 class PlaygroundValidationError extends Error {
   constructor(message: string) {
@@ -355,8 +355,8 @@ if (import.meta.main) {
       );
     }
 
-    // import.meta.dirname is applications/playground/src/; examples live under examples/.
-    await validateExampleTitles(join(import.meta.dirname, 'examples'));
+    // import.meta.dirname is applications/playground/scripts/; examples live under src/examples/.
+    await validateExampleTitles(join(import.meta.dirname, '..', 'src', 'examples'));
     await validateComponentRoutes(baseUrl, components);
     await validateDocumentationRoutes(baseUrl, components);
     await validateSseReload(baseUrl);

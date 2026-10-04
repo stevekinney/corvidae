@@ -16,8 +16,8 @@
  */
 import { describe, expect, test } from 'bun:test';
 
+import { readExampleTitle } from '../scripts/validate-playground.ts';
 import { extractExampleMetadataFromSource, TITLE_PATTERN } from './example-metadata.ts';
-import { readExampleTitle } from './validate-playground.ts';
 
 const CASES: Array<{
   name: string;
@@ -118,9 +118,11 @@ describe('title regex cross-check', () => {
   });
 
   test('validate-playground.ts imports TITLE_PATTERN from example-metadata.ts rather than redefining it', async () => {
-    const source = await Bun.file(`${import.meta.dirname}/validate-playground.ts`).text();
+    const source = await Bun.file(
+      `${import.meta.dirname}/../scripts/validate-playground.ts`,
+    ).text();
     expect(source).toMatch(
-      /import\s*\{[^}]*\bTITLE_PATTERN\b[^}]*\}\s*from\s*'\.\/example-metadata\.ts'/,
+      /import\s*\{[^}]*\bTITLE_PATTERN\b[^}]*\}\s*from\s*'\.\.\/src\/example-metadata\.ts'/,
     );
   });
 });
