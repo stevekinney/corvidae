@@ -29,8 +29,13 @@ import type { EngineInternals } from './internals.ts';
  *   a relaunch of the same generation is a new attempt that is not abandoned, a replacement
  *   generation carries a new token, and work still in flight from the earlier attempt no
  *   longer matches the entry it captured;
- * - flagged abandoned by `abandonExecutionAttempt` when the generation's commit loses a race.
- *   The flag lives and dies with the entry, so it can never apply to a later launch;
+ * - flagged abandoned by `abandonExecutionAttempt` when the generation's commit loses a race
+ *   and the loss was reported by a persist that began under this same attempt
+ *   (`persistCheckpointAbandoningOnConflict` captures the attempt before the persist runs and
+ *   refuses a late loss once the engine holds a different one). The flag lives and dies with
+ *   the entry, so it can never apply to a later launch, and the check on the reporting persist
+ *   is what keeps a late loss of an earlier attempt from reaching a relaunch of the same
+ *   generation, which carries the same token;
  * - retired together with the checkpoint it belongs to wherever the engine stops holding a
  *   run for good: terminal cleanup (completion, failure, cancellation, timeout), purge and
  *   retention collection, the rollback of a start or fork that adopted a checkpoint and did
@@ -48,8 +53,10 @@ import type { EngineInternals } from './internals.ts';
  * - a disposed engine holds no entry and records none, so nothing a disposed engine is
  *   later told about a generation (a commit that loses after disposal, say) finds anything
  *   to abandon;
- * - an entry's `abandoned` flag is only ever set while the entry is current, and a captured
- *   entry that is no longer current describes work from an attempt this engine has left;
+ * - an entry's `abandoned` flag is only ever set while the entry is current and the loss was
+ *   reported by work that began under that very entry, and a captured entry that is no longer
+ *   current describes work from an attempt this engine has left, whatever token the engine
+ *   holds now;
  * - an id that has no entry holds no generation, which is different from a pre-token one:
  *   there is nothing to wake, fail, or reject, so such an id is never abandoned;
  * - a checkpoint commit that completes after its run was released re-sets the in-memory
@@ -122,6 +129,11 @@ export function currentExecutionAttempt(
  * it newly did: `false` when the engine holds no attempt (the run finished, was purged, or the
  * engine was disposed), the attempt launched a different generation (a replacement installed
  * while the loss was classified is healthy), or the generation was already abandoned.
+ *
+ * The token names a generation, not an attempt: a relaunch of the same generation carries the
+ * same token (or none, for a pre-token run). A loss reported late by a persist therefore has to
+ * be matched to its attempt by the caller first, as `persistCheckpointAbandoningOnConflict`
+ * does, before this is asked to mark whatever attempt the engine holds now.
  */
 export function abandonExecutionAttempt(
   internals: EngineInternals,

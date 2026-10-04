@@ -499,9 +499,9 @@ describe('persistCheckpointAbandoningOnConflict', () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const persisted = Promise.resolve();
 
-    expect(persistCheckpointAbandoningOnConflict(getInternals(engine), () => persisted)).toBe(
-      persisted,
-    );
+    expect(
+      persistCheckpointAbandoningOnConflict(getInternals(engine), 'persisting', () => persisted),
+    ).toBe(persisted);
     await persisted;
     expect(abandonedExecutionAttemptCount(getInternals(engine))).toBe(0);
   });
@@ -518,7 +518,9 @@ describe('persistCheckpointAbandoningOnConflict', () => {
     const warning = collectConflictWarnings();
 
     const reason = await rejectionOf(
-      persistCheckpointAbandoningOnConflict(internals, () => Promise.reject(conflict)),
+      persistCheckpointAbandoningOnConflict(internals, 'persisting', () =>
+        Promise.reject(conflict),
+      ),
     );
     await warning.received;
     warning.stop();
@@ -529,7 +531,9 @@ describe('persistCheckpointAbandoningOnConflict', () => {
     const failure = new Error('storage unavailable');
     expect(
       await rejectionOf(
-        persistCheckpointAbandoningOnConflict(internals, () => Promise.reject(failure)),
+        persistCheckpointAbandoningOnConflict(internals, 'persisting', () =>
+          Promise.reject(failure),
+        ),
       ),
     ).toBe(failure);
     expect(abandonedExecutionAttemptCount(internals)).toBe(1);
