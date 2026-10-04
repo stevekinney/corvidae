@@ -8,6 +8,7 @@ import { describe, expect, it } from 'bun:test';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { noCallbacks } from './checkpoint-conflict.test-support.ts';
+import { beginExecutionAttempt } from './execution-attempts.ts';
 import { Engine } from './index.ts';
 import { getInternals, type EngineInternals } from './internals.ts';
 import {
@@ -166,6 +167,89 @@ describe('seedScheduledRunState', () => {
       forgetSeededServices(internals, id);
       forgetSeededCleanupMembership(internals, id);
       expect(internals.scheduledSeedOwners.size).toBe(0);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+});
+
+describe('a seed that finds the seeds of an earlier launch', () => {
+  it('takes over the seeds of a launch whose start ended before it adopted a checkpoint', async () => {
+    const { engine, internals } = await createInternals();
+    try {
+      // The earlier start rejected before adopting, so nothing rolled its seed back, and its
+      // release has not run yet.
+      const staleRelease = seedScheduledRunState(internals, id, { value: { owner: 'launch A' } });
+      const seededByB = { owner: 'launch B' };
+
+      const currentRelease = seedScheduledRunState(internals, id, { value: seededByB });
+      expect(internals.workflowServices.get(id)).toBe(seededByB);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+
+      staleRelease();
+      expect(internals.workflowServices.get(id)).toBe(seededByB);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+
+      currentRelease();
+      expect(internals.workflowServices.has(id)).toBe(false);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(false);
+      expect(internals.scheduledSeedOwners.size).toBe(0);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('drops the services of an abandoned seed when the new seed has none', async () => {
+    const { engine, internals } = await createInternals();
+    try {
+      seedScheduledRunState(internals, id, { value: { owner: 'launch A' } });
+
+      const release = seedScheduledRunState(internals, id, null);
+      expect(internals.workflowServices.has(id)).toBe(false);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+
+      release();
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(false);
+      expect(internals.scheduledSeedOwners.size).toBe(0);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('leaves the seeds of a start still in flight alone', async () => {
+    const { engine, internals } = await createInternals();
+    try {
+      const seededByA = { owner: 'launch A' };
+      const releaseA = seedScheduledRunState(internals, id, { value: seededByA });
+      internals.pendingStarts.add(id);
+
+      const releaseB = seedScheduledRunState(internals, id, { value: { owner: 'launch B' } });
+      releaseB();
+      expect(internals.workflowServices.get(id)).toBe(seededByA);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+
+      releaseA();
+      expect(internals.workflowServices.has(id)).toBe(false);
+      expect(internals.scheduledSeedOwners.size).toBe(0);
+    } finally {
+      internals.pendingStarts.delete(id);
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('leaves the seeds of a run this engine launched alone', async () => {
+    const { engine, internals } = await createInternals();
+    try {
+      const seededByA = { owner: 'launch A' };
+      seedScheduledRunState(internals, id, { value: seededByA });
+      beginExecutionAttempt(internals, id, 'the-launched-generation');
+
+      const releaseB = seedScheduledRunState(internals, id, { value: { owner: 'launch B' } });
+      releaseB();
+
+      expect(internals.workflowServices.get(id)).toBe(seededByA);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+      expect(internals.scheduledSeedOwners.has(id)).toBe(true);
     } finally {
       await engine[Symbol.asyncDispose]();
     }

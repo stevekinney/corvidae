@@ -169,17 +169,17 @@ async function createHarness(id: string, kind: ResolutionKind) {
     return settle(startScheduledRun(internals, schedule, callbacks, { workflowId: id }));
   }
 
-  /** Make the next create commit refuse, after the start adopted its launch checkpoint. */
-  function refuseNextCreateCommit(): Error {
-    const refusal = new Error('the create commit was refused');
-    let armed = true;
+  /** Refuse the next `count` calls of any of `methods` with one error. */
+  function refuseStorage(methods: readonly string[], count: number): Error {
+    const refusal = new Error(`the storage refused ${methods.join(' and ')}`);
+    let remaining = count;
     internals.storage = new Proxy(storage, {
       get(target, property) {
         const original: unknown = Reflect.get(target, property, target);
         if (typeof original !== 'function') return original;
-        if (armed && (property === 'batch' || property === 'conditionalBatch')) {
+        if (remaining > 0 && methods.includes(String(property))) {
           return () => {
-            armed = false;
+            remaining -= 1;
             return Promise.reject(refusal);
           };
         }
@@ -187,6 +187,21 @@ async function createHarness(id: string, kind: ResolutionKind) {
       },
     });
     return refusal;
+  }
+
+  /** Make the next create commit refuse, after the start adopted its launch checkpoint. */
+  function refuseNextCreateCommit(): Error {
+    return refuseStorage(['batch', 'conditionalBatch'], 1);
+  }
+
+  /** Make the next storage read refuse, before a start has adopted a checkpoint. */
+  function refuseNextRead(): Error {
+    return refuseStorage(['get'], 1);
+  }
+
+  /** Make every storage read refuse until the harness is disposed. */
+  function refuseEveryRead(): Error {
+    return refuseStorage(['get'], Number.POSITIVE_INFINITY);
   }
 
   return {
@@ -199,6 +214,8 @@ async function createHarness(id: string, kind: ResolutionKind) {
     holdings,
     launch,
     refuseNextCreateCommit,
+    refuseNextRead,
+    refuseEveryRead,
     async dispose() {
       if (disposed) return;
       disposed = true;
@@ -222,6 +239,42 @@ function expectNothingHeld(harness: Harness): void {
   expectSameHoldings(harness.holdings(), NOTHING_HELD);
   expect(harness.internals.workflowServices.has(harness.id)).toBe(false);
   expect(harness.internals.workflowsNeedingTerminalCleanup.has(harness.id)).toBe(false);
+}
+
+/**
+ * Launch A, and launch B from inside A's rejection: B seeds the id once A's `startWorkflow`
+ * has settled and before A's own catch, which releases A's seed, resumes. Reports what the id
+ * held at each of those two moments.
+ */
+async function launchSecondInsideFirstRejection(harness: Harness) {
+  const secondSeeded = createDeferred();
+  let atRejection: Holdings | undefined;
+  let atSecondSeed: Holdings | undefined;
+  let second: Promise<PromiseSettledResult<string>> | undefined;
+
+  const first = await harness.launch({
+    afterRejection: async () => {
+      atRejection = harness.holdings();
+      second = harness.launch({ atStart: () => secondSeeded.resolve() });
+      await secondSeeded.promise;
+      atSecondSeed = harness.holdings();
+    },
+  });
+
+  if (atRejection === undefined || atSecondSeed === undefined || second === undefined) {
+    throw new Error('launch A never reached its rejection');
+  }
+  return { first, second, atRejection, atSecondSeed };
+}
+
+/** Launch B held the id when launch A's catch was about to run, and still does after it. */
+function expectSecondLaunchKeepsItsSeed(harness: Harness, atSecondSeed: Holdings): void {
+  const seededByB = harness.resolutions.servicesOfLaunch(1);
+  expect(atSecondSeed.cleanupTracked).toBe(true);
+  expect(atSecondSeed.services).toBe(seededByB);
+  const afterRelease = harness.holdings();
+  expect(afterRelease.cleanupTracked).toBe(true);
+  expect(afterRelease.services).toBe(seededByB);
 }
 
 /**
@@ -251,36 +304,40 @@ const interleavings: readonly {
     label: 'launch A rolls back, launch B seeds, then launch A releases its seed',
     async run(harness) {
       const refusal = harness.refuseNextCreateCommit();
-      const bothSeeded = createDeferred();
-      let rolledBack: Pick<Holdings, 'services' | 'cleanupTracked'> | undefined;
-      let seenByRelease: Pick<Holdings, 'services' | 'cleanupTracked'> | undefined;
-      let second: Promise<PromiseSettledResult<string>> | undefined;
 
-      const first = await harness.launch({
-        afterRejection: async () => {
-          // The start adopted a checkpoint and rolled back everything it held for the id,
-          // the seed included, before it rejected. Launch B now seeds the id afresh, and
-          // launch A's catch resumes only once B holds it.
-          const { services, cleanupTracked } = harness.holdings();
-          rolledBack = { services, cleanupTracked };
-          second = harness.launch({ atStart: () => bothSeeded.resolve() });
-          await bothSeeded.promise;
-          const held = harness.holdings();
-          seenByRelease = { services: held.services, cleanupTracked: held.cleanupTracked };
-        },
-      });
+      const { first, second, atRejection, atSecondSeed } =
+        await launchSecondInsideFirstRejection(harness);
 
       expect(rejectionReason(first)).toBe(refusal);
-      expect(rolledBack).toEqual({ services: undefined, cleanupTracked: false });
-      // Launch B held the id when launch A's catch was about to run, and still does after it.
-      const seededByB = harness.resolutions.servicesOfLaunch(1);
-      expect(seenByRelease?.cleanupTracked).toBe(true);
-      expect(seenByRelease?.services).toBe(seededByB);
-      const afterRelease = harness.holdings();
-      expect(afterRelease.cleanupTracked).toBe(true);
-      expect(afterRelease.services).toBe(seededByB);
+      // The start adopted a checkpoint and rolled back everything it held for the id, the
+      // seed included, before it rejected.
+      expect(atRejection.services).toBeUndefined();
+      expect(atRejection.cleanupTracked).toBe(false);
+      expectSecondLaunchKeepsItsSeed(harness, atSecondSeed);
 
-      expectLaunched(await (second ?? Promise.reject(new Error('launch B never started'))));
+      expectLaunched(await second);
+      return { kind: 'launch', index: 1 };
+    },
+  },
+  {
+    label:
+      'launch A is rejected before it adopts a checkpoint, launch B seeds, then launch A releases its seed',
+    async run(harness) {
+      const refusal = harness.refuseNextRead();
+
+      const { first, second, atRejection, atSecondSeed } =
+        await launchSecondInsideFirstRejection(harness);
+
+      expect(rejectionReason(first)).toBe(refusal);
+      // The start adopted nothing, so nothing rolled its seed back: it is still in memory,
+      // and no launch holds the id, when launch B seeds.
+      expect(atRejection.attempt).toBeUndefined();
+      expect(atRejection.checkpoint).toBeUndefined();
+      expect(atRejection.pendingStart).toBe(false);
+      expect(atRejection.cleanupTracked).toBe(true);
+      expectSecondLaunchKeepsItsSeed(harness, atSecondSeed);
+
+      expectLaunched(await second);
       return { kind: 'launch', index: 1 };
     },
   },
@@ -402,6 +459,24 @@ describe('what a scheduled start releases when it is rejected', () => {
         }
       });
     }
+  }
+
+  for (const kind of RESOLUTION_KINDS) {
+    it(`leaves nothing behind when two launches are both rejected before they adopt a checkpoint, with ${RESOLUTION_LABELS[kind]}`, async () => {
+      const harness = await createHarness('seed-ownership-both-rejected', kind);
+      try {
+        const refusal = harness.refuseEveryRead();
+
+        const { first, second } = await launchSecondInsideFirstRejection(harness);
+
+        expect(rejectionReason(first)).toBe(refusal);
+        expect(rejectionReason(await second)).toBe(refusal);
+        expectNothingHeld(harness);
+        expect(harness.internals.scheduledSeedOwners.size).toBe(0);
+      } finally {
+        await harness.dispose();
+      }
+    });
   }
 
   for (const kind of RESOLUTION_KINDS.filter((candidate) => candidate !== 'unavailable')) {

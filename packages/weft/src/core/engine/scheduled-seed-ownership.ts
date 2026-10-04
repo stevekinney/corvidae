@@ -1,3 +1,4 @@
+import { currentExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 
 /**
@@ -33,6 +34,15 @@ type OwnershipSlot = keyof ScheduledSeedOwnership;
  * The returned release removes an entry only while its own token still owns that entry. An
  * entry the id already held belongs to someone else, so the seed claims nothing for it.
  *
+ * A start can reject before it adopts a checkpoint (a failed read, say), which rolls nothing
+ * back, so its seed stays in memory until the release in `startScheduledRun`'s catch runs. A
+ * launch that seeds the same id in that window would find those entries present, claim
+ * nothing, and be stripped by the stale release. So a seed first takes over the seeds of a
+ * launch that no longer holds the id, meaning no start is in flight for it and this engine
+ * holds no execution attempt for it: it removes them and seeds afresh, which leaves the stale
+ * release a slot owned by someone else. A start in flight and a run this engine launched keep
+ * their seeds.
+ *
  * `scheduledSeedOwners` mirrors the entries it names. Every other path that removes one
  * also forgets its slot, through {@link forgetSeededServices} and
  * {@link forgetSeededCleanupMembership}: the rollback of a start that adopted a checkpoint,
@@ -49,6 +59,7 @@ export function seedScheduledRunState(
   services: { readonly value: unknown } | null,
 ): () => void {
   const token: ScheduledSeedToken = Symbol(`scheduled-seed:${workflowId}`);
+  if (!launchHoldsId(internals, workflowId)) takeOverOrphanedSeeds(internals, workflowId);
   if (services !== null && !internals.workflowServices.has(workflowId)) {
     internals.workflowServices.set(workflowId, services.value);
     claim(internals, workflowId, 'services', token);
@@ -81,6 +92,29 @@ export function forgetSeededCleanupMembership(
   workflowId: string,
 ): void {
   forget(internals, workflowId, 'cleanupMembership');
+}
+
+/** Whether a start is in flight for the id, or this engine holds a run it launched under it. */
+function launchHoldsId(internals: EngineInternals, workflowId: string): boolean {
+  return (
+    internals.pendingStarts.has(workflowId) ||
+    currentExecutionAttempt(internals, workflowId) !== undefined
+  );
+}
+
+/**
+ * Remove the entries a launch seeded and then abandoned without adopting a checkpoint. Its
+ * own release, still to run, then finds nothing it owns.
+ */
+function takeOverOrphanedSeeds(internals: EngineInternals, workflowId: string): void {
+  if (internals.scheduledSeedOwners.get(workflowId)?.services !== undefined) {
+    internals.workflowServices.delete(workflowId);
+    forget(internals, workflowId, 'services');
+  }
+  if (internals.scheduledSeedOwners.get(workflowId)?.cleanupMembership !== undefined) {
+    internals.workflowsNeedingTerminalCleanup.delete(workflowId);
+    forget(internals, workflowId, 'cleanupMembership');
+  }
 }
 
 function claim(
