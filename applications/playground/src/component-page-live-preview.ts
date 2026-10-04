@@ -87,8 +87,11 @@ export function toMountProps(
     // "requires a non-empty label value", so the seed did not just differ from
     // the snippet, it painted an error callout over a component that works.
     // A synthesized `0` is dropped for the same reason (and matters for `Image`,
-    // where `width={0} height={0}` collapses the element regardless of `src`).
-    if (!control.hasDefault && (value === '' || value === 0)) {
+    // where `width={0} height={0}` collapses the element regardless of `src`) -- but
+    // only when the prop is optional. A required number's `0` is the value the
+    // component needs (`QuotaMeter.used`, `Sparkbar.value`), so omitting it would mount
+    // the component without a value it cannot do without.
+    if (!control.hasDefault && (value === '' || (value === 0 && control.required !== true))) {
       // Recipes supply a valid starting point for otherwise unlabelled
       // components. Once a reader clears that value, however, the cleared
       // control is an intentional override—not permission to keep the recipe

@@ -20,7 +20,19 @@ import type { ComponentManifest, ObjectShape, PropManifest, ValueShape } from '.
  * actually declared a default; the snippet uses it to decide what to omit, so a
  * synthesized placeholder is never silently dropped from the copyable code.
  */
-type PlaygroundControlBase = { name: string; description?: string; hasDefault: boolean };
+type PlaygroundControlBase = {
+  name: string;
+  description?: string;
+  hasDefault: boolean;
+  /**
+   * True when omitting the prop is invalid: the manifest marks it non-optional and
+   * declares no default. A synthesized `0` is dropped from the live mount and the
+   * snippet because a component never asked for it, but a required prop's `0` is the
+   * value it needs (`QuotaMeter.used`, `Sparkbar.value`), so only an optional prop may
+   * lose it. Absent means omission is valid.
+   */
+  required?: boolean;
+};
 
 /** A single adjustable control derived from a supported prop shape. */
 export type PlaygroundControl = PlaygroundControlBase &
@@ -414,6 +426,7 @@ export function buildPlaygroundModel(manifest: ComponentManifest): PlaygroundMod
     const base = {
       name: prop.name,
       hasDefault: prop.defaultValue !== undefined,
+      required: !prop.optional && prop.defaultValue === undefined,
       ...(prop.description !== undefined ? { description: prop.description } : {}),
     };
     switch (prop.control.kind) {
@@ -566,8 +579,9 @@ function shouldEmit(control: PlaygroundControl, current: PlaygroundValue): boole
   // A synthesized `0` is noise for the same reason a synthesized `''` is: the
   // component never declared it. It is also actively wrong for `Image`, where
   // `width={0} height={0}` collapses the element to nothing however good the
-  // `src` is.
-  return current !== '' && current !== 0;
+  // `src` is. That only holds for a prop the component can do without; a REQUIRED
+  // number's `0` is the value it needs, and a snippet without it does not compile.
+  return current !== '' && (current !== 0 || control.required === true);
 }
 
 /**

@@ -47,10 +47,17 @@ describe('buildPlaygroundModel', () => {
       ]),
     );
     expect(model.controls).toEqual([
-      { name: 'flag', hasDefault: true, kind: 'boolean', value: true },
-      { name: 'variant', hasDefault: true, kind: 'select', options: ['a', 'b'], value: 'b' },
-      { name: 'title', hasDefault: true, kind: 'text', value: 'hi' },
-      { name: 'count', hasDefault: true, kind: 'number', value: 3 },
+      { name: 'flag', hasDefault: true, required: false, kind: 'boolean', value: true },
+      {
+        name: 'variant',
+        hasDefault: true,
+        required: false,
+        kind: 'select',
+        options: ['a', 'b'],
+        value: 'b',
+      },
+      { name: 'title', hasDefault: true, required: false, kind: 'text', value: 'hi' },
+      { name: 'count', hasDefault: true, required: false, kind: 'number', value: 3 },
     ]);
     expect(model.skipped).toEqual([]);
     expect(model.hasUnsatisfiedRequired).toBe(false);
@@ -146,6 +153,7 @@ describe('buildPlaygroundModel', () => {
     expect(childrenControl).toEqual({
       name: 'children',
       hasDefault: false,
+      required: true,
       kind: 'text',
       isChildren: true,
       value: 'Demo',
@@ -414,6 +422,7 @@ describe('buildPlaygroundModel', () => {
     expect(model.controls[0]).toEqual({
       name: 'variant',
       hasDefault: false,
+      required: false,
       kind: 'select',
       options: ['primary', 'secondary'],
       value: 'primary',
@@ -429,8 +438,8 @@ describe('buildPlaygroundModel', () => {
     );
     expect(model.hasUnsatisfiedRequired).toBe(false);
     expect(model.controls).toEqual([
-      { name: 'id', hasDefault: false, kind: 'text', value: 'demo-example' },
-      { name: 'label', hasDefault: false, kind: 'text', value: 'Demo' },
+      { name: 'id', hasDefault: false, required: true, kind: 'text', value: 'demo-example' },
+      { name: 'label', hasDefault: false, required: true, kind: 'text', value: 'Demo' },
     ]);
   });
 });
@@ -918,6 +927,43 @@ describe('buildSnippet', () => {
     expect(
       buildSnippet('Widget', noDefault, { variant: 'primary', disabled: false, count: 0 }),
     ).toBe('<Widget\n  variant="primary"\n  disabled={false}\n/>');
+  });
+
+  test('keeps a zero the component requires but drops one it never asked for', () => {
+    // Regression: `0` was dropped from the snippet for every number control without a
+    // manifest default, so a REQUIRED number prop (`QuotaMeter.used`, `Sparkbar.value`,
+    // `DiffStatistics.added`) copied as code that omits a value the component cannot
+    // do without. Only an optional prop can be omitted.
+    const controls = buildPlaygroundModel(
+      manifest([
+        { name: 'used', control: { kind: 'number' }, bindable: false, optional: false },
+        { name: 'width', control: { kind: 'number' }, bindable: false, optional: true },
+      ]),
+    ).controls;
+
+    expect(buildSnippet('Meter', controls, { used: 0, width: 0 })).toBe('<Meter used={0} />');
+  });
+
+  test('records that a prop with no default and no valid omission is required', () => {
+    const controls = buildPlaygroundModel(
+      manifest([
+        { name: 'used', control: { kind: 'number' }, bindable: false, optional: false },
+        { name: 'width', control: { kind: 'number' }, bindable: false, optional: true },
+        {
+          name: 'count',
+          control: { kind: 'number' },
+          bindable: false,
+          optional: false,
+          defaultValue: 3,
+        },
+      ]),
+    ).controls;
+
+    expect(controls.map((control) => [control.name, control.required === true])).toEqual([
+      ['used', true],
+      ['width', false],
+      ['count', false],
+    ]);
   });
 
   test('renders a children control as element content, not an attribute', () => {

@@ -106,6 +106,27 @@ describe('toMountProps', () => {
     expect(props['children']).toBe(recipeChildren);
   });
 
+  test('mounts a required number prop with its untouched zero', () => {
+    // Regression: every number control without a manifest default had its synthesized `0`
+    // dropped from the mount, so `QuotaMeter.used`, `Sparkbar.value`, `Steps.currentStep`
+    // and `DiffStatistics.added` mounted without a value the component requires.
+    const controls: PlaygroundControl[] = [
+      { name: 'used', kind: 'number', value: 0, hasDefault: false, required: true },
+    ];
+
+    expect(toMountProps(controls, { used: 0 })).toEqual({ used: 0 });
+  });
+
+  test('still drops the synthesized zero of an optional number prop', () => {
+    // `Image.width={0}` collapses the element, which is why the zero was ever dropped.
+    const controls: PlaygroundControl[] = [
+      { name: 'width', kind: 'number', value: 0, hasDefault: false },
+      { name: 'height', kind: 'number', value: 0, hasDefault: false, required: false },
+    ];
+
+    expect(toMountProps(controls, { width: 0, height: 0 })).toEqual({});
+  });
+
   test('removes a cleared recipe control from the live mount', () => {
     const controls: PlaygroundControl[] = [
       { name: 'label', kind: 'text', value: '', hasDefault: false },
