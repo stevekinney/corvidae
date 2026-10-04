@@ -3447,6 +3447,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
       });
 
+      // A run can settle without any terminal event: a durable run whose engine lost a
+      // checkpoint compare-and-swap, or was disposed, is abandoned to whoever owns it and
+      // resolves its result quietly (`driveDurableRun`). The terminal listeners above never run
+      // for it, and `run.error` no longer detaches the stream listeners, so a run that reported
+      // an error before being abandoned would keep them attached for good. A result settles
+      // only after any terminal event it carries has been dispatched, so detaching here cannot
+      // cut off the `run.completed` the forwarder and the run event feed are waiting for. The
+      // disposers drain as they run, which makes this a no-op after a terminal listener ran.
+      detachBestEffortPromise(
+        activeRun.result.finally(() => disposeRegisteredStreamListeners(disposeStreamListeners)),
+      );
+
       store.register(activeRun, runId);
       registeredForRecovery = true;
       runSessionIdentifiers.set(activeRun, sessionId);
