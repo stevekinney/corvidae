@@ -183,6 +183,18 @@ function observeStrategy(internals: EngineInternals) {
   return { retired, cancelled, restore: () => (internals.strategy = original) };
 }
 
+/**
+ * The rejection reason of `promise`, or `'pending'` when it has not settled after one
+ * event-loop turn. Lets a regression test fail on a result() that hangs without
+ * waiting out the test timeout.
+ */
+async function rejectionOrPending(promise: Promise<unknown>): Promise<unknown> {
+  return await Promise.race([
+    rejectionOf(promise),
+    yieldToEventLoop().then(() => 'pending' as const),
+  ]);
+}
+
 const parkedOnSignal = (name: string) =>
   workflow({ name }).execute(async function* (context: WorkflowContext) {
     return yield* context.waitForSignal<string>('go');
@@ -349,12 +361,15 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     const internals = getInternals(engine);
     markCheckpointGenerationAbandoned(internals, 'relaunched', 'generation-1');
     markCheckpointGenerationAbandoned(internals, 'relaunched', undefined);
-    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(2);
 
+    // A token-bearing replacement proves the pre-token run is over, so only its
+    // tokenless marker goes; the marker for the other token-bearing generation stays.
     adoptLaunchCheckpoint(internals, 'relaunched', {
       workflowExecutionToken: 'generation-2',
     } as Checkpoint);
     expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    expect(isCheckpointGenerationAbandoned(internals, 'relaunched', undefined)).toBe(false);
     adoptLaunchCheckpoint(internals, 'relaunched', {
       workflowExecutionToken: 'generation-1',
     } as Checkpoint);
@@ -365,7 +380,7 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
   });
 
-  it('still retires and rejects a pre-token generation it cannot mark', async () => {
+  it('retires and rejects a pre-token generation and marks it under the tokenless key', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const internals = getInternals(engine);
     const handle = await startParked(engine, 'legacy-run', 'legacy-run');
@@ -390,8 +405,67 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(await rejectionOf(pendingResult)).toBeInstanceOf(WorkflowCheckpointConflictError);
     expect(strategy.retired).toEqual(['legacy-run']);
     expect(internals.handleCache.has('legacy-run')).toBe(false);
-    // Nothing can key the marker, so later wakes are not refused for this run.
-    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+    // The tokenless generation is keyed too, so it is refused like any other.
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    expect(isCheckpointGenerationAbandoned(internals, 'legacy-run', undefined)).toBe(true);
+    // A second report of the same loss still does nothing.
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('legacy-run', { workflowExecutionToken: undefined }),
+    );
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    expect(strategy.retired).toEqual(['legacy-run']);
+  });
+
+  it('rejects result() through a fresh handle after a pre-token generation was abandoned', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const handle = await startParked(engine, 'legacy-fresh', 'legacy-fresh');
+    const pendingResult = handle.result();
+    const legacyCheckpoint = { ...internals.checkpoints.get('legacy-fresh')! };
+    delete legacyCheckpoint.workflowExecutionToken;
+    internals.checkpoints.set('legacy-fresh', legacyCheckpoint);
+    const warning = collectConflictWarnings();
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError('legacy-fresh', { workflowExecutionToken: undefined }),
+    );
+    await warning.received;
+    warning.stop();
+    expect(await rejectionOf(pendingResult)).toBeInstanceOf(WorkflowCheckpointConflictError);
+
+    // The abandoned generation is still the one this engine holds, so a handle obtained
+    // after the loss must observe it: under 'none' nothing would ever settle a new waiter.
+    const freshReason = await rejectionOrPending(engine.getHandle('legacy-fresh').result());
+
+    expect(freshReason).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect((freshReason as WorkflowCheckpointConflictError).workflowId).toBe('legacy-fresh');
+    expect(internals.resultResolvers.has('legacy-fresh')).toBe(false);
+  });
+
+  it('refuses wakes for a pre-token generation until a token-bearing replacement or a relaunch clears it', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpoints.set('legacy-wake', {} as Checkpoint);
+    markCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined);
+    // No in-memory generation means nothing to refuse, whatever was marked.
+    markCheckpointGenerationAbandoned(internals, 'never-held', undefined);
+
+    expect(await confirmWakeOwnership(internals, 'legacy-wake', 'signal')).toBe('discard');
+    expect(await confirmWakeOwnership(internals, 'never-held', 'signal')).toBe('proceed');
+
+    // A token-bearing replacement can never be the pre-token run.
+    adoptLaunchCheckpoint(internals, 'legacy-wake', {
+      workflowExecutionToken: 'replacement',
+    } as Checkpoint);
+    expect(isCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined)).toBe(false);
+    expect(await confirmWakeOwnership(internals, 'legacy-wake', 'signal')).toBe('proceed');
+
+    // Launching the same pre-token generation again clears its own marker.
+    markCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined);
+    adoptLaunchCheckpoint(internals, 'legacy-wake', {} as Checkpoint);
+    expect(isCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined)).toBe(false);
+    expect(await confirmWakeOwnership(internals, 'legacy-wake', 'signal')).toBe('proceed');
   });
 
   it('keeps the marker when a resume of the abandoned generation fails after relaunching it', async () => {

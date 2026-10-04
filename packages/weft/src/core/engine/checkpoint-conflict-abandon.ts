@@ -23,22 +23,22 @@ import type { EngineInternals } from './internals.ts';
  * the winner. `ownership: 'workflow-lease'` is the complete answer for two live
  * engines.
  *
- * Returns early unless the in-memory checkpoint still belongs to the generation
- * whose commit lost (the error carries its token): a local replacement
- * installed while the loss was classified is healthy and not ours to abandon.
- * Idempotent.
+ * Returns early unless the engine still holds an in-memory checkpoint for the
+ * generation whose commit lost (the error carries its token): a local
+ * replacement installed while the loss was classified is healthy and not ours to
+ * abandon, and a released generation has nothing left to abandon.
+ * A generation recovered from before execution tokens existed has none, on the
+ * error and in memory alike, and is marked under the token-less key like any
+ * other. Idempotent.
  */
 export function abandonWorkflowAfterCheckpointConflict(
   internals: EngineInternals,
   error: WorkflowCheckpointConflictError,
 ): void {
   const { workflowId, workflowExecutionToken } = error;
-  // A generation recovered from before execution tokens existed has none, on the
-  // error and in memory alike; it is still retired and its waiter still rejected,
-  // it just cannot be marked, so later wakes are not refused for it.
-  if (internals.checkpoints.get(workflowId)?.workflowExecutionToken !== workflowExecutionToken) {
-    return;
-  }
+  const held = internals.checkpoints.get(workflowId);
+  // No generation held means nothing of this engine's to abandon, however the loss was reported.
+  if (held === undefined || held.workflowExecutionToken !== workflowExecutionToken) return;
   if (isCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken)) return;
   markCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken);
   try {

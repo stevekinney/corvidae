@@ -14,6 +14,14 @@ import type { EngineInternals } from './internals.ts';
  * ({@link clearAbandonedCheckpointGenerations}). The set is bounded by the
  * number of conflicts the engine has seen.
  *
+ * A run recovered from before execution tokens existed has no token, and is
+ * keyed under a token-less sentinel instead of being left unmarked: without a
+ * marker a `result()` requested through a fresh handle after the loss would
+ * register a waiter that nothing under `ownership: 'none'` ever settles. That
+ * sentinel names the one pre-token run an id can have, since every later run
+ * carries a token, so adopting any token-bearing generation for the id retires
+ * it ({@link forgetAbandonedCheckpointGeneration}).
+ *
  * Held beside the engine rather than on `EngineInternals`, like the committed
  * checkpoint bytes in `checkpoint-commit-snapshots.ts`, so an engine that never
  * loses a race carries nothing and every wake-path check is a single `WeakMap`
@@ -21,17 +29,20 @@ import type { EngineInternals } from './internals.ts';
  */
 const abandonedGenerationsByEngine = new WeakMap<EngineInternals, Set<string>>();
 
-function abandonedCheckpointGenerationKey(workflowId: string, workflowExecutionToken: string) {
-  return JSON.stringify([workflowId, workflowExecutionToken]);
+/** `null` stands for the single pre-token generation an id can have. */
+function abandonedCheckpointGenerationKey(
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+) {
+  return JSON.stringify([workflowId, workflowExecutionToken ?? null]);
 }
 
-/** Remember that this engine abandoned the generation. A generation without a token cannot be keyed and is ignored. */
+/** Remember that this engine abandoned the generation; a pre-token generation is keyed by the token-less sentinel. */
 export function markCheckpointGenerationAbandoned(
   internals: EngineInternals,
   workflowId: string,
   workflowExecutionToken: string | undefined,
 ): void {
-  if (workflowExecutionToken === undefined) return;
   let abandoned = abandonedGenerationsByEngine.get(internals);
   if (abandoned === undefined) {
     abandoned = new Set();
@@ -40,16 +51,23 @@ export function markCheckpointGenerationAbandoned(
   abandoned.add(abandonedCheckpointGenerationKey(workflowId, workflowExecutionToken));
 }
 
-/** Forget the marker once this engine successfully launches that same generation again. */
+/**
+ * Forget the marker once this engine successfully launches that same generation
+ * again. Launching a token-bearing generation also forgets the pre-token marker
+ * for the id: no pre-token run can be the one that was just launched or the one
+ * that replaced it, so that marker can only be stale.
+ */
 export function forgetAbandonedCheckpointGeneration(
   internals: EngineInternals,
   workflowId: string,
   workflowExecutionToken: string | undefined,
 ): void {
-  if (workflowExecutionToken === undefined) return;
-  abandonedGenerationsByEngine
-    .get(internals)
-    ?.delete(abandonedCheckpointGenerationKey(workflowId, workflowExecutionToken));
+  const abandoned = abandonedGenerationsByEngine.get(internals);
+  if (abandoned === undefined) return;
+  abandoned.delete(abandonedCheckpointGenerationKey(workflowId, workflowExecutionToken));
+  if (workflowExecutionToken !== undefined) {
+    abandoned.delete(abandonedCheckpointGenerationKey(workflowId, undefined));
+  }
 }
 
 /** Drop every marker; called when the engine is disposed. */
@@ -57,14 +75,13 @@ export function clearAbandonedCheckpointGenerations(internals: EngineInternals):
   abandonedGenerationsByEngine.delete(internals);
 }
 
-/** Whether the generation identified by `workflowExecutionToken` is marked abandoned. */
+/** Whether the generation identified by `workflowExecutionToken` (`undefined` for a pre-token run) is marked abandoned. */
 export function isCheckpointGenerationAbandoned(
   internals: EngineInternals,
   workflowId: string,
   workflowExecutionToken: string | undefined,
 ): boolean {
   return (
-    workflowExecutionToken !== undefined &&
     abandonedGenerationsByEngine
       .get(internals)
       ?.has(abandonedCheckpointGenerationKey(workflowId, workflowExecutionToken)) === true
@@ -74,7 +91,9 @@ export function isCheckpointGenerationAbandoned(
 /**
  * Whether the generation this engine currently holds in memory for the workflow
  * is marked abandoned. Synchronous, and a single `WeakMap` miss for an engine
- * that never lost a race, so it is safe on every wake path.
+ * that never lost a race, so it is safe on every wake path. A workflow with no
+ * in-memory checkpoint holds no generation at all, which is different from a
+ * pre-token one, so it is never abandoned.
  */
 export function isCurrentCheckpointGenerationAbandoned(
   internals: EngineInternals,
@@ -82,10 +101,10 @@ export function isCurrentCheckpointGenerationAbandoned(
 ): boolean {
   const abandoned = abandonedGenerationsByEngine.get(internals);
   if (abandoned === undefined || abandoned.size === 0) return false;
-  return isCheckpointGenerationAbandoned(
-    internals,
-    workflowId,
-    internals.checkpoints.get(workflowId)?.workflowExecutionToken,
+  const current = internals.checkpoints.get(workflowId);
+  return (
+    current !== undefined &&
+    isCheckpointGenerationAbandoned(internals, workflowId, current.workflowExecutionToken)
   );
 }
 
