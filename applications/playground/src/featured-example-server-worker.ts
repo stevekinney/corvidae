@@ -3,9 +3,9 @@ import { rmSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { sveltePlugin } from '@lostgradient/testing';
 import { coordinatedBuild } from './build-artifacts-shared.ts';
 import { PLAYGROUND_ROOT, PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
+import { playgroundSveltePlugin } from './playground-svelte-plugin.ts';
 
 type RenderedFeaturedExample = {
   body: string;
@@ -74,7 +74,7 @@ export function renderFeaturedExample(mountIdPrefix: string) {
     const result = await coordinatedBuild(() =>
       Bun.build({
         entrypoints: [entryPath],
-        plugins: [sveltePlugin({ generate: 'server' })],
+        plugins: [playgroundSveltePlugin({ generate: 'server' })],
         target: 'bun',
         format: 'esm',
         conditions: ['bun', 'svelte'],

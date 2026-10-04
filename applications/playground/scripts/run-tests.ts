@@ -52,10 +52,23 @@ const SHARED_FLAGS = ['--conditions', 'browser', '--conditions', 'svelte', '--pa
 
 const MOUNT_HEAVY_TEST = 'src/component-page.test.ts';
 
-const BUILD_PIPELINE_MODULE_NAMES = [
+/**
+ * Modules that run `Bun.build`, directly or through the build pipeline, so a
+ * test that imports one starts in a fresh process. `run-tests.test.ts` checks
+ * that every playground module that calls `Bun.build` is listed here.
+ */
+export const BUILD_PIPELINE_MODULE_NAMES = [
+  'build-artifacts-shared.ts',
+  'documentation-styles.ts',
   'featured-example-server-renderer.ts',
+  'featured-example-server-worker.ts',
+  'file-watcher.ts',
+  'fixture-bundle.ts',
   'page-bundle.ts',
   'playground-server.ts',
+  'scenario-bundle.ts',
+  'shell-bundle.ts',
+  'ssr-renderer.ts',
   'static-export.ts',
 ] as const;
 

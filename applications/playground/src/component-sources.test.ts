@@ -23,6 +23,7 @@ import {
   componentExportNameFor,
   documentationComponentStylesheetUrl,
   documentationExampleStylesheetUrls,
+  resetComponentExportNames,
   resolveEditorStylesheetUrl,
   type ComponentSource,
 } from './component-sources.ts';
@@ -111,6 +112,36 @@ describe('component manifest completeness', () => {
     expect(() => componentExportNameFor(EDITOR_COMPONENT_SOURCE, 'not-in-the-manifest')).toThrow(
       `[playground] not-in-the-manifest has no exportName in ${EDITOR_COMPONENT_SOURCE.manifestPath}`,
     );
+  });
+});
+
+describe('the manifest export-name cache', () => {
+  function manifestWith(exportName: string): string {
+    return JSON.stringify({ components: [{ id: 'alpha', exportName }] });
+  }
+
+  it('keeps what it read until it is reset, then reads a changed manifest again', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'component-export-name-cache-'));
+    try {
+      const manifestPath = join(directory, 'components.json');
+      writeFileSync(manifestPath, manifestWith('Alpha'));
+      const source: ComponentSource = {
+        ...EDITOR_COMPONENT_SOURCE,
+        id: 'export-name-cache-fixture',
+        manifestPath,
+      };
+
+      expect(componentExportNameFor(source, 'alpha')).toBe('Alpha');
+      writeFileSync(manifestPath, manifestWith('Beta'));
+      expect(componentExportNameFor(source, 'alpha')).toBe('Alpha');
+
+      resetComponentExportNames();
+
+      expect(componentExportNameFor(source, 'alpha')).toBe('Beta');
+    } finally {
+      resetComponentExportNames();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 

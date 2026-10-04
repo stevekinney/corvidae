@@ -2,7 +2,7 @@
  * Server-render entry for the canonical component documentation page.
  *
  * Mirrors `shell-app/shell-server-entry.ts`: the playground server compiles this
- * module with `sveltePlugin({ generate: 'server' })` and calls
+ * module with `playgroundSveltePlugin({ generate: 'server' })` and calls
  * {@link renderComponentPageBody} to obtain the documentation markup plus the
  * scoped `<style>` tags Svelte hoists into `<head>`. The client bundle then
  * hydrates that exact tree.

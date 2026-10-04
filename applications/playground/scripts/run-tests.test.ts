@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  BUILD_PIPELINE_MODULE_NAMES,
   createTestProcessPlan,
   requiresFreshProcess,
   type PlaygroundTestFile,
@@ -20,6 +21,10 @@ describe('playground test process isolation', () => {
       "import { renderFeaturedExample } from './featured-example-server-renderer.ts';",
     ],
     ['src/page-bundle.test.ts', "import { compilePageBundleArtifacts } from './page-bundle.ts';"],
+    [
+      'src/documentation-styles.test.ts',
+      "import { buildDocumentationStylesheet } from './documentation-styles.ts';",
+    ],
     ['src/direct-build.test.ts', 'await Bun.build(options);'],
     ['src/dynamic-server.test.ts', "const server = await import('./playground-server.ts');"],
     ['src/side-effect-server.test.ts', "import './playground-server.ts';"],
@@ -65,5 +70,22 @@ describe('playground test process isolation', () => {
       ['scripts/static-export.test.ts'],
       ['src/playground-server.test.ts'],
     ]);
+  });
+
+  it('lists every playground module that calls Bun.build, so a test importing one is isolated', async () => {
+    const playgroundRoot = new URL('..', import.meta.url).pathname;
+    const callers: string[] = [];
+    for (const directory of ['scripts', 'src']) {
+      const glob = new Bun.Glob('**/*.ts');
+      for await (const relativePath of glob.scan({ cwd: `${playgroundRoot}${directory}` })) {
+        if (relativePath.endsWith('.test.ts') || relativePath === 'run-tests.ts') continue;
+        const source = await Bun.file(`${playgroundRoot}${directory}/${relativePath}`).text();
+        if (/\bBun\.build\(/.test(source)) callers.push(relativePath.split('/').pop()!);
+      }
+    }
+
+    expect(callers.length).toBeGreaterThan(0);
+    const listed: readonly string[] = BUILD_PIPELINE_MODULE_NAMES;
+    expect(callers.filter((moduleName) => !listed.includes(moduleName)).toSorted()).toEqual([]);
   });
 });

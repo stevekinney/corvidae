@@ -128,25 +128,46 @@ function readManifestExportNamesById(manifestPath: string): ReadonlyMap<string, 
   return exportNames;
 }
 
-const CINDER_COMPONENT_NAME_BY_EXPORT: ReadonlyMap<string, string> = new Map(
-  [...readManifestExportNamesById(join(cinderPackageRoot, 'components.json'))].map(
-    ([componentName, exportName]) => [exportName, componentName],
-  ),
-);
-
 const exportNamesBySourceId = new Map<string, ReadonlyMap<string, string>>();
+let cinderComponentNameByExport: ReadonlyMap<string, string> | undefined;
+
+function exportNamesByComponentId(source: ComponentSource): ReadonlyMap<string, string> {
+  let exportNames = exportNamesBySourceId.get(source.id);
+  if (exportNames === undefined) {
+    exportNames = readManifestExportNamesById(source.manifestPath);
+    exportNamesBySourceId.set(source.id, exportNames);
+  }
+  return exportNames;
+}
+
+/**
+ * Forget every package manifest read so far, so the next lookup reads the
+ * current `components.json`. The dev server calls this when a watched file
+ * changes: a component added or an export renamed after startup must reach the
+ * next page bundle without a restart.
+ */
+export function resetComponentExportNames(): void {
+  exportNamesBySourceId.clear();
+  cinderComponentNameByExport = undefined;
+}
+
+/** Cinder's component ids keyed by the name its package root exports them under. */
+function cinderComponentNamesByExport(): ReadonlyMap<string, string> {
+  cinderComponentNameByExport ??= new Map(
+    [...exportNamesByComponentId(CINDER_COMPONENT_SOURCE)].map(([componentName, exportName]) => [
+      exportName,
+      componentName,
+    ]),
+  );
+  return cinderComponentNameByExport;
+}
 
 /**
  * The export name a component's package root exposes it under, read from the
  * package's own manifest rather than derived from the component id.
  */
 export function componentExportNameFor(source: ComponentSource, componentName: string): string {
-  let exportNames = exportNamesBySourceId.get(source.id);
-  if (exportNames === undefined) {
-    exportNames = readManifestExportNamesById(source.manifestPath);
-    exportNamesBySourceId.set(source.id, exportNames);
-  }
-  const exportName = exportNames.get(componentName);
+  const exportName = exportNamesByComponentId(source).get(componentName);
   if (exportName === undefined) {
     throw new Error(`[playground] ${componentName} has no exportName in ${source.manifestPath}`);
   }
@@ -172,7 +193,7 @@ function cinderComponentDependenciesFromSource(source: string, dependencies: Set
         .replace(/^type\s+/u, '')
         .split(/\s+as\s+/u)[0];
       if (exportName === undefined) continue;
-      const componentName = CINDER_COMPONENT_NAME_BY_EXPORT.get(exportName);
+      const componentName = cinderComponentNamesByExport().get(exportName);
       if (componentName !== undefined) dependencies.add(componentName);
     }
   }

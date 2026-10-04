@@ -9,7 +9,7 @@ import {
   scenarioArtifactByPath,
   scenarioBuildPromiseByKey,
 } from './build-artifacts-shared.ts';
-import { COMPONENT_SOURCES } from './component-sources.ts';
+import { COMPONENT_SOURCES, resetComponentExportNames } from './component-sources.ts';
 import { invalidateDiscoveryCache } from './discover.ts';
 import { resetPlaygroundStylesheetBuilds } from './documentation-styles.ts';
 import { clearFixtureBundleCaches } from './fixture-bundle.ts';
@@ -143,6 +143,8 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // next request.
   invalidateDiscoveryCache();
   clearManifestCaches();
+  // `components.json` may have added a component or renamed an export.
+  resetComponentExportNames();
   resetPlaygroundStylesheetBuilds();
   // Dispose the shared ts-morph project so the next analyzeAll() rebuilds
   // from fresh compiler state rather than reusing sources from before this
