@@ -126,9 +126,9 @@ import type {
 import { GOAL_AUDIT_WORKFLOW_ID_PREFIX } from '@lostgradient/operative';
 import {
   createFleetEventFeed,
+  type Cursor,
   decodeCursor,
   encode,
-  type Cursor,
   type FleetEventEnvelope,
   type FleetEventFeed,
   type Storage,

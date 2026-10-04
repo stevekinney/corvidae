@@ -18,6 +18,7 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
 } from '@lostgradient/operative';
+
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
 import type { ChildTopologyStart } from './child-topology';
 import {

@@ -10,6 +10,12 @@
   "plugins": ["prettier-plugin-organize-imports", "prettier-plugin-svelte", "prettier-plugin-toml"],
   "overrides": [
     {
+      "files": "packages/bureau/src/**/*.ts",
+      "options": {
+        "plugins": ["prettier-plugin-svelte", "prettier-plugin-toml"]
+      }
+    },
+    {
       "files": "*.md",
       "options": {
         "tabWidth": 2,

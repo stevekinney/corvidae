@@ -12,6 +12,11 @@ import {
   type AgentRun,
   type AgentSession,
   type ChildSignalContract,
+  // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
+  // import because `./types` exports an unrelated string-union type under
+  // the same name (armorer's shutdown-owner outcome vocabulary). The two are
+  // genuinely different values and must not shadow each other here.
+  type CleanupAcknowledgement as RunCleanupAcknowledgement,
   type CombinedOperativeEventMap,
   createActiveRun,
   createAgentRunEventRegistry,
@@ -43,11 +48,8 @@ import {
   type RecoveredRunHandle,
   type RequestHumanInputResult,
   reservedIdentifierReason,
-  // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
-  // import because `./types` exports an unrelated string-union type under
-  // the same name (armorer's shutdown-owner outcome vocabulary). The two are
-  // genuinely different values and must not shadow each other here.
-  type CleanupAcknowledgement as RunCleanupAcknowledgement,
+  RunRegisteredEvent as StoreRunRegisteredEvent,
+  RunRemovedEvent as StoreRunRemovedEvent,
   type RunReport,
   type RunResult,
   ScheduleAttemptedEvent,
@@ -78,8 +80,6 @@ import {
   type StepRecord,
   type Store,
   StoreActionEvent,
-  RunRegisteredEvent as StoreRunRegisteredEvent,
-  RunRemovedEvent as StoreRunRemovedEvent,
   type StreamEventMap,
   type Subscription,
   TaskCancelledEvent,
@@ -113,16 +113,6 @@ import {
   type ToolRequestContext,
 } from 'armorer';
 import { Conversation, createConversationHistory, isConversationHistory } from 'conversationalist';
-import {
-  isPlainAuthorityRecord,
-  isSessionAuthorityAuthorized,
-  isSessionRunTerminal,
-  resolvePersistedRunOwningPrincipal,
-} from './session-authority';
-import {
-  normalizeRunRequestContext,
-  recoveredRequestContextFromMetadata,
-} from './session-request-context';
 
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
 import {
@@ -206,11 +196,21 @@ import {
   serializeUnknownError,
 } from './serialization';
 import {
+  isPlainAuthorityRecord,
+  isSessionAuthorityAuthorized,
+  isSessionRunTerminal,
+  resolvePersistedRunOwningPrincipal,
+} from './session-authority';
+import {
   admitSessionInput,
   createSessionInputMailbox,
   type PersistedSessionInput,
 } from './session-input-durability';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
+import {
+  normalizeRunRequestContext,
+  recoveredRequestContextFromMetadata,
+} from './session-request-context';
 import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
