@@ -1502,165 +1502,168 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
     await server.stop(true);
   });
 
-  const portFile = readEnvironmentConfiguration().playgroundPortFile;
-  if (portFile !== undefined) {
-    try {
+  // The server is listening and the watchers may be registered, but no caller holds the disposer
+  // until this function returns. Whatever fails from here on (the port file, a fingerprint read,
+  // a warmup) must release both, or the failed start keeps the port reserved and the process alive.
+  // The disposer runs once however many of the steps below also call it before throwing.
+  try {
+    const portFile = readEnvironmentConfiguration().playgroundPortFile;
+    if (portFile !== undefined) {
       await Bun.write(portFile, `${actualPort}\n`);
-    } catch (error) {
-      // The server is already listening and no caller has its disposer yet, so a rejection here
-      // would leave the socket open and the port reserved.
-      await dispose();
-      throw error;
     }
-  }
-  process.stdout.write(`[playground] Listening at http://localhost:${actualPort}\n`);
+    process.stdout.write(`[playground] Listening at http://localhost:${actualPort}\n`);
 
-  let prebuild;
-  let stable = false;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    // Register before the eager build so deletions and edits during warmup
-    // advance the generation even when the removed file is no longer present
-    // in the end-of-build mtime scan.
-    if (watchers.length === 0) {
-      try {
-        watchers = startWatcher();
-      } catch (error) {
-        await dispose();
-        throw error;
+    let prebuild;
+    let stable = false;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      // Register before the eager build so deletions and edits during warmup
+      // advance the generation even when the removed file is no longer present
+      // in the end-of-build mtime scan.
+      if (watchers.length === 0) {
+        try {
+          watchers = startWatcher();
+        } catch (error) {
+          await dispose();
+          throw error;
+        }
+        // From here on source edits reach `/events`, so the landing page may subscribe to it.
+        advertiseLiveReload(true);
       }
-      // From here on source edits reach `/events`, so the landing page may subscribe to it.
-      advertiseLiveReload(true);
-    }
-    const prebuildAttempt = await runGenerationCheckedWarmup(() =>
-      runConcurrentStartupWarmup(eagerPrebuildAndWarmManifests, loadShellServerRenderer, dispose),
-    );
-    prebuild = prebuildAttempt.value.prebuild;
-    const { instabilityReasons } = prebuildAttempt;
-    if (instabilityReasons.length === 0) {
-      stable = true;
-      break;
-    }
-    console.warn(
-      `[playground] warmup pre-build invalidated on attempt ${attempt + 1}/5: ${instabilityReasons.join('; ')}`,
-    );
-    invalidateCachesForChange({ kind: 'components' });
-  }
-  if (!stable || !prebuild) {
-    await dispose();
-    throw new Error('[playground] eager prebuild invalidated repeatedly; refusing readiness');
-  }
-  if (!prebuild.shellSucceeded) {
-    await dispose();
-    throw new Error('[playground] shell bundle failed to build — see logs above');
-  }
-  const total = prebuild.succeeded + prebuild.failed.length;
-  const failedSuffix = prebuild.failed.length > 0 ? ` (failed: ${prebuild.failed.join(', ')})` : '';
-  // A bundler that retains memory per build turns this sweep into an OOM kill
-  // on a CI runner, and that kill carries no message of its own — the run just
-  // reports whatever browser assertion happened to be in flight. `maxRSS` is
-  // the process's high-water mark, not the instantaneous reading: a sweep that
-  // spikes and then falls back still reports the number that decides whether
-  // the runner kills it.
-  //
-  // Units: `process.resourceUsage().maxRSS` is kibibytes on BOTH macOS and
-  // Linux — libuv normalizes Darwin's byte-valued `ru_maxrss` on the way out.
-  // That is not true of `Bun.spawn`'s subprocess `resourceUsage()`, which
-  // hands back Darwin's raw bytes; that difference is what
-  // `memory-canary.ts`'s `bytesFromMaxRss` exists for, and applying it here
-  // would under-report by 1024x on macOS. Measured on darwin at a 611 MB
-  // resident size: this API reports 625,856, the subprocess API 641,024,000.
-  const peakResidentMegabytes = Math.round(process.resourceUsage().maxRSS / 1024);
-  process.stdout.write(
-    `[playground] Pre-built ${prebuild.succeeded}/${total} page bundles${failedSuffix} ` +
-      `(peak resident ${peakResidentMegabytes} MB)\n`,
-  );
-  // Prepare the SSR shell renderer before advertising readiness. Requests must
-  // never pay the cold Svelte server compilation cost on the first navigation.
-  let rendererPrepared = false;
-  let bundlesNeedPrebuild = false;
-  for (let attempt = 0; attempt < 5 && !rendererPrepared; attempt += 1) {
-    if (bundlesNeedPrebuild) {
-      const prebuildAttempt = await runGenerationCheckedWarmup(eagerPrebuildAndWarmManifests);
-      prebuild = prebuildAttempt.value;
-      if (!prebuild.shellSucceeded) {
-        await dispose();
-        throw new Error(
-          '[playground] shell bundle failed to build during renderer retry — see logs above',
-        );
-      }
-      if (prebuildAttempt.instabilityReasons.length > 0) {
-        console.warn(
-          `[playground] renderer retry pre-build invalidated on attempt ${attempt + 1}/5: ${prebuildAttempt.instabilityReasons.join('; ')}`,
-        );
-        invalidateCachesForChange({ kind: 'components' });
-        continue;
-      }
-      bundlesNeedPrebuild = false;
-    }
-
-    const generationAtStart = getRebuildGeneration();
-    const sourceMtimeAtStart = newestSourceMtimeMs(REPOSITORY_ROOT);
-    let rendererResult: ShellServerRendererLoadResult;
-    try {
-      rendererResult = await loadShellServerRenderer();
-      setPreparedShellServerRenderer(rendererResult.renderer);
-    } catch (error) {
-      await dispose();
-      throw new Error('[playground] shell server renderer failed to prepare', { cause: error });
-    }
-    const sourceMtimeAtEnd = newestSourceMtimeMs(REPOSITORY_ROOT);
-    const generationChanged = generationAtStart !== getRebuildGeneration();
-    const sourceChanged = sourceMtimeAtStart !== sourceMtimeAtEnd;
-    const pendingRebuild = hasPendingRebuild();
-    const instabilityReasons = warmupInstabilityReasons(
-      generationAtStart,
-      getRebuildGeneration(),
-      sourceMtimeAtStart,
-      sourceMtimeAtEnd,
-      pendingRebuild,
-    );
-    const decision = rendererWarmupAttemptDecision(
-      rendererResult.usedFallback,
-      generationChanged,
-      sourceChanged,
-      pendingRebuild,
-    );
-    if (decision.accepted) {
-      rendererPrepared = true;
-    } else {
-      if (rendererResult.usedFallback) {
-        instabilityReasons.unshift('renderer fallback was used');
+      const prebuildAttempt = await runGenerationCheckedWarmup(() =>
+        runConcurrentStartupWarmup(eagerPrebuildAndWarmManifests, loadShellServerRenderer, dispose),
+      );
+      prebuild = prebuildAttempt.value.prebuild;
+      const { instabilityReasons } = prebuildAttempt;
+      if (instabilityReasons.length === 0) {
+        stable = true;
+        break;
       }
       console.warn(
-        `[playground] shell renderer warmup invalidated on attempt ${attempt + 1}/5: ${instabilityReasons.join('; ')}`,
+        `[playground] warmup pre-build invalidated on attempt ${attempt + 1}/5: ${instabilityReasons.join('; ')}`,
       );
-      resetShellRendererWarmupState();
-      if (decision.needsPrebuild) {
-        // Any source change can make the eager browser bundles stale. Restore
-        // the bundle guarantee before advertising readiness. The next attempt
-        // validates the generation around that prebuild before loading another
-        // renderer, so an edit during the build cannot leave a partially cold
-        // cache behind a stable renderer result.
-        await waitForPendingRebuild();
-        if (
-          rendererWarmupNeedsCacheInvalidation(
-            generationAtStart !== getRebuildGeneration(),
-            sourceChanged,
-            false,
-          )
-        ) {
-          invalidateCachesForChange({ kind: 'components' });
+      invalidateCachesForChange({ kind: 'components' });
+    }
+    if (!stable || !prebuild) {
+      await dispose();
+      throw new Error('[playground] eager prebuild invalidated repeatedly; refusing readiness');
+    }
+    if (!prebuild.shellSucceeded) {
+      await dispose();
+      throw new Error('[playground] shell bundle failed to build — see logs above');
+    }
+    const total = prebuild.succeeded + prebuild.failed.length;
+    const failedSuffix =
+      prebuild.failed.length > 0 ? ` (failed: ${prebuild.failed.join(', ')})` : '';
+    // A bundler that retains memory per build turns this sweep into an OOM kill
+    // on a CI runner, and that kill carries no message of its own — the run just
+    // reports whatever browser assertion happened to be in flight. `maxRSS` is
+    // the process's high-water mark, not the instantaneous reading: a sweep that
+    // spikes and then falls back still reports the number that decides whether
+    // the runner kills it.
+    //
+    // Units: `process.resourceUsage().maxRSS` is kibibytes on BOTH macOS and
+    // Linux — libuv normalizes Darwin's byte-valued `ru_maxrss` on the way out.
+    // That is not true of `Bun.spawn`'s subprocess `resourceUsage()`, which
+    // hands back Darwin's raw bytes; that difference is what
+    // `memory-canary.ts`'s `bytesFromMaxRss` exists for, and applying it here
+    // would under-report by 1024x on macOS. Measured on darwin at a 611 MB
+    // resident size: this API reports 625,856, the subprocess API 641,024,000.
+    const peakResidentMegabytes = Math.round(process.resourceUsage().maxRSS / 1024);
+    process.stdout.write(
+      `[playground] Pre-built ${prebuild.succeeded}/${total} page bundles${failedSuffix} ` +
+        `(peak resident ${peakResidentMegabytes} MB)\n`,
+    );
+    // Prepare the SSR shell renderer before advertising readiness. Requests must
+    // never pay the cold Svelte server compilation cost on the first navigation.
+    let rendererPrepared = false;
+    let bundlesNeedPrebuild = false;
+    for (let attempt = 0; attempt < 5 && !rendererPrepared; attempt += 1) {
+      if (bundlesNeedPrebuild) {
+        const prebuildAttempt = await runGenerationCheckedWarmup(eagerPrebuildAndWarmManifests);
+        prebuild = prebuildAttempt.value;
+        if (!prebuild.shellSucceeded) {
+          await dispose();
+          throw new Error(
+            '[playground] shell bundle failed to build during renderer retry — see logs above',
+          );
         }
-        bundlesNeedPrebuild = true;
+        if (prebuildAttempt.instabilityReasons.length > 0) {
+          console.warn(
+            `[playground] renderer retry pre-build invalidated on attempt ${attempt + 1}/5: ${prebuildAttempt.instabilityReasons.join('; ')}`,
+          );
+          invalidateCachesForChange({ kind: 'components' });
+          continue;
+        }
+        bundlesNeedPrebuild = false;
+      }
+
+      const generationAtStart = getRebuildGeneration();
+      const sourceMtimeAtStart = newestSourceMtimeMs(REPOSITORY_ROOT);
+      let rendererResult: ShellServerRendererLoadResult;
+      try {
+        rendererResult = await loadShellServerRenderer();
+        setPreparedShellServerRenderer(rendererResult.renderer);
+      } catch (error) {
+        await dispose();
+        throw new Error('[playground] shell server renderer failed to prepare', { cause: error });
+      }
+      const sourceMtimeAtEnd = newestSourceMtimeMs(REPOSITORY_ROOT);
+      const generationChanged = generationAtStart !== getRebuildGeneration();
+      const sourceChanged = sourceMtimeAtStart !== sourceMtimeAtEnd;
+      const pendingRebuild = hasPendingRebuild();
+      const instabilityReasons = warmupInstabilityReasons(
+        generationAtStart,
+        getRebuildGeneration(),
+        sourceMtimeAtStart,
+        sourceMtimeAtEnd,
+        pendingRebuild,
+      );
+      const decision = rendererWarmupAttemptDecision(
+        rendererResult.usedFallback,
+        generationChanged,
+        sourceChanged,
+        pendingRebuild,
+      );
+      if (decision.accepted) {
+        rendererPrepared = true;
+      } else {
+        if (rendererResult.usedFallback) {
+          instabilityReasons.unshift('renderer fallback was used');
+        }
+        console.warn(
+          `[playground] shell renderer warmup invalidated on attempt ${attempt + 1}/5: ${instabilityReasons.join('; ')}`,
+        );
+        resetShellRendererWarmupState();
+        if (decision.needsPrebuild) {
+          // Any source change can make the eager browser bundles stale. Restore
+          // the bundle guarantee before advertising readiness. The next attempt
+          // validates the generation around that prebuild before loading another
+          // renderer, so an edit during the build cannot leave a partially cold
+          // cache behind a stable renderer result.
+          await waitForPendingRebuild();
+          if (
+            rendererWarmupNeedsCacheInvalidation(
+              generationAtStart !== getRebuildGeneration(),
+              sourceChanged,
+              false,
+            )
+          ) {
+            invalidateCachesForChange({ kind: 'components' });
+          }
+          bundlesNeedPrebuild = true;
+        }
       }
     }
-  }
-  if (!rendererPrepared) {
+    if (!rendererPrepared) {
+      await dispose();
+      throw new Error('[playground] shell renderer invalidated repeatedly; refusing readiness');
+    }
+    await warmPageServerRenderer();
+    startupReady = true;
+  } catch (error) {
     await dispose();
-    throw new Error('[playground] shell renderer invalidated repeatedly; refusing readiness');
+    throw error;
   }
-  await warmPageServerRenderer();
-  startupReady = true;
   return {
     port: actualPort,
     dispose: async () => {

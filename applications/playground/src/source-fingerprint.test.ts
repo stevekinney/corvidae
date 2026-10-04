@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -86,9 +94,11 @@ describe('newestFileMtimeMs while the tree changes under the walk', () => {
       const future = new Date(Date.now() + 60_000);
       utimesSync(vanishing, future, future);
 
-      const newest = newestFileMtimeMs(directory, (path) => {
-        if (path === vanishing) throw vanishedFileError(path);
-        return statSync(path);
+      const newest = newestFileMtimeMs(directory, {
+        statFile: (path) => {
+          if (path === vanishing) throw vanishedFileError(path);
+          return statSync(path);
+        },
       });
 
       expect(newest).toBe(statSync(survivor).mtimeMs);
@@ -102,8 +112,10 @@ describe('newestFileMtimeMs while the tree changes under the walk', () => {
     try {
       writeFileSync(join(directory, 'only.txt'), 'removed mid-walk');
       expect(
-        newestFileMtimeMs(directory, (path) => {
-          throw vanishedFileError(path);
+        newestFileMtimeMs(directory, {
+          statFile: (path) => {
+            throw vanishedFileError(path);
+          },
         }),
       ).toBeNull();
     } finally {
@@ -117,10 +129,74 @@ describe('newestFileMtimeMs while the tree changes under the walk', () => {
       writeFileSync(join(directory, 'locked.txt'), 'unreadable');
       const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
       expect(() =>
-        newestFileMtimeMs(directory, () => {
-          throw denied;
+        newestFileMtimeMs(directory, {
+          statFile: () => {
+            throw denied;
+          },
         }),
       ).toThrow('EACCES');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('newestFileMtimeMs when a directory cannot be read', () => {
+  function readFailure(code: string, path: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`${code}: cannot read directory '${path}'`), { code });
+  }
+
+  test('reports a directory that exists but cannot be read instead of treating it as empty', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'source-fingerprint-unreadable-'));
+    try {
+      writeFileSync(join(directory, 'a.txt'), 'a');
+      // A fingerprint that silently omitted a whole source tree would call a stale server fresh.
+      for (const code of ['EACCES', 'EIO']) {
+        expect(() =>
+          newestFileMtimeMs(directory, {
+            readDirectory: (path) => {
+              throw readFailure(code, path);
+            },
+          }),
+        ).toThrow(code);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('skips a directory that is removed after its parent was listed, and counts the rest', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'source-fingerprint-subdirectory-gone-'));
+    try {
+      const survivor = join(directory, 'survivor.txt');
+      writeFileSync(survivor, 'kept');
+      const vanishing = join(directory, 'vanishing');
+      mkdirSync(vanishing);
+      writeFileSync(join(vanishing, 'inside.txt'), 'removed mid-walk');
+
+      const newest = newestFileMtimeMs(directory, {
+        readDirectory: (path) => {
+          if (path === vanishing) throw readFailure('ENOENT', path);
+          return readdirSync(path, { withFileTypes: true });
+        },
+      });
+
+      expect(newest).toBe(statSync(survivor).mtimeMs);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('treats a directory that was replaced by a file as gone', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'source-fingerprint-replaced-'));
+    try {
+      expect(
+        newestFileMtimeMs(directory, {
+          readDirectory: (path) => {
+            throw readFailure('ENOTDIR', path);
+          },
+        }),
+      ).toBeNull();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -157,6 +233,8 @@ describe('newestSourceMtimeMs', () => {
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/cinder/components.json');
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/package.json');
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/components.json');
+    // The documentation's displayed versions come from the mirror's package map.
+    expect(FINGERPRINT_SOURCE_FILES).toContain('scripts/mirror/package-map.json');
   });
 
   test('includes the server and bundler script trees the playground server runs', () => {

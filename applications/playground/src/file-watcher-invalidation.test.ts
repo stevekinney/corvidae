@@ -11,6 +11,7 @@ import {
 } from './component-sources.ts';
 import { invalidateCachesForChange, startWatcher, waitForPendingRebuild } from './file-watcher.ts';
 import { pageEntryByName } from './page-bundle.ts';
+import { PACKAGE_MAP_PATH } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 describe('invalidateCachesForChange', () => {
@@ -170,5 +171,31 @@ describe('startWatcher with watch events that carry no filename', () => {
       expect(after).toBeGreaterThan(before);
       expect(getRebuildGeneration()).toBe(after);
     }
+  });
+});
+
+describe('startWatcher and the package map the documentation reads its versions from', () => {
+  type WatchCallback = (event: string, filename: string | null) => void;
+
+  // Every documentation page shows its package's `lastPublishedVersion`, which it reads from the
+  // mirror's package map. A dev server that never noticed that file change would keep showing the
+  // old version until it restarted.
+  it('watches the package map and invalidates when it changes', async () => {
+    const callbackByPath = new Map<string, WatchCallback>();
+    const fakeWatch = ((path: string, ...rest: unknown[]) => {
+      const callback = rest.find((argument) => typeof argument === 'function') as
+        WatchCallback | undefined;
+      if (callback !== undefined) callbackByPath.set(path, callback);
+      return { close() {} };
+    }) as unknown as Parameters<typeof startWatcher>[0];
+    startWatcher(fakeWatch);
+
+    const onPackageMapChange = callbackByPath.get(PACKAGE_MAP_PATH);
+    expect(onPackageMapChange).toBeDefined();
+
+    const before = await waitForPendingRebuild();
+    onPackageMapChange!('change', 'package-map.json');
+    const after = await waitForPendingRebuild();
+    expect(after).toBeGreaterThan(before);
   });
 });

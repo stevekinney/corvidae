@@ -17,7 +17,7 @@ import {
   type ComponentSource,
 } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
-import { REPOSITORY_ROOT } from './playground-paths.ts';
+import { PACKAGE_MAP_PATH } from './playground-paths.ts';
 import { repositorySourceHref, rewriteRelativeRenderedMarkdownLinks } from './repository-links.ts';
 import type { ComponentManifest } from './types.ts';
 
@@ -168,8 +168,6 @@ function isRawPackageManifest(value: unknown): value is RawPackageManifest {
     isStatusMap(value['statusLevels'])
   );
 }
-
-const PACKAGE_MAP_PATH = join(REPOSITORY_ROOT, 'scripts', 'mirror', 'package-map.json');
 
 /**
  * The version the documentation displays: the one the public mirror last

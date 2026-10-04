@@ -16,7 +16,7 @@ import { resetPlaygroundStylesheetBuilds } from './documentation-styles.ts';
 import { clearFixtureBundleCaches } from './fixture-bundle.ts';
 import { clearManifestCaches } from './manifest-cache.ts';
 import { pageEntryByName } from './page-bundle.ts';
-import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
+import { PACKAGE_MAP_PATH, PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
 import {
   getRebuildGeneration,
   incrementRebuildGeneration,
@@ -295,6 +295,17 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
     if (existsSync(markdownSourcePath)) {
       created.push(
         watchPath(markdownSourcePath, { recursive: true }, () => {
+          scheduleRebuild({ kind: 'components' });
+        }),
+      );
+    }
+
+    // Every documentation page shows its package's `lastPublishedVersion`, read from the mirror's
+    // package map on each build of the page. The map is not under any watched source tree, so a
+    // change to it would otherwise leave open pages showing the old version until a restart.
+    if (existsSync(PACKAGE_MAP_PATH)) {
+      created.push(
+        watchPath(PACKAGE_MAP_PATH, () => {
           scheduleRebuild({ kind: 'components' });
         }),
       );

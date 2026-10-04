@@ -37,14 +37,32 @@ export const FINGERPRINT_SOURCE_FILES = [
   'components/chat/components.json',
   'components/editor/package.json',
   'components/editor/components.json',
+  // The documentation's displayed package versions come from the mirror's package map.
+  'scripts/mirror/package-map.json',
 ] as const;
 
-/** Reads one file's metadata; `statSync` in production, replaceable so a test can make a file vanish. */
-type StatFile = (path: string) => { mtimeMs: number };
+/** The two filesystem reads a walk makes; the real ones in production, replaceable so a test can make a file or a directory vanish or fail. */
+export type FingerprintFilesystem = {
+  readDirectory: (path: string) => Dirent<string>[];
+  statFile: (path: string) => { mtimeMs: number };
+};
 
-/** Whether `error` is the `ENOENT` a file raises when it is deleted or renamed after it was listed. */
-function isVanishedFile(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+const REAL_FILESYSTEM: FingerprintFilesystem = {
+  readDirectory: (path) => readdirSync(path, { withFileTypes: true }),
+  statFile: (path) => statSync(path),
+};
+
+/**
+ * Whether `error` says the path is gone: `ENOENT` for a file or directory deleted or renamed after
+ * it was listed (or never there), `ENOTDIR` for a directory replaced by a file. Anything else (a
+ * permission failure, an I/O error) means the walk could not see something that exists.
+ */
+function isVanishedPath(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+  );
 }
 
 /**
@@ -54,10 +72,16 @@ function isVanishedFile(error: unknown): boolean {
  * The walk runs while the watcher is live, so a file can be deleted or renamed
  * between the directory listing that named it and the `stat` that reads its
  * mtime. Such an entry is skipped: it no longer exists, so it cannot be the
- * newest file, and a later fingerprint comparison sees whatever replaced it.
- * Any other stat failure still propagates.
+ * newest file, and a later fingerprint comparison sees whatever replaced it. The
+ * same goes for a directory that disappears. Any other failure, to stat a file
+ * or to read a directory that exists, propagates: a fingerprint that silently
+ * left a whole source tree out would report a stale server as fresh.
  */
-export function newestFileMtimeMs(directory: string, statFile: StatFile = statSync): number | null {
+export function newestFileMtimeMs(
+  directory: string,
+  filesystem: Partial<FingerprintFilesystem> = {},
+): number | null {
+  const { readDirectory, statFile } = { ...REAL_FILESYSTEM, ...filesystem };
   let newest: number | null = null;
   const stack: string[] = [directory];
 
@@ -65,9 +89,10 @@ export function newestFileMtimeMs(directory: string, statFile: StatFile = statSy
     const current = stack.pop()!;
     let entries: Dirent<string>[];
     try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
+      entries = readDirectory(current);
+    } catch (error) {
+      if (isVanishedPath(error)) continue;
+      throw error;
     }
 
     for (const entry of entries) {
@@ -89,7 +114,7 @@ export function newestFileMtimeMs(directory: string, statFile: StatFile = statSy
       try {
         mtimeMs = statFile(fullPath).mtimeMs;
       } catch (error) {
-        if (isVanishedFile(error)) continue;
+        if (isVanishedPath(error)) continue;
         throw error;
       }
       if (newest === null || mtimeMs > newest) newest = mtimeMs;
