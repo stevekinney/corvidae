@@ -1,5 +1,5 @@
 import { existsSync, watch, type FSWatcher } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, posix } from 'node:path';
 
 import { resetProject } from './analyze.ts';
 import {
@@ -252,6 +252,56 @@ export function classifyPlaygroundSrcChange(rawFilename: string): ChangeScope | 
 }
 
 /**
+ * Watch the metadata files `metadataPaths` name and call `onChange` when one of them changes.
+ *
+ * Each file is watched through its directory, never directly. A watch on a file follows the inode
+ * it was opened on, so a tool that saves by writing a temporary file and renaming it over the
+ * original leaves that watcher attached to the replaced inode: under Node on macOS a file watch
+ * reported the first such save and none after it, and a Linux inotify watch on the file behaves the
+ * same way. (Bun 1.4.2 on macOS follows the path and does not reproduce it.) A watch on the
+ * containing directory sees every rename, whichever inode now sits behind the name. A directory
+ * that holds several of the files is watched once, and its events are filtered by file name,
+ * because the directories involved hold unrelated files (the mirror's other maps, a package's
+ * README and tests) whose changes affect no page. An event that carries no filename widens the
+ * invalidation instead of being dropped, as every other watcher here does.
+ *
+ * Closes the watchers it created and rethrows if one cannot be created.
+ */
+export function watchMetadataFiles(
+  watchPath: typeof watch,
+  metadataPaths: readonly string[],
+  onChange: () => void,
+): FSWatcher[] {
+  const namesByDirectory = new Map<string, Set<string>>();
+  for (const metadataPath of metadataPaths) {
+    const directory = dirname(metadataPath);
+    const names = namesByDirectory.get(directory) ?? new Set<string>();
+    names.add(posix.basename(metadataPath.replaceAll('\\', '/')));
+    namesByDirectory.set(directory, names);
+  }
+
+  const created: FSWatcher[] = [];
+  try {
+    for (const [directory, names] of namesByDirectory) {
+      if (!existsSync(directory)) continue;
+      created.push(
+        watchPath(directory, (_event, filename) => {
+          // Normalized before the comparison: a Windows watcher reports `.\package-map.json`, and a
+          // backend that reports a nested path (`src/package.json`) is not reporting this file.
+          if (!filename || names.has(posix.normalize(filename.replaceAll('\\', '/')))) {
+            onChange();
+          }
+        }),
+      );
+    }
+  } catch (error) {
+    for (const watcher of created) watcher.close();
+    throw error;
+  }
+  return created;
+}
+
+/**
  * Start watching the components, examples, and playground source trees and
  * route every change through `scheduleRebuild`. The scheduler debounces
  * bursts and the generation-token state machine guarantees publish atomicity.
@@ -273,18 +323,6 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
           scheduleRebuild({ kind: 'components' });
         }),
       );
-
-      for (const metadataPath of [
-        join(componentSource.packageRoot, 'package.json'),
-        componentSource.manifestPath,
-      ]) {
-        if (!existsSync(metadataPath)) continue;
-        created.push(
-          watchPath(metadataPath, () => {
-            scheduleRebuild({ kind: 'components' });
-          }),
-        );
-      }
     }
 
     // Markdown is a transitive dependency of the shell and page bundles, but
@@ -300,16 +338,27 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
       );
     }
 
-    // Every documentation page shows its package's `lastPublishedVersion`, read from the mirror's
-    // package map on each build of the page. The map is not under any watched source tree, so a
-    // change to it would otherwise leave open pages showing the old version until a restart.
-    if (existsSync(PACKAGE_MAP_PATH)) {
-      created.push(
-        watchPath(PACKAGE_MAP_PATH, () => {
+    // The metadata files that change what every page shows, none of them under a watched source
+    // tree: a package's `package.json` and `components.json` (its component inventory and export
+    // names), and the mirror's package map, which every documentation page reads its package's
+    // `lastPublishedVersion` from on each build of the page. A change to any of them would
+    // otherwise leave open pages stale until a restart. See `watchMetadataFiles` for why they are
+    // watched through their directories.
+    created.push(
+      ...watchMetadataFiles(
+        watchPath,
+        [
+          PACKAGE_MAP_PATH,
+          ...COMPONENT_SOURCES.flatMap((componentSource) => [
+            join(componentSource.packageRoot, 'package.json'),
+            componentSource.manifestPath,
+          ]),
+        ],
+        () => {
           scheduleRebuild({ kind: 'components' });
-        }),
-      );
-    }
+        },
+      ),
+    );
 
     // Examples directory: an edit to `<name>/<scenario>.example.svelte` can
     // only ever affect that one component's page bundle, so the scope is

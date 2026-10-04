@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { pageArtifactByPath, publishPageArtifacts } from './build-artifacts-shared.ts';
 import {
+  COMPONENT_SOURCES,
   EDITOR_COMPONENT_SOURCE,
   componentExportNameFor,
   type ComponentSource,
@@ -174,28 +175,122 @@ describe('startWatcher with watch events that carry no filename', () => {
   });
 });
 
-describe('startWatcher and the package map the documentation reads its versions from', () => {
+describe('startWatcher and the metadata files that change what every page shows', () => {
   type WatchCallback = (event: string, filename: string | null) => void;
 
-  // Every documentation page shows its package's `lastPublishedVersion`, which it reads from the
-  // mirror's package map. A dev server that never noticed that file change would keep showing the
-  // old version until it restarted.
-  it('watches the package map and invalidates when it changes', async () => {
+  /** Start the watcher over a fake `watch` and record every path it asked to watch. */
+  function startWithFakeWatch(): {
+    watchedPaths: string[];
+    callbackByPath: Map<string, WatchCallback>;
+  } {
+    const watchedPaths: string[] = [];
     const callbackByPath = new Map<string, WatchCallback>();
     const fakeWatch = ((path: string, ...rest: unknown[]) => {
+      watchedPaths.push(path);
       const callback = rest.find((argument) => typeof argument === 'function') as
         WatchCallback | undefined;
       if (callback !== undefined) callbackByPath.set(path, callback);
       return { close() {} };
     }) as unknown as Parameters<typeof startWatcher>[0];
     startWatcher(fakeWatch);
+    return { watchedPaths, callbackByPath };
+  }
 
-    const onPackageMapChange = callbackByPath.get(PACKAGE_MAP_PATH);
-    expect(onPackageMapChange).toBeDefined();
-
+  /** Report an event to a watcher and say whether it invalidated the caches. */
+  async function invalidates(
+    callback: WatchCallback,
+    event: string,
+    filename: string | null,
+  ): Promise<boolean> {
     const before = await waitForPendingRebuild();
-    onPackageMapChange!('change', 'package-map.json');
+    callback(event, filename);
     const after = await waitForPendingRebuild();
-    expect(after).toBeGreaterThan(before);
+    return after > before;
+  }
+
+  const metadataFiles = [
+    { label: 'the package map', path: PACKAGE_MAP_PATH },
+    ...COMPONENT_SOURCES.flatMap((source) => [
+      { label: `${source.id}'s package.json`, path: join(source.packageRoot, 'package.json') },
+      { label: `${source.id}'s components.json`, path: source.manifestPath },
+    ]),
+  ];
+
+  // A tool that saves one of these files by writing a temporary file and renaming it over the
+  // original leaves a watch on the file attached to the replaced inode (measured under Node on
+  // macOS, where a file watch reported the first save and none after it), so every later save goes
+  // unnoticed until the server restarts. A watch on the containing directory sees the rename
+  // whichever inode now sits behind the name.
+  it('watches each metadata file through its directory and never the file itself', () => {
+    const { watchedPaths } = startWithFakeWatch();
+
+    for (const { label, path } of metadataFiles) {
+      expect(watchedPaths, `${label} is watched as a file`).not.toContain(path);
+      expect(watchedPaths, `the directory of ${label} is not watched`).toContain(dirname(path));
+    }
+  });
+
+  it('watches a directory that holds several metadata files once', () => {
+    const { watchedPaths } = startWithFakeWatch();
+
+    for (const source of COMPONENT_SOURCES) {
+      expect(watchedPaths.filter((path) => path === source.packageRoot)).toHaveLength(1);
+    }
+  });
+
+  // Every documentation page shows its package's `lastPublishedVersion`, which it reads from the
+  // mirror's package map. A dev server that never noticed that file change would keep showing the
+  // old version until it restarted.
+  it('invalidates when the package map is replaced by a rename', async () => {
+    const { callbackByPath } = startWithFakeWatch();
+    const onMirrorDirectoryChange = callbackByPath.get(dirname(PACKAGE_MAP_PATH));
+    expect(onMirrorDirectoryChange).toBeDefined();
+
+    // An atomic save reaches a directory watcher as a rename of the target's name.
+    expect(await invalidates(onMirrorDirectoryChange!, 'rename', 'package-map.json')).toBe(true);
+    expect(await invalidates(onMirrorDirectoryChange!, 'change', 'package-map.json')).toBe(true);
+  });
+
+  it('invalidates when a component package replaces its package.json or components.json', async () => {
+    const { callbackByPath } = startWithFakeWatch();
+
+    for (const source of COMPONENT_SOURCES) {
+      const onPackageRootChange = callbackByPath.get(source.packageRoot);
+      expect(onPackageRootChange, `${source.id}'s package root is not watched`).toBeDefined();
+      expect(await invalidates(onPackageRootChange!, 'rename', 'package.json')).toBe(true);
+      expect(await invalidates(onPackageRootChange!, 'rename', basename(source.manifestPath))).toBe(
+        true,
+      );
+    }
+  });
+
+  // The mirror directory holds the other mirror maps and scripts, and a package root holds its
+  // README, tests, and build output; none of them changes what a page shows.
+  it('ignores a change to any other file in a watched metadata directory', async () => {
+    const { callbackByPath } = startWithFakeWatch();
+
+    const onMirrorDirectoryChange = callbackByPath.get(dirname(PACKAGE_MAP_PATH));
+    expect(await invalidates(onMirrorDirectoryChange!, 'change', 'layout-map.json')).toBe(false);
+    for (const source of COMPONENT_SOURCES) {
+      const onPackageRootChange = callbackByPath.get(source.packageRoot);
+      expect(await invalidates(onPackageRootChange!, 'change', 'README.md')).toBe(false);
+      expect(await invalidates(onPackageRootChange!, 'rename', '.tmp-package.json')).toBe(false);
+    }
+  });
+
+  it('ignores a file of the same name that a backend reports from a nested directory', async () => {
+    const { callbackByPath } = startWithFakeWatch();
+
+    for (const source of COMPONENT_SOURCES) {
+      const onPackageRootChange = callbackByPath.get(source.packageRoot);
+      expect(await invalidates(onPackageRootChange!, 'change', 'src/package.json')).toBe(false);
+    }
+  });
+
+  it('matches a metadata file named with the separators a Windows watcher reports', async () => {
+    const { callbackByPath } = startWithFakeWatch();
+    const onMirrorDirectoryChange = callbackByPath.get(dirname(PACKAGE_MAP_PATH));
+
+    expect(await invalidates(onMirrorDirectoryChange!, 'change', '.\\package-map.json')).toBe(true);
   });
 });
