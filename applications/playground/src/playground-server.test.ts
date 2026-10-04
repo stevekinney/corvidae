@@ -1470,13 +1470,21 @@ describe('/page/:name', () => {
     expect(await stylesheet.text()).toContain('.cinder-chat');
   });
 
-  it('links extracted Chat peer styles alongside their own CSS routes', async () => {
-    const cases = [
-      ['chat-composer-popover', 'command-menu'],
-      ['chat-conversation-header', 'dropdown'],
-    ] as const;
-
-    for (const [chatComponent, cinderComponent] of cases) {
+  /*
+   * One case per test. Each page request server-renders its featured example in
+   * a fresh process, and that cold `Bun.build` compiles about 2,000 Svelte files
+   * (about 2.8 seconds on an idle host), so a body that renders two pages spends
+   * about 5.7 seconds against Bun's 5-second default and fails even at low load,
+   * while every sibling test that renders one page finishes in about 3. Keeping
+   * the cold render to one per body gives these cases the cost shape their peers
+   * have, with every assertion unchanged.
+   */
+  it.each([
+    ['chat-composer-popover', 'command-menu'],
+    ['chat-conversation-header', 'dropdown'],
+  ] as const)(
+    'links extracted Chat peer styles alongside their own CSS routes for %s',
+    async (chatComponent, cinderComponent) => {
       const chatStylesheetUrl = `/package-components/chat/${chatComponent}/${chatComponent}.css`;
       const peerStylesheetUrl = `/components/${cinderComponent}/${cinderComponent}.css`;
       const page = await handleRequest(req(`/page/${chatComponent}`));
@@ -1497,8 +1505,8 @@ describe('/page/:name', () => {
       const peerStylesheet = await handleRequest(req(peerStylesheetUrl));
       expect(peerStylesheet.status).toBe(200);
       expect(peerStylesheet.headers.get('Content-Type')).toBe('text/css');
-    }
-  });
+    },
+  );
 
   it('wraps the body background/color transition in a reduced-motion guard', async () => {
     // The crossfade must only run when the user has not requested reduced
