@@ -159,21 +159,59 @@ export function clearPageArtifacts(): void {
 export const shellArtifactByPath = new Map<string, string>();
 
 /**
+ * The shell generation in which each artifact in {@link shellArtifactByPath} was last published.
+ * A generation is one current shell build; a build that lost a race with an invalidation joins the
+ * generation that is current when it lands.
+ */
+const shellArtifactGenerationByPath = new Map<string, number>();
+let shellGeneration = 0;
+
+/** Forget every shell artifact and its generation. Tests start from an empty shell with it. */
+export function resetShellArtifacts(): void {
+  shellArtifactByPath.clear();
+  shellArtifactGenerationByPath.clear();
+  shellGeneration = 0;
+}
+
+/**
  * Publish one shell build's artifacts.
  *
  * The shell is a single bundle, and the set already in the map is only the last-good fallback
- * until a build succeeds (see `buildShellBundle`). A build that is still current becomes the shell,
- * so it replaces the whole set; otherwise every watched edit would leave the previous content-hashed
- * entry and chunks resident and servable for the life of the server. A build that lost a race with
- * an invalidation is added alongside instead, because the entry it hands back imports chunk URLs
- * that must resolve; the next current build replaces it too.
+ * until a build succeeds (see `buildShellBundle`). A build that is still current starts a new
+ * generation. Keeping every generation would leave each content-hashed entry and its chunks
+ * resident and servable for the life of the server, one set per watched edit, so the generation
+ * before the previous one is dropped.
+ *
+ * The previous generation stays because entries already handed out still need its chunks. Two
+ * builds overlap when an edit lands while one is running: the invalidation resets the in-flight
+ * slot, a request that arrives afterwards starts the current build, and the stale build keeps
+ * running. If the stale build finishes first, the browser that asked for it receives its entry and
+ * then requests that entry's hashed chunks; the current build landing next must not 404 them.
+ * The invalidation that made the build stale also sends `shell-reload`, so the browser moves to the
+ * current entry, but not before the chunk requests already in flight.
+ *
+ * A build that lost a race with an invalidation is added alongside for the same reason: the entry
+ * it hands back imports chunk URLs that must resolve. It joins the current generation, so it ages
+ * out with it. An artifact that two generations share (a content-hashed chunk with unchanged
+ * content) counts as published in the newer one, so it stays for as long as either build uses it.
+ * The map is therefore bounded by two generations plus the lost-race builds that landed in them.
  */
 export function publishShellArtifacts(
   artifacts: ReadonlyMap<string, string>,
   replacesPrevious: boolean,
 ): void {
-  if (replacesPrevious) shellArtifactByPath.clear();
-  for (const [path, code] of artifacts) shellArtifactByPath.set(path, code);
+  if (replacesPrevious) {
+    shellGeneration += 1;
+    for (const [path, generation] of shellArtifactGenerationByPath) {
+      if (generation >= shellGeneration - 1) continue;
+      shellArtifactGenerationByPath.delete(path);
+      shellArtifactByPath.delete(path);
+    }
+  }
+  for (const [path, code] of artifacts) {
+    shellArtifactByPath.set(path, code);
+    shellArtifactGenerationByPath.set(path, shellGeneration);
+  }
 }
 export const scenarioArtifactByPath = new Map<string, string>();
 export const fixtureArtifactByPath = new Map<string, string>();
