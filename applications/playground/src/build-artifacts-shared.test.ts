@@ -70,7 +70,7 @@ describe('publishShellArtifacts', () => {
   // its entry, and that entry's dynamic imports are content-hashed chunks it requests next. The
   // current build then lands and replaces the shell, which must not 404 those requests.
   describe('when a stale build finishes before the current one lands', () => {
-    it("still serves the entry and chunks the stale build handed out after the current build replaces the shell", () => {
+    it('still serves the entry and chunks the stale build handed out after the current build replaces the shell', () => {
       // The shell as the last edit left it.
       publishShellArtifacts(shellBuild('before'), true);
       // The stale build finishes first, so it is added alongside and its entry is handed out.
@@ -111,11 +111,29 @@ describe('publishShellArtifacts', () => {
 
     it('keeps a chunk the previous and the current build share for as long as either still needs it', () => {
       const shared = 'chunk-shell-shared-core.js';
-      publishShellArtifacts(new Map([['shell-shell-a.js', 'a'], [shared, 'shared']]), true);
-      publishShellArtifacts(new Map([['shell-shell-b.js', 'b'], [shared, 'shared']]), true);
+      publishShellArtifacts(
+        new Map([
+          ['shell-shell-a.js', 'a'],
+          [shared, 'shared'],
+        ]),
+        true,
+      );
+      publishShellArtifacts(
+        new Map([
+          ['shell-shell-b.js', 'b'],
+          [shared, 'shared'],
+        ]),
+        true,
+      );
       // `a` is now the previous build, and a chunk it shares with the current build must survive
       // the next replacement because the next build still imports it.
-      publishShellArtifacts(new Map([['shell-shell-c.js', 'c'], [shared, 'shared']]), true);
+      publishShellArtifacts(
+        new Map([
+          ['shell-shell-c.js', 'c'],
+          [shared, 'shared'],
+        ]),
+        true,
+      );
 
       expect(findArtifactForFamily('shell', shared)).toBeDefined();
       expect(findArtifactForFamily('shell', 'shell-shell-a.js')).toBeUndefined();
@@ -124,8 +142,20 @@ describe('publishShellArtifacts', () => {
 
     it('keeps a chunk the previous build shares with an older one when the current build no longer imports it', () => {
       const oldShared = 'chunk-shell-old-shared.js';
-      publishShellArtifacts(new Map([['shell-shell-a.js', 'a'], [oldShared, 'shared']]), true);
-      publishShellArtifacts(new Map([['shell-shell-b.js', 'b'], [oldShared, 'shared']]), true);
+      publishShellArtifacts(
+        new Map([
+          ['shell-shell-a.js', 'a'],
+          [oldShared, 'shared'],
+        ]),
+        true,
+      );
+      publishShellArtifacts(
+        new Map([
+          ['shell-shell-b.js', 'b'],
+          [oldShared, 'shared'],
+        ]),
+        true,
+      );
       publishShellArtifacts(new Map([['shell-shell-c.js', 'c']]), true);
 
       // `b` is the previous build and still imports the chunk, so it must resolve even though

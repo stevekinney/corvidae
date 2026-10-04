@@ -450,7 +450,11 @@ describe('shared ts-morph project', () => {
 
     const isAmbientTestRunnerDeclaration = (path: string): boolean =>
       /\/(?:bun-types|undici-types)\/|\/@types\/(?:bun|node)\//.test(path.replaceAll('\\', '/'));
-    for (const source of [CINDER_COMPONENT_SOURCE, CHAT_COMPONENT_SOURCE, EDITOR_COMPONENT_SOURCE]) {
+    for (const source of [
+      CINDER_COMPONENT_SOURCE,
+      CHAT_COMPONENT_SOURCE,
+      EDITOR_COMPONENT_SOURCE,
+    ]) {
       const programFiles = getProjectProgramFileNames(source.packageRoot);
       // The premise: the tsconfig still applies (its `lib` brings the DOM declarations in), so
       // the empty list below is a real program with the ambient types removed, not a vacuous one.
