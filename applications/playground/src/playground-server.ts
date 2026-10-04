@@ -12,7 +12,7 @@
  *                              so all dynamic-import URLs from either bundle family
  *                              resolve through this single route.
  *   GET /bundle/:name/:scenario.js → compiled example bundle (standalone — useful for tests/debugging)
- *   GET /styles.css    → raw contents of src/styles/index.css (slim base — no per-component CSS)
+ *   GET /styles.css    → 307 to /styles/index.css (the slim base — no per-component CSS — beside its relative imports)
  *   GET /styles/shell.css → shell chrome styles (base CSS plus shell component CSS)
  *   GET /styles/all.css → full cascade aggregator (all component CSS — used by the
  *                         preview iframe AND by the outer shell, whose README prose
@@ -128,6 +128,7 @@ import {
   handleComponentsStyleRoute,
   handlePackageComponentStyleRoute,
   handlePlaygroundStylesRoute,
+  handleStylesEntryRoute,
   handleStylesRoute,
 } from './static-assets.ts';
 import { stripExampleHarness } from './strip-example-harness.ts';
@@ -924,7 +925,7 @@ export const ROUTES: RouteDefinition[] = [
   {
     method: 'GET',
     pattern: /^\/styles\.css$/,
-    handler: () => handleStylesRoute('index.css'),
+    handler: () => handleStylesEntryRoute(),
   },
   {
     method: 'GET',

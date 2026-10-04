@@ -12,15 +12,31 @@ const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.packageRoot; // components/cinde
 const STYLES_ROOT = join(COMPONENTS_ROOT, 'src', 'styles');
 const COMPONENTS_SRC_ROOT = join(COMPONENTS_ROOT, 'src', 'components');
 
+/** Where the entry stylesheet is served: beside the files its relative `@import`s name. */
+const STYLES_ENTRY_PATH = '/styles/index.css';
+
 /**
- * GET /styles.css → components/cinder/src/styles/index.css
+ * GET /styles.css → 307 to /styles/index.css
+ *
+ * The entry stylesheet imports `./tokens.css`, `./foundation.css`, and
+ * `./components/*.css`, which a browser resolves against the stylesheet's own
+ * URL. Served at `/styles.css`, that base is `/`, so every import landed on a
+ * path the server does not expose (`/tokens.css`) and 404ed. A redirect makes
+ * the final URL `/styles/index.css`, where the imports resolve into the
+ * `/styles/*` tree below. Temporary (307), not permanent, so a browser never
+ * caches the alias.
+ */
+export function handleStylesEntryRoute(): Response {
+  return new Response(null, { status: 307, headers: { Location: STYLES_ENTRY_PATH } });
+}
+
+/**
  * GET /styles/<path>.css → components/cinder/src/styles/<path>.css
  *
  * The component-library's index.css uses `@import './tokens.css'` etc. which
  * the browser resolves relative to the served URL — so we need to serve the
- * full styles/ tree, not just the entry file. `relative` is `'index.css'`
- * for the `/styles.css` route table entry, and the path after `/styles/` for
- * the `/styles/*` entry — one function serves both table rows.
+ * full styles/ tree, not just the entry file. `relative` is the path after
+ * `/styles/`.
  */
 export async function handleStylesRoute(relative: string): Promise<Response> {
   // Require an actual .css filename. Without this, `GET /styles/` resolves

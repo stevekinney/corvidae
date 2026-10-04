@@ -799,10 +799,39 @@ describe('/ready', () => {
 });
 
 describe('/styles.css', () => {
-  it('returns 200 with text/css when src/styles/index.css exists', async () => {
+  /** The `@import` specifiers of a stylesheet, in order. */
+  function importSpecifiers(css: string): string[] {
+    return [...css.matchAll(/@import\s+['"]([^'"]+)['"]/gu)].map((match) => match[1]!);
+  }
+
+  it('redirects to /styles/index.css, where the entry stylesheet sits beside the files it imports', async () => {
     const response = await handleRequest(req('/styles.css'));
-    expect(response.status).toBe(200);
-    expect(response.headers.get('Content-Type')).toBe('text/css');
+    expect(response.status).toBe(307);
+    expect(response.headers.get('Location')).toBe('/styles/index.css');
+
+    const entry = await handleRequest(req('/styles/index.css'));
+    expect(entry.status).toBe(200);
+    expect(entry.headers.get('Content-Type')).toBe('text/css');
+  });
+
+  it('leads to a stylesheet whose every relative import the server serves', async () => {
+    // A browser resolves an `@import` against the stylesheet's final URL, so follow
+    // the redirect and resolve each import the way it would.
+    const redirect = await handleRequest(req('/styles.css'));
+    const stylesheetUrl = new URL(redirect.headers.get('Location')!, 'http://localhost');
+    const entry = await handleRequest(req(stylesheetUrl.pathname));
+    const specifiers = importSpecifiers(await entry.text());
+    expect(specifiers.length).toBeGreaterThan(0);
+
+    for (const specifier of specifiers) {
+      const imported = new URL(specifier, stylesheetUrl);
+      const response = await handleRequest(req(imported.pathname));
+      expect({ path: imported.pathname, status: response.status }).toEqual({
+        path: imported.pathname,
+        status: 200,
+      });
+      expect(response.headers.get('Content-Type')).toBe('text/css');
+    }
   });
 });
 
