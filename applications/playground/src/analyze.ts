@@ -1044,6 +1044,15 @@ function getSharedProject(packageRoot: string): Project {
     project = new Project({
       tsConfigFilePath: join(packageRoot, 'tsconfig.json'),
       skipAddingFilesFromTsConfig: true,
+      // Each package's tsconfig lists `types: ["bun"]` for its tests. Honoring it here made the
+      // compiler resolve that type-reference directive, and with it Bun's declarations and every
+      // `@types/node` and `undici-types` file they reach (about 235 files), again for each of the
+      // 211 programs a cold manifest build creates; dropping it halved the build's time and cut
+      // its peak memory by about 40 percent. A component's props are typed against the browser
+      // (`lib: DOM`) and never the test runner, so the analyzer's projects load no ambient
+      // `@types` package. The override merges over the tsconfig: `lib` (ESNext and DOM) and
+      // `customConditions` still apply.
+      compilerOptions: { types: [] },
     });
     sharedProjects.set(packageRoot, project);
     projectCreationCount += 1;

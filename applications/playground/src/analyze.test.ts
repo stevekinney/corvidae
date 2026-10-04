@@ -10,7 +10,11 @@ import {
   getProjectProgramFileNames,
   resetProject,
 } from './analyze.ts';
-import { CHAT_COMPONENT_SOURCE, CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  CHAT_COMPONENT_SOURCE,
+  CINDER_COMPONENT_SOURCE,
+  EDITOR_COMPONENT_SOURCE,
+} from './component-sources.ts';
 
 const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
 
@@ -426,6 +430,33 @@ describe('shared ts-morph project', () => {
       getProjectProgramFileNames(CINDER_COMPONENT_SOURCE.packageRoot).some(isLucideDeclaration),
     ).toBe(false);
     expect(getProjectCreationCount() - before).toBe(2);
+  }, 20_000);
+
+  // Each package's tsconfig lists `types: ["bun"]` for its tests. Left in force for the analyzer,
+  // that one entry pulls Bun's declarations and, through them, `@types/node` and `undici-types`
+  // (about 235 files) into every program, and a program is rebuilt for each of the 211 components:
+  // resolving those type-reference directives was two thirds of a cold manifest build. A component's
+  // props are typed against the browser, so the analyzer's projects load no ambient test-runner types.
+  it("builds each package's program without the test runner's ambient type declarations", async () => {
+    resetProject();
+    await analyzeComponent(componentPath('card'));
+    await analyzeComponent(join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'), {
+      importPath: CHAT_COMPONENT_SOURCE.packageName,
+    });
+    await analyzeComponent(
+      join(EDITOR_COMPONENT_SOURCE.componentsRoot, 'markdown-editor', 'markdown-editor.svelte'),
+      { importPath: EDITOR_COMPONENT_SOURCE.packageName },
+    );
+
+    const isAmbientTestRunnerDeclaration = (path: string): boolean =>
+      /\/(?:bun-types|undici-types)\/|\/@types\/(?:bun|node)\//.test(path.replaceAll('\\', '/'));
+    for (const source of [CINDER_COMPONENT_SOURCE, CHAT_COMPONENT_SOURCE, EDITOR_COMPONENT_SOURCE]) {
+      const programFiles = getProjectProgramFileNames(source.packageRoot);
+      // The premise: the tsconfig still applies (its `lib` brings the DOM declarations in), so
+      // the empty list below is a real program with the ambient types removed, not a vacuous one.
+      expect(programFiles.some((path) => path.endsWith('/lib.dom.d.ts'))).toBe(true);
+      expect(programFiles.filter(isAmbientTestRunnerDeclaration)).toEqual([]);
+    }
   }, 20_000);
 
   it('produces identical manifests across two runs with a reset between them', async () => {
