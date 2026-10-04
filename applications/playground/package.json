@@ -12,7 +12,7 @@
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
     "test": "bun scripts/run-tests.ts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
-    "validate": "bun src/validate-playground.ts"
+    "validate": "bun scripts/validate-playground.ts"
   },
   "dependencies": {
     "@lostgradient/chat": "workspace:*",
@@ -20,13 +20,16 @@
     "@lostgradient/editor": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/markdown": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
     "@shikijs/themes": "catalog:",
     "lucide-svelte": "catalog:",
+    "postcss": "catalog:",
     "shiki": "catalog:",
+    "svelte": "catalog:",
+    "ts-morph": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
@@ -34,10 +37,7 @@
     "happy-dom": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
-    "postcss": "catalog:",
-    "svelte": "catalog:",
     "svelte-check": "catalog:",
-    "ts-morph": "catalog:",
     "typescript": "catalog:"
   }
 }
