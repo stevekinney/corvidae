@@ -141,11 +141,16 @@ type WeftStorage = Awaited<ReturnType<typeof resolveStorage>>;
  * commit that is never released models a process that dies after a run's terminal result was
  * computed but before it was committed: the stored workflow stays running with its failing step
  * already memoized. Releasing it later lets a test attach a subscriber before a replay can settle.
+ *
+ * Bureau never disposes a `Storage` instance the caller built, so the test that opens one owns
+ * closing it. `disposals` counts the closes the wrapper forwards, which lets that test assert it
+ * released every handle it opened.
  */
 function holdFirstTerminalRunCommit(storage: WeftStorage): {
   storage: WeftStorage;
   reached: Promise<void>;
   release: () => void;
+  disposals: () => number;
 } {
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => {
@@ -156,8 +161,15 @@ function holdFirstTerminalRunCommit(storage: WeftStorage): {
     markReached = resolve;
   });
   let armed = true;
+  let disposals = 0;
   const held = new Proxy(storage, {
     get(target, property, receiver) {
+      if (property === Symbol.dispose) {
+        return () => {
+          disposals++;
+          target[Symbol.dispose]();
+        };
+      }
       if (property === 'batch' || property === 'conditionalBatch') {
         const real = (target as unknown as Record<string, unknown>)[property] as (
           ...args: unknown[]
@@ -183,7 +195,7 @@ function holdFirstTerminalRunCommit(storage: WeftStorage): {
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
-  return { storage: held, reached, release };
+  return { storage: held, reached, release, disposals: () => disposals };
 }
 
 const generateToolThenAnswer: GenerateFunction = async ({ step }) =>
@@ -228,6 +240,7 @@ describe.each(failureShapes)(
       const crashed = holdFirstTerminalRunCommit(
         await resolveStorage({ type: 'sqlite', path: databasePath }),
       );
+      let replayed: ReturnType<typeof holdFirstTerminalRunCommit> | undefined;
       let bureauA: Awaited<ReturnType<typeof createBureau>> | undefined;
       let bureauB: Awaited<ReturnType<typeof createBureau>> | undefined;
 
@@ -244,7 +257,7 @@ describe.each(failureShapes)(
         });
         const run = await bureauA.createRun({ message: 'Go.' });
         await crashed.reached;
-        const replayed = holdFirstTerminalRunCommit(
+        replayed = holdFirstTerminalRunCommit(
           await resolveStorage({ type: 'sqlite', path: databasePath }),
         );
 
@@ -291,10 +304,16 @@ describe.each(failureShapes)(
         // Disposed before any release: bureau A's held commit stays pending, as a dead
         // process's would. Releasing it first lets A finish its run mid-dispose.
         await bureauA?.dispose();
+        crashed.storage[Symbol.dispose]();
+        replayed?.storage[Symbol.dispose]();
         await rm(databasePath, { force: true });
         await rm(`${databasePath}-wal`, { force: true });
         await rm(`${databasePath}-shm`, { force: true });
       }
+      // Bureau never closes a storage instance it was handed, so each handle this test opened
+      // against the database is the test's to release.
+      expect(crashed.disposals()).toBe(1);
+      expect(replayed?.disposals()).toBe(1);
     });
   },
 );
