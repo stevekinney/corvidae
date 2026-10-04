@@ -12,6 +12,7 @@ import {
   applyColorTokenOverridesToDocument,
   readSessionColorTokenOverrides,
 } from './color-token-overrides.ts';
+import { memoizeUntilRejected } from './retryable-promise.ts';
 import { persistScrollPosition } from './sidebar-scroll.ts';
 
 applyColorTokenOverridesToDocument(document, readSessionColorTokenOverrides()[readInitialTheme()]);
@@ -36,11 +37,10 @@ if (themeToggle !== null) {
   });
 }
 
-let shellHydration: Promise<void> | undefined;
 let shellHydrated = false;
 
-function hydrateShell(): Promise<void> {
-  shellHydration ??= Promise.all([
+function hydrateShellOnce(): Promise<void> {
+  return Promise.all([
     import('svelte'),
     import('./shell-initial-data.ts'),
     import('./shell.svelte'),
@@ -75,8 +75,12 @@ function hydrateShell(): Promise<void> {
     shellHydrated = true;
     return undefined;
   });
-  return shellHydration;
 }
+
+// A failed attempt is forgotten so the next caller retries. The deferred toolbar
+// controls register their bootstrap click listener with `{ once: true }`, so a
+// memoized rejection would leave them inert until the page reloaded.
+const hydrateShell = memoizeUntilRejected(hydrateShellOnce);
 
 // Static SSR always renders the light-state icon to avoid hydration mismatch.
 // A persisted dark theme needs the interactive control immediately so its icon

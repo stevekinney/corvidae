@@ -210,6 +210,49 @@ describe('buildComponentDocumentation', () => {
     ).toContain('github.com/stevekinney/cinder/blob/main/packages/chat/src/lib/components/chat/');
   });
 
+  describe('README links across component packages', () => {
+    // READMEs are authored for this repository's layout, so a Chat README reaches a
+    // Cinder README as `components/cinder/...` from `components/chat/...`, not as a
+    // sibling directory of its own package.
+    const chatToCinderCommandMenu =
+      '<a href="../../../../../cinder/src/components/command-menu/README.md">CommandMenu</a>';
+
+    it('routes a Chat README link to a Cinder component README to its playground page', () => {
+      const html = rewriteComponentReadmeLinks(
+        chatToCinderCommandMenu,
+        'chat-composer-popover',
+        new Set(['chat-composer-popover', 'command-menu']),
+        CHAT_COMPONENT_SOURCE,
+      );
+
+      expect(html).toContain('href="/page/command-menu" target="_top"');
+      expect(html).not.toContain('github.com');
+    });
+
+    it('still falls back to GitHub when the linked component has no playground page', () => {
+      const html = rewriteComponentReadmeLinks(
+        chatToCinderCommandMenu,
+        'chat-composer-popover',
+        new Set(['chat-composer-popover']),
+        CHAT_COMPONENT_SOURCE,
+      );
+
+      expect(html).not.toContain('href="/page/command-menu"');
+      expect(html).toContain('github.com/stevekinney/cinder/blob/main/');
+    });
+
+    it('does not mistake a link to a non-README file in another package for a component page', () => {
+      const html = rewriteComponentReadmeLinks(
+        '<a href="../../../../../cinder/src/components/command-menu/command-menu.a11y.md">Accessibility</a>',
+        'chat-composer-popover',
+        new Set(['chat-composer-popover', 'command-menu']),
+        CHAT_COMPONENT_SOURCE,
+      );
+
+      expect(html).not.toContain('href="/page/command-menu"');
+    });
+  });
+
   it('builds valid documentation for every extracted Chat component', async () => {
     const allDefinitions = await discoverComponentDefinitions();
     const definitions = allDefinitions.filter(

@@ -1,4 +1,4 @@
-import { join, posix } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 
 import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
 
@@ -11,7 +11,11 @@ import type {
   DocumentationReadme,
   JsonValue,
 } from './component-documentation-types.ts';
-import { CINDER_COMPONENT_SOURCE, type ComponentSource } from './component-sources.ts';
+import {
+  CINDER_COMPONENT_SOURCE,
+  COMPONENT_SOURCES,
+  type ComponentSource,
+} from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
 import { REPOSITORY_ROOT } from './playground-paths.ts';
 import { repositorySourceHref, rewriteRelativeRenderedMarkdownLinks } from './repository-links.ts';
@@ -336,6 +340,29 @@ function componentReadmeSourceHref(
   return repositorySourceHref(`${componentSource.repositoryComponentsRoot}/${componentName}`, href);
 }
 
+/**
+ * The slug of the documented component whose README `path` points at, or
+ * `undefined` when it points anywhere else. READMEs are authored for this
+ * repository's layout, so a link is resolved against the directory that holds
+ * the linking README and then matched against every configured component root:
+ * a Chat README reaches a Cinder README as a sibling package, not as a sibling
+ * component directory.
+ */
+function linkedComponentReadmeSlug(
+  componentSource: ComponentSource,
+  componentName: string,
+  path: string,
+  componentIds: ReadonlySet<string>,
+): string | undefined {
+  const target = resolve(componentSource.componentsRoot, componentName, path);
+  for (const source of COMPONENT_SOURCES) {
+    const withinRoot = relative(source.componentsRoot, target).replaceAll(sep, '/');
+    const match = withinRoot.match(/^([a-z0-9][a-z0-9-]*)\/README\.md$/);
+    if (match?.[1] !== undefined && componentIds.has(match[1])) return match[1];
+  }
+  return undefined;
+}
+
 function componentReadmeHref(
   componentSource: ComponentSource,
   componentName: string,
@@ -343,13 +370,12 @@ function componentReadmeHref(
   componentIds: ReadonlySet<string>,
 ): { href: string; attributes: string } {
   const [path = ''] = href.split('#', 2);
-  const normalizedPath = posix.normalize(posix.join(componentName, path));
-  const match = normalizedPath.match(/^([a-z0-9][a-z0-9-]*)\/README\.md$/);
-  if (match?.[1] !== undefined && componentIds.has(match[1])) {
+  const linkedSlug = linkedComponentReadmeSlug(componentSource, componentName, path, componentIds);
+  if (linkedSlug !== undefined) {
     // `/page/<name>` is the one documentation route. This used to emit
     // `/c/<name>`, which now 301s here — correct, but a needless redirect on
     // every cross-reference between component READMEs.
-    return { href: `/page/${match[1]}`, attributes: ' target="_top"' };
+    return { href: `/page/${linkedSlug}`, attributes: ' target="_top"' };
   }
   return {
     href: componentReadmeSourceHref(componentSource, componentName, href),
