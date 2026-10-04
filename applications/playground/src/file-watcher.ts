@@ -234,17 +234,18 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
  * harmless, since invalidation is now an O(1) Map-clear rather than a
  * rebuild.
  */
-export function classifyPlaygroundSrcChange(filename: string): ChangeScope | null {
+export function classifyPlaygroundSrcChange(rawFilename: string): ChangeScope | null {
+  // Normalized before any prefix check: a Windows watcher reports `examples\button\x.svelte`.
+  const normalizedFilename = rawFilename.replaceAll('\\', '/');
   if (
-    filename.startsWith('examples/') ||
-    filename.startsWith('.tmp-') ||
-    filename.endsWith('.test.ts') ||
-    filename.startsWith('.') ||
-    /(-mock|-fixture)\.svelte$/.test(filename)
+    normalizedFilename.startsWith('examples/') ||
+    normalizedFilename.startsWith('.tmp-') ||
+    normalizedFilename.endsWith('.test.ts') ||
+    normalizedFilename.startsWith('.') ||
+    /(-mock|-fixture)\.svelte$/.test(normalizedFilename)
   ) {
     return null;
   }
-  const normalizedFilename = filename.replaceAll('\\', '/');
   const isShellChange =
     normalizedFilename.startsWith('shell-app/') || normalizedFilename === 'render-shell.ts';
   return isShellChange ? { kind: 'shell' } : { kind: 'components' };

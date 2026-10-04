@@ -31,4 +31,14 @@ describe('landing shell hydration policy', () => {
       source.indexOf('svelte.hydrate('),
     );
   });
+
+  test('follows an operating system theme change on the unhydrated landing page', async () => {
+    const source = await Bun.file(new URL('./shell-entry.ts', import.meta.url)).text();
+
+    // The toggle's label and the session color overrides must follow a system theme switch the way a
+    // click does, or the first click afterwards picks the theme from stale state.
+    expect(source).toContain('followSystemTheme,');
+    expect(source).toContain('followSystemTheme((systemTheme) => {');
+    expect(source).toContain("themeToggle.setAttribute('aria-label', labelForTheme(systemTheme));");
+  });
 });

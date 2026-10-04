@@ -17,7 +17,9 @@ import {
   searchForFocusMode,
   searchForPreviewWidth,
   searchForTheme,
+  searchForView,
   TOOLBAR_PARAMS,
+  type ComponentPageView,
 } from './shell-app/routing.ts';
 import { THEME_STORAGE_KEY } from './shell-app/theme-storage.ts';
 
@@ -116,6 +118,15 @@ export function synchronizePreviewWidthQuery(width: number | null): void {
   rewriteAddressBarSearch((search) => searchForPreviewWidth(search, width));
 }
 
+/**
+ * Keep `?view=` in step with the view the reader switched to. The fragment and the history state
+ * stay where they were, so switching to the Playground and back leaves the reader's anchor in the
+ * URL they reload or share.
+ */
+export function synchronizeViewQuery(view: ComponentPageView): void {
+  rewriteAddressBarSearch((search) => searchForView(search, view));
+}
+
 /** Keep `?focus=` in step with focus mode, for the same reason as {@link synchronizePreviewWidthQuery}. */
 export function synchronizeFocusModeQuery(focused: boolean): void {
   rewriteAddressBarSearch((search) => searchForFocusMode(search, focused));
@@ -138,4 +149,29 @@ export function applyTheme(theme: 'light' | 'dark'): void {
     // Private mode / disabled storage — the in-memory theme still applies.
   }
   synchronizeThemeQuery(theme);
+}
+
+/**
+ * Follow the operating system's color scheme while the reader has chosen no theme.
+ *
+ * With no override, the base `color-scheme: light dark` makes the page colors follow the system
+ * live, but the pre-paint script sampled `prefers-color-scheme` once, so `data-cinder-theme`, the
+ * toggle's label and icon, and the stores keyed by theme kept the theme the page loaded with.
+ * This keeps `data-cinder-theme` current and reports each change so the caller can update the rest.
+ *
+ * A concrete `color-scheme` on the root (set from the URL, from storage, or by the toggle) is a
+ * choice, and it wins: the system is ignored from then on. Returns the function that stops following.
+ */
+export function followSystemTheme(onChange: (theme: 'light' | 'dark') => void): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+  const query = window.matchMedia('(prefers-color-scheme: dark)');
+  const onSystemChange = (event: { matches: boolean }): void => {
+    const scheme = document.documentElement.style.colorScheme;
+    if (scheme === 'dark' || scheme === 'light') return;
+    const theme = event.matches ? 'dark' : 'light';
+    document.documentElement.dataset['cinderTheme'] = theme;
+    onChange(theme);
+  };
+  query.addEventListener('change', onSystemChange);
+  return () => query.removeEventListener('change', onSystemChange);
 }

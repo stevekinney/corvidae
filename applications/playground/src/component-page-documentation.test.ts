@@ -201,26 +201,63 @@ async function findHeroHeading(name: string): Promise<HTMLHeadingElement> {
 }
 
 describe('component-page live reload', () => {
-  // The server broadcasts `reload` for example-only edits and `shell-reload` when component or
-  // shell source changes (`invalidateCachesForChange`). An EventSource delivers a named event
-  // only to a listener registered under that name, so a page that listens for `reload` alone
-  // keeps showing stale markup and bundles after a source edit.
-  test('listens for both reload events the dev server sends', async () => {
-    const registeredNames: string[] = [];
+  /** An `EventSource` that records the address and event names the page asked for. */
+  function installRecordingEventSource(): { urls: string[]; registeredNames: string[] } {
+    const recorded = { urls: [] as string[], registeredNames: [] as string[] };
     class RecordingEventSource {
+      constructor(url: string) {
+        recorded.urls.push(url);
+      }
       addEventListener(name: string): void {
-        registeredNames.push(name);
+        recorded.registeredNames.push(name);
       }
       removeEventListener(): void {}
       close(): void {}
     }
     Reflect.set(globalThis, 'EventSource', RecordingEventSource);
+    return recorded;
+  }
+
+  /** What a live dev server writes into the page's head (see `liveReloadMetaTag`). */
+  function advertiseStream(url = '/events'): void {
+    const tag = document.createElement('meta');
+    tag.name = 'cinder-live-reload';
+    tag.content = url;
+    document.head.append(tag);
+  }
+
+  afterEach(() => {
+    for (const tag of document.head.querySelectorAll('meta[name="cinder-live-reload"]'))
+      tag.remove();
+  });
+
+  // The server broadcasts `reload` for example-only edits and `shell-reload` when component or
+  // shell source changes (`invalidateCachesForChange`). An EventSource delivers a named event
+  // only to a listener registered under that name, so a page that listens for `reload` alone
+  // keeps showing stale markup and bundles after a source edit.
+  test('listens for both reload events the dev server sends', async () => {
+    const recorded = installRecordingEventSource();
+    advertiseStream();
 
     const { unmount } = render(ComponentPage, { props: { sidebarComponents: ['button'] } });
     await tick();
 
-    expect(registeredNames).toContain('reload');
-    expect(registeredNames).toContain('shell-reload');
+    expect(recorded.urls).toEqual(['/events']);
+    expect(recorded.registeredNames).toContain('reload');
+    expect(recorded.registeredNames).toContain('shell-reload');
+    unmount();
+  });
+
+  // The static export omits the dev-only `/events` route and writes no advertisement, so a page
+  // that opened the stream anyway would ask a static host for something it cannot serve on every
+  // load of every exported page.
+  test('opens no stream on a page the server advertised none for, as every exported page is', async () => {
+    const recorded = installRecordingEventSource();
+
+    const { unmount } = render(ComponentPage, { props: { sidebarComponents: ['button'] } });
+    await tick();
+
+    expect(recorded.urls).toEqual([]);
     unmount();
   });
 });
@@ -773,6 +810,112 @@ describe('component-page single-scroll layout', () => {
     await waitFor(() => {
       expect(document.querySelectorAll('.dx-raw__panel').length).toBe(5);
     });
+
+    unmount();
+    await tick();
+  });
+});
+
+describe('component-page and the operating system theme', () => {
+  type ChangeListener = (event: { matches: boolean }) => void;
+
+  /** A `matchMedia` whose `prefers-color-scheme` the test flips, as a reader's OS setting does. */
+  function installFakeMatchMedia() {
+    const listeners = new Set<ChangeListener>();
+    const original = window.matchMedia;
+    let dark = false;
+    window.matchMedia = ((query: string) => ({
+      get matches() {
+        return query.includes('dark') && dark;
+      },
+      media: query,
+      addEventListener: (_type: string, listener: ChangeListener) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: ChangeListener) => listeners.delete(listener),
+    })) as unknown as typeof window.matchMedia;
+    return {
+      listeners,
+      flipTo(theme: 'light' | 'dark') {
+        dark = theme === 'dark';
+        for (const listener of listeners) listener({ matches: dark });
+      },
+      restore() {
+        window.matchMedia = original;
+      },
+    };
+  }
+
+  afterEach(() => {
+    delete document.documentElement.dataset['cinderTheme'];
+    document.documentElement.style.colorScheme = '';
+  });
+
+  test('a theme the OS switches to reaches the toggle and the store, not just the page colors', async () => {
+    const media = installFakeMatchMedia();
+    try {
+      document.documentElement.dataset['cinderTheme'] = 'light';
+      const reported: string[] = [];
+      const { unmount } = render(ComponentPage, {
+        props: {
+          sidebarComponents: ['button'],
+          onThemeChange: (theme: string) => reported.push(theme),
+        },
+      });
+      await findHeroHeading('Button');
+      expect(screen.getByRole('button', { name: 'Preview theme: switch to dark' })).toBeTruthy();
+
+      media.flipTo('dark');
+      await tick();
+
+      expect(screen.getByRole('button', { name: 'Preview theme: switch to light' })).toBeTruthy();
+      expect(reported.at(-1)).toBe('dark');
+      expect(document.documentElement.dataset['cinderTheme']).toBe('dark');
+
+      unmount();
+      await tick();
+      expect(media.listeners.size).toBe(0);
+    } finally {
+      media.restore();
+    }
+  });
+
+  test('leaves a theme the reader chose alone when the OS switches', async () => {
+    const media = installFakeMatchMedia();
+    try {
+      document.documentElement.style.colorScheme = 'light';
+      document.documentElement.dataset['cinderTheme'] = 'light';
+      const { unmount } = render(ComponentPage, { props: { sidebarComponents: ['button'] } });
+      await findHeroHeading('Button');
+
+      media.flipTo('dark');
+      await tick();
+
+      expect(screen.getByRole('button', { name: 'Preview theme: switch to dark' })).toBeTruthy();
+      expect(document.documentElement.dataset['cinderTheme']).toBe('light');
+
+      unmount();
+      await tick();
+    } finally {
+      media.restore();
+    }
+  });
+});
+
+describe("component-page view switch and the reader's place in the page", () => {
+  const happyWindow = window as unknown as { happyDOM: { setURL(url: string): void } };
+
+  test('switching views keeps the URL fragment the reader arrived on', async () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button#props');
+    const { unmount } = render(ComponentPage);
+    await findHeroHeading('Button');
+
+    await showPlayground();
+    expect(window.location.hash).toBe('#props');
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('playground');
+
+    await fireEvent.click(screen.getByRole('tab', { name: 'Documentation' }));
+    await tick();
+    expect(window.location.hash).toBe('#props');
+    expect(window.location.search).toBe('');
 
     unmount();
     await tick();

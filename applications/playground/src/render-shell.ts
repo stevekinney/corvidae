@@ -303,6 +303,19 @@ export function documentationJsonLd(
 }
 
 /**
+ * The `<meta>` tag that advertises the dev server's live-reload stream, with the newline and indent
+ * that place it on the line after the viewport tag, or the empty string when there is no stream. It
+ * is appended to the viewport line rather than given a line of its own, so a page rendered without a
+ * live server stays byte-identical to what it was before this tag existed. The page reads it back
+ * with `readAdvertisedLiveReloadUrl`.
+ */
+export function liveReloadMetaTag(liveReloadUrl: string | undefined): string {
+  return liveReloadUrl === undefined
+    ? ''
+    : `\n    <meta name="cinder-live-reload" content="${escapeHtml(liveReloadUrl)}" />`;
+}
+
+/**
  * Options for {@link renderShell}.
  */
 export type RenderShellOptions = {
@@ -361,12 +374,7 @@ export function renderShell(
   const meta = documentationMetadataTags(metadata, options.baseUrl);
   const structuredData = documentationJsonLd(metadata, options.baseUrl);
 
-  // Appended to the viewport line rather than given a line of its own, so a page rendered
-  // without a live server stays byte-identical to what it was before this tag existed.
-  const liveReloadMeta =
-    options.liveReloadUrl === undefined
-      ? ''
-      : `\n    <meta name="cinder-live-reload" content="${escapeHtml(options.liveReloadUrl)}" />`;
+  const liveReloadMeta = liveReloadMetaTag(options.liveReloadUrl);
 
   const initialData = {
     component: activeComponent ?? '',

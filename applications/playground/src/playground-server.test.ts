@@ -838,6 +838,24 @@ describe('/styles.css', () => {
 describe('/ and the live-reload stream', () => {
   afterEach(() => advertiseLiveReload(false));
 
+  it('points a component page at /events while the dev server watches its sources', async () => {
+    advertiseLiveReload(true);
+
+    const response = await handleRequest(req('/page/button'));
+    const html = await response.text();
+
+    expect(html).toContain('<meta name="cinder-live-reload" content="/events" />');
+  });
+
+  it('leaves a component page without it when nothing is watching, as in the static export', async () => {
+    advertiseLiveReload(false);
+
+    const response = await handleRequest(req('/page/button'));
+    const html = await response.text();
+
+    expect(html).not.toContain('cinder-live-reload');
+  });
+
   it('points the landing page at /events while the dev server watches its sources', async () => {
     advertiseLiveReload(true);
 
@@ -1377,6 +1395,17 @@ describe('classifyPlaygroundSrcChange', () => {
     expect(classifyPlaygroundSrcChange('.DS_Store')).toBeNull();
     expect(classifyPlaygroundSrcChange('.tmp-abc123')).toBeNull();
     expect(classifyPlaygroundSrcChange('discover.test.ts')).toBeNull();
+  });
+
+  // `fs.watch` reports nested paths with backslashes on Windows. The examples tree has its own
+  // watcher that schedules the precise example invalidation; if the whole-`src` watcher classified
+  // the same save as a components change, the debounce would give that broader scope precedence and
+  // every example edit would clear every page bundle and reload the shell.
+  it('applies every exclusion to a path a Windows watcher reports with backslashes', () => {
+    expect(classifyPlaygroundSrcChange('examples\\button\\primary.example.svelte')).toBeNull();
+    expect(classifyPlaygroundSrcChange('.tmp-abc123\\entry.ts')).toBeNull();
+    expect(classifyPlaygroundSrcChange('shell-app\\shell.svelte')).toEqual({ kind: 'shell' });
+    expect(classifyPlaygroundSrcChange('component-page.svelte')).toEqual({ kind: 'components' });
   });
 });
 

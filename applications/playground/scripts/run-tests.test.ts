@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { basename, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   BUILD_PIPELINE_MODULE_NAMES,
@@ -73,14 +75,15 @@ describe('playground test process isolation', () => {
   });
 
   it('lists every playground module that calls Bun.build, so a test importing one is isolated', async () => {
-    const playgroundRoot = new URL('..', import.meta.url).pathname;
+    // `fileURLToPath`, not `new URL(...).pathname`, which is a broken `/C:/...` on Windows.
+    const playgroundRoot = fileURLToPath(new URL('..', import.meta.url));
     const callers: string[] = [];
     for (const directory of ['scripts', 'src']) {
       const glob = new Bun.Glob('**/*.ts');
-      for await (const relativePath of glob.scan({ cwd: `${playgroundRoot}${directory}` })) {
+      for await (const relativePath of glob.scan({ cwd: join(playgroundRoot, directory) })) {
         if (relativePath.endsWith('.test.ts') || relativePath === 'run-tests.ts') continue;
-        const source = await Bun.file(`${playgroundRoot}${directory}/${relativePath}`).text();
-        if (/\bBun\.build\(/.test(source)) callers.push(relativePath.split('/').pop()!);
+        const source = await Bun.file(join(playgroundRoot, directory, relativePath)).text();
+        if (/\bBun\.build\(/.test(source)) callers.push(basename(relativePath));
       }
     }
 

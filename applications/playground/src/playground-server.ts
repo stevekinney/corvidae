@@ -97,6 +97,7 @@ import {
   documentationPageMetadata,
   escapeHtml,
   jsonForScriptTag,
+  liveReloadMetaTag,
   renderShell,
 } from './render-shell.ts';
 import { repositorySourceHref, rewriteRelativeRenderedMarkdownLinks } from './repository-links.ts';
@@ -480,7 +481,9 @@ async function renderComponentPage(
 <html lang="en"${htmlAttribute}>
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />${liveReloadMetaTag(
+      isLiveReloadAdvertised() ? '/events' : undefined,
+    )}
     <title>${escapeHtml(metadata.title)}</title>
     ${metadataTags}
     ${structuredData}
@@ -1501,7 +1504,14 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
 
   const portFile = readEnvironmentConfiguration().playgroundPortFile;
   if (portFile !== undefined) {
-    await Bun.write(portFile, `${actualPort}\n`);
+    try {
+      await Bun.write(portFile, `${actualPort}\n`);
+    } catch (error) {
+      // The server is already listening and no caller has its disposer yet, so a rejection here
+      // would leave the socket open and the port reserved.
+      await dispose();
+      throw error;
+    }
   }
   process.stdout.write(`[playground] Listening at http://localhost:${actualPort}\n`);
 

@@ -7,7 +7,12 @@
  * first landing-page transfer.
  */
 
-import { applyTheme, NAV_FILTER_STORAGE_KEY, readInitialTheme } from '../component-page-theme.ts';
+import {
+  applyTheme,
+  followSystemTheme,
+  NAV_FILTER_STORAGE_KEY,
+  readInitialTheme,
+} from '../component-page-theme.ts';
 import {
   applyColorTokenOverridesToDocument,
   readSessionColorTokenOverrides,
@@ -39,6 +44,19 @@ if (themeToggle !== null) {
     themeToggle.setAttribute('aria-label', labelForTheme(nextTheme));
     void hydrateShell().catch((error) =>
       console.error('[cinder playground] failed to hydrate landing shell:', error),
+    );
+  });
+}
+
+// While the reader has chosen no theme the page follows the operating system, so a change there
+// must reach the toggle and the session color overrides the way a click on the toggle does. The
+// hydrated shell follows the system itself; this covers the page until then.
+if (themeToggle !== null) {
+  followSystemTheme((systemTheme) => {
+    applyColorTokenOverridesToDocument(document, readSessionColorTokenOverrides()[systemTheme]);
+    themeToggle.setAttribute('aria-label', labelForTheme(systemTheme));
+    void hydrateShell().catch((error) =>
+      console.error('[cinder playground] failed to synchronize landing theme:', error),
     );
   });
 }

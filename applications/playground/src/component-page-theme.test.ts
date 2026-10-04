@@ -14,11 +14,13 @@ import { runInNewContext } from 'node:vm';
 
 import {
   applyTheme,
+  followSystemTheme,
   readInitialPreviewWidth,
   readInitialTheme,
   readStoredNavFilter,
   synchronizeFocusModeQuery,
   synchronizePreviewWidthQuery,
+  synchronizeViewQuery,
 } from './component-page-theme.ts';
 import { PRE_PAINT_THEME_SCRIPT } from './render-shell.ts';
 import { THEME_STORAGE_KEY } from './shell-app/theme-storage.ts';
@@ -282,6 +284,148 @@ describe('the stage controls and the shareable URL', () => {
       expect(() => synchronizeFocusModeQuery(false)).not.toThrow();
     } finally {
       window.history.replaceState = originalReplaceState;
+    }
+  });
+});
+
+describe('the view switch and the shareable URL', () => {
+  const happyWindow = window as unknown as { happyDOM: { setURL(url: string): void } };
+
+  afterEach(() => {
+    happyWindow.happyDOM.setURL('http://localhost/');
+  });
+
+  it("keeps the reader's anchor and the rest of the URL when switching to the playground and back", () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button?w=768#props');
+
+    synchronizeViewQuery('playground');
+    expect(window.location.pathname).toBe('/page/button');
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('playground');
+    expect(new URLSearchParams(window.location.search).get('w')).toBe('768');
+    expect(window.location.hash).toBe('#props');
+
+    synchronizeViewQuery('documentation');
+    expect(window.location.search).toBe('?w=768');
+    expect(window.location.hash).toBe('#props');
+  });
+
+  it('keeps the history state the page already carried', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button');
+    window.history.replaceState({ scrollTop: 120 }, '', window.location.href);
+
+    synchronizeViewQuery('playground');
+
+    expect(window.history.state).toEqual({ scrollTop: 120 });
+  });
+
+  it('still lets the view switch when the document refuses to rewrite its URL', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button');
+    const originalReplaceState = window.history.replaceState.bind(window.history);
+    window.history.replaceState = () => {
+      throw new DOMException('sandboxed frame', 'SecurityError');
+    };
+    try {
+      expect(() => synchronizeViewQuery('playground')).not.toThrow();
+    } finally {
+      window.history.replaceState = originalReplaceState;
+    }
+  });
+});
+
+describe('followSystemTheme', () => {
+  type ChangeListener = (event: { matches: boolean }) => void;
+
+  /** A `matchMedia` the test drives: it records the listeners and lets the OS theme flip. */
+  function installFakeMatchMedia(initiallyDark = false) {
+    const listeners = new Set<ChangeListener>();
+    const original = window.matchMedia;
+    let dark = initiallyDark;
+    window.matchMedia = ((query: string) => ({
+      get matches() {
+        return query.includes('dark') && dark;
+      },
+      media: query,
+      addEventListener: (_type: string, listener: ChangeListener) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: ChangeListener) => listeners.delete(listener),
+    })) as unknown as typeof window.matchMedia;
+    return {
+      listeners,
+      flipTo(theme: 'light' | 'dark') {
+        dark = theme === 'dark';
+        for (const listener of listeners) listener({ matches: dark });
+      },
+      restore() {
+        window.matchMedia = original;
+      },
+    };
+  }
+
+  afterEach(() => {
+    delete document.documentElement.dataset['cinderTheme'];
+    document.documentElement.style.colorScheme = '';
+  });
+
+  it('adopts a theme the operating system switches to while the reader has chosen none', () => {
+    const media = installFakeMatchMedia();
+    try {
+      document.documentElement.dataset['cinderTheme'] = 'light';
+      const seen: string[] = [];
+      followSystemTheme((theme) => seen.push(theme));
+
+      media.flipTo('dark');
+      expect(seen).toEqual(['dark']);
+      expect(document.documentElement.dataset['cinderTheme']).toBe('dark');
+
+      media.flipTo('light');
+      expect(seen).toEqual(['dark', 'light']);
+      expect(document.documentElement.dataset['cinderTheme']).toBe('light');
+    } finally {
+      media.restore();
+    }
+  });
+
+  it('ignores the operating system once the reader has chosen a theme', () => {
+    const media = installFakeMatchMedia();
+    try {
+      document.documentElement.style.colorScheme = 'light';
+      document.documentElement.dataset['cinderTheme'] = 'light';
+      const seen: string[] = [];
+      followSystemTheme((theme) => seen.push(theme));
+
+      media.flipTo('dark');
+
+      expect(seen).toEqual([]);
+      expect(document.documentElement.dataset['cinderTheme']).toBe('light');
+    } finally {
+      media.restore();
+    }
+  });
+
+  it('stops following when asked to', () => {
+    const media = installFakeMatchMedia();
+    try {
+      const seen: string[] = [];
+      const stop = followSystemTheme((theme) => seen.push(theme));
+      expect(media.listeners.size).toBe(1);
+
+      stop();
+      media.flipTo('dark');
+
+      expect(media.listeners.size).toBe(0);
+      expect(seen).toEqual([]);
+    } finally {
+      media.restore();
+    }
+  });
+
+  it('does nothing where the browser has no matchMedia', () => {
+    const original = window.matchMedia;
+    Reflect.deleteProperty(window, 'matchMedia');
+    try {
+      const stop = followSystemTheme(() => {});
+      expect(() => stop()).not.toThrow();
+    } finally {
+      window.matchMedia = original;
     }
   });
 });

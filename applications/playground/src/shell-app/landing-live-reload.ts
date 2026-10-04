@@ -14,12 +14,13 @@
  * nothing.
  */
 
+import { readAdvertisedLiveReloadUrl } from './live-reload-advertisement.ts';
+
 export type LandingLiveReload = {
   /** Stop listening. */
   close(): void;
 };
 
-const LIVE_RELOAD_META_SELECTOR = 'meta[name="cinder-live-reload"]';
 /** The named events the dev server sends: `reload` for example edits, `shell-reload` for the rest. */
 const RELOAD_EVENTS = ['reload', 'shell-reload'] as const;
 
@@ -32,8 +33,8 @@ export function attachLandingLiveReload(
   reload: () => void = () => window.location.reload(),
 ): LandingLiveReload | null {
   if (typeof EventSource === 'undefined') return null;
-  const url = doc.querySelector(LIVE_RELOAD_META_SELECTOR)?.getAttribute('content');
-  if (url === null || url === undefined || url === '') return null;
+  const url = readAdvertisedLiveReloadUrl(doc);
+  if (url === null) return null;
 
   const source = new EventSource(url);
   // The first reload tears the page down, so a burst of events behind it queues nothing more.

@@ -32,11 +32,11 @@
     buildComponentHref,
     readFocusModeFromSearch,
     readViewFromSearch,
-    searchForView,
     type ComponentPageView,
   } from './shell-app/routing.ts';
   import { persistScrollPosition } from './shell-app/sidebar-scroll.ts';
   import { createEventSource } from './shell-app/event-source.svelte.ts';
+  import { readAdvertisedLiveReloadUrl } from './shell-app/live-reload-advertisement.ts';
   import { splitReadmeHtml } from './split-readme-html.ts';
   import StaticCodeBlock from './component-page-static-code-block.svelte';
   import type { MountErrorDetail, SourceErrorDetail } from './example-error.ts';
@@ -67,6 +67,7 @@
   } from './component-page-live-preview.ts';
   import {
     applyTheme,
+    followSystemTheme,
     NAV_FILTER_STORAGE_KEY,
     PREVIEW_WIDTHS,
     readInitialPreviewWidth,
@@ -74,6 +75,7 @@
     readStoredNavFilter,
     synchronizeFocusModeQuery,
     synchronizePreviewWidthQuery,
+    synchronizeViewQuery,
   } from './component-page-theme.ts';
   import {
     copyErrorToClipboard,
@@ -249,8 +251,11 @@
   // The canonical page owns the preview now, so subscribe directly to the
   // dev-server stream. Snapshot pages deliberately stay quiet: automated
   // visual and focus suites share the dev server and a reload would interrupt
-  // the test currently driving the page.
-  const liveReloadUrl = !snapshotMode && typeof window !== 'undefined' ? '/events' : null;
+  // the test currently driving the page. So does any page whose server did not
+  // advertise a stream, which is every page the static export writes: a static
+  // host has no `/events` to answer with.
+  const liveReloadUrl =
+    !snapshotMode && typeof window !== 'undefined' ? readAdvertisedLiveReloadUrl(document) : null;
   function handleLiveReload(): void {
     window.location.reload();
   }
@@ -305,6 +310,18 @@
     isFocusMode = readFocusModeFromSearch(search);
     activeView = readViewFromSearch(search);
   });
+
+  /**
+   * Keep the toggle, its icon, and the theme-keyed stores in step with an operating-system theme
+   * change while the reader has chosen none (see `followSystemTheme`). The effect reads nothing
+   * reactive, so it subscribes once and unsubscribes when the page goes away.
+   */
+  $effect(() =>
+    followSystemTheme((systemTheme) => {
+      theme = systemTheme;
+      onThemeChange?.(systemTheme);
+    }),
+  );
 
   /**
    * Which of the two views the page is showing (decision 2).
@@ -376,11 +393,9 @@
 
   function selectView(view: ComponentPageView): void {
     activeView = view;
-    if (typeof window === 'undefined') return;
-    // `replaceState`, not `pushState`: flipping a view is not a navigation the
-    // Back button should have to walk through, but the URL must stay shareable.
-    const search = searchForView(new URLSearchParams(window.location.search), view);
-    window.history.replaceState(null, '', `${window.location.pathname}${search}`);
+    // `replaceState`, not `pushState`: flipping a view is not a navigation the Back button
+    // should have to walk through, but the URL must stay shareable, anchor included.
+    synchronizeViewQuery(view);
   }
 
   let previewWidth = $state<number | null>(null);
