@@ -18,18 +18,20 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import {
   CLAIM_TTL_MS,
+  createHarnessBureau,
   HUMAN_WAIT_PROMPT,
   HUMAN_WAIT_SIGNAL,
-  createHarnessBureau,
 } from './test/process-crash-work-integrity-fixtures';
 import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
+const runtime = createDefaultRuntimeServices();
 
 async function pollUntil(
   check: () => boolean | Promise<boolean>,
@@ -37,7 +39,7 @@ async function pollUntil(
 ): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await check()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 5));
   }
   return check();
 }
@@ -66,7 +68,7 @@ describe.each(['sqlite', 'lmdb'] as const)(
         const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
 
         // The dead holder's claim lapses on Weft's own wall clock.
-        await new Promise((resolve) => setTimeout(resolve, CLAIM_TTL_MS * 10));
+        await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
 
         let generateCalls = 0;
         recoverer = await createHarnessBureau({

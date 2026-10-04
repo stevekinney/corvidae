@@ -54,7 +54,7 @@ import {
 } from '../../start-workflow-validation.ts';
 import type { Checkpoint, StartWorkflowOptions, WorkflowState } from '../../types.ts';
 import { releaseInFlightStart } from '../catalog-removal.ts';
-import { rememberCommittedCheckpointBytes } from '../checkpoint-commit-snapshots.ts';
+import { adoptLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import { commitFencedEngineWrite } from '../fenced-write.ts';
 import type { WorkflowHandle } from '../handles.ts';
@@ -267,8 +267,7 @@ export async function prepareWorkflow(
           )
         : undefined;
 
-    internals.checkpoints.set(workflowId, checkpoint);
-    rememberCommittedCheckpointBytes(internals, workflowId, serializeCheckpoint(checkpoint));
+    adoptLaunchCheckpoint(internals, workflowId, checkpoint, serializeCheckpoint(checkpoint));
     setWorkflowStartHeaders(internals, workflowId, workflowStartHeaders, callbacks);
     internals.workflowVersionTuples.set(workflowId, versionTuple);
 
@@ -403,7 +402,7 @@ export async function launchPreparedWorkflow(
       );
     }
 
-    internals.checkpoints.set(context.workflowId, checkpoint);
+    adoptLaunchCheckpoint(internals, context.workflowId, checkpoint, checkpointBytes);
     internals.workflowVersionTuples.set(
       context.workflowId,
       workflowVersionTupleFromState(internals, runningState, callbacks),
