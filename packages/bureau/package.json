@@ -17,6 +17,7 @@
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "conversationalist": "workspace:*",
+    "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",

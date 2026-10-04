@@ -13672,6 +13672,55 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     }
   });
 
+  it("subscribeEventHistory applies eventHistory's run principal gate: a stranger is delivered nothing, the attributed principal replays (COR-851)", async () => {
+    const databasePath = join(
+      tmpdir(),
+      `bureau-durable-subscribe-authz-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+    const runtime = createManualRuntimeServices();
+
+    try {
+      const bureau = await createBureau({
+        agents: {},
+        generate: createMockGenerate('Done.'),
+        toolbox: createEmptyToolbox(),
+        storage: { type: 'sqlite', path: databasePath },
+        runtime,
+      });
+
+      const run = await bureau.createRun({ message: 'Alice only', principal: 'alice' });
+      await waitForRunCompletion(bureau, run.id);
+      await runtime.deferred.drain();
+
+      const owned: string[] = [];
+      const allowed = bureau.subscribeEventHistory(
+        { kind: 'run', id: run.id },
+        (event) => owned.push(event.kind),
+        { principal: 'alice' },
+      );
+      const stolen: string[] = [];
+      const denied = bureau.subscribeEventHistory(
+        { kind: 'run', id: run.id },
+        (event) => stolen.push(event.kind),
+        { principal: 'mallory' },
+      );
+
+      await waitForCondition(() => owned.length > 0, 'the attributed principal got no replay');
+      // The stranger's replay races the attributed principal's; give a leak every chance to land.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(owned).toEqual(['run.completed']);
+      expect(stolen).toEqual([]);
+
+      allowed.unsubscribe();
+      denied.unsubscribe();
+      await bureau.shutdown();
+    } finally {
+      await rm(databasePath, { force: true });
+      await rm(`${databasePath}-wal`, { force: true });
+      await rm(`${databasePath}-shm`, { force: true });
+    }
+  });
+
   it('never subscribes or records anything for an ephemeral bureau — eventHistory stays unsupported, subscribeEventHistory returns an already-closed subscription', async () => {
     const bureau = await createBureau({
       agents: {},
