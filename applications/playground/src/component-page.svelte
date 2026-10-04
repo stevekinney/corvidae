@@ -252,6 +252,10 @@
   function handleLiveReload(): void {
     window.location.reload();
   }
+  // The dev server sends `reload` for example-only edits and `shell-reload` when component or
+  // shell source changes. A named event reaches only a listener registered under that name, so
+  // every surface listens for both.
+  const liveReloadEvents = { reload: handleLiveReload, 'shell-reload': handleLiveReload };
 
   // --- Theme toggle -----------------------------------------------------
   // Cinder tokens switch on `color-scheme` (via `light-dark()`); the playground
@@ -963,7 +967,7 @@
     data-component-preview
     {@attach createEventSource(() => liveReloadUrl, {
       debounceMs: 100,
-      events: { reload: handleLiveReload },
+      events: liveReloadEvents,
     })}
   >
     {#if overviewExample === undefined}
@@ -988,7 +992,7 @@
     data-component-page
     {@attach createEventSource(() => liveReloadUrl, {
       debounceMs: 100,
-      events: { reload: handleLiveReload },
+      events: liveReloadEvents,
     })}
   >
     {#if examples.length === 0}
@@ -1022,7 +1026,7 @@
     class="dx-shell"
     {@attach createEventSource(() => liveReloadUrl, {
       debounceMs: 100,
-      events: { reload: handleLiveReload },
+      events: liveReloadEvents,
     })}
   >
     {@render overlays?.()}

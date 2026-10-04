@@ -200,6 +200,31 @@ async function findHeroHeading(name: string): Promise<HTMLHeadingElement> {
   });
 }
 
+describe('component-page live reload', () => {
+  // The server broadcasts `reload` for example-only edits and `shell-reload` when component or
+  // shell source changes (`invalidateCachesForChange`). An EventSource delivers a named event
+  // only to a listener registered under that name, so a page that listens for `reload` alone
+  // keeps showing stale markup and bundles after a source edit.
+  test('listens for both reload events the dev server sends', async () => {
+    const registeredNames: string[] = [];
+    class RecordingEventSource {
+      addEventListener(name: string): void {
+        registeredNames.push(name);
+      }
+      removeEventListener(): void {}
+      close(): void {}
+    }
+    Reflect.set(globalThis, 'EventSource', RecordingEventSource);
+
+    const { unmount } = render(ComponentPage, { props: { sidebarComponents: ['button'] } });
+    await tick();
+
+    expect(registeredNames).toContain('reload');
+    expect(registeredNames).toContain('shell-reload');
+    unmount();
+  });
+});
+
 describe('component-page single-scroll layout', () => {
   test('leaves no prior page heading before rendering the next page', async () => {
     expect(document.querySelectorAll('#component-name')).toHaveLength(0);
