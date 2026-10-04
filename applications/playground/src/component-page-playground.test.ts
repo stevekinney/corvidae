@@ -944,6 +944,21 @@ describe('buildSnippet', () => {
     expect(buildSnippet('Meter', controls, { used: 0, width: 0 })).toBe('<Meter used={0} />');
   });
 
+  test('keeps a required text value the reader cleared but drops an optional one', () => {
+    // Regression: `''` was dropped from the snippet for every text control without a manifest
+    // default, so a reader who cleared a REQUIRED text control (`Image.alt`, where `alt=""` is
+    // how an image says it is decorative) copied code that omits a prop its type requires. Only
+    // an optional prop can be omitted, as with the required zero above.
+    const controls = buildPlaygroundModel(
+      manifest([
+        { name: 'alt', control: { kind: 'text' }, bindable: false, optional: false },
+        { name: 'caption', control: { kind: 'text' }, bindable: false, optional: true },
+      ]),
+    ).controls;
+
+    expect(buildSnippet('Picture', controls, { alt: '', caption: '' })).toBe('<Picture alt="" />');
+  });
+
   test('records that a prop with no default and no valid omission is required', () => {
     const controls = buildPlaygroundModel(
       manifest([

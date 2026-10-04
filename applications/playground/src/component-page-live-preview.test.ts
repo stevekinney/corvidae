@@ -117,6 +117,27 @@ describe('toMountProps', () => {
     expect(toMountProps(controls, { used: 0 })).toEqual({ used: 0 });
   });
 
+  test('mounts a required text prop the reader cleared', () => {
+    // Regression: `''` was dropped from the mount for every text control without a manifest
+    // default, so clearing a required control (`Image.alt`) mounted the component without the
+    // prop while the reader still saw it selected, and the preview no longer matched the value
+    // or the snippet it generates.
+    const controls: PlaygroundControl[] = [
+      { name: 'alt', kind: 'text', value: 'alt', hasDefault: false, required: true },
+    ];
+
+    expect(toMountProps(controls, { alt: '' })).toEqual({ alt: '' });
+  });
+
+  test('still drops the synthesized empty string of an optional text prop', () => {
+    const controls: PlaygroundControl[] = [
+      { name: 'caption', kind: 'text', value: '', hasDefault: false },
+      { name: 'title', kind: 'text', value: '', hasDefault: false, required: false },
+    ];
+
+    expect(toMountProps(controls, { caption: '', title: '' })).toEqual({});
+  });
+
   test('still drops the synthesized zero of an optional number prop', () => {
     // `Image.width={0}` collapses the element, which is why the zero was ever dropped.
     const controls: PlaygroundControl[] = [

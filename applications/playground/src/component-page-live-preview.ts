@@ -90,8 +90,11 @@ export function toMountProps(
     // where `width={0} height={0}` collapses the element regardless of `src`) -- but
     // only when the prop is optional. A required number's `0` is the value the
     // component needs (`QuotaMeter.used`, `Sparkbar.value`), so omitting it would mount
-    // the component without a value it cannot do without.
-    if (!control.hasDefault && (value === '' || (value === 0 && control.required !== true))) {
+    // the component without a value it cannot do without. The same holds for a required
+    // text prop's `''`: a required control is seeded with a readable value, so an empty
+    // string there is one the reader chose by clearing it (`Image.alt`, where `alt=""`
+    // marks the image decorative), and the mount must keep it as the snippet does.
+    if (!control.hasDefault && control.required !== true && (value === '' || value === 0)) {
       // Recipes supply a valid starting point for otherwise unlabelled
       // components. Once a reader clears that value, however, the cleared
       // control is an intentional override—not permission to keep the recipe

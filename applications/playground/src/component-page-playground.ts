@@ -26,10 +26,11 @@ type PlaygroundControlBase = {
   hasDefault: boolean;
   /**
    * True when omitting the prop is invalid: the manifest marks it non-optional and
-   * declares no default. A synthesized `0` is dropped from the live mount and the
-   * snippet because a component never asked for it, but a required prop's `0` is the
-   * value it needs (`QuotaMeter.used`, `Sparkbar.value`), so only an optional prop may
-   * lose it. Absent means omission is valid.
+   * declares no default. A synthesized `0` or `''` is dropped from the live mount and
+   * the snippet because a component never asked for it, but a required prop's `0` is
+   * the value it needs (`QuotaMeter.used`, `Sparkbar.value`) and its `''` is the value
+   * the reader chose by clearing it (`Image.alt`), so only an optional prop may lose
+   * either. Absent means omission is valid.
    */
   required?: boolean;
 };
@@ -579,9 +580,12 @@ function shouldEmit(control: PlaygroundControl, current: PlaygroundValue): boole
   // A synthesized `0` is noise for the same reason a synthesized `''` is: the
   // component never declared it. It is also actively wrong for `Image`, where
   // `width={0} height={0}` collapses the element to nothing however good the
-  // `src` is. That only holds for a prop the component can do without; a REQUIRED
-  // number's `0` is the value it needs, and a snippet without it does not compile.
-  return current !== '' && (current !== 0 || control.required === true);
+  // `src` is. That only holds for a prop the component can do without. A REQUIRED
+  // prop's `0` or `''` is a value the reader chose or the component needs (a
+  // required `QuotaMeter.used`, a required `Image.alt` cleared to say the image is
+  // decorative), and a snippet without it does not compile.
+  if (control.required === true) return true;
+  return current !== '' && current !== 0;
 }
 
 /**
