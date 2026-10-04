@@ -12,7 +12,7 @@
  */
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
-import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
+import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
@@ -22,7 +22,7 @@ import {
 } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec/api.ts';
-import { DurableActivityScopeError, durableActivity } from '../context/durable-activity.ts';
+import { durableActivity, DurableActivityScopeError } from '../context/durable-activity.ts';
 import type { RemoteActivityBroker, RemoteActivityTaskRequest } from '../remote-activity-broker.ts';
 import {
   activity,
@@ -56,6 +56,20 @@ import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
+import {
+  collectConflictWarnings,
+  holdFailureAtItsFirstRead,
+  loseGeneration,
+  noCallbacks,
+  parkedOnSignal,
+  readStatus,
+  recordWrites,
+  rejectionOrPending,
+  startParked,
+  tokenOf,
+  WRITE_METHODS,
+  writeOperations,
+} from './checkpoint-conflict.test-support.ts';
 import { notifyConditionWaiters } from './condition-waiters.ts';
 import { WorkflowAlreadyExistsError } from './errors.ts';
 import { currentExecutionAttempt, staleFailureGuard } from './execution-attempts.ts';
@@ -71,36 +85,6 @@ import { startScheduledRun } from './schedule-run.ts';
 import { registerSignalWaiter } from './signals.ts';
 import { failWorkflow } from './termination/complete.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
-
-const WRITE_METHODS = ['put', 'delete', 'deletePrefix', 'batch', 'conditionalBatch'];
-
-function writeOperations(
-  name: string,
-  argumentsList: readonly unknown[],
-): readonly BatchOperation[] | null {
-  if (name === 'batch') return argumentsList[0] as BatchOperation[];
-  if (name === 'conditionalBatch') return argumentsList[1] as BatchOperation[];
-  return null;
-}
-
-/** Wrap `base` so every write the engine attempts is recorded by method name. */
-function recordWrites(base: Storage) {
-  const writes: string[] = [];
-  const storage = new Proxy(base, {
-    get(target, property) {
-      const original: unknown = Reflect.get(target, property, target);
-      if (typeof original !== 'function') return original;
-      if (WRITE_METHODS.includes(String(property))) {
-        return (...argumentsList: unknown[]) => {
-          writes.push(String(property));
-          return original.apply(target, argumentsList);
-        };
-      }
-      return original.bind(target);
-    },
-  });
-  return { storage, writes };
-}
 
 /**
  * Wrap `base` so the first checkpoint write for `workflowId` after `armed` is
@@ -136,40 +120,6 @@ function createLosingStorage(base: Storage, workflowId: string, armed: { value: 
   return { storage, state };
 }
 
-/**
- * Collect conflict warnings. `process.emitWarning` delivers on a later tick, so
- * `received` resolves once `expected` of them have actually arrived.
- */
-function collectConflictWarnings(expected = 1) {
-  const warnings: WeftWorkflowCheckpointConflictWarning[] = [];
-  const reached = createDeferred();
-  const listener = (warning: Error): void => {
-    if (!(warning instanceof WeftWorkflowCheckpointConflictWarning)) return;
-    warnings.push(warning);
-    if (warnings.length >= expected) reached.resolve();
-  };
-  process.on('warning', listener);
-  return { warnings, received: reached.promise, stop: () => process.off('warning', listener) };
-}
-
-async function readStatus(base: Storage, workflowId: string): Promise<WorkflowState['status']> {
-  return (decode((await base.get(KEYS.workflow(workflowId)))!) as WorkflowState).status;
-}
-
-function tokenOf(internals: EngineInternals, workflowId: string): string | undefined {
-  return internals.checkpoints.get(workflowId)?.workflowExecutionToken;
-}
-
-/** Report the loss of whichever generation the engine currently holds for the workflow. */
-function loseGeneration(internals: EngineInternals, workflowId: string): void {
-  abandonWorkflowAfterCheckpointConflict(
-    internals,
-    new WorkflowCheckpointConflictError(workflowId, {
-      workflowExecutionToken: tokenOf(internals, workflowId),
-    }),
-  );
-}
-
 /** Record strategy calls, still calling through, so retirement is observable. */
 function observeStrategy(internals: EngineInternals) {
   const retired: string[] = [];
@@ -194,32 +144,6 @@ function observeStrategy(internals: EngineInternals) {
     },
   });
   return { retired, cancelled, restore: () => (internals.strategy = original) };
-}
-
-/**
- * The rejection reason of `promise`, or `'pending'` when it has not settled after one
- * event-loop turn. Lets a regression test fail on a result() that hangs without
- * waiting out the test timeout.
- */
-async function rejectionOrPending(promise: Promise<unknown>): Promise<unknown> {
-  return await Promise.race([
-    rejectionOf(promise),
-    yieldToEventLoop().then(() => 'pending' as const),
-  ]);
-}
-
-const parkedOnSignal = (name: string) =>
-  workflow({ name }).execute(async function* (context: WorkflowContext) {
-    return yield* context.waitForSignal<string>('go');
-  });
-
-async function startParked(engine: Engine, name: string, id: string) {
-  engine.register(parkedOnSignal(name));
-  const handle = await engine.start(name, null, { id });
-  await waitForCondition(() => getInternals(engine).parkedInlineWorkflows.has(id), {
-    label: `${id} parked on its signal`,
-  });
-  return handle;
 }
 
 describe('abandoning a workflow after a lost checkpoint compare-and-swap', () => {
@@ -1037,41 +961,6 @@ describe('timers of a generation that replaced the one this engine abandoned', (
     }
   });
 });
-
-const noCallbacks = new Proxy({}, { get: () => () => {} }) as never;
-
-/**
- * Hold the next `failWorkflow` for `workflowId` at its first storage read, as an interleaving
- * turn would, and record the writes the engine attempts from then on.
- */
-function holdFailureAtItsFirstRead(internals: EngineInternals, base: Storage, workflowId: string) {
-  const reachedRead = createDeferred();
-  const releaseRead = createDeferred();
-  const watched = recordWrites(base);
-  let held = false;
-  internals.storage = new Proxy(watched.storage, {
-    get(target, property) {
-      const original: unknown = Reflect.get(target, property, target);
-      if (typeof original !== 'function') return original;
-      if (property === 'get') {
-        return async (key: string) => {
-          if (key === KEYS.attribute(workflowId) && !held) {
-            held = true;
-            reachedRead.resolve();
-            await releaseRead.promise;
-          }
-          return original.call(target, key);
-        };
-      }
-      return original.bind(target);
-    },
-  });
-  return {
-    reached: reachedRead.promise,
-    release: () => releaseRead.resolve(),
-    writes: watched.writes,
-  };
-}
 
 describe('failing an abandoned generation', () => {
   async function startParkedEngine(name: string, storage: Storage) {
