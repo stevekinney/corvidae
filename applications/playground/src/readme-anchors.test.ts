@@ -149,8 +149,9 @@ describe('rewriteReadmeFragmentLinks', () => {
 
 describe('readmeAnchorId', () => {
   it('namespaces a fragment the same way a heading id is namespaced', () => {
-    const [, id] = /id="([^"]+)"/.exec(addReadmeHeadingAnchors('<h2>Usage</h2>')) ?? [];
+    const headingId = /id="([^"]+)"/.exec(addReadmeHeadingAnchors('<h2>Usage</h2>'))?.[1];
 
-    expect(readmeAnchorId('usage')).toBe(id);
+    expect(headingId).toBeDefined();
+    expect(readmeAnchorId('usage')).toBe(headingId ?? '');
   });
 });
