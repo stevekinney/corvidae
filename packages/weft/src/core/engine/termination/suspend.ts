@@ -145,7 +145,7 @@ export async function suspendWorkflow(
     //      (likely alongside MultiEngine); deliberately out of scope here.
     internals.inlineStrategy.parkWorkflow(workflowId);
     dropQueuedInlineWorkflowStart(internals, workflowId);
-    releaseSuspendedCheckpoint(internals, workflowId);
+    releaseSuspendedCheckpoint(internals, workflowId, state.workflowExecutionToken);
     internals.parkedInlineWorkflows.delete(workflowId);
     evictSuspendedWorkflowWaiters(internals, workflowId, callbacks);
 

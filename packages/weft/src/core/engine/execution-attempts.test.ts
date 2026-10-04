@@ -105,7 +105,8 @@ describe('the execution attempt registry', () => {
     const internals = getInternals(engine);
     adoptLaunchCheckpoint(internals, 'suspended-run', generation('generation-1'));
     adoptLaunchCheckpoint(internals, 'legacy-run', generation(undefined));
-    releaseSuspendedCheckpoint(internals, 'suspended-run');
+    releaseSuspendedCheckpoint(internals, 'suspended-run', 'generation-1');
+    releaseSuspendedCheckpoint(internals, 'legacy-run', undefined);
     expect(internals.checkpoints.has('suspended-run')).toBe(false);
 
     // Without the checkpoint, the attempt is all that says which generation the engine holds.
@@ -114,6 +115,33 @@ describe('the execution attempt registry', () => {
     expect(abandonExecutionAttempt(internals, 'legacy-run', undefined)).toBe(true);
     expect(isGenerationAbandoned(internals, 'legacy-run', undefined)).toBe(true);
     expect(isGenerationAbandoned(internals, 'legacy-run', 'generation-1')).toBe(false);
+  });
+
+  it('retires, instead of keeping, an attempt that launched a different generation than the one suspended', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    adoptLaunchCheckpoint(internals, 'replaced-run', generation('generation-1'));
+    adoptLaunchCheckpoint(internals, 'replaced-legacy', generation(undefined));
+    adoptLaunchCheckpoint(internals, 'replaced-by-legacy', generation('generation-1'));
+    adoptLaunchCheckpoint(internals, 'same-generation', generation('generation-1'));
+
+    // Another engine replaced the stored generation, so the run being suspended is not the
+    // one this engine launched. A pre-token run and a token-bearing one are different too.
+    releaseSuspendedCheckpoint(internals, 'replaced-run', 'generation-2');
+    releaseSuspendedCheckpoint(internals, 'replaced-legacy', 'generation-1');
+    releaseSuspendedCheckpoint(internals, 'replaced-by-legacy', undefined);
+    releaseSuspendedCheckpoint(internals, 'same-generation', 'generation-1');
+
+    for (const id of ['replaced-run', 'replaced-legacy', 'replaced-by-legacy']) {
+      expect(internals.checkpoints.has(id)).toBe(false);
+      expect(currentExecutionAttempt(internals, id)).toBeUndefined();
+    }
+    expect(internals.checkpoints.has('same-generation')).toBe(false);
+    expect(currentExecutionAttempt(internals, 'same-generation')).toBeDefined();
+    // A workflow this engine holds nothing for has nothing to retire.
+    expect(() =>
+      releaseSuspendedCheckpoint(internals, 'unknown-run', 'generation-1'),
+    ).not.toThrow();
   });
 
   it('retires an attempt with its checkpoint, and every attempt on disposal', async () => {

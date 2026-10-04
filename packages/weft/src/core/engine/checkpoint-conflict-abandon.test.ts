@@ -472,7 +472,7 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     adoptLaunchCheckpoint(internals, 'resume-retry', {
       workflowExecutionToken: token,
     } as Checkpoint);
-    releaseSuspendedCheckpoint(internals, 'resume-retry');
+    releaseSuspendedCheckpoint(internals, 'resume-retry', token);
     expect(abandonExecutionAttempt(internals, 'resume-retry', token)).toBe(true);
 
     expect(await rejectionOf(second.resume('resume-retry'))).toBeInstanceOf(Error);
@@ -1322,6 +1322,53 @@ describe('a lost checkpoint commit for a workflow this engine suspended', () => 
       warning.stop();
       run.internals.storage = run.storage;
       await run.engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('retires the attempt of a generation another engine replaced when this engine suspends the replacement', async () => {
+    const id = 'suspended-replacement';
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { [id]: parkedOnSignal(id) },
+    });
+    const internals = getInternals(engine);
+    const warning = collectConflictWarnings();
+    try {
+      const handle = await engine.start(id, null, { id });
+      await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+        label: `${id} parked on its signal`,
+      });
+      const launchedToken = tokenOf(internals, id);
+      expect(launchedToken).toBeDefined();
+      // Another engine replaced the stored generation under the same id, so the run this
+      // engine suspends is the replacement, and not the generation it launched.
+      for (const key of [KEYS.workflow(id), KEYS.checkpoint(id)]) {
+        const record = decode((await storage.get(key))!) as Record<string, unknown>;
+        await storage.put(key, encode({ ...record, workflowExecutionToken: 'replacement' }));
+      }
+      const pending = handle.result();
+      // Disposal rejects a result() that is still pending, which must not outlive a failed assertion.
+      void pending.catch(() => {});
+
+      await engine.suspend(id);
+      expect(await readStatus(storage, id)).toBe('suspended');
+
+      // The attempt launched a generation other than the suspended one, so there is nothing
+      // of the suspended run for it to hold.
+      expect(currentExecutionAttempt(internals, id)).toBeUndefined();
+
+      // A commit of the generation it launched losing its race afterwards says nothing about
+      // the suspended replacement: no abandonment, no warning, no rejected result().
+      loseCommit(internals, id, launchedToken);
+      await yieldToEventLoop();
+      expect(warning.warnings).toEqual([]);
+      expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+      expect(await rejectionOrPending(pending)).toBe('pending');
+    } finally {
+      warning.stop();
+      await engine[Symbol.asyncDispose]();
     }
   });
 

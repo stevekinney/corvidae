@@ -36,10 +36,12 @@ import type { EngineInternals } from './internals.ts';
  *   retention collection, the rollback of a start or fork that adopted a checkpoint and did
  *   not launch (`releaseLaunchCheckpoint`), and engine disposal
  *   (`retireAllExecutionAttempts`);
- * - kept across a suspension (`releaseSuspendedCheckpoint`), the one state in which the
- *   engine holds a generation and no checkpoint, until the run is resumed. A launch rejected
- *   before it adopted a checkpoint retires nothing, because the entry under that id is a
- *   live run's.
+ * - kept across a suspension (`releaseSuspendedCheckpoint`) when it launched the generation
+ *   being suspended, the one state in which the engine holds a generation and no checkpoint,
+ *   until the run is resumed. `suspend()` can suspend a replacement another engine installed
+ *   under the id, and the attempt that launched the replaced generation is then retired with
+ *   its checkpoint. A launch rejected before it adopted a checkpoint retires nothing, because
+ *   the entry under that id is a live run's.
  *
  * Invariants:
  *

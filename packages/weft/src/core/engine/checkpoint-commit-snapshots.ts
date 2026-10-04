@@ -1,6 +1,7 @@
 import type { Checkpoint } from '../types.ts';
 import {
   beginExecutionAttempt,
+  currentExecutionAttempt,
   retireAllExecutionAttempts,
   retireExecutionAttempt,
 } from './execution-attempts.ts';
@@ -84,13 +85,30 @@ export function releaseLaunchCheckpoint(internals: EngineInternals, workflowId: 
 }
 
 /**
- * Release the in-memory checkpoint of a workflow this engine suspends, and nothing else. The
- * execution attempt stays: it is the only thing left that says which generation this engine
- * drove, so a checkpoint commit still in flight from before the suspend that loses its
- * compare-and-swap, a `result()` requested afterwards, and a timer for the suspended run are all
- * judged by it. Resuming the workflow begins a new attempt.
+ * Release the in-memory checkpoint of a workflow this engine suspends. The execution attempt
+ * stays when it launched the generation being suspended, `suspendedGenerationToken` (none for a
+ * pre-token run): it is then the only thing left that says which generation this engine drove,
+ * so a checkpoint commit still in flight from before the suspend that loses its
+ * compare-and-swap, a `result()` requested afterwards, and a timer for the suspended run are
+ * all judged by it. Resuming the workflow begins a new attempt.
+ *
+ * `suspend()` is an external operation, so the run it suspends can be a replacement another
+ * engine installed under the id while this engine still holds the attempt that launched the
+ * replaced generation. That attempt describes a generation that is not the suspended run's, so
+ * it is retired with its checkpoint, as a run this engine lets go of for good: kept, a late
+ * loss of the replaced generation would mark it abandoned and reject a fresh `result()` for a
+ * run it never drove.
  */
-export function releaseSuspendedCheckpoint(internals: EngineInternals, workflowId: string): void {
+export function releaseSuspendedCheckpoint(
+  internals: EngineInternals,
+  workflowId: string,
+  suspendedGenerationToken: string | undefined,
+): void {
+  const attempt = currentExecutionAttempt(internals, workflowId);
+  if (attempt !== undefined && attempt.workflowExecutionToken !== suspendedGenerationToken) {
+    releaseLaunchCheckpoint(internals, workflowId);
+    return;
+  }
   internals.checkpoints.delete(workflowId);
 }
 
