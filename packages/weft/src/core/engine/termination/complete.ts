@@ -17,7 +17,7 @@ import type {
   WorkflowState,
   WorkflowTimelineEntry,
 } from '../../types.ts';
-import { isFailureForAbandonedGeneration } from '../abandoned-checkpoint-generations.ts';
+import { abandonedFailureGuard, type FailureOrigin } from '../abandoned-checkpoint-generations.ts';
 import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
@@ -573,8 +573,10 @@ export async function failWorkflow(
   error: Error,
   callbacks: TerminationCallbacks,
   failureCategory: FailureCategory = 'system',
+  failureOrigin: FailureOrigin = 'execution',
 ): Promise<void> {
-  const failingGeneration = internals.checkpoints.get(workflowId); // before the first await
+  // Captured before the first await: see `abandonedFailureGuard`.
+  const skipCommitIf = abandonedFailureGuard(internals, workflowId, failureOrigin);
   const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
   const attributes = attributeBytes
     ? (decode(attributeBytes) as Record<string, SearchAttributeValue>)
@@ -610,12 +612,10 @@ export async function failWorkflow(
       // resume whose services are unavailable can fail the run (the fail path runs
       // before the suspended→running flip) instead of stranding it 'suspended'.
       allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
-      // A generation this engine abandoned after losing a checkpoint CAS belongs to the
-      // winner: never write a terminal state over it, or over a replacement installed
-      // while this failure was in flight. Scoped by token and evaluated after the last
-      // read, so a failure from a later generation under the same id still fails normally.
-      skipCommitIf: (state) =>
-        isFailureForAbandonedGeneration(internals, workflowId, failingGeneration, state),
+      // A generation this engine abandoned after losing a checkpoint CAS belongs to the winner:
+      // never write a terminal state over it, or over a replacement installed while this failure
+      // was in flight. Judged after the last read, so a later generation still fails normally.
+      skipCommitIf,
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);

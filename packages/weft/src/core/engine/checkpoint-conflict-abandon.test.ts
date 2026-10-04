@@ -28,15 +28,18 @@ import {
   activity,
   workflow,
   type Checkpoint,
+  type StartOptions,
   type TimerEntry,
   type WorkflowContext,
   type WorkflowState,
 } from '../types.ts';
 import {
   abandonedCheckpointGenerationCount,
+  abandonedFailureGuard,
   isCheckpointGenerationAbandoned,
   markCheckpointGenerationAbandoned,
 } from './abandoned-checkpoint-generations.ts';
+import { createLifecycleCallbacks } from './callback-creators-core.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import {
   abandonWorkflowAfterCheckpointConflict,
@@ -55,6 +58,7 @@ import {
 import { WorkflowHandle } from './handles.ts';
 import { Engine } from './index.ts';
 import { getInternals, type EngineInternals } from './internals.ts';
+import { resume as resumeFromLifecycle } from './lifecycle.ts';
 import { registerSignalWaiter } from './signals.ts';
 import { failWorkflow } from './termination/complete.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
@@ -835,25 +839,19 @@ describe('wakes for an abandoned generation', () => {
 
 /**
  * The loser abandons generation A of a parked run (its in-memory checkpoint stays on
- * A), the winner finishes A and starts generation B under the same id, and B sleeps
- * on the winner for `sleepDuration`. Both engines run their schedulers manually, so
- * a test chooses which of them ticks.
+ * A) and the winner recovers and finishes A. Both engines run their schedulers
+ * manually over one shared clock, so a test chooses which of them ticks, and the
+ * winner's generation B is left for the test to start.
  */
-async function replaceAbandonedGenerationOnTheWinner(
+async function abandonGenerationAndFinishItOnTheWinner(
   id: string,
-  sleepDuration: string,
-  executionTimeout?: string,
+  secondWorkflow: ReturnType<typeof workflow>,
 ) {
   const clock = { now: 1_000_000 };
   const storage = new MemoryStorage();
   const workflows = {
     [`${id}-first`]: parkedOnSignal(`${id}-first`),
-    [`${id}-second`]: workflow({ name: `${id}-second` }).execute(async function* (
-      context: WorkflowContext,
-    ) {
-      yield* context.sleep(sleepDuration);
-      return 'woke';
-    }),
+    [`${id}-second`]: secondWorkflow,
   };
   const engineOptions = {
     storage,
@@ -881,18 +879,6 @@ async function replaceAbandonedGenerationOnTheWinner(
   });
   await winner.signal(id, 'go', 'A done');
   expect(await winner.getHandle(id).result()).toBe('A done');
-  const replacement = await winner.start(`${id}-second`, null, {
-    id,
-    onTerminalConflict: 'start-new',
-    ...(executionTimeout === undefined ? {} : { executionTimeout }),
-  });
-  await waitForCondition(() => winnerInternals.sleepResolversByWorkflow.has(id), {
-    label: `${id} generation B asleep on the winner`,
-  });
-  // The loser never learned about B: its memory still holds the abandoned A.
-  expect(tokenOf(loserInternals, id)).toBe(abandonedToken);
-  expect(tokenOf(winnerInternals, id)).not.toBe(abandonedToken);
-  expect(isCheckpointGenerationAbandoned(loserInternals, id, abandonedToken)).toBe(true);
 
   const timerKeys = async (): Promise<string[]> => {
     const keys: string[] = [];
@@ -903,15 +889,50 @@ async function replaceAbandonedGenerationOnTheWinner(
     clock,
     storage,
     loser,
+    loserInternals,
     winner,
     winnerInternals,
-    replacement,
+    abandonedToken,
     timerKeys,
+    /** The loser never learned about B: its memory still holds the abandoned A. */
+    expectLoserStillHoldsAbandonedGeneration: () => {
+      expect(tokenOf(loserInternals, id)).toBe(abandonedToken);
+      expect(tokenOf(winnerInternals, id)).not.toBe(abandonedToken);
+      expect(isCheckpointGenerationAbandoned(loserInternals, id, abandonedToken)).toBe(true);
+    },
     dispose: async () => {
       await winner[Symbol.asyncDispose]();
       await loser[Symbol.asyncDispose]();
     },
   };
+}
+
+/**
+ * {@link abandonGenerationAndFinishItOnTheWinner}, then the winner starts generation B
+ * under the same id; B sleeps on the winner for `sleepDuration`.
+ */
+async function replaceAbandonedGenerationOnTheWinner(
+  id: string,
+  sleepDuration: string,
+  executionTimeout?: string,
+) {
+  const scenario = await abandonGenerationAndFinishItOnTheWinner(
+    id,
+    workflow({ name: `${id}-second` }).execute(async function* (context: WorkflowContext) {
+      yield* context.sleep(sleepDuration);
+      return 'woke';
+    }),
+  );
+  const replacement = await scenario.winner.start(`${id}-second`, null, {
+    id,
+    onTerminalConflict: 'start-new',
+    ...(executionTimeout === undefined ? {} : { executionTimeout }),
+  });
+  await waitForCondition(() => scenario.winnerInternals.sleepResolversByWorkflow.has(id), {
+    label: `${id} generation B asleep on the winner`,
+  });
+  scenario.expectLoserStillHoldsAbandonedGeneration();
+  return { ...scenario, replacement };
 }
 
 describe('timers of a generation that replaced the one this engine abandoned', () => {
@@ -1163,6 +1184,114 @@ describe('failing an abandoned generation', () => {
       expect(await readStatus(scenario.storage, 'replacement-fails')).toBe('failed');
     } finally {
       await scenario.dispose();
+    }
+  });
+});
+
+/**
+ * A failure raised while this engine launches, resumes, or recovers the stored
+ * generation happens before it adopts that generation's checkpoint, so whatever
+ * the engine still holds in memory for the id is an earlier, abandoned generation
+ * and says nothing about which generation is failing.
+ */
+describe('failing a replacement before this engine adopts its checkpoint', () => {
+  async function abandonThenReplaceWithServicesRun(id: string, startOptions: StartOptions) {
+    const scenario = await abandonGenerationAndFinishItOnTheWinner(
+      id,
+      workflow({ name: `${id}-second` }).execute(async function* (context: WorkflowContext) {
+        yield* context.sleep('30m');
+        return 'woke';
+      }),
+    );
+    // Neither engine has a services resolver, so an engine that launches B on its own can
+    // never re-provide the services it recorded.
+    await scenario.winner.start(`${id}-second`, null, {
+      id,
+      onTerminalConflict: 'start-new',
+      services: { recorded: true },
+      ...startOptions,
+    });
+    scenario.expectLoserStillHoldsAbandonedGeneration();
+    return scenario;
+  }
+
+  async function readState(base: Storage, workflowId: string): Promise<WorkflowState> {
+    return decode((await base.get(KEYS.workflow(workflowId)))!) as WorkflowState;
+  }
+
+  it('fails a delayed-start replacement whose services are unavailable, instead of dropping the failure', async () => {
+    const scenario = await abandonThenReplaceWithServicesRun('delayed-fails', {
+      startAfter: '5m',
+    });
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(await readStatus(scenario.storage, 'delayed-fails')).toBe('pending');
+      const delayedStartKeys = (await scenario.timerKeys()).filter((key) =>
+        key.includes('delayed'),
+      );
+      expect(delayedStartKeys.length).toBeGreaterThanOrEqual(1);
+
+      scenario.clock.now += 6 * 60 * 1000;
+      await scenario.loser.scheduler.tick(scenario.clock.now);
+
+      // The loser's memory still holds the abandoned A, but the failure belongs to B, which
+      // the loser is launching. Dropping it would leave B `running` with no engine driving
+      // it, while the scheduler counts its only durable timer as processed.
+      const state = await readState(scenario.storage, 'delayed-fails');
+      expect(state.status).toBe('failed');
+      expect(state.error).toContain('services unavailable');
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+      await scenario.dispose();
+    }
+  });
+
+  it('judges a launch failure by the stored generation alone, even when the held one is abandoned mid-flight', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    internals.checkpoints.set('judged', { workflowExecutionToken: 'generation-a' } as Checkpoint);
+    const storedReplacement = { workflowExecutionToken: 'generation-b' } as WorkflowState;
+    // Both failures begin while the engine still holds a healthy generation A in memory.
+    const executionFailure = abandonedFailureGuard(internals, 'judged', 'execution');
+    const launchFailure = abandonedFailureGuard(internals, 'judged', 'launch');
+    expect(executionFailure(storedReplacement)).toBe(false);
+    expect(launchFailure(storedReplacement)).toBe(false);
+
+    // A is then abandoned while they are in flight: the execution's own failure is A's and
+    // must not land on the replacement, but a launch failure belongs to the replacement.
+    markCheckpointGenerationAbandoned(internals, 'judged', 'generation-a');
+    expect(executionFailure(storedReplacement)).toBe(true);
+    expect(launchFailure(storedReplacement)).toBe(false);
+
+    // Either origin is refused once the stored generation itself is the abandoned one.
+    markCheckpointGenerationAbandoned(internals, 'judged', 'generation-b');
+    expect(executionFailure(storedReplacement)).toBe(true);
+    expect(launchFailure(storedReplacement)).toBe(true);
+  });
+
+  it('fails a recovered replacement whose services are unavailable when the abandoning engine resumes it', async () => {
+    const scenario = await abandonThenReplaceWithServicesRun('resume-fails', {});
+    try {
+      // Only the abandoning engine drives B from here on.
+      await scenario.winner[Symbol.asyncDispose]();
+      expect(await readStatus(scenario.storage, 'resume-fails')).toBe('running');
+
+      // `engine.resume()` hands back the abandoned handle because the engine still holds a
+      // checkpoint for the id, so drive the same forced replay a claim reclaim does.
+      await resumeFromLifecycle(
+        getInternals(scenario.loser),
+        'resume-fails',
+        createLifecycleCallbacks(scenario.loser),
+        undefined,
+        { forceReplayFromStorage: true },
+      );
+
+      const state = await readState(scenario.storage, 'resume-fails');
+      expect(state.status).toBe('failed');
+      expect(state.error).toContain('services unavailable');
+    } finally {
+      await scenario.loser[Symbol.asyncDispose]();
     }
   });
 });

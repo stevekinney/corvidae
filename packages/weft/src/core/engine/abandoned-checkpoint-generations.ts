@@ -1,4 +1,4 @@
-import type { Checkpoint, WorkflowState } from '../types.ts';
+import type { WorkflowState } from '../types.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import type { EngineInternals } from './internals.ts';
 
@@ -110,25 +110,44 @@ export function isCurrentCheckpointGenerationAbandoned(
 }
 
 /**
- * Whether a terminal failure write must be refused because it belongs to an
- * abandoned generation: the one `stored` carries, or the one the failing
- * execution held in memory when the failure began (`failing`, read before any
- * await). The execution's own generation is judged on its own because a
- * replacement may have been stored since, and a stale failure must never be
- * written over a replacement run. A failure that began with no generation in
- * memory is judged by the stored one alone.
+ * Where a terminal failure comes from, which decides what identifies the generation
+ * it belongs to.
+ *
+ * - `'execution'`: raised by the run this engine drives, so it belongs to the
+ *   generation the engine holds in memory when the failure begins.
+ * - `'launch'`: raised while the engine launches, resumes, or recovers the stored
+ *   generation, before it adopts that generation's checkpoint. Whatever the engine
+ *   still holds in memory for the id is then an earlier generation (possibly an
+ *   abandoned one) that the failure says nothing about, so only the stored
+ *   generation identifies it.
  */
-export function isFailureForAbandonedGeneration(
+export type FailureOrigin = 'execution' | 'launch';
+
+/**
+ * Capture which generation a terminal failure belongs to and return the
+ * `skipCommitIf` predicate that refuses its write when that generation is marked
+ * abandoned. Call it synchronously, before the failure's first await.
+ *
+ * A write is refused when the generation `stored` carries is marked, or, for an
+ * `'execution'` failure, when the generation the engine held in memory at the
+ * start is. The execution's own generation is judged on its own because a
+ * replacement may have been stored since, and a stale failure must never be
+ * written over a replacement run. A `'launch'` failure, or an execution failure
+ * that began with no generation in memory, is judged by the stored one alone.
+ * The captured token is judged against the markers as they stand when the
+ * predicate runs, so a generation abandoned while the failure was in flight still
+ * refuses it.
+ */
+export function abandonedFailureGuard(
   internals: EngineInternals,
   workflowId: string,
-  failing: Checkpoint | undefined,
-  stored: WorkflowState,
-): boolean {
-  return (
+  origin: FailureOrigin,
+): (stored: WorkflowState) => boolean {
+  const held = origin === 'execution' ? internals.checkpoints.get(workflowId) : undefined;
+  const heldToken = held?.workflowExecutionToken;
+  return (stored) =>
     isCheckpointGenerationAbandoned(internals, workflowId, stored.workflowExecutionToken) ||
-    (failing !== undefined &&
-      isCheckpointGenerationAbandoned(internals, workflowId, failing.workflowExecutionToken))
-  );
+    (held !== undefined && isCheckpointGenerationAbandoned(internals, workflowId, heldToken));
 }
 
 /** Number of generations currently marked abandoned (diagnostics and tests). */
