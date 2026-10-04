@@ -28,7 +28,7 @@
  * configuration publishes as the deployment's static root.
  */
 
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import {
   basename,
@@ -170,7 +170,41 @@ export function assertSafeOutputDirectory(
   if (isRepositoryAncestor || isUnapprovedRepositoryPath) {
     throw new Error('[static-export] refusing to clear a protected repository path');
   }
+  // `resolved` follows symlinks and `runStaticExport` clears that target, not the link. The
+  // checks above only know about the repository, so a `build` symlink to a directory outside it
+  // would pass them and the export would delete the target. Refuse a symlink at the approved
+  // boundary, on the way down to a path beneath it, or at an explicit output directory itself.
+  // Ancestors of a path outside the approved directory are left alone: a temporary directory
+  // legitimately sits behind one (`/var` on macOS).
+  const requestedPath = resolve(outputDirectory);
+  const approvedPath = resolve(boundaries.approvedOutputDirectory);
+  const crossesSymbolicLink = isSameOrNestedPath(approvedPath, requestedPath)
+    ? hasSymbolicLinkFrom(approvedPath, requestedPath)
+    : isSymbolicLink(requestedPath);
+  if (crossesSymbolicLink) {
+    throw new Error('[static-export] refusing to clear a symlinked output directory');
+  }
   return resolved;
+}
+
+function isSymbolicLink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `base` or any segment from it down to `target` is a symlink. */
+function hasSymbolicLinkFrom(base: string, target: string): boolean {
+  if (isSymbolicLink(base)) return true;
+  let current = base;
+  for (const segment of relativePath(base, target).split(sep)) {
+    if (segment === '') continue;
+    current = join(current, segment);
+    if (isSymbolicLink(current)) return true;
+  }
+  return false;
 }
 
 function sitemapXml(baseUrl: string, routes: readonly string[]): string {

@@ -15,6 +15,7 @@ import {
   assertSitemapMatchesRoutes,
   assetUrlsFromHtml,
   initialRoutePayload,
+  type OutputDirectoryBoundaries,
   requireProductionBaseUrl,
   runStaticExport,
 } from './static-export.ts';
@@ -153,6 +154,60 @@ describe('the approved build directory boundary', () => {
       expect(() => assertSafeOutputDirectory(join(approved, 'nested'), boundaries)).toThrow(
         'protected repository path',
       );
+    });
+  });
+});
+
+describe('a symlinked build directory that points outside the repository', () => {
+  // `runStaticExport` clears the path `assertSafeOutputDirectory` returns. A `build` symlink to
+  // a directory outside the repository canonicalizes to that directory, which no repository
+  // check can object to, so without a symlink check the export would delete the target.
+  async function withExternalDirectory(
+    run: (fixture: { boundaries: OutputDirectoryBoundaries; approved: string }) => Promise<void>,
+  ): Promise<void> {
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-external-'));
+    try {
+      const repositoryRoot = join(temporaryDirectory, 'repository');
+      const external = join(temporaryDirectory, 'external-victim');
+      await mkdir(join(repositoryRoot, 'application'), { recursive: true });
+      await mkdir(external);
+      await writeFile(join(external, 'keep.txt'), 'must survive a refused export\n');
+      const approved = join(repositoryRoot, 'application', 'build');
+      await symlink(external, approved);
+      await run({ boundaries: { approvedOutputDirectory: approved, repositoryRoot }, approved });
+      expect(existsSync(join(external, 'keep.txt'))).toBe(true);
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  }
+
+  test('refuses the approved build directory itself', async () => {
+    await withExternalDirectory(async ({ boundaries, approved }) => {
+      expect(() => assertSafeOutputDirectory(approved, boundaries)).toThrow(
+        'symlinked output directory',
+      );
+    });
+  });
+
+  test('refuses a path beneath the approved build directory', async () => {
+    await withExternalDirectory(async ({ boundaries, approved }) => {
+      expect(() => assertSafeOutputDirectory(join(approved, 'nested'), boundaries)).toThrow(
+        'symlinked output directory',
+      );
+    });
+  });
+
+  test('refuses an explicit output directory that is itself a symlink', async () => {
+    await withExternalDirectory(async ({ boundaries }) => {
+      const requested = join(tmpdir(), `cinder-static-export-requested-${process.pid}`);
+      await symlink(boundaries.approvedOutputDirectory, requested);
+      try {
+        expect(() => assertSafeOutputDirectory(requested, boundaries)).toThrow(
+          'symlinked output directory',
+        );
+      } finally {
+        await rm(requested, { force: true });
+      }
     });
   });
 });
