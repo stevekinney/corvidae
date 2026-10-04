@@ -12,7 +12,7 @@ import {
   releaseInFlightStart,
   resolveAndReserveExecutableRegistration,
 } from '../catalog-removal.ts';
-import { rememberCommittedCheckpointBytes } from '../checkpoint-commit-snapshots.ts';
+import { adoptLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import { type WorkflowHandle } from '../handles.ts';
 import type { Engine } from '../index.ts';
@@ -402,14 +402,13 @@ export async function startWorkflow(
           )
         : undefined;
 
-    internals.checkpoints.set(workflowId, checkpoint);
     // Prime the checkpoint-bytes CAS baseline synchronously (WFT-21, Codex
     // review round 5, P1; mirrors `resume.ts`'s own set+remember pairing) —
     // without this, this generation's first checkpoint commit carries no
     // `expectedSerialized`, leaving it unfenced against a concurrent
     // `start-new` replacement. A failed start's own rollback below already
     // calls `forgetCommittedCheckpointBytes()`, so nothing stale leaks.
-    rememberCommittedCheckpointBytes(internals, workflowId, serializeCheckpoint(checkpoint));
+    adoptLaunchCheckpoint(internals, workflowId, checkpoint, serializeCheckpoint(checkpoint));
     setWorkflowStartHeaders(internals, workflowId, workflowStartHeaders, callbacks);
 
     // Cache the workflow version tuple for forwarding to event-log entries.

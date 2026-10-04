@@ -17,6 +17,7 @@ import type {
   WorkflowState,
   WorkflowTimelineEntry,
 } from '../../types.ts';
+import { isCheckpointGenerationAbandoned } from '../abandoned-checkpoint-generations.ts';
 import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
@@ -608,6 +609,12 @@ export async function failWorkflow(
       // resume whose services are unavailable can fail the run (the fail path runs
       // before the suspended→running flip) instead of stranding it 'suspended'.
       allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
+      // A generation this engine abandoned after losing a checkpoint CAS belongs
+      // to the winner: never write a terminal state over it. Scoped by token and
+      // evaluated after the last read, so a later generation under the same id
+      // still fails normally.
+      skipCommitIf: (state) =>
+        isCheckpointGenerationAbandoned(internals, workflowId, state.workflowExecutionToken),
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
