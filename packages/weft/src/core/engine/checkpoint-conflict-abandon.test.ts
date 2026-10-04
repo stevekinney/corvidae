@@ -365,6 +365,77 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
   });
 
+  it('still retires and rejects a pre-token generation it cannot mark', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const handle = await startParked(engine, 'legacy-run', 'legacy-run');
+    const pendingResult = handle.result();
+    // A run recovered from before execution tokens existed carries none.
+    const checkpoint = internals.checkpoints.get('legacy-run')!;
+    internals.checkpoints.set('legacy-run', { ...checkpoint, workflowExecutionToken: undefined });
+    const strategy = observeStrategy(internals);
+    const warning = collectConflictWarnings();
+    try {
+      abandonWorkflowAfterCheckpointConflict(
+        internals,
+        new WorkflowCheckpointConflictError('legacy-run', { workflowExecutionToken: undefined }),
+      );
+      await warning.received;
+    } finally {
+      warning.stop();
+      strategy.restore();
+    }
+
+    expect(await rejectionOf(pendingResult)).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect(strategy.retired).toEqual(['legacy-run']);
+    expect(internals.handleCache.has('legacy-run')).toBe(false);
+    // Nothing can key the marker, so later wakes are not refused for this run.
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+  });
+
+  it('keeps the marker when a resume of the abandoned generation fails after relaunching it', async () => {
+    const storage = new MemoryStorage();
+    const first = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'resume-retry': parkedOnSignal('resume-retry') },
+    });
+    await first.start('resume-retry', null, { id: 'resume-retry' });
+    await waitForCondition(() => getInternals(first).parkedInlineWorkflows.has('resume-retry'), {
+      label: 'resume-retry parked on its signal',
+    });
+    await first[Symbol.asyncDispose]();
+    const state = decode((await storage.get(KEYS.workflow('resume-retry')))!) as WorkflowState;
+    const token = state.workflowExecutionToken;
+    expect(token).toBeDefined();
+
+    // The child-cancellation rehydration runs after the checkpoint is adopted.
+    const failingScan = new Proxy(storage, {
+      get(target, property) {
+        if (property === 'scan') {
+          return (prefix: string, ...rest: unknown[]) => {
+            if (prefix === KEYS.childCancellationPrefix('resume-retry')) {
+              throw new Error('storage scan unavailable');
+            }
+            return (target.scan as (...args: unknown[]) => unknown)(prefix, ...rest);
+          };
+        }
+        const original: unknown = Reflect.get(target, property, target);
+        return typeof original === 'function' ? original.bind(target) : original;
+      },
+    });
+    await using second = await Engine.create({
+      storage: failingScan,
+      recover: false,
+      workflows: { 'resume-retry': parkedOnSignal('resume-retry') },
+    });
+    const internals = getInternals(second);
+    markCheckpointGenerationAbandoned(internals, 'resume-retry', token);
+
+    expect(await rejectionOf(second.resume('resume-retry'))).toBeInstanceOf(Error);
+    expect(isCheckpointGenerationAbandoned(internals, 'resume-retry', token)).toBe(true);
+  });
+
   it('warns through console.warn where the runtime has no process.emitWarning', () => {
     const warning = new WeftWorkflowCheckpointConflictWarning('browser-run');
     const consoleWarn = spyOn(console, 'warn').mockImplementation(() => {});

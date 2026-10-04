@@ -33,7 +33,9 @@ export function abandonWorkflowAfterCheckpointConflict(
   error: WorkflowCheckpointConflictError,
 ): void {
   const { workflowId, workflowExecutionToken } = error;
-  if (workflowExecutionToken === undefined) return;
+  // A generation recovered from before execution tokens existed has none, on the
+  // error and in memory alike; it is still retired and its waiter still rejected,
+  // it just cannot be marked, so later wakes are not refused for it.
   if (internals.checkpoints.get(workflowId)?.workflowExecutionToken !== workflowExecutionToken) {
     return;
   }
