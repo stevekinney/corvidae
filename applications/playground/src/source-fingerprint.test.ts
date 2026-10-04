@@ -66,6 +66,67 @@ describe('newestFileMtimeMs', () => {
   });
 });
 
+describe('newestFileMtimeMs while the tree changes under the walk', () => {
+  /** An `ENOENT` the way `statSync` raises it when a file vanishes after `readdirSync` listed it. */
+  function vanishedFileError(path: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`ENOENT: no such file or directory, stat '${path}'`), {
+      code: 'ENOENT',
+    });
+  }
+
+  test('ignores an entry that is deleted between the directory listing and its stat', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'source-fingerprint-race-'));
+    try {
+      const survivor = join(directory, 'survivor.txt');
+      const vanishing = join(directory, 'vanishing.txt');
+      writeFileSync(survivor, 'kept');
+      writeFileSync(vanishing, 'removed mid-walk');
+      // The vanishing file would be the newest, so a walk that stopped on it
+      // (or counted it) would report a different answer from the survivor's.
+      const future = new Date(Date.now() + 60_000);
+      utimesSync(vanishing, future, future);
+
+      const newest = newestFileMtimeMs(directory, (path) => {
+        if (path === vanishing) throw vanishedFileError(path);
+        return statSync(path);
+      });
+
+      expect(newest).toBe(statSync(survivor).mtimeMs);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('returns null when every listed entry vanished before it was statted', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'source-fingerprint-all-gone-'));
+    try {
+      writeFileSync(join(directory, 'only.txt'), 'removed mid-walk');
+      expect(
+        newestFileMtimeMs(directory, (path) => {
+          throw vanishedFileError(path);
+        }),
+      ).toBeNull();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('still reports a stat failure that is not a vanished file', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'source-fingerprint-denied-'));
+    try {
+      writeFileSync(join(directory, 'locked.txt'), 'unreadable');
+      const denied = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+      expect(() =>
+        newestFileMtimeMs(directory, () => {
+          throw denied;
+        }),
+      ).toThrow('EACCES');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('newestSourceMtimeMs', () => {
   test('returns null when none of the fingerprinted directories exist', () => {
     const emptyRoot = mkdtempSync(join(tmpdir(), 'source-fingerprint-root-'));

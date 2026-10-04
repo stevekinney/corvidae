@@ -39,11 +39,25 @@ export const FINGERPRINT_SOURCE_FILES = [
   'components/editor/components.json',
 ] as const;
 
+/** Reads one file's metadata; `statSync` in production, replaceable so a test can make a file vanish. */
+type StatFile = (path: string) => { mtimeMs: number };
+
+/** Whether `error` is the `ENOENT` a file raises when it is deleted or renamed after it was listed. */
+function isVanishedFile(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
 /**
  * Walk `directory` and return the newest file `mtimeMs` found anywhere in its
  * tree, or `null` if the directory does not exist or contains no files.
+ *
+ * The walk runs while the watcher is live, so a file can be deleted or renamed
+ * between the directory listing that named it and the `stat` that reads its
+ * mtime. Such an entry is skipped: it no longer exists, so it cannot be the
+ * newest file, and a later fingerprint comparison sees whatever replaced it.
+ * Any other stat failure still propagates.
  */
-export function newestFileMtimeMs(directory: string): number | null {
+export function newestFileMtimeMs(directory: string, statFile: StatFile = statSync): number | null {
   let newest: number | null = null;
   const stack: string[] = [directory];
 
@@ -71,7 +85,13 @@ export function newestFileMtimeMs(directory: string): number | null {
         continue;
       }
       if (!entry.isFile()) continue;
-      const mtimeMs = statSync(fullPath).mtimeMs;
+      let mtimeMs: number;
+      try {
+        mtimeMs = statFile(fullPath).mtimeMs;
+      } catch (error) {
+        if (isVanishedFile(error)) continue;
+        throw error;
+      }
       if (newest === null || mtimeMs > newest) newest = mtimeMs;
     }
   }
