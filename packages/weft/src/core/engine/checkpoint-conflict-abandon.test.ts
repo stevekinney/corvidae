@@ -909,6 +909,121 @@ describe('failing an abandoned generation', () => {
 
     expect(await readStatus(storage, 'in-flight')).toBe('running');
   });
+
+  /**
+   * The loser abandons generation A while one of its failures is held at its first
+   * storage read; the winner then finishes A and a local `start-new` installs
+   * generation B under the same id. Returns the pieces a test needs to release the
+   * held failure and judge what it did to B.
+   */
+  async function replaceAbandonedGenerationBehindHeldFailure(id: string) {
+    const storage = new MemoryStorage();
+    const workflows = { [id]: parkedOnSignal(id) };
+    const loser = await Engine.create({ storage, recover: false, workflows });
+    const internals = getInternals(loser);
+    await loser.start(id, null, { id });
+    await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+      label: `${id} generation A parked on the loser`,
+    });
+    const abandonedToken = tokenOf(internals, id);
+
+    const reachedRead = createDeferred();
+    const releaseRead = createDeferred();
+    const watched = recordWrites(storage);
+    let held = false;
+    internals.storage = new Proxy(watched.storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (key === KEYS.attribute(id) && !held) {
+              held = true;
+              reachedRead.resolve();
+              await releaseRead.promise;
+            }
+            return original.call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+    const failure = failWorkflow(internals, id, new Error('stale failure of A'), noCallbacks);
+    await reachedRead.promise;
+
+    const warning = collectConflictWarnings();
+    loseGeneration(internals, id);
+    await warning.received;
+    warning.stop();
+
+    const winner = await Engine.create({ storage, workflows });
+    await waitForCondition(() => getInternals(winner).parkedInlineWorkflows.has(id), {
+      label: `${id} generation A recovered by the winner`,
+    });
+    await winner.signal(id, 'go', 'A done');
+    expect(await winner.getHandle(id).result()).toBe('A done');
+    const replacement = await loser.start(id, null, { id, onTerminalConflict: 'start-new' });
+    await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+      label: `${id} generation B parked on the loser`,
+    });
+    expect(tokenOf(internals, id)).not.toBe(abandonedToken);
+    expect(isCheckpointGenerationAbandoned(internals, id, abandonedToken)).toBe(true);
+    watched.writes.length = 0;
+
+    return {
+      storage,
+      loser,
+      internals,
+      replacement,
+      failure,
+      writes: watched.writes,
+      release: () => releaseRead.resolve(),
+      dispose: async () => {
+        internals.storage = storage;
+        await winner[Symbol.asyncDispose]();
+        await loser[Symbol.asyncDispose]();
+      },
+    };
+  }
+
+  it('drops a failure of the abandoned generation that resumes after a replacement was installed', async () => {
+    const scenario = await replaceAbandonedGenerationBehindHeldFailure('replaced-failure');
+    try {
+      scenario.release();
+      await scenario.failure;
+
+      // The stale failure belongs to generation A, which the winner already finished;
+      // generation B is a different run under the same id and must be left alone.
+      expect(scenario.writes).toEqual([]);
+      expect(await readStatus(scenario.storage, 'replaced-failure')).toBe('running');
+      await scenario.loser.signal('replaced-failure', 'go', 'B done');
+      expect(await scenario.replacement.result()).toBe('B done');
+    } finally {
+      await scenario.dispose();
+    }
+  });
+
+  it('still fails the replacement generation for a failure that starts after it was installed', async () => {
+    const scenario = await replaceAbandonedGenerationBehindHeldFailure('replacement-fails');
+    try {
+      // A genuine failure originating from B, with the abandoned marker for A still
+      // recorded: the second failure is not held, since the first already used the hold.
+      scenario.release();
+      await scenario.failure;
+      expect(await readStatus(scenario.storage, 'replacement-fails')).toBe('running');
+
+      await failWorkflow(
+        scenario.internals,
+        'replacement-fails',
+        new Error('B failed for real'),
+        noCallbacks,
+      );
+
+      expect(await readStatus(scenario.storage, 'replacement-fails')).toBe('failed');
+    } finally {
+      await scenario.dispose();
+    }
+  });
 });
 
 describe('result() for an abandoned generation', () => {

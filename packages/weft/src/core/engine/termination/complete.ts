@@ -17,7 +17,7 @@ import type {
   WorkflowState,
   WorkflowTimelineEntry,
 } from '../../types.ts';
-import { isCheckpointGenerationAbandoned } from '../abandoned-checkpoint-generations.ts';
+import { isFailureForAbandonedGeneration } from '../abandoned-checkpoint-generations.ts';
 import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
@@ -574,6 +574,7 @@ export async function failWorkflow(
   callbacks: TerminationCallbacks,
   failureCategory: FailureCategory = 'system',
 ): Promise<void> {
+  const failingGeneration = internals.checkpoints.get(workflowId); // before the first await
   const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
   const attributes = attributeBytes
     ? (decode(attributeBytes) as Record<string, SearchAttributeValue>)
@@ -609,12 +610,12 @@ export async function failWorkflow(
       // resume whose services are unavailable can fail the run (the fail path runs
       // before the suspended→running flip) instead of stranding it 'suspended'.
       allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
-      // A generation this engine abandoned after losing a checkpoint CAS belongs
-      // to the winner: never write a terminal state over it. Scoped by token and
-      // evaluated after the last read, so a later generation under the same id
-      // still fails normally.
+      // A generation this engine abandoned after losing a checkpoint CAS belongs to the
+      // winner: never write a terminal state over it, or over a replacement installed
+      // while this failure was in flight. Scoped by token and evaluated after the last
+      // read, so a failure from a later generation under the same id still fails normally.
       skipCommitIf: (state) =>
-        isCheckpointGenerationAbandoned(internals, workflowId, state.workflowExecutionToken),
+        isFailureForAbandonedGeneration(internals, workflowId, failingGeneration, state),
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);

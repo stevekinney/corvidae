@@ -1,3 +1,4 @@
+import type { Checkpoint, WorkflowState } from '../types.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import type { EngineInternals } from './internals.ts';
 
@@ -105,6 +106,28 @@ export function isCurrentCheckpointGenerationAbandoned(
   return (
     current !== undefined &&
     isCheckpointGenerationAbandoned(internals, workflowId, current.workflowExecutionToken)
+  );
+}
+
+/**
+ * Whether a terminal failure write must be refused because it belongs to an
+ * abandoned generation: the one `stored` carries, or the one the failing
+ * execution held in memory when the failure began (`failing`, read before any
+ * await). The execution's own generation is judged on its own because a
+ * replacement may have been stored since, and a stale failure must never be
+ * written over a replacement run. A failure that began with no generation in
+ * memory is judged by the stored one alone.
+ */
+export function isFailureForAbandonedGeneration(
+  internals: EngineInternals,
+  workflowId: string,
+  failing: Checkpoint | undefined,
+  stored: WorkflowState,
+): boolean {
+  return (
+    isCheckpointGenerationAbandoned(internals, workflowId, stored.workflowExecutionToken) ||
+    (failing !== undefined &&
+      isCheckpointGenerationAbandoned(internals, workflowId, failing.workflowExecutionToken))
   );
 }
 
