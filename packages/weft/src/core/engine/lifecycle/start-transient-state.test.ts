@@ -1,6 +1,6 @@
 /**
- * The one place a start installs the per-run state it holds in memory (COR-1408), and the rollback
- * that takes back exactly what the launch that adopted the id installed.
+ * The one place a start installs the per-run state it holds in memory (COR-1408), reached when the
+ * launch adopts its id, and the rollback that takes back exactly what that launch installed.
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -183,12 +183,56 @@ describe('installing the per-run state of a start', () => {
   });
 });
 
+describe('adopting an id', () => {
+  it('installs the run state the launch asked for in the step that installs its checkpoint', async () => {
+    await withEngine((internals) => {
+      const services = { owner: 'the launch' };
+
+      createLaunchAdoption(internals, ID).adopt(createCheckpoint(), new Uint8Array(), {
+        options: { services },
+        limitsConcurrency: false,
+      });
+
+      expect(internals.checkpoints.has(ID)).toBe(true);
+      expect(internals.workflowServices.get(ID)).toBe(services);
+      expect(internals.workflowsNeedingTerminalCleanup.has(ID)).toBe(true);
+    });
+  });
+
+  it('installs the state a caller handed over', async () => {
+    await withEngine((internals) => {
+      const services = { owner: 'the occurrence' };
+
+      createLaunchAdoption(internals, ID).adopt(createCheckpoint(), new Uint8Array(), {
+        options: undefined,
+        limitsConcurrency: false,
+        transientState: { joinTerminalCleanup: true, services: { value: services } },
+      });
+
+      expect(internals.workflowServices.get(ID)).toBe(services);
+      expect(internals.workflowsNeedingTerminalCleanup.has(ID)).toBe(true);
+    });
+  });
+
+  it('installs nothing for a launch that asked for neither services nor terminal cleanup', async () => {
+    await withEngine((internals) => {
+      createLaunchAdoption(internals, ID).adopt(createCheckpoint(), new Uint8Array(), {
+        options: {},
+        limitsConcurrency: false,
+      });
+
+      expect(internals.checkpoints.has(ID)).toBe(true);
+      expect(internals.workflowServices.has(ID)).toBe(false);
+      expect(internals.workflowsNeedingTerminalCleanup.has(ID)).toBe(false);
+    });
+  });
+});
+
 describe('rolling back a launch', () => {
-  it('removes the services and cleanup membership the launch installed after it adopted a checkpoint', async () => {
+  it('removes the services and cleanup membership the launch installed when it adopted a checkpoint', async () => {
     await withEngine((internals) => {
       const launch = createLaunchAdoption(internals, ID);
-      launch.adopt(createCheckpoint(), new Uint8Array());
-      installRunTransientState(internals, ID, {
+      launch.adopt(createCheckpoint(), new Uint8Array(), {
         options: undefined,
         limitsConcurrency: false,
         transientState: { joinTerminalCleanup: true, services: { value: { owner: 'launch' } } },
@@ -205,9 +249,7 @@ describe('rolling back a launch', () => {
   it('leaves a live run its services and cleanup membership when the launch never adopted a checkpoint', async () => {
     await withEngine((internals) => {
       const live = { owner: 'the live run' };
-      const liveLaunch = createLaunchAdoption(internals, ID);
-      liveLaunch.adopt(createCheckpoint(), new Uint8Array());
-      installRunTransientState(internals, ID, {
+      createLaunchAdoption(internals, ID).adopt(createCheckpoint(), new Uint8Array(), {
         options: { services: live },
         limitsConcurrency: false,
       });
@@ -235,10 +277,26 @@ describe('installing on a disposed engine', () => {
       expect(internals.workflowServices.has(ID)).toBe(false);
       expect(internals.workflowsNeedingTerminalCleanup.has(ID)).toBe(false);
     });
+
+    it(`adopts nothing and installs nothing once the engine is disposed (${label})`, async () => {
+      const engine = new Engine({ storage: new MemoryStorage() });
+      const internals = getInternals(engine);
+      await engine[Symbol.asyncDispose]();
+
+      createLaunchAdoption(internals, ID).adopt(createCheckpoint(), new Uint8Array(), sources);
+
+      expect(internals.checkpoints.has(ID)).toBe(false);
+      expect(internals.workflowServices.has(ID)).toBe(false);
+      expect(internals.workflowsNeedingTerminalCleanup.has(ID)).toBe(false);
+    });
   }
 });
 
 describe('a start whose engine is disposed while its create batch commits', () => {
+  // The launch installed its run state when it adopted the id, before the batch was held. Disposal
+  // releases the services an engine holds so that a credential-bearing closure is not stranded past
+  // it, and the start that outlives the engine installs nothing again. Disposal does not clear the
+  // cleanup membership of a run the engine holds, so the cells say nothing about it.
   const services = { owner: 'the start' };
 
   it('holds no services for engine.start once the batch commits', async () => {
@@ -249,12 +307,13 @@ describe('a start whose engine is disposed while its create batch commits', () =
 
     const starting = engine.start(ID, null, { id: ID, services });
     await storage.reached;
+    expect(internals.workflowServices.get(ID)).toBe(services);
     await engine[Symbol.asyncDispose]();
     storage.release();
     await Promise.allSettled([starting]);
 
     expect(internals.workflowServices.has(ID)).toBe(false);
-    expect(internals.workflowsNeedingTerminalCleanup.has(ID)).toBe(false);
+    expect(internals.checkpoints.has(ID)).toBe(false);
   });
 
   it('holds no services for engine.prepare once the batch commits', async () => {
@@ -265,11 +324,12 @@ describe('a start whose engine is disposed while its create batch commits', () =
 
     const preparing = engine.prepare(ID, null, { id: ID, services });
     await storage.reached;
+    expect(internals.workflowServices.get(ID)).toBe(services);
     await engine[Symbol.asyncDispose]();
     storage.release();
     await Promise.allSettled([preparing]);
 
     expect(internals.workflowServices.has(ID)).toBe(false);
-    expect(internals.workflowsNeedingTerminalCleanup.has(ID)).toBe(false);
+    expect(internals.checkpoints.has(ID)).toBe(false);
   });
 });

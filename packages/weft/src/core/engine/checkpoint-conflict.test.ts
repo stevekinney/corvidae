@@ -18,10 +18,11 @@ import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
+import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import {
-  WeftWorkflowCheckpointConflictWarning,
-  WorkflowCheckpointConflictError,
-} from './checkpoint-conflict-error.ts';
+  collectConflictWarnings,
+  interceptConflictWarnings,
+} from './checkpoint-conflict.test-support.ts';
 import { abandonedExecutionAttemptCount } from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
@@ -123,15 +124,6 @@ function createRace(base: Storage) {
   };
 }
 
-function observeCheckpointConflictWarning() {
-  const warned = createDeferred<WeftWorkflowCheckpointConflictWarning>();
-  const listener = (warning: Error): void => {
-    if (warning instanceof WeftWorkflowCheckpointConflictWarning) warned.resolve(warning);
-  };
-  process.on('warning', listener);
-  return { warned: warned.promise, stop: () => process.off('warning', listener) };
-}
-
 async function readState(base: Storage): Promise<WorkflowState> {
   const bytes = await base.get(workflowRecordKey);
   return decode(bytes!) as WorkflowState;
@@ -142,7 +134,7 @@ async function runRace(
   scenario: 'winner-completes' | 'resume-after-loss' = 'winner-completes',
 ): Promise<void> {
   const race = createRace(base);
-  const warning = observeCheckpointConflictWarning();
+  const warning = collectConflictWarnings();
   const engineA = await Engine.create({
     storage: race.storageForA,
     workflows,
@@ -171,8 +163,8 @@ async function runRace(
     expect(await rejectionOf(freshHandleAfterLoss.result())).toBeInstanceOf(
       WorkflowCheckpointConflictError,
     );
-    const warned = await warning.warned;
-    expect(warned.workflowId).toBe(workflowId);
+    await warning.received;
+    expect(warning.warnings.map((emitted) => emitted.workflowId)).toEqual([workflowId]);
 
     // The loser stopped driving the workflow and remembers the generation it lost.
     const internals = getInternals(engineB);
@@ -228,6 +220,8 @@ async function runRace(
     await engineA[Symbol.asyncDispose]();
   }
 }
+
+interceptConflictWarnings();
 
 describe('checkpoint compare-and-swap loss under ownership none', () => {
   it('settles the loser with a typed error and writes nothing (MemoryStorage)', async () => {

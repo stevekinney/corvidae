@@ -64,7 +64,7 @@ export type ScheduleCallbacks = {
    *
    * `transientState` (internal only) is threaded straight through to `startWorkflow`'s parameter
    * of the same name: the occurrence's resolved services, and the run's membership in terminal
-   * cleanup, which `startWorkflow` installs once the start batch commits.
+   * cleanup, which `startWorkflow` installs when its launch adopts the id.
    */
   startWorkflow: (
     type: string,

@@ -3,19 +3,21 @@
  *
  * One launch installs a run's transient state: the launch that adopts the id. A scheduled
  * occurrence resolves its `ctx.services` and hands them, with its obligation to join terminal
- * cleanup, to `startWorkflow`, which installs both after the create batch commits and before the
- * run can begin. Until a start adopts a checkpoint under the id it holds nothing, so a start
- * that rejects early has nothing to take back, and the id may meanwhile belong to another
- * launch: a start still in flight that reserved it first, a live run, or a launch that began after
- * this one's start rolled itself back. Nothing a rejected launch did may reach that launch.
+ * cleanup, to `startWorkflow`, which installs both when its launch adopts the id, before its
+ * create batch is awaited and so before the run can begin. Until a start adopts a checkpoint under
+ * the id it holds nothing, so a start that rejects early has nothing to take back, and the id may
+ * meanwhile belong to another launch: a start still in flight that reserved it first, a live run,
+ * or a launch that began after this one's start rolled itself back. Nothing a rejected launch did
+ * may reach that launch.
  *
  * Two launches of one workflow id reach the seam with a terminal handoff and a cadence tick
  * draining the same queued run, or a scheduled occurrence reaching for an id `engine.start`
  * already runs. Each case below crosses one interleaving of those launches with one way the
  * services resolver can answer. The winning launch keeps its services, by identity, and its
  * obligation to schedule the durable cleanup timer, a winner that asked for neither holds
- * neither, the loser leaves nothing behind, and nothing survives terminalization, purge or
- * disposal.
+ * neither, the loser leaves nothing behind, and nothing survives terminalization or purge. When
+ * the engine is disposed, disposal releases the services; it never clears the cleanup membership
+ * of a run the engine holds, as on main, and the set dies with the engine.
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -651,8 +653,8 @@ describe('what a scheduled start holds in memory', () => {
         );
 
         // The launch resolved its services before it called `startWorkflow`, and installs them
-        // only once its start has committed. Until then the id holds nothing that a rejected
-        // start could leave behind.
+        // only when it adopts the id inside that start. Until then the id holds nothing that a
+        // rejected start could leave behind.
         if (atStart === undefined) throw new Error('the launch never reached startWorkflow');
         expectSameHoldings(atStart, NOTHING_HELD);
 
@@ -743,25 +745,29 @@ describe('what a scheduled start holds in memory', () => {
   }
 
   for (const kind of RESOLUTION_KINDS) {
-    it(`holds nothing for a disposed engine when it is disposed while the start batch commits, with ${RESOLUTION_LABELS[kind]}`, async () => {
+    it(`holds no services for a disposed engine when it is disposed while the start batch commits, with ${RESOLUTION_LABELS[kind]}`, async () => {
       const harness = await createHarness('transient-state-dispose-in-batch', kind);
       try {
         const batch = harness.holdNextStartBatch();
         const launching = harness.launch();
         await batch.reached;
 
-        // Disposal lands after the occurrence resolved its services and before its start commits,
-        // which is the window in which the launch has not yet installed anything.
+        // Disposal lands after the launch adopted the id, and installed the run's state, and before
+        // its start commits.
         await harness.dispose();
         batch.release();
         await launching;
 
-        // The launch that outlived the engine installs no services and no cleanup membership
-        // into it: disposal released everything the engine held so that a credential-bearing
-        // closure is not stranded past it.
-        expectNothingHeld(harness);
+        // Disposal released the services the engine held so that a credential-bearing closure is
+        // not stranded past it, the launch that outlived the engine installed nothing again, and
+        // nothing of the launch's checkpoint is left. Disposal does not clear the cleanup
+        // membership, so this case says nothing about it.
+        const held = harness.holdings();
+        expect(held.attempt).toBeUndefined();
+        expect(held.checkpoint).toBeUndefined();
+        expect(held.services).toBeUndefined();
+        expect(held.pendingStart).toBe(false);
         expect(harness.internals.workflowServices.size).toBe(0);
-        expect(harness.internals.workflowsNeedingTerminalCleanup.size).toBe(0);
       } finally {
         await harness.dispose();
       }
@@ -769,7 +775,7 @@ describe('what a scheduled start holds in memory', () => {
   }
 
   for (const kind of RESOLUTION_KINDS.filter((candidate) => candidate !== 'unavailable')) {
-    it(`leaves nothing behind when the engine is disposed with the winner running, with ${RESOLUTION_LABELS[kind]}`, async () => {
+    it(`releases the services when the engine is disposed with the winner running, with ${RESOLUTION_LABELS[kind]}`, async () => {
       const id = 'transient-state-disposal';
       const harness = await createHarness(id, kind);
       try {

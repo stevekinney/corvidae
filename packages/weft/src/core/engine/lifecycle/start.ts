@@ -54,7 +54,7 @@ import {
   resolveTerminalConflictForRestart,
 } from './start-terminal-conflict-purge.ts';
 import type { StartTransientState } from './start-transient-state.ts';
-import { createLaunchAdoption, installRunTransientState } from './start-transient-state.ts';
+import { createLaunchAdoption } from './start-transient-state.ts';
 import {
   mergeWorkerStartOverrideOperations,
   prepareWorkerStartOverrideConsumption,
@@ -414,7 +414,20 @@ export async function startWorkflow(
     // `expectedSerialized`, leaving it unfenced against a concurrent
     // `start-new` replacement. A failed start's own rollback below already
     // calls `forgetCommittedCheckpointBytes()`, so nothing stale leaks.
-    launch.adopt(checkpoint, serializeCheckpoint(checkpoint));
+    //
+    // Adopting the id also installs the run's non-serialized services, held in engine memory so
+    // the inline Context can read them (never written to storage; the start batch writes only a
+    // presence marker so a fresh-process recovery knows to re-provide them), and its membership in
+    // terminal cleanup, which is what makes a terminal write schedule the deferred cleanup that
+    // sweeps that marker. This launch is the only writer of either entry, and it installs them
+    // here, before the create batch below is awaited, so a cancel or timeout that lands while the
+    // batch commits already finds the membership. The rollback below takes back exactly what it
+    // installed. A scheduled occurrence's services arrive in `transientState`.
+    launch.adopt(checkpoint, serializeCheckpoint(checkpoint), {
+      options,
+      transientState,
+      limitsConcurrency: workflowConcurrency !== undefined,
+    });
     setWorkflowStartHeaders(internals, workflowId, workflowStartHeaders, callbacks);
 
     // Cache the workflow version tuple for forwarding to event-log entries.
@@ -458,18 +471,6 @@ export async function startWorkflow(
       },
       buildIdempotentStartOperations,
     );
-
-    // Hold the run's non-serialized services in engine memory so the inline Context can read
-    // them (never written to storage; the start batch wrote only a presence marker so a
-    // fresh-process recovery knows to re-provide them), and join terminal cleanup, which is what
-    // makes `completeWorkflow` schedule the deferred cleanup that sweeps that marker. This launch
-    // is the only writer of either entry, so the rollback below takes back exactly what it
-    // installed. A scheduled occurrence's services arrive in `transientState`.
-    installRunTransientState(internals, workflowId, {
-      options,
-      transientState,
-      limitsConcurrency: workflowConcurrency !== undefined,
-    });
 
     const handle = createWorkflowHandle(internals, workflowId, callbacks);
     await beginExecutionAwaitingLiveness(

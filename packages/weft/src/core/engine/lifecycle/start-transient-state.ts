@@ -13,15 +13,21 @@ import type { EngineInternals } from '../internals.ts';
  * checkpoint under the id is this start's, and `rollback` removes everything a failed
  * launch left behind.
  *
- * The launch that adopts the id is the only writer of a run's per-run transient state: the
- * start installs the services and the terminal-cleanup membership after its create batch commits
- * ({@link installRunTransientState}), so this `rollback` removes exactly what the launch
- * installed, and a caller that hands a start state of its own (a scheduled occurrence) leaves
- * nothing in memory for a rejected start to take back, or for another launch to inherit.
+ * The launch that adopts the id is the only writer of a run's per-run transient state, and
+ * `adopt` installs it ({@link installRunTransientState}) in the same synchronous step that
+ * installs the checkpoint, so the run is a member of terminal cleanup, and holds its services,
+ * for as long as it holds the id. The create batch that follows is awaited, and a cancel or
+ * timeout that lands while it commits decides whether the run owes the durable cleanup timer by
+ * reading that membership. `rollback` removes exactly what `adopt` installed, so a caller that
+ * hands a start state of its own (a scheduled occurrence) leaves nothing in memory for a rejected
+ * start to take back, or for another launch to inherit.
  */
 export type LaunchAdoption = {
-  /** Install `checkpoint` as the launch checkpoint of this start, and prime its committed bytes. */
-  adopt(checkpoint: Checkpoint, serialized: Uint8Array): void;
+  /**
+   * Install `checkpoint` as the launch checkpoint of this start, prime its committed bytes, and
+   * install the run's per-run transient state from `run`.
+   */
+  adopt(checkpoint: Checkpoint, serialized: Uint8Array, run: RunTransientStateSources): void;
   /** Undo what `adopt` installed; a no-op for a start that has not adopted a checkpoint. */
   rollback(): void;
 };
@@ -32,9 +38,10 @@ export function createLaunchAdoption(
 ): LaunchAdoption {
   let adopted = false;
   return {
-    adopt(checkpoint, serialized) {
+    adopt(checkpoint, serialized, run) {
       adoptLaunchCheckpoint(internals, workflowId, checkpoint, serialized);
       adopted = true;
+      installRunTransientState(internals, workflowId, run);
     },
     rollback() {
       if (!adopted) return;
@@ -80,20 +87,28 @@ export type RunTransientStateSources = {
 };
 
 /**
- * Install the per-run state a start holds in memory once its create batch has committed and
- * before the run can begin: the non-serializable `services` the inline context reads, and the
- * membership in `workflowsNeedingTerminalCleanup` that makes terminalization schedule the deferred
- * durable cleanup that sweeps the run's scratch. Services imply the membership, because the start
- * batch wrote the services marker, which only that cleanup sweeps.
+ * Install the per-run state a start holds in memory, at the moment the launch adopts its id: the
+ * non-serializable `services` the inline context reads, and the membership in
+ * `workflowsNeedingTerminalCleanup` that makes terminalization schedule the deferred durable
+ * cleanup that sweeps the run's scratch. Services imply the membership, because the start batch
+ * writes the services marker, which only that cleanup sweeps.
  *
- * This is the single place a start installs either entry, for `startWorkflow` and
- * `prepareWorkflow` alike, and it is synchronous: it adds no await to a launch path.
+ * It runs at adoption and not once the create batch has committed because the batch is awaited:
+ * a cancel or timeout that lands while it commits reads the membership synchronously to decide
+ * whether to mint the cleanup token and timer, and a run that joined only after the commit would
+ * be terminalized without them.
  *
- * A disposed engine installs nothing, as `adoptLaunchCheckpoint` adopts nothing: the create batch
- * is awaited, so the engine can be disposed while a launch is still committing it, and disposal
- * has by then released the services the engine holds so that a credential-bearing closure is not
- * stranded past it. Installing after that would hold the run's services, and its cleanup
- * membership, on an engine that has already let go of everything.
+ * This is the single place a start installs either entry, reached through
+ * {@link LaunchAdoption.adopt} for `startWorkflow` and `prepareWorkflow` alike, and it is
+ * synchronous: it adds no await to a launch path.
+ *
+ * A disposed engine installs nothing, as `adoptLaunchCheckpoint` adopts nothing: a start can be
+ * awaiting its registration or its terminal-conflict read when the engine is disposed, and
+ * disposal has by then released the services the engine holds so that a credential-bearing
+ * closure is not stranded past it. Installing after that would hold the run's services, and its
+ * cleanup membership, on an engine that has already let go of everything. A launch that adopted
+ * before the engine was disposed has its services released by disposal, which does not clear the
+ * membership, as for any run the engine held.
  */
 export function installRunTransientState(
   internals: EngineInternals,

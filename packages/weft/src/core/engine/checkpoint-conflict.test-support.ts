@@ -4,6 +4,8 @@
  * run into a lost checkpoint compare-and-swap, hold a terminal failure in flight, and tell a
  * `result()` that rejected from one that is still pending.
  */
+import { afterEach, beforeEach, spyOn } from 'bun:test';
+
 import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
 import {
   createDeferred,
@@ -51,20 +53,78 @@ export function recordWrites(base: Storage) {
   return { storage, writes };
 }
 
+type ConflictWarningListener = (warning: WeftWorkflowCheckpointConflictWarning) => void;
+
+const conflictWarningListeners = new Set<ConflictWarningListener>();
+let activeInterceptions = 0;
+
 /**
- * Collect conflict warnings. `process.emitWarning` delivers on a later tick, so
- * `received` resolves once `expected` of them have actually arrived.
+ * Take the conflict warnings `target.emitWarning` is given, for as long as the returned function
+ * has not been called, and hand each to the collectors opened with {@link collectConflictWarnings}
+ * instead of letting Node print it. Every other warning still reaches the real `emitWarning`.
+ */
+export function interceptConflictWarningsOn(
+  target: Pick<NodeJS.Process, 'emitWarning'>,
+): () => void {
+  const passThrough = target.emitWarning.bind(target) as (...argumentsList: unknown[]) => void;
+  const interception = spyOn(target, 'emitWarning').mockImplementation(
+    (warning: string | Error, ...rest: unknown[]) => {
+      if (!(warning instanceof WeftWorkflowCheckpointConflictWarning)) {
+        passThrough(warning, ...rest);
+        return;
+      }
+      for (const listener of conflictWarningListeners) listener(warning);
+    },
+  );
+  activeInterceptions += 1;
+  return () => {
+    interception.mockRestore();
+    activeInterceptions -= 1;
+  };
+}
+
+/**
+ * Keep the operator warning off stderr for every test of the file that calls this at its top
+ * level, and hand each one to the collectors the test opened with {@link collectConflictWarnings}.
+ *
+ * The engine emits the warning through `process.emitWarning` when it loses a checkpoint
+ * compare-and-swap race, which is the signal an operator is meant to see. A test that forces a
+ * loss on purpose has to assert it and not print it, so the warning is taken at the call, before
+ * Node would print it. The hooks are registered by the file that calls this, because a hook
+ * registered at this module's scope would bind to the first file that imported it.
+ */
+export function interceptConflictWarnings(): void {
+  let restore: (() => void) | undefined;
+  beforeEach(() => {
+    restore = interceptConflictWarningsOn(process);
+  });
+  afterEach(() => {
+    restore?.();
+    restore = undefined;
+  });
+}
+
+/**
+ * Collect the conflict warnings the engine emits while the collector is open. `received` resolves
+ * once `expected` of them have arrived. The calling file must have called
+ * {@link interceptConflictWarnings}, which is what delivers them.
  */
 export function collectConflictWarnings(expected = 1) {
+  if (activeInterceptions === 0) {
+    throw new Error('call interceptConflictWarnings() at the top level of the test file first');
+  }
   const warnings: WeftWorkflowCheckpointConflictWarning[] = [];
   const reached = createDeferred();
-  const listener = (warning: Error): void => {
-    if (!(warning instanceof WeftWorkflowCheckpointConflictWarning)) return;
+  const listener: ConflictWarningListener = (warning) => {
     warnings.push(warning);
     if (warnings.length >= expected) reached.resolve();
   };
-  process.on('warning', listener);
-  return { warnings, received: reached.promise, stop: () => process.off('warning', listener) };
+  conflictWarningListeners.add(listener);
+  return {
+    warnings,
+    received: reached.promise,
+    stop: () => conflictWarningListeners.delete(listener),
+  };
 }
 
 export async function readStatus(

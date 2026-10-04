@@ -2,16 +2,21 @@
  * Where a scheduled run's services and cleanup membership are installed (COR-1408).
  *
  * One writer installs a run's transient state: `startWorkflow`, for the launch that adopts the
- * id, once its create batch has committed and before the run can begin. `startScheduledRun` puts
- * nothing in engine memory itself, so these cases pin the two properties that make that safe:
+ * id, in the same synchronous step that installs the run's checkpoint and before its create batch
+ * is awaited. `startScheduledRun` puts nothing in engine memory itself, so these cases pin the two
+ * properties that make that safe:
  *
  * - nothing reads `workflowServices` or `workflowsNeedingTerminalCleanup` for the occurrence's id
- *   between the moment `startScheduledRun` is called and the install, so no reader can have
- *   observed a difference between seeding the entries ahead of the start and installing them
- *   after its commit; and
+ *   between the moment `startScheduledRun` is called and the install, so no reader that runs
+ *   inside the start can have observed a difference between seeding the entries ahead of the
+ *   start and installing them at adoption; and
  * - the extra start state a scheduled launch hands `startWorkflow` is not reachable from any
  *   public start surface, so no caller can have its run join terminal cleanup, or hold services,
  *   by any option it passes.
+ *
+ * Readers outside the start can still reach the id between where the seed was and the adoption:
+ * a terminal operation or a signal that lands while the start is resolving its registration. They
+ * are listed, with what each of them sees, in the pull request that moved the install.
  */
 import { describe, expect, it } from 'bun:test';
 
@@ -20,6 +25,7 @@ import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import {
   workflow,
+  type Checkpoint,
   type EngineOptions,
   type ScheduleState,
   type StartWorkflowOptions,
@@ -44,7 +50,11 @@ type Observation = {
 };
 
 type TimelineEntry =
-  Observation | { event: 'called' } | { event: 'committed' } | { event: 'finished' };
+  | Observation
+  | { event: 'called' }
+  | { event: 'adopted' }
+  | { event: 'committed' }
+  | { event: 'finished' };
 
 /** The two collections' reads and writes, in the order the engine made them. */
 type Timeline = TimelineEntry[];
@@ -185,6 +195,21 @@ class RecordingSet extends Set<string> {
   }
 }
 
+/** The checkpoints the engine holds, noting when the occurrence's id is adopted. */
+class AdoptionRecordingMap extends Map<string, Checkpoint> {
+  readonly #timeline: Timeline;
+
+  constructor(timeline: Timeline) {
+    super();
+    this.#timeline = timeline;
+  }
+
+  override set(key: string, value: Checkpoint): this {
+    if (key === WORKFLOW_ID) this.#timeline.push({ event: 'adopted' });
+    return super.set(key, value);
+  }
+}
+
 type Resolution = 'available' | 'unavailable' | 'none';
 
 const RESOLUTIONS: readonly Resolution[] = ['available', 'unavailable', 'none'];
@@ -259,6 +284,7 @@ async function launchObservedOccurrence(resolution: Resolution, withStartHeaders
   const internals = getInternals(engine);
   internals.workflowServices = new RecordingMap(timeline);
   internals.workflowsNeedingTerminalCleanup = new RecordingSet(timeline);
+  internals.checkpoints = new AdoptionRecordingMap(timeline);
 
   const committedWhen = (operations: readonly BatchOperation[]): boolean =>
     operations.some(
@@ -305,20 +331,25 @@ function indexOfEvent(timeline: Timeline, event: TimelineEntry['event']): number
 
 describe('where a scheduled run installs its transient state', () => {
   for (const resolution of RESOLUTIONS) {
-    it(`reads nothing for the occurrence's id before the install, and installs after the start batch commits, with ${RESOLUTION_LABELS[resolution]}`, async () => {
+    it(`reads nothing for the occurrence's id before the install, and installs when the launch adopts the id, before the start batch commits, with ${RESOLUTION_LABELS[resolution]}`, async () => {
       const observed = await launchObservedOccurrence(resolution, false);
       try {
         const { timeline } = observed;
         const called = indexOfEvent(timeline, 'called');
+        const adopted = indexOfEvent(timeline, 'adopted');
         const committed = indexOfEvent(timeline, 'committed');
-        expect(committed).toBeGreaterThan(called);
+        expect(adopted).toBeGreaterThan(called);
+        expect(committed).toBeGreaterThan(adopted);
 
         const occurrence = timeline.filter(concernsOccurrence);
         const firstInstall = timeline.findIndex(
-          (entry, index) =>
-            index > committed && concernsOccurrence(entry) && entry.event === 'write',
+          (entry, index) => index > called && concernsOccurrence(entry) && entry.event === 'write',
         );
-        expect(firstInstall).toBeGreaterThan(committed);
+
+        // The install is part of adopting the id: it follows the adoption with nothing in
+        // between, and the create batch has not been committed yet.
+        expect(firstInstall).toBe(adopted + 1);
+        expect(firstInstall).toBeLessThan(committed);
 
         // Nothing observes either collection for the id, or iterates either, from the call until
         // the install: there is no entry for a reader to have found, or to have missed.
@@ -354,10 +385,13 @@ describe('where a scheduled run installs its transient state', () => {
         const committed = indexOfEvent(timeline, 'committed');
 
         const beforeCommit = timeline.slice(called, committed).filter(concernsOccurrence);
-        // Headers join the cleanup membership while the start is built, a write that main's seed
-        // had made a no-op. The start itself reads neither collection.
+        // The start itself reads neither collection. Its launch installs the run's state when it
+        // adopts the id, and the headers then join the cleanup membership, which the install had
+        // already made a no-op, as main's seed had.
         expect(beforeCommit.filter((entry) => entry.event === 'read')).toEqual([]);
         expect(beforeCommit.map((entry) => `${entry.collection}.${entry.operation}`)).toEqual([
+          ...(resolution === 'available' ? ['workflowServices.set'] : []),
+          'workflowsNeedingTerminalCleanup.add',
           'workflowsNeedingTerminalCleanup.add',
         ]);
       } finally {

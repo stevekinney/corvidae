@@ -57,6 +57,7 @@ import {
 import {
   collectConflictWarnings,
   holdFailureAtItsFirstRead,
+  interceptConflictWarnings,
   loseGeneration,
   noCallbacks,
   parkedOnSignal,
@@ -149,6 +150,8 @@ function observeStrategy(internals: EngineInternals) {
   });
   return { retired, cancelled, restore: () => (internals.strategy = original) };
 }
+
+interceptConflictWarnings();
 
 describe('abandoning a workflow after a lost checkpoint compare-and-swap', () => {
   it('marks the lost generation, retires it, rejects the waiter, evicts the handle, and releases nothing', async () => {
@@ -794,7 +797,30 @@ describe('wakes for an abandoned generation', () => {
     // Every timer is due on this engine's scheduler: sleep, condition deadline,
     // execution deadline, and the review escalation.
     now += 11 * 60 * 1000;
-    await engine.scheduler.tick(now);
+    // The scheduler reports each timer it declines through `console.error`, which is how an
+    // operator learns the retry is deliberate. Take the reports to assert them.
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    let reports: readonly (readonly unknown[])[];
+    try {
+      await engine.scheduler.tick(now);
+    } finally {
+      reports = [...consoleError.mock.calls];
+      consoleError.mockRestore();
+    }
+    const declinedTimers = reports
+      .map(([message]) => String(message).replace(/^Timer callback failed for timer (.*):$/, '$1'))
+      .toSorted();
+    expect(declinedTimers).toEqual(
+      [
+        'cond:condition-run:0',
+        'deadline:condition-run',
+        'review-escalation:review-1:1000',
+        'sleep:sleep-run:0',
+      ].toSorted(),
+    );
+    for (const [, reason] of reports) {
+      expect((reason as Error).message).toContain('was discarded by an engine that does not own');
+    }
 
     // The scheduler retries them: the records stay for the winner, nothing was
     // written, no waiter was woken, and no review handler ran.

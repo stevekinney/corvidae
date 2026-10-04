@@ -112,10 +112,11 @@ export async function startScheduledRun(
   // join terminal cleanup: the in-memory membership is what makes completion schedule the deferred
   // durable cleanup timer that sweeps that metadata if the fire-and-forget scheduled-terminal
   // handler is interrupted. The run also holds the services resolved above. Both go to
-  // `startWorkflow` as its internal `transientState`, which installs them once the start batch
-  // commits and before the run can begin, and removes them again if that launch is rejected after
-  // it adopted a checkpoint. A start rejected before that has installed nothing, so there is
-  // nothing to take back, and the id, which may by then belong to another launch, is never touched.
+  // `startWorkflow` as its internal `transientState`, which installs them when its launch adopts
+  // the id, before the create batch commits, so a cancel or timeout that lands while the batch
+  // commits already finds the membership. The launch removes them again if it is rejected after it
+  // adopted a checkpoint. A start rejected before that has installed nothing, so there is nothing
+  // to take back, and the id, which may by then belong to another launch, is never touched.
   //
   // An empty array and `undefined` are equivalent at the receiving end
   // (buildStartBatchOperations spreads `?? []`), so pass the array directly.

@@ -32,6 +32,7 @@ import { persistCheckpointAbandoningOnConflict } from './checkpoint-conflict-aba
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import {
   collectConflictWarnings,
+  interceptConflictWarnings,
   parkedOnSignal,
   rejectionOrPending,
   tokenOf,
@@ -110,6 +111,8 @@ async function startParkedRun(id: string, preToken: boolean) {
     attempt: currentExecutionAttempt(internals, id),
   };
 }
+
+interceptConflictWarnings();
 
 describe('a late checkpoint conflict binds to the attempt that began the commit', () => {
   for (const { label, preToken } of GENERATIONS) {

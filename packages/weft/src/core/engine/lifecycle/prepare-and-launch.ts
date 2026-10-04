@@ -93,7 +93,7 @@ import {
   prepareTerminalRunPurge,
   resolveTerminalConflictForRestart,
 } from './start-terminal-conflict-purge.ts';
-import { createLaunchAdoption, installRunTransientState } from './start-transient-state.ts';
+import { createLaunchAdoption } from './start-transient-state.ts';
 import { prepareStartWorkflow, resolveAndReserveStartRegistration } from './start.ts';
 
 /**
@@ -268,7 +268,10 @@ export async function prepareWorkflow(
           )
         : undefined;
 
-    launch.adopt(checkpoint, serializeCheckpoint(checkpoint));
+    launch.adopt(checkpoint, serializeCheckpoint(checkpoint), {
+      options,
+      limitsConcurrency: workflowConcurrency !== undefined,
+    });
     setWorkflowStartHeaders(internals, workflowId, workflowStartHeaders, callbacks);
     internals.workflowVersionTuples.set(workflowId, versionTuple);
 
@@ -302,11 +305,6 @@ export async function prepareWorkflow(
       },
       undefined,
     );
-
-    installRunTransientState(internals, workflowId, {
-      options,
-      limitsConcurrency: workflowConcurrency !== undefined,
-    });
 
     const handle = createWorkflowHandle(internals, workflowId, callbacks);
     // Reservation intentionally held past this point — released by whichever

@@ -5,16 +5,20 @@
  * metadata and links, its terminal-cleanup marker, the `workflowHasServices` marker when a
  * services resolution happened, and the schedule state and settled-run delete the caller folds
  * in) and hands them to `startWorkflow`, which commits them in the same batch as the workflow
- * record. Which launch holds an occurrence's services and cleanup membership in memory is a
- * separate matter from that batch, and moving it must not change what is written: a fresh
- * process recovering the run tells "never had services" from "had services" by the marker, and
- * finds the cleanup sweep it owes by the cleanup key.
+ * record. Which launch holds an occurrence's services and cleanup membership in memory, and when
+ * it installs them, is a separate matter from that batch, and moving it must not change what is
+ * written: a fresh process recovering the run tells "never had services" from "had services" by
+ * the marker, and finds the cleanup sweep it owes by the cleanup key.
  *
- * The expected lists below are the operations `startScheduledRun` committed on main (244ef383),
- * in order, before the occurrence's transient state moved into `startWorkflow`. This file does not
- * import anything the pull request added, so it passes unchanged against that commit as well.
+ * The expected lists and digests below are what `startScheduledRun` committed on main (244ef383),
+ * in order and byte for byte, before the occurrence's transient state moved into `startWorkflow`.
+ * The clock and the UUID source are fixed so that every encoded value is reproducible. This file
+ * does not import anything the pull request added, so it passes unchanged against that commit as
+ * well.
  */
-import { describe, expect, it } from 'bun:test';
+import { createHash } from 'node:crypto';
+
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
@@ -33,14 +37,20 @@ const WORKFLOW_ID = 'batch-run';
 const SCHEDULE_ID = 'batch-schedule';
 const FIXED_NOW = 1_700_000_000_000;
 
-/** How the services resolver answers: with a value, as unavailable, or not at all (no resolver). */
-type Resolution = 'available' | 'unavailable' | 'none';
+/**
+ * How the services resolver answers: with a value, as unavailable, by throwing (which the
+ * occurrence reports as unavailable), or not at all (no resolver, which is also what an engine
+ * that runs its workflows in workers reports, and what a schedule whose workflows take no
+ * services meets).
+ */
+type Resolution = 'available' | 'unavailable' | 'throws' | 'none';
 
-const RESOLUTIONS: readonly Resolution[] = ['available', 'unavailable', 'none'];
+const RESOLUTIONS: readonly Resolution[] = ['available', 'unavailable', 'throws', 'none'];
 
 const RESOLUTION_LABELS: Record<Resolution, string> = {
   available: 'available services',
   unavailable: 'unavailable services',
+  throws: 'a resolver that throws',
   none: 'no resolver',
 };
 
@@ -109,14 +119,22 @@ async function captureStartBatch(
   resolution: Resolution,
   foldedIn: boolean,
 ): Promise<readonly BatchOperation[]> {
+  // Every UUID the engine draws is a function of how many it drew before it, so each encoded value
+  // is the same on every run.
+  let drawn = 0;
+  const uuids = spyOn(globalThis.crypto, 'randomUUID').mockImplementation(
+    () => `00000000-0000-4000-8000-${String(drawn++).padStart(12, '0')}`,
+  );
   const storage = new MemoryStorage();
   const resolveWorkflowServices: EngineOptions['resolveWorkflowServices'] | undefined =
     resolution === 'none'
       ? undefined
-      : () =>
-          resolution === 'available'
+      : () => {
+          if (resolution === 'throws') throw new Error('the resolver refused this occurrence');
+          return resolution === 'available'
             ? { status: 'available', services: { owner: 'the occurrence' } }
             : { status: 'unavailable', reason: 'no services for this occurrence' };
+        };
   const engine = await Engine.create({
     storage,
     recover: false,
@@ -167,8 +185,42 @@ async function captureStartBatch(
   } finally {
     internals.storage = storage;
     await engine[Symbol.asyncDispose]();
+    uuids.mockRestore();
   }
 }
+
+/** The SHA-256 of what a put writes, as hex; a delete writes no value. */
+function digestOfValue(operation: BatchOperation): string {
+  return operation.type === 'put'
+    ? createHash('sha256').update(operation.value).digest('hex')
+    : 'no value';
+}
+
+const EMPTY_VALUE_DIGEST = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+/**
+ * The SHA-256 of the value each operation of the start batch wrote on main, by key. An occurrence
+ * writes the same bytes for every resolution, so one table serves them all.
+ */
+const MAIN_VALUE_DIGESTS: Record<string, string> = {
+  [KEYS.workflow(WORKFLOW_ID)]: '608c116f6eff278b2e28f6a55cdb28d3edd00289778b3e61da8547180995afdb',
+  [KEYS.checkpoint(WORKFLOW_ID)]:
+    '8cca8da6004d6233b1f51dcd774bd7d6f7e887f12d43ba952c376f336c2285c6',
+  [KEYS.workflowVisibilityCreated(FIXED_NOW, WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
+  [KEYS.workflowVisibilityStatus('running', WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
+  [KEYS.workflowVisibilityType(WORKFLOW_ID, WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
+  [KEYS.workflowVisibilityUpdated(FIXED_NOW, WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
+  [KEYS.workflowVisibilityManifest(WORKFLOW_ID)]:
+    '73afb59c607fe19c213455abe4b475e5902f7b869d0990f3b688adb83255d26e',
+  [KEYS.scheduleRun(WORKFLOW_ID)]:
+    '51fb9242c5aa70e04142674694424870349f7bd8efdebcbac48bf722b6aa3827',
+  [KEYS.scheduleRunLink(WORKFLOW_ID)]:
+    '51fb9242c5aa70e04142674694424870349f7bd8efdebcbac48bf722b6aa3827',
+  [KEYS.scheduleRunBySchedule(SCHEDULE_ID, WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
+  [KEYS.terminalCleanupNeeded(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
+  [KEYS.workflowHasServices(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
+  [KEYS.schedule(SCHEDULE_ID)]: 'eb320cee97dea7f255efc4ebdf98392157748fe5f676c2283a72b6822a061b6b',
+};
 
 describe('the start batch of a scheduled occurrence', () => {
   for (const resolution of RESOLUTIONS) {
@@ -179,6 +231,26 @@ describe('the start batch of a scheduled occurrence', () => {
         const batch = await captureStartBatch(resolution, foldedIn);
 
         expect(batch.map(describeOperation)).toEqual(expectedBatch(resolution, foldedIn));
+      });
+    }
+  }
+
+  for (const resolution of RESOLUTIONS) {
+    for (const foldedIn of [false, true]) {
+      it(`commits the bytes main committed, with ${RESOLUTION_LABELS[resolution]}${
+        foldedIn ? ' and the schedule state and settled run folded in' : ''
+      }`, async () => {
+        const batch = await captureStartBatch(resolution, foldedIn);
+
+        const written = batch.map(
+          (operation) => `${describeOperation(operation)} ${digestOfValue(operation)}`,
+        );
+        const expected = expectedBatch(resolution, foldedIn).map((entry) => {
+          const key = entry.slice(entry.indexOf(' ') + 1);
+          const digest = entry.startsWith('delete ') ? 'no value' : MAIN_VALUE_DIGESTS[key];
+          return `${entry} ${digest}`;
+        });
+        expect(written).toEqual(expected);
       });
     }
   }

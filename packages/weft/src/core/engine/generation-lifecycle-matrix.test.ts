@@ -45,6 +45,7 @@ import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts'
 import {
   collectConflictWarnings,
   holdFailureAtItsFirstRead,
+  interceptConflictWarnings,
   noCallbacks,
   parkedOnSignal,
   recordWrites,
@@ -631,6 +632,8 @@ const NOT_EXERCISED: ReadonlyArray<readonly [EventName, StateName, string]> = [
     'a timer fired by hand on a disposed engine is judged by the stored status, as on main',
   ],
 ];
+
+interceptConflictWarnings();
 
 describe('generation lifecycle matrix', () => {
   it('accounts for every state and event exactly once', () => {
