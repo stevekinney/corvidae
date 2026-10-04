@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,6 +103,58 @@ test('refuses a repository path behind a symlinked ancestor', async () => {
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
+});
+
+describe('the approved build directory boundary', () => {
+  async function withRepositoryFixture(
+    run: (fixture: {
+      repositoryRoot: string;
+      trackedSource: string;
+      approved: string;
+    }) => void | Promise<void>,
+  ): Promise<void> {
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-build-link-'));
+    try {
+      const repositoryRoot = join(temporaryDirectory, 'repository');
+      const trackedSource = join(repositoryRoot, 'source');
+      await mkdir(join(repositoryRoot, 'application'), { recursive: true });
+      await mkdir(trackedSource);
+      await run({
+        repositoryRoot,
+        trackedSource,
+        approved: join(repositoryRoot, 'application', 'build'),
+      });
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  }
+
+  test('accepts the approved build directory and paths beneath it', async () => {
+    await withRepositoryFixture(({ repositoryRoot, approved }) => {
+      const boundaries = { approvedOutputDirectory: approved, repositoryRoot };
+
+      expect(assertSafeOutputDirectory(approved, boundaries)).toBe(
+        join(realpathSync(repositoryRoot), 'application', 'build'),
+      );
+      expect(() => assertSafeOutputDirectory(join(approved, 'nested'), boundaries)).not.toThrow();
+    });
+  });
+
+  test('refuses a build directory that is a symlink into tracked repository source', async () => {
+    await withRepositoryFixture(async ({ repositoryRoot, trackedSource, approved }) => {
+      await symlink(trackedSource, approved);
+      const boundaries = { approvedOutputDirectory: approved, repositoryRoot };
+
+      // Both the symlink and its target canonicalize to the tracked source directory, so
+      // treating the canonical approved root as approved would let `rm` delete source.
+      expect(() => assertSafeOutputDirectory(approved, boundaries)).toThrow(
+        'protected repository path',
+      );
+      expect(() => assertSafeOutputDirectory(join(approved, 'nested'), boundaries)).toThrow(
+        'protected repository path',
+      );
+    });
+  });
 });
 
 test('rejects sitemap route drift and duplicate URLs', () => {

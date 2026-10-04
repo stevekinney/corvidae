@@ -12,6 +12,7 @@ import {
   applyColorTokenOverridesToDocument,
   readSessionColorTokenOverrides,
 } from './color-token-overrides.ts';
+import { attachDeferredToggle } from './deferred-toggle.ts';
 import { memoizeUntilRejected } from './retryable-promise.ts';
 import { persistScrollPosition } from './sidebar-scroll.ts';
 
@@ -77,9 +78,8 @@ function hydrateShellOnce(): Promise<void> {
   });
 }
 
-// A failed attempt is forgotten so the next caller retries. The deferred toolbar
-// controls register their bootstrap click listener with `{ once: true }`, so a
-// memoized rejection would leave them inert until the page reloaded.
+// A failed attempt is forgotten so the next caller retries; a memoized rejection
+// would leave the deferred toolbar controls inert until the page reloaded.
 const hydrateShell = memoizeUntilRejected(hydrateShellOnce);
 
 // Static SSR always renders the light-state icon to avoid hydration mismatch.
@@ -92,38 +92,21 @@ if (themeToggle !== null && readInitialTheme() === 'dark') {
 }
 
 /**
- * Make a server-rendered toolbar button work before the shell is hydrated.
- *
- * The landing shell stays un-hydrated until the reader asks for something, so a
- * toolbar button rendered by SSR has no Svelte handler behind it yet — the first
- * click would land on inert markup and appear to do nothing. Each such button
- * needs its own bootstrap: hydrate, then replay the click into the now-live
- * component.
- *
- * Every panel trigger in the toolbar needs this, so it is a function rather than
- * a block per button — adding a trigger without its bootstrap produces a button
- * that silently does nothing until some OTHER control happens to hydrate the
- * shell first, which is a genuinely confusing failure to debug.
+ * Every panel trigger in the toolbar needs `attachDeferredToggle`, so it is a
+ * function rather than a block per button — adding a trigger without its
+ * bootstrap produces a button that silently does nothing until some OTHER
+ * control happens to hydrate the shell first, which is a genuinely confusing
+ * failure to debug.
  */
 function bootstrapDeferredToggle(accessibleName: string): void {
-  const toggle = document.querySelector<HTMLButtonElement>(
-    `button[aria-label="${accessibleName}"]`,
-  );
-
-  toggle?.addEventListener(
-    'click',
-    (event) => {
-      // Once Svelte has taken over the existing button, its own handler receives
-      // this trusted click. Replaying would immediately toggle the panel closed.
-      if (shellHydrated) return;
-      event.preventDefault();
-      void hydrateShell()
-        .then(() => toggle.click())
-        .catch((error) =>
-          console.error('[cinder playground] failed to hydrate landing shell:', error),
-        );
+  attachDeferredToggle(
+    document.querySelector<HTMLButtonElement>(`button[aria-label="${accessibleName}"]`),
+    {
+      hydrate: hydrateShell,
+      isHydrated: () => shellHydrated,
+      onError: (error) =>
+        console.error('[cinder playground] failed to hydrate landing shell:', error),
     },
-    { once: true },
   );
 }
 

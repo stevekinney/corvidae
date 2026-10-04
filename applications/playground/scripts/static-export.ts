@@ -125,14 +125,34 @@ function canonicalizeOutputPath(outputDirectory: string): string {
   return join(realpathSync(existingAncestor), ...missingSegments);
 }
 
+/** The directories `assertSafeOutputDirectory` weighs a requested output directory against. */
+export type OutputDirectoryBoundaries = {
+  /** The one repository directory static export may clear: the default `build/`. */
+  approvedOutputDirectory: string;
+  repositoryRoot: string;
+};
+
 /** Refuse roots and repository source paths before clearing static output. */
-export function assertSafeOutputDirectory(outputDirectory: string): string {
+export function assertSafeOutputDirectory(
+  outputDirectory: string,
+  boundaries: OutputDirectoryBoundaries = {
+    approvedOutputDirectory: OUTPUT_DIRECTORY,
+    repositoryRoot: REPOSITORY_ROOT,
+  },
+): string {
   const resolved = canonicalizeOutputPath(outputDirectory);
   if (resolved === parse(resolved).root) {
     throw new Error('[static-export] refusing to clear a filesystem root');
   }
-  const repositoryRoot = canonicalizeOutputPath(REPOSITORY_ROOT);
-  const generatedOutputRoot = canonicalizeOutputPath(OUTPUT_DIRECTORY);
+  const repositoryRoot = canonicalizeOutputPath(boundaries.repositoryRoot);
+  // Canonicalize the approved directory's parent only. If the directory itself is a
+  // symlink, resolving it would make the approved root and the requested path the same
+  // target, however much repository source that target holds; leaving the final segment
+  // literal keeps a symlinked build directory distinct from what it points at.
+  const generatedOutputRoot = join(
+    canonicalizeOutputPath(dirname(boundaries.approvedOutputDirectory)),
+    basename(boundaries.approvedOutputDirectory),
+  );
   const isSameOrNestedPath = (parent: string, child: string): boolean => {
     const pathRelativeToParent = relativePath(parent, child);
     return (
