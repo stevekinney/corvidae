@@ -58,7 +58,7 @@ Arrows run from consumer to provider. Every manifest edge appears below, includi
 | Consumer | Runtime or source-contract providers | Development providers |
 | --- | --- | --- |
 | `@lostgradient/desktop` | `armorer`, `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/operative`, `@lostgradient/telephone` | `@lostgradient/typescript` |
-| `@lostgradient/playground` | `@lostgradient/chat`, `@lostgradient/cinder`, `@lostgradient/editor`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
+| `@lostgradient/playground` | `@lostgradient/chat`, `@lostgradient/cinder`, `@lostgradient/editor`, `@lostgradient/markdown`, `@lostgradient/testing` | `@lostgradient/typescript` |
 | `@lostgradient/telephone` | `armorer`, `@lostgradient/chat`, `@lostgradient/operative` | `conversationalist`, `@lostgradient/typescript` |
 | `@lostgradient/chat` | `@lostgradient/cinder`, `conversationalist`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/cinder` | `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
@@ -90,7 +90,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | Workspace | Direct external dependencies |
 | --- | --- |
 | `@lostgradient/desktop` | `@lostgradient/environmentalist`, `electrobun`, `svelte`, `zod` |
-| `@lostgradient/playground` | `@lostgradient/environmentalist`, `@shikijs/themes`, `lucide-svelte`, `shiki`, `zod` |
+| `@lostgradient/playground` | `@lostgradient/environmentalist`, `@shikijs/themes`, `lucide-svelte`, `postcss`, `shiki`, `svelte`, `ts-morph`, `zod` |
 | `@lostgradient/telephone` | none |
 | `armorer` | `@modelcontextprotocol/client`, `@modelcontextprotocol/core`, `@modelcontextprotocol/server`, `@openai/agents`, `@opentelemetry/api`, `@standard-schema/spec`, `zod` |
 | `@lostgradient/bureau` | `zod` |
