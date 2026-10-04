@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 const environmentSchema = z.object({
   cinderTestComponents: z.string().optional().meta({ env: 'CINDER_TEST_COMPONENTS' }),
+  nodeEnv: z.string().optional().meta({ env: 'NODE_ENV' }),
   playgroundBaseUrl: z.string().optional().meta({ env: 'PLAYGROUND_BASE_URL' }),
   playgroundPortFile: z.string().optional().meta({ env: 'PLAYGROUND_PORT_FILE' }),
   port: z.string().optional().meta({ env: 'PORT' }),
@@ -11,6 +12,7 @@ const environmentSchema = z.object({
 
 const keyByEnvironmentName: Record<string, keyof z.infer<typeof environmentSchema>> = {
   CINDER_TEST_COMPONENTS: 'cinderTestComponents',
+  NODE_ENV: 'nodeEnv',
   PLAYGROUND_BASE_URL: 'playgroundBaseUrl',
   PLAYGROUND_PORT_FILE: 'playgroundPortFile',
   PORT: 'port',

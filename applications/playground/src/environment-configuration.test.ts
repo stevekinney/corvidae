@@ -4,6 +4,7 @@ import { readEnvironmentConfiguration } from './environment-configuration.ts';
 
 const VARIABLES = [
   'CINDER_TEST_COMPONENTS',
+  'NODE_ENV',
   'PLAYGROUND_BASE_URL',
   'PLAYGROUND_PORT_FILE',
   'PORT',
@@ -58,10 +59,17 @@ describe('readEnvironmentConfiguration', () => {
     expect(readEnvironmentConfiguration().cinderTestComponents).toBe('button,input');
   });
 
+  it('reads NODE_ENV', () => {
+    clearEnvironment();
+    process.env['NODE_ENV'] = 'production';
+    expect(readEnvironmentConfiguration().nodeEnv).toBe('production');
+  });
+
   it('leaves every value undefined when nothing is set', () => {
     clearEnvironment();
     const configuration = readEnvironmentConfiguration();
     expect(configuration.cinderTestComponents).toBeUndefined();
+    expect(configuration.nodeEnv).toBeUndefined();
     expect(configuration.playgroundBaseUrl).toBeUndefined();
     expect(configuration.playgroundPortFile).toBeUndefined();
     expect(configuration.port).toBeUndefined();
