@@ -28,6 +28,7 @@ import {
   activity,
   workflow,
   type Checkpoint,
+  type EngineOptions,
   type ScheduleState,
   type StartOptions,
   type TimerEntry,
@@ -56,6 +57,7 @@ import {
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
 import { notifyConditionWaiters } from './condition-waiters.ts';
+import { WorkflowAlreadyExistsError } from './errors.ts';
 import { currentExecutionAttempt, staleFailureGuard } from './execution-attempts.ts';
 import {
   createWorkflowResultWaiter,
@@ -1468,9 +1470,16 @@ describe('rejecting a launch for an id this engine is already running', () => {
     });
   }
 
-  async function startLiveRun(id: string) {
+  async function startLiveRun(
+    id: string,
+    resolveWorkflowServices?: EngineOptions['resolveWorkflowServices'],
+  ) {
     const storage = new MemoryStorage();
-    const engine = await Engine.create({ storage, recover: false });
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      ...(resolveWorkflowServices === undefined ? {} : { resolveWorkflowServices }),
+    });
     engine.register(parkedOnSignal(id));
     addStartHeaderInterceptor(engine);
     const internals = getInternals(engine);
@@ -1638,6 +1647,81 @@ describe('rejecting a launch for an id this engine is already running', () => {
       expect(internals.workflowServices.has('seeded-occurrence')).toBe(false);
       expect(internals.workflowsNeedingTerminalCleanup.has('seeded-occurrence')).toBe(false);
     } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('leaves the winning launch its services and cleanup membership when a concurrent drain of the same queued run is rejected', async () => {
+    const id = 'drained-twice';
+    const storage = new MemoryStorage();
+    const resolved: object[] = [];
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      resolveWorkflowServices: () => {
+        const services = { owner: `resolution ${resolved.length + 1}` };
+        resolved.push(services);
+        return { status: 'available', services };
+      },
+    });
+    engine.register(parkedOnSignal(id));
+    const internals = getInternals(engine);
+    try {
+      // A terminal handoff and a cadence tick draining the same persisted queued run both
+      // call startScheduledRun with its id. The first to reach startWorkflow reserves the id.
+      const schedule = { id: 'drained-schedule', workflowType: id, input: null } as ScheduleState;
+      const callbacks = createScheduleCallbacks(engine);
+      const [winner, loser] = await Promise.allSettled([
+        startScheduledRun(internals, schedule, callbacks, { workflowId: id }),
+        startScheduledRun(internals, schedule, callbacks, { workflowId: id }),
+      ]);
+
+      expect(winner.status).toBe('fulfilled');
+      expect(loser.status).toBe('rejected');
+      expect((loser as PromiseRejectedResult).reason).toBeInstanceOf(WorkflowAlreadyExistsError);
+      // The winner's own services object, not the loser's replacement and not nothing.
+      expect(resolved).toHaveLength(2);
+      expect(internals.workflowServices.get(id)).toBe(resolved[0]);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+
+      // The run it launched is still driven, and completing it sweeps what it holds.
+      await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+        label: `${id} parked on its signal`,
+      });
+      await engine.signal(id, 'go', 'drained once');
+      expect(await engine.getHandle(id).result()).toBe('drained once');
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('leaves a live run its services and cleanup membership when a scheduled occurrence for its id is rejected', async () => {
+    const id = 'occupied-occurrence';
+    const { storage, engine, internals, handle } = await startLiveRun(id, () => ({
+      status: 'available',
+      services: { owner: 'the occurrence' },
+    }));
+    try {
+      const before = holdings(internals, id);
+      expect(before.services).toEqual({ owner: 'the live run' });
+      expect(before.cleanupTracked).toBe(true);
+
+      const schedule = { id: 'occupied-schedule', workflowType: id, input: null } as ScheduleState;
+      const failure = await rejectionOf(
+        startScheduledRun(internals, schedule, createScheduleCallbacks(engine), { workflowId: id }),
+      );
+
+      expect(failure).toBeInstanceOf(WorkflowAlreadyExistsError);
+      const after = holdings(internals, id);
+      expect(after.services).toBe(before.services);
+      expect(after.cleanupTracked).toBe(true);
+      expect(after.attempt).toBe(before.attempt);
+      expect(after.checkpoint).toBe(before.checkpoint);
+
+      await engine.signal(id, 'go', 'still running');
+      expect(await handle.result()).toBe('still running');
+    } finally {
+      internals.storage = storage;
       await engine[Symbol.asyncDispose]();
     }
   });

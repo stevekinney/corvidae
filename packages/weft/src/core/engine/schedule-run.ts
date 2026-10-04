@@ -80,6 +80,47 @@ function buildScheduleRunOperations(
   return operations;
 }
 
+/** What {@link resolveScheduledRunServices} reports for one occurrence; `null` when nothing was resolved. */
+type ScheduledRunServicesResolution =
+  { status: 'available'; services: unknown } | { status: 'unavailable'; reason: string } | null;
+
+/**
+ * Put one occurrence's services and terminal-cleanup membership in engine memory ahead of its
+ * start, and return the function that takes back exactly what this call added.
+ *
+ * An entry the engine already holds under the id belongs to another launch of it: a start
+ * still in flight, which reserved the id first, or a live run. A start rejected because of
+ * that launch (a duplicate id) rolls nothing back, since whatever the engine holds under the
+ * id is then the other launch's. The occurrence therefore replaces no entry and releases only
+ * the ones it added, so the launch that owns the id keeps its own services, by identity, and
+ * its obligation to schedule the durable terminal cleanup.
+ */
+function seedScheduledRunTransientState(
+  internals: EngineInternals,
+  workflowId: string,
+  resolution: ScheduledRunServicesResolution,
+): () => void {
+  let seededServices: { readonly value: unknown } | undefined;
+  if (resolution?.status === 'available' && !internals.workflowServices.has(workflowId)) {
+    internals.workflowServices.set(workflowId, resolution.services);
+    seededServices = { value: resolution.services };
+  }
+  const seededCleanupMembership = !internals.workflowsNeedingTerminalCleanup.has(workflowId);
+  internals.workflowsNeedingTerminalCleanup.add(workflowId);
+
+  return () => {
+    // Compared by identity: a start that adopted its checkpoint already rolled the entry back
+    // itself, and another launch may have replaced it since.
+    if (
+      seededServices !== undefined &&
+      internals.workflowServices.get(workflowId) === seededServices.value
+    ) {
+      internals.workflowServices.delete(workflowId);
+    }
+    if (seededCleanupMembership) internals.workflowsNeedingTerminalCleanup.delete(workflowId);
+  };
+}
+
 /**
  * Launch one scheduled occurrence's workflow run and emit `schedule:fired`.
  *
@@ -114,19 +155,15 @@ export async function startScheduledRun(
       key: KEYS.workflowHasServices(workflowId),
       value: EMPTY_STORAGE_VALUE,
     });
-
-    if (resolution.status === 'available') {
-      internals.workflowServices.set(workflowId, resolution.services);
-    }
   }
 
-  // Register the terminal-cleanup obligation before startWorkflow is called.
-  // Every scheduled run writes `schedule-run` metadata, and the inline start can
-  // complete before this function resumes after the await. The in-memory set is
-  // what makes completion schedule the deferred durable cleanup timer that
-  // sweeps that metadata if the fire-and-forget scheduled-terminal handler is
-  // interrupted. If startWorkflow throws, the catch below clears it.
-  internals.workflowsNeedingTerminalCleanup.add(workflowId);
+  // Register the services and the terminal-cleanup obligation before startWorkflow is
+  // called. Every scheduled run writes `schedule-run` metadata, and the inline start can
+  // complete before this function resumes after the await. The in-memory set is what
+  // makes completion schedule the deferred durable cleanup timer that sweeps that
+  // metadata if the fire-and-forget scheduled-terminal handler is interrupted. If
+  // startWorkflow throws, the release below takes back exactly what was added here.
+  const releaseSeed = seedScheduledRunTransientState(internals, workflowId, resolution);
 
   // An empty array and `undefined` are equivalent at the receiving end
   // (buildStartBatchOperations spreads `?? []`), so pass the array directly.
@@ -143,12 +180,7 @@ export async function startScheduledRun(
       options.skipAdmissionIdCheck,
     );
   } catch (error) {
-    // The services and the cleanup membership above are this occurrence's own, seeded
-    // before the start could reject. A start that rejects before it adopts a launch
-    // checkpoint rolls back nothing, because whatever the engine holds under an id is then
-    // another run's, so the occurrence that seeded them releases them.
-    internals.workflowServices.delete(workflowId);
-    internals.workflowsNeedingTerminalCleanup.delete(workflowId);
+    releaseSeed();
     throw error;
   }
 
@@ -191,9 +223,7 @@ async function resolveScheduledRunServices(
   workflowId: string,
   state: ScheduleState,
   occurrence: number | undefined,
-): Promise<
-  { status: 'available'; services: unknown } | { status: 'unavailable'; reason: string } | null
-> {
+): Promise<ScheduledRunServicesResolution> {
   const resolver = internals.options.resolveWorkflowServices;
   if (internals.inlineStrategy === null || !resolver) {
     return null;
