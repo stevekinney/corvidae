@@ -935,6 +935,32 @@ describe('startAttempt', () => {
       expect(await w.ports.startAttempt(startRequest())).toEqual({ status: 'stood-down' });
     });
 
+    it.each([
+      ['a millisecond', 1],
+      ['a day', 86_400_000],
+    ])(
+      'stands down, creating nothing, for a record created %s later than the runtime clock',
+      async (_name, ahead) => {
+        let starts = 0;
+        const w = await clockedWorld({
+          startAttemptRun: () => {
+            starts += 1;
+            return { run: {} as never, durablyStarted: Promise.resolve() };
+          },
+        });
+        // The record was stamped at `NOW`; the clock now reads earlier than that, so no
+        // age can be read from it. It must not be granted a fresh window to run in.
+        w.runtime.setTime(Date.parse(NOW) - ahead);
+
+        expect(await w.ports.startAttempt(startRequest())).toEqual({ status: 'stood-down' });
+
+        expect(starts).toBe(0);
+        expect(w.watched).toEqual([]);
+        expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+        expect(await w.engine.get('goal-g1-a0')).toBeNull();
+      },
+    );
+
     it('writes no session when it elapses before the session is seated', async () => {
       let starts = 0;
       const w = await clockedWorld({
