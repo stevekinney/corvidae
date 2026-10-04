@@ -3429,7 +3429,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       activeRun.once('run.error', (_event) => {
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
-        disposeRegisteredStreamListeners(disposeStreamListeners);
+        // The stream listeners are deliberately NOT disposed here. `run.error`
+        // is not terminal: Operative follows it with `run.completed`, which
+        // carries the finish reason, so the `run.completed` listener above
+        // disposes them once that event has reached them. Detaching on
+        // `run.error` stopped the run frame forwarder and the run event feed
+        // one event early, so a run that exceeded its budget never announced
+        // it and a failed run's feed never recorded its terminal event
+        // (COR-1419). A recovered run already works this way.
         // COR-625: a terminal transition owes this run one checkpoint-
         // retention step whether or not anyone ever calls `closed()`.
         // Memoized per run id, so this and `closed()`'s own fold resolve the
@@ -3439,6 +3446,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
       });
+
+      // A run can settle without any terminal event: a durable run whose engine lost a
+      // checkpoint compare-and-swap, or was disposed, is abandoned to whoever owns it and
+      // resolves its result quietly (`driveDurableRun`). The terminal listeners above never run
+      // for it, and `run.error` no longer detaches the stream listeners, so a run that reported
+      // an error before being abandoned would keep them attached for good. A result settles
+      // only after any terminal event it carries has been dispatched, so detaching here cannot
+      // cut off the `run.completed` the forwarder and the run event feed are waiting for. The
+      // disposers drain as they run, which makes this a no-op after a terminal listener ran.
+      detachBestEffortPromise(
+        activeRun.result.finally(() => disposeRegisteredStreamListeners(disposeStreamListeners)),
+      );
 
       store.register(activeRun, runId);
       registeredForRecovery = true;
