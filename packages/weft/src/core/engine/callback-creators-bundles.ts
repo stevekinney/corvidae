@@ -64,7 +64,6 @@ import {
   finalizePendingTimelineEntry,
   runDeferredTerminalCleanup,
   runWorkflowFinalizer,
-  timeoutWorkflow,
 } from './termination.ts';
 import {
   createCoordinatedUpdateResponder,
@@ -259,8 +258,7 @@ export function createTimeOperationCallbacks<TWorkflows extends object, TActivit
     runWorkflowFinalizer: (workflowId, timerId, firedAt) =>
       runWorkflowFinalizer(getInternals(engine), workflowId, timerId, termination, firedAt),
     handleScheduleTimer: (entry) => handleScheduleTimerForEngine(engine, entry),
-    timeout: (workflowId, skipCommitIf) =>
-      timeoutWorkflow(getInternals(engine), workflowId, termination, skipCommitIf),
+    timeout: (workflowId) => engine.timeout(workflowId),
     handleCleanupError: (source, error, workflowId) =>
       createTerminationCallbacks(engine).handleCleanupError(source, error, workflowId),
     resolveExecutableRegistrationForRevision: (type, revision) =>

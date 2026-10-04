@@ -939,18 +939,26 @@ async function replaceAbandonedGenerationOnTheWinner(
 }
 
 describe('timers of a generation that replaced the one this engine abandoned', () => {
-  it('fires the replacement execution deadline when the abandoning engine is the one ticking', async () => {
+  it('retains the replacement execution deadline for the engine that drives it', async () => {
     const scenario = await replaceAbandonedGenerationOnTheWinner('deadline-run', '30m', '10m');
     const consoleError = spyOn(console, 'error').mockImplementation(() => {});
     try {
+      const timersBefore = await scenario.timerKeys();
+      expect(timersBefore.some((key) => key.includes('deadline'))).toBe(true);
       scenario.clock.now += 11 * 60 * 1000;
       await scenario.loser.scheduler.tick(scenario.clock.now);
 
-      // The deadline belongs to generation B, not to the abandoned A: enforcing it is a
-      // durable terminal transition any engine may commit, so it must not be retained
-      // forever for a winner that may not run a scheduler at all.
+      // The loser writes nothing durable: the deadline belongs to generation B, which only the
+      // winner drives, so the loser declines it through the scheduler's retry path and leaves
+      // the record for the winner's own scheduler to enforce.
+      expect(await readStatus(scenario.storage, 'deadline-run')).toBe('running');
+      expect(await scenario.timerKeys()).toEqual(timersBefore);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      consoleError.mockClear();
+
+      // The engine driving B fires the very same record.
+      await scenario.winner.scheduler.tick(scenario.clock.now);
       expect(await readStatus(scenario.storage, 'deadline-run')).toBe('timed-out');
-      // Nothing was retried: the scheduler reported no failed timer callback.
       expect(consoleError).not.toHaveBeenCalled();
     } finally {
       consoleError.mockRestore();
@@ -958,160 +966,28 @@ describe('timers of a generation that replaced the one this engine abandoned', (
     }
   });
 
-  /**
-   * The deadline record the abandoned generation A left behind, as the scheduler scanned
-   * it: another engine finished A and started B under the same id before this callback
-   * loaded the stored state, so the record is handed to the loser after B exists.
-   */
-  function abandonedGenerationDeadlineRecord(id: string, fireAt: number): TimerEntry {
-    return { id: `deadline:${id}`, workflowId: id, fireAt, kind: 'execution-deadline' };
-  }
-
-  it('does not time out a replacement for the abandoned generation deadline record that reaches the loser late', async () => {
-    const scenario = await replaceAbandonedGenerationOnTheWinner('stale-deadline', '30m', '60m');
+  it('collects a deadline record for a suspended replacement instead of timing it out', async () => {
+    const scenario = await replaceAbandonedGenerationOnTheWinner('suspended-run', '30m', '10m');
     try {
-      const staleFireAt = scenario.clock.now + 10 * 60 * 1000;
-      scenario.clock.now += 11 * 60 * 1000;
-
-      // A's 10 minute deadline is due, but the stored generation is B with a 60 minute one:
-      // timing B out at minute 11 would kill a healthy run with A's record.
-      const [fired] = await Promise.allSettled([
-        scenario.loser.fireTimer(abandonedGenerationDeadlineRecord('stale-deadline', staleFireAt)),
-      ]);
-
-      expect(await readStatus(scenario.storage, 'stale-deadline')).toBe('running');
-      // The scheduler is told to retry, so the record stays: it is the same durable key
-      // B's own deadline is armed under.
-      expect(fired?.status).toBe('rejected');
-      const keysAfter = await scenario.timerKeys();
-      expect(keysAfter.some((key) => key.includes('deadline'))).toBe(true);
-    } finally {
-      await scenario.dispose();
-    }
-  });
-
-  it('does not time out a replacement that has no deadline for an abandoned generation record', async () => {
-    const scenario = await replaceAbandonedGenerationOnTheWinner('no-deadline', '30m');
-    try {
-      const staleFireAt = scenario.clock.now + 10 * 60 * 1000;
-      scenario.clock.now += 11 * 60 * 1000;
-
-      const [fired] = await Promise.allSettled([
-        scenario.loser.fireTimer(abandonedGenerationDeadlineRecord('no-deadline', staleFireAt)),
-      ]);
-
-      expect(await readStatus(scenario.storage, 'no-deadline')).toBe('running');
-      expect(fired?.status).toBe('rejected');
-    } finally {
-      await scenario.dispose();
-    }
-  });
-
-  it('still times out a replacement whose own deadline has passed when an older record arrives', async () => {
-    const scenario = await replaceAbandonedGenerationOnTheWinner('passed-deadline', '30m', '10m');
-    try {
-      // The record is dated after B's own 10 minute deadline, so B's deadline has passed
-      // whichever generation the record was armed for.
-      const laterFireAt = scenario.clock.now + 11 * 60 * 1000;
-      scenario.clock.now += 12 * 60 * 1000;
-
-      await scenario.loser.fireTimer(
-        abandonedGenerationDeadlineRecord('passed-deadline', laterFireAt),
-      );
-
-      expect(await readStatus(scenario.storage, 'passed-deadline')).toBe('timed-out');
-    } finally {
-      await scenario.dispose();
-    }
-  });
-
-  it('does not time out a generation that replaces the validated one between the deadline check and the terminal commit', async () => {
-    const id = 'toctou-run';
-    const scenario = await abandonGenerationAndFinishItOnTheWinner(
-      id,
-      parkedOnSignal(`${id}-second`),
-    );
-    const baseStorage = scenario.loserInternals.storage;
-    try {
-      // Generation B: a 10 minute deadline, parked on a signal the winner delivers.
-      const generationB = await scenario.winner.start(`${id}-second`, null, {
-        id,
-        onTerminalConflict: 'start-new',
-        executionTimeout: '10m',
-      });
-      await waitForCondition(() => scenario.winnerInternals.parkedInlineWorkflows.has(id), {
-        label: 'generation B parked on the winner',
-      });
-      const generationBDeadline = (
-        decode((await scenario.storage.get(KEYS.workflow(id)))!) as WorkflowState
+      const deadline = (
+        decode((await scenario.storage.get(KEYS.workflow('suspended-run')))!) as WorkflowState
       ).executionDeadline!;
+      await scenario.winner.suspend('suspended-run');
+      expect(await readStatus(scenario.storage, 'suspended-run')).toBe('suspended');
 
-      // Hold the loser's timeout at its first storage read after the read that validated
-      // generation B, so the validated state is stale by the time the terminal write runs.
-      const heldAtFirstReadAfterValidation = createDeferred();
-      const release = createDeferred();
-      let validationRead: Uint8Array | null = null;
-      let held = false;
-      scenario.loserInternals.storage = new Proxy(baseStorage, {
-        get(target, property) {
-          const original: unknown = Reflect.get(target, property, target);
-          if (typeof original !== 'function') return original;
-          if (property !== 'get') return original.bind(target);
-          return async (key: string) => {
-            if (validationRead !== null && !held) {
-              held = true;
-              heldAtFirstReadAfterValidation.resolve();
-              await release.promise;
-            }
-            const value = (await original.call(target, key)) as Uint8Array | null;
-            if (key === KEYS.workflow(id)) validationRead ??= value;
-            return value;
-          };
-        },
-      });
-
-      const record: TimerEntry = {
-        id: `deadline:${id}`,
-        workflowId: id,
-        fireAt: generationBDeadline,
+      // The scheduler scanned the record before the suspend deleted B's deadline timer, so it
+      // reaches the loser afterwards. A suspended run keeps its absolute deadline for its resume
+      // to re-arm, so the loser has no business ending it.
+      scenario.clock.now += 11 * 60 * 1000;
+      await scenario.loser.fireTimer({
+        id: 'deadline:suspended-run',
+        workflowId: 'suspended-run',
+        fireAt: deadline,
         kind: 'execution-deadline',
-      };
-      const firing = scenario.loser.fireTimer(record);
-      await heldAtFirstReadAfterValidation.promise;
-      // The check passed against generation B, so this is not a stale-record rejection.
-      expect((decode(validationRead!) as WorkflowState).executionDeadline).toBe(
-        generationBDeadline,
-      );
-
-      // Meanwhile the winner finishes B and starts generation C, with a 60 minute deadline,
-      // under the same id and the same durable deadline key.
-      await scenario.winner.signal(id, 'go', 'B done');
-      expect(await generationB.result()).toBe('B done');
-      const generationC = await scenario.winner.start(`${id}-second`, null, {
-        id,
-        onTerminalConflict: 'start-new',
-        executionTimeout: '60m',
       });
-      await waitForCondition(() => scenario.winnerInternals.parkedInlineWorkflows.has(id), {
-        label: 'generation C parked on the winner',
-      });
-      const timersBeforeRelease = await scenario.timerKeys();
-      expect(timersBeforeRelease.some((key) => key.includes('deadline'))).toBe(true);
 
-      release.resolve();
-      const [fired] = await Promise.allSettled([firing]);
-      scenario.loserInternals.storage = baseStorage;
-
-      // Generation C's own deadline is 60 minutes away; a record dated at B's must not end it.
-      expect(await readStatus(scenario.storage, id)).toBe('running');
-      // The scheduler is told to retry, so it keeps the deadline key generation C now owns.
-      expect(fired?.status).toBe('rejected');
-      expect(await scenario.timerKeys()).toEqual(timersBeforeRelease);
-      // And the generation is still the winner's to finish.
-      await scenario.winner.signal(id, 'go', 'C done');
-      expect(await generationC.result()).toBe('C done');
+      expect(await readStatus(scenario.storage, 'suspended-run')).toBe('suspended');
     } finally {
-      scenario.loserInternals.storage = baseStorage;
       await scenario.dispose();
     }
   });
