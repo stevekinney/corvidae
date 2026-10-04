@@ -492,6 +492,26 @@ test('the preflight and global inputs name files, not the whole repository', asy
   }
 });
 
+test('the playground build hashes the root package map its documentation reads', async () => {
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const build = configuration.tasks['@lostgradient/playground#build'];
+  // `component-documentation.ts` reads each package's last published version from the root
+  // package map. The generic `build` inputs cover only the package directory, so without this
+  // input turbo restores an old `build/` that still shows a version after `lastPublishedVersion`
+  // changed. A package-specific entry replaces the generic one, so it restates `transit` and the
+  // outputs too; `reachesPreflight` below proves the first still reaches the install preflight.
+  expect(build?.inputs).toContain('$TURBO_DEFAULT$');
+  expect(build?.inputs).toContain('$TURBO_ROOT$/scripts/mirror/package-map.json');
+  expect(build?.dependsOn).toContain('transit');
+  expect(build?.outputs).toContain('build/**');
+  expect(await Bun.file(join(root, 'scripts/mirror/package-map.json')).exists()).toBe(true);
+  // Pin the read the input covers, so removing the read prompts removing the input.
+  const documentation = await Bun.file(
+    join(root, 'applications/playground/src/component-documentation.ts'),
+  ).text();
+  expect(documentation).toContain("'scripts', 'mirror', 'package-map.json'");
+});
+
 /**
  * A static model of turbo's `dependsOn` resolution: it strips a leading `^`
  * and falls back from `<package>#<task>` to the bare `<task>` definition. It
