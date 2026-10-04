@@ -983,7 +983,8 @@ describe('timers of a generation that replaced the one this engine abandoned', (
       // The scheduler is told to retry, so the record stays: it is the same durable key
       // B's own deadline is armed under.
       expect(fired?.status).toBe('rejected');
-      expect((await scenario.timerKeys()).some((key) => key.includes('deadline'))).toBe(true);
+      const keysAfter = await scenario.timerKeys();
+      expect(keysAfter.some((key) => key.includes('deadline'))).toBe(true);
     } finally {
       await scenario.dispose();
     }
@@ -1329,9 +1330,8 @@ describe('failing a replacement before this engine adopts its checkpoint', () =>
     const consoleError = spyOn(console, 'error').mockImplementation(() => {});
     try {
       expect(await readStatus(scenario.storage, 'delayed-fails')).toBe('pending');
-      const delayedStartKeys = (await scenario.timerKeys()).filter((key) =>
-        key.includes('delayed'),
-      );
+      const timerKeysBefore = await scenario.timerKeys();
+      const delayedStartKeys = timerKeysBefore.filter((key) => key.includes('delayed'));
       expect(delayedStartKeys.length).toBeGreaterThanOrEqual(1);
 
       scenario.clock.now += 6 * 60 * 1000;
