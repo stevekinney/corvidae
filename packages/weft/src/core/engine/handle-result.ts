@@ -1,8 +1,5 @@
-import {
-  isCheckpointConflictFor,
-  isCurrentCheckpointGenerationAbandoned,
-} from './abandoned-checkpoint-generations.ts';
-import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
+import { abandonedGenerationConflict } from './checkpoint-conflict-abandon.ts';
+import { isCheckpointConflictFor } from './checkpoint-conflict-error.ts';
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { EngineDisposedError } from './errors.ts';
 import { WorkflowHandle } from './handles.ts';
@@ -39,14 +36,11 @@ export function getWorkflowResultPromise(
     return existingWaiter.promise;
   }
 
-  // This engine abandoned its current generation after a lost checkpoint race:
-  // nothing local will settle a fresh waiter, so reject now (no storage read).
-  if (isCurrentCheckpointGenerationAbandoned(internals, workflowId)) {
-    const rejected = Promise.reject(
-      new WorkflowCheckpointConflictError(workflowId, {
-        workflowExecutionToken: internals.checkpoints.get(workflowId)?.workflowExecutionToken,
-      }),
-    );
+  // This engine abandoned the generation it holds after a lost checkpoint race, live or
+  // suspended: nothing local will settle a fresh waiter, so reject now (no storage read).
+  const conflict = abandonedGenerationConflict(internals, workflowId);
+  if (conflict !== undefined) {
+    const rejected = Promise.reject(conflict);
     void rejected.catch(() => {});
     return rejected;
   }

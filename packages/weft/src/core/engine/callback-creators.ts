@@ -105,7 +105,7 @@ export function persistCheckpointForEngine<TWorkflows extends object, TActivitie
   workerCheckpointBytes?: ArrayBuffer,
 ): Promise<void> {
   const internals = getInternals(engine);
-  return persistCheckpointAbandoningOnConflict(internals, () =>
+  return persistCheckpointAbandoningOnConflict(internals, workflowId, () =>
     persistCheckpoint(
       internals,
       workflowId,
