@@ -37,9 +37,16 @@ export function retainTimerOfAbandonedGeneration(
  * abandoned must not treat every deadline for the id as the abandoned run's.
  * Another engine may have finished that run and started a replacement under the
  * same id, and the replacement's deadline would then be retained forever by an
- * engine that never drives it. Deadline records carry no generation, so the
- * stored workflow state decides: only a deadline recorded for the generation this
- * engine abandoned is left for the winner.
+ * engine that never drives it. Deadline records carry no generation, so the stored
+ * workflow state decides, and it must agree with the record twice. The stored
+ * generation must not be the abandoned one, which is left for the winner. And the
+ * stored deadline must have been reached by the record, because a record armed for
+ * an earlier generation can reach the loser after a replacement started (the
+ * scheduler scans first and loads state afterwards), and timing the replacement out
+ * with it would kill a healthy run: only a stored deadline at or before the
+ * record's `fireAt` has certainly passed, since the scheduler fires nothing early.
+ * Anything else is retained for the engine that owns the stored generation, whose
+ * own deadline record is the same durable key.
  */
 export function fireExecutionDeadline(
   internals: EngineInternals,
@@ -66,7 +73,9 @@ async function fireDeadlineBesideAbandonedGeneration(
   const state = await callbacks.loadWorkflowState(entry.workflowId);
   if (
     state !== null &&
-    !isCheckpointGenerationAbandoned(internals, entry.workflowId, state.workflowExecutionToken)
+    !isCheckpointGenerationAbandoned(internals, entry.workflowId, state.workflowExecutionToken) &&
+    state.executionDeadline !== undefined &&
+    state.executionDeadline <= entry.fireAt
   ) {
     await callbacks.timeout(entry.workflowId);
     return;

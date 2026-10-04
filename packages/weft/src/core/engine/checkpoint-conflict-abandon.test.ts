@@ -955,6 +955,72 @@ describe('timers of a generation that replaced the one this engine abandoned', (
     }
   });
 
+  /**
+   * The deadline record the abandoned generation A left behind, as the scheduler scanned
+   * it: another engine finished A and started B under the same id before this callback
+   * loaded the stored state, so the record is handed to the loser after B exists.
+   */
+  function abandonedGenerationDeadlineRecord(id: string, fireAt: number): TimerEntry {
+    return { id: `deadline:${id}`, workflowId: id, fireAt, kind: 'execution-deadline' };
+  }
+
+  it('does not time out a replacement for the abandoned generation deadline record that reaches the loser late', async () => {
+    const scenario = await replaceAbandonedGenerationOnTheWinner('stale-deadline', '30m', '60m');
+    try {
+      const staleFireAt = scenario.clock.now + 10 * 60 * 1000;
+      scenario.clock.now += 11 * 60 * 1000;
+
+      // A's 10 minute deadline is due, but the stored generation is B with a 60 minute one:
+      // timing B out at minute 11 would kill a healthy run with A's record.
+      const [fired] = await Promise.allSettled([
+        scenario.loser.fireTimer(abandonedGenerationDeadlineRecord('stale-deadline', staleFireAt)),
+      ]);
+
+      expect(await readStatus(scenario.storage, 'stale-deadline')).toBe('running');
+      // The scheduler is told to retry, so the record stays: it is the same durable key
+      // B's own deadline is armed under.
+      expect(fired?.status).toBe('rejected');
+      expect((await scenario.timerKeys()).some((key) => key.includes('deadline'))).toBe(true);
+    } finally {
+      await scenario.dispose();
+    }
+  });
+
+  it('does not time out a replacement that has no deadline for an abandoned generation record', async () => {
+    const scenario = await replaceAbandonedGenerationOnTheWinner('no-deadline', '30m');
+    try {
+      const staleFireAt = scenario.clock.now + 10 * 60 * 1000;
+      scenario.clock.now += 11 * 60 * 1000;
+
+      const [fired] = await Promise.allSettled([
+        scenario.loser.fireTimer(abandonedGenerationDeadlineRecord('no-deadline', staleFireAt)),
+      ]);
+
+      expect(await readStatus(scenario.storage, 'no-deadline')).toBe('running');
+      expect(fired?.status).toBe('rejected');
+    } finally {
+      await scenario.dispose();
+    }
+  });
+
+  it('still times out a replacement whose own deadline has passed when an older record arrives', async () => {
+    const scenario = await replaceAbandonedGenerationOnTheWinner('passed-deadline', '30m', '10m');
+    try {
+      // The record is dated after B's own 10 minute deadline, so B's deadline has passed
+      // whichever generation the record was armed for.
+      const laterFireAt = scenario.clock.now + 11 * 60 * 1000;
+      scenario.clock.now += 12 * 60 * 1000;
+
+      await scenario.loser.fireTimer(
+        abandonedGenerationDeadlineRecord('passed-deadline', laterFireAt),
+      );
+
+      expect(await readStatus(scenario.storage, 'passed-deadline')).toBe('timed-out');
+    } finally {
+      await scenario.dispose();
+    }
+  });
+
   it('keeps the replacement sleep and review timers for the engine that drives it', async () => {
     const scenario = await replaceAbandonedGenerationOnTheWinner('timers-run', '5m');
     const consoleError = spyOn(console, 'error').mockImplementation(() => {});
