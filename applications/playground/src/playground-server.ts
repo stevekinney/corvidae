@@ -110,7 +110,12 @@ import {
   snapshotModeStyleTag,
 } from './snapshot-mode.ts';
 import { newestSourceMtimeMs, type PlaygroundFreshnessFingerprint } from './source-fingerprint.ts';
-import { handleEventsRoute, sseClients } from './sse-broadcast.ts';
+import {
+  advertiseLiveReload,
+  handleEventsRoute,
+  isLiveReloadAdvertised,
+  sseClients,
+} from './sse-broadcast.ts';
 import {
   getPreparedShellServerRenderer,
   loadPageServerRenderer,
@@ -873,6 +878,7 @@ async function handleLandingRoute(url: URL): Promise<Response> {
     shellBody: renderedShell.body,
     shellHead: renderedShell.head,
     initialSearch: url.search,
+    ...(isLiveReloadAdvertised() ? { liveReloadUrl: '/events' } : {}),
   });
   return new Response(html, { headers: { 'Content-Type': 'text/html' } });
 }
@@ -1478,6 +1484,7 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
   let watchers: FSWatcher[] = [];
 
   const dispose = createSharedDisposer(async () => {
+    advertiseLiveReload(false);
     for (const watcher of watchers) {
       watcher.close();
     }
@@ -1511,6 +1518,8 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
         await dispose();
         throw error;
       }
+      // From here on source edits reach `/events`, so the landing page may subscribe to it.
+      advertiseLiveReload(true);
     }
     const prebuildAttempt = await runGenerationCheckedWarmup(() =>
       runConcurrentStartupWarmup(eagerPrebuildAndWarmManifests, loadShellServerRenderer, dispose),

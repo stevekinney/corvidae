@@ -13,10 +13,15 @@ import {
   readSessionColorTokenOverrides,
 } from './color-token-overrides.ts';
 import { attachDeferredToggle } from './deferred-toggle.ts';
+import { attachLandingLiveReload } from './landing-live-reload.ts';
 import { memoizeUntilRejected } from './retryable-promise.ts';
 import { persistScrollPosition } from './sidebar-scroll.ts';
 
 applyColorTokenOverridesToDocument(document, readSessionColorTokenOverrides()[readInitialTheme()]);
+
+// The shell hydrates on interaction, so until then nothing else on this page would hear the
+// dev server's reload events. The hydrated page opens its own stream; this one closes with it.
+const landingLiveReload = attachLandingLiveReload(document);
 
 const themeToggle = document.querySelector<HTMLButtonElement>(
   'button[aria-label^="Preview theme:"]',
@@ -74,6 +79,7 @@ function hydrateShellOnce(): Promise<void> {
       },
     });
     shellHydrated = true;
+    landingLiveReload?.close();
     return undefined;
   });
 }

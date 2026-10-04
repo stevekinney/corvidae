@@ -57,6 +57,24 @@ describe('jsonForScriptTag', () => {
   });
 });
 
+describe('renderShell live-reload advertisement', () => {
+  it('points the page at the live-reload stream when the server advertises one', () => {
+    const html = renderShell(null, ['button'], { liveReloadUrl: '/events' });
+
+    expect(html).toContain('<meta name="cinder-live-reload" content="/events" />');
+  });
+
+  it('adds nothing for a page rendered without a live server, so a static export is unchanged', () => {
+    expect(renderShell(null, ['button'])).not.toContain('cinder-live-reload');
+  });
+
+  it('escapes the advertised address like any other attribute value', () => {
+    const html = renderShell(null, ['button'], { liveReloadUrl: '/events?a="b"&c=<d>' });
+
+    expect(html).toContain('content="/events?a=&quot;b&quot;&amp;c=&lt;d&gt;"');
+  });
+});
+
 describe('renderShell', () => {
   it('embeds the active component and component list in the data island', () => {
     const html = renderShell('button', ['button', 'avatar']);

@@ -1,6 +1,23 @@
 /** Set of active SSE stream controllers. */
 export const sseClients = new Set<ReadableStreamDefaultController<string>>();
 
+let liveReloadAdvertised = false;
+
+/**
+ * Whether the server is watching its sources, and so has a `/events` stream worth
+ * subscribing to. Only a running dev server turns this on (`startServer`); the
+ * static export renders pages through `handleRequest` without one, so the pages it
+ * writes never ask a static host for a stream it cannot serve.
+ */
+export function advertiseLiveReload(advertised: boolean): void {
+  liveReloadAdvertised = advertised;
+}
+
+/** Whether pages rendered now should carry a pointer to the live-reload stream. */
+export function isLiveReloadAdvertised(): boolean {
+  return liveReloadAdvertised;
+}
+
 /**
  * Send a named SSE event to every connected client.
  *

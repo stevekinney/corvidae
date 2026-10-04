@@ -333,6 +333,12 @@ export type RenderShellOptions = {
   shellHead?: string;
   /** Request query used to seed identical server and client toolbar state. */
   initialSearch?: string;
+  /**
+   * Address of the dev server's live-reload stream, advertised in a `<meta>` tag the
+   * landing page's bootstrap reads. Set only while a server is watching its sources:
+   * a static export has no such stream, so its pages leave this out and add nothing.
+   */
+  liveReloadUrl?: string;
 };
 
 /**
@@ -355,6 +361,13 @@ export function renderShell(
   const meta = documentationMetadataTags(metadata, options.baseUrl);
   const structuredData = documentationJsonLd(metadata, options.baseUrl);
 
+  // Appended to the viewport line rather than given a line of its own, so a page rendered
+  // without a live server stays byte-identical to what it was before this tag existed.
+  const liveReloadMeta =
+    options.liveReloadUrl === undefined
+      ? ''
+      : `\n    <meta name="cinder-live-reload" content="${escapeHtml(options.liveReloadUrl)}" />`;
+
   const initialData = {
     component: activeComponent ?? '',
     components,
@@ -367,7 +380,7 @@ export function renderShell(
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />${liveReloadMeta}
     <title>${escapeHtml(metadata.title)}</title>
     ${meta}
     ${structuredData}

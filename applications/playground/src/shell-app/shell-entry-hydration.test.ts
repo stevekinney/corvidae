@@ -18,4 +18,17 @@ describe('landing shell hydration policy', () => {
     expect(source).toContain("import { attachDeferredToggle } from './deferred-toggle.ts'");
     expect(source).not.toContain('once: true');
   });
+
+  test('subscribes to live reload before the deferred hydration and hands off to the hydrated page', async () => {
+    const source = await Bun.file(new URL('./shell-entry.ts', import.meta.url)).text();
+
+    // The landing page hydrates only on interaction, so until then nothing else on it would hear a
+    // source edit. The hydrated page opens its own stream, so the bootstrap one closes with it.
+    expect(source).toContain("import { attachLandingLiveReload } from './landing-live-reload.ts'");
+    expect(source).toContain('const landingLiveReload = attachLandingLiveReload(document);');
+    expect(source).toContain('landingLiveReload?.close();');
+    expect(source.indexOf('landingLiveReload?.close();')).toBeGreaterThan(
+      source.indexOf('svelte.hydrate('),
+    );
+  });
 });

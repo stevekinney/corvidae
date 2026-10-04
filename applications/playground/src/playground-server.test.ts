@@ -65,7 +65,7 @@ import {
 import { configureRequestIdleTimeout } from './port-scanner.ts';
 import { getRebuildGeneration, incrementRebuildGeneration } from './rebuild-generation.ts';
 import { jsonForScriptTag } from './render-shell.ts';
-import { triggerReload } from './sse-broadcast.ts';
+import { advertiseLiveReload, triggerReload } from './sse-broadcast.ts';
 import {
   fallbackToLastGood,
   formatBuildLogs,
@@ -832,6 +832,28 @@ describe('/styles.css', () => {
       });
       expect(response.headers.get('Content-Type')).toBe('text/css');
     }
+  });
+});
+
+describe('/ and the live-reload stream', () => {
+  afterEach(() => advertiseLiveReload(false));
+
+  it('points the landing page at /events while the dev server watches its sources', async () => {
+    advertiseLiveReload(true);
+
+    const response = await handleRequest(req('/'));
+    const html = await response.text();
+
+    expect(html).toContain('<meta name="cinder-live-reload" content="/events" />');
+  });
+
+  it('leaves the landing page without it when nothing is watching, as in the static export', async () => {
+    advertiseLiveReload(false);
+
+    const response = await handleRequest(req('/'));
+    const html = await response.text();
+
+    expect(html).not.toContain('cinder-live-reload');
   });
 });
 
