@@ -833,6 +833,147 @@ describe('wakes for an abandoned generation', () => {
   });
 });
 
+/**
+ * The loser abandons generation A of a parked run (its in-memory checkpoint stays on
+ * A), the winner finishes A and starts generation B under the same id, and B sleeps
+ * on the winner for `sleepDuration`. Both engines run their schedulers manually, so
+ * a test chooses which of them ticks.
+ */
+async function replaceAbandonedGenerationOnTheWinner(
+  id: string,
+  sleepDuration: string,
+  executionTimeout?: string,
+) {
+  const clock = { now: 1_000_000 };
+  const storage = new MemoryStorage();
+  const workflows = {
+    [`${id}-first`]: parkedOnSignal(`${id}-first`),
+    [`${id}-second`]: workflow({ name: `${id}-second` }).execute(async function* (
+      context: WorkflowContext,
+    ) {
+      yield* context.sleep(sleepDuration);
+      return 'woke';
+    }),
+  };
+  const engineOptions = {
+    storage,
+    workflows,
+    getNow: () => clock.now,
+    backgroundTasks: 'manual' as const,
+    startScheduler: false,
+  };
+  const loser = await Engine.create(engineOptions);
+  const loserInternals = getInternals(loser);
+  await loser.start(`${id}-first`, null, { id });
+  await waitForCondition(() => loserInternals.parkedInlineWorkflows.has(id), {
+    label: `${id} generation A parked on the loser`,
+  });
+  const abandonedToken = tokenOf(loserInternals, id);
+  const warning = collectConflictWarnings();
+  loseGeneration(loserInternals, id);
+  await warning.received;
+  warning.stop();
+
+  const winner = await Engine.create(engineOptions);
+  const winnerInternals = getInternals(winner);
+  await waitForCondition(() => winnerInternals.parkedInlineWorkflows.has(id), {
+    label: `${id} generation A recovered by the winner`,
+  });
+  await winner.signal(id, 'go', 'A done');
+  expect(await winner.getHandle(id).result()).toBe('A done');
+  const replacement = await winner.start(`${id}-second`, null, {
+    id,
+    onTerminalConflict: 'start-new',
+    ...(executionTimeout === undefined ? {} : { executionTimeout }),
+  });
+  await waitForCondition(() => winnerInternals.sleepResolversByWorkflow.has(id), {
+    label: `${id} generation B asleep on the winner`,
+  });
+  // The loser never learned about B: its memory still holds the abandoned A.
+  expect(tokenOf(loserInternals, id)).toBe(abandonedToken);
+  expect(tokenOf(winnerInternals, id)).not.toBe(abandonedToken);
+  expect(isCheckpointGenerationAbandoned(loserInternals, id, abandonedToken)).toBe(true);
+
+  const timerKeys = async (): Promise<string[]> => {
+    const keys: string[] = [];
+    for await (const [key] of storage.scan('timer-idx:')) keys.push(key);
+    return keys.toSorted();
+  };
+  return {
+    clock,
+    storage,
+    loser,
+    winner,
+    winnerInternals,
+    replacement,
+    timerKeys,
+    dispose: async () => {
+      await winner[Symbol.asyncDispose]();
+      await loser[Symbol.asyncDispose]();
+    },
+  };
+}
+
+describe('timers of a generation that replaced the one this engine abandoned', () => {
+  it('fires the replacement execution deadline when the abandoning engine is the one ticking', async () => {
+    const scenario = await replaceAbandonedGenerationOnTheWinner('deadline-run', '30m', '10m');
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      scenario.clock.now += 11 * 60 * 1000;
+      await scenario.loser.scheduler.tick(scenario.clock.now);
+
+      // The deadline belongs to generation B, not to the abandoned A: enforcing it is a
+      // durable terminal transition any engine may commit, so it must not be retained
+      // forever for a winner that may not run a scheduler at all.
+      expect(await readStatus(scenario.storage, 'deadline-run')).toBe('timed-out');
+      // Nothing was retried: the scheduler reported no failed timer callback.
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+      await scenario.dispose();
+    }
+  });
+
+  it('keeps the replacement sleep and review timers for the engine that drives it', async () => {
+    const scenario = await replaceAbandonedGenerationOnTheWinner('timers-run', '5m');
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const reviewHandler = mock(async () => true);
+      scenario.winnerInternals.reviewEscalationHandlers.set('review-b', reviewHandler);
+      await scenario.winnerInternals.scheduler.schedule({
+        id: 'review-escalation:review-b:1000',
+        workflowId: 'timers-run',
+        fireAt: scenario.clock.now + 1_000,
+        kind: 'sleep',
+        workflowExecutionToken: tokenOf(scenario.winnerInternals, 'timers-run')!,
+      });
+      const timersBefore = await scenario.timerKeys();
+      expect(timersBefore.length).toBeGreaterThanOrEqual(2);
+
+      scenario.clock.now += 6 * 60 * 1000;
+      await scenario.loser.scheduler.tick(scenario.clock.now);
+
+      // The loser holds no waiter and no review handler for B: waking or consuming
+      // them would only destroy the records the engine driving B still needs.
+      expect(await scenario.timerKeys()).toEqual(timersBefore);
+      expect(reviewHandler).not.toHaveBeenCalled();
+      expect(await readStatus(scenario.storage, 'timers-run')).toBe('running');
+      // Both were declined through the scheduler's retry path, which reports each failure.
+      expect(consoleError).toHaveBeenCalledTimes(2);
+      consoleError.mockClear();
+
+      // The engine driving B fires both from the very same records.
+      await scenario.winner.scheduler.tick(scenario.clock.now);
+      expect(await scenario.replacement.result()).toBe('woke');
+      expect(reviewHandler).toHaveBeenCalledTimes(1);
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+      await scenario.dispose();
+    }
+  });
+});
+
 describe('failing an abandoned generation', () => {
   const noCallbacks = new Proxy({}, { get: () => () => {} }) as never;
 

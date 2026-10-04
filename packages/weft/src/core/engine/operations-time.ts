@@ -5,6 +5,10 @@ import { encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../scheduler.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../types.ts';
+import {
+  fireExecutionDeadline,
+  retainTimerOfAbandonedGeneration,
+} from './abandoned-generation-timers.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
@@ -15,11 +19,9 @@ import { ensureDelayedStartClaimAndCleanupBeforeFailure } from './lifecycle/stan
 import { registerSleepResolver } from './sleep-resolver-registration.ts';
 import {
   acknowledgeSupersededSleepTimers,
-  fireExecutionDeadline,
   handleSleepTimerWithAcknowledgement,
   resolveSleepTimer,
   retainDiscardedDurableTimer,
-  retainTimerOfAbandonedGeneration,
 } from './sleep-timer-acknowledgements.ts';
 import { type TimeOperationCallbacks } from './time-operation-callbacks.ts';
 import { wakeNeedsOwnershipCheck } from './wake-ownership-guard.ts';

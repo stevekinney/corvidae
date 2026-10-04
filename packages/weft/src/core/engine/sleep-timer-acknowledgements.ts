@@ -1,6 +1,5 @@
 import type { ContextOperationRequest } from '../context.ts';
 import type { TimerEntry, WorkflowState } from '../types.ts';
-import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import { clearPendingAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import type {
   DurableInlineOperation,
@@ -141,38 +140,6 @@ export async function retainDiscardedDurableTimer(
       `does not own the run (a lost workflow-lease claim, or a checkpoint compare-and-swap race ` +
       `lost under ownership: 'none'); retaining it in storage for the true owner instead of ` +
       `letting the scheduler delete it.`,
-  );
-}
-
-/**
- * A generation this engine abandoned after losing a checkpoint compare-and-swap
- * race belongs to the winning engine, so its review, condition, and deadline
- * timers are the winner's to fire. Returns the retention promise (which throws,
- * so the scheduler retries and keeps the durable record) for such a timer, and
- * `undefined` for every other one. Deliberately not `async`: a healthy timer
- * fire takes the path it always did.
- */
-export function retainTimerOfAbandonedGeneration(
-  internals: EngineInternals,
-  entry: TimerEntry,
-  loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>,
-): Promise<void> | undefined {
-  if (!isCurrentCheckpointGenerationAbandoned(internals, entry.workflowId)) return undefined;
-  return retainDiscardedDurableTimer(entry.id, entry.workflowId, loadWorkflowState);
-}
-
-/** Fire an execution-deadline timer, unless it belongs to an abandoned generation. Not `async`: see above. */
-export function fireExecutionDeadline(
-  internals: EngineInternals,
-  entry: TimerEntry,
-  callbacks: {
-    loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>;
-    timeout: (workflowId: string) => Promise<void>;
-  },
-): Promise<void> {
-  return (
-    retainTimerOfAbandonedGeneration(internals, entry, callbacks.loadWorkflowState) ??
-    callbacks.timeout(entry.workflowId)
   );
 }
 
