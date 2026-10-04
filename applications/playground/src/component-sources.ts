@@ -319,14 +319,14 @@ function walkImplementationGraphStyles(
   // A component counts as reached when its own implementation file is, not when a helper
   // module in its directory is: an example that imports only Chat's helpers does not render
   // Chat, so it must not pick up `chat.css`.
-  const [componentName, fileName, ...deeperSegments] = relative(
+  const [componentName, implementationFileName, ...deeperSegments] = relative(
     resolvedComponentsRoot,
     resolvedPath,
   ).split(sep);
   if (
     componentName !== undefined &&
     deeperSegments.length === 0 &&
-    fileName === `${componentName}.svelte`
+    implementationFileName === `${componentName}.svelte`
   ) {
     graph.componentNames.add(componentName);
   }
