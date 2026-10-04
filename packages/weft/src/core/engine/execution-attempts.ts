@@ -18,12 +18,13 @@ import type { EngineInternals } from './internals.ts';
  * parking, and the checkpoint commits within one launch all replace or release the
  * in-memory checkpoint, so a question answered from it changes its answer as a run moves
  * between states; the entry changes only when this engine launches the id again or lets it
- * go. Nothing outside this module may judge a generation by whether a checkpoint is present.
+ * go. Nothing may ask whether a generation was lost by looking at whether a checkpoint is
+ * present.
  *
  * Lifecycle:
  *
- * - created by `beginExecutionAttempt`, from `adoptLaunchCheckpoint` only, so every
- *   checkpoint the engine holds has an entry for the same generation;
+ * - created by `beginExecutionAttempt`, from `adoptLaunchCheckpoint` only, so every launch
+ *   installs a checkpoint and its attempt together;
  * - replaced by the next launch of the id. That ends the previous attempt, abandoned or not:
  *   a relaunch of the same generation is a new attempt that is not abandoned, a replacement
  *   generation carries a new token, and work still in flight from the earlier attempt no
@@ -48,7 +49,10 @@ import type { EngineInternals } from './internals.ts';
  * - an entry's `abandoned` flag is only ever set while the entry is current, and a captured
  *   entry that is no longer current describes work from an attempt this engine has left;
  * - an id that has no entry holds no generation, which is different from a pre-token one:
- *   there is nothing to wake, fail, or reject, so such an id is never abandoned.
+ *   there is nothing to wake, fail, or reject, so such an id is never abandoned;
+ * - a checkpoint commit that completes after its run was released re-sets the in-memory
+ *   checkpoint object, exactly as it did before this registry existed. The registry never
+ *   reads the checkpoint, so that cannot make a released or disposed run look held.
  *
  * Held beside the engine rather than on `EngineInternals`, like the committed checkpoint
  * bytes in `checkpoint-commit-snapshots.ts`, so an engine carries nothing here until it
