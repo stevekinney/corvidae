@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import type { Expression, Pattern, Property, SpreadElement } from 'estree';
 import { type AST, parse } from 'svelte/compiler';
@@ -28,7 +28,7 @@ import {
   type TypeNode,
 } from 'ts-morph';
 
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import { CINDER_COMPONENT_SOURCE, COMPONENT_SOURCES } from './component-sources.ts';
 import { discoverComponentFilePaths } from './discover.ts';
 import type {
   ComponentManifest,
@@ -988,21 +988,30 @@ function resolvePropTypeInfo(
 }
 
 // ---------------------------------------------------------------------------
-// Shared ts-morph Project
+// Shared ts-morph Projects
 // ---------------------------------------------------------------------------
 //
 // `analyzeAll` runs `analyzeComponent` concurrently via `Promise.all` for ~100
 // components. Creating a fresh `Project` per call spins up ~100 TypeScript
 // compiler instances, which is the dominant cost of a cold manifest build.
 //
-// Instead we keep one module-scoped `Project`, created lazily on first use, and
-// reuse it across every call. Each `buildTypeInfoMap` call adds a synthetic
-// source file under a unique path (so concurrent calls never collide), reads
-// the type info, then removes the file so the project doesn't accumulate stale
-// sources or leak memory.
+// Instead we keep one module-scoped `Project` per component package, created
+// lazily on first use, and reuse it across every call for that package. Each
+// `buildTypeInfoMap` call adds a synthetic source file under a unique path (so
+// concurrent calls never collide), reads the type info, then removes the file so
+// the project doesn't accumulate stale sources or leak memory.
+//
+// The projects are per package, not one for the whole playground, because
+// ts-morph keeps every file a program resolved as a root of every later program
+// in the same `Project`, and `removeSourceFile` releases only the synthetic file.
+// Chat's types reach Cinder's barrel and, through it, every `lucide-svelte` icon
+// declaration (about 3,700 files). In one shared project that graph stayed a root
+// for the rest of the run, so every Cinder analysis after the first Chat one cost
+// about 300 ms instead of about 40 ms, and the full 211-component manifest took
+// about 36 seconds where the 200 Cinder components alone take about 5.
 
-/** The shared ts-morph project, created lazily on first analysis. */
-let sharedProject: Project | undefined;
+/** The shared ts-morph projects, created lazily on first analysis and keyed by package root. */
+const sharedProjects = new Map<string, Project>();
 /** Number of `Project` instances created — exposed for tests to assert sharing. */
 let projectCreationCount = 0;
 /** Monotonic counter guaranteeing a unique synthetic source-file path per call. */
@@ -1011,32 +1020,63 @@ let syntheticFileCounter = 0;
 const analyzeAllCache = new Map<string, Promise<ComponentManifest[]>>();
 
 /**
- * Returns the shared ts-morph `Project`, creating it on first use. Subsequent
- * calls return the same instance so concurrent `analyzeComponent` runs share a
- * single TypeScript compiler.
+ * The root of the component package that owns `filePath`. A file outside every
+ * configured package (a fixture, for instance) is analyzed against Cinder's
+ * project, the one every component used before packages had their own.
  */
-function getSharedProject(): Project {
-  if (sharedProject === undefined) {
-    sharedProject = new Project({
-      tsConfigFilePath: join(CINDER_COMPONENT_SOURCE.packageRoot, 'tsconfig.json'),
-      skipAddingFilesFromTsConfig: true,
-    });
-    projectCreationCount += 1;
-  }
-  return sharedProject;
+function packageRootForFile(filePath: string): string {
+  const resolvedPath = resolve(filePath);
+  const owner = COMPONENT_SOURCES.find(({ packageRoot }) =>
+    resolvedPath.startsWith(`${resolve(packageRoot)}${sep}`),
+  );
+  return (owner ?? CINDER_COMPONENT_SOURCE).packageRoot;
 }
 
 /**
- * Disposes the shared ts-morph `Project` so the next analysis builds a fresh
- * one. Wire this into manifest-cache invalidation (e.g. the playground
+ * Returns the shared ts-morph `Project` for a package, creating it on first use.
+ * Subsequent calls return the same instance so concurrent `analyzeComponent` runs
+ * within one package share a single TypeScript compiler. Each project reads its
+ * own package's `tsconfig.json`.
+ */
+function getSharedProject(packageRoot: string): Project {
+  let project = sharedProjects.get(packageRoot);
+  if (project === undefined) {
+    project = new Project({
+      tsConfigFilePath: join(packageRoot, 'tsconfig.json'),
+      skipAddingFilesFromTsConfig: true,
+    });
+    sharedProjects.set(packageRoot, project);
+    projectCreationCount += 1;
+  }
+  return project;
+}
+
+/**
+ * Disposes every shared ts-morph `Project` so the next analysis builds fresh
+ * ones. Wire this into manifest-cache invalidation (e.g. the playground
  * watcher's rebuild path) so a long-running server never accumulates stale
  * compiler state across rebuilds.
  */
 export function resetProject(): void {
-  sharedProject = undefined;
+  sharedProjects.clear();
   analyzeAllCache.clear();
   importedLiteralUnionCache.clear();
   shapeCache.clear();
+}
+
+/**
+ * Returns the paths of every file in a package's shared project's current program,
+ * or an empty list before that project exists. Tests use this to assert which
+ * dependency graphs a project has accumulated.
+ */
+export function getProjectProgramFileNames(packageRoot: string): readonly string[] {
+  return (
+    sharedProjects
+      .get(packageRoot)
+      ?.getProgram()
+      .compilerObject.getSourceFiles()
+      .map((file) => file.fileName) ?? []
+  );
 }
 
 /**
@@ -1059,7 +1099,7 @@ function buildTypeInfoMap(
   sourceDirectory: string,
   propNames: readonly string[],
 ): Map<string, TypeInfo> {
-  const project = getSharedProject();
+  const project = getSharedProject(packageRootForFile(sourceDirectory));
 
   // A unique path per call keeps concurrent `analyzeComponent` runs (and repeat
   // analyses of the same component) from clobbering each other's source file on

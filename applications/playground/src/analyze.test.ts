@@ -3,8 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { analyzeAll, analyzeComponent, getProjectCreationCount, resetProject } from './analyze.ts';
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  analyzeAll,
+  analyzeComponent,
+  getProjectCreationCount,
+  getProjectProgramFileNames,
+  resetProject,
+} from './analyze.ts';
+import { CHAT_COMPONENT_SOURCE, CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 
 const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
 
@@ -394,6 +400,32 @@ describe('shared ts-morph project', () => {
     const before = getProjectCreationCount();
     await analyzeAll(COMPONENTS_DIR);
     expect(getProjectCreationCount() - before).toBe(1);
+  }, 20_000);
+
+  it("keeps each package's analyses in its own Project so one package's dependency graph never taxes another's", async () => {
+    resetProject();
+    const before = getProjectCreationCount();
+    await analyzeComponent(componentPath('card'));
+    // Chat's types reach Cinder's barrel, and through it every `lucide-svelte`
+    // icon declaration (thousands of files). ts-morph keeps each resolved
+    // dependency as a root of every later program in the same Project, so a
+    // Project shared across packages made every Cinder analysis after the first
+    // Chat one rebuild a program thousands of files larger.
+    await analyzeComponent(join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'), {
+      importPath: CHAT_COMPONENT_SOURCE.packageName,
+    });
+    await analyzeComponent(componentPath('alert'));
+
+    const isLucideDeclaration = (path: string): boolean => path.includes('/lucide-svelte/');
+    // The premise: Chat's analysis really does pull the icon graph in.
+    expect(
+      getProjectProgramFileNames(CHAT_COMPONENT_SOURCE.packageRoot).some(isLucideDeclaration),
+    ).toBe(true);
+    // The guarantee: Cinder's Project never inherits it.
+    expect(
+      getProjectProgramFileNames(CINDER_COMPONENT_SOURCE.packageRoot).some(isLucideDeclaration),
+    ).toBe(false);
+    expect(getProjectCreationCount() - before).toBe(2);
   }, 20_000);
 
   it('produces identical manifests across two runs with a reset between them', async () => {
