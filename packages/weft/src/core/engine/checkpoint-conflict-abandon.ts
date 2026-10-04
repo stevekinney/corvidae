@@ -1,12 +1,8 @@
 import {
-  isCheckpointGenerationAbandoned,
-  markCheckpointGenerationAbandoned,
-} from './abandoned-checkpoint-generations.ts';
-import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
-import { currentExecutionGeneration } from './execution-attempts.ts';
+import { abandonExecutionAttempt, currentExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 
 /**
@@ -14,39 +10,33 @@ import type { EngineInternals } from './internals.ts';
  * race to another engine over the same store, without writing anything durable.
  *
  * Under `ownership: 'none'` nothing fences the two engines, so the loser cannot
- * converge; it fails fast and loudly instead. Synchronously: remember the lost
- * generation (so every later wake, failure, and `result()` for it is refused),
- * retire the execution so the generator is never fed again, reject the pending
- * `result()` waiter with the typed error, evict the cached handle so a later
- * `getHandle()` builds one that observes the marker, and emit the operator
- * warning. Nothing else is released: maps, timers, waiters, feeds, and claims
- * stay as they were, and durable timers and buffered signals stay in storage for
- * the winner. `ownership: 'workflow-lease'` is the complete answer for two live
- * engines.
+ * converge; it fails fast and loudly instead. Synchronously: mark the lost
+ * generation abandoned in the execution attempt registry (so every later wake,
+ * failure, timer, and `result()` for it is refused), retire the execution so the
+ * generator is never fed again, reject the pending `result()` waiter with the
+ * typed error, evict the cached handle so a later `getHandle()` builds one that
+ * observes the abandonment, and emit the operator warning. Nothing else is
+ * released: maps, timers, waiters, feeds, and claims stay as they were, and
+ * durable timers and buffered signals stay in storage for the winner.
+ * `ownership: 'workflow-lease'` is the complete answer for two live engines.
  *
- * Returns early unless the engine is still driving the generation whose commit
- * lost (the error carries its token): it holds that generation's checkpoint or,
- * for a workflow it suspended, which releases the checkpoint and keeps the
- * attempt, the attempt that launched it. A local replacement installed while the
- * loss was classified is healthy and not ours to abandon, and a released
- * generation (finished, purged, or rolled back, which drop the checkpoint and the
- * attempt together) has nothing left to abandon.
- * A generation recovered from before execution tokens existed has none, on the
- * error and in memory alike, and is marked under the token-less key like any
- * other. Idempotent.
+ * Does nothing unless this engine holds an execution attempt that launched the
+ * generation whose commit lost (the error carries its token), whether the run is
+ * live or suspended: a suspension releases the checkpoint and keeps the attempt,
+ * so a commit still in flight from before it is abandoned like any other. A local
+ * replacement installed while the loss was classified is healthy and not ours to
+ * abandon, a generation this engine released (finished, purged, rolled back, or
+ * the engine disposed) has no attempt left to abandon, and one already abandoned
+ * is not abandoned twice. A generation recovered from before execution tokens
+ * existed has no token, on the error and in the attempt alike, and is abandoned
+ * like any other. Idempotent.
  */
 export function abandonWorkflowAfterCheckpointConflict(
   internals: EngineInternals,
   error: WorkflowCheckpointConflictError,
 ): void {
   const { workflowId, workflowExecutionToken } = error;
-  const driven =
-    internals.checkpoints.get(workflowId) ?? currentExecutionGeneration(internals, workflowId);
-  // Neither a checkpoint nor an attempt means nothing of this engine's to abandon, however the
-  // loss was reported.
-  if (driven === undefined || driven.workflowExecutionToken !== workflowExecutionToken) return;
-  if (isCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken)) return;
-  markCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken);
+  if (!abandonExecutionAttempt(internals, workflowId, workflowExecutionToken)) return;
   try {
     internals.strategy.retireWorkflow(workflowId);
   } catch {
@@ -65,6 +55,23 @@ export function abandonWorkflowAfterCheckpointConflict(
   }
 
   emitCheckpointConflictWarning(new WeftWorkflowCheckpointConflictWarning(workflowId));
+}
+
+/**
+ * The rejection a `result()` requested after a loss settles with: the conflict for the generation
+ * this engine holds for the workflow and has abandoned, running or suspended, or `undefined` when
+ * it holds no abandoned generation. Read from the execution attempt, which a suspension keeps and
+ * the in-memory checkpoint does not.
+ */
+export function abandonedGenerationConflict(
+  internals: EngineInternals,
+  workflowId: string,
+): WorkflowCheckpointConflictError | undefined {
+  const held = currentExecutionAttempt(internals, workflowId);
+  if (held?.abandoned !== true) return undefined;
+  return new WorkflowCheckpointConflictError(workflowId, {
+    workflowExecutionToken: held.workflowExecutionToken,
+  });
 }
 
 type WarningProcess = { emitWarning?: (warning: Error) => void } | null | undefined;

@@ -1,8 +1,5 @@
 import type { Checkpoint } from '../../types.ts';
-import {
-  adoptLaunchCheckpoint,
-  forgetCommittedCheckpointBytes,
-} from '../checkpoint-commit-snapshots.ts';
+import { adoptLaunchCheckpoint, releaseLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import type { EngineInternals } from '../internals.ts';
 
 /**
@@ -35,8 +32,7 @@ export function createLaunchAdoption(
     },
     rollback() {
       if (!adopted) return;
-      forgetCommittedCheckpointBytes(internals, workflowId);
-      internals.checkpoints.delete(workflowId);
+      releaseLaunchCheckpoint(internals, workflowId);
       internals.workflowHeaders.delete(workflowId);
       internals.workflowVersionTuples.delete(workflowId);
       internals.workflowServices.delete(workflowId);

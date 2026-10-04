@@ -18,11 +18,11 @@ import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode } from '../codec/api.ts';
 import { Engine } from '../engine.ts';
 import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
-import { abandonedCheckpointGenerationCount } from './abandoned-checkpoint-generations.ts';
 import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
+import { abandonedExecutionAttemptCount } from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
 
@@ -178,7 +178,7 @@ async function runRace(
     const internals = getInternals(engineB);
     expect(internals.inlineStrategy?.hasGenerator(workflowId)).toBe(false);
     expect(internals.resultResolvers.has(workflowId)).toBe(false);
-    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(1);
 
     // The held write was A's, it landed over what B read, and B wrote nothing.
     expect(race.lostByB.value).toBe(true);
@@ -206,7 +206,7 @@ async function runRace(
     // the run's real outcome would be masked by the old conflict.
     await engineA.suspend(workflowId);
     const resumedHandle = await engineB.resume(workflowId);
-    expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
     // The handle that observed the loss keeps reporting it; resume() hands back
     // a different handle that observes the resumed run.
     expect(resumedHandle).not.toBe(loser);

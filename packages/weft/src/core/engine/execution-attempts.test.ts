@@ -1,0 +1,168 @@
+/**
+ * The execution attempt registry: one entry per workflow id for the generation this engine
+ * holds, and the only structure that says whether that generation was lost to another engine.
+ * These tests drive the registry directly; `generation-lifecycle-matrix.test.ts` crosses it
+ * with the states a run can be in and the events that reach it.
+ */
+import { Glob } from 'bun';
+import { describe, expect, it } from 'bun:test';
+
+import { MemoryStorage } from '../../storage/memory.ts';
+import type { Checkpoint } from '../types.ts';
+import {
+  adoptLaunchCheckpoint,
+  releaseAllCheckpoints,
+  releaseLaunchCheckpoint,
+  releaseSuspendedCheckpoint,
+} from './checkpoint-commit-snapshots.ts';
+import {
+  abandonedExecutionAttemptCount,
+  abandonExecutionAttempt,
+  beginExecutionAttempt,
+  currentExecutionAttempt,
+  isGenerationAbandoned,
+  isHeldGenerationAbandoned,
+  retireAllExecutionAttempts,
+  retireExecutionAttempt,
+} from './execution-attempts.ts';
+import { Engine } from './index.ts';
+import { getInternals } from './internals.ts';
+
+const generation = (token: string | undefined) => ({ workflowExecutionToken: token }) as Checkpoint;
+
+describe('the execution attempt registry', () => {
+  it('holds one attempt per workflow id, and every launch replaces it', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    expect(currentExecutionAttempt(internals, 'run')).toBeUndefined();
+
+    beginExecutionAttempt(internals, 'run', 'generation-1');
+    const first = currentExecutionAttempt(internals, 'run');
+    expect(first).toEqual({ workflowExecutionToken: 'generation-1', abandoned: false });
+
+    // The same generation launched again is a different attempt, and the earlier one is gone.
+    beginExecutionAttempt(internals, 'run', 'generation-1');
+    const second = currentExecutionAttempt(internals, 'run');
+    expect(second).not.toBe(first);
+    expect(currentExecutionAttempt(internals, 'other-run')).toBeUndefined();
+  });
+
+  it('abandons only the attempt that launched the named generation, and only once', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    expect(abandonExecutionAttempt(internals, 'run', 'generation-1')).toBe(false);
+
+    beginExecutionAttempt(internals, 'run', 'generation-1');
+    const attempt = currentExecutionAttempt(internals, 'run');
+    expect(abandonExecutionAttempt(internals, 'run', 'generation-2')).toBe(false);
+    expect(abandonExecutionAttempt(internals, 'run', undefined)).toBe(false);
+    expect(attempt?.abandoned).toBe(false);
+
+    expect(abandonExecutionAttempt(internals, 'run', 'generation-1')).toBe(true);
+    expect(abandonExecutionAttempt(internals, 'run', 'generation-1')).toBe(false);
+    expect(attempt?.abandoned).toBe(true);
+    expect(isHeldGenerationAbandoned(internals, 'run')).toBe(true);
+    expect(isGenerationAbandoned(internals, 'run', 'generation-1')).toBe(true);
+    expect(isGenerationAbandoned(internals, 'run', 'generation-2')).toBe(false);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(1);
+  });
+
+  it('ends an abandonment with the attempt it belongs to', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    beginExecutionAttempt(internals, 'run', 'generation-1');
+    const abandoned = currentExecutionAttempt(internals, 'run');
+    abandonExecutionAttempt(internals, 'run', 'generation-1');
+
+    // A relaunch of the abandoned generation, and a replacement generation, are new attempts.
+    beginExecutionAttempt(internals, 'run', 'generation-1');
+    expect(isHeldGenerationAbandoned(internals, 'run')).toBe(false);
+    abandonExecutionAttempt(internals, 'run', 'generation-1');
+    beginExecutionAttempt(internals, 'run', 'generation-2');
+    expect(isHeldGenerationAbandoned(internals, 'run')).toBe(false);
+    expect(isGenerationAbandoned(internals, 'run', 'generation-1')).toBe(false);
+
+    // The attempt a piece of in-flight work captured keeps saying what it said.
+    expect(abandoned?.abandoned).toBe(true);
+    expect(currentExecutionAttempt(internals, 'run')).not.toBe(abandoned);
+
+    abandonExecutionAttempt(internals, 'run', 'generation-2');
+    retireExecutionAttempt(internals, 'run');
+    expect(currentExecutionAttempt(internals, 'run')).toBeUndefined();
+    expect(isHeldGenerationAbandoned(internals, 'run')).toBe(false);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+  });
+
+  it('abandons a generation whose checkpoint a suspension released, and a pre-token one', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    adoptLaunchCheckpoint(internals, 'suspended-run', generation('generation-1'));
+    adoptLaunchCheckpoint(internals, 'legacy-run', generation(undefined));
+    releaseSuspendedCheckpoint(internals, 'suspended-run');
+    expect(internals.checkpoints.has('suspended-run')).toBe(false);
+
+    // Without the checkpoint, the attempt is all that says which generation the engine holds.
+    expect(abandonExecutionAttempt(internals, 'suspended-run', 'generation-1')).toBe(true);
+    expect(isHeldGenerationAbandoned(internals, 'suspended-run')).toBe(true);
+    expect(abandonExecutionAttempt(internals, 'legacy-run', undefined)).toBe(true);
+    expect(isGenerationAbandoned(internals, 'legacy-run', undefined)).toBe(true);
+    expect(isGenerationAbandoned(internals, 'legacy-run', 'generation-1')).toBe(false);
+  });
+
+  it('retires an attempt with its checkpoint, and every attempt on disposal', async () => {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    adoptLaunchCheckpoint(internals, 'finished', generation('generation-1'));
+    adoptLaunchCheckpoint(internals, 'live', generation('generation-2'));
+    abandonExecutionAttempt(internals, 'finished', 'generation-1');
+
+    releaseLaunchCheckpoint(internals, 'finished');
+    expect(internals.checkpoints.has('finished')).toBe(false);
+    expect(currentExecutionAttempt(internals, 'finished')).toBeUndefined();
+    expect(currentExecutionAttempt(internals, 'live')).toBeDefined();
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+
+    abandonExecutionAttempt(internals, 'live', 'generation-2');
+    releaseAllCheckpoints(internals);
+    expect(internals.checkpoints.size).toBe(0);
+    expect(currentExecutionAttempt(internals, 'live')).toBeUndefined();
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+
+    adoptLaunchCheckpoint(internals, 'live', generation('generation-2'));
+    await engine[Symbol.asyncDispose]();
+    expect(currentExecutionAttempt(internals, 'live')).toBeUndefined();
+  });
+
+  it('records nothing for a disposed engine, so a late loss finds nothing to abandon', async () => {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    await engine[Symbol.asyncDispose]();
+
+    beginExecutionAttempt(internals, 'late-run', 'generation-1');
+    adoptLaunchCheckpoint(internals, 'late-run', generation('generation-1'));
+
+    expect(currentExecutionAttempt(internals, 'late-run')).toBeUndefined();
+    expect(abandonExecutionAttempt(internals, 'late-run', 'generation-1')).toBe(false);
+    retireAllExecutionAttempts(internals);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+  });
+});
+
+/**
+ * The registry only stays the single answer if every held checkpoint comes and goes with its
+ * attempt. `adoptLaunchCheckpoint` and the three release functions in
+ * `checkpoint-commit-snapshots.ts` pair them; a new `internals.checkpoints` mutation anywhere
+ * else would reopen the split between "what the engine holds" and "what the registry says".
+ */
+describe('where a held checkpoint is installed and removed', () => {
+  it('is only checkpoint-commit-snapshots.ts, plus the object replacement after a commit', async () => {
+    const mutators: string[] = [];
+    for await (const path of new Glob('**/*.ts').scan({ cwd: import.meta.dir })) {
+      if (/\.test(-support)?\.ts$/.test(path)) continue;
+      const source = await Bun.file(`${import.meta.dir}/${path}`).text();
+      if (/\bcheckpoints\??\.(?:set|delete|clear)\(/.test(source)) mutators.push(path);
+    }
+
+    expect(mutators.toSorted()).toEqual(['checkpoint-commit-snapshots.ts', 'checkpoint-io.ts']);
+  });
+});

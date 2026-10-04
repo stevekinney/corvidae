@@ -66,6 +66,7 @@ const STATES = [
   'disposed',
   'purged',
   'relaunched',
+  'resumed',
   'replaced',
 ] as const;
 
@@ -299,6 +300,26 @@ const BUILDERS: Record<StateName, (id: string, arm: Arm) => Promise<Scene>> = {
     return scene;
   },
 
+  async resumed(id, arm) {
+    const { scene } = await startParkedScene('resumed', id, 'none', { armFailureNow: false });
+    if (arm === 'failure') await armFailure(scene);
+    // The same forced replay a claim reclaim performs, with no loss: this engine launches the
+    // generation it already drives a second time, so a failure begun under the first launch is
+    // an earlier attempt's although nothing was ever abandoned.
+    const resumed = await resumeFromLifecycle(
+      scene.internals,
+      id,
+      createLifecycleCallbacks(scene.engine),
+      undefined,
+      { forceReplayFromStorage: true },
+    );
+    await waitForParked(scene);
+    expect(tokenOf(scene.internals, id)).toBe(scene.token);
+    if (arm === 'waiter') armWaiter(scene, resumed);
+    scene.makeFailureStale = () => {};
+    return scene;
+  },
+
   async replaced(id, arm) {
     const { scene, handle } = await startParkedScene('replaced', id, 'none', {
       armFailureNow: false,
@@ -481,6 +502,7 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     disposed: settled('wake:proceed', 'running'),
     purged: settled('wake:proceed', 'absent'),
     relaunched: abandoned('wake:discard'),
+    resumed: abandoned('wake:discard'),
     replaced: abandoned('wake:discard'),
   },
   'existing-waiter': {
@@ -492,6 +514,7 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     disposed: settled(`waiter:${DISPOSED}`, 'running'),
     purged: settled('waiter:resolved:done', 'absent'),
     relaunched: abandoned(`waiter:${CONFLICT}`),
+    resumed: abandoned(`waiter:${CONFLICT}`),
     replaced: abandoned(`waiter:${CONFLICT}`),
   },
   'fresh-result': {
@@ -503,6 +526,7 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     disposed: settled(`result:${DISPOSED}`, 'running'),
     purged: settled('result:rejected:Error', 'absent'),
     relaunched: settled('result:pending', 'running'),
+    resumed: settled('result:pending', 'running'),
     replaced: settled('result:pending', 'running'),
   },
   'fresh-result-after-loss': {
@@ -514,6 +538,7 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     disposed: settled(`result:${DISPOSED}`, 'running'),
     purged: settled('result:rejected:Error', 'absent'),
     relaunched: abandoned(`result:${CONFLICT}`),
+    resumed: abandoned(`result:${CONFLICT}`),
     replaced: abandoned(`result:${CONFLICT}`),
   },
   'stale-failure': {
@@ -525,6 +550,7 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     disposed: settled('failure:dropped', 'running'),
     purged: settled('failure:dropped', 'absent'),
     relaunched: settled('failure:dropped', 'running'),
+    resumed: settled('failure:dropped', 'running'),
     replaced: settled('failure:dropped', 'running'),
   },
   'current-failure': {
@@ -535,6 +561,7 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     completed: settled('failure:dropped', 'completed'),
     purged: settled('failure:dropped', 'absent'),
     relaunched: wrote('failure:wrote', 'failed'),
+    resumed: wrote('failure:wrote', 'failed'),
     replaced: wrote('failure:wrote', 'failed'),
   },
   'wake-or-timer': {
@@ -545,6 +572,7 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     completed: settled('wake:proceed timer:settled', 'completed'),
     purged: settled('wake:proceed timer:settled', 'absent'),
     relaunched: abandoned('wake:discard timer:retained'),
+    resumed: abandoned('wake:discard timer:retained'),
     replaced: abandoned('wake:discard timer:retained'),
   },
   'post-dispose-conflict': {
@@ -556,9 +584,31 @@ const EXPECTED: Record<EventName, Partial<Record<StateName, Observation>>> = {
     disposed: settled(`attempt:none result:${DISPOSED}`, 'running'),
     purged: settled(`attempt:none result:${DISPOSED}`, 'absent'),
     relaunched: settled(`attempt:none result:${DISPOSED}`, 'running'),
+    resumed: settled(`attempt:none result:${DISPOSED}`, 'running'),
     replaced: settled(`attempt:none result:${DISPOSED}`, 'running'),
   },
 };
+
+/**
+ * The registry and the in-memory checkpoints agree once an event has played out. A checkpoint
+ * the engine holds has an attempt for the same generation; an attempt with no checkpoint is a
+ * suspended run's, the one state in which the engine holds a generation and no checkpoint; and
+ * a disposed engine holds neither. The first two are what let every reader of the registry
+ * stand in for a reader of the checkpoint; the last is what keeps disposal from retaining a
+ * workflow id and token, or from letting a late loss abandon a run nobody drives.
+ */
+async function expectRegistryAgreesWithCheckpoints(scene: Scene): Promise<void> {
+  const checkpoint = scene.internals.checkpoints.get(scene.id);
+  const attempt = currentExecutionAttempt(scene.internals, scene.id);
+  if (scene.disposed) {
+    expect({ checkpoint, attempt }).toEqual({ checkpoint: undefined, attempt: undefined });
+  } else if (checkpoint !== undefined) {
+    expect(attempt).toBeDefined();
+    expect(attempt?.workflowExecutionToken).toBe(checkpoint.workflowExecutionToken);
+  } else if (attempt !== undefined) {
+    expect(await storedStatus(scene)).toBe('suspended');
+  }
+}
 
 /**
  * Cells this matrix does not exercise, each with the reason. A failure that begins, or a timer
@@ -604,6 +654,7 @@ describe('generation lifecycle matrix', () => {
           const scene = await BUILDERS[state](`${state}--${event}`, ARMS[event]);
           try {
             expect(await EVENT_RUNNERS[event](scene)).toEqual(expected);
+            await expectRegistryAgreesWithCheckpoints(scene);
           } finally {
             scene.releaseFailure?.();
             scene.releaseActivity?.();
