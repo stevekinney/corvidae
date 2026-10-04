@@ -66,6 +66,11 @@ export function createRunFrameForwarder(
   // Whether a step event has set `currentStep`. A forwarder attached to a run that is replayed
   // rather than driven live never sees one, and then `currentStep` is only its initial value.
   let stepObserved = false;
+  // The step `run.error` reported for the failure that ended the run. A failure can happen where
+  // no step event marks its step: `onMaximumSteps` runs after the last step ended, and context
+  // compaction runs while a step is prepared, before `step.started` is dispatched. A replayed
+  // run does not dispatch `run.error` again, so a reattached run leaves this unset.
+  let failureStep: number | undefined;
 
   function on<K extends CombinedOperativeEventType>(
     type: K,
@@ -185,21 +190,27 @@ export function createRunFrameForwarder(
   // limit was cost, tokens, calls or time, and the terminal result carries no
   // kind, so the message names no cause.
   //
-  // The step is whatever step events reported. A run reattached after a restart
-  // replays its memoized steps without dispatching any, so `currentStep` would
-  // still be 0 and name the wrong step for a failure that happened later. The
-  // terminal result cannot stand in: `steps` ends at the last step the run
-  // recorded, and whether the failing step is recorded depends on where the
-  // error was thrown (a rejected `generate` call leaves it out, a throwing stop
-  // condition runs after it is recorded). With no step observed, `step` is left
-  // unset rather than guessed.
+  // The step is the one `run.error` reported: a run driven live dispatches it
+  // when a step fails, naming that step even where no step event marks it (see
+  // `failureStep`). Without a `run.error`, the step is whatever step events
+  // reported. A run reattached after a restart replays its memoized steps and
+  // dispatches neither, so `currentStep` would still be 0 and name the wrong
+  // step for a failure that happened later. The terminal result cannot stand
+  // in: `steps` ends at the last step the run recorded, and whether the failing
+  // step is recorded depends on where the error was thrown (a rejected
+  // `generate` call leaves it out, a throwing stop condition runs after it is
+  // recorded). With neither source, `step` is left unset rather than guessed.
+  on('run.error', (event) => {
+    failureStep = event.step;
+  });
+
   on('run.completed', (event) => {
     if (event.finishReason !== 'budget-exceeded') return;
     emit(
       createNotificationFrame(
         {
           runId,
-          step: stepObserved ? currentStep : undefined,
+          step: failureStep ?? (stepObserved ? currentStep : undefined),
           level: 'error' satisfies NotificationLevel,
           code: 'budget.exceeded',
           message: 'Budget exceeded',

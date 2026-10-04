@@ -9,6 +9,7 @@ import {
   ElicitationRequestedEvent,
   type GenerateFunction,
   type RunFrame,
+  type RunOptions,
   runFrameSchema,
   StreamCustomEvent,
   type StreamEventMap,
@@ -394,5 +395,105 @@ describe('createRunFrameForwarder', () => {
       }),
     );
     expect(frames.filter((frame) => frame.type === 'assistant-chunk')).toHaveLength(1);
+  });
+});
+
+/**
+ * Operative's `run.error` event names the step a failure belongs to, and a failure can happen
+ * where no step event has fired for that step: `onMaximumSteps` runs after the last step ended,
+ * and a context compaction runs while a step is prepared, before `step.started` is dispatched.
+ * The budget notification must name the step `run.error` reports, not the last step event seen.
+ */
+const callToolEveryStep: GenerateFunction = async () => ({
+  content: '',
+  toolCalls: [{ name: 'noop', arguments: {} }],
+});
+
+/** A compaction hook that fails with a budget error on its `failingCall`th call. */
+function compactionFailingOnCall(failingCall: number): RunOptions['contextManagement'] {
+  let calls = 0;
+  return {
+    maxTokens: 100,
+    compactionThreshold: 50,
+    // Over the threshold on every step, so each step's preparation compacts.
+    tokenEstimator: () => 1000,
+    onCompact: async () => {
+      calls += 1;
+      if (calls === failingCall) throw new BudgetExceededError('token limit reached');
+    },
+  };
+}
+
+const budgetFailureSites: Array<{
+  name: string;
+  step: number;
+  options: () => Partial<RunOptions>;
+}> = [
+  {
+    name: 'onMaximumSteps throws once the step limit is reached',
+    step: 1,
+    options: () => ({
+      maximumSteps: 1,
+      onMaximumSteps: async () => {
+        throw new BudgetExceededError('token limit reached');
+      },
+    }),
+  },
+  {
+    name: 'compaction throws while step 1 is prepared, before its step.started',
+    step: 1,
+    options: () => ({ contextManagement: compactionFailingOnCall(2) }),
+  },
+  {
+    name: 'compaction throws while step 0 is prepared, before any step event',
+    step: 0,
+    options: () => ({ contextManagement: compactionFailingOnCall(1) }),
+  },
+  {
+    name: 'a stop condition throws after step 1 completed',
+    step: 1,
+    options: () => ({
+      stopWhen: (stepResult) => {
+        if (stepResult.step === 1) throw new BudgetExceededError('cost limit reached');
+        return false;
+      },
+    }),
+  },
+];
+
+describe.each(budgetFailureSites)('createRunFrameForwarder when $name', ({ step, options }) => {
+  it('names the step that run.error reports in the one budget notification', async () => {
+    const noopTool = createTool({
+      name: 'noop',
+      description: 'does nothing',
+      input: z.object({}),
+      execute: async () => ({}),
+    });
+    const activeRun = createActiveRun({
+      generate: callToolEveryStep,
+      toolbox: createToolbox<readonly Tool[]>([noopTool]),
+      conversation: new Conversation(),
+      maximumSteps: 5,
+      runId: 'run-budget-failure-site',
+      ...options(),
+    });
+    const reportedSteps: number[] = [];
+    activeRun.addEventListener('run.error', (event) => reportedSteps.push(event.step));
+    const frames: RunFrame[] = [];
+    const dispose = createRunFrameForwarder('run-budget-failure-site', activeRun, (frame) =>
+      frames.push(frame),
+    );
+
+    const result = await activeRun.result;
+    dispose();
+
+    expect(result.finishReason).toBe('budget-exceeded');
+    // The expected step is what Operative itself reports, so the case cannot drift from it.
+    expect(reportedSteps).toEqual([step]);
+    const notifications = frames.filter(
+      (frame): frame is Extract<RunFrame, { type: 'notification' }> =>
+        frame.type === 'notification' && frame.code === 'budget.exceeded',
+    );
+    expect(notifications.map((notification) => notification.step)).toEqual([step]);
   });
 });
