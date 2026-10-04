@@ -7,7 +7,13 @@
 import { Glob } from 'bun';
 import { describe, expect, it } from 'bun:test';
 
+import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import {
+  createDeferred,
+  waitForCondition,
+  yieldToEventLoop,
+} from '../../testing/fake-timers.test-support.ts';
 import type { Checkpoint } from '../types.ts';
 import {
   adoptLaunchCheckpoint,
@@ -15,6 +21,7 @@ import {
   releaseLaunchCheckpoint,
   releaseSuspendedCheckpoint,
 } from './checkpoint-commit-snapshots.ts';
+import { parkedOnSignal } from './checkpoint-conflict.test-support.ts';
 import {
   abandonedExecutionAttemptCount,
   abandonExecutionAttempt,
@@ -142,9 +149,63 @@ describe('the execution attempt registry', () => {
     adoptLaunchCheckpoint(internals, 'late-run', generation('generation-1'));
 
     expect(currentExecutionAttempt(internals, 'late-run')).toBeUndefined();
+    expect(internals.checkpoints.has('late-run')).toBe(false);
     expect(abandonExecutionAttempt(internals, 'late-run', 'generation-1')).toBe(false);
     retireAllExecutionAttempts(internals);
     expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+  });
+
+  it('installs nothing for a resume that was still in flight when the engine was disposed', async () => {
+    const id = 'resume-after-disposal';
+    const storage = new MemoryStorage();
+    const first = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { [id]: parkedOnSignal(id) },
+    });
+    await first.start(id, null, { id });
+    await waitForCondition(() => getInternals(first).parkedInlineWorkflows.has(id), {
+      label: `${id} parked on its signal`,
+    });
+    await first[Symbol.asyncDispose]();
+
+    // The second engine reads the stored checkpoint as it resumes the run; hold that read.
+    const reachedRead = createDeferred();
+    const releaseRead = createDeferred();
+    let held = false;
+    const gated = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (key === KEYS.checkpoint(id) && !held) {
+              held = true;
+              reachedRead.resolve();
+              await releaseRead.promise;
+            }
+            return original.call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+    const second = new Engine({ storage: gated });
+    second.register(parkedOnSignal(id));
+    const internals = getInternals(second);
+    const resuming = second.resume(id);
+    resuming.catch(() => {});
+    await reachedRead.promise;
+
+    await second[Symbol.asyncDispose]();
+    releaseRead.resolve();
+    await resuming.catch(() => {});
+    await yieldToEventLoop();
+
+    // A launch that finishes after disposal holds nothing: no checkpoint, and no attempt for a
+    // later loss to abandon.
+    expect(internals.checkpoints.size).toBe(0);
+    expect(currentExecutionAttempt(internals, id)).toBeUndefined();
   });
 });
 

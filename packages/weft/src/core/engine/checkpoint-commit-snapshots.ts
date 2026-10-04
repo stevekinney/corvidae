@@ -48,7 +48,9 @@ export function forgetCommittedCheckpointBytes(
  * so an earlier loss of this generation no longer applies to it: the engine drives it again,
  * and work still in flight from the earlier attempt is recognized as stale by its attempt.
  * With `serialized`, also primes the checkpoint-bytes compare-and-swap baseline from those
- * committed bytes.
+ * committed bytes. A disposed engine adopts nothing: a launch that was already in flight when
+ * the engine was disposed finds no checkpoint to hold and no attempt to begin, so disposal leaves
+ * nothing behind that a late loss could abandon.
  *
  * This and the three release functions below are the only places that install or remove a held
  * checkpoint, so a checkpoint, its committed bytes, and its attempt come and go together
@@ -61,6 +63,7 @@ export function adoptLaunchCheckpoint(
   checkpoint: Checkpoint,
   serialized?: Uint8Array,
 ): void {
+  if (internals.disposed) return;
   internals.checkpoints.set(workflowId, checkpoint);
   beginExecutionAttempt(internals, workflowId, checkpoint.workflowExecutionToken);
   if (serialized !== undefined) rememberCommittedCheckpointBytes(internals, workflowId, serialized);
