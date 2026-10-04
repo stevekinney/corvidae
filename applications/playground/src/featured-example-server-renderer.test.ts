@@ -54,4 +54,29 @@ describe('featured example server renderer', () => {
     expect(rendered.body).toContain('Approve');
     expect(rendered.body).toContain('Deny');
   });
+
+  // A library component keeps its CSS in a sidecar only when it ships one. Editor components carry
+  // scoped `<style>` blocks, and the shared compiler writes that CSS to an external file that the
+  // server build never loads, so unless the worker asks for it to be injected the server-rendered
+  // overview reaches the browser unstyled until the client bundle mounts (and stays so without
+  // JavaScript).
+  test.each([
+    ['diff-viewer', 'basic'],
+    ['markdown-editor', 'basic'],
+  ])(
+    'injects the scoped styles of the Editor component %s/%s renders into the head',
+    async (componentName, scenario) => {
+      const rendered = await renderFeaturedExample(
+        componentName,
+        scenario,
+        `overview-mount-${scenario}`,
+      );
+
+      expect(rendered.head).toContain('<style');
+      // The component's own scoped class names appear in both the markup and the injected rules.
+      const scopedClasses = new Set(rendered.body.match(/\bsvelte-[a-z0-9]+\b/g) ?? []);
+      expect(scopedClasses.size).toBeGreaterThan(0);
+      for (const scopedClass of scopedClasses) expect(rendered.head).toContain(`.${scopedClass}`);
+    },
+  );
 });

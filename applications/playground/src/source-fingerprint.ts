@@ -132,19 +132,27 @@ export function newestFileMtimeMs(
  * happen in a real checkout, but keeps this honest rather than returning `0`
  * and looking like a real timestamp).
  */
-export function newestSourceMtimeMs(repoRoot: string): number | null {
+export function newestSourceMtimeMs(
+  repoRoot: string,
+  filesystem: Partial<FingerprintFilesystem> = {},
+): number | null {
+  const { statFile } = { ...REAL_FILESYSTEM, ...filesystem };
   let newest: number | null = null;
   for (const relativeDirectory of FINGERPRINT_SOURCE_DIRECTORIES) {
-    const candidate = newestFileMtimeMs(join(repoRoot, relativeDirectory));
+    const candidate = newestFileMtimeMs(join(repoRoot, relativeDirectory), filesystem);
     if (candidate !== null && (newest === null || candidate > newest)) newest = candidate;
   }
   for (const relativeFile of FINGERPRINT_SOURCE_FILES) {
+    let candidate: number;
     try {
-      const candidate = statSync(join(repoRoot, relativeFile)).mtimeMs;
-      if (newest === null || candidate > newest) newest = candidate;
-    } catch {
-      // A source package may be absent while a branch is being assembled.
+      candidate = statFile(join(repoRoot, relativeFile)).mtimeMs;
+    } catch (error) {
+      // A source package may be absent while a branch is being assembled. A file that exists but
+      // cannot be read is not absent: leaving it out would fingerprint an input the server never saw.
+      if (isVanishedPath(error)) continue;
+      throw error;
     }
+    if (newest === null || candidate > newest) newest = candidate;
   }
   return newest;
 }

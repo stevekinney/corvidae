@@ -7,6 +7,7 @@ import {
   SHARED_BUILD_OPTIONS,
   collectBuildArtifacts,
   coordinatedBuild,
+  publishShellArtifacts,
   shellArtifactByPath,
 } from './build-artifacts-shared.ts';
 import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
@@ -136,8 +137,9 @@ export async function buildShellBundle(): Promise<ShellBuildResult> {
     // Always publish chunks (see buildPageBundle's comment for the
     // rationale — the entry we're returning has static imports to
     // content-hashed chunks that must be servable).
-    for (const [path, code] of entry.artifacts) shellArtifactByPath.set(path, code);
-    if (generationAtStart === getRebuildGeneration()) {
+    const stillCurrent = generationAtStart === getRebuildGeneration();
+    publishShellArtifacts(entry.artifacts, stillCurrent);
+    if (stillCurrent) {
       shellEntryByName.set('shell', entry.entryPath);
       setShellStale(false);
     }

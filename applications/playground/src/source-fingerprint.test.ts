@@ -217,6 +217,36 @@ describe('newestSourceMtimeMs', () => {
     expect(newestSourceMtimeMs(REPOSITORY_ROOT)).not.toBeNull();
   });
 
+  function statFailure(code: string, path: string): NodeJS.ErrnoException {
+    return Object.assign(new Error(`${code}: cannot stat '${path}'`), { code });
+  }
+
+  test('reports an input file that exists but cannot be statted, instead of leaving it out', () => {
+    // A package manifest or the package map that raised EACCES or EIO and was silently omitted
+    // would let a server start (and stay) fresh against an input it never saw.
+    for (const code of ['EACCES', 'EIO']) {
+      expect(() =>
+        newestSourceMtimeMs(REPOSITORY_ROOT, {
+          statFile: (path) => {
+            if (path.endsWith('scripts/mirror/package-map.json')) throw statFailure(code, path);
+            return statSync(path);
+          },
+        }),
+      ).toThrow(code);
+    }
+  });
+
+  test('still skips an input file that is absent, as in a branch being assembled', () => {
+    const withoutPackageMap = newestSourceMtimeMs(REPOSITORY_ROOT, {
+      statFile: (path) => {
+        if (path.endsWith('scripts/mirror/package-map.json')) throw statFailure('ENOENT', path);
+        return statSync(path);
+      },
+    });
+
+    expect(withoutPackageMap).not.toBeNull();
+  });
+
   test('includes the private upstream packages the playground bundle depends on', () => {
     // The playground server imports these packages (@lostgradient/markdown,
     // @lostgradient/editor). An edit to one of them must move the fingerprint,

@@ -157,6 +157,24 @@ export function clearPageArtifacts(): void {
 }
 
 export const shellArtifactByPath = new Map<string, string>();
+
+/**
+ * Publish one shell build's artifacts.
+ *
+ * The shell is a single bundle, and the set already in the map is only the last-good fallback
+ * until a build succeeds (see `buildShellBundle`). A build that is still current becomes the shell,
+ * so it replaces the whole set; otherwise every watched edit would leave the previous content-hashed
+ * entry and chunks resident and servable for the life of the server. A build that lost a race with
+ * an invalidation is added alongside instead, because the entry it hands back imports chunk URLs
+ * that must resolve; the next current build replaces it too.
+ */
+export function publishShellArtifacts(
+  artifacts: ReadonlyMap<string, string>,
+  replacesPrevious: boolean,
+): void {
+  if (replacesPrevious) shellArtifactByPath.clear();
+  for (const [path, code] of artifacts) shellArtifactByPath.set(path, code);
+}
 export const scenarioArtifactByPath = new Map<string, string>();
 export const fixtureArtifactByPath = new Map<string, string>();
 

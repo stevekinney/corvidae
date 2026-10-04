@@ -74,7 +74,9 @@ export function renderFeaturedExample(mountIdPrefix: string) {
     const result = await coordinatedBuild(() =>
       Bun.build({
         entrypoints: [entryPath],
-        plugins: [playgroundSveltePlugin({ generate: 'server' })],
+        // Injected, not external: an Editor component's scoped `<style>` block has no sidecar, and the
+        // external CSS the shared compiler would emit is never loaded by this server build.
+        plugins: [playgroundSveltePlugin({ generate: 'server', injectCss: true })],
         target: 'bun',
         format: 'esm',
         conditions: ['bun', 'svelte'],
