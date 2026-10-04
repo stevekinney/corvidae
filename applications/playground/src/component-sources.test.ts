@@ -169,6 +169,59 @@ describe('resolveEditorStylesheetUrl', () => {
   });
 });
 
+describe('stylesheets an implementation imports beyond its own sidecar', () => {
+  // `markdown-editor.svelte` imports `./prosemirror.css`, the ProseMirror baseline (`white-space`
+  // and list rules). It is not `<name>/<name>.css`, so the sidecar lookup cannot see it, and the
+  // page bundle drops CSS that JavaScript imports, so the page rendered without it.
+  const prosemirrorStylesheet = '/package-components/editor/markdown-editor/prosemirror.css';
+
+  it('links the ProseMirror baseline on the markdown-editor page', () => {
+    expect(
+      documentationExampleStylesheetUrls(EDITOR_COMPONENT_SOURCE, 'markdown-editor', []),
+    ).toContain(prosemirrorStylesheet);
+  });
+
+  it('links it where an editor embeds MarkdownEditor, as the review editor does', () => {
+    expect(
+      documentationExampleStylesheetUrls(EDITOR_COMPONENT_SOURCE, 'review-editor', []),
+    ).toContain(prosemirrorStylesheet);
+  });
+
+  it('does not link it for an editor that never reaches MarkdownEditor', () => {
+    expect(
+      documentationExampleStylesheetUrls(EDITOR_COMPONENT_SOURCE, 'diff-viewer', []),
+    ).not.toContain(prosemirrorStylesheet);
+  });
+
+  it('follows relative imports to a non-sidecar stylesheet and ignores everything else', () => {
+    const componentsRoot = mkdtempSync(join(tmpdir(), 'implementation-stylesheets-'));
+    try {
+      mkdirSync(join(componentsRoot, 'widget'));
+      mkdirSync(join(componentsRoot, 'engine'));
+      writeFileSync(
+        join(componentsRoot, 'widget', 'widget.svelte'),
+        `<script lang="ts">\n  import Engine from '../engine/engine.svelte';\n  import './widget.css';\n</script>\n`,
+      );
+      writeFileSync(
+        join(componentsRoot, 'engine', 'engine.svelte'),
+        `<script lang="ts">\n  import './base.css';\n  import 'package-style.css';\n</script>\n`,
+      );
+      for (const path of ['widget/widget.css', 'engine/base.css']) {
+        writeFileSync(join(componentsRoot, path), '');
+      }
+      const source = { ...EDITOR_COMPONENT_SOURCE, componentsRoot, componentNames: null };
+
+      // The widget's own sidecar is the sidecar lookup's job; a bare package specifier is not a
+      // file the route can serve. Only the imported sibling stylesheet is added here.
+      expect(documentationExampleStylesheetUrls(source, 'widget', [])).toEqual([
+        '/package-components/editor/engine/base.css',
+      ]);
+    } finally {
+      rmSync(componentsRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('documentationComponentStylesheetUrl', () => {
   it('does not add a second stylesheet for documentation primitives', () => {
     expect(documentationComponentStylesheetUrl(CINDER_COMPONENT_SOURCE, 'button')).toBeNull();

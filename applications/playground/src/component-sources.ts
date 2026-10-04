@@ -112,6 +112,8 @@ export const CINDER_COMPONENT_SOURCE: ComponentSource = {
 const DOCUMENTATION_CINDER_COMPONENT_SET = new Set<string>(DOCUMENTATION_CINDER_COMPONENTS);
 const CINDER_ROOT_BARREL_IMPORT = /import\s*\{([^}]+)\}\s*from\s*['"]@lostgradient\/cinder['"]/gu;
 const RELATIVE_IMPLEMENTATION_IMPORT = /from\s+['"](\.{1,2}\/[^'"]+\.(?:svelte|ts))['"]/gu;
+/** A relative stylesheet imported for its side effect: `import './prosemirror.css';`. */
+const SIDE_EFFECT_STYLESHEET_IMPORT = /^[ \t]*import\s+['"](\.{1,2}\/[^'"]+\.css)['"]/gmu;
 
 type ManifestComponent = { id?: unknown; exportName?: unknown };
 type ComponentManifestFile = { components?: unknown };
@@ -274,6 +276,55 @@ function implementationDependencies(
 }
 
 /**
+ * Collect the stylesheets a component's implementation imports for their side effect
+ * that are not its `<name>/<name>.css` sidecar, following the same relative imports
+ * `implementationDependencies` follows. The sidecar lookup finds a component's own
+ * stylesheet by that name, and the page bundle drops CSS that JavaScript imports
+ * rather than linking it, so a differently named stylesheet (the ProseMirror baseline
+ * `markdown-editor.svelte` imports, which every editor embedding it also needs) would
+ * otherwise never reach the page. Sidecars are skipped here because the lookup owns them.
+ */
+function implementationStylesheetImports(
+  componentSource: ComponentSource,
+  implementationPath: string,
+  stylesheetUrls: Set<string>,
+  visitedPaths = new Set<string>(),
+): void {
+  const resolvedComponentsRoot = resolve(componentSource.componentsRoot);
+  const resolvedPath = resolve(implementationPath);
+  const isWithinComponentsRoot = (path: string): boolean => {
+    const pathWithinRoot = relative(resolvedComponentsRoot, path);
+    return (
+      pathWithinRoot !== '..' &&
+      !pathWithinRoot.startsWith(`..${sep}`) &&
+      !isAbsolute(pathWithinRoot)
+    );
+  };
+  if (!isWithinComponentsRoot(resolvedPath) || visitedPaths.has(resolvedPath)) return;
+  visitedPaths.add(resolvedPath);
+  if (!existsSync(resolvedPath)) return;
+
+  const source = readFileSync(resolvedPath, 'utf8');
+  for (const match of source.matchAll(SIDE_EFFECT_STYLESHEET_IMPORT)) {
+    const stylesheetPath = resolve(dirname(resolvedPath), match[1]!);
+    if (!isWithinComponentsRoot(stylesheetPath) || !existsSync(stylesheetPath)) continue;
+    const segments = relative(resolvedComponentsRoot, stylesheetPath).split(sep);
+    const fileName = segments.at(-1);
+    const directoryName = segments.at(-2);
+    if (fileName === `${directoryName}.css`) continue;
+    stylesheetUrls.add(`/package-components/${componentSource.id}/${segments.join('/')}`);
+  }
+  for (const match of source.matchAll(RELATIVE_IMPLEMENTATION_IMPORT)) {
+    implementationStylesheetImports(
+      componentSource,
+      resolve(dirname(resolvedPath), match[1]!),
+      stylesheetUrls,
+      visitedPaths,
+    );
+  }
+}
+
+/**
  * Return the stylesheet a documentation page needs in addition to the shared
  * documentation CSS. Cinder primitives rendered by the page itself are
  * already bundled into that shared asset; every other component retains its
@@ -354,9 +405,20 @@ export function documentationExampleStylesheetUrls(
           .map((name) => componentSource.componentStylesheetUrl(name))
           .filter((stylesheetUrl): stylesheetUrl is string => stylesheetUrl !== null);
 
-  return [...cinderStylesheetUrls, ...packageStylesheetUrls].filter(
-    (stylesheetUrl, index, urls) => urls.indexOf(stylesheetUrl) === index,
-  );
+  const implementationStylesheetUrls = new Set<string>();
+  if (componentSource.id !== CINDER_COMPONENT_SOURCE.id) {
+    implementationStylesheetImports(
+      componentSource,
+      join(componentSource.componentsRoot, componentName, `${componentName}.svelte`),
+      implementationStylesheetUrls,
+    );
+  }
+
+  return [
+    ...cinderStylesheetUrls,
+    ...packageStylesheetUrls,
+    ...implementationStylesheetUrls,
+  ].filter((stylesheetUrl, index, urls) => urls.indexOf(stylesheetUrl) === index);
 }
 
 export const CHAT_COMPONENT_SOURCE: ComponentSource = {

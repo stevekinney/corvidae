@@ -1509,6 +1509,21 @@ describe('/page/:name', () => {
     },
   );
 
+  it('links the ProseMirror baseline on editor pages and serves it from the package route', async () => {
+    // `?snapshot=1` skips the featured-example server render, which these assertions do not need.
+    const stylesheetUrl = '/package-components/editor/markdown-editor/prosemirror.css';
+    for (const pageName of ['markdown-editor', 'review-editor']) {
+      const page = await handleRequest(req(`/page/${pageName}?snapshot=1`));
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain(`href="${stylesheetUrl}"`);
+    }
+
+    const stylesheet = await handleRequest(req(stylesheetUrl));
+    expect(stylesheet.status).toBe(200);
+    expect(stylesheet.headers.get('Content-Type')).toBe('text/css');
+    expect(await stylesheet.text()).toContain('.ProseMirror');
+  });
+
   it('wraps the body background/color transition in a reduced-motion guard', async () => {
     // The crossfade must only run when the user has not requested reduced
     // motion, so the unguarded `transition: background ...` is gone.
