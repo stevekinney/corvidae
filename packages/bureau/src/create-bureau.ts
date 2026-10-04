@@ -3394,7 +3394,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       activeRun.once('run.error', (_event) => {
         activeRuns.delete(activeRun);
         runToolboxes.delete(runToolbox);
-        disposeRegisteredStreamListeners(disposeStreamListeners);
+        // The stream listeners are deliberately NOT disposed here. `run.error`
+        // is not terminal: Operative follows it with `run.completed`, which
+        // carries the finish reason, so the `run.completed` listener above
+        // disposes them once that event has reached them. Detaching on
+        // `run.error` stopped the run frame forwarder and the run event feed
+        // one event early, so a run that exceeded its budget never announced
+        // it and a failed run's feed never recorded its terminal event
+        // (COR-1419). A recovered run already works this way.
         // COR-625: a terminal transition owes this run one checkpoint-
         // retention step whether or not anyone ever calls `closed()`.
         // Memoized per run id, so this and `closed()`'s own fold resolve the

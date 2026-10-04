@@ -48,6 +48,11 @@ export interface RunFrameForwarderOptions {
  * removes every listener it registered — call it once the run settles (the
  * same pattern `disposeRegisteredStreamListeners` already uses for the
  * legacy WebSocket frame listeners).
+ *
+ * A run settles on `run.completed` or `run.aborted`. `run.error` does not
+ * settle it: Operative dispatches `run.completed` after it, and the
+ * budget-exceeded notification is read from that event, so a forwarder
+ * disposed at `run.error` never emits it.
  */
 export function createRunFrameForwarder(
   runId: string,
