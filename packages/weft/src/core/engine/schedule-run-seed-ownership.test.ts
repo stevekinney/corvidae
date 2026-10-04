@@ -362,6 +362,27 @@ const interleavings: readonly {
     },
   },
   {
+    label:
+      'launch A is rejected before it adopts a checkpoint, a live engine.start run takes the id, then launch A releases its seed',
+    async run(harness) {
+      const refusal = harness.refuseNextRead();
+      const services = { owner: 'the live run' };
+
+      const first = await harness.launch({
+        afterRejection: async () => {
+          // Nothing rolled launch A's seed back, so it is still in memory when the live run
+          // starts. The live run adopts a checkpoint, which makes the id its own.
+          await harness.engine.start(harness.id, null, { id: harness.id, services });
+        },
+      });
+
+      expect(rejectionReason(first)).toBe(refusal);
+      expect(harness.holdings().services).toBe(services);
+      expect(harness.holdings().cleanupTracked).toBe(true);
+      return { kind: 'live', services };
+    },
+  },
+  {
     label: 'launch B is rejected as a duplicate while launch A is in flight',
     async run(harness) {
       // A terminal handoff and a cadence tick draining the same queued run: the first to
@@ -484,12 +505,25 @@ describe('what a scheduled start releases when it is rejected', () => {
       const id = 'seed-ownership-disposal';
       const harness = await createHarness(id, kind);
       try {
-        expectLaunched(await harness.launch());
+        let recordedAtStart = false;
+        expectLaunched(
+          await harness.launch({
+            // The launch has seeded the id and adopted nothing yet, so the engine recorded who
+            // owns what it seeded.
+            atStart: () => {
+              recordedAtStart = harness.internals.scheduledSeedOwners.has(id);
+            },
+          }),
+        );
         await waitForCondition(() => harness.internals.parkedInlineWorkflows.has(id), {
           label: `${id} parked on its signal`,
         });
-        // The launch seeded the id, so the engine recorded who owns what it seeded.
-        expect(harness.internals.scheduledSeedOwners.has(id)).toBe(true);
+        expect(recordedAtStart).toBe(true);
+        // Adopting its checkpoint made the id the launch's own: what it seeded is the run's
+        // now, and nothing is left for a release to strip.
+        expect(harness.internals.scheduledSeedOwners.has(id)).toBe(false);
+        expect(harness.internals.workflowServices.has(id)).toBe(kind !== 'none');
+        expect(harness.internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
 
         await harness.dispose();
 

@@ -15,7 +15,9 @@ import {
  * A start rejected that early (a duplicate id, an unregistered type, an oversized input)
  * must leave all of it alone, and `rollback` does nothing then. After `adopt`, the
  * checkpoint under the id is this start's, and `rollback` removes everything a failed
- * launch left behind.
+ * launch left behind. `adopt` also ends the claim of any scheduled seed still waiting to be
+ * released for the id (see `scheduled-seed-ownership.ts`), so a start that goes on to
+ * succeed cannot have its services or its cleanup membership removed by that release.
  */
 export type LaunchAdoption = {
   /** Install `checkpoint` as the launch checkpoint of this start, and prime its committed bytes. */

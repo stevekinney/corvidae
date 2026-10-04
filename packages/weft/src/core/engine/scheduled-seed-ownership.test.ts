@@ -6,7 +6,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
-import { workflow, type WorkflowContext } from '../types.ts';
+import { workflow, type Checkpoint, type WorkflowContext } from '../types.ts';
+import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { noCallbacks } from './checkpoint-conflict.test-support.ts';
 import { beginExecutionAttempt } from './execution-attempts.ts';
 import { Engine } from './index.ts';
@@ -250,6 +251,54 @@ describe('a seed that finds the seeds of an earlier launch', () => {
       expect(internals.workflowServices.get(id)).toBe(seededByA);
       expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
       expect(internals.scheduledSeedOwners.has(id)).toBe(true);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+});
+
+describe('a launch that adopts a checkpoint takes over the id', () => {
+  const adoptedCheckpoint = { workflowExecutionToken: 'the-adopted-generation' } as Checkpoint;
+
+  it('forgets both owners and leaves the entries for the run that adopted', async () => {
+    const { engine, internals } = await createInternals();
+    try {
+      const seededByA = { owner: 'launch A' };
+      const releaseA = seedScheduledRunState(internals, id, { value: seededByA });
+      expect(internals.scheduledSeedOwners.has(id)).toBe(true);
+
+      adoptLaunchCheckpoint(internals, id, adoptedCheckpoint);
+
+      expect(internals.scheduledSeedOwners.size).toBe(0);
+      // Adopting installs nothing of its own and removes nothing: the entries stay for the
+      // run, as they do when the adopting launch is the seeding one.
+      expect(internals.workflowServices.get(id)).toBe(seededByA);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+
+      releaseA();
+      expect(internals.workflowServices.get(id)).toBe(seededByA);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('keeps a live run from losing what it set over a seed when the seed releases', async () => {
+    const { engine, internals } = await createInternals();
+    try {
+      const releaseA = seedScheduledRunState(internals, id, { value: { owner: 'launch A' } });
+      const liveServices = { owner: 'the live run' };
+
+      // What `engine.start(id, input, { services })` does: adopt, then install its services
+      // over the seed's, and join the terminal-cleanup membership.
+      adoptLaunchCheckpoint(internals, id, adoptedCheckpoint);
+      internals.workflowServices.set(id, liveServices);
+      internals.workflowsNeedingTerminalCleanup.add(id);
+
+      releaseA();
+
+      expect(internals.workflowServices.get(id)).toBe(liveServices);
+      expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
     } finally {
       await engine[Symbol.asyncDispose]();
     }

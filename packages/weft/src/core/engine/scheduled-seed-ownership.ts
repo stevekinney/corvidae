@@ -10,8 +10,8 @@ export type ScheduledSeedToken = symbol;
 
 /**
  * Which seed put each in-memory entry of one workflow id there. A slot is `undefined` when
- * the entry is not a seed's: it was already in memory when the seed ran, or another path
- * installed it since.
+ * the entry is not a seed's: it was already in memory when the seed ran, another path
+ * installed it since, or a launch adopted a checkpoint under the id since.
  */
 export type ScheduledSeedOwnership = {
   services: ScheduledSeedToken | undefined;
@@ -43,12 +43,22 @@ type OwnershipSlot = keyof ScheduledSeedOwnership;
  * release a slot owned by someone else. A start in flight and a run this engine launched keep
  * their seeds.
  *
+ * Any launch that adopts a checkpoint under the id takes the id over, the seeding launch
+ * included, and `adoptLaunchCheckpoint` forgets both owners at that moment. A scheduled launch
+ * that was rejected before it adopted leaves its seed in memory until its release runs, and a
+ * live `engine.start` run, a resume, a recovery or a fork can adopt in that window; that run
+ * then installs its own services over the seed's, or joins the membership the seed already
+ * holds, and the stale release must not remove them. The adoption leaves the entries where they
+ * are, since for the seeding launch they are the run's own. A start that fails after adopting
+ * is rolled back outright by its `LaunchAdoption`, so no release is needed for it.
+ *
  * `scheduledSeedOwners` mirrors the entries it names. Every other path that removes one
  * also forgets its slot, through {@link forgetSeededServices} and
  * {@link forgetSeededCleanupMembership}: the rollback of a start that adopted a checkpoint,
  * terminal cleanup, purge and retention collection (which reach the services through
  * `cleanupWaiters`), and disposal. So no record outlives its entry, and a stale token finds
- * its slot empty or owned by whoever seeded the id since.
+ * its slot empty or owned by whoever seeded the id since. A record is made by a seed and ends
+ * at the first adoption under the id, or sooner when its entry is removed.
  *
  * The seed and the release are synchronous: they add no await to a launch, persist, or
  * termination path.
