@@ -90,10 +90,10 @@ import type { HookRegistry, RuntimeServices, RuntimeTimeoutHandle } from '@lostg
 import {
   GuardrailTripwireError,
   isDeadlineElapsed,
+  type OperativeHookMap,
   remainingMilliseconds,
   START_ATTEMPT_MAXIMUM_TRIES,
   START_ATTEMPT_TIMEOUT_MS,
-  type OperativeHookMap,
 } from '@lostgradient/operative';
 
 import { isGoalOwnedRunRecord, type RunRecordReader } from './goal-ownership';
@@ -302,7 +302,8 @@ function waitFor(
       resolve();
       return;
     }
-    let handle: RuntimeTimeoutHandle;
+    // `armed` is what makes reading `handle` safe: an abort that lands, or a timer that
+    // fires, before `setTimeout` has returned ends the wait while `handle` has no value yet.
     let armed = false;
     function done(): void {
       if (armed) runtime.timers.clearTimeout(handle);
@@ -312,7 +313,7 @@ function waitFor(
     // Listen before arming the timer, so an abort that lands as the timer is set
     // (or before it fires) ends the wait instead of being missed.
     signal?.addEventListener('abort', done, { once: true });
-    handle = runtime.timers.setTimeout(done, delay);
+    const handle: RuntimeTimeoutHandle = runtime.timers.setTimeout(done, delay);
     armed = true;
     if (signal?.aborted) done();
   });

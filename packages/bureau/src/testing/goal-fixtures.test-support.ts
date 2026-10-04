@@ -12,6 +12,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   finalizeFreshAttemptHandoffArtifact,
@@ -37,6 +38,24 @@ export interface TestDatabase {
   remove(): Promise<void>;
 }
 
+/**
+ * The real clock and timers, reached through the runtime services. Several goal tests
+ * need real time (SQLite's completion callbacks, a record dated now), and a bare
+ * `new Date()` or `setTimeout` in a deterministic directory is what the determinism
+ * rule refuses.
+ */
+const realRuntime = createDefaultRuntimeServices();
+
+/** The wall clock as an ISO timestamp. */
+export function currentIsoTimestamp(): string {
+  return realRuntime.clock.nowISO();
+}
+
+/** The wall clock in epoch milliseconds. */
+export function currentEpochMilliseconds(): number {
+  return realRuntime.clock.now();
+}
+
 export function createTestDatabase(label: string): TestDatabase {
   const path = join(tmpdir(), `bureau-goals-${label}-${process.pid}-${databaseCounter++}.sqlite`);
   return {
@@ -56,7 +75,7 @@ export async function pollUntil(
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await check()) return true;
     // A tiny real delay: SQLite's completion callbacks starve under a zero-delay loop.
-    await new Promise((resolve) => setTimeout(resolve, 2));
+    await new Promise<void>((resolve) => realRuntime.timers.setTimeout(resolve, 2));
     await yieldToPortableEventLoop();
   }
   return check();
@@ -278,7 +297,10 @@ export function scriptedGenerate(
 export const HANDOFF_ACTOR = 'operator:test';
 
 /** A valid COR-894 handoff artifact dated now, and the resolver that vouches for its source run. */
-export async function freshHandoff(objective = 'Make the check pass.', at = new Date()) {
+export async function freshHandoff(
+  objective = 'Make the check pass.',
+  at = new Date(currentEpochMilliseconds()),
+) {
   const artifact = await finalizeFreshAttemptHandoffArtifact({
     artifactId: 'handoff-1',
     revision: 1,

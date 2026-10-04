@@ -15,6 +15,7 @@
  * cannot tell "wrong id" from "not yours".
  */
 
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   FreshAttemptArtifactError,
   type FreshAttemptSourceResolver,
@@ -23,7 +24,6 @@ import {
   validateFreshAttemptArtifact,
 } from '@lostgradient/operative';
 
-import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { cancelGoal, settleCanceledGoal } from './goal-cancellation';
 import { cleanUpGoal, isCleanupDone } from './goal-cleanup';
 import { ensureController, type GoalControlDependencies } from './goal-controller';
