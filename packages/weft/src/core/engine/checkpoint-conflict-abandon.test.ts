@@ -371,8 +371,9 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     const handle = await startParked(engine, 'legacy-run', 'legacy-run');
     const pendingResult = handle.result();
     // A run recovered from before execution tokens existed carries none.
-    const checkpoint = internals.checkpoints.get('legacy-run')!;
-    internals.checkpoints.set('legacy-run', { ...checkpoint, workflowExecutionToken: undefined });
+    const legacyCheckpoint = { ...internals.checkpoints.get('legacy-run')! };
+    delete legacyCheckpoint.workflowExecutionToken;
+    internals.checkpoints.set('legacy-run', legacyCheckpoint);
     const strategy = observeStrategy(internals);
     const warning = collectConflictWarnings();
     try {
