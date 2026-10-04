@@ -275,19 +275,31 @@ function implementationDependencies(
   }
 }
 
+/** What a package component's implementation graph brings onto its documentation page. */
+type ImplementationGraphStyles = {
+  /** Side-effect stylesheets that are not a component's own `<name>/<name>.css` sidecar. */
+  stylesheetUrls: Set<string>;
+  /** Every component whose own implementation file the graph reaches, for the sidecars they ship. */
+  componentNames: Set<string>;
+};
+
 /**
- * Collect the stylesheets a component's implementation imports for their side effect
- * that are not its `<name>/<name>.css` sidecar, following the same relative imports
- * `implementationDependencies` follows. The sidecar lookup finds a component's own
- * stylesheet by that name, and the page bundle drops CSS that JavaScript imports
- * rather than linking it, so a differently named stylesheet (the ProseMirror baseline
- * `markdown-editor.svelte` imports, which every editor embedding it also needs) would
- * otherwise never reach the page. Sidecars are skipped here because the lookup owns them.
+ * Walk a package component's relative imports, as `implementationDependencies` does for
+ * Cinder, and collect the styles the page needs beyond what its examples name:
+ *
+ * - the components whose implementation file the graph reaches (`diff-review.svelte`
+ *   renders `DiffReviewComments`, so that component's sidecar belongs on the page even
+ *   though no example imports it), and
+ * - side-effect stylesheets that are not a component's own sidecar. The sidecar lookup
+ *   finds a component's stylesheet by its `<name>/<name>.css` name, and the page bundle
+ *   drops CSS that JavaScript imports instead of linking it, so a differently named one
+ *   (the ProseMirror baseline `markdown-editor.svelte` imports, which every editor
+ *   embedding it also needs) would otherwise never reach the page.
  */
-function implementationStylesheetImports(
+function walkImplementationGraphStyles(
   componentSource: ComponentSource,
   implementationPath: string,
-  stylesheetUrls: Set<string>,
+  graph: ImplementationGraphStyles,
   visitedPaths = new Set<string>(),
 ): void {
   const resolvedComponentsRoot = resolve(componentSource.componentsRoot);
@@ -304,6 +316,21 @@ function implementationStylesheetImports(
   visitedPaths.add(resolvedPath);
   if (!existsSync(resolvedPath)) return;
 
+  // A component counts as reached when its own implementation file is, not when a helper
+  // module in its directory is: an example that imports only Chat's helpers does not render
+  // Chat, so it must not pick up `chat.css`.
+  const [componentName, fileName, ...deeperSegments] = relative(
+    resolvedComponentsRoot,
+    resolvedPath,
+  ).split(sep);
+  if (
+    componentName !== undefined &&
+    deeperSegments.length === 0 &&
+    fileName === `${componentName}.svelte`
+  ) {
+    graph.componentNames.add(componentName);
+  }
+
   const source = readFileSync(resolvedPath, 'utf8');
   for (const match of source.matchAll(SIDE_EFFECT_STYLESHEET_IMPORT)) {
     const stylesheetPath = resolve(dirname(resolvedPath), match[1]!);
@@ -312,13 +339,13 @@ function implementationStylesheetImports(
     const fileName = segments.at(-1);
     const directoryName = segments.at(-2);
     if (fileName === `${directoryName}.css`) continue;
-    stylesheetUrls.add(`/package-components/${componentSource.id}/${segments.join('/')}`);
+    graph.stylesheetUrls.add(`/package-components/${componentSource.id}/${segments.join('/')}`);
   }
   for (const match of source.matchAll(RELATIVE_IMPLEMENTATION_IMPORT)) {
-    implementationStylesheetImports(
+    walkImplementationGraphStyles(
       componentSource,
       resolve(dirname(resolvedPath), match[1]!),
-      stylesheetUrls,
+      graph,
       visitedPaths,
     );
   }
@@ -405,19 +432,27 @@ export function documentationExampleStylesheetUrls(
           .map((name) => componentSource.componentStylesheetUrl(name))
           .filter((stylesheetUrl): stylesheetUrl is string => stylesheetUrl !== null);
 
-  const implementationStylesheetUrls = new Set<string>();
+  const implementationGraph: ImplementationGraphStyles = {
+    stylesheetUrls: new Set<string>(),
+    componentNames: new Set<string>(),
+  };
   if (componentSource.id !== CINDER_COMPONENT_SOURCE.id) {
-    implementationStylesheetImports(
+    walkImplementationGraphStyles(
       componentSource,
       join(componentSource.componentsRoot, componentName, `${componentName}.svelte`),
-      implementationStylesheetUrls,
+      implementationGraph,
     );
   }
+  const composedSidecarUrls = [...implementationGraph.componentNames]
+    .toSorted()
+    .map((name) => componentSource.componentStylesheetUrl(name))
+    .filter((stylesheetUrl): stylesheetUrl is string => stylesheetUrl !== null);
 
   return [
     ...cinderStylesheetUrls,
     ...packageStylesheetUrls,
-    ...implementationStylesheetUrls,
+    ...composedSidecarUrls,
+    ...implementationGraph.stylesheetUrls,
   ].filter((stylesheetUrl, index, urls) => urls.indexOf(stylesheetUrl) === index);
 }
 

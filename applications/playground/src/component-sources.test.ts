@@ -193,6 +193,47 @@ describe('stylesheets an implementation imports beyond its own sidecar', () => {
     ).not.toContain(prosemirrorStylesheet);
   });
 
+  it('links the sidecar of a component the documented one composes internally', () => {
+    // `diff-review.svelte` renders `DiffReviewComments`, but its examples import only `DiffReview`,
+    // so the example-derived set never named the comments component and its sidecar never loaded.
+    expect(
+      documentationExampleStylesheetUrls(EDITOR_COMPONENT_SOURCE, 'diff-review', []),
+    ).toContain('/package-components/editor/diff-review-comments/diff-review-comments.css');
+    expect(
+      documentationExampleStylesheetUrls(EDITOR_COMPONENT_SOURCE, 'diff-viewer', []),
+    ).not.toContain('/package-components/editor/diff-review-comments/diff-review-comments.css');
+  });
+
+  it('links the sidecar of a sibling component reached through a relative import', () => {
+    const componentsRoot = mkdtempSync(join(tmpdir(), 'implementation-sidecars-'));
+    try {
+      mkdirSync(join(componentsRoot, 'host'));
+      mkdirSync(join(componentsRoot, 'guest'));
+      mkdirSync(join(componentsRoot, 'stranger'));
+      writeFileSync(
+        join(componentsRoot, 'host', 'host.svelte'),
+        `<script lang="ts">\n  import Guest from '../guest/guest.svelte';\n</script>\n`,
+      );
+      writeFileSync(join(componentsRoot, 'guest', 'guest.svelte'), '<p>guest</p>\n');
+      for (const path of ['host/host.css', 'guest/guest.css', 'stranger/stranger.css']) {
+        writeFileSync(join(componentsRoot, path), '');
+      }
+      const source = {
+        ...EDITOR_COMPONENT_SOURCE,
+        componentsRoot,
+        componentNames: null,
+        componentStylesheetUrl: (name: string) => resolveEditorStylesheetUrl(componentsRoot, name),
+      };
+
+      expect(documentationExampleStylesheetUrls(source, 'host', [])).toEqual([
+        '/package-components/editor/host/host.css',
+        '/package-components/editor/guest/guest.css',
+      ]);
+    } finally {
+      rmSync(componentsRoot, { recursive: true, force: true });
+    }
+  });
+
   it('follows relative imports to a non-sidecar stylesheet and ignores everything else', () => {
     const componentsRoot = mkdtempSync(join(tmpdir(), 'implementation-stylesheets-'));
     try {
