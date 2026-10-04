@@ -17,6 +17,7 @@ import {
   readInitialTheme,
   readStoredNavFilter,
 } from './component-page-theme.ts';
+import { PRE_PAINT_THEME_SCRIPT } from './render-shell.ts';
 import { THEME_STORAGE_KEY } from './shell-app/theme-storage.ts';
 
 const originalDocument = globalThis.document;
@@ -153,6 +154,65 @@ describe('applyTheme', () => {
         value: originalLocalStorage,
         writable: true,
       });
+    }
+  });
+});
+
+describe('applyTheme and the shareable theme query', () => {
+  const happyWindow = window as unknown as { happyDOM: { setURL(url: string): void } };
+
+  afterEach(() => {
+    happyWindow.happyDOM.setURL('http://localhost/');
+    localStorage.removeItem(THEME_STORAGE_KEY);
+  });
+
+  it('rewrites an existing theme parameter to the toggled theme and keeps the rest of the URL', () => {
+    happyWindow.happyDOM.setURL(
+      'http://localhost/page/button?w=768&theme=dark&view=playground#usage',
+    );
+
+    applyTheme('light');
+
+    expect(window.location.pathname).toBe('/page/button');
+    expect(new URLSearchParams(window.location.search).get('theme')).toBe('light');
+    expect(new URLSearchParams(window.location.search).get('w')).toBe('768');
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('playground');
+    expect(window.location.hash).toBe('#usage');
+  });
+
+  it('leaves a URL without a theme parameter exactly as it was', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button?w=768#usage');
+
+    applyTheme('dark');
+
+    expect(window.location.href).toBe('http://localhost/page/button?w=768#usage');
+  });
+
+  it('keeps the toggled theme across a reload of a URL that carried the other one', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button?theme=dark');
+    applyTheme('light');
+    document.documentElement.style.colorScheme = '';
+    delete document.documentElement.dataset['cinderTheme'];
+
+    // A reload runs the pre-paint script against whatever URL and storage the toggle left.
+    new Function(PRE_PAINT_THEME_SCRIPT)();
+
+    expect(document.documentElement.dataset['cinderTheme']).toBe('light');
+    expect(document.documentElement.style.colorScheme).toBe('light');
+  });
+
+  it('still applies the theme when the document refuses to rewrite its URL', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button?theme=dark');
+    const originalReplaceState = window.history.replaceState.bind(window.history);
+    window.history.replaceState = () => {
+      throw new DOMException('sandboxed frame', 'SecurityError');
+    };
+    try {
+      expect(() => applyTheme('light')).not.toThrow();
+      expect(document.documentElement.dataset['cinderTheme']).toBe('light');
+      expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
+    } finally {
+      window.history.replaceState = originalReplaceState;
     }
   });
 });

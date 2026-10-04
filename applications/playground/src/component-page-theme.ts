@@ -12,7 +12,7 @@
  * `component-page-scroll-spy.ts` already uses for a sibling concern.
  */
 
-import { readPreviewWidthFromSearch } from './shell-app/routing.ts';
+import { readPreviewWidthFromSearch, searchForTheme, TOOLBAR_PARAMS } from './shell-app/routing.ts';
 import { THEME_STORAGE_KEY } from './shell-app/theme-storage.ts';
 
 /**
@@ -71,8 +71,28 @@ export function readStoredNavFilter(): string {
 }
 
 /**
- * Write the resolved theme to the DOM and persist it to `localStorage`. Used
- * by `toggleTheme` — never assign the theme's DOM/storage targets directly.
+ * Rewrite an existing `?theme=` on the address bar to the theme just chosen. The
+ * pre-paint script prefers the URL over `localStorage`, so leaving `theme=dark`
+ * behind after a toggle to light would repaint dark on the next reload. A URL with
+ * no `theme` parameter is left untouched. `replaceState`, not `pushState`, so Back
+ * does not have to walk through a toggle; the hash and history state are kept.
+ */
+function synchronizeThemeQuery(theme: 'light' | 'dark'): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(TOOLBAR_PARAMS.theme)) return;
+    const search = searchForTheme(url.searchParams, theme);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${search}${url.hash}`);
+  } catch {
+    // A sandboxed frame can refuse to rewrite its URL — the theme still applies.
+  }
+}
+
+/**
+ * Write the resolved theme to the DOM, persist it to `localStorage`, and keep an
+ * existing `?theme=` in step with it. Used by `toggleTheme` — never assign the
+ * theme's DOM/storage targets directly.
  */
 export function applyTheme(theme: 'light' | 'dark'): void {
   document.documentElement.style.colorScheme = theme;
@@ -85,4 +105,5 @@ export function applyTheme(theme: 'light' | 'dark'): void {
   } catch {
     // Private mode / disabled storage — the in-memory theme still applies.
   }
+  synchronizeThemeQuery(theme);
 }

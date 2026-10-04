@@ -16,6 +16,7 @@ import {
   readFocusModeFromSearch,
   readPreviewWidthFromSearch,
   readViewFromSearch,
+  searchForTheme,
   searchForView,
   TOOLBAR_PARAMS,
 } from './routing.ts';
@@ -154,5 +155,22 @@ describe('component page view', () => {
     expect(searchForView(new URLSearchParams('view=playground&w=375'), 'documentation')).toBe(
       '?w=375',
     );
+  });
+});
+
+describe('searchForTheme', () => {
+  it('rewrites an existing theme parameter and keeps the other parameters in order', () => {
+    expect(searchForTheme(new URLSearchParams('w=768&theme=dark&focus=1'), 'light')).toBe(
+      '?w=768&theme=light&focus=1',
+    );
+  });
+
+  it('replaces an unrecognised theme value with the chosen theme', () => {
+    expect(searchForTheme(new URLSearchParams('theme=banana'), 'dark')).toBe('?theme=dark');
+  });
+
+  it('adds no theme parameter to a URL that has none', () => {
+    expect(searchForTheme(new URLSearchParams('w=375'), 'dark')).toBe('?w=375');
+    expect(searchForTheme(new URLSearchParams(''), 'dark')).toBe('');
   });
 });

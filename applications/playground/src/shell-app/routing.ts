@@ -102,6 +102,21 @@ export function readPreviewWidthFromSearch(search: URLSearchParams): number | nu
 }
 
 /**
+ * The search string after the reader picks `theme`, rewriting a `theme` parameter
+ * that is already on the URL and touching nothing else. The pre-paint script lets
+ * the URL win over `localStorage` so a shared `?theme=dark` link paints dark, which
+ * means a stale `theme=dark` would undo a later choice of light on the next load.
+ * A URL that carries no `theme` parameter stays without one: the choice then lives
+ * in `localStorage` only, and the link the reader shares does not start forcing it.
+ */
+export function searchForTheme(search: URLSearchParams, theme: ThemeChoice): string {
+  const next = new URLSearchParams(search);
+  if (next.has(TOOLBAR_PARAMS.theme)) next.set(TOOLBAR_PARAMS.theme, theme);
+  const query = next.toString();
+  return query === '' ? '' : `?${query}`;
+}
+
+/**
  * The two views a component page can be in.
  *
  * Documentation and Playground are separate views rather than two panes because
