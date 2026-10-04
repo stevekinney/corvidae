@@ -12,7 +12,6 @@ import {
   releaseInFlightStart,
   resolveAndReserveExecutableRegistration,
 } from '../catalog-removal.ts';
-import { adoptLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import { type WorkflowHandle } from '../handles.ts';
 import type { Engine } from '../index.ts';
@@ -54,7 +53,7 @@ import {
   prepareTerminalRunPurge,
   resolveTerminalConflictForRestart,
 } from './start-terminal-conflict-purge.ts';
-import { rollbackTransientStartState } from './start-transient-state.ts';
+import { createLaunchAdoption } from './start-transient-state.ts';
 import {
   mergeWorkerStartOverrideOperations,
   prepareWorkerStartOverrideConsumption,
@@ -298,6 +297,7 @@ export async function startWorkflow(
   }
   internals.pendingStarts.add(workflowId);
   let startSucceeded = false;
+  const launch = createLaunchAdoption(internals, workflowId);
   let inFlightRevision: string | undefined;
 
   try {
@@ -408,7 +408,7 @@ export async function startWorkflow(
     // `expectedSerialized`, leaving it unfenced against a concurrent
     // `start-new` replacement. A failed start's own rollback below already
     // calls `forgetCommittedCheckpointBytes()`, so nothing stale leaks.
-    adoptLaunchCheckpoint(internals, workflowId, checkpoint, serializeCheckpoint(checkpoint));
+    launch.adopt(checkpoint, serializeCheckpoint(checkpoint));
     setWorkflowStartHeaders(internals, workflowId, workflowStartHeaders, callbacks);
 
     // Cache the workflow version tuple for forwarding to event-log entries.
@@ -493,7 +493,7 @@ export async function startWorkflow(
     internals.pendingStarts.delete(workflowId);
     releaseInFlightStart(internals, type, inFlightRevision);
     if (!startSucceeded) {
-      rollbackTransientStartState(internals, workflowId);
+      launch.rollback();
     }
   }
 }

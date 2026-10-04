@@ -16,9 +16,10 @@ import type { EngineInternals } from './internals.ts';
  * Held beside the engine rather than on `EngineInternals`, like the committed
  * checkpoint bytes in `checkpoint-commit-snapshots.ts`, and with the same lifecycle:
  * `forgetCommittedCheckpointBytes` retires it wherever the engine stops holding the
- * checkpoint for good (terminal cleanup, purge, and rollback of a launch that did not
- * complete). A suspended workflow keeps its entry until it is resumed, which adopts a
- * new one.
+ * checkpoint for good (terminal cleanup, purge, and rollback of a launch that adopted its
+ * checkpoint and did not complete). A launch rejected before it adopted one retires
+ * nothing, because the attempt under that id is a live run's. A suspended workflow keeps
+ * its entry until it is resumed, which adopts a new one.
  */
 export type ExecutionAttempt = symbol;
 

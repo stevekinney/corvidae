@@ -28,6 +28,7 @@ import {
   activity,
   workflow,
   type Checkpoint,
+  type ScheduleState,
   type StartOptions,
   type TimerEntry,
   type WorkflowContext,
@@ -39,9 +40,11 @@ import {
   markCheckpointGenerationAbandoned,
 } from './abandoned-checkpoint-generations.ts';
 import { createLifecycleCallbacks } from './callback-creators-core.ts';
+import { createScheduleCallbacks } from './callback-creators-schedule.ts';
 import {
   adoptLaunchCheckpoint,
   forgetCommittedCheckpointBytes,
+  getCommittedCheckpointBytes,
 } from './checkpoint-commit-snapshots.ts';
 import {
   abandonWorkflowAfterCheckpointConflict,
@@ -53,7 +56,7 @@ import {
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
 import { notifyConditionWaiters } from './condition-waiters.ts';
-import { staleFailureGuard } from './execution-attempts.ts';
+import { currentExecutionAttempt, staleFailureGuard } from './execution-attempts.ts';
 import {
   createWorkflowResultWaiter,
   getGeneratorOwnedWorkflowResultPromise,
@@ -62,6 +65,7 @@ import { WorkflowHandle } from './handles.ts';
 import { Engine } from './index.ts';
 import { getInternals, type EngineInternals } from './internals.ts';
 import { resume as resumeFromLifecycle } from './lifecycle.ts';
+import { startScheduledRun } from './schedule-run.ts';
 import { registerSignalWaiter } from './signals.ts';
 import { failWorkflow } from './termination/complete.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
@@ -1443,6 +1447,199 @@ describe('failing from an execution attempt this engine no longer holds', () => 
     forgetCommittedCheckpointBytes(internals, 'attempts');
     expect(currentFailure(stored)).toBe(true);
     expect(staleFailureGuard(internals, 'attempts', 'execution')(stored)).toBe(false);
+  });
+});
+
+/**
+ * A start or prepare this engine rejects before it adopts a launch checkpoint did nothing to
+ * the id's in-memory run, so a live run under the same id keeps everything it holds: the
+ * execution attempt a failure in flight is judged by, its checkpoint and committed bytes, its
+ * headers, version tuple, services, and terminal-cleanup membership. Only a start that adopted
+ * a launch checkpoint has anything of its own to unwind.
+ */
+describe('rejecting a launch for an id this engine is already running', () => {
+  /** Give every run a start header, so the engine holds headers and tracks terminal cleanup for it. */
+  function addStartHeaderInterceptor(engine: Engine): void {
+    engine.addInterceptor({
+      workflowStart: (interception, next) => {
+        interception.headers.set('x-trace', 'live-run');
+        next(interception);
+      },
+    });
+  }
+
+  async function startLiveRun(id: string) {
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({ storage, recover: false });
+    engine.register(parkedOnSignal(id));
+    addStartHeaderInterceptor(engine);
+    const internals = getInternals(engine);
+    const handle = await engine.start(id, null, { id, services: { owner: 'the live run' } });
+    await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+      label: `${id} parked on its signal`,
+    });
+    return { storage, engine, internals, handle };
+  }
+
+  /** Everything the engine holds in memory for the id, by identity where it is an object. */
+  function holdings(internals: EngineInternals, id: string) {
+    return {
+      attempt: currentExecutionAttempt(internals, id),
+      checkpoint: internals.checkpoints.get(id),
+      committedBytes: getCommittedCheckpointBytes(internals, id),
+      headers: internals.workflowHeaders.get(id),
+      versionTuple: internals.workflowVersionTuples.get(id),
+      services: internals.workflowServices.get(id),
+      cleanupTracked: internals.workflowsNeedingTerminalCleanup.has(id),
+    };
+  }
+
+  const rejectedLaunches = [
+    {
+      label: 'a start of the running id',
+      reject: (engine: Engine, id: string) => engine.start(id, null, { id }),
+    },
+    {
+      label: 'a start of an unregistered type under the running id',
+      reject: (engine: Engine, id: string) => engine.start('unregistered-type', null, { id }),
+    },
+    {
+      label: 'a prepare of the running id',
+      reject: (engine: Engine, id: string) => engine.prepare(id, null, { id }),
+    },
+  ];
+
+  for (const [index, { label, reject }] of rejectedLaunches.entries()) {
+    it(`still fails the live run for a failure in flight when ${label} is rejected`, async () => {
+      const id = `rejected-launch-failure-${index}`;
+      const { storage, engine, internals } = await startLiveRun(id);
+      try {
+        const held = holdFailureAtItsFirstRead(internals, storage, id);
+        const failure = failWorkflow(
+          internals,
+          id,
+          new Error('failure of the live run'),
+          noCallbacks,
+        );
+        await held.reached;
+
+        expect(await rejectionOf(reject(engine, id))).toBeInstanceOf(Error);
+
+        held.release();
+        await failure;
+        internals.storage = storage;
+
+        expect(await readStatus(storage, id)).toBe('failed');
+      } finally {
+        internals.storage = storage;
+        await engine[Symbol.asyncDispose]();
+      }
+    });
+
+    it(`leaves everything the live run holds untouched when ${label} is rejected`, async () => {
+      const id = `rejected-launch-holdings-${index}`;
+      const { storage, engine, internals, handle } = await startLiveRun(id);
+      try {
+        const before = holdings(internals, id);
+        expect(before.attempt).toBeDefined();
+        expect(before.checkpoint).toBeDefined();
+        expect(before.committedBytes).toBeDefined();
+        expect(before.headers?.get('x-trace')).toBe('live-run');
+        expect(before.versionTuple).toBeDefined();
+        expect(before.services).toEqual({ owner: 'the live run' });
+        expect(before.cleanupTracked).toBe(true);
+
+        expect(await rejectionOf(reject(engine, id))).toBeInstanceOf(Error);
+
+        const after = holdings(internals, id);
+        expect(after.attempt).toBe(before.attempt);
+        expect(after.checkpoint).toBe(before.checkpoint);
+        expect(after.committedBytes).toEqual(before.committedBytes);
+        expect(after.headers).toBe(before.headers);
+        expect(after.versionTuple).toBe(before.versionTuple);
+        expect(after.services).toBe(before.services);
+        expect(after.cleanupTracked).toBe(true);
+        expect(internals.pendingStarts.has(id)).toBe(false);
+
+        // The run it belongs to is still driven: it takes its signal and completes.
+        await engine.signal(id, 'go', 'still running');
+        expect(await handle.result()).toBe('still running');
+      } finally {
+        internals.storage = storage;
+        await engine[Symbol.asyncDispose]();
+      }
+    });
+  }
+
+  it('unwinds everything a start that adopted a launch checkpoint left behind', async () => {
+    const id = 'adopted-then-failed';
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({ storage, recover: false });
+    engine.register(parkedOnSignal(id));
+    addStartHeaderInterceptor(engine);
+    const internals = getInternals(engine);
+    try {
+      // The create commit fails after the start adopted its launch checkpoint.
+      const refusedCommit = new Error('the create commit was refused');
+      internals.storage = new Proxy(storage, {
+        get(target, property) {
+          const original: unknown = Reflect.get(target, property, target);
+          if (typeof original !== 'function') return original;
+          if (property === 'batch' || property === 'conditionalBatch') {
+            return () => Promise.reject(refusedCommit);
+          }
+          return original.bind(target);
+        },
+      });
+
+      expect(await rejectionOf(engine.start(id, null, { id, services: { owner: 'doomed' } }))).toBe(
+        refusedCommit,
+      );
+      internals.storage = storage;
+
+      const after = holdings(internals, id);
+      expect(after.attempt).toBeUndefined();
+      expect(after.checkpoint).toBeUndefined();
+      expect(after.committedBytes).toBeUndefined();
+      expect(after.headers).toBeUndefined();
+      expect(after.versionTuple).toBeUndefined();
+      expect(after.services).toBeUndefined();
+      expect(after.cleanupTracked).toBe(false);
+      expect(internals.pendingStarts.has(id)).toBe(false);
+    } finally {
+      internals.storage = storage;
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('unwinds what a scheduled occurrence seeded when its start is rejected before adopting a checkpoint', async () => {
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      resolveWorkflowServices: () => ({
+        status: 'available',
+        services: { owner: 'the occurrence' },
+      }),
+    });
+    const internals = getInternals(engine);
+    try {
+      // The occurrence seeds its services and cleanup membership before the start runs, and
+      // the start rejects its unregistered type before it adopts anything.
+      const schedule = { id: 'seeded-schedule', workflowType: 'never-registered', input: null };
+
+      const failure = await rejectionOf(
+        startScheduledRun(internals, schedule as ScheduleState, createScheduleCallbacks(engine), {
+          workflowId: 'seeded-occurrence',
+        }),
+      );
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(internals.workflowServices.has('seeded-occurrence')).toBe(false);
+      expect(internals.workflowsNeedingTerminalCleanup.has('seeded-occurrence')).toBe(false);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
   });
 });
 

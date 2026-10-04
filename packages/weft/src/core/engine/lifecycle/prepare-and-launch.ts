@@ -93,7 +93,7 @@ import {
   prepareTerminalRunPurge,
   resolveTerminalConflictForRestart,
 } from './start-terminal-conflict-purge.ts';
-import { rollbackTransientStartState } from './start-transient-state.ts';
+import { createLaunchAdoption } from './start-transient-state.ts';
 import { prepareStartWorkflow, resolveAndReserveStartRegistration } from './start.ts';
 
 /**
@@ -182,6 +182,7 @@ export async function prepareWorkflow(
     throw new WorkflowAlreadyExistsError(workflowId);
   }
   internals.pendingStarts.add(workflowId);
+  const launch = createLaunchAdoption(internals, workflowId);
   let inFlightRevision: string | undefined;
 
   try {
@@ -267,7 +268,7 @@ export async function prepareWorkflow(
           )
         : undefined;
 
-    adoptLaunchCheckpoint(internals, workflowId, checkpoint, serializeCheckpoint(checkpoint));
+    launch.adopt(checkpoint, serializeCheckpoint(checkpoint));
     setWorkflowStartHeaders(internals, workflowId, workflowStartHeaders, callbacks);
     internals.workflowVersionTuples.set(workflowId, versionTuple);
 
@@ -329,7 +330,7 @@ export async function prepareWorkflow(
   } catch (error) {
     internals.pendingStarts.delete(workflowId);
     releaseInFlightStart(internals, type, inFlightRevision);
-    rollbackTransientStartState(internals, workflowId);
+    launch.rollback();
     throw error;
   }
 }
