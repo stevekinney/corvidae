@@ -9,6 +9,7 @@ import {
   coordinatedBuild,
   pageArtifactByPath,
   pageBuildPromiseByKey,
+  publishPageArtifacts,
 } from './build-artifacts-shared.ts';
 import { componentExportNameFor } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
@@ -449,7 +450,7 @@ export async function buildPageBundle(
     // filenames are content-hashed, so writing them is safe even if a newer
     // invalidation already cleared and re-populated the same chunks — the
     // bytes are identical.
-    for (const [path, code] of entry.artifacts) pageArtifactByPath.set(path, code);
+    publishPageArtifacts(componentName, entry.artifacts);
     // Only update the entry-by-name mapping when we're not racing a newer
     // invalidation. A stale generation skips this so it can't republish a
     // pointer to now-invalidated content.

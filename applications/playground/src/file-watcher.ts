@@ -3,8 +3,9 @@ import { join } from 'node:path';
 
 import { resetProject } from './analyze.ts';
 import {
+  clearPageArtifacts,
+  evictPageArtifacts,
   fixtureBuildPromiseByKey,
-  pageArtifactByPath,
   pageBuildPromiseByKey,
   scenarioArtifactByPath,
   scenarioBuildPromiseByKey,
@@ -173,9 +174,8 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
 
   if (scope.kind === 'examples') {
     for (const name of scope.names) {
-      const entryPath = pageEntryByName.get(name);
       pageEntryByName.delete(name);
-      if (entryPath !== undefined) pageArtifactByPath.delete(entryPath);
+      evictPageArtifacts(name);
       pageBuildPromiseByKey.delete(name);
     }
     triggerReload('reload');
@@ -194,7 +194,7 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // Session-only shell state is persisted before navigation, so the document
   // refresh does not discard filters or color-token overrides.
   pageEntryByName.clear();
-  pageArtifactByPath.clear();
+  clearPageArtifacts();
   pageBuildPromiseByKey.clear();
 
   // See `isShellStale`/`setShellStale`'s doc comments for why this marks

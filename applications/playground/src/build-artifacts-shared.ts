@@ -103,6 +103,59 @@ export const SHARED_BUILD_OPTIONS = {
  * basename prefixes.
  */
 export const pageArtifactByPath = new Map<string, string>();
+
+/**
+ * The pages that published each page-family artifact, by artifact path. Chunks are
+ * content-hashed and shared across pages, so an artifact is dropped only when the
+ * last page that published it lets go. Without this, an example-scoped
+ * invalidation could remove only the page's entry artifact, and every save of the
+ * same example left the superseded scenario chunk resident and servable until a
+ * broader invalidation or a restart.
+ */
+const pageArtifactOwners = new Map<string, Set<string>>();
+
+/**
+ * Publish every artifact one page build emitted into the page family's map and
+ * record `componentName` as an owner of each.
+ *
+ * A build that lost a race with an invalidation still publishes: the entry it hands
+ * back imports content-hashed chunk URLs that must resolve for the request that
+ * triggered it. Those artifacts are owned like any other, so the page's next
+ * invalidation frees them.
+ */
+export function publishPageArtifacts(
+  componentName: string,
+  artifacts: ReadonlyMap<string, string>,
+): void {
+  for (const [path, code] of artifacts) {
+    pageArtifactByPath.set(path, code);
+    let owners = pageArtifactOwners.get(path);
+    if (owners === undefined) {
+      owners = new Set();
+      pageArtifactOwners.set(path, owners);
+    }
+    owners.add(componentName);
+  }
+}
+
+/**
+ * Let go of everything `componentName` published, dropping each artifact that no
+ * other page still owns. A page that is built again republishes what it needs.
+ */
+export function evictPageArtifacts(componentName: string): void {
+  for (const [path, owners] of pageArtifactOwners) {
+    if (!owners.delete(componentName) || owners.size > 0) continue;
+    pageArtifactOwners.delete(path);
+    pageArtifactByPath.delete(path);
+  }
+}
+
+/** Drop every page artifact and every ownership record, as a shell or component change must. */
+export function clearPageArtifacts(): void {
+  pageArtifactByPath.clear();
+  pageArtifactOwners.clear();
+}
+
 export const shellArtifactByPath = new Map<string, string>();
 export const scenarioArtifactByPath = new Map<string, string>();
 export const fixtureArtifactByPath = new Map<string, string>();

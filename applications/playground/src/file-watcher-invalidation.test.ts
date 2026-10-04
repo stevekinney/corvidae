@@ -3,12 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { pageArtifactByPath, publishPageArtifacts } from './build-artifacts-shared.ts';
 import {
   EDITOR_COMPONENT_SOURCE,
   componentExportNameFor,
   type ComponentSource,
 } from './component-sources.ts';
 import { invalidateCachesForChange, startWatcher, waitForPendingRebuild } from './file-watcher.ts';
+import { pageEntryByName } from './page-bundle.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 describe('invalidateCachesForChange', () => {
@@ -38,6 +40,104 @@ describe('invalidateCachesForChange', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('invalidateCachesForChange and the page chunks an example edit supersedes', () => {
+  /**
+   * What one page build publishes: its entry, the chunk holding its scenarios (content-hashed, so a
+   * new one every time the example changes), and a chunk several pages share.
+   */
+  function publishPage(name: string, hash: string, sharedChunk = 'chunk-shared-core.js'): string {
+    const entryPath = `page-${name}-${hash}.js`;
+    publishPageArtifacts(
+      name,
+      new Map([
+        [entryPath, `entry ${name} ${hash}`],
+        [`chunk-${name}-scenarios-${hash}.js`, `scenarios ${name} ${hash}`],
+        [sharedChunk, 'shared by every page'],
+      ]),
+    );
+    pageEntryByName.set(name, entryPath);
+    return entryPath;
+  }
+
+  function resetPageCaches(): void {
+    invalidateCachesForChange({ kind: 'components' });
+  }
+
+  it('drops the chunks only the edited page referenced, so repeated saves do not accumulate them', () => {
+    resetPageCaches();
+    publishPage('alpha', 'a1');
+    publishPage('beta', 'b1');
+    const baseline = [...pageArtifactByPath.keys()].toSorted();
+
+    for (const hash of ['a2', 'a3', 'a4']) {
+      invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+      publishPage('alpha', hash);
+    }
+
+    // Three saves later the map holds what one build of each page publishes, not three more
+    // generations of alpha's scenario chunk.
+    expect([...pageArtifactByPath.keys()].toSorted()).toEqual(
+      [
+        'chunk-alpha-scenarios-a4.js',
+        'chunk-beta-scenarios-b1.js',
+        'chunk-shared-core.js',
+        'page-alpha-a4.js',
+        'page-beta-b1.js',
+      ].toSorted(),
+    );
+    expect(baseline).toHaveLength(pageArtifactByPath.size);
+  });
+
+  it('keeps a chunk another page still references and drops it with the last page that did', () => {
+    resetPageCaches();
+    publishPage('alpha', 'a1');
+    publishPage('beta', 'b1');
+
+    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    expect(pageArtifactByPath.has('chunk-shared-core.js')).toBe(true);
+    expect(pageArtifactByPath.has('page-beta-b1.js')).toBe(true);
+    expect(pageArtifactByPath.has('page-alpha-a1.js')).toBe(false);
+
+    invalidateCachesForChange({ kind: 'examples', names: ['beta'] });
+    expect(pageArtifactByPath.has('chunk-shared-core.js')).toBe(false);
+    expect(pageArtifactByPath.size).toBe(0);
+  });
+
+  it('frees what a build that lost the race published after the edit on the next edit of that page', () => {
+    resetPageCaches();
+    publishPage('alpha', 'a1');
+
+    // A build that started before the edit finishes after it: its artifacts still have to be
+    // served to the request that triggered it, but no entry pointer is recorded for them.
+    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    publishPageArtifacts(
+      'alpha',
+      new Map([
+        ['page-alpha-late.js', 'late entry'],
+        ['chunk-alpha-scenarios-late.js', 'late scenarios'],
+      ]),
+    );
+    expect(pageArtifactByPath.has('chunk-alpha-scenarios-late.js')).toBe(true);
+
+    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    expect(pageArtifactByPath.size).toBe(0);
+  });
+
+  it('clears every page artifact when a shell or component change invalidates every page', () => {
+    resetPageCaches();
+    publishPage('alpha', 'a1');
+    publishPage('beta', 'b1');
+
+    invalidateCachesForChange({ kind: 'shell' });
+
+    expect(pageArtifactByPath.size).toBe(0);
+    // Ownership is forgotten with them: a later single-page edit must not resurrect or leak anything.
+    publishPage('alpha', 'a2');
+    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    expect(pageArtifactByPath.size).toBe(0);
   });
 });
 
