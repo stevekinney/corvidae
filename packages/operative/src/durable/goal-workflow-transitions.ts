@@ -43,14 +43,6 @@ export const isTerminalStatus = (status: GoalRunStatus): boolean =>
 const toIso = (nowMs: number): string => new Date(nowMs).toISOString();
 
 /**
- * What a creation time that cannot be used counts as: more time than any bound
- * allows, and still a finite number that survives the JSON the duration is
- * recorded in. Reading it as no time at all would let a duration-bounded goal
- * run for ever.
- */
-const UNUSABLE_CREATION_MILLISECONDS = Number.MAX_SAFE_INTEGER;
-
-/**
  * The record's creation as a clock reading, or `undefined` when it cannot be
  * used to measure age at `nowMs`: it does not parse, or it is later than the
  * reading. A goal cannot have been created in the future, so a creation time
@@ -64,21 +56,29 @@ const creationMilliseconds = (view: DurationClock, nowMs: number): number | unde
 };
 
 /**
- * The aggregate duration so far, measured from the record's creation. A
- * creation time that cannot be used fails closed (see `creationMilliseconds`):
- * the goal is as old as it can be, so a bound on its duration is spent rather
- * than never consumed.
+ * The aggregate duration so far, measured from the record's creation. This is
+ * the one reading the deadline, the decision context, and the usage a
+ * transition records all share, so it is always a finite, plausible duration.
+ *
+ * A creation time that cannot be used (see `creationMilliseconds`) has no age
+ * to measure, so the reading is what each kind of goal can be told. A goal
+ * with a duration bound fails closed: it is read as having spent exactly its
+ * bound, which exhausts it (every comparison against the bound is `>=`) rather
+ * than never consuming it. A goal with no duration bound has no window to
+ * spend, so it reads as no time at all and keeps running. Neither is a
+ * sentinel value: transitions record this reading as the goal's `durationMs`,
+ * and the transition log is append-only, so an absurd figure recorded during a
+ * skew would outlive it.
  */
 export function elapsedMilliseconds(view: DurationClock, nowMs: number): number {
   const createdAt = creationMilliseconds(view, nowMs);
-  return createdAt === undefined ? UNUSABLE_CREATION_MILLISECONDS : nowMs - createdAt;
+  return createdAt === undefined ? (view.bounds.maximumTotalDurationMs ?? 0) : nowMs - createdAt;
 }
 
 /** `undefined` when the goal has no duration bound. */
 export function remainingMilliseconds(view: DurationClock, nowMs: number): number | undefined {
   const bound = view.bounds.maximumTotalDurationMs;
   if (bound === undefined) return undefined;
-  if (creationMilliseconds(view, nowMs) === undefined) return 0;
   return Math.max(0, bound - elapsedMilliseconds(view, nowMs));
 }
 
