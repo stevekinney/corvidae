@@ -73,7 +73,7 @@ describe('invalidateCachesForChange and the page chunks an example edit supersed
     const baseline = [...pageArtifactByPath.keys()].toSorted();
 
     for (const hash of ['a2', 'a3', 'a4']) {
-      invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+      invalidateCachesForChange({ kind: 'examples', names: new Set(['alpha']) });
       publishPage('alpha', hash);
     }
 
@@ -96,12 +96,12 @@ describe('invalidateCachesForChange and the page chunks an example edit supersed
     publishPage('alpha', 'a1');
     publishPage('beta', 'b1');
 
-    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    invalidateCachesForChange({ kind: 'examples', names: new Set(['alpha']) });
     expect(pageArtifactByPath.has('chunk-shared-core.js')).toBe(true);
     expect(pageArtifactByPath.has('page-beta-b1.js')).toBe(true);
     expect(pageArtifactByPath.has('page-alpha-a1.js')).toBe(false);
 
-    invalidateCachesForChange({ kind: 'examples', names: ['beta'] });
+    invalidateCachesForChange({ kind: 'examples', names: new Set(['beta']) });
     expect(pageArtifactByPath.has('chunk-shared-core.js')).toBe(false);
     expect(pageArtifactByPath.size).toBe(0);
   });
@@ -112,7 +112,7 @@ describe('invalidateCachesForChange and the page chunks an example edit supersed
 
     // A build that started before the edit finishes after it: its artifacts still have to be
     // served to the request that triggered it, but no entry pointer is recorded for them.
-    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    invalidateCachesForChange({ kind: 'examples', names: new Set(['alpha']) });
     publishPageArtifacts(
       'alpha',
       new Map([
@@ -122,7 +122,7 @@ describe('invalidateCachesForChange and the page chunks an example edit supersed
     );
     expect(pageArtifactByPath.has('chunk-alpha-scenarios-late.js')).toBe(true);
 
-    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    invalidateCachesForChange({ kind: 'examples', names: new Set(['alpha']) });
     expect(pageArtifactByPath.size).toBe(0);
   });
 
@@ -136,7 +136,7 @@ describe('invalidateCachesForChange and the page chunks an example edit supersed
     expect(pageArtifactByPath.size).toBe(0);
     // Ownership is forgotten with them: a later single-page edit must not resurrect or leak anything.
     publishPage('alpha', 'a2');
-    invalidateCachesForChange({ kind: 'examples', names: ['alpha'] });
+    invalidateCachesForChange({ kind: 'examples', names: new Set(['alpha']) });
     expect(pageArtifactByPath.size).toBe(0);
   });
 });
