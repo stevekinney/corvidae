@@ -33,7 +33,7 @@
     "@lostgradient/typescript": "workspace:*",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
-    "@types/estree": "^1.0.9",
+    "@types/estree": "catalog:",
     "happy-dom": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",

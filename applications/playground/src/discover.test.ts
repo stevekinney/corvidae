@@ -652,10 +652,10 @@ describe('discoverComponentFilePaths', () => {
     }
   });
 
-  // analyzeAll spins up a fresh ts-morph Project per component (a known perf
-  // cost), so the cold-start scan over the whole library can exceed the default
-  // 5s per-test budget. The generous timeout keeps this invariant test honest
-  // without flaking on a slow machine.
+  // The cold analysis of all 211 components across the three packages takes
+  // about 8 seconds on an idle machine (a ts-morph program per package, shared by
+  // that package's components), which exceeds the default 5s per-test budget. The
+  // explicit timeout below is this test's own budget.
   it('matches the component set the analyzer resolves across packages', async () => {
     const definitions = await discoverComponentDefinitions();
     const manifests = await Promise.all(
