@@ -778,3 +778,78 @@ describe('component-page single-scroll layout', () => {
     await tick();
   });
 });
+
+describe('component-page stage controls and the shareable URL', () => {
+  const happyWindow = window as unknown as { happyDOM: { setURL(url: string): void } };
+
+  /** The `?w=` and `?focus=` the address bar carries right now (`null` when absent). */
+  function toolbarSearch(): { width: string | null; focus: string | null } {
+    const search = new URLSearchParams(window.location.search);
+    return { width: search.get('w'), focus: search.get('focus') };
+  }
+
+  async function mountPlaygroundAt(url: string): Promise<() => void> {
+    happyWindow.happyDOM.setURL(url);
+    const { unmount } = render(ComponentPage);
+    await findHeroHeading('Button');
+    await showPlayground();
+    return unmount;
+  }
+
+  test('a width chosen after arriving on ?w= replaces it, so a reload restores the choice', async () => {
+    const unmount = await mountPlaygroundAt('http://localhost/page/button?w=768&view=playground');
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Mobile' }));
+    expect(toolbarSearch().width).toBe('375');
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Full' }));
+    expect(toolbarSearch().width).toBeNull();
+
+    // Reloading the URL the controls left behind lands on the width the reader chose.
+    expect(new URLSearchParams(window.location.search).get('view')).toBe('playground');
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Tablet' }));
+    expect(toolbarSearch().width).toBe('768');
+
+    unmount();
+    await tick();
+  });
+
+  test('leaving focus mode removes ?focus=, and entering it records it again', async () => {
+    const unmount = await mountPlaygroundAt('http://localhost/page/button?focus=1&view=playground');
+
+    expect(screen.getByRole('button', { name: 'Exit' }).getAttribute('aria-pressed')).toBe('true');
+    await fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
+    expect(toolbarSearch().focus).toBeNull();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
+    expect(toolbarSearch().focus).toBe('1');
+
+    unmount();
+    await tick();
+  });
+
+  test('Escape leaves focus mode and removes ?focus= like the Exit button does', async () => {
+    const unmount = await mountPlaygroundAt('http://localhost/page/button?focus=1&view=playground');
+
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    await tick();
+
+    expect(screen.getByRole('button', { name: 'Expand' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    expect(toolbarSearch().focus).toBeNull();
+
+    unmount();
+    await tick();
+  });
+
+  test('a page the reader never touches keeps its URL clean', async () => {
+    const unmount = await mountPlaygroundAt('http://localhost/page/button?view=playground');
+
+    expect(toolbarSearch()).toEqual({ width: null, focus: null });
+
+    unmount();
+    await tick();
+  });
+});

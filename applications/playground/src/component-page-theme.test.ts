@@ -17,6 +17,8 @@ import {
   readInitialPreviewWidth,
   readInitialTheme,
   readStoredNavFilter,
+  synchronizeFocusModeQuery,
+  synchronizePreviewWidthQuery,
 } from './component-page-theme.ts';
 import { PRE_PAINT_THEME_SCRIPT } from './render-shell.ts';
 import { THEME_STORAGE_KEY } from './shell-app/theme-storage.ts';
@@ -212,6 +214,72 @@ describe('applyTheme and the shareable theme query', () => {
       expect(() => applyTheme('light')).not.toThrow();
       expect(document.documentElement.dataset['cinderTheme']).toBe('light');
       expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
+    } finally {
+      window.history.replaceState = originalReplaceState;
+    }
+  });
+});
+
+describe('the stage controls and the shareable URL', () => {
+  const happyWindow = window as unknown as { happyDOM: { setURL(url: string): void } };
+
+  afterEach(() => {
+    happyWindow.happyDOM.setURL('http://localhost/');
+  });
+
+  it('replaces a width the reader arrived with by the one they chose, keeping the rest of the URL', () => {
+    happyWindow.happyDOM.setURL(
+      'http://localhost/page/button?w=768&theme=dark&view=playground#usage',
+    );
+
+    synchronizePreviewWidthQuery(375);
+
+    expect(window.location.pathname).toBe('/page/button');
+    const search = new URLSearchParams(window.location.search);
+    expect(search.get('w')).toBe('375');
+    expect(search.get('theme')).toBe('dark');
+    expect(search.get('view')).toBe('playground');
+    expect(window.location.hash).toBe('#usage');
+  });
+
+  it('drops the width when the reader chooses the full width, so a reload does not restore the old one', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button?w=768');
+
+    synchronizePreviewWidthQuery(null);
+
+    expect(window.location.href).toBe('http://localhost/page/button');
+    expect(readInitialPreviewWidth()).toBeNull();
+  });
+
+  it('records a width chosen on a URL that carried none, so the link restores the selection', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button');
+
+    synchronizePreviewWidthQuery(1280);
+
+    expect(window.location.search).toBe('?w=1280');
+    expect(readInitialPreviewWidth()).toBe(1280);
+  });
+
+  it('records focus mode turning on and drops it when it turns off', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button?w=768');
+
+    synchronizeFocusModeQuery(true);
+    expect(new URLSearchParams(window.location.search).get('focus')).toBe('1');
+    expect(new URLSearchParams(window.location.search).get('w')).toBe('768');
+
+    synchronizeFocusModeQuery(false);
+    expect(window.location.search).toBe('?w=768');
+  });
+
+  it('still lets the controls work when the document refuses to rewrite its URL', () => {
+    happyWindow.happyDOM.setURL('http://localhost/page/button?w=768&focus=1');
+    const originalReplaceState = window.history.replaceState.bind(window.history);
+    window.history.replaceState = () => {
+      throw new DOMException('sandboxed frame', 'SecurityError');
+    };
+    try {
+      expect(() => synchronizePreviewWidthQuery(375)).not.toThrow();
+      expect(() => synchronizeFocusModeQuery(false)).not.toThrow();
     } finally {
       window.history.replaceState = originalReplaceState;
     }

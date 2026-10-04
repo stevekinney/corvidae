@@ -16,6 +16,8 @@ import {
   readFocusModeFromSearch,
   readPreviewWidthFromSearch,
   readViewFromSearch,
+  searchForFocusMode,
+  searchForPreviewWidth,
   searchForTheme,
   searchForView,
   TOOLBAR_PARAMS,
@@ -155,6 +157,60 @@ describe('component page view', () => {
     expect(searchForView(new URLSearchParams('view=playground&w=375'), 'documentation')).toBe(
       '?w=375',
     );
+  });
+});
+
+describe('searchForPreviewWidth', () => {
+  it('sets the width parameter, replacing the one already there and keeping the rest in order', () => {
+    expect(searchForPreviewWidth(new URLSearchParams('view=playground&w=768&focus=1'), 375)).toBe(
+      '?view=playground&w=375&focus=1',
+    );
+  });
+
+  it('adds the width parameter to a URL that had none', () => {
+    expect(searchForPreviewWidth(new URLSearchParams('view=playground'), 1280)).toBe(
+      '?view=playground&w=1280',
+    );
+  });
+
+  it('expresses the full width by dropping the parameter', () => {
+    expect(searchForPreviewWidth(new URLSearchParams('w=768'), null)).toBe('');
+    expect(searchForPreviewWidth(new URLSearchParams('w=768&theme=dark'), null)).toBe(
+      '?theme=dark',
+    );
+  });
+
+  it('round-trips through readPreviewWidthFromSearch', () => {
+    for (const width of [375, 768, 1280, null] as const) {
+      const search = searchForPreviewWidth(new URLSearchParams('w=999'), width);
+      expect(readPreviewWidthFromSearch(new URLSearchParams(search))).toBe(width);
+    }
+  });
+});
+
+describe('searchForFocusMode', () => {
+  it('sets the focus parameter when focus mode turns on, keeping the rest', () => {
+    expect(searchForFocusMode(new URLSearchParams('w=768'), true)).toBe('?w=768&focus=1');
+  });
+
+  it('normalizes a truthy spelling the reader arrived with', () => {
+    expect(searchForFocusMode(new URLSearchParams('focus=true&w=768'), true)).toBe(
+      '?focus=1&w=768',
+    );
+  });
+
+  it('expresses leaving focus mode by dropping the parameter', () => {
+    expect(searchForFocusMode(new URLSearchParams('focus=1'), false)).toBe('');
+    expect(searchForFocusMode(new URLSearchParams('w=768&focus=1&theme=dark'), false)).toBe(
+      '?w=768&theme=dark',
+    );
+  });
+
+  it('round-trips through readFocusModeFromSearch', () => {
+    for (const focused of [true, false]) {
+      const search = searchForFocusMode(new URLSearchParams('focus=yes'), focused);
+      expect(readFocusModeFromSearch(new URLSearchParams(search))).toBe(focused);
+    }
   });
 });
 

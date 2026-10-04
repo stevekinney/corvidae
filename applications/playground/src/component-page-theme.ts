@@ -12,7 +12,13 @@
  * `component-page-scroll-spy.ts` already uses for a sibling concern.
  */
 
-import { readPreviewWidthFromSearch, searchForTheme, TOOLBAR_PARAMS } from './shell-app/routing.ts';
+import {
+  readPreviewWidthFromSearch,
+  searchForFocusMode,
+  searchForPreviewWidth,
+  searchForTheme,
+  TOOLBAR_PARAMS,
+} from './shell-app/routing.ts';
 import { THEME_STORAGE_KEY } from './shell-app/theme-storage.ts';
 
 /**
@@ -71,22 +77,48 @@ export function readStoredNavFilter(): string {
 }
 
 /**
- * Rewrite an existing `?theme=` on the address bar to the theme just chosen. The
- * pre-paint script prefers the URL over `localStorage`, so leaving `theme=dark`
- * behind after a toggle to light would repaint dark on the next reload. A URL with
- * no `theme` parameter is left untouched. `replaceState`, not `pushState`, so Back
- * does not have to walk through a toggle; the hash and history state are kept.
+ * Replace the address bar's query with the one `rewrite` derives from it, leaving
+ * the path, the hash, and the history state alone. `rewrite` returns `null` to
+ * leave the URL untouched. `replaceState`, not `pushState`, so Back does not have
+ * to walk through a control change.
  */
-function synchronizeThemeQuery(theme: 'light' | 'dark'): void {
+function rewriteAddressBarSearch(rewrite: (search: URLSearchParams) => string | null): void {
   if (typeof window === 'undefined') return;
   try {
     const url = new URL(window.location.href);
-    if (!url.searchParams.has(TOOLBAR_PARAMS.theme)) return;
-    const search = searchForTheme(url.searchParams, theme);
+    const search = rewrite(url.searchParams);
+    if (search === null) return;
     window.history.replaceState(window.history.state, '', `${url.pathname}${search}${url.hash}`);
   } catch {
-    // A sandboxed frame can refuse to rewrite its URL — the theme still applies.
+    // A sandboxed frame can refuse to rewrite its URL — the control still applies.
   }
+}
+
+/**
+ * Rewrite an existing `?theme=` on the address bar to the theme just chosen. The
+ * pre-paint script prefers the URL over `localStorage`, so leaving `theme=dark`
+ * behind after a toggle to light would repaint dark on the next reload. A URL with
+ * no `theme` parameter is left untouched.
+ */
+function synchronizeThemeQuery(theme: 'light' | 'dark'): void {
+  rewriteAddressBarSearch((search) =>
+    search.has(TOOLBAR_PARAMS.theme) ? searchForTheme(search, theme) : null,
+  );
+}
+
+/**
+ * Keep `?w=` in step with the stage width the reader chose. The width is seeded
+ * from the URL (see {@link readInitialPreviewWidth}) and persisted nowhere else, so
+ * a control that changed only in-memory state left the old `w` behind and a reload
+ * or a shared link restored the stale width instead of the selection.
+ */
+export function synchronizePreviewWidthQuery(width: number | null): void {
+  rewriteAddressBarSearch((search) => searchForPreviewWidth(search, width));
+}
+
+/** Keep `?focus=` in step with focus mode, for the same reason as {@link synchronizePreviewWidthQuery}. */
+export function synchronizeFocusModeQuery(focused: boolean): void {
+  rewriteAddressBarSearch((search) => searchForFocusMode(search, focused));
 }
 
 /**

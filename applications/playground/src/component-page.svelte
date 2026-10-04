@@ -72,6 +72,8 @@
     readInitialPreviewWidth,
     readInitialTheme,
     readStoredNavFilter,
+    synchronizeFocusModeQuery,
+    synchronizePreviewWidthQuery,
   } from './component-page-theme.ts';
   import {
     copyErrorToClipboard,
@@ -383,6 +385,22 @@
 
   let previewWidth = $state<number | null>(null);
 
+  /**
+   * Choose a stage width and keep `?w=` in step with it. The width is seeded from
+   * the URL and kept nowhere else, so changing only the in-memory state left the
+   * old `w` behind and a reload or a shared link restored a stale width.
+   */
+  function selectPreviewWidth(width: number | null): void {
+    previewWidth = width;
+    synchronizePreviewWidthQuery(width);
+  }
+
+  /** Turn focus mode on or off and keep `?focus=` in step with it, for the same reason. */
+  function setFocusMode(focused: boolean): void {
+    isFocusMode = focused;
+    synchronizeFocusModeQuery(focused);
+  }
+
   /** Focus mode expands the stage over the viewport; Escape exits. */
   let isFocusMode = $state(false);
 
@@ -462,7 +480,7 @@
     const onKeydown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
 
-      isFocusMode = false;
+      setFocusMode(false);
     };
 
     window.addEventListener('keydown', onKeydown);
@@ -1223,7 +1241,7 @@
                             type="button"
                             class="dx-viewport__size"
                             aria-pressed={previewWidth === option.width}
-                            onclick={() => (previewWidth = option.width)}
+                            onclick={() => selectPreviewWidth(option.width)}
                           >
                             {option.label}
                           </button>
@@ -1237,7 +1255,7 @@
                       type="button"
                       class="dx-viewport__expand"
                       aria-pressed={isFocusMode}
-                      onclick={() => (isFocusMode = !isFocusMode)}
+                      onclick={() => setFocusMode(!isFocusMode)}
                     >
                       {isFocusMode ? 'Exit' : 'Expand'}
                     </button>

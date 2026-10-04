@@ -117,6 +117,36 @@ export function searchForTheme(search: URLSearchParams, theme: ThemeChoice): str
 }
 
 /**
+ * The search string after the reader picks a stage width, keeping every other
+ * parameter where it was. `null` (the full width) is the default and is expressed
+ * by REMOVING the parameter, so the canonical URL stays clean; a width is written
+ * even to a URL that had none, because the stage width lives nowhere but the URL
+ * and a reload or a shared link must restore what the reader chose, not what they
+ * arrived with.
+ */
+export function searchForPreviewWidth(search: URLSearchParams, width: number | null): string {
+  const next = new URLSearchParams(search);
+  if (width === null) next.delete(TOOLBAR_PARAMS.width);
+  else next.set(TOOLBAR_PARAMS.width, String(width));
+  const query = next.toString();
+  return query === '' ? '' : `?${query}`;
+}
+
+/**
+ * The search string after focus mode turns on or off, keeping every other
+ * parameter where it was. Off is the default and is expressed by REMOVING the
+ * parameter; on is written as `focus=1`, which also normalizes a handwritten
+ * spelling such as `focus=true`.
+ */
+export function searchForFocusMode(search: URLSearchParams, focused: boolean): string {
+  const next = new URLSearchParams(search);
+  if (focused) next.set(TOOLBAR_PARAMS.focus, '1');
+  else next.delete(TOOLBAR_PARAMS.focus);
+  const query = next.toString();
+  return query === '' ? '' : `?${query}`;
+}
+
+/**
  * The two views a component page can be in.
  *
  * Documentation and Playground are separate views rather than two panes because
