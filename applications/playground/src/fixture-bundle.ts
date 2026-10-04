@@ -2,10 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  fixtureRenderMode,
-  type VisualFixture,
-} from '../../components/scripts/lib/visual-fixtures/schema.ts';
+import { fixtureRenderMode, type VisualFixture } from '@lostgradient/testing';
 import {
   PUBLIC_PATH_BY_FAMILY,
   SHARED_BUILD_OPTIONS,

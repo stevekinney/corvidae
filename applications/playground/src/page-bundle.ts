@@ -10,6 +10,7 @@ import {
   pageArtifactByPath,
   pageBuildPromiseByKey,
 } from './build-artifacts-shared.ts';
+import { componentExportNameFor } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
 import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
@@ -20,6 +21,19 @@ import { getRebuildGeneration } from './rebuild-generation.ts';
  * with `bundleEntryByKey` since entries get prefix `page-` vs `bundle-`.
  */
 export const pageEntryByName = new Map<string, string>();
+
+/**
+ * Source of the per-page module that backs the lazy bare-component import.
+ *
+ * Every component imports from its package root, and a dynamic
+ * `import('<package root>')` keeps every export the root has. Re-exporting only
+ * the documented component from a module written next to the page entry lets
+ * the bundler drop the rest, so the Playground tab's chunk carries one
+ * component instead of the whole package.
+ */
+export function bareComponentShimSource(importPath: string, exportName: string): string {
+  return `export { ${exportName} } from ${JSON.stringify(importPath)};\n`;
+}
 
 /**
  * Compile the all-in-one page bundle for a single component without
@@ -62,6 +76,8 @@ export async function compilePageBundleArtifacts(
   const entryBasename = `page-${componentName}`;
   const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
   const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
+  const bareComponentShimBasename = `${entryBasename}-bare-component.ts`;
+  const bareComponentShimPath = join(entryTempDir, bareComponentShimBasename);
 
   const scenarioLoaders = scenarios
     .map(
@@ -133,7 +149,7 @@ const overviewPreviewReady = overviewExampleHtml !== null && overviewExampleHtml
   : undefined;
 
 const props = {
-  loadBareComponentModule: () => import(${JSON.stringify(componentDefinition.importPath)}),
+  loadBareComponentModule: () => import(${JSON.stringify(`./${bareComponentShimBasename}`)}),
   previewOnly,
   snapshotMode,
   sidebarComponents,
@@ -360,6 +376,13 @@ void hydratePage().catch((error) =>
 `;
 
   try {
+    await Bun.write(
+      bareComponentShimPath,
+      bareComponentShimSource(
+        componentDefinition.importPath,
+        componentExportNameFor(componentDefinition.source, componentName),
+      ),
+    );
     await Bun.write(entryTempPath, entrySource);
 
     const result = await coordinatedBuild(() =>

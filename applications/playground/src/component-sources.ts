@@ -1,10 +1,21 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
 
 const PLAYGROUND_ROOT = dirname(import.meta.dirname);
-const PACKAGES_ROOT = join(PLAYGROUND_ROOT, '..');
+
+/**
+ * Resolve a workspace package's root directory from its package name. Each
+ * component package's `exports` map is the single key `"."` pointing at
+ * `./src/index.ts`, so the root is two directories above the resolved barrel.
+ * Resolving by name keeps the playground independent of where the repository
+ * lays its packages out.
+ */
+function workspacePackageRoot(name: string): string {
+  return dirname(dirname(fileURLToPath(import.meta.resolve(name))));
+}
 
 export const DOCUMENTATION_CINDER_COMPONENTS = [
   'accordion',
@@ -38,24 +49,26 @@ export const LANDING_CINDER_COMPONENTS = [
   'tooltip',
 ] as const;
 
-const CHAT_IMPORT_PATHS: Readonly<Record<string, string>> = {
-  chat: '@lostgradient/chat',
-  'chat-composer-popover': '@lostgradient/chat/composer-popover',
-  'chat-conversation-header': '@lostgradient/chat/conversation-header',
-  'chat-conversation-list': '@lostgradient/chat/conversation-list',
-  'chat-navigation-rail': '@lostgradient/chat/navigation-rail',
-  'chat-sub-session': '@lostgradient/chat/sub-session',
-};
-export const CHAT_COMPONENT_NAMES = Object.keys(CHAT_IMPORT_PATHS).toSorted();
+/** Every Chat component the playground documents, in sorted order. */
+export const CHAT_COMPONENT_NAMES: readonly string[] = [
+  'chat',
+  'chat-composer-popover',
+  'chat-conversation-header',
+  'chat-conversation-list',
+  'chat-navigation-rail',
+  'chat-sub-session',
+];
+const CHAT_COMPONENT_NAME_SET: ReadonlySet<string> = new Set(CHAT_COMPONENT_NAMES);
 
-const EDITOR_IMPORT_PATHS: Readonly<Record<string, string>> = {
-  'markdown-editor': '@lostgradient/editor/markdown-editor',
-  'review-editor': '@lostgradient/editor/review-editor',
-  'diff-viewer': '@lostgradient/editor/diff-viewer',
-  'diff-review': '@lostgradient/editor/diff-review',
-  'diff-review-comments': '@lostgradient/editor/diff-review-comments',
-};
-export const EDITOR_COMPONENT_NAMES = Object.keys(EDITOR_IMPORT_PATHS).toSorted();
+/** Every Editor component the playground documents, in sorted order. */
+export const EDITOR_COMPONENT_NAMES: readonly string[] = [
+  'diff-review',
+  'diff-review-comments',
+  'diff-viewer',
+  'markdown-editor',
+  'review-editor',
+];
+const EDITOR_COMPONENT_NAME_SET: ReadonlySet<string> = new Set(EDITOR_COMPONENT_NAMES);
 
 /**
  * One published component package represented in the shared playground.
@@ -76,9 +89,9 @@ export type ComponentSource = {
   componentStylesheetUrl(componentName: string): string | null;
 };
 
-const cinderPackageRoot = join(PACKAGES_ROOT, 'components');
-const chatPackageRoot = join(PACKAGES_ROOT, 'chat');
-const editorPackageRoot = join(PACKAGES_ROOT, 'editor');
+const cinderPackageRoot = workspacePackageRoot('@lostgradient/cinder');
+const chatPackageRoot = workspacePackageRoot('@lostgradient/chat');
+const editorPackageRoot = workspacePackageRoot('@lostgradient/editor');
 
 export const CINDER_COMPONENT_SOURCE: ComponentSource = {
   id: 'cinder',
@@ -89,33 +102,56 @@ export const CINDER_COMPONENT_SOURCE: ComponentSource = {
   repositoryComponentsRoot: 'packages/components/src/components',
   // The Cinder set is discovered from its large, evolving source tree.
   componentNames: null,
-  importPath: (componentName) => `@lostgradient/cinder/${componentName}`,
+  // Every component imports from the package root, the one entry point the
+  // package's `exports` map declares.
+  importPath: () => '@lostgradient/cinder',
   // Cinder's full component cascade is already loaded from /styles/all.css.
   componentStylesheetUrl: () => null,
 };
 
 const DOCUMENTATION_CINDER_COMPONENT_SET = new Set<string>(DOCUMENTATION_CINDER_COMPONENTS);
-const CINDER_COMPONENT_IMPORT = /from\s+['"]@lostgradient\/cinder\/([a-z0-9][a-z0-9-]*)['"]/gu;
 const CINDER_ROOT_BARREL_IMPORT = /import\s*\{([^}]+)\}\s*from\s*['"]@lostgradient\/cinder['"]/gu;
 const RELATIVE_IMPLEMENTATION_IMPORT = /from\s+['"](\.{1,2}\/[^'"]+\.(?:svelte|ts))['"]/gu;
 
-type CinderManifestComponent = { id?: unknown; exportName?: unknown };
-type CinderManifest = { components?: unknown };
+type ManifestComponent = { id?: unknown; exportName?: unknown };
+type ComponentManifestFile = { components?: unknown };
 
-function cinderComponentNamesByExport(): ReadonlyMap<string, string> {
-  const manifest = JSON.parse(
-    readFileSync(join(cinderPackageRoot, 'components.json'), 'utf8'),
-  ) as CinderManifest;
-  const names = new Map<string, string>();
-  if (!Array.isArray(manifest.components)) return names;
-  for (const component of manifest.components as CinderManifestComponent[]) {
+/** Read a package manifest's `id` to `exportName` table, skipping malformed entries. */
+function readManifestExportNamesById(manifestPath: string): ReadonlyMap<string, string> {
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as ComponentManifestFile;
+  const exportNames = new Map<string, string>();
+  if (!Array.isArray(manifest.components)) return exportNames;
+  for (const component of manifest.components as ManifestComponent[]) {
     if (typeof component.id !== 'string' || typeof component.exportName !== 'string') continue;
-    names.set(component.exportName, component.id);
+    exportNames.set(component.id, component.exportName);
   }
-  return names;
+  return exportNames;
 }
 
-const CINDER_COMPONENT_NAME_BY_EXPORT = cinderComponentNamesByExport();
+const CINDER_COMPONENT_NAME_BY_EXPORT: ReadonlyMap<string, string> = new Map(
+  [...readManifestExportNamesById(join(cinderPackageRoot, 'components.json'))].map(
+    ([componentName, exportName]) => [exportName, componentName],
+  ),
+);
+
+const exportNamesBySourceId = new Map<string, ReadonlyMap<string, string>>();
+
+/**
+ * The export name a component's package root exposes it under, read from the
+ * package's own manifest rather than derived from the component id.
+ */
+export function componentExportNameFor(source: ComponentSource, componentName: string): string {
+  let exportNames = exportNamesBySourceId.get(source.id);
+  if (exportNames === undefined) {
+    exportNames = readManifestExportNamesById(source.manifestPath);
+    exportNamesBySourceId.set(source.id, exportNames);
+  }
+  const exportName = exportNames.get(componentName);
+  if (exportName === undefined) {
+    throw new Error(`[playground] ${componentName} has no exportName in ${source.manifestPath}`);
+  }
+  return exportName;
+}
 
 function stylesheetOwner(componentName: string): string {
   return COMPOUND_COMPONENT_PARENTS[componentName] ?? componentName;
@@ -129,9 +165,6 @@ function cinderComponentStylesheetUrl(componentName: string): string | null {
 }
 
 function cinderComponentDependenciesFromSource(source: string, dependencies: Set<string>): void {
-  for (const match of source.matchAll(CINDER_COMPONENT_IMPORT)) {
-    dependencies.add(match[1]!);
-  }
   for (const match of source.matchAll(CINDER_ROOT_BARREL_IMPORT)) {
     for (const importedName of match[1]!.split(',')) {
       const exportName = importedName
@@ -182,11 +215,6 @@ function extractedPackageComponentDependenciesFromSource(
       if (importedNames.includes(componentExportName(componentName))) {
         dependencies.add(componentName);
       }
-    }
-
-    if (importPath !== componentSource.packageName) {
-      const directImportPattern = new RegExp(`from\\s*['"]${escapedImportPath}['"]`, 'u');
-      if (directImportPattern.test(source)) dependencies.add(componentName);
     }
   }
 }
@@ -302,7 +330,7 @@ export function documentationExampleStylesheetUrls(
       ? []
       : [...packageDependencyNames]
           .toSorted()
-          .map(componentSource.componentStylesheetUrl)
+          .map((name) => componentSource.componentStylesheetUrl(name))
           .filter((stylesheetUrl): stylesheetUrl is string => stylesheetUrl !== null);
 
   return [...cinderStylesheetUrls, ...packageStylesheetUrls].filter(
@@ -319,36 +347,30 @@ export const CHAT_COMPONENT_SOURCE: ComponentSource = {
   repositoryComponentsRoot: 'packages/chat/src/lib/components',
   componentNames: CHAT_COMPONENT_NAMES,
   importPath(componentName) {
-    const importPath = CHAT_IMPORT_PATHS[componentName];
-    if (importPath === undefined) {
+    if (!CHAT_COMPONENT_NAME_SET.has(componentName)) {
       throw new Error(
         `[playground] ${componentName} was discovered in @lostgradient/chat but has no public import path`,
       );
     }
-    return importPath;
+    return '@lostgradient/chat';
   },
   componentStylesheetUrl: (componentName) =>
     `/package-components/chat/${componentName}/${componentName}.css`,
 };
 
-type EditorPackageManifest = { exports?: Record<string, unknown> };
-
-const editorPackageManifest: EditorPackageManifest = JSON.parse(
-  readFileSync(join(editorPackageRoot, 'package.json'), 'utf8'),
-);
-const editorExportKeys = new Set(Object.keys(editorPackageManifest.exports ?? {}));
+const editorComponentsRoot = join(editorPackageRoot, 'src', 'lib', 'components');
 
 /**
- * Resolve a component's CSS-sidecar route from Editor's real `exports` map,
- * rather than a hardcoded per-component allowlist. `exportKeys` is injected
- * so this generalizes beyond the one styles export the real manifest has
- * today — see `component-sources.test.ts`.
+ * Resolve a component's CSS-sidecar route from the component directory on
+ * disk: a component ships a sidecar exactly when `<name>/<name>.css` exists.
+ * `componentsRoot` is injected so this generalizes beyond the real tree; see
+ * `component-sources.test.ts`.
  */
 export function resolveEditorStylesheetUrl(
-  exportKeys: ReadonlySet<string>,
+  componentsRoot: string,
   componentName: string,
 ): string | null {
-  return exportKeys.has(`./${componentName}/styles`)
+  return existsSync(join(componentsRoot, componentName, `${componentName}.css`))
     ? `/package-components/editor/${componentName}/${componentName}.css`
     : null;
 }
@@ -357,27 +379,25 @@ export const EDITOR_COMPONENT_SOURCE: ComponentSource = {
   id: 'editor',
   packageName: '@lostgradient/editor',
   packageRoot: editorPackageRoot,
-  componentsRoot: join(editorPackageRoot, 'src', 'lib', 'components'),
+  componentsRoot: editorComponentsRoot,
   manifestPath: join(editorPackageRoot, 'components.json'),
   repositoryComponentsRoot: 'packages/editor/src/lib/components',
   componentNames: EDITOR_COMPONENT_NAMES,
   importPath(componentName) {
-    const importPath = EDITOR_IMPORT_PATHS[componentName];
-    if (importPath === undefined) {
+    if (!EDITOR_COMPONENT_NAME_SET.has(componentName)) {
       throw new Error(
         `[playground] ${componentName} was discovered in @lostgradient/editor but has no public import path`,
       );
     }
-    return importPath;
+    return '@lostgradient/editor';
   },
-  // Unlike Chat, Editor's three components don't uniformly ship a standalone
-  // CSS sidecar: `markdown-editor` and `diff-viewer` style entirely through
-  // scoped `<style>` blocks compiled inline by Svelte (matching their
-  // pre-move shape in cinder). Read from the package's real `exports` map
-  // (below) rather than hardcoding which components have a sidecar, so this
-  // stays correct as Editor's own `package.json` grows more styles exports.
+  // Unlike Chat, Editor's components don't uniformly ship a standalone CSS
+  // sidecar: `markdown-editor` and `diff-viewer` style entirely through
+  // scoped `<style>` blocks compiled inline by Svelte. Check the component
+  // directory on disk rather than hardcoding which components have a sidecar,
+  // so this stays correct as Editor gains or drops sidecars.
   componentStylesheetUrl: (componentName) =>
-    resolveEditorStylesheetUrl(editorExportKeys, componentName),
+    resolveEditorStylesheetUrl(editorComponentsRoot, componentName),
 };
 
 /** Ordered, canonical list of packages represented in the playground. */

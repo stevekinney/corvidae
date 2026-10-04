@@ -46,7 +46,7 @@ describe('depictHighlighter', () => {
 describe('depictInlineHighlighter', () => {
   it('keeps the depict token markup but removes the block-only pre/code frame', async () => {
     const html = await depictInlineHighlighter(
-      "import { Button } from '@lostgradient/cinder/button';",
+      "import { Button } from '@lostgradient/cinder';",
       'ts',
     );
     expect(html).toContain('var(--syntax-keyword)');

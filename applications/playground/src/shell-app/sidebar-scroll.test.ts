@@ -39,7 +39,7 @@ function installSessionStorage(stub: SessionStorageStub | undefined): void {
   }
   Object.defineProperty(globalThis, 'sessionStorage', {
     configurable: true,
-    value: stub as unknown as Storage,
+    value: stub,
     writable: true,
   });
 }

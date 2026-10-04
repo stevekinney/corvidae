@@ -30,7 +30,7 @@
 
   const sortedStudents = $derived.by(() => {
     if (!sort) return students;
-    return [...students].sort((a, b) => {
+    return students.toSorted((a, b) => {
       const key = sort!.column as keyof Student;
       const aValue = a[key];
       const bValue = b[key];

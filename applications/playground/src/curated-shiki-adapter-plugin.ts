@@ -30,10 +30,9 @@ export const CURATED_SHIKI_ADAPTER_PATH = resolve(here, 'curated-shiki-adapter.t
 
 /**
  * Matches the bundled adapter by its own filename. `<CodeBlock>` imports it
- * relatively (`../../highlighters/shiki/default.ts`) and the published subpath
- * `@lostgradient/cinder/highlighters/shiki` resolves to the same file, so
- * anchoring on the tail catches both without depending on which one a given
- * importer used.
+ * relatively (`../../highlighters/shiki/default.ts`), so anchoring on the tail
+ * catches the adapter without depending on how a given importer spelled the
+ * path.
  */
 const BUNDLED_ADAPTER_SPECIFIER = /highlighters[\\/]shiki[\\/]default\.ts$/;
 

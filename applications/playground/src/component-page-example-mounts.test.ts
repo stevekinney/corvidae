@@ -464,7 +464,7 @@ describe('copyErrorToClipboard', () => {
       value: {},
     });
 
-    await expect(copyErrorToClipboard({ message: 'boom' })).resolves.toBeUndefined();
+    expect(await copyErrorToClipboard({ message: 'boom' })).toBeUndefined();
   });
 
   it('returns without throwing when writeText rejects', async () => {
@@ -479,7 +479,7 @@ describe('copyErrorToClipboard', () => {
       },
     });
 
-    await expect(copyErrorToClipboard({ message: 'boom' })).resolves.toBeUndefined();
+    expect(await copyErrorToClipboard({ message: 'boom' })).toBeUndefined();
   });
 });
 

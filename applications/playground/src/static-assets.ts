@@ -8,13 +8,13 @@ import {
 import { notFound } from './http-responses.ts';
 import { resolveSafePath } from './traversal-guard.ts';
 
-const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.packageRoot; // packages/components/
+const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.packageRoot; // components/cinder/
 const STYLES_ROOT = join(COMPONENTS_ROOT, 'src', 'styles');
 const COMPONENTS_SRC_ROOT = join(COMPONENTS_ROOT, 'src', 'components');
 
 /**
- * GET /styles.css → packages/components/src/styles/index.css
- * GET /styles/<path>.css → packages/components/src/styles/<path>.css
+ * GET /styles.css → components/cinder/src/styles/index.css
+ * GET /styles/<path>.css → components/cinder/src/styles/<path>.css
  *
  * The component-library's index.css uses `@import './tokens.css'` etc. which
  * the browser resolves relative to the served URL — so we need to serve the
@@ -45,7 +45,7 @@ export async function handlePlaygroundStylesRoute(
 }
 
 /**
- * GET /components/<path>.css → packages/components/src/components/<path>.css
+ * GET /components/<path>.css → components/cinder/src/components/<path>.css
  *
  * After the per-directory layout migration, each component owns its CSS at
  * `src/components/<name>/<name>.css`. The styles aggregator at

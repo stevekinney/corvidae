@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+import { CINDER_COMPONENT_SOURCE } from '../src/component-sources.ts';
 import { fingerprintStaticAssets } from './static-asset-fingerprints.ts';
 import {
   assertDocumentationMetadata,
@@ -84,10 +85,10 @@ test('requires a clean absolute HTTPS base URL for the deploy build', () => {
 test('refuses a filesystem root as static export output', () => {
   expect(() => assertSafeOutputDirectory('/')).toThrow('filesystem root');
   expect(() => assertSafeOutputDirectory('.')).toThrow('protected repository path');
-  expect(() => assertSafeOutputDirectory('public/..')).toThrow('protected repository path');
-  expect(() =>
-    assertSafeOutputDirectory(join(import.meta.dirname, '..', '..', 'components')),
-  ).toThrow('protected repository path');
+  expect(() => assertSafeOutputDirectory('build/..')).toThrow('protected repository path');
+  expect(() => assertSafeOutputDirectory(CINDER_COMPONENT_SOURCE.packageRoot)).toThrow(
+    'protected repository path',
+  );
 });
 
 test('refuses a repository path behind a symlinked ancestor', async () => {
@@ -96,7 +97,7 @@ test('refuses a repository path behind a symlinked ancestor', async () => {
     const repositoryLink = join(temporaryDirectory, 'repository-link');
     await symlink(join(import.meta.dirname, '..', '..', '..'), repositoryLink);
 
-    expect(() => assertSafeOutputDirectory(join(repositoryLink, 'packages', 'components'))).toThrow(
+    expect(() => assertSafeOutputDirectory(join(repositoryLink, 'components', 'cinder'))).toThrow(
       'protected repository path',
     );
   } finally {
@@ -274,10 +275,10 @@ describe('static export', () => {
         await readFile(join(outputDirectory, socialImageUrl.slice(1))),
       );
       expect([...socialImage.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
-      await expect(readFile(join(outputDirectory, 'sitemap.xml'), 'utf8')).resolves.toContain(
+      expect(await readFile(join(outputDirectory, 'sitemap.xml'), 'utf8')).toContain(
         'https://playground.local/page/button',
       );
-      await expect(readFile(join(outputDirectory, 'robots.txt'), 'utf8')).resolves.toContain(
+      expect(await readFile(join(outputDirectory, 'robots.txt'), 'utf8')).toContain(
         'Sitemap: https://playground.local/sitemap.xml',
       );
       expect([...rendered].some((url) => url.endsWith('/playground-styles/landing.css'))).toBe(
@@ -327,7 +328,7 @@ describe('static export', () => {
       expect(pageHtml).toContain('\\u003cp');
 
       // The canonical documentation page IS /page/<name> now; /c/ is redirected
-      // by vercel.json and never written to disk.
+      // by the hosting configuration and never written to disk.
       expect(rendered.has('/c/chat')).toBe(false);
       expect(pageHtml).toContain('data-component-page');
       expect(pageHtml).toMatch(/<h1[^>]*>.*Chat.*<\/h1>/s);
@@ -381,15 +382,18 @@ describe('static export', () => {
         sidebarComponents: ['chat'],
         allComponents: [],
       });
-      // `/c/<name>` is a legacy alias redirected by vercel.json, so it must NOT
-      // be written into public/ — that would restore a second documentation
+      // `/c/<name>` is a legacy alias redirected by the hosting configuration, so it must NOT
+      // be written into build/ — that would restore a second documentation
       // surface on disk.
       expect(rendered.has('/c/chat')).toBe(false);
       expect(rendered.has('/c/chat-composer-popover')).toBe(false);
       expect(rendered.has('/page/chat-composer-popover')).toBe(true);
-      await expect(
-        readFile(join(outputDirectory, 'page', 'chat-composer-popover', 'index.html'), 'utf8'),
-      ).resolves.toContain('data-component-page');
+      expect(
+        await readFile(
+          join(outputDirectory, 'page', 'chat-composer-popover', 'index.html'),
+          'utf8',
+        ),
+      ).toContain('data-component-page');
     } finally {
       await rm(outputDirectory, { recursive: true, force: true });
     }
@@ -550,7 +554,7 @@ test('clears a legacy /c/ tree left by a previous export', async () => {
       allComponents: ['button'],
     });
 
-    // A stale second documentation surface must not survive into public/.
+    // A stale second documentation surface must not survive into build/.
     expect(existsSync(join(outputDirectory, 'c'))).toBe(false);
   } finally {
     await rm(outputDirectory, { recursive: true, force: true });

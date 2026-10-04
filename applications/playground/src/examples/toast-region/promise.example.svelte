@@ -7,11 +7,11 @@
 <script lang="ts">
   import { Button, ToastRegion, useToast } from '@lostgradient/cinder';
 
-  function waitThen<T>(value: T, reject = false) {
-    return new Promise<T>((resolve, rejectPromise) => {
+  function waitThen<T>(value: T, shouldReject = false) {
+    return new Promise<T>((resolve, reject) => {
       setTimeout(() => {
-        if (reject) {
-          rejectPromise(new Error('Sync failed.'));
+        if (shouldReject) {
+          reject(new Error('Sync failed.'));
         } else {
           resolve(value);
         }

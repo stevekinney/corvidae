@@ -47,7 +47,7 @@ function installLocalStorage(stub: LocalStorageStub | undefined): void {
   }
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
-    value: stub as unknown as Storage,
+    value: stub,
     writable: true,
   });
 }
@@ -58,13 +58,13 @@ function installSessionStorage(values = new Map<string, string>()): void {
     value: {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => values.set(key, value),
-    } as unknown as Storage,
+    },
     writable: true,
   });
 }
 
 function createMatchMedia(matches = false): Window['matchMedia'] {
-  return ((query: string): MediaQueryList => {
+  return (query: string): MediaQueryList => {
     const listeners = new Set<MatchMediaListener>();
     let mediaQueryList: MediaQueryList;
 
@@ -101,7 +101,7 @@ function createMatchMedia(matches = false): Window['matchMedia'] {
       },
     };
     return mediaQueryList;
-  }) as Window['matchMedia'];
+  };
 }
 
 function installWindow(href: string, prefersDark = false): void {
@@ -110,7 +110,7 @@ function installWindow(href: string, prefersDark = false): void {
     value: {
       location: { href },
       matchMedia: createMatchMedia(prefersDark),
-    } as unknown as Window,
+    },
     writable: true,
   });
 }

@@ -1,6 +1,8 @@
 import { dirname, join, relative, sep } from 'node:path';
 
 export const PLAYGROUND_ROOT = dirname(import.meta.dirname);
+/** The application sits two directories below the repository root, at `applications/playground`. */
+export const REPOSITORY_ROOT = dirname(dirname(PLAYGROUND_ROOT));
 export const PLAYGROUND_TEMP_ROOT = join(PLAYGROUND_ROOT, '.tmp');
 
 export function relativeImportSpecifier(fromDirectory: string, targetPath: string): string {

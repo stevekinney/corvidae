@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
+import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 import {
   CURATED_SHIKI_ADAPTER_PATH,
   curatedShikiAdapterPlugin,
 } from './curated-shiki-adapter-plugin.ts';
 import * as curatedAdapter from './curated-shiki-adapter.ts';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const bundledAdapterPath = resolve(here, '../../components/src/highlighters/shiki/default.ts');
+const bundledAdapterPath = resolve(
+  CINDER_COMPONENT_SOURCE.packageRoot,
+  'src/highlighters/shiki/default.ts',
+);
 
 describe('the playground substitutes a curated Shiki adapter', () => {
   it('exposes every member the CodeBlock seam reaches for', async () => {

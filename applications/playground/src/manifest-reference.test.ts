@@ -10,7 +10,9 @@
 import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { analyzeComponent } from './analyze.ts';
+import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 import {
   describeControlType,
   describeDefaultValue,
@@ -23,7 +25,7 @@ import {
 } from './manifest-reference.ts';
 import type { ComponentManifest, PropManifest } from './types.ts';
 
-const COMPONENTS_ROOT = join(import.meta.dir, '..', '..', 'components', 'src', 'components');
+const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
 
 function buttonManifest(): Promise<ComponentManifest> {
   return manifestFor('button');
@@ -365,7 +367,7 @@ describe('isComponentManifest', () => {
         name: 'X',
         kebabName: 'x',
         file: 'x.svelte',
-        importPath: '@lostgradient/cinder/x',
+        importPath: '@lostgradient/cinder',
         props: [{ name: 'p', control: { kind: 'select' /* missing options */ } }],
       }),
     ).toBe(false);
@@ -377,7 +379,7 @@ describe('isComponentManifest', () => {
         name: 'X',
         kebabName: 'x',
         file: 'x.svelte',
-        importPath: '@lostgradient/cinder/x',
+        importPath: '@lostgradient/cinder',
         props: [{ name: 'open', control: { kind: 'boolean' }, bindable: true, optional: true }],
       }),
     ).toBe(true);
@@ -389,7 +391,7 @@ describe('fetchComponentManifest', () => {
     name: 'Accordion',
     kebabName: 'accordion',
     file: 'accordion.svelte',
-    importPath: '@lostgradient/cinder/accordion',
+    importPath: '@lostgradient/cinder',
     props: [
       {
         name: 'expandedIds',
@@ -418,11 +420,11 @@ describe('fetchComponentManifest', () => {
   });
 
   it('throws on a non-OK response', async () => {
-    await expect(fetchComponentManifest('nope', notFoundFetch)).rejects.toThrow(/404/);
+    expect(await throwingRejectionOf(fetchComponentManifest('nope', notFoundFetch))).toThrow(/404/);
   });
 
   it('throws on a malformed body', async () => {
-    await expect(fetchComponentManifest('button', malformedBodyFetch)).rejects.toThrow(
+    expect(await throwingRejectionOf(fetchComponentManifest('button', malformedBodyFetch))).toThrow(
       /valid ComponentManifest/,
     );
   });

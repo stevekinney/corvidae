@@ -38,18 +38,7 @@ import { type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 
 import { initializeHighlighter, renderMarkdown } from '@lostgradient/markdown';
-import { stripExampleHarness } from '../../components/scripts/lib/strip-example-harness.ts';
-import {
-  findFixture,
-  loadFixtureFile,
-  resolveFixtureFilePath,
-  resolveFixtureHostPath,
-} from '../../components/scripts/lib/visual-fixtures/loader.ts';
-import { fixtureRenderMode } from '../../components/scripts/lib/visual-fixtures/schema.ts';
-import {
-  newestSourceMtimeMs,
-  type PlaygroundFreshnessFingerprint,
-} from '../../testing/scripts/source-fingerprint.ts';
+import { fixtureRenderMode } from '@lostgradient/testing';
 import { analyzeComponent } from './analyze.ts';
 import { collectCoordinatedGarbage, findArtifactForFamily } from './build-artifacts-shared.ts';
 import { validateComponentDocumentationPayload } from './component-documentation-reference.ts';
@@ -70,6 +59,7 @@ import {
   discoverExamples,
   discoverSidebarComponents,
 } from './discover.ts';
+import { readEnvironmentConfiguration } from './environment-configuration.ts';
 import { readExampleMetadata } from './example-metadata.ts';
 import { renderFeaturedExample } from './featured-example-server-renderer.ts';
 import {
@@ -79,6 +69,12 @@ import {
   waitForPendingRebuild,
 } from './file-watcher.ts';
 import { buildFixtureBundle, findFixtureArtifact } from './fixture-bundle.ts';
+import {
+  findFixture,
+  loadFixtureFile,
+  resolveFixtureFilePath,
+  resolveFixtureHostPath,
+} from './fixture-loader.ts';
 import { notFound } from './http-responses.ts';
 import {
   componentManifestCache,
@@ -88,7 +84,7 @@ import {
   setManifestPromise,
 } from './manifest-cache.ts';
 import { buildPageBundle } from './page-bundle.ts';
-import { PLAYGROUND_ROOT } from './playground-paths.ts';
+import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
 import { createHttpServerOnAvailablePort, resolvePreferredPort } from './port-scanner.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 import {
@@ -112,6 +108,7 @@ import {
   snapshotModeHtmlAttribute,
   snapshotModeStyleTag,
 } from './snapshot-mode.ts';
+import { newestSourceMtimeMs, type PlaygroundFreshnessFingerprint } from './source-fingerprint.ts';
 import { handleEventsRoute, sseClients } from './sse-broadcast.ts';
 import {
   getPreparedShellServerRenderer,
@@ -132,12 +129,12 @@ import {
   handlePlaygroundStylesRoute,
   handleStylesRoute,
 } from './static-assets.ts';
+import { stripExampleHarness } from './strip-example-harness.ts';
 import { stripInlineSourcemaps } from './strip-inline-sourcemaps.ts';
 import type { ComponentManifest } from './types.ts';
 
 export const PORT = resolvePreferredPort();
 let startupReady = true;
-const REPO_ROOT = join(PLAYGROUND_ROOT, '..', '..'); // repo root
 const SOCIAL_IMAGE_FILE = join(PLAYGROUND_ROOT, 'src', 'assets', 'social.png');
 
 /**
@@ -147,7 +144,7 @@ const SOCIAL_IMAGE_FILE = join(PLAYGROUND_ROOT, 'src', 'assets', 'social.png');
  */
 const STARTUP_FINGERPRINT: PlaygroundFreshnessFingerprint = {
   startedAtMs: Date.now(),
-  newestSourceMtimeMs: newestSourceMtimeMs(REPO_ROOT),
+  newestSourceMtimeMs: newestSourceMtimeMs(REPOSITORY_ROOT),
 };
 
 /**
@@ -671,8 +668,8 @@ export function rewriteRepositoryRelativeReadmeLinks(html: string): string {
 }
 
 /**
- * The landing hero owns the document's sole top-level heading. The root README
- * starts with the same title, so leaving its rendered H1 in the prose would
+ * The landing hero owns the document's sole top-level heading. The landing README
+ * (`src/landing.md`) starts with the same title, so leaving its rendered H1 in the prose would
  * expose duplicate H1s before and after hydration. Remove that leading source
  * title structurally rather than concealing it with CSS.
  */
@@ -682,11 +679,11 @@ export function omitLandingReadmeTitle(html: string): string {
 
 async function renderLandingReadmeHtml(): Promise<string> {
   await initializeHighlighter();
-  const markdown = await Bun.file(join(PLAYGROUND_ROOT, '..', '..', 'README.md')).text();
+  const markdown = await Bun.file(join(PLAYGROUND_ROOT, 'src', 'landing.md')).text();
   const rendered = renderMarkdown(markdown);
   if (rendered.hadUnsafeContent) {
     throw new Error(
-      'Root README rendering stripped unsafe content. Update README.md to remove raw HTML, unsafe URLs, or other sanitizer-blocked content.',
+      'Landing README rendering stripped unsafe content. Update src/landing.md to remove raw HTML, unsafe URLs, or other sanitizer-blocked content.',
     );
   }
   return omitLandingReadmeTitle(rewriteRepositoryRelativeReadmeLinks(rendered.html));
@@ -797,7 +794,7 @@ async function handlePageRoute(url: URL, componentName: string): Promise<Respons
     componentName,
     snapshotModeActive,
     previewOnlyActive,
-    Bun.env['PLAYGROUND_BASE_URL'] ?? url.origin,
+    readEnvironmentConfiguration().playgroundBaseUrl ?? url.origin,
   );
   return new Response(html, { headers: { 'Content-Type': 'text/html' } });
 }
@@ -854,7 +851,7 @@ async function handleLandingRoute(url: URL): Promise<Response> {
     readmeHtml,
   });
   const html = renderShell(null, sidebarComponents, {
-    baseUrl: Bun.env['PLAYGROUND_BASE_URL'] ?? url.origin,
+    baseUrl: readEnvironmentConfiguration().playgroundBaseUrl ?? url.origin,
     readmeHtml,
     shellBody: renderedShell.body,
     shellHead: renderedShell.head,
@@ -1116,7 +1113,7 @@ export function releaseIncrementalPrebuildMemory(
 
 export function eagerPrebuildComponents(
   components: readonly string[],
-  rawComponentScope: string | undefined = process.env['CINDER_TEST_COMPONENTS'],
+  rawComponentScope: string | undefined = readEnvironmentConfiguration().cinderTestComponents,
   knownComponents: readonly string[] = components,
 ): string[] {
   const requested = [
@@ -1342,9 +1339,9 @@ export async function runGenerationCheckedWarmup<T>(
   work: () => Promise<T>,
 ): Promise<{ value: T; instabilityReasons: string[] }> {
   const generationAtStart = await waitForPendingRebuild();
-  const sourceMtimeAtStart = newestSourceMtimeMs(REPO_ROOT);
+  const sourceMtimeAtStart = newestSourceMtimeMs(REPOSITORY_ROOT);
   const value = await work();
-  const sourceMtimeAtEnd = newestSourceMtimeMs(REPO_ROOT);
+  const sourceMtimeAtEnd = newestSourceMtimeMs(REPOSITORY_ROOT);
   return {
     value,
     instabilityReasons: warmupInstabilityReasons(
@@ -1478,7 +1475,7 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
     await server.stop(true);
   });
 
-  const portFile = Bun.env['PLAYGROUND_PORT_FILE'];
+  const portFile = readEnvironmentConfiguration().playgroundPortFile;
   if (portFile !== undefined) {
     await Bun.write(portFile, `${actualPort}\n`);
   }
@@ -1566,7 +1563,7 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
     }
 
     const generationAtStart = getRebuildGeneration();
-    const sourceMtimeAtStart = newestSourceMtimeMs(REPO_ROOT);
+    const sourceMtimeAtStart = newestSourceMtimeMs(REPOSITORY_ROOT);
     let rendererResult: ShellServerRendererLoadResult;
     try {
       rendererResult = await loadShellServerRenderer();
@@ -1575,7 +1572,7 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
       await dispose();
       throw new Error('[playground] shell server renderer failed to prepare', { cause: error });
     }
-    const sourceMtimeAtEnd = newestSourceMtimeMs(REPO_ROOT);
+    const sourceMtimeAtEnd = newestSourceMtimeMs(REPOSITORY_ROOT);
     const generationChanged = generationAtStart !== getRebuildGeneration();
     const sourceChanged = sourceMtimeAtStart !== sourceMtimeAtEnd;
     const pendingRebuild = hasPendingRebuild();

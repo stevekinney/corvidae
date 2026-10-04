@@ -1,7 +1,11 @@
 import { join, relative } from 'node:path';
 
 import { coordinatedBuild } from './build-artifacts-shared.ts';
-import { DOCUMENTATION_CINDER_COMPONENTS, LANDING_CINDER_COMPONENTS } from './component-sources.ts';
+import {
+  CINDER_COMPONENT_SOURCE,
+  DOCUMENTATION_CINDER_COMPONENTS,
+  LANDING_CINDER_COMPONENTS,
+} from './component-sources.ts';
 import { PLAYGROUND_ROOT } from './playground-paths.ts';
 
 export { DOCUMENTATION_CINDER_COMPONENTS, LANDING_CINDER_COMPONENTS } from './component-sources.ts';
@@ -33,7 +37,7 @@ function stylesheetImportPath(path: string): string {
 }
 
 function stylesheetEntry(components: readonly string[]): string {
-  const cinderSourceRoot = join(PLAYGROUND_ROOT, '..', 'components', 'src');
+  const cinderSourceRoot = join(CINDER_COMPONENT_SOURCE.packageRoot, 'src');
   const imports = components
     .map(
       (componentName) =>

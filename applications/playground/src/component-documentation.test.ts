@@ -1,19 +1,27 @@
 import { describe, expect, it } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { analyzeAll, analyzeComponent } from './analyze.ts';
 import { validateComponentDocumentationPayload } from './component-documentation-reference.ts';
 import {
+  ComponentDocumentationError,
   buildComponentDocumentation,
   loadPackageManifestForDocumentation,
   renderReadmeDocumentation,
   rewriteComponentReadmeLinks,
 } from './component-documentation.ts';
-import { CHAT_COMPONENT_SOURCE } from './component-sources.ts';
+import {
+  CHAT_COMPONENT_SOURCE,
+  CINDER_COMPONENT_SOURCE,
+  EDITOR_COMPONENT_SOURCE,
+} from './component-sources.ts';
 import { discoverComponentDefinitions } from './discover.ts';
+import { REPOSITORY_ROOT } from './playground-paths.ts';
 import type { ComponentManifest } from './types.ts';
 
-const COMPONENTS_ROOT = join(import.meta.dir, '..', '..', 'components', 'src', 'components');
+const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
 const BULK_VALIDATION_CHUNK_SIZE = 20;
 
 function componentManifest(componentName: string): Promise<ComponentManifest> {
@@ -109,6 +117,73 @@ describe('buildComponentDocumentation', () => {
     expect(second.components.map((component) => component.id)).toEqual(
       first.components.map((component) => component.id),
     );
+  });
+
+  describe('documented package version', () => {
+    // The version the playground displays is the one the public mirror last
+    // published, recorded in `scripts/mirror/package-map.json`. Corvidae
+    // packages carry no `version` of their own and `components.json` files
+    // carry a stale or absent copy, so neither is consulted.
+    async function lastPublishedVersion(packageName: string): Promise<string> {
+      const packageMap: unknown = await Bun.file(
+        join(REPOSITORY_ROOT, 'scripts', 'mirror', 'package-map.json'),
+      ).json();
+      const workspaces = (
+        packageMap as { workspaces: Record<string, { lastPublishedVersion?: string }> }
+      ).workspaces;
+      const version = workspaces[packageName]?.lastPublishedVersion;
+      if (version === undefined) throw new Error(`${packageName} has no lastPublishedVersion`);
+      return version;
+    }
+
+    it.each([
+      ['Cinder', CINDER_COMPONENT_SOURCE],
+      ['Chat', CHAT_COMPONENT_SOURCE],
+      ['Editor', EDITOR_COMPONENT_SOURCE],
+    ])('documents the last published %s version from the package map', async (_label, source) => {
+      const packageManifest = await loadPackageManifestForDocumentation(source);
+
+      expect(packageManifest.package.version).toBe(await lastPublishedVersion(source.packageName));
+    });
+
+    it('ignores a version carried by the package components.json', async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'playground-documented-version-'));
+      try {
+        const chatManifest = (await Bun.file(CHAT_COMPONENT_SOURCE.manifestPath).json()) as {
+          package: Record<string, unknown>;
+        };
+        chatManifest.package['version'] = '9.9.9';
+        const manifestPath = join(directory, 'components.json');
+        await Bun.write(manifestPath, JSON.stringify(chatManifest));
+
+        const packageManifest = await loadPackageManifestForDocumentation({
+          ...CHAT_COMPONENT_SOURCE,
+          manifestPath,
+        });
+
+        expect(packageManifest.package.version).toBe(
+          await lastPublishedVersion('@lostgradient/chat'),
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    it('rejects a package the package map does not list', async () => {
+      const unlisted = {
+        ...CINDER_COMPONENT_SOURCE,
+        packageName: '@example/not-in-the-package-map',
+      };
+
+      const error = await loadPackageManifestForDocumentation(unlisted).then(
+        () => undefined,
+        (rejection: unknown) => rejection,
+      );
+
+      expect(error).toBeInstanceOf(ComponentDocumentationError);
+      expect((error as ComponentDocumentationError).code).toBe('malformed-components-manifest');
+      expect((error as ComponentDocumentationError).message).toContain('package-map.json');
+    });
   });
 
   it('loads Chat documentation and source links from the extracted package', async () => {

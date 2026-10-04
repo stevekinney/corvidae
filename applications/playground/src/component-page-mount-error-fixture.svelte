@@ -51,15 +51,15 @@
   // independent error slots. The `failingPrefixes` hook stands in for a real
   // mount throwing, so the keying — not a flaky throwing component — is what the
   // test exercises.
-  function mountScenario(scenario: string): (element: HTMLElement) => () => void {
+  function mountScenario(scenarioName: string): (element: HTMLElement) => () => void {
     return (element: HTMLElement) => {
       const mountKey = element.id;
-      const prefix = mountKey.slice(0, mountKey.length - scenario.length - 1);
+      const prefix = mountKey.slice(0, mountKey.length - scenarioName.length - 1);
       if (failingPrefixes.includes(prefix)) {
         mountErrors[mountKey] = `forced failure in ${prefix}`;
         return () => {};
       }
-      const Component = registry[scenario];
+      const Component = registry[scenarioName];
       if (typeof Component !== 'function') return () => {};
       let app: ReturnType<typeof mount> | undefined;
       try {

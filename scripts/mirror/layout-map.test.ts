@@ -69,6 +69,20 @@ describe('the deferred workspace', () => {
   });
 });
 
+describe('the deferred playground application', () => {
+  test('stays deferred to COR-1201 so lifting its exclusion forces a ruling on placement', async () => {
+    const layout = await layoutFor('@lostgradient/playground');
+
+    expect(layout.disposition).toBe('deferred');
+    if (layout.disposition !== 'deferred') throw new Error('unreachable');
+    expect(layout.corvidaeDirectory).toBe('applications/playground');
+    expect(layout.issue).toBe('COR-1201');
+    expect(await throwingRejectionOf(targetDirectoryFor('@lostgradient/playground'))).toThrow(
+      DeferredWorkspaceError,
+    );
+  });
+});
+
 describe('the table itself', () => {
   test('two workspaces in one target directory is a load failure, not an overwrite', async () => {
     await withTable(

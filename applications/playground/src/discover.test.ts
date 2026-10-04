@@ -1,13 +1,13 @@
 /**
- * Unit tests for `scripts/playground/discover.ts`.
+ * Unit tests for `discover.ts`.
  *
- * Must be run from the repo root so that `process.cwd()` resolves to
- * `/Users/stevekinney/Developer/cinder` and the globs find the real
- * `src/components/` and `scripts/playground/examples/` trees.
+ * The globs resolve against the playground's own `src/examples/` tree and each
+ * component package's source tree, so the tests do not depend on the working
+ * directory.
  */
 
 import { describe, expect, it } from 'bun:test';
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { analyzeComponent } from './analyze.ts';
 import { CHAT_COMPONENT_SOURCE, CINDER_COMPONENT_SOURCE } from './component-sources.ts';
@@ -23,8 +23,8 @@ import {
   invalidateDiscoveryCache,
 } from './discover.ts';
 
-// packages/components/src/components — the same root discoverComponents() scans.
-const COMPONENTS_DIR = join(dirname(import.meta.dirname), '..', 'components', 'src', 'components');
+// The Cinder components root — the same root discoverComponents() scans.
+const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
 
 describe('discoverComponents', () => {
   it('returns an array of component kebab names', async () => {
@@ -83,13 +83,15 @@ describe('discoverComponents', () => {
       'chat-navigation-rail',
       'chat-sub-session',
     ]);
+    // Every Chat component imports from the package root, the one entry point
+    // its `exports` map declares.
     expect(chatDefinitions.map((entry) => entry.importPath)).toEqual([
       '@lostgradient/chat',
-      '@lostgradient/chat/composer-popover',
-      '@lostgradient/chat/conversation-header',
-      '@lostgradient/chat/conversation-list',
-      '@lostgradient/chat/navigation-rail',
-      '@lostgradient/chat/sub-session',
+      '@lostgradient/chat',
+      '@lostgradient/chat',
+      '@lostgradient/chat',
+      '@lostgradient/chat',
+      '@lostgradient/chat',
     ]);
   });
 });
@@ -672,13 +674,13 @@ describe('discoverComponentFilePaths', () => {
         {
           name: 'conversation-surface',
           filePath: '/tmp/cinder/conversation-surface.svelte',
-          importPath: '@lostgradient/cinder/conversation-surface',
+          importPath: '@lostgradient/cinder',
           source: CINDER_COMPONENT_SOURCE,
         },
         {
           name: 'conversation-surface',
           filePath: '/tmp/chat/conversation-surface.svelte',
-          importPath: '@lostgradient/chat/conversation-surface',
+          importPath: '@lostgradient/chat',
           source: CHAT_COMPONENT_SOURCE,
         },
       ]),

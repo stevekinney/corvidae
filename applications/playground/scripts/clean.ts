@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 const playgroundRoot = join(import.meta.dir, '..');
 await rm(join(playgroundRoot, '.tmp'), { recursive: true, force: true });
+await rm(join(playgroundRoot, 'build'), { recursive: true, force: true });
 
 const sourceDirectory = join(playgroundRoot, 'src');
 const sourceDirectoryEntries = await readdir(sourceDirectory, { withFileTypes: true });

@@ -18,11 +18,11 @@ import { isAbsolute, join, relative as relativePath } from 'node:path';
  * located inside `baseDir` whose target resolves outside `baseDir`; such a
  * symlink would pass this check and the subsequent `Bun.file().exists()`
  * read would follow it. As of this issue, none of the three roots this
- * function guards (`STYLES_ROOT` under `packages/components/src/styles`, the
+ * function guards (`STYLES_ROOT` under `components/cinder/src/styles`, the
  * components-barrel CSS root, and each `componentSource.componentsRoot` in
- * `component-sources.ts`, which point directly at `packages/<name>/src/...` —
+ * `component-sources.ts`, which point directly at `components/<name>/src/...` —
  * not through `node_modules`) contain any symlinks (verified with `find
- * packages/playground/src packages/components/src -type l`), so this gap is
+ * applications/playground/src components/cinder/src -type l`), so this gap is
  * not currently exploitable through these three call sites. If a future
  * caller serves a directory that may contain symlinks (e.g. anything
  * traversing through `node_modules`), it must add an `fs.realpathSync`

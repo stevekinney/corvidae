@@ -1,9 +1,8 @@
 /**
  * Playground-side tests for the example-harness strip (#399). The transform
- * itself is owned by `packages/components` (the manifest generator shapes the
- * shipped `code` field with it); its fixture/unit suite lives there at
- * `scripts/lib/strip-example-harness.test.ts`. This file covers the two things
- * that need playground's own surroundings:
+ * itself lives in `strip-example-harness.ts`, and its fixture/unit suite is
+ * `strip-example-harness-transform.test.ts`. This file covers the two things
+ * that need the playground's own surroundings:
  *
  *   1. Route integration: {@link exampleSnippetResponse} turns a successful strip
  *      into a 200 and a fail-closed throw into a controlled 500.
@@ -13,9 +12,8 @@
  *      copy-pasteable Svelte (catches any dangling derived-id reference a narrower
  *      string assertion would miss). Its count is cross-checked against the
  *      featured-example registry so a moved/renamed dir can't silently zero the
- *      sweep. This is also the canary the codex-advisor flagged: a new harness
- *      shape that the fail-closed parser can't handle would now break
- *      `components:generate`, so this corpus sweep must stay green.
+ *      sweep. A new harness shape that the fail-closed parser can't handle must
+ *      break this corpus sweep rather than ship, so it must stay green.
  */
 
 import { describe, expect, it } from 'bun:test';
@@ -24,9 +22,9 @@ import { basename, dirname, join } from 'node:path';
 
 import { compile } from 'svelte/compiler';
 
-import { stripExampleHarness } from '../../components/scripts/lib/strip-example-harness.ts';
 import { FEATURED_EXAMPLES } from './examples/featured-examples.ts';
 import { exampleSnippetResponse } from './playground-server.ts';
+import { stripExampleHarness } from './strip-example-harness.ts';
 
 const EXAMPLES_ROOT = join(import.meta.dir, 'examples');
 

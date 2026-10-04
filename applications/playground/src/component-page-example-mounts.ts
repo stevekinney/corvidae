@@ -85,9 +85,9 @@ export function createExampleMountHelpers(options: ExampleMountState): {
   const mountScenario = (scenario: string) => {
     return (element: HTMLElement) => {
       const mountKey = element.id;
-      const registry = (window as CinderWindow).__CINDER_SCENARIOS__ ?? {};
+      const registry = (window as CinderWindow)['__CINDER_SCENARIOS__'] ?? {};
       const registeredComponent = registry[scenario];
-      const loader = (window as CinderWindow).__CINDER_SCENARIO_LOADERS__?.[scenario];
+      const loader = (window as CinderWindow)['__CINDER_SCENARIO_LOADERS__']?.[scenario];
       let app: ReturnType<typeof mount> | undefined;
       let disposed = false;
       let settled = false;
@@ -137,9 +137,10 @@ export function createExampleMountHelpers(options: ExampleMountState): {
           }
           mountErrors[mountKey] = undefined;
           void tick().then(() => {
-            if (disposed || app === undefined) return;
+            if (disposed || app === undefined) return undefined;
             element.setAttribute('data-example-preview-ready', '');
             settle();
+            return undefined;
           });
         } catch (error) {
           console.error(`[cinder playground] failed to mount example "${scenario}":`, error);
@@ -171,7 +172,7 @@ export function createExampleMountHelpers(options: ExampleMountState): {
         element.removeAttribute('data-example-preview-ready');
         if (app === undefined) return;
         try {
-          unmount(app);
+          void unmount(app).catch(() => undefined);
         } catch {
           // Best-effort cleanup only.
         }

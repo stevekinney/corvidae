@@ -19,6 +19,7 @@ describe('playground test process isolation', () => {
       'src/featured-example-server-renderer.test.ts',
       "import { renderFeaturedExample } from './featured-example-server-renderer.ts';",
     ],
+    ['src/page-bundle.test.ts', "import { compilePageBundleArtifacts } from './page-bundle.ts';"],
     ['src/direct-build.test.ts', 'await Bun.build(options);'],
     ['src/dynamic-server.test.ts', "const server = await import('./playground-server.ts');"],
     ['src/side-effect-server.test.ts', "import './playground-server.ts';"],

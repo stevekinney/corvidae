@@ -14,6 +14,7 @@
  */
 
 import type { ComponentDocumentationPayload } from './component-documentation-types.ts';
+import { readEnvironmentConfiguration } from './environment-configuration.ts';
 import { humanizeComponentName } from './shell-app/humanize.ts';
 import { stripInlineSourcemaps } from './strip-inline-sourcemaps.ts';
 
@@ -197,7 +198,9 @@ export function documentationPageMetadata(componentName: string | null): Documen
   };
 }
 
-export function normalizedBaseUrl(baseUrl = Bun.env['PLAYGROUND_BASE_URL'] ?? ''): string {
+export function normalizedBaseUrl(
+  baseUrl = readEnvironmentConfiguration().playgroundBaseUrl ?? '',
+): string {
   return baseUrl.replace(/\/+$/, '');
 }
 
@@ -207,7 +210,7 @@ export function absoluteDocumentationUrl(baseUrl: string, path: string): string 
 
 export function documentationMetadataTags(
   metadata: DocumentationPageMetadata,
-  baseUrl = Bun.env['PLAYGROUND_BASE_URL'] ?? '',
+  baseUrl = readEnvironmentConfiguration().playgroundBaseUrl ?? '',
 ): string {
   const normalized = normalizedBaseUrl(baseUrl);
   const canonicalUrl = normalized
@@ -242,7 +245,7 @@ export function documentationMetadataTags(
 
 export function documentationJsonLd(
   metadata: DocumentationPageMetadata,
-  baseUrl = Bun.env['PLAYGROUND_BASE_URL'] ?? '',
+  baseUrl = readEnvironmentConfiguration().playgroundBaseUrl ?? '',
 ): string {
   const normalized = normalizedBaseUrl(baseUrl);
   if (normalized === '') return '';

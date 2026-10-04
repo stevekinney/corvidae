@@ -1,3 +1,5 @@
+import { readEnvironmentConfiguration } from './environment-configuration.ts';
+
 const DEFAULT_PORT = 5555;
 
 /**
@@ -8,7 +10,7 @@ const DEFAULT_PORT = 5555;
  * reach `Bun.serve()` and throw a non-`EADDRINUSE` error that aborts startup).
  */
 export function resolvePreferredPort(): number {
-  const fromEnv = Bun.env['PORT']?.trim();
+  const fromEnv = readEnvironmentConfiguration().port?.trim();
   if (fromEnv === undefined || fromEnv === '') return DEFAULT_PORT;
   if (!/^\d+$/.test(fromEnv)) return DEFAULT_PORT;
   const parsed = Number.parseInt(fromEnv, 10);

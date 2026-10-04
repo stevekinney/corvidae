@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { sveltePlugin } from '../../components/scripts/svelte-plugin.ts';
+import { sveltePlugin } from '@lostgradient/testing';
 import { coordinatedBuild } from './build-artifacts-shared.ts';
 import type { ComponentDocumentationPayload } from './component-documentation-types.ts';
 import { curatedShikiAdapterPlugin } from './curated-shiki-adapter-plugin.ts';

@@ -1,31 +1,25 @@
 /**
- * Unit tests for `scripts/playground/server.ts` route handlers.
+ * Unit tests for `playground-server.ts` route handlers.
  *
  * Uses handleRequest directly (no live server) for route-level coverage.
  * The triggerReload / SSE integration path is covered by validate-playground.ts.
  *
  * Tests that hit /bundle/button/primary.js and /example-src/button/primary rely
- * on scripts/playground/examples/button/primary.example.svelte existing. A
+ * on src/examples/button/primary.example.svelte existing. A
  * beforeAll guard asserts this up front so failures are diagnosable.
  *
- * PRECONDITION: the /bundle/* and /page-bundle/* "build artifact" tests bundle
- * the playground FROM SOURCE, which resolves the private @cinder/* workspaces
- * plus @lostgradient/cinder and @lostgradient/chat through built `dist/`
- * subpath exports. Build the playground's dependency list before this file in
- * a fresh checkout, or those tests fail with "Could not resolve" import errors.
- * CI does this in the main-green `Build playground bundle dependencies` step;
- * the Playwright runner does it via start-server.ts. The package list is pinned
- * by the "playground bundle dependency build preflight" test.
+ * PRECONDITION: none beyond `bun install`. The /bundle/* and /page-bundle/*
+ * "build artifact" tests bundle the playground FROM SOURCE, and every
+ * workspace package it imports (`@lostgradient/cinder`, `chat`, `editor`,
+ * `markdown`) exposes its own `src/index.ts` as its single export, so no
+ * upstream build has to run first.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { rm, utimes, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import {
-  loadFixtureFile,
-  resolveFixtureFilePath,
-} from '../../components/scripts/lib/visual-fixtures/loader.ts';
+import { throwingRejectionOf } from '@lostgradient/testing';
 import type { ComponentManifest } from './analyze.ts';
 import {
   createBuildGcCoordinator,
@@ -33,6 +27,7 @@ import {
   fixtureArtifactByPath,
 } from './build-artifacts-shared.ts';
 import { isComponentDocumentationPayload } from './component-documentation-reference.ts';
+import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 import { COMPOSE_ONLY_COMPONENTS } from './discover.ts';
 import {
   classifyPlaygroundSrcChange,
@@ -48,6 +43,7 @@ import {
   reclaimExpiredFixtureLeases,
   retainFixtureEntry,
 } from './fixture-bundle.ts';
+import { loadFixtureFile, resolveFixtureFilePath } from './fixture-loader.ts';
 import {
   PORT,
   createSharedDisposer,
@@ -165,15 +161,15 @@ describe('releaseIncrementalPrebuildMemory', () => {
   it('rejects invalid concurrency and batch arguments deterministically', async () => {
     const task = async (value: number): Promise<number> => value;
     const afterBatch = (): void => {};
-    await expect(mapWithConcurrencyLimitInBatches([], 0, 1, task, afterBatch)).rejects.toThrow(
-      'concurrencyLimit must be a positive integer; received 0',
-    );
-    await expect(mapWithConcurrencyLimitInBatches([], 1, 0, task, afterBatch)).rejects.toThrow(
-      'batchSize must be a positive integer; received 0',
-    );
-    await expect(mapWithConcurrencyLimitInBatches([], 1.5, 1, task, afterBatch)).rejects.toThrow(
-      'concurrencyLimit must be a positive integer; received 1.5',
-    );
+    expect(
+      await throwingRejectionOf(mapWithConcurrencyLimitInBatches([], 0, 1, task, afterBatch)),
+    ).toThrow('concurrencyLimit must be a positive integer; received 0');
+    expect(
+      await throwingRejectionOf(mapWithConcurrencyLimitInBatches([], 1, 0, task, afterBatch)),
+    ).toThrow('batchSize must be a positive integer; received 0');
+    expect(
+      await throwingRejectionOf(mapWithConcurrencyLimitInBatches([], 1.5, 1, task, afterBatch)),
+    ).toThrow('concurrencyLimit must be a positive integer; received 1.5');
   });
 });
 
@@ -192,7 +188,7 @@ describe('createBuildGcCoordinator', () => {
     coordinator.collectGarbage(true);
     expect(calls).toEqual([]);
     finishBuild();
-    await expect(build).resolves.toBe('done');
+    expect(await build).toBe('done');
     expect(calls).toEqual([true]);
   });
 });
@@ -345,14 +341,14 @@ describe('publishFixtureArtifacts', () => {
       publishFixtureArtifacts(entryKey, new Map([['fixture-cached.js', 'cached']]), 32);
       expect(findFixtureArtifact('fixture-cached.js')).toBe('cached');
 
-      await expect(
-        buildFixtureBundle(
+      expect(
+        await buildFixtureBundle(
           'input',
           fixture,
           fixtureFile.contentHash,
           resolve(COMPONENTS_ROOT, 'input', 'input.svelte'),
         ),
-      ).resolves.toBe('fixture-cached.js');
+      ).toBe('fixture-cached.js');
       for (let index = 0; index < 40; index++) {
         const key = `pressure-${index}`;
         fixtureEntryByKey.set(key, `fixture-${key}.js`);
@@ -430,14 +426,14 @@ describe('publishFixtureArtifacts', () => {
         40,
       );
 
-      await expect(
-        buildFixtureBundle(
+      expect(
+        await buildFixtureBundle(
           'input',
           fixture,
           fixtureFile.contentHash,
           resolve(COMPONENTS_ROOT, 'input', 'input.svelte'),
         ),
-      ).resolves.toBeNull();
+      ).toBeNull();
     } finally {
       clearFixtureBundleCaches();
     }
@@ -546,15 +542,14 @@ describe('runConcurrentStartupWarmup', () => {
       },
     );
 
-    expect(warmup).rejects.toThrow('renderer failed');
-    await warmup.catch(() => {});
+    expect(await throwingRejectionOf(warmup)).toThrow('renderer failed');
     expect(cleanupCalls).toBe(1);
   });
 });
 
 const FIXTURE_COMPONENT = 'button';
 const FIXTURE_SCENARIO = 'primary';
-const COMPONENTS_ROOT = resolve(import.meta.dirname, '..', '..', 'components', 'src', 'components');
+const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
 const COMPOSE_ONLY_FIXTURE_COMPONENT = Array.from(COMPOSE_ONLY_COMPONENTS)[0]!;
 const FIXTURE_PATH = join(
   import.meta.dirname,
@@ -1855,7 +1850,7 @@ describe('generated schema metadata', () => {
       name: 'Input',
       kebabName: 'input',
       file: '/components/input/input.svelte',
-      importPath: '@lostgradient/cinder/input',
+      importPath: '@lostgradient/cinder',
       props: [
         {
           name: 'value',
@@ -1889,7 +1884,7 @@ describe('generated schema metadata', () => {
       name: 'Snippet',
       kebabName: 'snippet',
       file: '/components/snippet/snippet.svelte',
-      importPath: '@lostgradient/cinder/snippet',
+      importPath: '@lostgradient/cinder',
       props: [],
     };
 
@@ -2268,7 +2263,7 @@ describe('warmPageServerRenderer', () => {
       stable,
     );
 
-    await expect(warmup).resolves.toBeUndefined();
+    expect(await warmup).toBeUndefined();
     expect(resetCalls).toBe(1);
   });
 });

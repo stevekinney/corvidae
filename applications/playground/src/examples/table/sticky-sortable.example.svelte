@@ -21,7 +21,7 @@
 
   const sorted = $derived.by(() => {
     if (!sort) return people;
-    return [...people].sort((a, b) => {
+    return people.toSorted((a, b) => {
       const key = sort!.column as keyof (typeof people)[0];
       const aVal = a[key];
       const bVal = b[key];

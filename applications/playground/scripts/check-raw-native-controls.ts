@@ -6,7 +6,7 @@
  * <input>, <select>, <textarea>). Raw controls in examples imply a usability
  * inconsistency visible to every developer who views the docs.
  *
- * This script scans every `packages/playground/src/examples/**\/*.example.svelte`
+ * This script scans every `applications/playground/src/examples/**\/*.example.svelte`
  * file for raw interactive native control tags and reports them, partitioned into:
  *   - allowlisted: genuinely intentional raw controls (see ALLOWLIST below, or
  *     inline `<!-- examples-audit-allow: <reason> -->` markers)

@@ -1,6 +1,6 @@
+import { sveltePlugin } from '@lostgradient/testing';
 import type { BuildArtifact } from 'bun';
 
-import { sveltePlugin } from '../../components/scripts/svelte-plugin.ts';
 import { curatedShikiAdapterPlugin } from './curated-shiki-adapter-plugin.ts';
 
 /**
@@ -59,13 +59,14 @@ export const SHARED_BUILD_OPTIONS = {
   plugins: [sveltePlugin({ generate: 'client', injectCss: true }), curatedShikiAdapterPlugin()],
   target: 'browser',
   format: 'esm',
-  // `svelte` falls back to source resolution for the `@lostgradient/cinder`
-  // workspace package: its exports map advertises `svelte` and `types`
-  // conditions pointing at `./src/components/<name>/index.ts`, with no browser
-  // source condition. The page bundles themselves are browser bundles, though,
-  // so we avoid the `bun` condition here. Private workspace packages such as
-  // `@lostgradient/markdown` use that condition for Bun/server source entry points,
-  // which can break Linux browser bundling for markdown-backed components.
+  // The workspace component packages (`@lostgradient/cinder`, `chat`, `editor`)
+  // and `@lostgradient/markdown` each declare one `"."` export that points at
+  // `./src/index.ts`, so they resolve to source under any condition set and
+  // `svelte` is only needed for dependencies that publish a `svelte` condition.
+  // The page bundles themselves are browser bundles, so we use `browser` and
+  // avoid the `bun` condition: a dependency such as
+  // `@lostgradient/environmentalist` maps `bun` to its Node build, which does
+  // not belong in a browser bundle.
   conditions: ['browser', 'svelte'],
   splitting: true,
   naming: {

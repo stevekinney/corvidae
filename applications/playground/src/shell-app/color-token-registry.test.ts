@@ -3,16 +3,14 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import {
-  extractRootBlock,
-  readRootTokenNames,
-} from '../../../components/src/test/token-introspection.ts';
+import { CINDER_COMPONENT_SOURCE } from '../component-sources.ts';
 import {
   COLOR_TOKEN_GROUPS,
   COLOR_TOKEN_NAMES,
   FALLBACK_COLOR_VALUE_PATTERN,
   isSafeColorTokenValue,
 } from './color-token-registry.ts';
+import { extractRootBlock, readRootTokenNames } from './token-introspection.ts';
 
 /** Token names whose value shape (shadows, gradients) means they can never be
  * a themeable solid/translucent color, regardless of what they reference. */
@@ -181,11 +179,7 @@ const INTENTIONALLY_UNREGISTERED_COLOR_TOKENS = new Set([
 ]);
 
 const TOKENS_BASE_PATH = join(
-  import.meta.dir,
-  '..',
-  '..',
-  '..',
-  'components',
+  CINDER_COMPONENT_SOURCE.packageRoot,
   'src',
   'styles',
   'tokens-base.css',

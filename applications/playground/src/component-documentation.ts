@@ -13,6 +13,7 @@ import type {
 } from './component-documentation-types.ts';
 import { CINDER_COMPONENT_SOURCE, type ComponentSource } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
+import { REPOSITORY_ROOT } from './playground-paths.ts';
 import { repositorySourceHref, rewriteRelativeRenderedMarkdownLinks } from './repository-links.ts';
 import type { ComponentManifest } from './types.ts';
 
@@ -47,15 +48,15 @@ type PackageManifest = {
 };
 
 /**
- * The on-disk shape of `components.json`, before this module fills in a
- * missing `package.version`.
+ * The on-disk shape of `components.json`, before this module replaces its
+ * `package.version`.
  *
- * Corvidae's generated components.json carries no version at all — corvidae
- * workspaces are not independently versioned npm packages, so there is
- * nothing for its generator to write. `RawPackageManifest` is the shape the
- * file actually has; `PackageManifest` (above) is what every OTHER reader in
- * this module gets, with `loadPackageManifestForDocumentation` responsible
- * for closing the gap between the two.
+ * Corvidae workspaces are not independently versioned npm packages, so a
+ * `components.json` either carries no version (Cinder's) or a stale copy of one
+ * (Chat's and Editor's). `RawPackageManifest` is the shape the file actually
+ * has; `PackageManifest` (above) is what every OTHER reader in this module
+ * gets, with `loadPackageManifestForDocumentation` responsible for replacing
+ * whatever the file says with the version the public mirror last published.
  */
 type RawPackageManifest = Omit<PackageManifest, 'package'> & {
   package: { version?: string };
@@ -164,23 +165,25 @@ function isRawPackageManifest(value: unknown): value is RawPackageManifest {
   );
 }
 
+const PACKAGE_MAP_PATH = join(REPOSITORY_ROOT, 'scripts', 'mirror', 'package-map.json');
+
 /**
- * The version corvidae's own generated components.json cannot carry: the
- * package's `package.json`, which the mirror sync (or a real npm publish)
- * does version. Thrown as the same `malformed-components-manifest` error the
- * manifest shape check uses, since a package.json with no version string is
- * just as unusable here.
+ * The version the documentation displays: the one the public mirror last
+ * published, recorded in `scripts/mirror/package-map.json`. This is the single
+ * source of `package.version`, so the page never shows the stale copy a
+ * `components.json` carries. Thrown as the same `malformed-components-manifest`
+ * error the manifest shape check uses, since a package the map does not record
+ * is just as unusable here.
  */
-async function readPackageVersionForDocumentation(
-  componentSource: ComponentSource,
-): Promise<string> {
-  const packageJsonPath = join(componentSource.packageRoot, 'package.json');
-  const raw: unknown = await Bun.file(packageJsonPath).json();
-  const version = isObject(raw) ? raw['version'] : undefined;
+async function readLastPublishedVersion(componentSource: ComponentSource): Promise<string> {
+  const packageMap: unknown = await Bun.file(PACKAGE_MAP_PATH).json();
+  const workspaces = isObject(packageMap) ? packageMap['workspaces'] : undefined;
+  const entry = isObject(workspaces) ? workspaces[componentSource.packageName] : undefined;
+  const version = isObject(entry) ? entry['lastPublishedVersion'] : undefined;
   if (typeof version !== 'string') {
     throw new ComponentDocumentationError(
       'malformed-components-manifest',
-      `${componentSource.manifestPath} carries no package.version, and ${packageJsonPath} has no usable "version" string to fall back to`,
+      `${PACKAGE_MAP_PATH} records no lastPublishedVersion for ${componentSource.packageName}`,
     );
   }
   return version;
@@ -196,9 +199,7 @@ export async function loadPackageManifestForDocumentation(
       `${componentSource.manifestPath} does not match the documentation manifest shape`,
     );
   }
-  if (raw.package.version !== undefined)
-    return { ...raw, package: { version: raw.package.version } };
-  const version = await readPackageVersionForDocumentation(componentSource);
+  const version = await readLastPublishedVersion(componentSource);
   return { ...raw, package: { version } };
 }
 

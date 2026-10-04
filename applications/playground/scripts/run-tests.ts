@@ -54,6 +54,7 @@ const MOUNT_HEAVY_TEST = 'src/component-page.test.ts';
 
 const BUILD_PIPELINE_MODULE_NAMES = [
   'featured-example-server-renderer.ts',
+  'page-bundle.ts',
   'playground-server.ts',
   'static-export.ts',
 ] as const;

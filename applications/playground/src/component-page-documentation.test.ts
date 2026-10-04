@@ -46,19 +46,23 @@ TableMock.Row = tableModule.Row;
 TableMock.Body = tableModule.Body;
 TableMock.Cell = tableModule.Cell;
 
-mock.module('@lostgradient/cinder/accordion', () => ({ Accordion: ContainerMock }));
-mock.module('@lostgradient/cinder/accordion-item', () => ({ AccordionItem: AccordionItemMock }));
-mock.module('@lostgradient/cinder/alert', () => ({ Alert: AlertMock }));
-mock.module('@lostgradient/cinder/badge', () => ({ Badge: BadgeMock }));
-mock.module('@lostgradient/cinder/button', () => ({ Button: ButtonMock }));
-mock.module('@lostgradient/cinder/callout', () => ({ Callout: CalloutMock }));
-mock.module('@lostgradient/cinder/code-block', () => ({ CodeBlock: CodeBlockMock }));
-mock.module('@lostgradient/cinder/collapsible', () => ({ Collapsible: CollapsibleMock }));
-mock.module('@lostgradient/cinder/kbd', () => ({ Kbd: KbdMock }));
-mock.module('@lostgradient/cinder/status-dot', () => ({ StatusDot: StatusDotMock }));
-mock.module('@lostgradient/cinder/table', () => ({ Table: TableMock }));
-mock.module('@lostgradient/cinder/toggle', () => ({ Toggle: ToggleMock }));
-mock.module('@lostgradient/cinder/tooltip', () => ({ Tooltip: TooltipMock }));
+const cinder = await import('@lostgradient/cinder');
+mock.module('@lostgradient/cinder', () => ({
+  ...cinder,
+  Accordion: ContainerMock,
+  AccordionItem: AccordionItemMock,
+  Alert: AlertMock,
+  Badge: BadgeMock,
+  Button: ButtonMock,
+  Callout: CalloutMock,
+  CodeBlock: CodeBlockMock,
+  Collapsible: CollapsibleMock,
+  Kbd: KbdMock,
+  StatusDot: StatusDotMock,
+  Table: TableMock,
+  Toggle: ToggleMock,
+  Tooltip: TooltipMock,
+}));
 
 const { default: ComponentPage } = await import('./component-page.svelte');
 
@@ -67,7 +71,7 @@ function baseFixture(): ComponentDocumentationPayload {
     component: {
       id: 'button',
       name: 'Button',
-      importSpecifier: '@lostgradient/cinder/button',
+      importSpecifier: '@lostgradient/cinder',
       exportName: 'Button',
       category: 'action',
       categoryLabel: 'Actions',
@@ -99,7 +103,7 @@ function baseFixture(): ComponentDocumentationPayload {
       name: 'Button',
       kebabName: 'button',
       file: 'button.svelte',
-      importPath: '@lostgradient/cinder/button',
+      importPath: '@lostgradient/cinder',
       props: [
         {
           name: 'variant',
@@ -122,7 +126,7 @@ function baseFixture(): ComponentDocumentationPayload {
       examples: [{ id: 'primary', title: 'Primary', code: '<Button label="Save" />' }],
     },
     rawArtifacts: {
-      manifestEntry: { id: 'button', name: 'Button', import: '@lostgradient/cinder/button' },
+      manifestEntry: { id: 'button', name: 'Button', import: '@lostgradient/cinder' },
       schema: { type: 'object', properties: { variant: { type: 'string' } } },
       variables: ['--cinder-button-background'],
       constraints: null,
@@ -258,7 +262,7 @@ describe('component-page single-scroll layout', () => {
     expect(await findHeroHeading('Button')).toBeTruthy();
     expect(screen.getByText('Fixture purpose for a documentation page.')).toBeTruthy();
     // Import line built from exportName + importSpecifier.
-    expect(screen.getByText("import { Button } from '@lostgradient/cinder/button';")).toBeTruthy();
+    expect(screen.getByText("import { Button } from '@lostgradient/cinder';")).toBeTruthy();
     // Spec card version row.
     expect(screen.getByText('v0.2.0')).toBeTruthy();
 
@@ -616,7 +620,7 @@ describe('component-page single-scroll layout', () => {
       name: 'Autocomplete',
       kebabName: 'autocomplete',
       file: 'autocomplete.svelte',
-      importPath: '@lostgradient/cinder/autocomplete',
+      importPath: '@lostgradient/cinder',
       props: [
         {
           name: 'label',
@@ -671,7 +675,7 @@ describe('component-page single-scroll layout', () => {
       name: 'ButtonGroup',
       kebabName: 'button-group',
       file: 'button-group.svelte',
-      importPath: '@lostgradient/cinder/button-group',
+      importPath: '@lostgradient/cinder',
       props: [],
     };
     installDocumentationDataIsland(exampleOnly);

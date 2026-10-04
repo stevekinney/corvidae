@@ -8,7 +8,7 @@
  * status codes and page content, and tests the SSE reload path.
  *
  * Usage:
- *   bun run scripts/playground/validate-playground.ts
+ *   bun run --filter=@lostgradient/playground validate
  *
  * Exit 0 on success, non-zero with a descriptive error on failure.
  */
@@ -355,7 +355,7 @@ if (import.meta.main) {
       );
     }
 
-    // import.meta.dirname is packages/playground/src/; examples live under examples/.
+    // import.meta.dirname is applications/playground/src/; examples live under examples/.
     await validateExampleTitles(join(import.meta.dirname, 'examples'));
     await validateComponentRoutes(baseUrl, components);
     await validateDocumentationRoutes(baseUrl, components);

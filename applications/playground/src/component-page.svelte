@@ -176,7 +176,7 @@
 
   function readExamples(): CinderExampleDescriptor[] {
     if (typeof window === 'undefined') return [];
-    const raw = (window as CinderWindow).__CINDER_EXAMPLES__;
+    const raw = (window as CinderWindow)['__CINDER_EXAMPLES__'];
     return Array.isArray(raw) ? raw : [];
   }
 
@@ -227,7 +227,7 @@
     // well so a loader failure does not surface as an unrelated browser-level
     // unhandled-rejection warning before that fixture evaluates the promise.
     void snapshotReady.catch(() => undefined);
-    (window as CinderWindow).__CINDER_SNAPSHOT_READY__ = snapshotReady;
+    (window as CinderWindow)['__CINDER_SNAPSHOT_READY__'] = snapshotReady;
     if (snapshotMountKeys.size === 0) {
       resolveSnapshotReady!();
     } else {
@@ -328,6 +328,7 @@
     void loadBareComponentModule()
       .then((module) => {
         if (!cancelled) bareComponentModule = module;
+        return undefined;
       })
       .catch((error) => {
         if (!cancelled) {
@@ -645,6 +646,7 @@
     void depictInlineHighlighter(importStatement, 'ts')
       .then((html) => {
         if (!cancelled) highlightedImportStatement = html;
+        return undefined;
       })
       .catch(() => {
         // Keep the copyable plain-text fallback if the optional highlighter

@@ -65,6 +65,35 @@
         "vite": "catalog:",
       },
     },
+    "applications/playground": {
+      "name": "@lostgradient/playground",
+      "dependencies": {
+        "@lostgradient/chat": "workspace:*",
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/editor": "workspace:*",
+        "@lostgradient/environmentalist": "catalog:",
+        "@lostgradient/markdown": "workspace:*",
+        "@shikijs/themes": "catalog:",
+        "lucide-svelte": "catalog:",
+        "shiki": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/estree": "^1.0.9",
+        "happy-dom": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "postcss": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
+        "ts-morph": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/chat": {
       "name": "@lostgradient/chat",
       "dependencies": {
@@ -789,6 +818,8 @@
     "@lostgradient/memory": ["@lostgradient/memory@workspace:packages/memory"],
 
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
+
+    "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
 
     "@lostgradient/skills": ["@lostgradient/skills@workspace:packages/skills"],
 

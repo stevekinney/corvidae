@@ -213,7 +213,7 @@ describe('selection-popover examples — source analysis helpers (unit)', () => 
 
   it('extractSelectionPopoverSites does not match type imports like SelectionPopoverPosition', () => {
     const source = `
-      import type { SelectionPopoverPosition } from '@lostgradient/cinder/selection-popover';
+      import type { SelectionPopoverPosition } from '@lostgradient/cinder';
       <SelectionPopover id="a" open={isOpen} />
     `;
     expect(extractSelectionPopoverSites(source)).toHaveLength(1);

@@ -33,6 +33,7 @@ This inventory records the consolidation boundaries and validation evidence. The
 | `/Users/stevekinney/Developer/cinder/packages/markdown` | `packages/markdown` | `@lostgradient/markdown` | `@lostgradient/markdown` | Library |
 | `/Users/stevekinney/Developer/cinder/packages/testing` | `packages/testing` | `@cinder/testing` | `@lostgradient/testing` | Library |
 | `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room`, later `applications/desktop` | `@cinder/chat-room-lab` | `@lostgradient/chat-room`, later `@lostgradient/desktop` | Application |
+| `/Users/stevekinney/Developer/cinder/packages/playground` | `applications/playground` | `@cinder/playground` | `@lostgradient/playground` | Application |
 | Extracted from `applications/chat-room` | `packages/telephone` | — | `@lostgradient/telephone` | Library |
 | New in COR-1348 | `packages/evaluation` | — | `@lostgradient/evaluation` | Library |
 
@@ -44,7 +45,7 @@ All source libraries are private ESM packages with the sole export `{ ".": "./sr
 
 Shared tool and JSON contracts belong to `@lostgradient/tool-protocol`. Embedding contracts and vector mathematics belong to `@lostgradient/embeddings`. Hashing, signing, and timing-safe comparison belong to `@lostgradient/cryptography`. Armorer owns its Standard Schema detection and declares `@standard-schema/spec` directly.
 
-Chat-room is the only application and owns its SvelteKit/Vite toolchain. The `weft` package owns the `weft` and `weft-mcp` source executables. Weft UI owns its Bun browser test host in `components/weft-ui/scripts/browser`. Cross-component browser tests and their Bun host belong to root `scripts/browser-fixtures`; neither test host has a workspace identity. The unused starter server and greeting library have been removed. Libraries have no build or upstream-build dependency.
+The desktop chat room and the playground are the applications. The desktop application owns its Electrobun toolchain and builds its renderer with Vite; the playground owns a Bun dev server and static exporter. The `weft` package owns the `weft` and `weft-mcp` source executables. Weft UI owns its Bun browser test host in `components/weft-ui/scripts/browser`. Cross-component browser tests and their Bun host belong to root `scripts/browser-fixtures`; neither test host has a workspace identity. The unused starter server and greeting library have been removed. Libraries have no build or upstream-build dependency.
 
 Turbo's transit task incorporates upstream source in check hashes without executing builds. Application build outputs are `build/**` and `.svelte-kit/**`. Root browser fixture tests cache their generated manifest and lazy-import catalog; Chat-room lint and typecheck cache SvelteKit's generated configuration and types without capturing production output. Dev, preview, clean, and lint-fix tasks are uncached. Workspace tests execute serially because absolute performance assertions require an uncontended workload. Thresholds, assertions, timeouts, and retries are preserved.
 
@@ -52,11 +53,12 @@ File length, closure hoisting, and generic simplification are design-review guid
 
 ## Complete internal dependency graph
 
-Arrows run from consumer to provider. Every manifest edge appears below, including development dependencies. The 21-workspace graph has 80 edges. Root tooling adds 6 development edges; no package depends on the root.
+Arrows run from consumer to provider. Every manifest edge appears below, including development dependencies. The 22-workspace graph has 86 edges. Root tooling adds 6 development edges; no package depends on the root.
 
 | Consumer | Runtime or source-contract providers | Development providers |
 | --- | --- | --- |
 | `@lostgradient/desktop` | `armorer`, `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/operative`, `@lostgradient/telephone` | `@lostgradient/typescript` |
+| `@lostgradient/playground` | `@lostgradient/chat`, `@lostgradient/cinder`, `@lostgradient/editor`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/telephone` | `armorer`, `@lostgradient/chat`, `@lostgradient/operative` | `conversationalist`, `@lostgradient/typescript` |
 | `@lostgradient/chat` | `@lostgradient/cinder`, `conversationalist`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/cinder` | `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
@@ -88,6 +90,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 | Workspace | Direct external dependencies |
 | --- | --- |
 | `@lostgradient/desktop` | `@lostgradient/environmentalist`, `electrobun`, `svelte`, `zod` |
+| `@lostgradient/playground` | `@lostgradient/environmentalist`, `@shikijs/themes`, `lucide-svelte`, `shiki`, `zod` |
 | `@lostgradient/telephone` | none |
 | `armorer` | `@modelcontextprotocol/client`, `@modelcontextprotocol/core`, `@modelcontextprotocol/server`, `@openai/agents`, `@opentelemetry/api`, `@standard-schema/spec`, `zod` |
 | `@lostgradient/bureau` | `zod` |

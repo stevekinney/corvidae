@@ -1,66 +1,140 @@
 /**
- * Unit tests for `component-sources.ts`'s Editor CSS-sidecar resolution.
+ * Unit tests for `component-sources.ts`: the Editor CSS-sidecar resolution, the
+ * package-root import path every component source reports, and the check that
+ * every documented Chat and Editor component has a manifest entry.
  *
  * Regression coverage for a hardcoded `componentName === 'review-editor'`
- * check this file used to have: the real `EDITOR_COMPONENT_SOURCE` case pins
- * today's manifest shape, and the injected-fixture case proves the lookup
- * generalizes beyond the one styles export the real manifest currently has.
+ * check this file used to have: the real `EDITOR_COMPONENT_SOURCE` cases pin
+ * today's component tree, and the temporary-directory cases prove the lookup
+ * generalizes beyond the sidecars the real tree currently ships.
  */
 
 import { describe, expect, it } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
+  CHAT_COMPONENT_NAMES,
   CHAT_COMPONENT_SOURCE,
   CINDER_COMPONENT_SOURCE,
+  EDITOR_COMPONENT_NAMES,
   EDITOR_COMPONENT_SOURCE,
+  componentExportNameFor,
   documentationComponentStylesheetUrl,
   documentationExampleStylesheetUrls,
   resolveEditorStylesheetUrl,
+  type ComponentSource,
 } from './component-sources.ts';
+import { discoverComponents } from './discover.ts';
 
 describe('EDITOR_COMPONENT_SOURCE.componentStylesheetUrl', () => {
-  it('resolves review-editor against the real editor package.json exports map', () => {
-    expect(EDITOR_COMPONENT_SOURCE.componentStylesheetUrl('review-editor')).toBe(
-      '/package-components/editor/review-editor/review-editor.css',
+  it.each(['diff-review', 'diff-review-comments', 'review-editor'])(
+    'resolves %s, which ships a CSS sidecar, against the real component tree',
+    (componentName) => {
+      expect(EDITOR_COMPONENT_SOURCE.componentStylesheetUrl(componentName)).toBe(
+        `/package-components/editor/${componentName}/${componentName}.css`,
+      );
+    },
+  );
+
+  it.each(['markdown-editor', 'diff-viewer'])(
+    'returns null for %s, which has no CSS sidecar',
+    (componentName) => {
+      expect(EDITOR_COMPONENT_SOURCE.componentStylesheetUrl(componentName)).toBeNull();
+    },
+  );
+});
+
+describe('package-root import paths', () => {
+  it.each([
+    ['Cinder', CINDER_COMPONENT_SOURCE, ['button', 'modal', 'data-table']],
+    ['Chat', CHAT_COMPONENT_SOURCE, CHAT_COMPONENT_NAMES],
+    ['Editor', EDITOR_COMPONENT_SOURCE, EDITOR_COMPONENT_NAMES],
+  ] as const)(
+    'returns the %s package root for each of its components',
+    (_label, source, componentNames) => {
+      for (const componentName of componentNames) {
+        expect(source.importPath(componentName)).toBe(source.packageName);
+      }
+    },
+  );
+
+  it('fails closed for a Chat component with no public import path', () => {
+    expect(() => CHAT_COMPONENT_SOURCE.importPath('not-exported')).toThrow(
+      '[playground] not-exported was discovered in @lostgradient/chat but has no public import path',
     );
   });
 
-  it('returns null for editor components with no styles export', () => {
-    expect(EDITOR_COMPONENT_SOURCE.componentStylesheetUrl('markdown-editor')).toBeNull();
-    expect(EDITOR_COMPONENT_SOURCE.componentStylesheetUrl('diff-viewer')).toBeNull();
+  it('fails closed for an Editor component with no public import path', () => {
+    expect(() => EDITOR_COMPONENT_SOURCE.importPath('not-exported')).toThrow(
+      '[playground] not-exported was discovered in @lostgradient/editor but has no public import path',
+    );
+  });
+
+  it('returns the package root for every discovered Cinder component', async () => {
+    for (const componentName of await discoverComponents()) {
+      expect(CINDER_COMPONENT_SOURCE.importPath(componentName)).toBe('@lostgradient/cinder');
+    }
   });
 });
 
-describe('EDITOR_COMPONENT_SOURCE.importPath', () => {
-  it('resolves the published diff-review components', async () => {
-    const manifest = await Bun.file(new URL('../../editor/package.json', import.meta.url)).json();
-    expect(Object.hasOwn(manifest.exports, './diff-review')).toBe(true);
-    expect(Object.hasOwn(manifest.exports, './diff-review-comments')).toBe(true);
-    expect(EDITOR_COMPONENT_SOURCE.importPath('diff-review')).toBe(
-      '@lostgradient/editor/diff-review',
+describe('component manifest completeness', () => {
+  async function manifestIds(source: ComponentSource): Promise<Set<string>> {
+    const manifest = (await Bun.file(source.manifestPath).json()) as {
+      components: { id: string }[];
+    };
+    return new Set(manifest.components.map((component) => component.id));
+  }
+
+  it('lists every documented Chat component in the Chat components.json', async () => {
+    const ids = await manifestIds(CHAT_COMPONENT_SOURCE);
+    expect(CHAT_COMPONENT_NAMES.filter((name) => !ids.has(name))).toEqual([]);
+  });
+
+  it('lists every documented Editor component in the Editor components.json', async () => {
+    const ids = await manifestIds(EDITOR_COMPONENT_SOURCE);
+    expect(EDITOR_COMPONENT_NAMES.filter((name) => !ids.has(name))).toEqual([]);
+  });
+
+  it('reads the export name a package root exposes a component under', () => {
+    expect(componentExportNameFor(CINDER_COMPONENT_SOURCE, 'button')).toBe('Button');
+    expect(componentExportNameFor(CHAT_COMPONENT_SOURCE, 'chat-composer-popover')).toBe(
+      'ChatComposerPopover',
     );
-    expect(EDITOR_COMPONENT_SOURCE.importPath('diff-review-comments')).toBe(
-      '@lostgradient/editor/diff-review-comments',
+    expect(componentExportNameFor(EDITOR_COMPONENT_SOURCE, 'diff-review-comments')).toBe(
+      'DiffReviewComments',
     );
   });
 
-  it('fails closed for a component with no public import path', () => {
-    expect(() => EDITOR_COMPONENT_SOURCE.importPath('not-exported')).toThrow(
-      '[playground] not-exported was discovered in @lostgradient/editor but has no public import path',
+  it('fails closed when a component has no export name in its manifest', () => {
+    expect(() => componentExportNameFor(EDITOR_COMPONENT_SOURCE, 'not-in-the-manifest')).toThrow(
+      `[playground] not-in-the-manifest has no exportName in ${EDITOR_COMPONENT_SOURCE.manifestPath}`,
     );
   });
 });
 
 describe('resolveEditorStylesheetUrl', () => {
-  it('recognizes any component present in the export-key set, not just review-editor', () => {
-    const fixtureKeys = new Set(['./review-editor/styles', './diagram-editor/styles']);
-    expect(resolveEditorStylesheetUrl(fixtureKeys, 'review-editor')).toBe(
-      '/package-components/editor/review-editor/review-editor.css',
-    );
-    expect(resolveEditorStylesheetUrl(fixtureKeys, 'diagram-editor')).toBe(
-      '/package-components/editor/diagram-editor/diagram-editor.css',
-    );
-    expect(resolveEditorStylesheetUrl(fixtureKeys, 'markdown-editor')).toBeNull();
+  it('resolves a sidecar exactly when the component directory ships one', () => {
+    const componentsRoot = mkdtempSync(join(tmpdir(), 'editor-stylesheet-sidecars-'));
+    try {
+      for (const name of ['review-editor', 'diagram-editor', 'markdown-editor']) {
+        mkdirSync(join(componentsRoot, name));
+      }
+      writeFileSync(join(componentsRoot, 'review-editor', 'review-editor.css'), '');
+      writeFileSync(join(componentsRoot, 'diagram-editor', 'diagram-editor.css'), '');
+
+      expect(resolveEditorStylesheetUrl(componentsRoot, 'review-editor')).toBe(
+        '/package-components/editor/review-editor/review-editor.css',
+      );
+      expect(resolveEditorStylesheetUrl(componentsRoot, 'diagram-editor')).toBe(
+        '/package-components/editor/diagram-editor/diagram-editor.css',
+      );
+      expect(resolveEditorStylesheetUrl(componentsRoot, 'markdown-editor')).toBeNull();
+      expect(resolveEditorStylesheetUrl(componentsRoot, 'absent-editor')).toBeNull();
+    } finally {
+      rmSync(componentsRoot, { recursive: true, force: true });
+    }
   });
 });
 

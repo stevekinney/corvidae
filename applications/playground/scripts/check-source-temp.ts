@@ -14,7 +14,7 @@ const sourceDirectory = join(import.meta.dir, '..', 'src');
 const tempRootRelativeToSource = relative(sourceDirectory, PLAYGROUND_TEMP_ROOT);
 if (tempRootRelativeToSource !== '..' && !tempRootRelativeToSource.startsWith(`..${sep}`)) {
   console.error(
-    `Playground build temporary root must stay outside packages/playground/src: ${PLAYGROUND_TEMP_ROOT}`,
+    `Playground build temporary root must stay outside applications/playground/src: ${PLAYGROUND_TEMP_ROOT}`,
   );
   process.exit(1);
 }
@@ -23,9 +23,11 @@ const entries = await readdir(sourceDirectory, { withFileTypes: true });
 const stragglers = entries.filter((entry) => entry.isDirectory() && entry.name.startsWith('.tmp-'));
 
 if (stragglers.length > 0) {
-  console.error(`Found ${stragglers.length} temporary directories under packages/playground/src:`);
+  console.error(
+    `Found ${stragglers.length} temporary directories under applications/playground/src:`,
+  );
   for (const entry of stragglers) console.error(`- ${entry.name}`);
   process.exit(1);
 }
 
-console.log('No temporary directories found under packages/playground/src.');
+console.log('No temporary directories found under applications/playground/src.');

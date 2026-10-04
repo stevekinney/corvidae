@@ -34,7 +34,7 @@
 
   const sortedContributors = $derived.by(() => {
     if (!sort) return contributors;
-    return [...contributors].sort((a, b) => {
+    return contributors.toSorted((a, b) => {
       const key = sort!.column as keyof Contributor;
       const aValue = a[key];
       const bValue = b[key];

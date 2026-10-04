@@ -2,7 +2,7 @@
  * Discovery utilities for the cinder component playground.
  *
  * Scans every configured component package for public Svelte components and
- * `packages/playground/src/examples/` for their associated scenario files.
+ * `applications/playground/src/examples/` for their associated scenario files.
  * All scanning uses `Bun.Glob` with absolute paths derived from `import.meta.dirname`.
  */
 
@@ -11,8 +11,8 @@ import { basename, dirname, join } from 'node:path';
 import { COMPONENT_SOURCES, type ComponentSource } from './component-sources.ts';
 export { COMPOUND_COMPONENT_FAMILIES } from './shell-app/compound-families.ts';
 
-// import.meta.dirname is packages/playground/src/
-const PLAYGROUND_ROOT = dirname(import.meta.dirname); // packages/playground/
+// import.meta.dirname is applications/playground/src/
+const PLAYGROUND_ROOT = dirname(import.meta.dirname); // applications/playground/
 
 export type DiscoveredComponent = {
   name: string;

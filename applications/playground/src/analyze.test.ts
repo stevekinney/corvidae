@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { analyzeAll, analyzeComponent, getProjectCreationCount, resetProject } from './analyze.ts';
+import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 
-const COMPONENTS_DIR = join(import.meta.dirname, '../../components/src/components');
+const COMPONENTS_DIR = CINDER_COMPONENT_SOURCE.componentsRoot;
 
 function componentPath(name: string): string {
   // Migrated components live in `<name>/<name>.svelte`; legacy flat components
@@ -30,7 +31,7 @@ describe('analyzeComponent — button.svelte', () => {
 
   it('sets importPath correctly', async () => {
     const manifest = await analyzeComponent(componentPath('button'));
-    expect(manifest.importPath).toBe('@lostgradient/cinder/button');
+    expect(manifest.importPath).toBe('@lostgradient/cinder');
   });
 
   it('accepts a package-specific public import path', async () => {
@@ -442,7 +443,7 @@ describe('analyzeComponent — side-navigation-item.svelte (non-destructuring $p
 
 describe('analyzeComponent — card.svelte (discriminated union Props)', () => {
   it('returns a manifest without throwing', async () => {
-    await expect(analyzeComponent(componentPath('card'))).resolves.toBeDefined();
+    expect(await analyzeComponent(componentPath('card'))).toBeDefined();
   });
 
   it('includes the children prop present in both arms', async () => {

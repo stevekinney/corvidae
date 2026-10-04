@@ -25,7 +25,7 @@
       kind: 'source',
       label: 'Add bun support',
       patch:
-        'diff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1,2 +1,2 @@\n-{\"name\":\"demo\"}\n+{\"name\":\"demo\",\"packageManager\":\"bun\"}\n',
+        'diff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1,2 +1,2 @@\n-{"name":"demo"}\n+{"name":"demo","packageManager":"bun"}\n',
     },
   ];
 

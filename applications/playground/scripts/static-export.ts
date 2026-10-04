@@ -1,13 +1,13 @@
 /**
- * Static pre-render of the cinder playground for Vercel.
+ * Static pre-render of the cinder playground.
  *
  * The playground is a `Bun.serve` dev server that compiles Svelte/TS on the fly
  * with `Bun.build` + `svelte/compiler` + `ts-morph`. That toolchain works at
  * BUILD time (full workspace source + dev deps present) but cannot run inside a
  * deployed serverless function (the module graph doesn't resolve in the bundled
  * Lambda). So instead of shipping the dev server, we drive its `handleRequest`
- * here, at build time, and write every route's response to `public/` as a plain
- * static file. Vercel then serves those static assets — zero cold-start, no dev
+ * here, at build time, and write every route's response to `build/` as a plain
+ * static file. The host then serves those static assets — zero cold-start, no dev
  * toolchain in production.
  *
  * What gets rendered (every route `handleRequest` answers, except the live SSE
@@ -15,7 +15,7 @@
  *   - `/` README-backed landing shell HTML
  *   - `/page/<name>` documentation HTML, for every component (the ONE
  *     documentation surface; `/c/<name>` is a legacy alias redirected by
- *     `vercel.json` and deliberately not written here)
+ *     the hosting configuration and deliberately not written here)
  *   - `/shell-bundle/shell.js` + every hashed chunk it imports
  *   - `/page-bundle/<name>.js` + every hashed chunk each imports
  *   - `/styles.css`, `/styles/all.css`, and every core or extracted-package CSS
@@ -24,8 +24,8 @@
  *   - `/example-src/<name>/<scenario>` for every example
  *   - `/ping` (so the deploy smoke-test has a static `pong`)
  *
- * Run by the `vercel-build` script. The output directory is `public/`, which
- * `vercel.json` publishes as the deployment's static root.
+ * Run by the `build` script. The output directory is `build/`, which the hosting
+ * configuration publishes as the deployment's static root.
  */
 
 import { existsSync, realpathSync } from 'node:fs';
@@ -46,12 +46,14 @@ import {
   discoverExamples,
   discoverSidebarComponents,
 } from '../src/discover.ts';
+import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
+import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
 import { handleRequest } from '../src/playground-server.ts';
 import { COMPOUND_COMPONENT_FAMILIES } from '../src/shell-app/compound-families.ts';
 import { fingerprintStaticAssets } from './static-asset-fingerprints.ts';
 
 const PLAYGROUND_ROOT = join(import.meta.dirname, '..');
-const OUTPUT_DIRECTORY = join(PLAYGROUND_ROOT, 'public');
+const OUTPUT_DIRECTORY = join(PLAYGROUND_ROOT, 'build');
 const ORIGIN = 'https://playground.local';
 
 type StaticExportContext = {
@@ -93,7 +95,9 @@ const INITIAL_ROUTE_PAYLOAD_BUDGETS: readonly InitialRoutePayloadBudget[] = [
  * The exported site has no request-time server that can repair a bad canonical
  * origin, so reject anything except a clean HTTPS origin before writing files.
  */
-export function requireProductionBaseUrl(value = Bun.env['PLAYGROUND_BASE_URL'] ?? ''): string {
+export function requireProductionBaseUrl(
+  value = readEnvironmentConfiguration().playgroundBaseUrl ?? '',
+): string {
   let url: URL;
   try {
     url = new URL(value);
@@ -127,7 +131,7 @@ export function assertSafeOutputDirectory(outputDirectory: string): string {
   if (resolved === parse(resolved).root) {
     throw new Error('[static-export] refusing to clear a filesystem root');
   }
-  const repositoryRoot = canonicalizeOutputPath(join(PLAYGROUND_ROOT, '..', '..'));
+  const repositoryRoot = canonicalizeOutputPath(REPOSITORY_ROOT);
   const generatedOutputRoot = canonicalizeOutputPath(OUTPUT_DIRECTORY);
   const isSameOrNestedPath = (parent: string, child: string): boolean => {
     const pathRelativeToParent = relativePath(parent, child);
@@ -180,7 +184,7 @@ export function assertSitemapMatchesRoutes(
 }
 
 /**
- * Map a request pathname to the static file path under `public/`. A path with
+ * Map a request pathname to the static file path under `build/`. A path with
  * extensionless HTML route (e.g. `/c/button`) becomes a directory `index.html`
  * so the static host (with `cleanUrls`) serves it at the clean URL. Every other
  * route is written as a literal file at its path: already-named files
@@ -199,7 +203,7 @@ function outputPathFor(pathname: string, isHtml: boolean, outputDirectory: strin
 }
 
 /**
- * Render one route through `handleRequest` and write the body to `public/`.
+ * Render one route through `handleRequest` and write the body to `build/`.
  * Returns textual response bodies so callers can scrape HTML references and
  * JS/CSS imports. Binary assets are copied byte-for-byte and return null.
  * Non-2xx/3xx responses throw — a broken route must fail the build, not ship a
@@ -475,18 +479,21 @@ async function renderCssGraph(entryPath: string, context: StaticExportContext): 
 
 export async function runStaticExport(options: StaticExportOptions = {}): Promise<Set<string>> {
   const start = Date.now();
-  process.stdout.write('[static-export] rendering playground to public/…\n');
+  process.stdout.write('[static-export] rendering playground to build/…\n');
   const outputDirectory = assertSafeOutputDirectory(options.outputDirectory ?? OUTPUT_DIRECTORY);
   // Unit tests invoke the function directly and do not have a deployment
   // origin. The executable build path below always calls requireProductionBaseUrl.
-  const baseUrl = options.baseUrl ?? Bun.env['PLAYGROUND_BASE_URL'] ?? 'https://playground.local';
+  const baseUrl =
+    options.baseUrl ??
+    readEnvironmentConfiguration().playgroundBaseUrl ??
+    'https://playground.local';
   const context: StaticExportContext = {
     outputDirectory,
     rendered: new Set<string>(),
     origin: baseUrl,
   };
 
-  // `public/` is generated deployment output. Start clean so an earlier export
+  // `build/` is generated deployment output. Start clean so an earlier export
   // cannot leave stale routes or stale immutable assets reachable by a new deploy.
   await rm(outputDirectory, { recursive: true, force: true });
   await mkdir(outputDirectory, { recursive: true });
@@ -550,9 +557,9 @@ export async function runStaticExport(options: StaticExportOptions = {}): Promis
   }
   /*
    * `/c/<name>` is intentionally NOT exported. It is a legacy alias that 301s to
-   * `/page/<name>`, declared in `vercel.json` so the host answers with a real
+   * `/page/<name>`, declared in the hosting configuration so the host answers with a real
    * 301 rather than a meta-refresh stub. Writing files here would also put a
-   * second documentation surface back into `public/`.
+   * second documentation surface back into `build/`.
    */
 
   // Now render every CSS/asset the pages referenced. A stylesheet is rendered
@@ -672,7 +679,7 @@ export function assertDocumentationMetadata(
  * exported bytes actually contained the documentation — the export only checked
  * for a 2xx response.
  *
- * Throwing here is deliberate: `vercel-build` runs this script, so a page that
+ * Throwing here is deliberate: the `build` script runs this script, so a page that
  * loses its pre-rendering fails the deploy instead of reaching production blank.
  *
  * @throws When any page lacks a pre-render marker or still has an empty `#app`.

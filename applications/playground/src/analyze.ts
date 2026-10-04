@@ -28,6 +28,7 @@ import {
   type TypeNode,
 } from 'ts-morph';
 
+import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 import { discoverComponentFilePaths } from './discover.ts';
 import type {
   ComponentManifest,
@@ -1017,7 +1018,7 @@ const analyzeAllCache = new Map<string, Promise<ComponentManifest[]>>();
 function getSharedProject(): Project {
   if (sharedProject === undefined) {
     sharedProject = new Project({
-      tsConfigFilePath: join(import.meta.dirname, '../../components/tsconfig.json'),
+      tsConfigFilePath: join(CINDER_COMPONENT_SOURCE.packageRoot, 'tsconfig.json'),
       skipAddingFilesFromTsConfig: true,
     });
     projectCreationCount += 1;
@@ -1378,7 +1379,7 @@ export async function analyzeComponent(
     name: componentName,
     kebabName: fileBaseName,
     file: filePath,
-    importPath: options.importPath ?? `@lostgradient/cinder/${fileBaseName}`,
+    importPath: options.importPath ?? '@lostgradient/cinder',
     props,
     ...(isCompound ? { isCompound: true } : {}),
   };

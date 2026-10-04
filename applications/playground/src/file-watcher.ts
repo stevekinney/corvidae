@@ -15,7 +15,7 @@ import { resetPlaygroundStylesheetBuilds } from './documentation-styles.ts';
 import { clearFixtureBundleCaches } from './fixture-bundle.ts';
 import { clearManifestCaches } from './manifest-cache.ts';
 import { pageEntryByName } from './page-bundle.ts';
-import { PLAYGROUND_ROOT } from './playground-paths.ts';
+import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
 import {
   getRebuildGeneration,
   incrementRebuildGeneration,
@@ -25,9 +25,6 @@ import { bundleEntryByKey } from './scenario-bundle.ts';
 import { resetShellBuildPromise } from './shell-bundle.ts';
 import { triggerReload } from './sse-broadcast.ts';
 import { resetPageServerRendererPromise, resetShellRendererWarmupState } from './ssr-renderer.ts';
-
-/** Repository root — same derivation `playground-server.ts` uses for its own `REPO_ROOT`. */
-const REPO_ROOT = join(PLAYGROUND_ROOT, '..', '..');
 
 /**
  * The blast radius of a watched change, computed once per debounce window.
@@ -186,8 +183,8 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // `shell`-scope and `components`-scope changes share the same clearing
   // footprint because `shell-app/color-token-panel.svelte` (rendered by
   // `shell.svelte`) imports Button, ColorPicker, Input, and Popover from the
-  // full components barrel (`../../../components/src/index.ts`). A
-  // components-package change can still affect the shell's compiled output.
+  // `@lostgradient/cinder` package root. A components-package change can still
+  // affect the shell's compiled output.
   // The only difference between the two scopes is
   // which files caused the invalidation. Both tiers emit `shell-reload`: the
   // canonical shell now owns README and prop metadata as well as the preview,
@@ -290,7 +287,7 @@ export function startWatcher(): FSWatcher[] {
     // it is not one of the published component sources. Watch its source tree
     // explicitly so a successful dependency rebuild invalidates cached
     // artifacts instead of leaving stale renderer bytes in memory.
-    const markdownSourcePath = join(REPO_ROOT, 'packages', 'markdown', 'src');
+    const markdownSourcePath = join(REPOSITORY_ROOT, 'packages', 'markdown', 'src');
     if (existsSync(markdownSourcePath)) {
       created.push(
         watch(markdownSourcePath, { recursive: true }, (_event, filename) => {
