@@ -54,7 +54,7 @@ export function adoptLaunchCheckpoint(
   serialized?: Uint8Array,
 ): void {
   internals.checkpoints.set(workflowId, checkpoint);
-  beginExecutionAttempt(internals, workflowId);
+  beginExecutionAttempt(internals, workflowId, checkpoint.workflowExecutionToken);
   forgetAbandonedCheckpointGeneration(internals, workflowId, checkpoint.workflowExecutionToken);
   if (serialized !== undefined) rememberCommittedCheckpointBytes(internals, workflowId, serialized);
 }

@@ -95,7 +95,10 @@ export function isCheckpointGenerationAbandoned(
  * is marked abandoned. Synchronous, and a single `WeakMap` miss for an engine
  * that never lost a race, so it is safe on every wake path. A workflow with no
  * in-memory checkpoint holds no generation at all, which is different from a
- * pre-token one, so it is never abandoned.
+ * pre-token one, so it is never abandoned here: there is nothing to wake. That
+ * includes a suspended workflow whose generation was marked, which `resume`
+ * clears and a terminal failure for it still meets through its stored generation
+ * (`staleFailureGuard`).
  */
 export function isCurrentCheckpointGenerationAbandoned(
   internals: EngineInternals,

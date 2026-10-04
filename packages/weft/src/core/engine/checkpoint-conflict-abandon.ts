@@ -6,6 +6,7 @@ import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
+import { currentExecutionGeneration } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 
 /**
@@ -23,10 +24,13 @@ import type { EngineInternals } from './internals.ts';
  * the winner. `ownership: 'workflow-lease'` is the complete answer for two live
  * engines.
  *
- * Returns early unless the engine still holds an in-memory checkpoint for the
- * generation whose commit lost (the error carries its token): a local
- * replacement installed while the loss was classified is healthy and not ours to
- * abandon, and a released generation has nothing left to abandon.
+ * Returns early unless the engine is still driving the generation whose commit
+ * lost (the error carries its token): it holds that generation's checkpoint or,
+ * for a workflow it suspended, which releases the checkpoint and keeps the
+ * attempt, the attempt that launched it. A local replacement installed while the
+ * loss was classified is healthy and not ours to abandon, and a released
+ * generation (finished, purged, or rolled back, which drop the checkpoint and the
+ * attempt together) has nothing left to abandon.
  * A generation recovered from before execution tokens existed has none, on the
  * error and in memory alike, and is marked under the token-less key like any
  * other. Idempotent.
@@ -36,9 +40,11 @@ export function abandonWorkflowAfterCheckpointConflict(
   error: WorkflowCheckpointConflictError,
 ): void {
   const { workflowId, workflowExecutionToken } = error;
-  const held = internals.checkpoints.get(workflowId);
-  // No generation held means nothing of this engine's to abandon, however the loss was reported.
-  if (held === undefined || held.workflowExecutionToken !== workflowExecutionToken) return;
+  const driven =
+    internals.checkpoints.get(workflowId) ?? currentExecutionGeneration(internals, workflowId);
+  // Neither a checkpoint nor an attempt means nothing of this engine's to abandon, however the
+  // loss was reported.
+  if (driven === undefined || driven.workflowExecutionToken !== workflowExecutionToken) return;
   if (isCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken)) return;
   markCheckpointGenerationAbandoned(internals, workflowId, workflowExecutionToken);
   try {

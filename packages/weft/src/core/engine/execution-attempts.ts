@@ -13,26 +13,46 @@ import type { EngineInternals } from './internals.ts';
  * commits within one launch replace the in-memory checkpoint object many times, so the
  * attempt is held beside it rather than read off it.
  *
+ * The attempt also records the execution token of the generation it launched (none for a
+ * run recovered from before tokens existed). That is what keeps a suspended workflow's
+ * generation identifiable once suspension has released its checkpoint: a checkpoint
+ * commit still in flight from before the suspend is judged by it, since the in-memory
+ * checkpoint it would otherwise be compared with is gone.
+ *
  * Held beside the engine rather than on `EngineInternals`, like the committed
  * checkpoint bytes in `checkpoint-commit-snapshots.ts`, and with the same lifecycle:
  * `forgetCommittedCheckpointBytes` retires it wherever the engine stops holding the
  * checkpoint for good (terminal cleanup, purge, and rollback of a launch that adopted its
  * checkpoint and did not complete). A launch rejected before it adopted one retires
  * nothing, because the attempt under that id is a live run's. A suspended workflow keeps
- * its entry until it is resumed, which adopts a new one.
+ * its entry until it is resumed, which adopts a new one: it is the one case where the
+ * engine holds an attempt and no checkpoint.
  */
 export type ExecutionAttempt = symbol;
 
-const attemptsByEngine = new WeakMap<EngineInternals, Map<string, ExecutionAttempt>>();
+type ExecutionAttemptRecord = {
+  readonly attempt: ExecutionAttempt;
+  /** Token of the generation this attempt launched; `undefined` for a pre-token run. */
+  readonly workflowExecutionToken: string | undefined;
+};
 
-/** Start a new attempt for the workflow: the engine just adopted a launch checkpoint for it. */
-export function beginExecutionAttempt(internals: EngineInternals, workflowId: string): void {
+const attemptsByEngine = new WeakMap<EngineInternals, Map<string, ExecutionAttemptRecord>>();
+
+/**
+ * Start a new attempt for the workflow: the engine just adopted a launch checkpoint for it,
+ * of the generation identified by `workflowExecutionToken`.
+ */
+export function beginExecutionAttempt(
+  internals: EngineInternals,
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+): void {
   let attempts = attemptsByEngine.get(internals);
   if (attempts === undefined) {
     attempts = new Map();
     attemptsByEngine.set(internals, attempts);
   }
-  attempts.set(workflowId, Symbol());
+  attempts.set(workflowId, { attempt: Symbol(), workflowExecutionToken });
 }
 
 /** Retire the workflow's attempt along with the checkpoint it belonged to. */
@@ -45,6 +65,17 @@ export function currentExecutionAttempt(
   internals: EngineInternals,
   workflowId: string,
 ): ExecutionAttempt | undefined {
+  return attemptsByEngine.get(internals)?.get(workflowId)?.attempt;
+}
+
+/**
+ * The generation this engine's current attempt at the workflow launched, or `undefined` when
+ * it has launched none. Unlike the in-memory checkpoint, it outlives a suspension.
+ */
+export function currentExecutionGeneration(
+  internals: EngineInternals,
+  workflowId: string,
+): { readonly workflowExecutionToken: string | undefined } | undefined {
   return attemptsByEngine.get(internals)?.get(workflowId);
 }
 

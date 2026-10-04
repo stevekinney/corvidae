@@ -1278,6 +1278,209 @@ describe('failing an abandoned generation', () => {
 });
 
 /**
+ * Suspending a workflow releases its in-memory checkpoint but keeps the execution attempt this
+ * engine made at it, so a checkpoint commit still in flight from before the suspend can lose its
+ * compare-and-swap after the checkpoint is gone. The loss is still the loss of a generation this
+ * engine drove, and it is abandoned like any other: marked, so a stale terminal failure for it is
+ * refused, with its pending result() rejected and the operator warned. A generation the engine
+ * holds neither a checkpoint nor an attempt for was released for good and has nothing to abandon.
+ */
+describe('a lost checkpoint commit for a workflow this engine suspended', () => {
+  /** Start a run parked on its signal with a result() pending, then suspend it. */
+  async function startSuspendedRun(id: string, options: { preToken?: boolean } = {}) {
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { [id]: parkedOnSignal(id) },
+    });
+    const internals = getInternals(engine);
+    const handle = await engine.start(id, null, { id });
+    await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+      label: `${id} parked on its signal`,
+    });
+    const token = tokenOf(internals, id);
+    if (options.preToken === true) {
+      // A run recovered from before tokens existed: stored without one, and launched by this
+      // engine through its launch path with a checkpoint that has none.
+      for (const key of [KEYS.workflow(id), KEYS.checkpoint(id)]) {
+        const record = { ...(decode((await storage.get(key))!) as Record<string, unknown>) };
+        delete record['workflowExecutionToken'];
+        await storage.put(key, encode(record));
+      }
+      const legacyCheckpoint = { ...internals.checkpoints.get(id)! };
+      delete legacyCheckpoint.workflowExecutionToken;
+      adoptLaunchCheckpoint(internals, id, legacyCheckpoint);
+    }
+    const pending = handle.result();
+    await engine.suspend(id);
+
+    // Suspension released the checkpoint and kept the attempt and the result() waiter.
+    expect(internals.checkpoints.has(id)).toBe(false);
+    expect(currentExecutionAttempt(internals, id)).toBeDefined();
+    expect(internals.resultResolvers.has(id)).toBe(true);
+    expect(await readStatus(storage, id)).toBe('suspended');
+    return {
+      storage,
+      engine,
+      internals,
+      pending,
+      token: options.preToken === true ? undefined : token,
+    };
+  }
+
+  function loseCommit(internals: EngineInternals, id: string, token: string | undefined): void {
+    abandonWorkflowAfterCheckpointConflict(
+      internals,
+      new WorkflowCheckpointConflictError(id, { workflowExecutionToken: token }),
+    );
+  }
+
+  it('abandons a suspended pre-token generation: marks it, rejects result(), evicts the handle, and warns', async () => {
+    const id = 'suspended-pre-token';
+    const run = await startSuspendedRun(id, { preToken: true });
+    const warning = collectConflictWarnings();
+    try {
+      loseCommit(run.internals, id, undefined);
+
+      expect(await rejectionOrPending(run.pending)).toBeInstanceOf(WorkflowCheckpointConflictError);
+      await yieldToEventLoop();
+      expect(warning.warnings.map((warned) => warned.workflowId)).toEqual([id]);
+      expect(isCheckpointGenerationAbandoned(run.internals, id, undefined)).toBe(true);
+      expect(abandonedCheckpointGenerationCount(run.internals)).toBe(1);
+      expect(run.internals.handleCache.has(id)).toBe(false);
+      expect(run.internals.resultResolvers.has(id)).toBe(false);
+    } finally {
+      warning.stop();
+      await run.engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('refuses a terminal failure still in flight for a suspended pre-token generation after the loss', async () => {
+    const id = 'suspended-stale-failure';
+    const run = await startSuspendedRun(id, { preToken: true });
+    const warning = collectConflictWarnings();
+    try {
+      loseCommit(run.internals, id, undefined);
+      expect(await rejectionOrPending(run.pending)).toBeInstanceOf(WorkflowCheckpointConflictError);
+      const watched = recordWrites(run.storage);
+      run.internals.storage = watched.storage;
+
+      await failWorkflow(run.internals, id, new Error('stale failure'), noCallbacks);
+      run.internals.storage = run.storage;
+
+      expect(watched.writes).toEqual([]);
+      expect(await readStatus(run.storage, id)).toBe('suspended');
+    } finally {
+      warning.stop();
+      run.internals.storage = run.storage;
+      await run.engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('abandons a suspended token-bearing generation the same way', async () => {
+    const id = 'suspended-token-bearing';
+    const run = await startSuspendedRun(id);
+    expect(run.token).toBeDefined();
+    const warning = collectConflictWarnings();
+    try {
+      loseCommit(run.internals, id, run.token);
+
+      expect(await rejectionOrPending(run.pending)).toBeInstanceOf(WorkflowCheckpointConflictError);
+      await yieldToEventLoop();
+      expect(warning.warnings.map((warned) => warned.workflowId)).toEqual([id]);
+      expect(isCheckpointGenerationAbandoned(run.internals, id, run.token)).toBe(true);
+      expect(run.internals.handleCache.has(id)).toBe(false);
+
+      const watched = recordWrites(run.storage);
+      run.internals.storage = watched.storage;
+      await failWorkflow(run.internals, id, new Error('stale failure'), noCallbacks);
+      run.internals.storage = run.storage;
+      expect(watched.writes).toEqual([]);
+      expect(await readStatus(run.storage, id)).toBe('suspended');
+    } finally {
+      warning.stop();
+      run.internals.storage = run.storage;
+      await run.engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('ignores a loss that names a different generation than the one the suspended attempt launched', async () => {
+    const id = 'suspended-other-generation';
+    const run = await startSuspendedRun(id);
+    const warning = collectConflictWarnings();
+    try {
+      loseCommit(run.internals, id, 'older-generation');
+      loseCommit(run.internals, id, undefined);
+
+      expect(await rejectionOrPending(run.pending)).toBe('pending');
+      await yieldToEventLoop();
+      expect(warning.warnings).toEqual([]);
+      expect(abandonedCheckpointGenerationCount(run.internals)).toBe(0);
+      expect(run.internals.resultResolvers.has(id)).toBe(true);
+    } finally {
+      warning.stop();
+      await run.engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('ignores a loss for a generation this engine released when its run finished', async () => {
+    const id = 'finished-pre-token';
+    const storage = new MemoryStorage();
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { [id]: parkedOnSignal(id) },
+    });
+    const internals = getInternals(engine);
+    const warning = collectConflictWarnings();
+    try {
+      const handle = await engine.start(id, null, { id });
+      await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+        label: `${id} parked on its signal`,
+      });
+      const legacyCheckpoint = { ...internals.checkpoints.get(id)! };
+      delete legacyCheckpoint.workflowExecutionToken;
+      adoptLaunchCheckpoint(internals, id, legacyCheckpoint);
+      await engine.signal(id, 'go', 'done');
+      expect(await handle.result()).toBe('done');
+      // Finishing released the checkpoint and the attempt along with it.
+      expect(internals.checkpoints.has(id)).toBe(false);
+      expect(currentExecutionAttempt(internals, id)).toBeUndefined();
+
+      loseCommit(internals, id, undefined);
+
+      await yieldToEventLoop();
+      expect(warning.warnings).toEqual([]);
+      expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
+    } finally {
+      warning.stop();
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('forgets the marker when this engine resumes the suspended generation it abandoned', async () => {
+    const id = 'suspended-then-resumed';
+    const run = await startSuspendedRun(id);
+    const warning = collectConflictWarnings();
+    try {
+      loseCommit(run.internals, id, run.token);
+      expect(await rejectionOrPending(run.pending)).toBeInstanceOf(WorkflowCheckpointConflictError);
+      expect(abandonedCheckpointGenerationCount(run.internals)).toBe(1);
+
+      const resumed = await run.engine.resume(id);
+
+      expect(abandonedCheckpointGenerationCount(run.internals)).toBe(0);
+      await run.engine.signal(id, 'go', 'resumed');
+      expect(await resumed.result()).toBe('resumed');
+    } finally {
+      warning.stop();
+      await run.engine[Symbol.asyncDispose]();
+    }
+  });
+});
+
+/**
  * A terminal failure belongs to the execution attempt that raised it: the launch this engine
  * made of the stored generation, until the engine launches the id again. A failure still in
  * flight from an earlier attempt must never be written over a later one, whether that later
