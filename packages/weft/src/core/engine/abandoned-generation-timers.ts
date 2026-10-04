@@ -47,14 +47,15 @@ export function retainTimerOfAbandonedGeneration(
  * record's `fireAt` has certainly passed, since the scheduler fires nothing early.
  * Anything else is retained for the engine that owns the stored generation, whose
  * own deadline record is the same durable key.
+ *
+ * Both conditions are checked again by the terminal write itself, against the state it
+ * replaces: a replacement may land between the first check and that write, and the
+ * write must not follow the stale validation onto it.
  */
 export function fireExecutionDeadline(
   internals: EngineInternals,
   entry: TimerEntry,
-  callbacks: {
-    loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>;
-    timeout: (workflowId: string) => Promise<void>;
-  },
+  callbacks: ExecutionDeadlineCallbacks,
 ): Promise<void> {
   if (!isCurrentCheckpointGenerationAbandoned(internals, entry.workflowId)) {
     return callbacks.timeout(entry.workflowId);
@@ -62,23 +63,39 @@ export function fireExecutionDeadline(
   return fireDeadlineBesideAbandonedGeneration(internals, entry, callbacks);
 }
 
+type ExecutionDeadlineCallbacks = {
+  loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>;
+  timeout: (workflowId: string, skipCommitIf?: (state: WorkflowState) => boolean) => Promise<void>;
+};
+
 async function fireDeadlineBesideAbandonedGeneration(
   internals: EngineInternals,
   entry: TimerEntry,
-  callbacks: {
-    loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>;
-    timeout: (workflowId: string) => Promise<void>;
-  },
+  callbacks: ExecutionDeadlineCallbacks,
 ): Promise<void> {
+  const reachedByRecord = (stored: WorkflowState): boolean =>
+    !isCheckpointGenerationAbandoned(internals, entry.workflowId, stored.workflowExecutionToken) &&
+    stored.executionDeadline !== undefined &&
+    stored.executionDeadline <= entry.fireAt;
+
   const state = await callbacks.loadWorkflowState(entry.workflowId);
-  if (
-    state !== null &&
-    !isCheckpointGenerationAbandoned(internals, entry.workflowId, state.workflowExecutionToken) &&
-    state.executionDeadline !== undefined &&
-    state.executionDeadline <= entry.fireAt
-  ) {
-    await callbacks.timeout(entry.workflowId);
+  if (state === null || !reachedByRecord(state)) {
+    await retainDiscardedDurableTimer(entry.id, entry.workflowId, () => Promise.resolve(state));
     return;
   }
-  await retainDiscardedDurableTimer(entry.id, entry.workflowId, () => Promise.resolve(state));
+
+  // The read above and the terminal write are separated by the awaits `timeout` makes
+  // before it commits, and another engine may finish the validated generation and start
+  // a replacement under the same id in that window. So the rule is enforced again, against
+  // the state the write is about to replace, and a write that no longer qualifies is refused.
+  let refused = false;
+  await callbacks.timeout(entry.workflowId, (stored) => {
+    refused = !reachedByRecord(stored);
+    return refused;
+  });
+  if (!refused) return;
+  // Refusing the write is not processing the record: it now belongs to the replacement
+  // that shares the durable `deadline:{id}` key, and the scheduler deletes that key
+  // whenever a callback returns normally. So retain it, judged by the state as it stands.
+  await retainDiscardedDurableTimer(entry.id, entry.workflowId, callbacks.loadWorkflowState);
 }

@@ -49,7 +49,8 @@ export type TimeOperationCallbacks = {
   runDeferredTerminalCleanup: (workflowId: string, timerId: string) => Promise<void>;
   runWorkflowFinalizer: (workflowId: string, timerId: string, firedAt: number) => Promise<void>;
   handleScheduleTimer: (entry: TimerEntry) => Promise<void>;
-  timeout: (workflowId: string) => Promise<void>;
+  /** Time the workflow out; `skipCommitIf` refuses the terminal write for a stored state that has changed since the caller validated it. */
+  timeout: (workflowId: string, skipCommitIf?: (state: WorkflowState) => boolean) => Promise<void>;
   handleCleanupError: (source: string, error: unknown, workflowId: string) => void;
   /** Resolve `type` against an EXACT pinned `WorkflowState.revision` (WFT-17, `undefined` for a legacy record) — never the catalog's active pointer. Used by a delayed-start fire, matching `resumeWorkflowFromStorage()`. */
   resolveExecutableRegistrationForRevision: (

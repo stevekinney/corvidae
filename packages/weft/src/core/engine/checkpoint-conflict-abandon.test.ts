@@ -1025,6 +1025,97 @@ describe('timers of a generation that replaced the one this engine abandoned', (
     }
   });
 
+  it('does not time out a generation that replaces the validated one between the deadline check and the terminal commit', async () => {
+    const id = 'toctou-run';
+    const scenario = await abandonGenerationAndFinishItOnTheWinner(
+      id,
+      parkedOnSignal(`${id}-second`),
+    );
+    const baseStorage = scenario.loserInternals.storage;
+    try {
+      // Generation B: a 10 minute deadline, parked on a signal the winner delivers.
+      const generationB = await scenario.winner.start(`${id}-second`, null, {
+        id,
+        onTerminalConflict: 'start-new',
+        executionTimeout: '10m',
+      });
+      await waitForCondition(() => scenario.winnerInternals.parkedInlineWorkflows.has(id), {
+        label: 'generation B parked on the winner',
+      });
+      const generationBDeadline = (
+        decode((await scenario.storage.get(KEYS.workflow(id)))!) as WorkflowState
+      ).executionDeadline!;
+
+      // Hold the loser's timeout at its first storage read after the read that validated
+      // generation B, so the validated state is stale by the time the terminal write runs.
+      const heldAtFirstReadAfterValidation = createDeferred();
+      const release = createDeferred();
+      let validationRead: Uint8Array | null = null;
+      let held = false;
+      scenario.loserInternals.storage = new Proxy(baseStorage, {
+        get(target, property) {
+          const original: unknown = Reflect.get(target, property, target);
+          if (typeof original !== 'function') return original;
+          if (property !== 'get') return original.bind(target);
+          return async (key: string) => {
+            if (validationRead !== null && !held) {
+              held = true;
+              heldAtFirstReadAfterValidation.resolve();
+              await release.promise;
+            }
+            const value = (await original.call(target, key)) as Uint8Array | null;
+            if (key === KEYS.workflow(id)) validationRead ??= value;
+            return value;
+          };
+        },
+      });
+
+      const record: TimerEntry = {
+        id: `deadline:${id}`,
+        workflowId: id,
+        fireAt: generationBDeadline,
+        kind: 'execution-deadline',
+      };
+      const firing = scenario.loser.fireTimer(record);
+      await heldAtFirstReadAfterValidation.promise;
+      // The check passed against generation B, so this is not a stale-record rejection.
+      expect((decode(validationRead!) as WorkflowState).executionDeadline).toBe(
+        generationBDeadline,
+      );
+
+      // Meanwhile the winner finishes B and starts generation C, with a 60 minute deadline,
+      // under the same id and the same durable deadline key.
+      await scenario.winner.signal(id, 'go', 'B done');
+      expect(await generationB.result()).toBe('B done');
+      const generationC = await scenario.winner.start(`${id}-second`, null, {
+        id,
+        onTerminalConflict: 'start-new',
+        executionTimeout: '60m',
+      });
+      await waitForCondition(() => scenario.winnerInternals.parkedInlineWorkflows.has(id), {
+        label: 'generation C parked on the winner',
+      });
+      const timersBeforeRelease = await scenario.timerKeys();
+      expect(timersBeforeRelease.some((key) => key.includes('deadline'))).toBe(true);
+
+      release.resolve();
+      const [fired] = await Promise.allSettled([firing]);
+      scenario.loserInternals.storage = baseStorage;
+
+      // Generation C's own deadline is 60 minutes away; a record dated at B's must not end it.
+      expect(await readStatus(scenario.storage, id)).toBe('running');
+      // The scheduler is told to retry, so it keeps the deadline key generation C now owns.
+      expect(fired?.status).toBe('rejected');
+      expect(await scenario.timerKeys()).toEqual(timersBeforeRelease);
+      // And the generation is still the winner's to finish.
+      await scenario.winner.signal(id, 'go', 'C done');
+      expect(await generationC.result()).toBe('C done');
+    } finally {
+      scenario.loserInternals.storage = baseStorage;
+      await scenario.dispose();
+    }
+  });
+
   it('keeps the replacement sleep and review timers for the engine that drives it', async () => {
     const scenario = await replaceAbandonedGenerationOnTheWinner('timers-run', '5m');
     const consoleError = spyOn(console, 'error').mockImplementation(() => {});

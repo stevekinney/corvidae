@@ -1,15 +1,9 @@
 import type { BatchOperation } from '../../../storage/interface.ts';
 import { KEYS } from '../../../storage/interface.ts';
 import { decode, encode } from '../../codec.ts';
-import {
-  WorkflowCancelledEvent,
-  WorkflowCompletedEvent,
-  WorkflowFailedEvent,
-  WorkflowTimedOutEvent,
-} from '../../events.ts';
+import { WorkflowCompletedEvent, WorkflowFailedEvent } from '../../events.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../../scheduler.ts';
 import { buildIndexOperations } from '../../search-attributes.ts';
-import { WorkflowTimeoutError } from '../../timeouts.ts';
 import type {
   FailureCategory,
   SearchAttributeValue,
@@ -47,6 +41,7 @@ import {
   FORCIBLY_TERMINABLE_STATUSES,
   type TerminationCallbacks,
 } from './cleanup.ts';
+import { buildTerminalError, buildTerminalEvent } from './terminated-workflow-outcome.ts';
 
 async function runCancelHandlers(
   handlers: CancelHandler[],
@@ -81,20 +76,35 @@ export async function cancelWorkflow(
   await terminateWorkflow(internals, workflowId, 'cancelled', callbacks);
 }
 
+/**
+ * Time the workflow out. `skipCommitIf` is judged against the stored state the terminal
+ * write is about to replace, so a caller that validated a state earlier can refuse the
+ * write when another engine has since replaced it; see {@link terminateWorkflow}.
+ */
 export async function timeoutWorkflow(
   internals: EngineInternals,
   workflowId: string,
   callbacks: TerminationCallbacks,
+  skipCommitIf?: (state: WorkflowState) => boolean,
 ): Promise<void> {
-  await terminateWorkflow(internals, workflowId, 'timed-out', callbacks);
+  await terminateWorkflow(internals, workflowId, 'timed-out', callbacks, undefined, skipCommitIf);
 }
 
+/**
+ * Terminate the workflow as `cancelled` or `timed-out`.
+ *
+ * `skipCommitIf` is checked with the stored state read inside the serialized write, after
+ * the last read before the commit, and `true` leaves that state untouched. It resolves
+ * normally either way, so a caller that must learn it was skipped records that from inside
+ * the predicate.
+ */
 export async function terminateWorkflow(
   internals: EngineInternals,
   workflowId: string,
   status: 'cancelled' | 'timed-out',
   callbacks: TerminationCallbacks,
   reason?: TerminationReason,
+  skipCommitIf?: (state: WorkflowState) => boolean,
 ): Promise<void> {
   internals.terminalizingWorkflows.add(workflowId);
   dropQueuedInlineWorkflowStart(internals, workflowId);
@@ -151,6 +161,7 @@ export async function terminateWorkflow(
         // above is a no-op for a suspended run (controller evicted at suspend), so
         // cancel runs the registered handlers without driving the gone generator.
         allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
+        ...(skipCommitIf !== undefined && { skipCommitIf }),
         buildAdditionalOperations: (_previousState, updatedAt) => {
           finalizePendingTimelineEntry(
             internals,
@@ -241,30 +252,6 @@ export async function terminateWorkflow(
   } finally {
     internals.terminalizingWorkflows.delete(workflowId);
   }
-}
-
-/** The error a terminated workflow's result promise rejects with. */
-function buildTerminalError(
-  workflowId: string,
-  status: 'cancelled' | 'timed-out',
-  elapsed: number,
-  reason: TerminationReason | undefined,
-): Error {
-  return status === 'timed-out'
-    ? new WorkflowTimeoutError(workflowId, 'execution', elapsed, reason)
-    : new Error('Workflow cancelled');
-}
-
-/** The terminal lifecycle event dispatched for a terminated workflow. */
-function buildTerminalEvent(
-  workflowId: string,
-  status: 'cancelled' | 'timed-out',
-  elapsed: number,
-  reason: TerminationReason | undefined,
-): WorkflowTimedOutEvent | WorkflowCancelledEvent {
-  return status === 'timed-out'
-    ? new WorkflowTimedOutEvent(workflowId, 'execution', elapsed, reason)
-    : new WorkflowCancelledEvent(workflowId);
 }
 
 function buildCompletedWorkflowState(
