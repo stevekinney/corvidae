@@ -10,6 +10,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';
+import { runInNewContext } from 'node:vm';
 
 import {
   applyTheme,
@@ -195,7 +196,7 @@ describe('applyTheme and the shareable theme query', () => {
     delete document.documentElement.dataset['cinderTheme'];
 
     // A reload runs the pre-paint script against whatever URL and storage the toggle left.
-    new Function(PRE_PAINT_THEME_SCRIPT)();
+    runInNewContext(PRE_PAINT_THEME_SCRIPT, { window, document, localStorage, URLSearchParams });
 
     expect(document.documentElement.dataset['cinderTheme']).toBe('light');
     expect(document.documentElement.style.colorScheme).toBe('light');
