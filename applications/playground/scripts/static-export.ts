@@ -18,8 +18,9 @@
  *     the hosting configuration and deliberately not written here)
  *   - `/shell-bundle/shell.js` + every hashed chunk it imports
  *   - `/page-bundle/<name>.js` + every hashed chunk each imports
- *   - `/styles.css`, `/styles/all.css`, and every core or extracted-package CSS
- *     asset the rendered HTML references
+ *   - `/styles/all.css` and every core or extracted-package CSS asset the
+ *     rendered HTML references (`/styles.css` is a dev-server redirect to
+ *     `/styles/index.css`, which no exported page links)
  *   - `/api/manifest/<name>` and `/api/documentation/<name>`
  *   - `/example-src/<name>/<scenario>` for every example
  *   - `/ping` (so the deploy smoke-test has a static `pong`)
