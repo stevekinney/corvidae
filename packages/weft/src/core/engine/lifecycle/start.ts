@@ -53,7 +53,8 @@ import {
   prepareTerminalRunPurge,
   resolveTerminalConflictForRestart,
 } from './start-terminal-conflict-purge.ts';
-import { createLaunchAdoption } from './start-transient-state.ts';
+import type { StartTransientState } from './start-transient-state.ts';
+import { createLaunchAdoption, installRunTransientState } from './start-transient-state.ts';
 import {
   mergeWorkerStartOverrideOperations,
   prepareWorkerStartOverrideConsumption,
@@ -266,6 +267,11 @@ export async function startWorkflow(
    * any public surface.
    */
   skipAdmissionIdCheck?: boolean | 'reattach-only' | 'bulk-retry-only',
+  /**
+   * Internal-only, never part of `StartOptions`: services and terminal-cleanup membership a caller
+   * resolved ahead of the start. Passed only by `startScheduledRun`; every public surface omits it.
+   */
+  transientState?: StartTransientState,
 ): Promise<WorkflowHandle> {
   assertServicesSupportedForMode(internals, options);
   assertValidOnTerminalConflict(options);
@@ -453,24 +459,17 @@ export async function startWorkflow(
       buildIdempotentStartOperations,
     );
 
-    // Hold the non-serialized per-run services in engine memory so the inline
-    // Context can read them. The services value is never written to storage — it
-    // bypasses every durable record. A presence-only "expects services" marker IS
-    // written atomically in the start batch (see buildStartBatchOperations) so a
-    // fresh-process recovery knows to re-provide them. Cleared on terminal cleanup
-    // (and on rollback below).
-    //
-    // Joining `workflowsNeedingTerminalCleanup` mirrors `setWorkflowStartHeaders`:
-    // it is what makes `completeWorkflow` schedule the deferred durable cleanup
-    // that sweeps the marker. The start batch wrote the matching
-    // `terminalCleanupNeeded` key so recovery re-derives this membership.
-    if (options?.services !== undefined) {
-      internals.workflowServices.set(workflowId, options.services);
-      internals.workflowsNeedingTerminalCleanup.add(workflowId);
-    }
-    if (workflowConcurrency !== undefined) {
-      internals.workflowsNeedingTerminalCleanup.add(workflowId);
-    }
+    // Hold the run's non-serialized services in engine memory so the inline Context can read
+    // them (never written to storage; the start batch wrote only a presence marker so a
+    // fresh-process recovery knows to re-provide them), and join terminal cleanup, which is what
+    // makes `completeWorkflow` schedule the deferred cleanup that sweeps that marker. This launch
+    // is the only writer of either entry, so the rollback below takes back exactly what it
+    // installed. A scheduled occurrence's services arrive in `transientState`.
+    installRunTransientState(internals, workflowId, {
+      options,
+      transientState,
+      limitsConcurrency: workflowConcurrency !== undefined,
+    });
 
     const handle = createWorkflowHandle(internals, workflowId, callbacks);
     await beginExecutionAwaitingLiveness(

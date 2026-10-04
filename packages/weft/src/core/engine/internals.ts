@@ -278,14 +278,6 @@ export interface EngineInternals {
   pendingStarts: Set<string>;
   pendingScheduleCreations: Set<string>;
   workflowsNeedingTerminalCleanup: Set<string>;
-  /**
-   * Which scheduled launch's seed put each id's `workflowServices` entry and
-   * `workflowsNeedingTerminalCleanup` membership in memory ahead of its start, keyed by
-   * workflowId. A seed releases only the entries it still owns. A record exists only while
-   * the entry it names does: every path that removes the entry forgets it. See
-   * `scheduled-seed-ownership.ts`.
-   */
-  scheduledSeedOwners: Map<string, import('./scheduled-seed-ownership.ts').ScheduledSeedOwnership>;
   cleanupInterval: ReturnType<typeof setInterval> | null;
   cleanupIntervalDisposalTracker: EngineCleanupIntervalDisposalTracker | null;
   retentionSweepInterval: ReturnType<typeof setInterval> | null;

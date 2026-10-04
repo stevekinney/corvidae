@@ -6,10 +6,14 @@ import type { ScheduleState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import { unavailableServicesError } from './lifecycle/recovered-services.ts';
 import { EMPTY_STORAGE_VALUE } from './lifecycle/shared.ts';
+import type { StartTransientState } from './lifecycle/start-transient-state.ts';
 import { buildPinnedRevisionOverride } from './schedule-revision-fire.ts';
 import { encodeScheduleRunMetadata } from './schedule-run-metadata.ts';
-import { seedScheduledRunState } from './scheduled-seed-ownership.ts';
 import type { ScheduleCallbacks } from './schedules.ts';
+
+/** What {@link resolveScheduledRunServices} reports for one occurrence; `null` when nothing was resolved. */
+type ScheduledRunServicesResolution =
+  { status: 'available'; services: unknown } | { status: 'unavailable'; reason: string } | null;
 
 export type ScheduledRunStartOptions = {
   occurrence?: number;
@@ -32,17 +36,27 @@ export type ScheduledRunStartOptions = {
 };
 
 /**
- * The durable writes that commit with one occurrence's start: its schedule-run metadata
- * and links, its terminal-cleanup marker, and the schedule state or settled-run delete the
- * caller asked to fold into the same batch.
+ * Launch one scheduled occurrence's workflow run and emit `schedule:fired`.
+ *
+ * This is the single chokepoint every occurrence launch flows through — initial
+ * cadence ticks, `cancel-running` replacements, and `queue`-drained runs — so it
+ * is the one place that reliably holds the launched `workflowId` across all
+ * overlap policies. The blocked policies (`skip`, and `queue` while a run is
+ * active) never reach here, so they correctly do not fire.
+ *
+ * `occurrence` is the scheduled grid timestamp the run was due, threaded from the
+ * timer loop or retained on its durable queue entry until drain.
  */
-function buildScheduleRunOperations(
+export async function startScheduledRun(
+  internals: EngineInternals,
   state: ScheduleState,
-  workflowId: string,
-  options: ScheduledRunStartOptions,
-): BatchOperation[] {
-  const metadata = encodeScheduleRunMetadata(state.id, options.occurrence);
-  const operations: BatchOperation[] = [
+  callbacks: Pick<ScheduleCallbacks, 'startWorkflow' | 'failWorkflow' | 'handleCleanupError'>,
+  options: ScheduledRunStartOptions = {},
+): Promise<string> {
+  const workflowId = options.workflowId ?? crypto.randomUUID();
+  const occurrence = options.occurrence;
+  const metadata = encodeScheduleRunMetadata(state.id, occurrence);
+  const scheduleRunOperations: BatchOperation[] = [
     {
       type: 'put',
       key: KEYS.scheduleRun(workflowId),
@@ -66,46 +80,18 @@ function buildScheduleRunOperations(
   ];
 
   if (options.scheduleStateAfterStart !== undefined) {
-    operations.push({
+    scheduleRunOperations.push({
       type: 'put',
       key: KEYS.schedule(options.scheduleStateAfterStart.id),
       value: encode(options.scheduleStateAfterStart),
     });
   }
   if (options.completedWorkflowId !== undefined) {
-    operations.push({
+    scheduleRunOperations.push({
       type: 'delete',
       key: KEYS.scheduleRun(options.completedWorkflowId),
     });
   }
-  return operations;
-}
-
-/** What {@link resolveScheduledRunServices} reports for one occurrence; `null` when nothing was resolved. */
-type ScheduledRunServicesResolution =
-  { status: 'available'; services: unknown } | { status: 'unavailable'; reason: string } | null;
-
-/**
- * Launch one scheduled occurrence's workflow run and emit `schedule:fired`.
- *
- * This is the single chokepoint every occurrence launch flows through — initial
- * cadence ticks, `cancel-running` replacements, and `queue`-drained runs — so it
- * is the one place that reliably holds the launched `workflowId` across all
- * overlap policies. The blocked policies (`skip`, and `queue` while a run is
- * active) never reach here, so they correctly do not fire.
- *
- * `occurrence` is the scheduled grid timestamp the run was due, threaded from the
- * timer loop or retained on its durable queue entry until drain.
- */
-export async function startScheduledRun(
-  internals: EngineInternals,
-  state: ScheduleState,
-  callbacks: Pick<ScheduleCallbacks, 'startWorkflow' | 'failWorkflow' | 'handleCleanupError'>,
-  options: ScheduledRunStartOptions = {},
-): Promise<string> {
-  const workflowId = options.workflowId ?? crypto.randomUUID();
-  const occurrence = options.occurrence;
-  const scheduleRunOperations = buildScheduleRunOperations(state, workflowId, options);
 
   const resolution = await resolveScheduledRunServices(internals, workflowId, state, occurrence);
 
@@ -121,37 +107,30 @@ export async function startScheduledRun(
     });
   }
 
-  // Register the services and the terminal-cleanup obligation before startWorkflow is
-  // called. Every scheduled run writes `schedule-run` metadata, and the inline start can
-  // complete before this function resumes after the await. The in-memory set is what
-  // makes completion schedule the deferred durable cleanup timer that sweeps that
-  // metadata if the fire-and-forget scheduled-terminal handler is interrupted. If
-  // startWorkflow throws, the release below takes back what this launch added and still
-  // owns: the id may by then belong to another launch (see `scheduled-seed-ownership.ts`).
-  const releaseSeed = seedScheduledRunState(
-    internals,
-    workflowId,
-    resolution?.status === 'available' ? { value: resolution.services } : null,
-  );
-
+  // Put nothing in engine memory here. Every scheduled run writes `schedule-run` metadata, and
+  // the inline start can complete before this function resumes after the await, so the run must
+  // join terminal cleanup: the in-memory membership is what makes completion schedule the deferred
+  // durable cleanup timer that sweeps that metadata if the fire-and-forget scheduled-terminal
+  // handler is interrupted. The run also holds the services resolved above. Both go to
+  // `startWorkflow` as its internal `transientState`, which installs them once the start batch
+  // commits and before the run can begin, and removes them again if that launch is rejected after
+  // it adopted a checkpoint. A start rejected before that has installed nothing, so there is
+  // nothing to take back, and the id, which may by then belong to another launch, is never touched.
+  //
   // An empty array and `undefined` are equivalent at the receiving end
   // (buildStartBatchOperations spreads `?? []`), so pass the array directly.
   // `buildPinnedRevisionOverride` is `undefined` for an `'active-at-fire'`
   // schedule — every non-pinned occurrence launches byte-for-byte the
   // pre-WFT-20 way.
-  try {
-    await callbacks.startWorkflow(
-      state.workflowType,
-      state.input,
-      { id: workflowId },
-      scheduleRunOperations,
-      buildPinnedRevisionOverride(state),
-      options.skipAdmissionIdCheck,
-    );
-  } catch (error) {
-    releaseSeed();
-    throw error;
-  }
+  await callbacks.startWorkflow(
+    state.workflowType,
+    state.input,
+    { id: workflowId },
+    scheduleRunOperations,
+    buildPinnedRevisionOverride(state),
+    options.skipAdmissionIdCheck,
+    buildScheduledRunTransientState(resolution),
+  );
 
   // The run launched, so the occurrence fired. Emit before the unavailable
   // check: a services failure becomes a separate `workflow:failed`, and the
@@ -176,6 +155,19 @@ export async function startScheduledRun(
   }
 
   return workflowId;
+}
+
+/**
+ * What the occurrence hands `startWorkflow` to install for its run: membership in terminal cleanup,
+ * which every scheduled run owes, and its services when the resolution produced them.
+ */
+function buildScheduledRunTransientState(
+  resolution: ScheduledRunServicesResolution,
+): StartTransientState {
+  return {
+    joinTerminalCleanup: true,
+    ...(resolution?.status === 'available' && { services: { value: resolution.services } }),
+  };
 }
 
 /**

@@ -161,7 +161,6 @@ function createResumeWorkflowFromStorageInternals({
 }: ResumeWorkflowFromStorageInternalsOptions): Parameters<typeof resumeWorkflowFromStorage>[0] {
   return {
     checkpoints: new Map(),
-    scheduledSeedOwners: new Map(),
     eventLogHeads: new Map(),
     inlineStrategy: null,
     options: { development: false, getNow: () => 1_000, historyPolicy: { maxEvents: null } },
@@ -1063,7 +1062,6 @@ describe('engine lifecycle coverage helpers', () => {
     const dispatchEvent = mock(() => {});
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      scheduledSeedOwners: new Map(),
       inlineStrategy: null,
       registrations: new Map(),
       strategy: { startWorkflow: startWorkflowStrategy },
@@ -1121,7 +1119,6 @@ describe('engine lifecycle coverage helpers', () => {
     const continueWorkflow = mock(() => {});
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      scheduledSeedOwners: new Map(),
       composedWorkflowInterceptor: undefined,
       inlineStrategy: { adoptWorkflow, continueWorkflow },
       interceptors: [],
@@ -1169,7 +1166,6 @@ describe('engine lifecycle coverage helpers', () => {
     let inlineStrategyReads = 0;
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      scheduledSeedOwners: new Map(),
       get inlineStrategy() {
         inlineStrategyReads++;
         return inlineStrategyReads === 1 ? {} : null;
@@ -1488,7 +1484,6 @@ describe('engine lifecycle coverage helpers', () => {
     const handle = { id: workflowId };
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      scheduledSeedOwners: new Map(),
       eventLogHeads: new Map(),
       inlineStrategy: null,
       options: { development: false, getNow: () => 20_000, historyPolicy: { maxEvents: null } },

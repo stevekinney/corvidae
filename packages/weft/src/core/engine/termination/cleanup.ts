@@ -6,10 +6,6 @@ import { asyncActivityWorkflowPrefix } from '../async-activity-records.ts';
 import { releaseLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { clearPendingAtomicWorkflowCommitSideEffects } from '../checkpoint-side-effects.ts';
 import type { EngineInternals } from '../internals.ts';
-import {
-  forgetSeededCleanupMembership,
-  forgetSeededServices,
-} from '../scheduled-seed-ownership.ts';
 import { settleSleepTimerAcknowledgements } from '../sleep-timer-acknowledgements.ts';
 import { parseTerminalCleanupTimerId, workflowFeedListenerKey } from '../state-utilities.ts';
 import { releaseWorkflowConcurrencySlot } from '../workflow-concurrency.ts';
@@ -216,7 +212,6 @@ export function cleanupWaiters(
   internals.workflowNestingDepths.delete(workflowId);
   internals.workflowHeaders.delete(workflowId);
   internals.workflowServices.delete(workflowId);
-  forgetSeededServices(internals, workflowId);
   internals.workflowTypeByWorkflowId.delete(workflowId);
 }
 
@@ -373,7 +368,6 @@ export function cleanupTerminalWorkflowMemory(
 ): void {
   settleSleepTimerAcknowledgements(internals, workflowId, 'terminal');
   internals.workflowsNeedingTerminalCleanup.delete(workflowId);
-  forgetSeededCleanupMembership(internals, workflowId);
   releaseLaunchCheckpoint(internals, workflowId);
   internals.heartbeatDetails.delete(workflowId);
   internals.lastHeartbeatDetailsByStep.delete(workflowId);

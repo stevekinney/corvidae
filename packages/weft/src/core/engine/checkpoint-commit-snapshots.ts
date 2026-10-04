@@ -6,7 +6,6 @@ import {
   retireExecutionAttempt,
 } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
-import { forgetSeededCleanupMembership, forgetSeededServices } from './scheduled-seed-ownership.ts';
 
 const committedCheckpointBytes = new WeakMap<EngineInternals, Map<string, Uint8Array>>();
 
@@ -54,14 +53,6 @@ export function forgetCommittedCheckpointBytes(
  * the engine was disposed finds no checkpoint to hold and no attempt to begin, so disposal leaves
  * nothing behind that a late loss could abandon.
  *
- * Adopting also takes over what a scheduled occurrence seeded under the id
- * (`scheduled-seed-ownership.ts`): the checkpoint under the id is this launch's from here on, so
- * a seed that is still waiting to be released no longer owns anything. A start that fails after
- * this point is rolled back by its `LaunchAdoption`, which removes the entries outright. This is
- * the one place every start, prepare, resume, recovery, fork and delayed-start fire passes
- * through, so a launch that installs its own services or cleanup membership over a seed's cannot
- * be stripped by the seed's release, whichever kind of launch it is.
- *
  * This and the three release functions below are the only places that install or remove a held
  * checkpoint, so a checkpoint, its committed bytes, and its attempt come and go together
  * (`execution-attempts.test.ts` enforces it). `checkpoint-io.ts` only replaces the checkpoint
@@ -75,8 +66,6 @@ export function adoptLaunchCheckpoint(
 ): void {
   if (internals.disposed) return;
   internals.checkpoints.set(workflowId, checkpoint);
-  forgetSeededServices(internals, workflowId);
-  forgetSeededCleanupMembership(internals, workflowId);
   beginExecutionAttempt(internals, workflowId, checkpoint.workflowExecutionToken);
   if (serialized !== undefined) rememberCommittedCheckpointBytes(internals, workflowId, serialized);
 }

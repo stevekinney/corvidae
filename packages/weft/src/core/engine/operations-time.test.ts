@@ -272,7 +272,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        scheduledSeedOwners: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -362,7 +361,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        scheduledSeedOwners: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -407,7 +405,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        scheduledSeedOwners: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -470,7 +467,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        scheduledSeedOwners: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: { getNow: () => 2_000 },
@@ -608,7 +604,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        scheduledSeedOwners: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         options: {
@@ -651,7 +646,6 @@ describe('engine time operation helpers', () => {
     await storage.put(KEYS.checkpoint(workflowId), storedBytes);
     const internals = {
       checkpoints: new Map<string, Checkpoint>(),
-      scheduledSeedOwners: new Map(),
       inlineStrategy: {},
       workflowServices: new Map<string, unknown>(),
       options: { getNow: () => 2_000 },
@@ -708,7 +702,6 @@ describe('engine time operation helpers', () => {
     await startDelayedWorkflow(
       {
         checkpoints: new Map<string, Checkpoint>(),
-        scheduledSeedOwners: new Map(),
         inlineStrategy: {},
         workflowServices: new Map<string, unknown>(),
         workflowsNeedingTerminalCleanup,

@@ -1796,7 +1796,7 @@ describe('rejecting a launch for an id this engine is already running', () => {
     }
   });
 
-  it('unwinds what a scheduled occurrence seeded when its start is rejected before adopting a checkpoint', async () => {
+  it("leaves nothing in memory when a scheduled occurrence's start is rejected before adopting a checkpoint", async () => {
     const storage = new MemoryStorage();
     const engine = await Engine.create({
       storage,
@@ -1808,19 +1808,24 @@ describe('rejecting a launch for an id this engine is already running', () => {
     });
     const internals = getInternals(engine);
     try {
-      // The occurrence seeds its services and cleanup membership before the start runs, and
-      // the start rejects its unregistered type before it adopts anything.
-      const schedule = { id: 'seeded-schedule', workflowType: 'never-registered', input: null };
+      // The occurrence resolves its services and owes terminal cleanup, but it installs neither
+      // until its start has committed, and the start rejects its unregistered type before it
+      // adopts anything.
+      const schedule = {
+        id: 'unregistered-schedule',
+        workflowType: 'never-registered',
+        input: null,
+      };
 
       const failure = await rejectionOf(
         startScheduledRun(internals, schedule as ScheduleState, createScheduleCallbacks(engine), {
-          workflowId: 'seeded-occurrence',
+          workflowId: 'unregistered-occurrence',
         }),
       );
 
       expect(failure).toBeInstanceOf(Error);
-      expect(internals.workflowServices.has('seeded-occurrence')).toBe(false);
-      expect(internals.workflowsNeedingTerminalCleanup.has('seeded-occurrence')).toBe(false);
+      expect(internals.workflowServices.has('unregistered-occurrence')).toBe(false);
+      expect(internals.workflowsNeedingTerminalCleanup.has('unregistered-occurrence')).toBe(false);
     } finally {
       await engine[Symbol.asyncDispose]();
     }

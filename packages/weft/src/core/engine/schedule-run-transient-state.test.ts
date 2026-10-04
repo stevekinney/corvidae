@@ -1,27 +1,33 @@
 /**
- * Who owns what a scheduled occurrence seeds before its start (COR-1408).
+ * What a scheduled occurrence holds in engine memory while its start is in flight (COR-1408).
  *
- * `startScheduledRun` puts an occurrence's `ctx.services` and its terminal-cleanup
- * membership in engine memory before it calls `startWorkflow`, so a run that finishes
- * inline still schedules the durable cleanup timer. When the start rejects, the occurrence
- * takes back what it seeded, and only that: the id may by then belong to another launch, a
- * start still in flight, a live run, or a launch that began after this one's start rolled
- * itself back. A release that removes what it does not own strips the winning launch of its
- * services and of the obligation that makes terminalization schedule the cleanup timer.
+ * One launch installs a run's transient state: the launch that adopts the id. A scheduled
+ * occurrence resolves its `ctx.services` and hands them, with its obligation to join terminal
+ * cleanup, to `startWorkflow`, which installs both after the create batch commits and before the
+ * run can begin. Until a start adopts a checkpoint under the id it holds nothing, so a start
+ * that rejects early has nothing to take back, and the id may meanwhile belong to another
+ * launch: a start still in flight that reserved it first, a live run, or a launch that began after
+ * this one's start rolled itself back. Nothing a rejected launch did may reach that launch.
  *
  * Two launches of one workflow id reach the seam with a terminal handoff and a cadence tick
  * draining the same queued run, or a scheduled occurrence reaching for an id `engine.start`
  * already runs. Each case below crosses one interleaving of those launches with one way the
  * services resolver can answer. The winning launch keeps its services, by identity, and its
- * obligation; the loser leaves nothing behind; and no seed ownership record outlives the
- * entries it describes.
+ * obligation to schedule the durable cleanup timer, a winner that asked for neither holds
+ * neither, the loser leaves nothing behind, and nothing survives terminalization, purge or
+ * disposal.
  */
 import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
 import { createDeferred, waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { decode } from '../codec/api.ts';
-import type { EngineOptions, ScheduleState } from '../types.ts';
+import {
+  workflow,
+  type EngineOptions,
+  type ScheduleState,
+  type WorkflowContext,
+} from '../types.ts';
 import { createScheduleCallbacks } from './callback-creators-schedule.ts';
 import { parkedOnSignal } from './checkpoint-conflict.test-support.ts';
 import { WorkflowAlreadyExistsError } from './errors.ts';
@@ -84,12 +90,19 @@ const NOTHING_HELD: Holdings = {
   pendingStart: false,
 };
 
-/** What the launch that holds the id is owed: a scheduled launch, or a live `engine.start` run. */
-type Winner = { kind: 'launch'; index: number } | { kind: 'live'; services: object };
+/**
+ * What the launch that holds the id is owed: a scheduled launch, or a live `engine.start` run.
+ * A live run holds the services it was started with, and owes terminal cleanup only if it has
+ * some.
+ */
+type Winner = { kind: 'launch'; index: number } | { kind: 'live'; services: object | undefined };
 
 type LaunchHooks = {
-  /** Runs when the launch reaches `startWorkflow`, with its seed already in engine memory. */
-  atStart?: () => void;
+  /**
+   * Runs when the launch reaches `startWorkflow`. The launch has installed nothing in engine
+   * memory by then, and a hook that returns a promise holds the start until it settles.
+   */
+  atStart?: () => void | Promise<void>;
   /** Runs once `startWorkflow` rejected, before the launch's own catch resumes. */
   afterRejection?: () => Promise<void>;
 };
@@ -137,6 +150,13 @@ async function createHarness(id: string, kind: ResolutionKind) {
       : { resolveWorkflowServices: resolutions.resolveWorkflowServices }),
   });
   engine.register(parkedOnSignal(id));
+  // A run that finishes inline without a signal, and reports whether it was handed services.
+  const reporterType = `${id}-reporter`;
+  engine.register(
+    workflow({ name: reporterType }).execute(async function* (context: WorkflowContext) {
+      return context.services === undefined ? 'no services' : 'services';
+    }),
+  );
   const internals = getInternals(engine);
   const schedule = { id: `${id}-schedule`, workflowType: id, input: null } as ScheduleState;
   const baseCallbacks = createScheduleCallbacks(engine);
@@ -157,7 +177,8 @@ async function createHarness(id: string, kind: ResolutionKind) {
     const callbacks = {
       ...baseCallbacks,
       startWorkflow: async (...startArguments: Parameters<ScheduleCallbacks['startWorkflow']>) => {
-        hooks.atStart?.();
+        const held = hooks.atStart?.();
+        if (held !== undefined) await held;
         try {
           await baseCallbacks.startWorkflow(...startArguments);
         } catch (error) {
@@ -204,6 +225,31 @@ async function createHarness(id: string, kind: ResolutionKind) {
     return refuseStorage(['get'], Number.POSITIVE_INFINITY);
   }
 
+  /**
+   * Run the id as a live run that asked for no services and finishes inline: report whether it
+   * was handed any, and whether its terminalization scheduled a durable cleanup timer.
+   */
+  async function runReporter() {
+    const handle = await engine.start(reporterType, null, { id });
+    const outcome = await handle.result();
+    const state = await engine.get(id);
+    return {
+      outcome,
+      terminalCleanupToken: state?.terminalCleanupToken,
+      cleanupTimers: await countCleanupTimers(storage, id),
+    };
+  }
+
+  /** Run the id to completion as a live run that asked for no services, leaving a terminal record. */
+  async function completeTerminalRun(): Promise<void> {
+    await engine.start(id, null, { id });
+    await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
+      label: `${id} parked on its signal`,
+    });
+    await engine.signal(id, 'go', 'the earlier run');
+    expect(await engine.getHandle(id).result()).toBe('the earlier run');
+  }
+
   return {
     id,
     kind,
@@ -216,6 +262,8 @@ async function createHarness(id: string, kind: ResolutionKind) {
     refuseNextCreateCommit,
     refuseNextRead,
     refuseEveryRead,
+    completeTerminalRun,
+    runReporter,
     async dispose() {
       if (disposed) return;
       disposed = true;
@@ -242,39 +290,33 @@ function expectNothingHeld(harness: Harness): void {
 }
 
 /**
- * Launch A, and launch B from inside A's rejection: B seeds the id once A's `startWorkflow`
- * has settled and before A's own catch, which releases A's seed, resumes. Reports what the id
- * held at each of those two moments.
+ * Launch A, and launch B from inside A's rejection: B reaches `startWorkflow` once A's
+ * `startWorkflow` has settled and before A's own catch resumes. Reports what the id held at each
+ * of those two moments.
  */
 async function launchSecondInsideFirstRejection(harness: Harness) {
-  const secondSeeded = createDeferred();
+  const secondStarted = createDeferred();
   let atRejection: Holdings | undefined;
-  let atSecondSeed: Holdings | undefined;
+  let atSecondStart: Holdings | undefined;
   let second: Promise<PromiseSettledResult<string>> | undefined;
 
   const first = await harness.launch({
     afterRejection: async () => {
       atRejection = harness.holdings();
-      second = harness.launch({ atStart: () => secondSeeded.resolve() });
-      await secondSeeded.promise;
-      atSecondSeed = harness.holdings();
+      second = harness.launch({
+        atStart: () => {
+          atSecondStart = harness.holdings();
+          secondStarted.resolve();
+        },
+      });
+      await secondStarted.promise;
     },
   });
 
-  if (atRejection === undefined || atSecondSeed === undefined || second === undefined) {
+  if (atRejection === undefined || atSecondStart === undefined || second === undefined) {
     throw new Error('launch A never reached its rejection');
   }
-  return { first, second, atRejection, atSecondSeed };
-}
-
-/** Launch B held the id when launch A's catch was about to run, and still does after it. */
-function expectSecondLaunchKeepsItsSeed(harness: Harness, atSecondSeed: Holdings): void {
-  const seededByB = harness.resolutions.servicesOfLaunch(1);
-  expect(atSecondSeed.cleanupTracked).toBe(true);
-  expect(atSecondSeed.services).toBe(seededByB);
-  const afterRelease = harness.holdings();
-  expect(afterRelease.cleanupTracked).toBe(true);
-  expect(afterRelease.services).toBe(seededByB);
+  return { first, second, atRejection, atSecondStart };
 }
 
 /**
@@ -286,7 +328,7 @@ const interleavings: readonly {
   run: (harness: Harness) => Promise<Winner>;
 }[] = [
   {
-    label: 'launch A is rejected before launch B seeds',
+    label: 'launch A is rejected before launch B starts',
     async run(harness) {
       const refusal = harness.refuseNextCreateCommit();
 
@@ -294,26 +336,24 @@ const interleavings: readonly {
 
       expect(rejectionReason(first)).toBe(refusal);
       expectNothingHeld(harness);
-      expect(harness.internals.scheduledSeedOwners.size).toBe(0);
 
       expectLaunched(await harness.launch());
       return { kind: 'launch', index: 1 };
     },
   },
   {
-    label: 'launch A rolls back, launch B seeds, then launch A releases its seed',
+    label: 'launch A rolls back, then launch B starts inside its rejection',
     async run(harness) {
       const refusal = harness.refuseNextCreateCommit();
 
-      const { first, second, atRejection, atSecondSeed } =
+      const { first, second, atRejection, atSecondStart } =
         await launchSecondInsideFirstRejection(harness);
 
       expect(rejectionReason(first)).toBe(refusal);
-      // The start adopted a checkpoint and rolled back everything it held for the id, the
-      // seed included, before it rejected.
-      expect(atRejection.services).toBeUndefined();
-      expect(atRejection.cleanupTracked).toBe(false);
-      expectSecondLaunchKeepsItsSeed(harness, atSecondSeed);
+      // The start adopted a checkpoint and rolled back everything it held for the id before it
+      // rejected, and launch B had nothing of A's to find when it started.
+      expectSameHoldings(atRejection, NOTHING_HELD);
+      expectSameHoldings(atSecondStart, NOTHING_HELD);
 
       expectLaunched(await second);
       return { kind: 'launch', index: 1 };
@@ -321,36 +361,31 @@ const interleavings: readonly {
   },
   {
     label:
-      'launch A is rejected before it adopts a checkpoint, launch B seeds, then launch A releases its seed',
+      'launch A is rejected before it adopts a checkpoint, then launch B starts inside its rejection',
     async run(harness) {
       const refusal = harness.refuseNextRead();
 
-      const { first, second, atRejection, atSecondSeed } =
+      const { first, second, atRejection, atSecondStart } =
         await launchSecondInsideFirstRejection(harness);
 
       expect(rejectionReason(first)).toBe(refusal);
-      // The start adopted nothing, so nothing rolled its seed back: it is still in memory,
-      // and no launch holds the id, when launch B seeds.
-      expect(atRejection.attempt).toBeUndefined();
-      expect(atRejection.checkpoint).toBeUndefined();
-      expect(atRejection.pendingStart).toBe(false);
-      expect(atRejection.cleanupTracked).toBe(true);
-      expectSecondLaunchKeepsItsSeed(harness, atSecondSeed);
+      // The start adopted nothing, and it installed nothing before it did, so there was
+      // nothing to roll back and nothing for launch B to find: no launch holds the id.
+      expectSameHoldings(atRejection, NOTHING_HELD);
+      expectSameHoldings(atSecondStart, NOTHING_HELD);
 
       expectLaunched(await second);
       return { kind: 'launch', index: 1 };
     },
   },
   {
-    label:
-      'launch A rolls back, a live engine.start run takes the id, then launch A releases its seed',
+    label: 'launch A rolls back, then a live engine.start run takes the id',
     async run(harness) {
       const refusal = harness.refuseNextCreateCommit();
       const services = { owner: 'the live run' };
 
       const first = await harness.launch({
         afterRejection: async () => {
-          // Nothing but the rollback told the engine that launch A no longer owns the id.
           await harness.engine.start(harness.id, null, { id: harness.id, services });
         },
       });
@@ -363,15 +398,13 @@ const interleavings: readonly {
   },
   {
     label:
-      'launch A is rejected before it adopts a checkpoint, a live engine.start run takes the id, then launch A releases its seed',
+      'launch A is rejected before it adopts a checkpoint, then a live engine.start run takes the id',
     async run(harness) {
       const refusal = harness.refuseNextRead();
       const services = { owner: 'the live run' };
 
       const first = await harness.launch({
         afterRejection: async () => {
-          // Nothing rolled launch A's seed back, so it is still in memory when the live run
-          // starts. The live run adopts a checkpoint, which makes the id its own.
           await harness.engine.start(harness.id, null, { id: harness.id, services });
         },
       });
@@ -380,6 +413,68 @@ const interleavings: readonly {
       expect(harness.holdings().services).toBe(services);
       expect(harness.holdings().cleanupTracked).toBe(true);
       return { kind: 'live', services };
+    },
+  },
+  {
+    label: 'launch A rolls back, then a live engine.start run without services takes the id',
+    async run(harness) {
+      const refusal = harness.refuseNextCreateCommit();
+
+      const first = await harness.launch({
+        afterRejection: async () => {
+          await harness.engine.start(harness.id, null, { id: harness.id });
+        },
+      });
+
+      expect(rejectionReason(first)).toBe(refusal);
+      expect(harness.holdings().services).toBeUndefined();
+      expect(harness.holdings().cleanupTracked).toBe(false);
+      return { kind: 'live', services: undefined };
+    },
+  },
+  {
+    // Codex, PRRT_kwDOUg4Lwc6o0rIj: a live start that asked for no services must not run with
+    // the services of an occurrence whose start was rejected, nor owe it a cleanup timer.
+    label:
+      'launch A is rejected before it adopts a checkpoint, then a live engine.start run without services takes the id',
+    async run(harness) {
+      const refusal = harness.refuseNextRead();
+
+      const first = await harness.launch({
+        afterRejection: async () => {
+          await harness.engine.start(harness.id, null, { id: harness.id });
+        },
+      });
+
+      expect(rejectionReason(first)).toBe(refusal);
+      expect(harness.holdings().services).toBeUndefined();
+      expect(harness.holdings().cleanupTracked).toBe(false);
+      return { kind: 'live', services: undefined };
+    },
+  },
+  {
+    // Codex, PRRT_kwDOUg4Lwc6o0rIm: the terminal run under the id is purged while the occurrence's
+    // start is in flight, and the start is then rejected. Nothing may remain for a later run that
+    // reuses the id, which has no services, no headers and no concurrency limit, to inherit.
+    label:
+      'the terminal run under the id is purged while launch A is in flight, then launch A is rejected before it adopts a checkpoint',
+    async run(harness) {
+      await harness.completeTerminalRun();
+      let refusal: Error | undefined;
+
+      const first = await harness.launch({
+        atStart: async () => {
+          const purged = await harness.engine.purge({ status: 'completed' });
+          expect(purged.deleted).toBe(1);
+          refusal = harness.refuseNextRead();
+        },
+      });
+
+      expect(rejectionReason(first)).toBe(refusal);
+      expectNothingHeld(harness);
+
+      await harness.engine.start(harness.id, null, { id: harness.id });
+      return { kind: 'live', services: undefined };
     },
   },
   {
@@ -425,13 +520,31 @@ const interleavings: readonly {
       return { kind: 'live', services };
     },
   },
+  {
+    label: 'a scheduled occurrence targets an id a live engine.start run without services holds',
+    async run(harness) {
+      await harness.engine.start(harness.id, null, { id: harness.id });
+      await waitForCondition(() => harness.internals.parkedInlineWorkflows.has(harness.id), {
+        label: `${harness.id} parked on its signal`,
+      });
+      const beforeOccurrence = harness.holdings();
+
+      const occurrence = await harness.launch();
+
+      expect(rejectionReason(occurrence)).toBeInstanceOf(WorkflowAlreadyExistsError);
+      expectSameHoldings(harness.holdings(), beforeOccurrence);
+      expect(harness.holdings().services).toBeUndefined();
+      expect(harness.holdings().cleanupTracked).toBe(false);
+      return { kind: 'live', services: undefined };
+    },
+  },
 ];
 
-describe('what a scheduled start releases when it is rejected', () => {
+describe('what a scheduled start holds in memory', () => {
   for (const interleaving of interleavings) {
     for (const kind of RESOLUTION_KINDS) {
       it(`${interleaving.label}, with ${RESOLUTION_LABELS[kind]}`, async () => {
-        const id = 'seed-ownership-run';
+        const id = 'transient-state-run';
         const harness = await createHarness(id, kind);
         const { engine, internals, storage } = harness;
         try {
@@ -444,37 +557,43 @@ describe('what a scheduled start releases when it is rejected', () => {
             winner.kind === 'live'
               ? winner.services
               : harness.resolutions.servicesOfLaunch(winner.index);
+          // A scheduled run always writes schedule-run metadata, so it owes the cleanup timer
+          // that sweeps it. A live run owes one only when it holds services.
+          const owesCleanup = winner.kind === 'launch' || winner.services !== undefined;
 
           if (parked) {
             await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
               label: `${id} parked on its signal`,
             });
             // The winner keeps its own services object, and the obligation to schedule the
-            // durable terminal cleanup.
+            // durable terminal cleanup, or neither when it asked for neither.
             expect(internals.workflowServices.get(id)).toBe(expectedServices);
-            expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
+            expect(internals.workflowsNeedingTerminalCleanup.has(id)).toBe(owesCleanup);
             expect(internals.pendingStarts.has(id)).toBe(false);
 
             await engine.signal(id, 'go', 'the winner');
             expect(await engine.getHandle(id).result()).toBe('the winner');
           }
 
-          // Terminalization scheduled the durable cleanup timer, which is what the obligation
-          // exists to guarantee.
+          // Terminalization scheduled the durable cleanup timer exactly when the winner owed
+          // one, which is what the obligation exists to guarantee.
           const state = await engine.get(id);
           expect(state?.status).toBe(parked ? 'completed' : 'failed');
-          expect(state?.terminalCleanupToken).toBeDefined();
-          expect(await countCleanupTimers(storage, id)).toBe(1);
+          // A signal leaves durable scratch of its own, so every run this table signals owes the
+          // timer by the end; what a winner that asked for nothing is owed before it is signalled
+          // is checked above and in the cases that follow the table.
+          if (owesCleanup) {
+            expect(state?.terminalCleanupToken).toBeDefined();
+            expect(await countCleanupTimers(storage, id)).toBe(1);
+          }
 
-          // Terminalization released everything the id held, ownership records included.
+          // Terminalization released everything the id held.
           expectNothingHeld(harness);
-          expect(internals.scheduledSeedOwners.size).toBe(0);
 
           // So does purging the terminal run.
           const purged = await engine.purge({ status: state?.status });
           expect(purged.deleted).toBe(1);
           expectNothingHeld(harness);
-          expect(internals.scheduledSeedOwners.size).toBe(0);
         } finally {
           await harness.dispose();
         }
@@ -483,8 +602,97 @@ describe('what a scheduled start releases when it is rejected', () => {
   }
 
   for (const kind of RESOLUTION_KINDS) {
+    it(`holds nothing when a scheduled launch reaches its start, with ${RESOLUTION_LABELS[kind]}`, async () => {
+      const harness = await createHarness('transient-state-at-start', kind);
+      try {
+        let atStart: Holdings | undefined;
+
+        expectLaunched(
+          await harness.launch({
+            atStart: () => {
+              atStart = harness.holdings();
+            },
+          }),
+        );
+
+        // The launch resolved its services before it called `startWorkflow`, and installs them
+        // only once its start has committed. Until then the id holds nothing that a rejected
+        // start could leave behind.
+        if (atStart === undefined) throw new Error('the launch never reached startWorkflow');
+        expectSameHoldings(atStart, NOTHING_HELD);
+
+        if (kind === 'unavailable') return;
+        await waitForCondition(() => harness.internals.parkedInlineWorkflows.has(harness.id), {
+          label: `${harness.id} parked on its signal`,
+        });
+        expect(harness.internals.workflowServices.get(harness.id)).toBe(
+          harness.resolutions.servicesOfLaunch(0),
+        );
+        expect(harness.internals.workflowsNeedingTerminalCleanup.has(harness.id)).toBe(true);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  }
+
+  for (const kind of RESOLUTION_KINDS) {
+    it(`gives a live run that asked for no services none of a rejected occurrence's, with ${RESOLUTION_LABELS[kind]}`, async () => {
+      const harness = await createHarness('transient-state-reporter-after-rejection', kind);
+      try {
+        const refusal = harness.refuseNextRead();
+        let reported: Awaited<ReturnType<typeof harness.runReporter>> | undefined;
+
+        const first = await harness.launch({
+          afterRejection: async () => {
+            reported = await harness.runReporter();
+          },
+        });
+
+        expect(rejectionReason(first)).toBe(refusal);
+        // The live run read no services and owes no cleanup timer: its terminalization found no
+        // obligation to sweep, because it had asked for none.
+        expect(reported).toEqual({
+          outcome: 'no services',
+          terminalCleanupToken: undefined,
+          cleanupTimers: 0,
+        });
+        expectNothingHeld(harness);
+      } finally {
+        await harness.dispose();
+      }
+    });
+
+    it(`gives a later run that asked for no services no cleanup timer after a purge and a rejected occurrence, with ${RESOLUTION_LABELS[kind]}`, async () => {
+      const harness = await createHarness('transient-state-reporter-after-purge', kind);
+      try {
+        await harness.completeTerminalRun();
+        let refusal: Error | undefined;
+
+        const first = await harness.launch({
+          atStart: async () => {
+            const purged = await harness.engine.purge({ status: 'completed' });
+            expect(purged.deleted).toBe(1);
+            refusal = harness.refuseNextRead();
+          },
+        });
+
+        expect(rejectionReason(first)).toBe(refusal);
+        expectNothingHeld(harness);
+        expect(await harness.runReporter()).toEqual({
+          outcome: 'no services',
+          terminalCleanupToken: undefined,
+          cleanupTimers: 0,
+        });
+        expectNothingHeld(harness);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  }
+
+  for (const kind of RESOLUTION_KINDS) {
     it(`leaves nothing behind when two launches are both rejected before they adopt a checkpoint, with ${RESOLUTION_LABELS[kind]}`, async () => {
-      const harness = await createHarness('seed-ownership-both-rejected', kind);
+      const harness = await createHarness('transient-state-both-rejected', kind);
       try {
         const refusal = harness.refuseEveryRead();
 
@@ -493,7 +701,6 @@ describe('what a scheduled start releases when it is rejected', () => {
         expect(rejectionReason(first)).toBe(refusal);
         expect(rejectionReason(await second)).toBe(refusal);
         expectNothingHeld(harness);
-        expect(harness.internals.scheduledSeedOwners.size).toBe(0);
       } finally {
         await harness.dispose();
       }
@@ -501,33 +708,20 @@ describe('what a scheduled start releases when it is rejected', () => {
   }
 
   for (const kind of RESOLUTION_KINDS.filter((candidate) => candidate !== 'unavailable')) {
-    it(`leaves no ownership record behind when the engine is disposed with the winner running, with ${RESOLUTION_LABELS[kind]}`, async () => {
-      const id = 'seed-ownership-disposal';
+    it(`leaves nothing behind when the engine is disposed with the winner running, with ${RESOLUTION_LABELS[kind]}`, async () => {
+      const id = 'transient-state-disposal';
       const harness = await createHarness(id, kind);
       try {
-        let recordedAtStart = false;
-        expectLaunched(
-          await harness.launch({
-            // The launch has seeded the id and adopted nothing yet, so the engine recorded who
-            // owns what it seeded.
-            atStart: () => {
-              recordedAtStart = harness.internals.scheduledSeedOwners.has(id);
-            },
-          }),
-        );
+        expectLaunched(await harness.launch());
         await waitForCondition(() => harness.internals.parkedInlineWorkflows.has(id), {
           label: `${id} parked on its signal`,
         });
-        expect(recordedAtStart).toBe(true);
-        // Adopting its checkpoint made the id the launch's own: what it seeded is the run's
-        // now, and nothing is left for a release to strip.
-        expect(harness.internals.scheduledSeedOwners.has(id)).toBe(false);
+        // The winner holds what it was launched with, and nothing else holds it for it.
         expect(harness.internals.workflowServices.has(id)).toBe(kind !== 'none');
         expect(harness.internals.workflowsNeedingTerminalCleanup.has(id)).toBe(true);
 
         await harness.dispose();
 
-        expect(harness.internals.scheduledSeedOwners.size).toBe(0);
         expect(harness.internals.workflowServices.size).toBe(0);
       } finally {
         await harness.dispose();
