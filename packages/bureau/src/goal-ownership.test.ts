@@ -16,6 +16,7 @@ import {
   GoalCorruptOwnershipRecordError,
   GoalOwnershipError,
   GoalOwnershipUnknownError,
+  isGoalOwnedRunRecord,
   verifyAttemptRun,
 } from './goal-ownership';
 import { createGoalWorkflowHost } from './goal-ports';
@@ -536,5 +537,28 @@ describe("a run is the goal's only when its attempt index is below the goal's at
       id,
     );
     expect(outcome.status).toBe('foreign');
+  });
+});
+
+describe("a run is the goal's only when its attempt index is a non-negative safe integer", () => {
+  const owner = { agentName: 'worker', principal: undefined, maximumAttempts: 3 };
+  const record = (attemptIndex: number) => {
+    const load = marked('g1', attemptIndex);
+    if (load.status !== 'found') throw new Error('unreachable');
+    return load.record;
+  };
+
+  it.each([
+    ['a negative integer', -1],
+    ['a fraction', 0.5],
+    ['NaN', Number.NaN],
+    ['negative infinity', Number.NEGATIVE_INFINITY],
+  ])('does not own a run whose marker names %s below the bound', (_name, attemptIndex) => {
+    const id = goalAttemptRunId('g1', attemptIndex);
+    expect(isGoalOwnedRunRecord(record(attemptIndex), id, owner)).toBe(false);
+  });
+
+  it('still owns a run at index zero', () => {
+    expect(isGoalOwnedRunRecord(record(0), goalAttemptRunId('g1', 0), owner)).toBe(true);
   });
 });

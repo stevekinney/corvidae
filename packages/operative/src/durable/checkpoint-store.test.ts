@@ -130,6 +130,65 @@ describe('createCheckpointStore', () => {
     });
   });
 
+  describe('strict reads of malformed persisted data', () => {
+    const malformedStep = 'durable-run:run-1:step:0000000001';
+
+    async function failure(read: () => Promise<unknown>): Promise<unknown> {
+      try {
+        await read();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    }
+
+    it('rejects a malformed cursor in strict mode and reads it as absent otherwise', async () => {
+      const underlying = createStore();
+      await underlying.set('durable-run:run-1:cursor', '{not json');
+      const store = createCheckpointStore(underlying);
+
+      expect(await failure(() => store.loadCursor('run-1', { strict: true }))).toBeInstanceOf(
+        Error,
+      );
+      expect(await failure(() => store.loadCheckpoint('run-1', { strict: true }))).toBeInstanceOf(
+        Error,
+      );
+      expect(await store.loadCursor('run-1')).toBeNull();
+      const tolerant = await store.loadCheckpoint('run-1');
+      expect(tolerant.cursor.step).toBe(0);
+    });
+
+    it('rejects a malformed step record in strict mode and skips it otherwise', async () => {
+      const underlying = createStore();
+      await underlying.set('durable-run:run-1:step:0000000000', JSON.stringify({ step: 0 }));
+      await underlying.set(malformedStep, '{not json');
+      const store = createCheckpointStore(underlying);
+
+      expect(await failure(() => store.loadSteps('run-1', { strict: true }))).toBeInstanceOf(Error);
+      const tolerant = await store.loadSteps('run-1');
+      expect(tolerant.map((record) => record.step)).toEqual([0]);
+    });
+
+    it('rejects a malformed transcript in strict mode and reads it as absent otherwise', async () => {
+      const underlying = createStore();
+      await underlying.set('durable-run:run-1:transcript', '{not json');
+      const store = createCheckpointStore(underlying);
+
+      expect(await failure(() => store.loadConversation('run-1', { strict: true }))).toBeInstanceOf(
+        Error,
+      );
+      expect(await store.loadConversation('run-1')).toBeNull();
+    });
+
+    it('keeps a genuinely absent checkpoint a zeroed cursor in strict mode', async () => {
+      const store = createCheckpointStore(createStore());
+      const checkpoint = await store.loadCheckpoint('never-written', { strict: true });
+      expect(checkpoint.cursor).toEqual(cursor(0));
+      expect(checkpoint.conversation).toBeNull();
+      expect(checkpoint.steps).toEqual([]);
+    });
+  });
+
   describe('loadCheckpoint', () => {
     it('assembles cursor, conversation, and steps into one checkpoint', async () => {
       const store = createCheckpointStore(createStore());

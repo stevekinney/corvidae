@@ -5603,6 +5603,39 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
+  it.each([
+    ['a negative integer', -1],
+    ['a fraction', 0.5],
+    ['NaN', Number.NaN],
+    ['a huge number', Number.MAX_VALUE],
+    ['an infinity', Number.POSITIVE_INFINITY],
+  ])('reads a goal attempt marker with %s as its index as corrupt', async (_name, attemptIndex) => {
+    const runtime = await createRuntimeComposition({
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+
+    try {
+      await runtime.durable!.engine.storage.put(
+        `${CATALOG_RUN_RECOVERY_KEY_PREFIX}goal-bad-index`,
+        encode({
+          schemaVersion: 1,
+          agentName: 'worker',
+          definitionRevision: 1,
+          input: 'work',
+          goalAttempt: { goalRunId: 'g1', attemptIndex },
+          costEstimation: null,
+        }),
+      );
+
+      expect(await runtime.loadCatalogRunRecoveryRecord('goal-bad-index')).toEqual({
+        status: 'corrupt',
+      });
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
   it('reads a decodable record of the wrong shape as corrupt for ownership, and as missing for every other consumer', async () => {
     const runtime = await createRuntimeComposition({
       storage: { type: 'memory' },

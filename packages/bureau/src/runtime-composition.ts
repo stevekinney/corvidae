@@ -914,6 +914,8 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
       isRecord(goalAttempt) &&
       typeof goalAttempt['goalRunId'] === 'string' &&
       typeof goalAttempt['attemptIndex'] === 'number' &&
+      Number.isSafeInteger(goalAttempt['attemptIndex']) &&
+      goalAttempt['attemptIndex'] >= 0 &&
       (goalAttempt['tombstonedAt'] === undefined || typeof goalAttempt['tombstonedAt'] === 'string')
     )
   ) {

@@ -121,6 +121,9 @@ export function isGoalOwnedRunRecord(
 ): boolean {
   const marker = record.goalAttempt;
   if (marker === undefined) return false;
+  // An index is a count of attempts opened, so a fraction, a negative, or a
+  // non-finite value names no attempt a goal ever made, whatever id it renders.
+  if (!Number.isSafeInteger(marker.attemptIndex) || marker.attemptIndex < 0) return false;
   if (goalAttemptRunId(marker.goalRunId, marker.attemptIndex) !== runId) return false;
   // The goal never opens an attempt at or past its bound, so a marker that
   // reproduces the id of such an index names a run no start of this goal made.

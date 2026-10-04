@@ -21,7 +21,8 @@ import { type AgentRunWorkflowResult } from './run-workflow-result';
 
 /**
  * Rebuilds a run's state from its checkpoint and REJECTS when the checkpoint
- * cannot be read. A run with no persisted checkpoint yet is not a read failure:
+ * cannot be read, including one whose persisted cursor, transcript, or step
+ * records are malformed. A run with no persisted checkpoint yet is not a read failure:
  * the store answers with a zeroed cursor, which this returns as an empty state.
  * Goal accounting and validation use this, because an empty state fabricated
  * from a transient read failure would undercount budget and let a validator
@@ -33,7 +34,7 @@ export async function readRunStateFromCheckpoint(
   runtime: RuntimeServices,
 ): Promise<{ runState: RunState; conversation: Conversation }> {
   {
-    const checkpoint = await context.checkpointStore.loadCheckpoint(runId);
+    const checkpoint = await context.checkpointStore.loadCheckpoint(runId, { strict: true });
     const conversation =
       checkpoint.conversation !== null
         ? // AB-321: forwards the resolved runtime so any append on this

@@ -31,6 +31,16 @@ const keys = {
 };
 
 /**
+ * Options for the checkpoint reads. With `strict`, persisted data that is
+ * present but malformed rejects instead of reading as absent (a cursor or
+ * transcript) or being skipped (a step record). A key that is genuinely absent
+ * still reads as absent, so a run with no checkpoint yet is not an error.
+ */
+export interface CheckpointReadOptions {
+  readonly strict?: boolean;
+}
+
+/**
  * A durable store for agent-run checkpoints, backed by a Weft
  * {@link TextValueStore}. Persists three independent pieces per run:
  *
@@ -43,25 +53,40 @@ const keys = {
  */
 export interface CheckpointStore {
   saveCursor(runId: string, cursor: RunCursor): Promise<void>;
-  loadCursor(runId: string): Promise<RunCursor | null>;
+  loadCursor(runId: string, options?: CheckpointReadOptions): Promise<RunCursor | null>;
   saveConversation(runId: string, snapshot: ConversationSnapshot): Promise<void>;
-  loadConversation(runId: string): Promise<ConversationSnapshot | null>;
+  loadConversation(
+    runId: string,
+    options?: CheckpointReadOptions,
+  ): Promise<ConversationSnapshot | null>;
   saveStep(runId: string, record: StepRecord): Promise<void>;
-  loadSteps(runId: string): Promise<StepRecord[]>;
+  loadSteps(runId: string, options?: CheckpointReadOptions): Promise<StepRecord[]>;
   /** Assemble the full checkpoint from its persisted pieces. */
-  loadCheckpoint(runId: string): Promise<RunCheckpoint>;
+  loadCheckpoint(runId: string, options?: CheckpointReadOptions): Promise<RunCheckpoint>;
   /** Remove every key for a run. Returns the number of keys deleted. */
   clear(runId: string): Promise<number>;
 }
 
-/** Parse JSON, returning `null` on malformed data rather than throwing. */
-function parseJson(raw: string | null): unknown {
+/**
+ * Parse JSON, returning `null` on malformed data rather than throwing. In
+ * strict mode malformed data throws, naming the key; an absent key is still
+ * `null`.
+ */
+function parseJson(raw: string | null, strictKey?: string): unknown {
   if (raw === null) return null;
   try {
     return JSON.parse(raw);
-  } catch {
+  } catch (cause) {
+    if (strictKey !== undefined) {
+      throw new Error(`Persisted checkpoint data at "${strictKey}" is malformed JSON.`, { cause });
+    }
     return null;
   }
+}
+
+/** The strict key to report, or `undefined` for the tolerant read. */
+function strictKeyFor(options: CheckpointReadOptions | undefined, key: string): string | undefined {
+  return options?.strict === true ? key : undefined;
 }
 
 /**
@@ -77,8 +102,12 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
       await store.set(keys.cursor(runId), JSON.stringify(cursor));
     },
 
-    async loadCursor(runId) {
-      const cursor = parseJson(await store.get(keys.cursor(runId))) as RunCursor | null;
+    async loadCursor(runId, options) {
+      const cursorKey = keys.cursor(runId);
+      const cursor = parseJson(
+        await store.get(cursorKey),
+        strictKeyFor(options, cursorKey),
+      ) as RunCursor | null;
       // A cursor persisted before AB-221 added `lastAppliedConfigVersion` to
       // `RunCursor` deserializes with every OTHER field present but that one
       // `undefined` — `parseJson` casts the stored JSON to `RunCursor`
@@ -99,31 +128,38 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
       await store.set(keys.transcript(runId), JSON.stringify(snapshot));
     },
 
-    async loadConversation(runId) {
-      return parseJson(await store.get(keys.transcript(runId))) as ConversationSnapshot | null;
+    async loadConversation(runId, options) {
+      const transcriptKey = keys.transcript(runId);
+      return parseJson(
+        await store.get(transcriptKey),
+        strictKeyFor(options, transcriptKey),
+      ) as ConversationSnapshot | null;
     },
 
     async saveStep(runId, record) {
       await store.set(keys.step(runId, record.step), JSON.stringify(record));
     },
 
-    async loadSteps(runId) {
+    async loadSteps(runId, options) {
       const stepKeys = await store.list(keys.stepPrefix(runId));
       // `list()` returns keys in lexicographic order; zero-padded step indices
       // make that match numeric step order, so no re-sort is required.
       const records: StepRecord[] = [];
       for (const key of stepKeys) {
-        const record = parseJson(await store.get(key)) as StepRecord | null;
+        const record = parseJson(
+          await store.get(key),
+          strictKeyFor(options, key),
+        ) as StepRecord | null;
         if (record) records.push(record);
       }
       return records;
     },
 
-    async loadCheckpoint(runId) {
+    async loadCheckpoint(runId, options) {
       const [cursor, conversation, steps] = await Promise.all([
-        checkpointStore.loadCursor(runId),
-        checkpointStore.loadConversation(runId),
-        checkpointStore.loadSteps(runId),
+        checkpointStore.loadCursor(runId, options),
+        checkpointStore.loadConversation(runId, options),
+        checkpointStore.loadSteps(runId, options),
       ]);
       return {
         runId,
