@@ -255,7 +255,7 @@ export function classifyPlaygroundSrcChange(filename: string): ChangeScope | nul
  * route every change through `scheduleRebuild`. The scheduler debounces
  * bursts and the generation-token state machine guarantees publish atomicity.
  */
-export function startWatcher(): FSWatcher[] {
+export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
   const created: FSWatcher[] = [];
 
   try {
@@ -267,8 +267,9 @@ export function startWatcher(): FSWatcher[] {
     for (const componentSource of COMPONENT_SOURCES) {
       const srcPath = join(componentSource.packageRoot, 'src');
       created.push(
-        watch(srcPath, { recursive: true }, (_event, filename) => {
-          if (filename) scheduleRebuild({ kind: 'components' });
+        // The tree alone decides the scope, so a missing filename changes nothing.
+        watchPath(srcPath, { recursive: true }, () => {
+          scheduleRebuild({ kind: 'components' });
         }),
       );
 
@@ -278,7 +279,7 @@ export function startWatcher(): FSWatcher[] {
       ]) {
         if (!existsSync(metadataPath)) continue;
         created.push(
-          watch(metadataPath, () => {
+          watchPath(metadataPath, () => {
             scheduleRebuild({ kind: 'components' });
           }),
         );
@@ -292,8 +293,8 @@ export function startWatcher(): FSWatcher[] {
     const markdownSourcePath = join(REPOSITORY_ROOT, 'packages', 'markdown', 'src');
     if (existsSync(markdownSourcePath)) {
       created.push(
-        watch(markdownSourcePath, { recursive: true }, (_event, filename) => {
-          if (filename) scheduleRebuild({ kind: 'components' });
+        watchPath(markdownSourcePath, { recursive: true }, () => {
+          scheduleRebuild({ kind: 'components' });
         }),
       );
     }
@@ -307,8 +308,13 @@ export function startWatcher(): FSWatcher[] {
     // rather than being silently treated as a bogus per-component name.
     const examplesPath = join(PLAYGROUND_ROOT, 'src', 'examples');
     created.push(
-      watch(examplesPath, { recursive: true }, (_event, filename) => {
-        if (!filename) return;
+      watchPath(examplesPath, { recursive: true }, (_event, filename) => {
+        // Without a filename the owning component is unknown, so widen to the components scope
+        // rather than dropping the change (the same fallback a bare basename gets below).
+        if (!filename) {
+          scheduleRebuild({ kind: 'components' });
+          return;
+        }
         const normalizedFilename = filename.replaceAll('\\', '/');
         if (normalizedFilename.endsWith('.test.ts') || normalizedFilename.startsWith('.')) return;
         if (normalizedFilename.endsWith('.example.svelte')) {
@@ -334,8 +340,13 @@ export function startWatcher(): FSWatcher[] {
 
     const playgroundSrcPath = join(PLAYGROUND_ROOT, 'src');
     created.push(
-      watch(playgroundSrcPath, { recursive: true }, (_event, filename) => {
-        if (!filename) return;
+      watchPath(playgroundSrcPath, { recursive: true }, (_event, filename) => {
+        // Without a filename the change cannot be classified, and `components` is the widest
+        // scope that is not specific to the shell, so use it instead of dropping the event.
+        if (!filename) {
+          scheduleRebuild({ kind: 'components' });
+          return;
+        }
         const scope = classifyPlaygroundSrcChange(filename);
         if (scope) scheduleRebuild(scope);
       }),
