@@ -32,8 +32,26 @@ describe('the aggregate duration of a goal', () => {
     },
   );
 
+  it('reads a goal created at the very instant of the reading as no time elapsed', () => {
+    const view = bounded('2026-10-02T01:00:00.000Z');
+    expect(elapsedMilliseconds(view, NOW)).toBe(0);
+    expect(remainingMilliseconds(view, NOW)).toBe(60_000);
+    expect(isDeadlineElapsed(view, NOW)).toBe(false);
+  });
+
+  it.each(['2026-10-02T01:00:00.001Z', '2026-10-02T01:00:30.000Z', '2099-01-01T00:00:00.000Z'])(
+    'spends a duration bound, rather than granting a fresh window at every reading, when the creation time %p is later than the reading',
+    (createdAt) => {
+      const view = bounded(createdAt);
+      expect(Number.isFinite(elapsedMilliseconds(view, NOW))).toBe(true);
+      expect(elapsedMilliseconds(view, NOW)).toBeGreaterThanOrEqual(60_000);
+      expect(remainingMilliseconds(view, NOW)).toBe(0);
+      expect(isDeadlineElapsed(view, NOW)).toBe(true);
+    },
+  );
+
   it('has no deadline to spend when the goal has no duration bound, whatever the creation time', () => {
-    for (const createdAt of ['corrupt', '2026-10-02T00:00:00.000Z']) {
+    for (const createdAt of ['corrupt', '2026-10-02T00:00:00.000Z', '2099-01-01T00:00:00.000Z']) {
       expect(remainingMilliseconds(unbounded(createdAt), NOW)).toBeUndefined();
       expect(isDeadlineElapsed(unbounded(createdAt), NOW)).toBe(false);
     }

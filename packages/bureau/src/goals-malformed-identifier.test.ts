@@ -3,7 +3,9 @@
  *
  * The record key is percent-encoded, and `encodeURIComponent` throws a
  * `URIError` for a lone surrogate. Every lookup by id has to answer the
- * documented absent outcome for such an id instead of rejecting.
+ * documented absent outcome for such an id instead of rejecting. An id that is
+ * not text at all (an untyped caller's number, `null`, or object) names no goal
+ * either, and no outcome may carry it as though it were an id.
  */
 import { createMockGenerate, stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
@@ -17,6 +19,7 @@ import { createGoalStore } from './goal-store';
 import {
   createCheckValidator,
   createDiagnostics,
+  goalRequest,
   hangUntilAborted,
   workerAgent,
 } from './testing/goal-fixtures.test-support';
@@ -84,6 +87,52 @@ describe('a goal id with a lone surrogate', () => {
       expect(await bureau.goals.cancel(id, { principal: 'alice' })).toEqual({
         outcome: 'not-found',
       });
+    },
+  );
+});
+
+const NOT_TEXT = [
+  ['a number', 7],
+  ['null', null],
+  ['false', false],
+  ['an object', { goalRunId: 'g1' }],
+  ['an array', ['g1']],
+] as const;
+
+describe('a goal id that is not text', () => {
+  it.each(NOT_TEXT)('is absent to get, active, cancel, and close: %s', async (_name, id) => {
+    const bureau = await boot();
+    expect(await bureau.goals.get(id as never)).toBeUndefined();
+    expect(await bureau.goals.active(id as never)).toBeUndefined();
+    expect(await bureau.goals.cancel(id as never)).toEqual({ outcome: 'not-found' });
+    expect(await bureau.goals.close(id as never)).toEqual({ outcome: 'not-found' });
+  });
+
+  it.each(NOT_TEXT)(
+    'is answered by recover with a report that keeps its public type: %s',
+    async (_name, id) => {
+      const bureau = await boot();
+      const report = await bureau.goals.recover(id as never);
+      expect(report).toEqual({
+        goals: [],
+        failures: [{ goalRunId: '*', reason: 'The goal id must be text.' }],
+      });
+      for (const named of [...report.goals, ...report.failures]) {
+        expect(typeof named.goalRunId).toBe('string');
+      }
+    },
+  );
+
+  it.each(NOT_TEXT)(
+    'never widens recover into the sweep over every goal: %s',
+    async (_name, id) => {
+      const bureau = await boot();
+      expect(await bureau.goals.create(goalRequest())).toMatchObject({ outcome: 'created' });
+      // The control: with no id, recovery does sweep and name the goal.
+      const sweep = await bureau.goals.recover();
+      expect(sweep.goals.map((entry) => entry.goalRunId)).toEqual(['g1']);
+      const report = await bureau.goals.recover(id as never);
+      expect(report.goals).toEqual([]);
     },
   );
 });

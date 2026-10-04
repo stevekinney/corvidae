@@ -1020,20 +1020,23 @@ function isAttemptValidatedPayload(record: PlainRecord, payload: PlainRecord): b
   if (!isValidatorIdentity(payload['validatorIdentity'])) return false;
   const digest = payload['feedbackDigest'];
   const recorded = attempt.validation;
-  // A recorded verdict is the one this event reports, whatever its kind.
-  if (recorded !== undefined) {
-    const identity = payload['validatorIdentity'];
-    if (
-      recorded.outcome.kind !== outcomeKind ||
-      recorded.identity.name !== identity.name ||
-      recorded.identity.version !== identity.version
-    ) {
-      return false;
-    }
+  // The event reports a verdict, and the projection emits one only for an
+  // attempt whose verdict the same commit recorded, which no later write can
+  // remove (`applyAttempt` refuses a patch that drops it). An attempt with no
+  // recorded verdict, such as a run an operator aborted into a retry, has none
+  // for an event to report: a validated event naming it was never projected.
+  if (recorded === undefined) return false;
+  // The recorded verdict is the one this event reports, whatever its kind.
+  const identity = payload['validatorIdentity'];
+  if (
+    recorded.outcome.kind !== outcomeKind ||
+    recorded.identity.name !== identity.name ||
+    recorded.identity.version !== identity.version
+  ) {
+    return false;
   }
   if (outcomeKind !== 'fail') return digest === undefined;
   if (!isString(digest) || !/^[0-9a-f]{64}$/.test(digest)) return false;
-  if (recorded === undefined) return true;
   return recorded.outcome.kind === 'fail' && sha256HexSync(recorded.outcome.feedback) === digest;
 }
 
