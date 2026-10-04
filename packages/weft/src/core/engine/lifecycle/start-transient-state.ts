@@ -1,6 +1,10 @@
 import type { Checkpoint } from '../../types.ts';
 import { adoptLaunchCheckpoint, releaseLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import type { EngineInternals } from '../internals.ts';
+import {
+  forgetSeededCleanupMembership,
+  forgetSeededServices,
+} from '../scheduled-seed-ownership.ts';
 
 /**
  * What one start or prepare installs in memory for its workflow id, and how to undo it.
@@ -36,7 +40,9 @@ export function createLaunchAdoption(
       internals.workflowHeaders.delete(workflowId);
       internals.workflowVersionTuples.delete(workflowId);
       internals.workflowServices.delete(workflowId);
+      forgetSeededServices(internals, workflowId);
       internals.workflowsNeedingTerminalCleanup.delete(workflowId);
+      forgetSeededCleanupMembership(internals, workflowId);
     },
   };
 }

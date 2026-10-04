@@ -885,6 +885,7 @@ export class Engine<
     getInternals(this).pendingStarts = new Set();
     getInternals(this).pendingScheduleCreations = new Set();
     getInternals(this).workflowsNeedingTerminalCleanup = new Set();
+    getInternals(this).scheduledSeedOwners = new Map();
     getInternals(this).reviewCoordinator = new ReviewCoordinator(storage, getNow);
     getInternals(this).reviewWaiters = new Map();
     getInternals(this).reviewWaitersByWorkflow = new Map();

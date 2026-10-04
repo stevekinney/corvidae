@@ -59,6 +59,7 @@ function createInternals(
     pendingAsyncActivityResolutions: new Map(),
     registrations: new Map(),
     resultResolvers: new Map(),
+    scheduledSeedOwners: new Map(),
     storage,
     workflowHeaders: new Map(),
     workflowNestingDepths: new Map(),

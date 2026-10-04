@@ -191,6 +191,7 @@ export function disposeEngine(
   // state would otherwise strand its credential-bearing closures live past
   // dispose. Clearing here closes that leak on engine teardown.
   internals.workflowServices.clear();
+  internals.scheduledSeedOwners.clear();
   internals.workflowHeaders.clear();
   internals.pendingStarts.clear();
   internals.pendingScheduleCreations.clear();

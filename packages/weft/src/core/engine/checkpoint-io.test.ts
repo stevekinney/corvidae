@@ -154,6 +154,7 @@ function createCleanupInternals(storage: MemoryStorage, checkpoint: Checkpoint):
     workflowNestingDepths: new Map(),
     workflowReviewIds: new Map(),
     workflowsNeedingTerminalCleanup: new Set(),
+    scheduledSeedOwners: new Map(),
     workflowTypeByWorkflowId: new Map(),
   } as never;
 }

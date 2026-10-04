@@ -77,6 +77,7 @@ describe('termination helpers', () => {
         ['wf-cleanup', new Map([['traceparent', 'value']])],
       ]),
       workflowServices: new Map<string, unknown>(),
+      scheduledSeedOwners: new Map(),
       workflowTypeByWorkflowId: new Map<string, string>(),
       scheduler: {
         cancel: async () => {},
@@ -135,6 +136,7 @@ describe('termination helpers', () => {
       workflowNestingDepths: new Map<string, number>(),
       workflowHeaders: new Map<string, Map<string, string>>(),
       workflowServices: new Map<string, unknown>(),
+      scheduledSeedOwners: new Map(),
       workflowTypeByWorkflowId: new Map<string, string>(),
       scheduler: {
         cancel: async () => {},

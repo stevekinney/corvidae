@@ -18,6 +18,7 @@ import { commitPurgeOrExplainLoss, isScannedRun } from './purge-supersession.ts'
 import { markPurgeWriteFailures } from './purge-write-tracking.ts';
 import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
+import { forgetSeededCleanupMembership } from './scheduled-seed-ownership.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
 import {
   buildExternalTerminalRotationFragment,
@@ -233,6 +234,9 @@ export function clearPurgedWorkflowInMemoryState(
   internals.workflowHeaders.delete(workflowId);
   internals.workflowNestingDepths.delete(workflowId);
   internals.workflowTypeByWorkflowId.delete(workflowId);
+  // `cleanupWaiters` removes the services entry and forgets who seeded it. A purged id's
+  // seed ownership of its cleanup membership is forgotten too, so no seed outlives the run.
+  forgetSeededCleanupMembership(internals, workflowId);
   cleanupWaiters(workflowId);
 }
 
