@@ -494,6 +494,65 @@ describe('registerGoalAttemptFence', () => {
     expect(generates()).toBe(1);
   });
 
+  describe('the backoff timer a wait arms (COR-1418)', () => {
+    /** Timers that hand back one fixed handle after running `arm`, recording every handle they are asked to clear. */
+    function scriptedTimers(arm: (callback: () => void) => void) {
+      const handle = Symbol('armed timer');
+      const cleared: unknown[] = [];
+      const runtime = {
+        timers: {
+          ...createDefaultRuntimeServices().timers,
+          setTimeout: (callback: () => void) => {
+            arm(callback);
+            return handle;
+          },
+          clearTimeout: (armed: unknown) => {
+            cleared.push(armed);
+          },
+        },
+      };
+      return { runtime, handle, cleared };
+    }
+
+    it('ends a wait whose timer fires before setTimeout has returned its handle, instead of reading the handle first', async () => {
+      // A runtime that calls back from inside setTimeout ends the wait while the handle
+      // it is about to return does not exist yet.
+      const { runtime } = scriptedTimers((callback) => callback());
+      let reads = 0;
+
+      const { result, generates } = await fencedRun(
+        {
+          mayRun: () => {
+            reads += 1;
+            return reads < 3
+              ? Promise.reject(new Error('storage is briefly down'))
+              : Promise.resolve(RUN);
+          },
+        },
+        { registration: { runtime, delaysMs: [1, 1] } },
+      );
+
+      expect(reads).toBe(3);
+      expect(result.finishReason).toBe('stop-condition');
+      expect(generates()).toBe(1);
+    });
+
+    it('clears the very timer setTimeout returned when an abort lands as the timer is armed', async () => {
+      const controller = new AbortController();
+      const { runtime, handle, cleared } = scriptedTimers(() => controller.abort());
+
+      await fencedRun(
+        { mayRun: () => Promise.reject(new Error('storage is down')) },
+        {
+          registration: { runtime, delaysMs: [3_600_000] },
+          signal: controller.signal,
+        },
+      );
+
+      expect(cleared).toEqual([handle]);
+    });
+  });
+
   it('does not compact the conversation of a step it refuses, since compaction can reach a model', async () => {
     let compactions = 0;
     const { result, generates } = await fencedRun(
@@ -726,9 +785,11 @@ describe('acknowledged-only runs', () => {
         setTimeout: (callback: () => void, milliseconds?: number) => {
           waits.push(milliseconds ?? 0);
           const wait = waits.length;
-          return base.timers.setTimeout(async () => {
-            await onWait(wait);
-            callback();
+          return base.timers.setTimeout(() => {
+            void (async () => {
+              await onWait(wait);
+              callback();
+            })();
           }, 0);
         },
       },

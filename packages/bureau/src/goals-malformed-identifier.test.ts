@@ -8,10 +8,9 @@
  * either, and no outcome may carry it as though it were an id.
  */
 import { createMockGenerate, stopWhen } from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
-
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 
 import { createBureau } from './create-bureau';
 import { createGoalState, goalTransitionId, InvalidGoalStateError } from './goal-state';
