@@ -508,11 +508,24 @@ test('the playground build hashes the root package map its documentation reads',
   // under one value must not be restored for the other. `test` declares it for the same reason.
   expect(build?.env).toContain('NODE_ENV');
   expect(await Bun.file(join(root, 'scripts/mirror/package-map.json')).exists()).toBe(true);
-  // Pin the read the input covers, so removing the read prompts removing the input.
+  // Pin the read the input covers, so removing the read prompts removing the input. The path is
+  // defined once in `playground-paths.ts`, shared by the documentation read and the file watcher,
+  // so the pin has two halves: the definition names the mirror's package map, and the
+  // documentation module imports that definition and reads the file through it.
+  const paths = await Bun.file(
+    join(root, 'applications/playground/src/playground-paths.ts'),
+  ).text();
+  expect(paths).toMatch(/export const PACKAGE_MAP_PATH\s*=/);
+  expect(paths).toContain("'scripts', 'mirror', 'package-map.json'");
   const documentation = await Bun.file(
     join(root, 'applications/playground/src/component-documentation.ts'),
   ).text();
-  expect(documentation).toContain("'scripts', 'mirror', 'package-map.json'");
+  // The imported name must be `PACKAGE_MAP_PATH` itself: `{ SOMETHING_ELSE as PACKAGE_MAP_PATH }`
+  // would satisfy a looser match while pointing the read somewhere else.
+  expect(documentation).toMatch(
+    /import\s*\{(?:[^}]*,)?\s*PACKAGE_MAP_PATH\s*(?:,[^}]*)?\}\s*from\s*'\.\/playground-paths\.ts'/,
+  );
+  expect(documentation).toContain('Bun.file(PACKAGE_MAP_PATH)');
 });
 
 /**
