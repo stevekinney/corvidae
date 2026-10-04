@@ -9,15 +9,22 @@ const VARIABLES = [
   'PORT',
 ] as const;
 
-const originalValues = new Map<string, string | undefined>(
-  VARIABLES.map((name) => [name, process.env[name]]),
-);
-
-function restoreEnvironment(): void {
-  for (const [name, original] of originalValues) {
+/**
+ * Record a variable's current value and return the function that puts it back,
+ * deleting the variable when it was unset to begin with.
+ */
+function captureOriginal(name: string): () => void {
+  const original = process.env[name];
+  return () => {
     if (original === undefined) delete process.env[name];
     else process.env[name] = original;
-  }
+  };
+}
+
+const restorers = VARIABLES.map(captureOriginal);
+
+function restoreEnvironment(): void {
+  for (const restore of restorers) restore();
 }
 
 function clearEnvironment(): void {
