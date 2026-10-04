@@ -63,6 +63,9 @@ export function createRunFrameForwarder(
   const { streamEventTarget, summarizeOptions, clock } = options;
   const disposers: Array<() => void> = [];
   let currentStep = 0;
+  // Whether a step event has set `currentStep`. A forwarder attached to a run that is replayed
+  // rather than driven live never sees one, and then `currentStep` is only its initial value.
+  let stepObserved = false;
 
   function on<K extends CombinedOperativeEventType>(
     type: K,
@@ -74,11 +77,13 @@ export function createRunFrameForwarder(
 
   on('step.started', (event) => {
     currentStep = event.step;
+    stepObserved = true;
     emit(createStepFrame({ runId, step: event.step, phase: 'started' }, clock));
   });
 
   on('step.completed', (event) => {
     currentStep = event.step;
+    stepObserved = true;
     emit(
       createStepFrame({ runId, step: event.step, phase: 'completed', usage: event.usage }, clock),
     );
@@ -179,13 +184,22 @@ export function createRunFrameForwarder(
   // `'budget-exceeded'` means any thrown `BudgetExceededError`, whether the
   // limit was cost, tokens, calls or time, and the terminal result carries no
   // kind, so the message names no cause.
+  //
+  // The step is whatever step events reported. A run reattached after a restart
+  // replays its memoized steps without dispatching any, so `currentStep` would
+  // still be 0 and name the wrong step for a failure that happened later. The
+  // terminal result cannot stand in: `steps` ends at the last step the run
+  // recorded, and whether the failing step is recorded depends on where the
+  // error was thrown (a rejected `generate` call leaves it out, a throwing stop
+  // condition runs after it is recorded). With no step observed, `step` is left
+  // unset rather than guessed.
   on('run.completed', (event) => {
     if (event.finishReason !== 'budget-exceeded') return;
     emit(
       createNotificationFrame(
         {
           runId,
-          step: currentStep,
+          step: stepObserved ? currentStep : undefined,
           level: 'error' satisfies NotificationLevel,
           code: 'budget.exceeded',
           message: 'Budget exceeded',

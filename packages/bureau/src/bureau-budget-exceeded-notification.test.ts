@@ -6,16 +6,28 @@
  * decides when a run's frame forwarder stops listening. A test that hands
  * `createRunFrameForwarder` a bare `ActiveRun` cannot see that decision, so
  * these tests drive the whole Bureau lifecycle and read the frames a
- * `subscribeLiveFrames` listener receives, for both run drivers.
+ * `subscribeLiveFrames` listener receives, for both run drivers. A run that a
+ * restarted Bureau reattaches replays its memoized steps and dispatches no step
+ * events, so it is covered separately below.
  */
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { BudgetExceededError, type GenerateFunction, type RunFrame } from '@lostgradient/operative';
+import {
+  BudgetExceededError,
+  type GenerateFunction,
+  type RunFrame,
+  type StopCondition,
+} from '@lostgradient/operative';
+import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
-import { waitForRunState } from './test';
+import { waitForCondition, waitForRunState } from './test';
 import type { BureauOptions } from './types';
 
 const ORIGIN = '2026-10-03T00:00:00.000Z';
@@ -118,3 +130,171 @@ describe.each(drivers)('a Bureau run on the $name', ({ options }) => {
     expect(frames.at(-1)?.type).toBe('run-finished');
   });
 });
+
+let recoveryDatabaseCounter = 0;
+
+type WeftStorage = Awaited<ReturnType<typeof resolveStorage>>;
+
+/**
+ * Holds the first commit that marks a run's workflow terminal until `release` is called. Every
+ * checkpoint write for the run (transcript, step records, cursor) precedes that commit, so a
+ * commit that is never released models a process that dies after a run's terminal result was
+ * computed but before it was committed: the stored workflow stays running with its failing step
+ * already memoized. Releasing it later lets a test attach a subscriber before a replay can settle.
+ */
+function holdFirstTerminalRunCommit(storage: WeftStorage): {
+  storage: WeftStorage;
+  reached: Promise<void>;
+  release: () => void;
+} {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markReached: () => void = () => {};
+  const reached = new Promise<void>((resolve) => {
+    markReached = resolve;
+  });
+  let armed = true;
+  const held = new Proxy(storage, {
+    get(target, property, receiver) {
+      if (property === 'batch' || property === 'conditionalBatch') {
+        const real = (target as unknown as Record<string, unknown>)[property] as (
+          ...args: unknown[]
+        ) => Promise<unknown>;
+        return async (...args: unknown[]) => {
+          const operations = (property === 'conditionalBatch' ? args[1] : args[0]) as {
+            type: string;
+            key: string;
+          }[];
+          const commitsTerminalRun = operations.some(
+            (operation) =>
+              operation.type === 'put' && /^wf-terminal:[^:]+:run-/.test(operation.key),
+          );
+          if (commitsTerminalRun && armed) {
+            armed = false;
+            markReached();
+            await gate;
+          }
+          return real.apply(target, args);
+        };
+      }
+      const value: unknown = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  return { storage: held, reached, release };
+}
+
+const generateToolThenAnswer: GenerateFunction = async ({ step }) =>
+  step === 0
+    ? { content: '', toolCalls: [{ name: 'noop', arguments: {} }] }
+    : { content: 'Working.', toolCalls: [] };
+
+/** The documented hard-stop pattern: the failing step finishes, then the stop condition throws. */
+const stopConditionThatThrowsAtStepOne: StopCondition = (stepResult) => {
+  if (stepResult.step === 1) throw new BudgetExceededError('cost limit reached');
+  return false;
+};
+
+/**
+ * Both shapes fail at step 1, yet nothing in the terminal result tells them apart. A rejected
+ * `generate` call leaves step 1 unrecorded (`steps` ends at index 0); a throwing stop condition
+ * runs after step 1 was recorded (`steps` ends at index 1). That is why a reattached run, which
+ * replays no step events, cannot name the failing step from its terminal result.
+ */
+const failureShapes: Array<{
+  name: string;
+  options: { generate: GenerateFunction; stopWhen?: StopCondition };
+}> = [
+  {
+    name: 'a generate call rejects',
+    options: { generate: generateThenFail(new BudgetExceededError('token limit reached')) },
+  },
+  {
+    name: 'a stop condition throws',
+    options: { generate: generateToolThenAnswer, stopWhen: stopConditionThatThrowsAtStepOne },
+  },
+];
+
+describe.each(failureShapes)(
+  'a Bureau that reattaches a budget-exceeded run after a restart when $name',
+  ({ options }) => {
+    it('announces the budget failure without claiming a step it cannot know', async () => {
+      const databasePath = join(
+        tmpdir(),
+        `bureau-budget-exceeded-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+      );
+      const crashed = holdFirstTerminalRunCommit(
+        await resolveStorage({ type: 'sqlite', path: databasePath }),
+      );
+      let bureauA: Awaited<ReturnType<typeof createBureau>> | undefined;
+      let bureauB: Awaited<ReturnType<typeof createBureau>> | undefined;
+
+      try {
+        // Bureau A fails the run at step 1 and never learns the outcome: its terminal commit
+        // is never released, so the stored workflow is left running with that failure memoized.
+        bureauA = await createBureau({
+          agents: {},
+          ...options,
+          toolbox: createToolbox<readonly Tool[]>([noopTool]),
+          storage: crashed.storage,
+          durableExecution: true,
+          durableOwnership: { ownership: 'none' },
+        });
+        const run = await bureauA.createRun({ message: 'Go.' });
+        await crashed.reached;
+        const replayed = holdFirstTerminalRunCommit(
+          await resolveStorage({ type: 'sqlite', path: databasePath }),
+        );
+
+        // Bureau B is a separate bureau over the same file. Replaying the memoized steps settles
+        // the run without calling `generate` or announcing any step. Its terminal commit is held
+        // so this test subscribes before the replay can settle.
+        let generateCallsAfterRestart = 0;
+        const reattached = await createBureau({
+          agents: {},
+          ...options,
+          generate: async (generateInput) => {
+            generateCallsAfterRestart += 1;
+            return options.generate(generateInput);
+          },
+          toolbox: createToolbox<readonly Tool[]>([noopTool]),
+          storage: replayed.storage,
+          durableExecution: true,
+          durableOwnership: { ownership: 'none' },
+        });
+        bureauB = reattached;
+        const frames: RunFrame[] = [];
+        reattached.subscribeLiveFrames((frame) => {
+          if (frame.type === 'run-envelope' && frame.runId === run.id) frames.push(frame.frame);
+        });
+        await replayed.reached;
+        replayed.release();
+        await waitForCondition(async () => {
+          const session = await reattached.getSession(run.sessionId);
+          return session?.metadata['lastRunStatus'] !== 'running';
+        }, 'the reattached run never settled');
+
+        // The replay is the whole point: no model call and no step frame, so nothing but the
+        // terminal result is left to say where the run stopped.
+        expect(generateCallsAfterRestart).toBe(0);
+        expect(frames.filter((frame) => frame.type === 'step')).toEqual([]);
+        const notifications = budgetNotifications(frames);
+        expect(notifications).toHaveLength(1);
+        const notification = notifications[0]!;
+        expect(notification.code).toBe('budget.exceeded');
+        expect(notification.step).toBeUndefined();
+        expect(frames[frames.indexOf(notification) + 1]?.type).toBe('run-finished');
+      } finally {
+        await bureauB?.dispose();
+        // Disposed before any release: bureau A's held commit stays pending, as a dead
+        // process's would. Releasing it first lets A finish its run mid-dispose.
+        await bureauA?.dispose();
+        await rm(databasePath, { force: true });
+        await rm(`${databasePath}-wal`, { force: true });
+        await rm(`${databasePath}-shm`, { force: true });
+      }
+    });
+  },
+);
