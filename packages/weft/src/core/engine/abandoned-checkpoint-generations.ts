@@ -20,8 +20,11 @@ import type { EngineInternals } from './internals.ts';
  * marker a `result()` requested through a fresh handle after the loss would
  * register a waiter that nothing under `ownership: 'none'` ever settles. That
  * sentinel names the one pre-token run an id can have, since every later run
- * carries a token, so adopting any token-bearing generation for the id retires
- * it ({@link forgetAbandonedCheckpointGeneration}).
+ * carries a token. Adopting a token-bearing replacement does not retire it: a
+ * failure already in flight from the pre-token run identifies its generation by
+ * that sentinel, and must still be refused once the replacement is stored. A
+ * stale sentinel is inert otherwise, because wakes, `result()`, and timers key on
+ * the generation held in memory, so it costs one key per id.
  *
  * Held beside the engine rather than on `EngineInternals`, like the committed
  * checkpoint bytes in `checkpoint-commit-snapshots.ts`, so an engine that never
@@ -54,21 +57,19 @@ export function markCheckpointGenerationAbandoned(
 
 /**
  * Forget the marker once this engine successfully launches that same generation
- * again. Launching a token-bearing generation also forgets the pre-token marker
- * for the id: no pre-token run can be the one that was just launched or the one
- * that replaced it, so that marker can only be stale.
+ * again. Launching a different generation leaves the others' markers alone, the
+ * token-less sentinel included: outstanding work from an abandoned generation
+ * (a failure in flight) can outlive the adoption of its replacement and must
+ * still be refused.
  */
 export function forgetAbandonedCheckpointGeneration(
   internals: EngineInternals,
   workflowId: string,
   workflowExecutionToken: string | undefined,
 ): void {
-  const abandoned = abandonedGenerationsByEngine.get(internals);
-  if (abandoned === undefined) return;
-  abandoned.delete(abandonedCheckpointGenerationKey(workflowId, workflowExecutionToken));
-  if (workflowExecutionToken !== undefined) {
-    abandoned.delete(abandonedCheckpointGenerationKey(workflowId, undefined));
-  }
+  abandonedGenerationsByEngine
+    .get(internals)
+    ?.delete(abandonedCheckpointGenerationKey(workflowId, workflowExecutionToken));
 }
 
 /** Drop every marker; called when the engine is disposed. */

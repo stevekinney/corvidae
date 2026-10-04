@@ -367,16 +367,19 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     markCheckpointGenerationAbandoned(internals, 'relaunched', undefined);
     expect(abandonedCheckpointGenerationCount(internals)).toBe(2);
 
-    // A token-bearing replacement proves the pre-token run is over, so only its
-    // tokenless marker goes; the marker for the other token-bearing generation stays.
+    // Launching a different generation forgets nothing: a failure still in flight from an
+    // abandoned generation, the pre-token one included, must outlive its replacement.
     adoptLaunchCheckpoint(internals, 'relaunched', {
       workflowExecutionToken: 'generation-2',
     } as Checkpoint);
-    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
-    expect(isCheckpointGenerationAbandoned(internals, 'relaunched', undefined)).toBe(false);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(2);
+    expect(isCheckpointGenerationAbandoned(internals, 'relaunched', 'generation-1')).toBe(true);
+    expect(isCheckpointGenerationAbandoned(internals, 'relaunched', undefined)).toBe(true);
     adoptLaunchCheckpoint(internals, 'relaunched', {
       workflowExecutionToken: 'generation-1',
     } as Checkpoint);
+    expect(abandonedCheckpointGenerationCount(internals)).toBe(1);
+    adoptLaunchCheckpoint(internals, 'relaunched', {} as Checkpoint);
     expect(abandonedCheckpointGenerationCount(internals)).toBe(0);
 
     markCheckpointGenerationAbandoned(internals, 'relaunched', 'generation-1');
@@ -447,7 +450,7 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(internals.resultResolvers.has('legacy-fresh')).toBe(false);
   });
 
-  it('refuses wakes for a pre-token generation until a token-bearing replacement or a relaunch clears it', async () => {
+  it('refuses wakes for a pre-token generation until it is relaunched, not for the replacement that follows it', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const internals = getInternals(engine);
     internals.checkpoints.set('legacy-wake', {} as Checkpoint);
@@ -458,15 +461,15 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
     expect(await confirmWakeOwnership(internals, 'legacy-wake', 'signal')).toBe('discard');
     expect(await confirmWakeOwnership(internals, 'never-held', 'signal')).toBe('proceed');
 
-    // A token-bearing replacement can never be the pre-token run.
+    // A token-bearing replacement can never be the pre-token run. The sentinel stays for
+    // work still in flight from that run, but wakes follow the generation held in memory.
     adoptLaunchCheckpoint(internals, 'legacy-wake', {
       workflowExecutionToken: 'replacement',
     } as Checkpoint);
-    expect(isCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined)).toBe(false);
+    expect(isCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined)).toBe(true);
     expect(await confirmWakeOwnership(internals, 'legacy-wake', 'signal')).toBe('proceed');
 
     // Launching the same pre-token generation again clears its own marker.
-    markCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined);
     adoptLaunchCheckpoint(internals, 'legacy-wake', {} as Checkpoint);
     expect(isCheckpointGenerationAbandoned(internals, 'legacy-wake', undefined)).toBe(false);
     expect(await confirmWakeOwnership(internals, 'legacy-wake', 'signal')).toBe('proceed');
@@ -1141,10 +1144,14 @@ describe('failing an abandoned generation', () => {
   /**
    * The loser abandons generation A while one of its failures is held at its first
    * storage read; the winner then finishes A and a local `start-new` installs
-   * generation B under the same id. Returns the pieces a test needs to release the
-   * held failure and judge what it did to B.
+   * generation B under the same id. With `tokenless`, A is a run recovered from before
+   * execution tokens existed. Returns the pieces a test needs to release the held failure
+   * and judge what it did to B.
    */
-  async function replaceAbandonedGenerationBehindHeldFailure(id: string) {
+  async function replaceAbandonedGenerationBehindHeldFailure(
+    id: string,
+    options: { tokenless?: boolean } = {},
+  ) {
     const storage = new MemoryStorage();
     const workflows = { [id]: parkedOnSignal(id) };
     const loser = await Engine.create({ storage, recover: false, workflows });
@@ -1153,6 +1160,11 @@ describe('failing an abandoned generation', () => {
     await waitForCondition(() => internals.parkedInlineWorkflows.has(id), {
       label: `${id} generation A parked on the loser`,
     });
+    if (options.tokenless === true) {
+      const legacyCheckpoint = { ...internals.checkpoints.get(id)! };
+      delete legacyCheckpoint.workflowExecutionToken;
+      internals.checkpoints.set(id, legacyCheckpoint);
+    }
     const abandonedToken = tokenOf(internals, id);
 
     const reachedRead = createDeferred();
@@ -1195,7 +1207,9 @@ describe('failing an abandoned generation', () => {
       label: `${id} generation B parked on the loser`,
     });
     expect(tokenOf(internals, id)).not.toBe(abandonedToken);
-    expect(isCheckpointGenerationAbandoned(internals, id, abandonedToken)).toBe(true);
+    if (options.tokenless !== true) {
+      expect(isCheckpointGenerationAbandoned(internals, id, abandonedToken)).toBe(true);
+    }
     watched.writes.length = 0;
 
     return {
@@ -1225,6 +1239,29 @@ describe('failing an abandoned generation', () => {
       expect(scenario.writes).toEqual([]);
       expect(await readStatus(scenario.storage, 'replaced-failure')).toBe('running');
       await scenario.loser.signal('replaced-failure', 'go', 'B done');
+      expect(await scenario.replacement.result()).toBe('B done');
+    } finally {
+      await scenario.dispose();
+    }
+  });
+
+  it('drops a failure of a pre-token generation that resumes after a token-bearing replacement was installed', async () => {
+    const scenario = await replaceAbandonedGenerationBehindHeldFailure('tokenless-failure', {
+      tokenless: true,
+    });
+    try {
+      scenario.release();
+      await scenario.failure;
+
+      // The replacement always carries a token, but the failure in flight belongs to the
+      // pre-token run, whose only marker is the token-less sentinel: adopting the
+      // replacement must not have erased it.
+      expect(scenario.writes).toEqual([]);
+      expect(await readStatus(scenario.storage, 'tokenless-failure')).toBe('running');
+      expect(
+        isCheckpointGenerationAbandoned(scenario.internals, 'tokenless-failure', undefined),
+      ).toBe(true);
+      await scenario.loser.signal('tokenless-failure', 'go', 'B done');
       expect(await scenario.replacement.result()).toBe('B done');
     } finally {
       await scenario.dispose();
