@@ -565,7 +565,7 @@ export function createCatalogDispatcher({
               ),
             );
           } else {
-            (dispatchedActiveRun.durablyStarted ?? Promise.resolve()).then(
+            void (dispatchedActiveRun.durablyStarted ?? Promise.resolve()).then(
               durableStart.resolve,
               (error: unknown) => {
                 // A start that never committed holds no workflow this share

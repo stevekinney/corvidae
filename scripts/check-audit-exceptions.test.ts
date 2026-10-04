@@ -21,7 +21,7 @@ const ADVISORY = 'GHSA-vfj7-8cjw-p6xm';
 const entry: AuditException = {
   advisory: ADVISORY,
   package: 'braces',
-  allowedChains: [['ui', 'stylelint']],
+  allowedChains: [['ui', 'stylelint', 'micromatch', 'braces']],
   reason: 'No patched release.',
   trackingIssue: 'COR-1423',
   reviewBy: '2026-10-31',
@@ -56,6 +56,36 @@ const reporting = JSON.stringify({
   dompurify: [{ url: 'https://github.com/advisories/GHSA-p98j-92pf-mc4p', severity: 'low' }],
 });
 
+/** Replaces `from` with `to`, failing loudly when the fixture no longer contains `from`. */
+function substitute(text: string, from: string, to: string): string {
+  if (!text.includes(from)) throw new Error(`fixture does not contain ${from}`);
+  return text.replace(from, to);
+}
+
+const STYLELINT_ENTRY =
+  '"stylelint": ["stylelint@1.0.0", "", { "dependencies": { "micromatch": "^4" } }, "sha"],';
+const BRACES_ENTRY = '"braces": ["braces@3.0.3", "", {}, "sha"],';
+
+/** Stylelint gains a second route to `braces`, through a helper the exception never named. */
+function withNewStylelintRoute(text: string): string {
+  return substitute(
+    text,
+    STYLELINT_ENTRY,
+    `"stylelint": ["stylelint@1.0.0", "", { "dependencies": { "micromatch": "^4", "new-helper": "^1" } }, "sha"],
+      "new-helper": ["new-helper@1.0.0", "", { "dependencies": { "braces": "^3" } }, "sha"],`,
+  );
+}
+
+/** A second installed `braces` that no package depends on, so no workspace can reach it. */
+function withOrphanedInstance(text: string): string {
+  return substitute(
+    text,
+    BRACES_ENTRY,
+    `${BRACES_ENTRY}
+      "orphan/braces": ["braces@3.0.2", "", {}, "sha"],`,
+  );
+}
+
 describe('registry validation', () => {
   test('accepts the shipped registry', () => {
     expect(validateRegistry(auditExceptions)).toEqual([]);
@@ -78,6 +108,34 @@ describe('registry validation', () => {
 
   test('rejects a duplicate advisory', () => {
     expect(validateRegistry([entry, entry]).join('\n')).toContain('duplicate advisory id');
+  });
+
+  test.each([
+    ['stops short of the vulnerable package', [['ui', 'stylelint']]],
+    [
+      'runs past the vulnerable package',
+      [['ui', 'stylelint', 'micromatch', 'braces', 'fill-range']],
+    ],
+    [
+      'names another package than the vulnerable one',
+      [['ui', 'stylelint', 'micromatch', 'picomatch']],
+    ],
+  ] as const)('rejects a chain that %s', (_label, allowedChains) => {
+    const problems = validateRegistry([{ ...entry, allowedChains }]).join('\n');
+    expect(problems).toContain('must end at the vulnerable package "braces"');
+  });
+
+  test('accepts a chain that runs from the importer to the vulnerable package', () => {
+    expect(validateRegistry([entry])).toEqual([]);
+  });
+
+  test('requires every chain of the shipped registry to end at its vulnerable package', () => {
+    expect(auditExceptions.length).toBeGreaterThan(0);
+    for (const shipped of auditExceptions) {
+      for (const chain of shipped.allowedChains) {
+        expect(chain.at(-1)).toBe(shipped.package);
+      }
+    }
   });
 });
 
@@ -198,6 +256,108 @@ describe('reachability from the lockfile', () => {
     const problems = await checkExceptions([entry], beforeReview, reporting, broken);
     expect(problems.join('\n')).toContain('workspace "ui" not found in lockfile packages');
   });
+
+  describe('a route the exception never named', () => {
+    const lock = withNewStylelintRoute(lockfile());
+    const graph = buildGraph(lock);
+
+    test('is reported even though it runs through the allowed importer and Stylelint', () => {
+      const paths = findUnauthorizedPaths(graph, 'braces', entry.allowedChains) ?? [];
+      expect(paths.toSorted()).toEqual([
+        'app > ui > stylelint > new-helper > braces',
+        'root > app > ui > stylelint > new-helper > braces',
+        'ui > stylelint > new-helper > braces',
+      ]);
+    });
+
+    test('is reported, and so is every other route, when the chain stops short of the package', () => {
+      const paths = findUnauthorizedPaths(graph, 'braces', [['ui', 'stylelint']]) ?? [];
+      expect(paths).toContain('ui > stylelint > new-helper > braces');
+      expect(paths).toContain('ui > stylelint > micromatch > braces');
+    });
+
+    test('fails the exception check', async () => {
+      const problems = await checkExceptions([entry], beforeReview, reporting, lock);
+      expect(problems.join('\n')).toContain('ui > stylelint > new-helper > braces.');
+    });
+
+    test('is accepted once its full path is an allowed chain', () => {
+      const chains = [...entry.allowedChains, ['ui', 'stylelint', 'new-helper', 'braces']];
+      expect(findUnauthorizedPaths(graph, 'braces', chains)).toEqual([]);
+    });
+  });
+
+  describe('a second installed instance', () => {
+    test('that no workspace reaches is reported although another instance is reachable', () => {
+      const graph = buildGraph(withOrphanedInstance(lockfile()));
+      expect(findUnauthorizedPaths(graph, 'braces', entry.allowedChains)).toEqual([
+        'orphan/braces is installed but not reachable from any workspace; the lockfile graph cannot explain it',
+      ]);
+    });
+
+    test('that no workspace reaches fails the gate despite the advisory-wide ignore', async () => {
+      const problems = await checkExceptions(
+        [entry],
+        beforeReview,
+        reporting,
+        withOrphanedInstance(lockfile()),
+      );
+      expect(problems.join('\n')).toContain('orphan/braces is installed but not reachable');
+    });
+
+    test('is accepted when an allowed chain reaches it too', () => {
+      const nested = substitute(
+        lockfile({ rootDependencies: { other: '^1' } }),
+        '"other": ["other@1.0.0", "", { "dependencies": { "micromatch": "^4" } }, "sha"],',
+        `"other": ["other@1.0.0", "", { "dependencies": { "micromatch": "^4" } }, "sha"],
+      "other/micromatch": ["micromatch@4.0.8", "", { "dependencies": { "braces": "^3" } }, "sha"],
+      "other/micromatch/braces": ["braces@3.0.2", "", {}, "sha"],`,
+      );
+      const graph = buildGraph(nested);
+      const chains = [...entry.allowedChains, ['root', 'other', 'micromatch', 'braces']];
+      expect(findUnauthorizedPaths(graph, 'braces', chains)).toEqual([]);
+      expect(findUnauthorizedPaths(graph, 'braces', entry.allowedChains)).toEqual([
+        'root > other > micromatch > braces',
+      ]);
+    });
+  });
+});
+
+describe('the shipped braces exception', () => {
+  const shipped = auditExceptions.find((candidate) => candidate.package === 'braces');
+  if (shipped === undefined) throw new Error('the shipped registry has no braces exception');
+
+  /** The workspaces and importers the shipped chains name, with Stylelint reaching `braces`. */
+  const shippedShape = (stylelintDependencies: string) => `{
+    "lockfileVersion": 1,
+    "workspaces": {
+      "": { "name": "corvidae", "devDependencies": { "stylelint": "^1", "stylelint-use-logical": "^2" }, },
+      "components/cinder": { "name": "@lostgradient/cinder", "devDependencies": { "stylelint": "^1" }, },
+    },
+    "packages": {
+      "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/cinder"],
+      "stylelint": ["stylelint@1.0.0", "", { "dependencies": ${stylelintDependencies} }, "sha"],
+      "stylelint-use-logical": ["stylelint-use-logical@2.0.0", "", { "peerDependencies": { "stylelint": "^1" } }, "sha"],
+      "micromatch": ["micromatch@4.0.8", "", { "dependencies": { "braces": "^3" } }, "sha"],
+      "new-helper": ["new-helper@1.0.0", "", { "dependencies": { "braces": "^3" } }, "sha"],
+      "braces": ["braces@3.0.3", "", {}, "sha"],
+    },
+  }`;
+
+  test('accepts the route Stylelint has through micromatch', () => {
+    const graph = buildGraph(shippedShape('{ "micromatch": "^4" }'));
+    expect(findUnauthorizedPaths(graph, 'braces', shipped.allowedChains)).toEqual([]);
+  });
+
+  test('rejects a route Stylelint gains through a package the exception never named', () => {
+    const graph = buildGraph(shippedShape('{ "micromatch": "^4", "new-helper": "^1" }'));
+    const paths = findUnauthorizedPaths(graph, 'braces', shipped.allowedChains) ?? [];
+    expect(paths.toSorted()).toEqual([
+      '@lostgradient/cinder > stylelint > new-helper > braces',
+      'corvidae > stylelint > new-helper > braces',
+      'corvidae > stylelint-use-logical > stylelint > new-helper > braces',
+    ]);
+  });
 });
 
 describe('repository root anchoring', () => {
@@ -310,5 +470,17 @@ describe('the gate', () => {
     const gate = run({ now: new Date('2026-11-01T00:00:00Z') });
     expect(await gate.result).toBe(1);
     expect(gate.output().stderr).toContain('COR-1423');
+  });
+
+  test('fails when a second installed instance is reachable from no workspace', async () => {
+    const gate = run({ lock: withOrphanedInstance(lockfile()) });
+    expect(await gate.result).toBe(1);
+    expect(gate.output().stderr).toContain('orphan/braces is installed but not reachable');
+  });
+
+  test('fails when Stylelint gains a route the exception never named', async () => {
+    const gate = run({ lock: withNewStylelintRoute(lockfile()) });
+    expect(await gate.result).toBe(1);
+    expect(gate.output().stderr).toContain('ui > stylelint > new-helper > braces');
   });
 });

@@ -15,6 +15,7 @@
  * cannot tell "wrong id" from "not yours".
  */
 
+import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   FreshAttemptArtifactError,
   type FreshAttemptSourceResolver,
@@ -23,7 +24,6 @@ import {
   validateFreshAttemptArtifact,
 } from '@lostgradient/operative';
 
-import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { cancelGoal, settleCanceledGoal } from './goal-cancellation';
 import { cleanUpGoal, isCleanupDone } from './goal-cleanup';
 import { ensureController, type GoalControlDependencies } from './goal-controller';
@@ -68,6 +68,8 @@ export interface BureauGoalsDependencies extends GoalControlDependencies {
 
 const NO_ENGINE_TO_READ_RUN =
   "This bureau has no durable engine, so the run's workflow status cannot be read.";
+
+const GOAL_ID_NOT_TEXT = 'The goal id must be text.';
 
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -166,7 +168,7 @@ export function createBureauGoals<TName extends string = string>(
       return rejected('invalid-configuration', 'The goal request must be an object.');
     }
     if (request.goalRunId !== undefined && typeof request.goalRunId !== 'string') {
-      return rejected('invalid-goal-run-id', 'The goal id must be text.');
+      return rejected('invalid-goal-run-id', GOAL_ID_NOT_TEXT);
     }
     const conversationPolicy = request.conversationPolicy;
     const goalRunId = request.goalRunId ?? runtime.identifiers.next('goal-run');
@@ -482,6 +484,16 @@ export function createBureauGoals<TName extends string = string>(
     goalRunId?: string,
     query?: BureauGoalQuery,
   ): Promise<BureauGoalRecoveryReport> {
+    // The id is untyped input too. One that is named but is not text names no
+    // goal, so it is neither carried into the report, whose ids are text, nor
+    // widened into the sweep over every goal. `create` answers the same fault
+    // with the same reason.
+    if (goalRunId !== undefined && typeof goalRunId !== 'string') {
+      return {
+        goals: [],
+        failures: [{ goalRunId: '*', reason: GOAL_ID_NOT_TEXT }],
+      };
+    }
     try {
       if (goalRunId === undefined) {
         // A record that cannot be decoded has no principal to check, so only a

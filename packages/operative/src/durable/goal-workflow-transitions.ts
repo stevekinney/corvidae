@@ -43,35 +43,43 @@ export const isTerminalStatus = (status: GoalRunStatus): boolean =>
 const toIso = (nowMs: number): string => new Date(nowMs).toISOString();
 
 /**
- * What a creation time that cannot be read counts as: more time than any bound
- * allows, and still a finite number that survives the JSON the duration is
- * recorded in. Reading it as no time at all would let a duration-bounded goal
- * run for ever.
+ * The record's creation as a clock reading, or `undefined` when it cannot be
+ * used to measure age at `nowMs`: it does not parse, or it is later than the
+ * reading. A goal cannot have been created in the future, so a creation time
+ * after now is a record (or a clock) that cannot be trusted, and its age is
+ * not zero: clamping a negative age to zero would hand a duration-bounded goal
+ * a fresh, full window at every reading until the clock caught up with it.
  */
-const UNREADABLE_CREATION_MILLISECONDS = Number.MAX_SAFE_INTEGER;
-
-const creationMilliseconds = (view: DurationClock): number | undefined => {
+const creationMilliseconds = (view: DurationClock, nowMs: number): number | undefined => {
   const createdAt = Date.parse(view.createdAt);
-  return Number.isFinite(createdAt) ? createdAt : undefined;
+  return Number.isFinite(createdAt) && createdAt <= nowMs ? createdAt : undefined;
 };
 
 /**
- * The aggregate duration so far, measured from the record's creation. A
- * creation time that cannot be read fails closed: the goal is as old as it can
- * be, so a bound on its duration is spent rather than never consumed.
+ * The aggregate duration so far, measured from the record's creation. The
+ * deadline, the decision context, and a recorded transition all start from this
+ * one reading, so the controller, the start port, and the attempt fence agree on
+ * it. It is a reading of the clock, not a running total: `recordedDurationMs` is
+ * the figure that never goes backwards.
+ *
+ * A creation time that cannot be used (see `creationMilliseconds`) has no age
+ * to measure, so the reading is what each kind of goal can be told. A goal
+ * with a duration bound fails closed: it is read as having spent exactly its
+ * bound, which exhausts it (every comparison against the bound is `>=`) rather
+ * than never consuming it. A goal with no duration bound has no window to
+ * spend, so it keeps running and its reading is no time at all. Neither is a
+ * sentinel value: the reading is always a finite duration, because a recorded
+ * duration is built on it and the transition log is append-only.
  */
 export function elapsedMilliseconds(view: DurationClock, nowMs: number): number {
-  const createdAt = creationMilliseconds(view);
-  return createdAt === undefined
-    ? UNREADABLE_CREATION_MILLISECONDS
-    : Math.max(0, nowMs - createdAt);
+  const createdAt = creationMilliseconds(view, nowMs);
+  return createdAt === undefined ? (view.bounds.maximumTotalDurationMs ?? 0) : nowMs - createdAt;
 }
 
 /** `undefined` when the goal has no duration bound. */
 export function remainingMilliseconds(view: DurationClock, nowMs: number): number | undefined {
   const bound = view.bounds.maximumTotalDurationMs;
   if (bound === undefined) return undefined;
-  if (creationMilliseconds(view) === undefined) return 0;
   return Math.max(0, bound - elapsedMilliseconds(view, nowMs));
 }
 
@@ -79,13 +87,29 @@ export function isDeadlineElapsed(view: DurationClock, nowMs: number): boolean {
   return remainingMilliseconds(view, nowMs) === 0;
 }
 
+/**
+ * The aggregate duration a transition records and the decision context reads:
+ * the clock's reading, but never less than what the record already holds.
+ *
+ * The transition log is append-only, so the aggregate usage it records must not
+ * go backwards. The clock can: a wall clock stepped back, or one that reads
+ * behind the record's creation time, gives a smaller reading than the last
+ * transition recorded, or the zero of a goal with no duration bound. Taking the
+ * larger keeps the time already spent. It cannot disagree with the deadline:
+ * every non-terminal transition is committed after the deadline was found not
+ * yet elapsed, so what the record holds is below the bound, and the larger of
+ * the two reaches the bound exactly when the clock reading does.
+ */
+const recordedDurationMs = (view: GoalWorkflowView, nowMs: number): number =>
+  Math.max(view.usage.durationMs, elapsedMilliseconds(view, nowMs));
+
 function goalUsage(view: GoalWorkflowView, nowMs: number): GoalUsage {
   return {
     attempts: view.usage.attempts,
     steps: view.usage.steps,
     tokens: view.usage.tokens,
     costUsd: view.usage.costUsd,
-    durationMs: elapsedMilliseconds(view, nowMs),
+    durationMs: recordedDurationMs(view, nowMs),
   };
 }
 
@@ -148,7 +172,7 @@ function usageFor(
     steps: merged.steps,
     tokens: merged.tokens,
     ...(merged.costUsd === undefined ? {} : { costUsd: merged.costUsd }),
-    durationMs: elapsedMilliseconds(view, nowMs),
+    durationMs: recordedDurationMs(view, nowMs),
   };
 }
 

@@ -8,16 +8,21 @@
  *   - the registry entry is malformed (unknown advisory format, a missing field, a bad date);
  *   - the review-by date has passed;
  *   - the advisory no longer reports (a stale exception, to be removed);
- *   - the package is reachable from a workspace by any dependency path that does not contain one
+ *   - an allowed chain does not end at the vulnerable package, so it describes only part of a path;
+ *   - the package is reachable from a workspace by any dependency path that does not end with one
  *     of the entry's allowed chains, or the chain's first hop from a workspace is a runtime
  *     dependency rather than a development one;
+ *   - an installed instance of the package is reachable from no workspace, which leaves the
+ *     advisory-wide ignore covering something the lockfile graph cannot explain;
  *   - any other high or critical advisory remains once the exceptions are ignored.
  *
  * Reachability is read from `bun.lock`: production, development, and required peer edges of
  * workspaces, and the `dependencies`, `optionalDependencies`, and required peer dependencies of
  * locked packages. Bun installs unmet peers, so a peer is a real path; only peers the lockfile
  * marks optional are ignored. A workspace's peer is a runtime edge. The guard fails closed: a
- * workspace missing from the lockfile, or an installed package no workspace reaches, is reported.
+ * workspace missing from the lockfile, or an installed instance of the package that no workspace
+ * reaches, is reported. Each instance is checked on its own, so one reachable instance never
+ * vouches for another.
  */
 import { join, resolve as resolvePath } from 'node:path';
 import { auditExceptions, type AuditException } from './audit-exceptions';
@@ -77,6 +82,15 @@ export function validateRegistry(registry: readonly AuditException[]): string[] 
       problems.push(
         `${label}: "allowedChains" must be a non-empty list of chains of at least two package names.`,
       );
+    } else if (isNonEmptyString(entry?.package)) {
+      // A chain that stops short of the package would accept whatever the last hop later reaches.
+      for (const chain of chains as string[][]) {
+        if (chain[chain.length - 1] !== entry.package) {
+          problems.push(
+            `${label}: allowed chain "${chain.join(' > ')}" must end at the vulnerable package "${entry.package}", so that it describes a complete dependency path.`,
+          );
+        }
+      }
     }
     if (isNonEmptyString(entry?.advisory)) {
       if (!ADVISORY_PATTERN.test(entry.advisory)) {
@@ -261,16 +275,22 @@ export function buildGraph(lockfileText: string): Graph {
   return { nodes, edges, workspaces: [...workspaceNames].map(workspaceId), problems };
 }
 
-function containsChain(path: readonly string[], chain: readonly string[]): number {
-  for (let start = 0; start + chain.length <= path.length; start += 1) {
-    if (chain.every((name, offset) => path[start + offset] === name)) return start;
-  }
-  return -1;
+/**
+ * Where `chain` begins in `path` when it is the path's whole tail, and -1 otherwise. A path always
+ * ends at the vulnerable package, so a chain that stops short of it never matches: it would accept
+ * every route that the package it ends at gains later.
+ */
+function chainStart(path: readonly string[], chain: readonly string[]): number {
+  const start = path.length - chain.length;
+  if (start < 0) return -1;
+  return chain.every((name, offset) => path[start + offset] === name) ? start : -1;
 }
 
 /**
- * Describes every dependency path from a workspace to `packageName` that no allowed chain covers.
- * An empty list means the package is reached only through the allowed chains. `null` means the
+ * Describes every dependency path from a workspace to `packageName` that no allowed chain covers,
+ * and every installed instance of it that no workspace reaches. An allowed chain covers a path
+ * only when it is the path's complete tail, from the chain's importer through the package. An
+ * empty list means the package is reached only through the allowed chains. `null` means the
  * package is not in the lockfile at all.
  */
 export function findUnauthorizedPaths(
@@ -307,7 +327,7 @@ export function findUnauthorizedPaths(
       walked += 1;
       const names = trail.map((id) => graph.nodes.get(id)!.name);
       const covered = allowedChains.some((chain) => {
-        const start = containsChain(names, chain);
+        const start = chainStart(names, chain);
         if (start < 0) return false;
         const head = trail[start]!;
         const hop = kinds[start];
@@ -324,10 +344,24 @@ export function findUnauthorizedPaths(
   for (const workspace of graph.workspaces) {
     if (reaches.has(workspace)) walk([workspace], []);
   }
-  if (!targets.some((id) => reaches.has(id) && graph.workspaces.some((w) => reaches.has(w)))) {
-    offending.push(
-      `${packageName} is installed but not reachable from any workspace; the lockfile graph cannot explain it`,
-    );
+  // Reachability is per installed instance: the advisory-wide ignore covers every instance, so an
+  // instance no workspace reaches must fail even when another instance is reachable.
+  const fromWorkspaces = new Set<string>(graph.workspaces);
+  const frontier = [...graph.workspaces];
+  for (let next = frontier.shift(); next !== undefined; next = frontier.shift()) {
+    for (const { to } of graph.edges.get(next) ?? []) {
+      if (!fromWorkspaces.has(to)) {
+        fromWorkspaces.add(to);
+        frontier.push(to);
+      }
+    }
+  }
+  for (const target of targets) {
+    if (!fromWorkspaces.has(target)) {
+      offending.push(
+        `${target} is installed but not reachable from any workspace; the lockfile graph cannot explain it`,
+      );
+    }
   }
   if (walked > MAXIMUM_PATHS)
     offending.push(`more than ${MAXIMUM_PATHS} dependency paths; refusing to guess`);
