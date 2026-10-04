@@ -88,12 +88,19 @@ export type RunTransientStateSources = {
  *
  * This is the single place a start installs either entry, for `startWorkflow` and
  * `prepareWorkflow` alike, and it is synchronous: it adds no await to a launch path.
+ *
+ * A disposed engine installs nothing, as `adoptLaunchCheckpoint` adopts nothing: the create batch
+ * is awaited, so the engine can be disposed while a launch is still committing it, and disposal
+ * has by then released the services the engine holds so that a credential-bearing closure is not
+ * stranded past it. Installing after that would hold the run's services, and its cleanup
+ * membership, on an engine that has already let go of everything.
  */
 export function installRunTransientState(
   internals: EngineInternals,
   workflowId: string,
   run: RunTransientStateSources,
 ): void {
+  if (internals.disposed) return;
   const services =
     run.options?.services !== undefined
       ? { value: run.options.services }

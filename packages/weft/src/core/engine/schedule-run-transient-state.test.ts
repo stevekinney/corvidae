@@ -19,6 +19,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { KEYS, type BatchOperation } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { createDeferred, waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { decode } from '../codec/api.ts';
@@ -210,6 +211,39 @@ async function createHarness(id: string, kind: ResolutionKind) {
     return refusal;
   }
 
+  /**
+   * Hold the next batch that records a scheduled run of the id, which is the start batch of the
+   * occurrence, until `release` is called. `reached` settles once a batch is held.
+   */
+  function holdNextStartBatch() {
+    const reached = createDeferred();
+    const released = createDeferred();
+    let holding = true;
+    const carriesTheStart = (operations: readonly BatchOperation[]) =>
+      operations.some(
+        (operation) => operation.type === 'put' && operation.key === KEYS.scheduleRun(id),
+      );
+    internals.storage = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property !== 'batch' && property !== 'conditionalBatch') return original.bind(target);
+        return async (...batchArguments: unknown[]) => {
+          const operations = (
+            property === 'batch' ? batchArguments[0] : batchArguments[1]
+          ) as BatchOperation[];
+          if (holding && carriesTheStart(operations)) {
+            holding = false;
+            reached.resolve();
+            await released.promise;
+          }
+          return original.apply(target, batchArguments);
+        };
+      },
+    });
+    return { reached: reached.promise, release: released.resolve };
+  }
+
   /** Make the next create commit refuse, after the start adopted its launch checkpoint. */
   function refuseNextCreateCommit(): Error {
     return refuseStorage(['batch', 'conditionalBatch'], 1);
@@ -259,6 +293,7 @@ async function createHarness(id: string, kind: ResolutionKind) {
     resolutions,
     holdings,
     launch,
+    holdNextStartBatch,
     refuseNextCreateCommit,
     refuseNextRead,
     refuseEveryRead,
@@ -701,6 +736,32 @@ describe('what a scheduled start holds in memory', () => {
         expect(rejectionReason(first)).toBe(refusal);
         expect(rejectionReason(await second)).toBe(refusal);
         expectNothingHeld(harness);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  }
+
+  for (const kind of RESOLUTION_KINDS) {
+    it(`holds nothing for a disposed engine when it is disposed while the start batch commits, with ${RESOLUTION_LABELS[kind]}`, async () => {
+      const harness = await createHarness('transient-state-dispose-in-batch', kind);
+      try {
+        const batch = harness.holdNextStartBatch();
+        const launching = harness.launch();
+        await batch.reached;
+
+        // Disposal lands after the occurrence resolved its services and before its start commits,
+        // which is the window in which the launch has not yet installed anything.
+        await harness.dispose();
+        batch.release();
+        await launching;
+
+        // The launch that outlived the engine installs no services and no cleanup membership
+        // into it: disposal released everything the engine held so that a credential-bearing
+        // closure is not stranded past it.
+        expectNothingHeld(harness);
+        expect(harness.internals.workflowServices.size).toBe(0);
+        expect(harness.internals.workflowsNeedingTerminalCleanup.size).toBe(0);
       } finally {
         await harness.dispose();
       }
