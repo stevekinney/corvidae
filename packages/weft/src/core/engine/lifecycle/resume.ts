@@ -15,6 +15,10 @@
  */
 
 import { KEYS } from '../../../storage/interface.ts';
+import {
+  isCheckpointGenerationAbandoned,
+  markCheckpointGenerationAbandoned,
+} from '../abandoned-checkpoint-generations.ts';
 import type { WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import { decodeWorkflowState } from '../validation.ts';
@@ -108,6 +112,10 @@ export async function resumeWorkflowFromStorage(
 
   const acquireResult = await acquireStandaloneClaimBeforeResume(internals, workflowId);
   recordFreshClaimEpoch(acquireResult, options?.freshClaimTracker);
+  // Relaunching clears an abandoned-generation marker as soon as the checkpoint is
+  // adopted, before the remaining resume steps run; restore it if any of them fail.
+  const token = state.workflowExecutionToken;
+  const wasAbandoned = isCheckpointGenerationAbandoned(internals, workflowId, token);
 
   try {
     return await performResumeAfterClaimAcquired(
@@ -120,6 +128,7 @@ export async function resumeWorkflowFromStorage(
       options?.skipEagerRevisionCheck,
     );
   } catch (error) {
+    if (wasAbandoned) markCheckpointGenerationAbandoned(internals, workflowId, token);
     // WFT-134: release a freshly-acquired claim (see its doc) on any
     // rejection above, notably `performSerializedResume`'s status/generation
     // re-check — unless the caller asked to defer that release (see
