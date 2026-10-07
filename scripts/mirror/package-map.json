@@ -16,12 +16,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.14",
+      "lastPublishedVersion": "0.27.15",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.14",
-        "gitHead": "1eb55a1a92689729149f3692d0492e772c5eae2f",
-        "corvidaeCommit": "f9f2b0ed9f2b1c09ada1fe22d3bca94db9fcf214",
+        "version": "0.27.15",
+        "gitHead": "277ba4e3b1326b141e125b6bb8e26f56b946830d",
+        "corvidaeCommit": "c49e89bbc67e7d60b365b40473376c7c15a498a2",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -277,6 +277,9 @@
             "src/core/engine/catalog-removal.ts",
             "src/core/engine/catalog-tombstone-recovery.ts",
             "src/core/engine/checkpoint-commit-snapshots.ts",
+            "src/core/engine/checkpoint-conflict-abandon.ts",
+            "src/core/engine/checkpoint-conflict-error.ts",
+            "src/core/engine/checkpoint-conflict.test-support.ts",
             "src/core/engine/checkpoint-encoding-error.ts",
             "src/core/engine/checkpoint-io.ts",
             "src/core/engine/checkpoint-prune.ts",
@@ -304,6 +307,7 @@
             "src/core/engine/engine-workflows-namespace.ts",
             "src/core/engine/errors.ts",
             "src/core/engine/event-log-compaction.ts",
+            "src/core/engine/execution-attempts.ts",
             "src/core/engine/fenced-write.ts",
             "src/core/engine/finalizer-metadata.ts",
             "src/core/engine/finalizer-state.ts",
@@ -784,6 +788,8 @@
             "src/server/engine-event-feed-backend.ts",
             "src/server/fault-to-http.ts",
             "src/server/fault-to-json-rpc.ts",
+            "src/server/fleet-event-feed-operations.ts",
+            "src/server/fleet-event-feed-storage.ts",
             "src/server/fleet-event-feed.ts",
             "src/server/handler.ts",
             "src/server/handler/auth-context-principal.ts",
@@ -987,6 +993,7 @@
             "src/server/runtime/task-result-application.ts",
             "src/server/runtime/task-result-authorization.ts",
             "src/server/runtime/task-result-resolution.ts",
+            "src/server/runtime/task-result-submission.ts",
             "src/server/runtime/task-result-view.ts",
             "src/server/runtime/websocket-stream.ts",
             "src/server/runtime/websocket-upgrade.ts",
@@ -1170,7 +1177,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "ad2a34d51b61d97a3e16bc878b179d93f561c0a9cf4210f27bbe101323883340"
+          "digest": "f543dc9448ef8953f3c29f0028e65424029405735bc375b7412c55806285543e"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1178,7 +1185,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "a99d326f97e6c4108420e33e11a26ffda8792415484974f0ae8c77c82a153058"
+          "digest": "cc34589eeb0267dbc015887b4c47169f851600d86b0ae9df95ab85866d659f08"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -2872,6 +2879,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/checkpoint-conflict-abandon.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/checkpoint-conflict-abandon.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/checkpoint-conflict-error.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/checkpoint-conflict-error.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/checkpoint-encoding-error.d.ts",
               "executable": false
             },
@@ -3077,6 +3100,14 @@
             },
             {
               "path": "package/dist/core/engine/event-log-compaction.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/execution-attempts.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/execution-attempts.js",
               "executable": false
             },
             {
@@ -6472,6 +6503,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/fleet-event-feed-operations.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/fleet-event-feed-operations.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/fleet-event-feed-storage.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/fleet-event-feed-storage.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/fleet-event-feed.d.ts",
               "executable": false
             },
@@ -7944,6 +7991,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/runtime/task-result-submission.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/task-result-submission.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/runtime/task-result-view.d.ts",
               "executable": false
             },
@@ -9120,7 +9175,7 @@
               "executable": false
             }
           ],
-          "digest": "fd491b7f2819fdc15cee43e7ec348bc06ad836807951567f349be5e42d2c1703"
+          "digest": "17a3014c4c18e56e5efe2f07b5886fac3cb5b3e66c9c84b91183609556cf7713"
         }
       }
     },

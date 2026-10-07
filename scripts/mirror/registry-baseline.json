@@ -1175,8 +1175,8 @@
     },
     "@lostgradient/weft": {
       "workspace": "@lostgradient/weft",
-      "version": "0.27.14",
-      "fetchedAt": "2026-10-03",
+      "version": "0.27.15",
+      "fetchedAt": "2026-10-07",
       "subpaths": [
         ".",
         "./client",
