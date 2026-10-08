@@ -113,3 +113,8 @@ export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpoi
     this.workflowExecutionToken = options?.workflowExecutionToken;
   }
 }
+
+/** Whether `error` reports a lost checkpoint race for exactly this workflow. */
+export function isCheckpointConflictFor(error: unknown, workflowId: string): boolean {
+  return error instanceof WorkflowCheckpointConflictError && error.workflowId === workflowId;
+}

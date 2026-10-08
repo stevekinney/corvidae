@@ -1,7 +1,7 @@
 import type { ContextOperationRequest } from '../context.ts';
 import type { TimerEntry, WorkflowState } from '../types.ts';
-import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
 import { clearPendingAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
+import { isHeldGenerationAbandoned } from './execution-attempts.ts';
 import type {
   DurableInlineOperation,
   EngineInternals,
@@ -157,7 +157,7 @@ export function retainTimerOfAbandonedGeneration(
   entry: TimerEntry,
   loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null>,
 ): Promise<void> | undefined {
-  if (!isCurrentCheckpointGenerationAbandoned(internals, entry.workflowId)) return undefined;
+  if (!isHeldGenerationAbandoned(internals, entry.workflowId)) return undefined;
   return retainDiscardedDurableTimer(entry.id, entry.workflowId, loadWorkflowState);
 }
 

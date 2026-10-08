@@ -17,7 +17,6 @@ import type {
   WorkflowState,
   WorkflowTimelineEntry,
 } from '../../types.ts';
-import { isCheckpointGenerationAbandoned } from '../abandoned-checkpoint-generations.ts';
 import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
@@ -28,6 +27,7 @@ import {
 import { TERMINAL_CLEANUP_DELAY_MS } from '../bulk-operations.ts';
 import { takeCancelHandlers, type CancelHandler } from '../cancel-handlers.ts';
 import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-side-effects.ts';
+import { staleFailureGuard, type FailureOrigin } from '../execution-attempts.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
 import { dropQueuedInlineWorkflowStart } from '../inline-launch-queue.ts';
 import type { EngineInternals } from '../internals.ts';
@@ -573,7 +573,10 @@ export async function failWorkflow(
   error: Error,
   callbacks: TerminationCallbacks,
   failureCategory: FailureCategory = 'system',
+  failureOrigin: FailureOrigin = 'execution',
 ): Promise<void> {
+  // Captured before the first await: see `staleFailureGuard`.
+  const skipCommitIf = staleFailureGuard(internals, workflowId, failureOrigin);
   const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
   const attributes = attributeBytes
     ? (decode(attributeBytes) as Record<string, SearchAttributeValue>)
@@ -609,12 +612,10 @@ export async function failWorkflow(
       // resume whose services are unavailable can fail the run (the fail path runs
       // before the suspended→running flip) instead of stranding it 'suspended'.
       allowedStatuses: FORCIBLY_TERMINABLE_STATUSES,
-      // A generation this engine abandoned after losing a checkpoint CAS belongs
-      // to the winner: never write a terminal state over it. Scoped by token and
-      // evaluated after the last read, so a later generation under the same id
-      // still fails normally.
-      skipCommitIf: (state) =>
-        isCheckpointGenerationAbandoned(internals, workflowId, state.workflowExecutionToken),
+      // Never write a terminal state over a generation this engine abandoned after losing a
+      // checkpoint CAS, or over a run it has launched again since this failure began. Judged
+      // after the last read, so a failure of the current attempt still fails normally.
+      skipCommitIf,
       buildAdditionalOperations: (_previousState, updatedAt) => {
         finalizePendingTimelineEntry(internals, workflowId, 'failed', error.message, updatedAt);
         const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
