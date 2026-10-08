@@ -477,5 +477,61 @@ describe('createCheckpointStore', () => {
       expect(await store.loadConversation(sessionRunId)).toBeNull();
       expect(await store.loadSteps(sessionRunId)).toEqual([]);
     });
+
+    it('gives an id with an escape sequence but no delimiter no fallback into another run', async () => {
+      const underlying = createStore();
+      const store = createCheckpointStore(underlying);
+      // `a%3Ab`'s unescaped prefix is `durable-run:a%3Ab:`, which is run `a:b`'s escaped prefix.
+      await store.saveCursor('a:b', cursor(4));
+      await store.saveConversation('a:b', persistedSnapshot);
+      await store.saveStep('a:b', stepRecord(0));
+
+      expect(await store.loadCursor('a%3Ab')).toBeNull();
+      expect(await store.loadConversation('a%3Ab')).toBeNull();
+      expect(await store.loadSteps('a%3Ab')).toEqual([]);
+      expect(await store.clear('a%3Ab')).toBe(0);
+      expect(await store.loadCursor('a:b')).toEqual(cursor(4));
+      expect(await store.loadSteps('a:b')).toEqual([stepRecord(0)]);
+    });
+
+    it('reads, orders, and clears legacy steps numbered past ten digits', async () => {
+      const underlying = createStore();
+      await underlying.set(
+        legacyStepKey(sessionRunId, 10_000_000_000),
+        JSON.stringify(stepRecord(10_000_000_000)),
+      );
+      await underlying.set(legacyStepKey(sessionRunId, 9), JSON.stringify(stepRecord(9)));
+      const store = createCheckpointStore(underlying);
+
+      const legacySteps = await store.loadSteps(sessionRunId);
+      expect(legacySteps.map((record) => record.step)).toEqual([9, 10_000_000_000]);
+      expect(await store.clear(sessionRunId)).toBe(2);
+      expect(await underlying.list('durable-run:')).toEqual([]);
+    });
+  });
+
+  describe('steps numbered past ten digits', () => {
+    const stepRecord = (step: number): StepRecord => ({
+      step,
+      content: `step-${step}`,
+      toolCalls: [],
+      results: [],
+      final: false,
+    });
+
+    it('loads them in numeric order and clears them, for ordinary and delimited ids', async () => {
+      for (const runId of ['run-wide', 'user-9:1']) {
+        const underlying = createStore();
+        const store = createCheckpointStore(underlying);
+        await store.saveStep(runId, stepRecord(10_000_000_000));
+        await store.saveStep(runId, stepRecord(9_999_999_999));
+        await store.saveStep(runId, stepRecord(2));
+
+        const steps = await store.loadSteps(runId);
+        expect(steps.map((record) => record.step)).toEqual([2, 9_999_999_999, 10_000_000_000]);
+        expect(await store.clear(runId)).toBe(3);
+        expect(await underlying.list('durable-run:')).toEqual([]);
+      }
+    });
   });
 });

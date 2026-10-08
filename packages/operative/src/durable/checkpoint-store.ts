@@ -43,16 +43,28 @@ const legacyKeys = {
   stepPrefix: (runId: string) => `${legacyKeys.prefix(runId)}step:`,
 };
 
-/** Whether the run id has keys in the legacy layout that differ from its current ones. */
+/**
+ * Whether the run id has 0.15.x keys to fall back to. Only an id containing
+ * `:` qualifies. An escaped id never contains `:`, so its legacy keys cannot
+ * alias any run's current keys. An id that contains `%` but no `:` (such as
+ * `a%3Ab`) would read its legacy prefix `durable-run:a%3Ab:`, which is run
+ * `a:b`'s current prefix, so it gets no fallback.
+ */
 function hasLegacyKeys(runId: string): boolean {
-  return encodeRunId(runId) !== runId;
+  return runId.includes(':');
 }
 
-/** The exact shape of a step number in a key: `String(step).padStart(10, '0')`. */
-const STEP_NUMBER = /^\d{10}$/;
+/** A step number in a key: `String(step).padStart(10, '0')`, which never truncates. */
+const STEP_NUMBER = /^\d{10,}$/;
+
+/** Numeric order for zero-padded step numbers of any width. */
+function compareStepNumbers(left: string, right: string): number {
+  if (left.length !== right.length) return left.length - right.length;
+  return left < right ? -1 : left > right ? 1 : 0;
+}
 
 /**
- * The step keys under `stepPrefix`, keyed by their ten-digit step number. The
+ * The step keys under `stepPrefix`, keyed by their step number (ten or more digits). The
  * unescaped layout is ambiguous (run `x-a0:step:q`'s keys sit under run
  * `x-a0`'s step prefix), so a key whose remainder is anything but exactly a
  * step number belongs to another run and is not a step.
@@ -214,9 +226,8 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
           if (!byNumber.has(stepNumber)) byNumber.set(stepNumber, key);
         }
       }
-      // Zero-padded step numbers sort lexicographically in numeric step order.
       const stepKeys = [...byNumber.entries()]
-        .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .toSorted(([left], [right]) => compareStepNumbers(left, right))
         .map(([, key]) => key);
       const records: StepRecord[] = [];
       for (const key of stepKeys) {
@@ -253,8 +264,9 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
     },
 
     async clear(runId) {
-      // Exact keys only, never a prefix wipe: an unescaped prefix such as
-      // `durable-run:x-a0:` also holds run `x-a0:step:q`'s keys.
+      // Exact keys only, never a prefix wipe: 0.15.x wrote ids verbatim, so a
+      // prefix such as `durable-run:x-a0:` can also hold run `x-a0:step:q`'s
+      // legacy keys, whichever layout `x-a0` itself uses.
       const doomed = ownKeys(await store.list(keys.prefix(runId)), keys.prefix(runId));
       if (hasLegacyKeys(runId)) {
         const legacyPrefix = legacyKeys.prefix(runId);
