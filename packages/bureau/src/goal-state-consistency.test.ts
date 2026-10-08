@@ -2,10 +2,10 @@
  * COR-851 — the goal record decoder refuses a record whose status, attempts, and
  * active work contradict each other, and the store can never write one.
  */
+import type { GoalRunTerminalReason } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import type { GoalRunTerminalReason } from '@lostgradient/operative';
 import {
   createGoalState,
   type DurableGoalAttempt,
@@ -77,11 +77,8 @@ async function send(
   return result.record;
 }
 
-/** One real record of every status, each built through the store. */
-async function records(): Promise<Record<string, GoalState>> {
-  sequence = 0;
-  const store = createGoalStore(textValueStore(new MemoryStorage()));
-  const pending = createGoalState({
+const pendingGoal = (): GoalState =>
+  createGoalState({
     goalRunId: GOAL,
     identity: { name: 'goal', version: '1' },
     objective: { agentName: 'builder', prompt: 'Make the tests pass.' },
@@ -90,6 +87,12 @@ async function records(): Promise<Record<string, GoalState>> {
     bounds: { maximumAttempts: 3, maximumTotalTokens: 1000 },
     now: '2026-10-02T00:00:00.000Z',
   });
+
+/** One real record of every status, each built through the store. */
+async function records(): Promise<Record<string, GoalState>> {
+  sequence = 0;
+  const store = createGoalStore(textValueStore(new MemoryStorage()));
+  const pending = pendingGoal();
   await store.create(pending);
   const running = await send(store, 'running', {
     attempt: attempt(0),
@@ -129,6 +132,45 @@ async function records(): Promise<Record<string, GoalState>> {
     terminalReason: 'validator-passed',
   });
   return { pending, running, evaluating, retrying, succeeded };
+}
+
+/**
+ * A record whose first attempt ended on a recorded failing verdict and retried:
+ * the retry's audit entry (seq 3) is an earlier, non-latest entry that genuinely
+ * holds the `goal.attempt.validated` event that verdict implies.
+ */
+async function recordWithValidatedRetry(): Promise<GoalState> {
+  sequence = 0;
+  const store = createGoalStore(textValueStore(new MemoryStorage()));
+  await store.create(pendingGoal());
+  await send(store, 'running', {
+    attempt: attempt(0),
+    usage: usageAfter(1),
+    active: attemptWork(0),
+  });
+  await send(store, 'evaluating', {
+    attempt: attempt(0, { status: 'evaluating', finishReason: 'stop-condition' }),
+    active: validationWork(0),
+  });
+  await send(store, 'retrying', {
+    attempt: attempt(0, {
+      status: 'failed',
+      finishReason: 'stop-condition',
+      validation: {
+        identity: VALIDATOR,
+        startedAt: STARTED,
+        completedAt: STARTED,
+        outcome: { kind: 'fail', feedback: 'Try again.', evidence: [], retryable: true },
+        decisionId: goalDecisionId(goalAttemptId(GOAL, 0)),
+      },
+    }),
+    active: null,
+  });
+  return await send(store, 'running', {
+    attempt: attempt(1),
+    usage: usageAfter(2),
+    active: attemptWork(1),
+  });
 }
 
 type Mutation = (record: Record<string, unknown>) => void;
@@ -236,6 +278,32 @@ describe('the goal record decoder', () => {
       throw new Error('no passing validated event');
     };
 
+    const entryAt = (record: Record<string, unknown>, seq: number) => {
+      const entry = entriesOf(record).find(
+        (found) => found.transitionId === goalTransitionId(GOAL, seq),
+      );
+      if (entry === undefined) throw new Error(`no entry for transition ${seq}`);
+      return entry;
+    };
+
+    /**
+     * A syntactically perfect `goal.attempt.validated` event for attempt 0, which
+     * in the `succeeded` record was never validated: the retry that ended it
+     * (transition 3) recorded no verdict, so nothing it could report exists.
+     */
+    const verdictNeverRecorded = (outcomeKind: string) => ({
+      kind: 'goal.attempt.validated',
+      payload: {
+        goalRunId: GOAL,
+        attemptId: goalAttemptId(GOAL, 0),
+        validatorIdentity: VALIDATOR,
+        outcomeKind,
+        ...(outcomeKind === 'fail' ? { feedbackDigest: 'a'.repeat(64) } : {}),
+      },
+      dedupeKey: `${GOAL}:3`,
+      at: STARTED,
+    });
+
     const corruptions: Array<[string, string, Mutation]> = [
       [
         'succeeded',
@@ -340,6 +408,21 @@ describe('the goal record decoder', () => {
           }),
       ],
       [
+        'succeeded',
+        'a passing validated event for an attempt that was never validated',
+        (r) => entryAt(r, 3).events.push(verdictNeverRecorded('pass')),
+      ],
+      [
+        'succeeded',
+        'a failing validated event for an attempt that was never validated',
+        (r) => entryAt(r, 3).events.push(verdictNeverRecorded('fail')),
+      ],
+      [
+        'succeeded',
+        'an error validated event for an attempt that was never validated',
+        (r) => entryAt(r, 3).events.push(verdictNeverRecorded('error')),
+      ],
+      [
         'running',
         'a restart event for another restart count',
         (r) => {
@@ -371,6 +454,15 @@ describe('the goal record decoder', () => {
       const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
       mutate(record);
       expect(isGoalState(record)).toBe(false);
+    });
+
+    it('still decodes a goal whose earlier retry entry holds the validated event its recorded verdict implies', async () => {
+      const base = await recordWithValidatedRetry();
+      const record = JSON.parse(JSON.stringify(base)) as Record<string, unknown>;
+      const validated = entryAt(record, 3).events.map((event) => event['kind']);
+      expect(validated).toEqual(['goal.attempt.validated']);
+      expect(record['transitionSeq']).toBe(4);
+      expect(isGoalState(record)).toBe(true);
     });
 
     it('still decodes a goal whose log holds a genuine restart entry', async () => {

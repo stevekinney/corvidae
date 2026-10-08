@@ -534,14 +534,12 @@ describe('startAttempt', () => {
     it.each(replacements)(
       'fails the attempt, adopting and watching nothing, when %s appears after verification',
       async (_label, replace, detail) => {
-        let swap: (() => void) | undefined;
-        const w = await world({
+        const w: Awaited<ReturnType<typeof world>> = await world({
           onRunRecordRead: (readNumber) => {
             // The first read is the start port's verification; the next is adoption's.
-            if (readNumber === 2) swap?.();
+            if (readNumber === 2) replace(w);
           },
         });
-        swap = () => replace(w);
         w.markRunAsGoals(runId);
         await startDurableRunResult(w.durable, {
           runId,
@@ -561,18 +559,16 @@ describe('startAttempt', () => {
     it.each(replacements)(
       'does not adopt the run a racing start created when %s appears after verification',
       async (_label, replace, detail) => {
-        let swap: (() => void) | undefined;
-        const raced = await world({
+        const raced: Awaited<ReturnType<typeof world>> = await world({
           startAttemptRun: () => {
             throw new Error('Run "goal-g1-a0" already exists');
           },
           onRunRecordRead: (readNumber) => {
             // Verification is read 1; adoption before the start finds no workflow and reads
             // nothing; the raced adoption after the failed start is read 2.
-            if (readNumber === 2) swap?.();
+            if (readNumber === 2) replace(raced);
           },
         });
-        swap = () => replace(raced);
         raced.markRunAsGoals(runId);
         createActiveRun(
           agentOptions(() => new Promise(() => {})),
@@ -858,8 +854,7 @@ describe('startAttempt', () => {
     it('stops the run it created, fencing its claim first, when the goal ended meanwhile', async () => {
       const { controller, signal } = timedOutSignal();
       const order: string[] = [];
-      let w!: Awaited<ReturnType<typeof world>>;
-      w = await world({
+      const w: Awaited<ReturnType<typeof world>> = await world({
         cancelRun: (runId) => {
           order.push(`cancel:${runId}`);
           return Promise.resolve({ status: 'requested' });
@@ -935,6 +930,32 @@ describe('startAttempt', () => {
       expect(await w.ports.startAttempt(startRequest())).toEqual({ status: 'stood-down' });
     });
 
+    it.each([
+      ['a millisecond', 1],
+      ['a day', 86_400_000],
+    ])(
+      'stands down, creating nothing, for a record created %s later than the runtime clock',
+      async (_name, ahead) => {
+        let starts = 0;
+        const w = await clockedWorld({
+          startAttemptRun: () => {
+            starts += 1;
+            return { run: {} as never, durablyStarted: Promise.resolve() };
+          },
+        });
+        // The record was stamped at `NOW`; the clock now reads earlier than that, so no
+        // age can be read from it. It must not be granted a fresh window to run in.
+        w.runtime.setTime(Date.parse(NOW) - ahead);
+
+        expect(await w.ports.startAttempt(startRequest())).toEqual({ status: 'stood-down' });
+
+        expect(starts).toBe(0);
+        expect(w.watched).toEqual([]);
+        expect(await w.sessions.load('goal-g1-s0')).toBeUndefined();
+        expect(await w.engine.get('goal-g1-a0')).toBeNull();
+      },
+    );
+
     it('writes no session when it elapses before the session is seated', async () => {
       let starts = 0;
       const w = await clockedWorld({
@@ -957,9 +978,7 @@ describe('startAttempt', () => {
     it('stops the run it just created and stands down when the bound elapsed while it was created', async () => {
       const created = Promise.withResolvers<void>();
       const stopped: string[] = [];
-      // eslint-disable-next-line prefer-const -- the hook closes over the world it is passed to.
-      let w: Awaited<ReturnType<typeof clockedWorld>>;
-      w = await clockedWorld({
+      const w: Awaited<ReturnType<typeof clockedWorld>> = await clockedWorld({
         startAttemptRun: () => {
           // The bound passes after every pre-write check, while the run is created.
           pastTheBound(w.runtime);

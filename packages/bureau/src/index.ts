@@ -93,12 +93,6 @@ export {
   RunRemovedEvent,
 } from './events';
 export { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
-export {
-  GOAL_OBJECTIVE_MAXIMUM_BYTES,
-  GOAL_STATE_SCHEMA_VERSION,
-  GOAL_VALIDATION_MAXIMUM_BYTES,
-  GoalObjectiveTooLargeError,
-} from './goal-state';
 export type {
   ActiveGoalWork,
   DurableGoalAttempt,
@@ -111,12 +105,18 @@ export type {
   GoalState,
   GoalTransitionRecord,
 } from './goal-state';
+export {
+  GOAL_OBJECTIVE_MAXIMUM_BYTES,
+  GOAL_STATE_SCHEMA_VERSION,
+  GOAL_VALIDATION_MAXIMUM_BYTES,
+  GoalObjectiveTooLargeError,
+} from './goal-state';
 export type {
   BureauGoalActiveWork,
   BureauGoalAttemptRecovery,
+  BureauGoalCancellationWait,
   BureauGoalCancelOptions,
   BureauGoalCancelOutcome,
-  BureauGoalCancellationWait,
   BureauGoalCloseOutcome,
   BureauGoalControllerStart,
   BureauGoalCreateOutcome,

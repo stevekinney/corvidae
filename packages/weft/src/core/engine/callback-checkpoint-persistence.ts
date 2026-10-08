@@ -56,7 +56,7 @@ export function persistCheckpointForDataOperation<
   operation: ContextOperationRequest,
 ): Promise<void> {
   const internals = getInternals(engine);
-  return persistCheckpointAbandoningOnConflict(internals, () =>
+  return persistCheckpointAbandoningOnConflict(internals, workflowId, () =>
     persistCheckpoint(
       internals,
       workflowId,

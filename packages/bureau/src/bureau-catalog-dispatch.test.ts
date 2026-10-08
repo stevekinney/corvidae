@@ -5,7 +5,11 @@
  * reaches in normal operation, because it plans the child first and refuses
  * an identifier another run already holds before it starts anything.
  */
-import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
+import {
+  createDefaultRuntimeServices,
+  createManualRuntimeServices,
+  HookRegistry,
+} from '@lostgradient/lifecycle';
 import {
   AgentContractError,
   createAgent,
@@ -121,6 +125,8 @@ describe('createCatalogDispatcher — startChildRun', () => {
     );
   });
 });
+
+const realRuntime = createDefaultRuntimeServices();
 
 const settle = (started: { durablyStarted: Promise<void> }) =>
   started.durablyStarted.then(
@@ -684,6 +690,37 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         expect.objectContaining({ message: 'durable start 2 rejected' }),
       );
       expect(runAttribution.has(attempt.runId)).toBe(false);
+    });
+
+    it('settles durablyStarted with the engine’s refusal and drops the attribution, leaving no rejection unhandled (COR-1418)', async () => {
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown): void => {
+        unhandled.push(reason);
+      };
+      process.on('unhandledRejection', onUnhandled);
+      try {
+        const { dispatcher, engine, runAttribution } = await world(
+          priced({ model: 'm', pricing: PRICING(1) }, []),
+        );
+        engine.start = async () => {
+          throw new Error('the engine refused the workflow');
+        };
+
+        const started = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });
+
+        expect(await settle(started)).toEqual(
+          expect.objectContaining({ message: 'the engine refused the workflow' }),
+        );
+        expect(runAttribution.has(attempt.runId)).toBe(false);
+        const result = await started.run.result();
+        expect(result.finishReason).toBe('error');
+        // A rejection nothing handled is reported once the microtask queue drains and a timer turn
+        // has passed, so the observation waits one turn on a real timer.
+        await new Promise<void>((resolve) => realRuntime.timers.setTimeout(resolve, 0));
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
     });
 
     it('adopts the claim of an execution whose workflow already exists', async () => {

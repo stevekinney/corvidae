@@ -10,8 +10,10 @@
  * `expectedEpoch` pair — it has no opinion on how a caller obtains those. Every
  * wake site needs the exact same three-way decision tree first:
  *
- * - The workflow's current in-memory generation is marked abandoned after a lost
- *   checkpoint compare-and-swap race (any ownership mode): discard, silently.
+ * - The generation this engine holds for the workflow (running, parked, or suspended) is
+ *   abandoned after a lost checkpoint compare-and-swap race (any ownership mode):
+ *   discard, silently. It is read from the execution attempt registry, not from the
+ *   in-memory checkpoint, which a suspension releases.
  * - `internals.workflowClaimRegistry` is `null` (ownership is `'none'` or
  *   `'lease'`): this check is a no-op. Proceed — byte-identical to every
  *   pre-ADR-0002 deployment. This is the property every wake site must
@@ -37,7 +39,7 @@
  * @module core/engine/wake-ownership-guard
  */
 
-import { isCurrentCheckpointGenerationAbandoned } from './abandoned-checkpoint-generations.ts';
+import { isHeldGenerationAbandoned } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import { emitWorkflowWakeDiscardedWarning, type WorkflowWakeKind } from './lease-deposition.ts';
 import { wakeOwnershipCheck } from './wake-ownership-check.ts';
@@ -53,8 +55,7 @@ export type WakeOwnershipDecision = 'proceed' | 'discard';
  */
 export function wakeNeedsOwnershipCheck(internals: EngineInternals, workflowId: string): boolean {
   return (
-    internals.workflowClaimRegistry !== null ||
-    isCurrentCheckpointGenerationAbandoned(internals, workflowId)
+    internals.workflowClaimRegistry !== null || isHeldGenerationAbandoned(internals, workflowId)
   );
 }
 
@@ -72,7 +73,7 @@ export async function confirmWakeOwnership(
   // compare-and-swap race belongs to the winning engine in every ownership mode,
   // including `'none'` where there is no claim registry to say so. Synchronous,
   // so a wake for a healthy generation takes exactly the path it always did.
-  if (isCurrentCheckpointGenerationAbandoned(internals, workflowId)) {
+  if (isHeldGenerationAbandoned(internals, workflowId)) {
     return 'discard';
   }
 

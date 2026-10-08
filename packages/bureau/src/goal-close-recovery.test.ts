@@ -9,6 +9,7 @@ import { goalRecordKey, isGoalState } from './goal-state';
 import {
   createCheckValidator,
   createTestDatabase,
+  currentIsoTimestamp,
   goalRequest,
   pollUntil,
   type TestDatabase,
@@ -62,7 +63,7 @@ describe('a goal closed by a process that died before its cleanup finished', () 
       // The process committed `closedAt` and died before cleaning up.
       const view = await inspect(database.path);
       cleanups.push(() => view.dispose());
-      const committed = await view.store.close('g1', new Date().toISOString());
+      const committed = await view.store.close('g1', currentIsoTimestamp());
       expect(committed.status).toBe('updated');
       expect(prunedIds(spy)).toEqual([]);
 
@@ -91,7 +92,7 @@ describe('a goal closed by a process that died before its cleanup finished', () 
       expect(await pollUntil(() => hasSucceeded(first))).toBe(true);
       const view = await inspect(database.path);
       cleanups.push(() => view.dispose());
-      await view.store.close('g1', new Date().toISOString());
+      await view.store.close('g1', currentIsoTimestamp());
       spy.mockImplementation(function (this: unknown, workflowId, options) {
         return workflowId === 'goal-g1-a0'
           ? Promise.reject(new Error('storage hiccup'))
