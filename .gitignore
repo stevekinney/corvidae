@@ -18,6 +18,10 @@ node_modules/
 build/
 dist/
 artifacts/
+# The playground's build scratch directories; they are deleted when a build ends,
+# but an interrupted build can leave them behind.
+applications/playground/.tmp/
+applications/playground/src/.tmp-*/
 # Electrobun projects its devkit here via `electrobun prepare`; it is a cached
 # download, not source.
 .hutch/

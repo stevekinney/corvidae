@@ -65,6 +65,35 @@
         "vite": "catalog:",
       },
     },
+    "applications/playground": {
+      "name": "@lostgradient/playground",
+      "dependencies": {
+        "@lostgradient/chat": "workspace:*",
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/editor": "workspace:*",
+        "@lostgradient/environmentalist": "catalog:",
+        "@lostgradient/markdown": "workspace:*",
+        "@lostgradient/testing": "workspace:*",
+        "@shikijs/themes": "catalog:",
+        "lucide-svelte": "catalog:",
+        "postcss": "catalog:",
+        "shiki": "catalog:",
+        "svelte": "catalog:",
+        "ts-morph": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "@types/estree": "catalog:",
+        "happy-dom": "catalog:",
+        "oxlint": "catalog:",
+        "oxlint-tsgolint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/chat": {
       "name": "@lostgradient/chat",
       "dependencies": {
@@ -553,6 +582,7 @@
     "@types/bun": "^1.4.2",
     "@types/culori": "^4.0.1",
     "@types/diff-match-patch": "^1.0.36",
+    "@types/estree": "^1.0.9",
     "@types/hast": "^3.0.4",
     "@types/js-yaml": "^4.0.9",
     "@types/mdast": "^4.0.4",
@@ -790,6 +820,8 @@
     "@lostgradient/memory": ["@lostgradient/memory@workspace:packages/memory"],
 
     "@lostgradient/operative": ["@lostgradient/operative@workspace:packages/operative"],
+
+    "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
 
     "@lostgradient/skills": ["@lostgradient/skills@workspace:packages/skills"],
 

@@ -45,6 +45,12 @@
     "transit": {
       "dependsOn": ["//#preflight", "^transit"]
     },
+    "@lostgradient/playground#build": {
+      "dependsOn": ["transit"],
+      "outputs": ["build/**"],
+      "env": ["NODE_ENV"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/mirror/package-map.json"]
+    },
     "@lostgradient/desktop#prepare:devkit": {
       "dependsOn": ["transit"],
       "outputs": [".hutch/**"]

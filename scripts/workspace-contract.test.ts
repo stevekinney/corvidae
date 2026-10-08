@@ -64,6 +64,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/testing',
   '@lostgradient/typescript',
   '@lostgradient/desktop',
+  '@lostgradient/playground',
   '@lostgradient/telephone',
   'armorer',
   'conversationalist',
@@ -197,7 +198,17 @@ describe('internal workspace architecture', () => {
       }
       expect(scripts['lint'], directory).toContain('oxlint --deny-warnings');
       expect(scripts['lint:fix'], directory).toContain('oxlint --deny-warnings --fix');
-      expect(scripts['test'], directory).toMatch(/\bbun test\b/);
+      if (directory === 'applications/playground') {
+        // The playground isolates build-driving test files in fresh Bun processes, so its `test`
+        // script names the runner, and the runner is what must spawn `bun test`.
+        expect(scripts['test'], directory).toBe('bun scripts/run-tests.ts');
+        expect(
+          await Bun.file(join(root, directory, 'scripts/run-tests.ts')).text(),
+          directory,
+        ).toContain("['bun', 'test',");
+      } else {
+        expect(scripts['test'], directory).toMatch(/\bbun test\b/);
+      }
       expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
 
       for (const [name, command] of Object.entries(scripts)) {

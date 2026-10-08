@@ -12673,6 +12673,11 @@
       "basis": "owner-excluded-from-public-mirror",
       "reason": "The application formerly named `chat-room`, which the repository owner excluded from the mirror on 2026-09-21 because it is not part of the mirror tooling and `private-workspace` would ship its source to the public cinder repository beside the lab already living there at `labs/chat-room`. Replacing the SvelteKit lab with an Electrobun desktop application changes the implementation, not that reasoning, so the exclusion carries over rather than reverting to `private-workspace`. No workspace declares it as a dependency. Reversible: promote to `private-workspace` and rule on its layout if it should ever become public."
     },
+    "@lostgradient/playground": {
+      "disposition": "exclude",
+      "basis": "private-application-hosted-in-corvidae",
+      "reason": "The playground application moved into corvidae in COR-1200 while the public stevekinney/cinder repository still carries its live copy at `packages/playground`, which serves cinder.website until COR-1201 repoints the deployment. `private-workspace` would emit the application into the cinder target at a directory that collides with that live copy, and the transform prunes only beneath the prefixes it writes, so `exclude` leaves the target's copy untouched. COR-1201 retires the target copy through `target-owned.json`'s `retired` list once the corvidae deployment is verified live; this entry stays `exclude` afterwards because the application is private to corvidae."
+    },
     "@lostgradient/bureau": {
       "disposition": "private-workspace",
       "basis": "already-public-in-target",
@@ -12722,12 +12727,6 @@
         "disposition": "orphan-untouched",
         "visibility": "never-published",
         "reason": "Private in the upstream repository and never published."
-      },
-      {
-        "name": "@cinder/playground",
-        "disposition": "orphan-untouched",
-        "visibility": "never-published",
-        "reason": "Private and never published. Moves into corvidae as an application in COR-1200, at which point it becomes a workspace and leaves this list."
       },
       {
         "name": "interoperability",
