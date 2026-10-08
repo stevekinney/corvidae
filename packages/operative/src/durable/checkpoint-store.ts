@@ -44,14 +44,17 @@ const legacyKeys = {
 };
 
 /**
- * Whether the run id has 0.15.x keys to fall back to. Only an id containing
- * `:` qualifies. An escaped id never contains `:`, so its legacy keys cannot
- * alias any run's current keys. An id that contains `%` but no `:` (such as
- * `a%3Ab`) would read its legacy prefix `durable-run:a%3Ab:`, which is run
- * `a:b`'s current prefix, so it gets no fallback.
+ * Whether the run id has 0.15.x keys to fall back to: escaping changed its
+ * keys, and its verbatim prefix is not some other run's current prefix. An
+ * id that is itself a complete escaping of a different id (no `:`, and every
+ * `%` begins `%25` or `%3A`, such as `a%3Ab` for run `a:b`) would read that
+ * run's keys, so it gets no fallback. Session run ids (`${sessionId}:${n}`)
+ * and ids like `job%one` keep theirs.
  */
 function hasLegacyKeys(runId: string): boolean {
-  return runId.includes(':');
+  if (encodeRunId(runId) === runId) return false;
+  const isEscapingOfAnotherId = !runId.includes(':') && /^(?:[^%]|%25|%3A)*$/.test(runId);
+  return !isEscapingOfAnotherId;
 }
 
 /** A step number in a key: `String(step).padStart(10, '0')`, which never truncates. */

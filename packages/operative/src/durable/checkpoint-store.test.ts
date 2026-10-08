@@ -494,6 +494,20 @@ describe('createCheckpointStore', () => {
       expect(await store.loadSteps('a:b')).toEqual([stepRecord(0)]);
     });
 
+    it('reads the legacy keys of an id with a percent sign that escapes no other id', async () => {
+      const underlying = createStore();
+      await underlying.set('durable-run:job%one:cursor', JSON.stringify(cursor(3)));
+      await underlying.set('durable-run:job%one:transcript', JSON.stringify(persistedSnapshot));
+      await underlying.set(legacyStepKey('job%one', 0), JSON.stringify(stepRecord(0)));
+      const store = createCheckpointStore(underlying);
+
+      expect(await store.loadCursor('job%one')).toEqual(cursor(3));
+      expect(await store.loadConversation('job%one')).toEqual(persistedSnapshot);
+      expect(await store.loadSteps('job%one')).toEqual([stepRecord(0)]);
+      expect(await store.clear('job%one')).toBe(3);
+      expect(await underlying.list('durable-run:')).toEqual([]);
+    });
+
     it('reads, orders, and clears legacy steps numbered past ten digits', async () => {
       const underlying = createStore();
       await underlying.set(
