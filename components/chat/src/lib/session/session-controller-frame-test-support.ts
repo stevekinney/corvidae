@@ -81,19 +81,19 @@ export function createFrameHarness(options: FrameHarnessOptions) {
       toolActivity.push(structuredClone(activity));
       scribble(activity);
       if (options.throwingObserver === 'onToolActivity') throw thrown;
-      if (options.rejectingObserver === 'onToolActivity') return Promise.reject(thrown);
+      return options.rejectingObserver === 'onToolActivity' ? Promise.reject(thrown) : undefined;
     },
     onElicitation: (activity) => {
       elicitations.push(structuredClone(activity));
       scribble(activity);
       if (options.throwingObserver === 'onElicitation') throw thrown;
-      if (options.rejectingObserver === 'onElicitation') return Promise.reject(thrown);
+      return options.rejectingObserver === 'onElicitation' ? Promise.reject(thrown) : undefined;
     },
     onRunAborted: (notice) => {
       aborted.push(structuredClone(notice));
       options.onAbortedEffect?.(controller);
       if (options.throwingObserver === 'onRunAborted') throw thrown;
-      if (options.rejectingObserver === 'onRunAborted') return Promise.reject(thrown);
+      return options.rejectingObserver === 'onRunAborted' ? Promise.reject(thrown) : undefined;
     },
   };
   const controller = createChatSessionController({
