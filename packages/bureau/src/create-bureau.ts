@@ -1814,11 +1814,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let bootEventBufferedCount = 0;
   let bootEventReplayEnabled = false;
   const baseDispatchEvent = emitter.dispatchEvent.bind(emitter);
-  const baseAddEventListener = emitter.addEventListener.bind(emitter) as unknown as (
-    type: string,
-    listener: EventListenerOrEventListenerObject | null,
-    options?: boolean | AddEventListenerOptions,
-  ) => void;
+  const baseAddEventListener = emitter.addEventListener.bind(emitter);
   function bootEventRunId(event: Event): string | undefined {
     const carrier = event as { runId?: unknown; action?: { runId?: unknown } };
     const runId = typeof carrier.runId === 'string' ? carrier.runId : carrier.action?.runId;
@@ -1840,18 +1836,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return baseDispatchEvent(event);
   };
   (emitter as unknown as { addEventListener: typeof baseAddEventListener }).addEventListener = (
-    type,
-    listener,
-    options,
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    listenerOptions?: boolean | AddEventListenerOptions,
   ) => {
-    baseAddEventListener(type, listener, options);
+    baseAddEventListener(type, listener, listenerOptions);
     if (!bootEventReplayEnabled || listener === null || releasedBootEventTypes.has(type)) return;
     releasedBootEventTypes.add(type);
     const replayed = bootEventBuffer.get(type) ?? [];
     bootEventBuffer.delete(type);
     bootEventBufferedCount -= replayed.length;
-    const once = typeof options === 'object' && options.once === true;
-    const signal = typeof options === 'object' ? options.signal : undefined;
+    const once = typeof listenerOptions === 'object' && listenerOptions.once === true;
+    const signal = typeof listenerOptions === 'object' ? listenerOptions.signal : undefined;
     for (const event of replayed) {
       if (signal?.aborted) return;
       try {
