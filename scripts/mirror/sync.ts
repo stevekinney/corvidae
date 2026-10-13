@@ -410,6 +410,13 @@ function transformReaches(reach: TransformReach, path: string): boolean {
   );
 }
 
+/** A path a commit changed that the per-commit rules do not accept, with the manifest keys at fault. */
+interface BlockingChange {
+  path: string;
+  /** Set when the path is a modified manifest: only these transform-owned keys block it. */
+  manifestKeys?: readonly string[];
+}
+
 /**
  * Whether every change a commit makes is one the transform preserves.
  *
@@ -425,27 +432,9 @@ function transformReaches(reach: TransformReach, path: string): boolean {
  * tree it prunes. The one exception is an emitted file a commit modifies to exactly the bytes and
  * mode the trusted source now emits: the source already carries that change, so the sync writes
  * the file back unchanged. Weft PR1020 edited the emitted package README that way.
- */
-async function isTargetOwnedCommit(
-  directory: string,
-  sha: string,
-  mirrorCommit: string,
-  ownership: ForeignCommitOwnership,
-): Promise<boolean> {
-  const blocking = await blockingChanges(directory, sha, mirrorCommit, ownership);
-  return blocking !== undefined && blocking.length === 0;
-}
-
-/** A path a commit changed that the per-commit rules do not accept, with the manifest keys at fault. */
-interface BlockingChange {
-  path: string;
-  /** Set when the path is a modified manifest: only these transform-owned keys block it. */
-  manifestKeys?: readonly string[];
-}
-
-/**
- * Every change the per-commit rules reject, or `undefined` when no parent descends from the
- * mirror commit (such a commit has nothing to judge and is never the target's own).
+ *
+ * Returns every change those rules reject, or `undefined` when no parent descends from the mirror
+ * commit (such a commit has nothing to judge and is never the target's own).
  */
 async function blockingChanges(
   directory: string,
@@ -470,7 +459,7 @@ async function blockingChanges(
 
 /**
  * Whether the guard lets a commit above the mirror's own stand: either every change is the
- * target's own (`isTargetOwnedCommit`), or the net-effect rule holds.
+ * target's own (`blockingChanges` finds none), or the net-effect rule holds.
  *
  * Net effect (COR-1200, owner ruling 2026-10-12). The per-commit rules judge a commit by what it
  * did, so a commit that regenerated or edited a path the sync owns stays foreign even after a
