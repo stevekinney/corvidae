@@ -196,6 +196,7 @@ async function assertNoRenamedSyncedNames(
   corvidaeRoot: string,
   trailerSha: string,
   synced: ReadonlySet<string>,
+  pending: ReadonlySet<string>,
 ): Promise<void> {
   const output = await requireGit(corvidaeRoot, [
     'log',
@@ -214,6 +215,38 @@ async function assertNoRenamedSyncedNames(
     if (/^R\d*$/.test(status) && synced.has(from)) {
       throw new ChangesetEmissionError(
         `${to} is a rename of ${from}, which was already synced: emitting it would release it twice. Revert the rename; fix a synced changeset in the target's .changeset/ instead.`,
+      );
+    }
+  }
+
+  // Rename detection needs 50% similarity, and a changeset is a few lines long: rename one and
+  // rewrite it and git reports a deletion and an addition. A commit that deletes a synced
+  // changeset and adds a pending one is treated as the rename it most likely is.
+  const history = await requireGit(corvidaeRoot, [
+    'log',
+    '--no-renames',
+    '--name-status',
+    '-z',
+    '--format=%x01',
+    `${trailerSha}..HEAD`,
+    '--',
+    `${changesetDirectory}/`,
+  ]);
+  for (const record of history.split('\u0001')) {
+    const tokens = record
+      .split('\0')
+      .map((token) => token.replace(/^\n+/, ''))
+      .filter((token) => token.length > 0);
+    const deleted: string[] = [];
+    const added: string[] = [];
+    for (let index = 0; index + 1 < tokens.length; index += 2) {
+      const [status, path] = [tokens[index]!, tokens[index + 1]!];
+      if (status === 'D' && synced.has(path)) deleted.push(path);
+      if (status === 'A' && pending.has(path)) added.push(path);
+    }
+    if (deleted.length > 0 && added.length > 0) {
+      throw new ChangesetEmissionError(
+        `${added.join(', ')} was added in the same commit that deleted ${deleted.join(', ')}, which was already synced: it looks like a rename, and emitting it would release it twice. Delete the synced changeset in a separate commit, or revert; fix a synced changeset in the target's .changeset/ instead.`,
       );
     }
   }
@@ -253,8 +286,8 @@ export async function planChangesetEmission({
   ]);
   const synced = new Set(syncedFiles);
   await assertNoReusedNames(corvidaeRoot, trailerSha, synced);
-  await assertNoRenamedSyncedNames(corvidaeRoot, trailerSha, synced);
   const pending = headFiles.filter((path) => !synced.has(path));
+  await assertNoRenamedSyncedNames(corvidaeRoot, trailerSha, synced, new Set(pending));
 
   const mine: { path: string; bytes: Uint8Array }[] = [];
   for (const path of pending) {

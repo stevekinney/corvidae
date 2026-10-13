@@ -169,6 +169,45 @@ describe('changeset emission', () => {
     expect((error as Error).message).toContain('.changeset/new-name.md');
   });
 
+  test('(e2) a rename that git cannot see because the whole file was rewritten still throws', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/old-name.md', weftChangeset);
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
+    await write(
+      root,
+      '.changeset/new-name.md',
+      '---\n"@lostgradient/weft": minor\n---\n\nEntirely different words about another subject.\n',
+    );
+    await commit(root, 'Delete one changeset and add another in one commit');
+    const detected = await git(
+      root,
+      'log',
+      '--find-renames',
+      '--diff-filter=R',
+      '--format=%H',
+      '-1',
+    );
+    expect(detected.trim()).toBe('');
+    const error = await rejectionOf(emit(root, await target(synced), synced));
+    expect(error).toBeInstanceOf(ChangesetEmissionError);
+    expect((error as Error).message).toContain('.changeset/old-name.md');
+    expect((error as Error).message).toContain('.changeset/new-name.md');
+  });
+
+  test('deleting a synced changeset in a commit that adds nothing is allowed', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/old-name.md', weftChangeset);
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
+    await commit(root, 'Consume the changeset');
+    await write(root, '.changeset/later.md', weftChangeset);
+    const later = await commit(root, 'A later changeset');
+    expect(Object.keys(await emit(root, await target(synced), synced))).toEqual([
+      emittedPath(later, 'later'),
+    ]);
+  });
+
   test('(f) the same trailer gives identical output on a repeat run', async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
