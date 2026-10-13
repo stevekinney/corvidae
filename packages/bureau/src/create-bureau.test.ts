@@ -2579,7 +2579,7 @@ describe('createBureau', () => {
       expect(actions).toHaveLength(1024);
       // Sequences ascend, so the newest action is last; eviction removed the
       // oldest, which a drop-newest buffer would have kept.
-      expect(actions).toEqual([...actions].sort((left, right) => left - right));
+      expect(actions).toEqual(actions.toSorted((left, right) => left - right));
       expect(actions[0]).toBeGreaterThan(1);
     } finally {
       await cleanup();
