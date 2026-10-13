@@ -81,6 +81,7 @@ import type { BureauAssetOptions } from './assets/asset-service';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
+import type { CreatedRunSummary } from './command-ledger';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
 import type {
   DurableEventHistoryPageOptions,
@@ -1250,8 +1251,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `request.principal`. Only a defined non-string `principal` is rejected
    * (`BAD_REQUEST`). Not yet removed — see AB-242's decision record and the
    * removal issue it names (AB-352).
+   *
+   * COR-424: a request naming {@link CreateRunRequest.runCreationRequestId}
+   * goes through the run-creation command ledger and resolves with a
+   * `receipt`. Retrying it with the same principal, request id, and payload
+   * returns the original run and receipt rather than creating another run;
+   * reusing the request id with a different payload rejects with
+   * `BureauLedgerConflictError`.
    */
-  createRun(request: CreateRunRequest): Promise<RunSummary>;
+  createRun(request: CreateRunRequest): Promise<CreatedRunSummary>;
   submitSchedulerTask(request: SubmitSchedulerTaskRequest): Promise<SubmitSchedulerTaskResponse>;
   /**
    * Resolve a scheduler receipt's `taskId` to `in-progress`, `terminal` (with the
@@ -2097,6 +2105,15 @@ export interface CreateRunRequest {
   principal?: string;
   /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
   requestContext?: ToolRequestContext | undefined;
+  /**
+   * COR-424 — the caller's idempotency key for this run-creation command.
+   * When present, `createRun` records the command in a durable ledger keyed
+   * by `(principal, runCreationRequestId, operation version)` with a digest of
+   * the payload (`message`, `sessionId`, `systemPrompt`, `maximumSteps`,
+   * `maximumTokens`, `agentName`), and resolves with a receipt. Requires
+   * `principal`: an idempotency key needs an authenticated caller to belong to.
+   */
+  runCreationRequestId?: string | undefined;
 }
 
 export interface SubmitSchedulerTaskRequest {

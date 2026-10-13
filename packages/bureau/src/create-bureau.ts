@@ -134,6 +134,13 @@ import {
 } from './child-topology';
 import { createChildTopologyStore } from './child-topology-store';
 import {
+  type CreatedRunSummary,
+  createRunCreationLedger,
+  digestRunCreationPayload,
+  type RunCreationAttempt,
+  type RunCreationObservation,
+} from './command-ledger';
+import {
   createDurableEventHistory,
   createDurableEventProducer,
   deletionMarkerKindFor,
@@ -776,6 +783,21 @@ function validateCreateRunRequest(request: CreateRunRequest): void {
 
     if (request.agentName.trim().length === 0) {
       toBadRequest('"agentName" must be a non-empty string');
+    }
+  }
+
+  // COR-424 — the ledger keys a run-creation request id on the caller that
+  // issued it. Without an authenticated principal there is no caller to
+  // scope it to, and an unscoped key would let any caller replay another's.
+  if (request.runCreationRequestId !== undefined) {
+    if (
+      typeof request.runCreationRequestId !== 'string' ||
+      request.runCreationRequestId.trim().length === 0
+    ) {
+      toBadRequest('"runCreationRequestId" must be a non-empty string');
+    }
+    if (typeof request.principal !== 'string' || request.principal.length === 0) {
+      toBadRequest('"runCreationRequestId" requires an authenticated "principal"');
     }
   }
 }
@@ -1687,6 +1709,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // has no `deleteRun` equivalent and is never removed, exactly like
   // `createRun`'s own entry for a run nobody ever calls `deleteRun` on.
   const runAttribution = new Map<string, RunAttribution>();
+  // COR-424 — the run-creation command ledger, in the same store as this
+  // bureau's sessions (or in memory for an ephemeral bureau, which has no
+  // restart to survive). See `command-ledger.ts`.
+  const runCreationLedger = createRunCreationLedger({
+    kv: runtime.kv ?? textValueStore(new MemoryStorage()),
+    clock: runtimeServices.clock,
+    identifiers: runtimeServices.identifiers,
+    observe: async ({ runId }): Promise<RunCreationObservation> => {
+      const runState = store.getRun(runId);
+      if (runState !== undefined) {
+        return {
+          live: serializeRunState(
+            runState,
+            getRunSessionIdentifier(runState),
+            runAttribution.get(runId),
+          ),
+          durableStatus: undefined,
+        };
+      }
+      const durableState = await getDurableRun(runId);
+      return {
+        live: undefined,
+        durableStatus: durableState === undefined ? undefined : (durableState?.status ?? null),
+      };
+    },
+  });
   // AB-67/AB-199 — one SteeringGate per session, created (or reused)
   // EAGERLY by `createRunFromRequest` at the start of every in-memory run —
   // NOT lazily on the first `submitSteeringCommand` call, which would miss
@@ -3025,7 +3073,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * catalog runs their own deletion surface, which is its own design
    * problem outside AB-241's attribution-forwarding scope.
    */
-  async function createRunFromRequest(request: CreateRunRequest): Promise<RunSummary> {
+  async function createRunFromRequest(request: CreateRunRequest): Promise<CreatedRunSummary> {
     validateCreateRunRequest(request);
     assertRunAdmissionOpen('run');
 
@@ -3065,6 +3113,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-690: re-checked here because the authority validation above awaits,
     // and `shutdown()` may have started during it.
     assertRunAdmissionOpen('run');
+    // COR-424 — a request naming a run-creation request id consults the
+    // command ledger before flow control, so an exact retry replays the
+    // original run instead of being admitted, or rejected, as new work. A
+    // fresh claim is settled exactly once below: completed with the run's
+    // summary once it is durably started, or released when no run results.
+    const ledgerAttempt =
+      request.runCreationRequestId === undefined
+        ? undefined
+        : await runCreationLedger.begin({
+            callerId: request.principal ?? '',
+            requestId: request.runCreationRequestId,
+            payloadDigest: digestRunCreationPayload(request),
+            claim: { runId, sessionId, agentName },
+          });
+    if (ledgerAttempt?.kind === 'replay') return ledgerAttempt.result;
+    const ledgerClaim = ledgerAttempt;
     if (flowController) {
       const decision = flowController.admit({
         runId,
@@ -3075,10 +3139,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ...(request.principal !== undefined ? { principal: request.principal } : {}),
       });
       if (!decision.allowed) {
-        throw new BureauError(
+        const rejection = new BureauError(
           `Run rejected by flow control policy (${decision.reason})`,
           'RATE_LIMITED',
         );
+        await releaseRunCreationClaim(ledgerClaim, rejection);
+        throw rejection;
       }
     }
 
@@ -3098,6 +3164,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the SAME `runAttribution.delete(runId)` cleanup a genuinely
     // never-registered run needs.
     let registeredForRecovery = false;
+    let created: RunSummary;
     try {
       const { session, conversation } = await loadConversation(sessionId);
       const baseConversationHistory = conversation.current;
@@ -3636,7 +3703,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await activeRun.durablyStarted;
       }
 
-      return serializeRunState(store.getRun(runId)!, sessionId);
+      created = serializeRunState(store.getRun(runId)!, sessionId);
     } catch (error) {
       // Reached either because the run never got as far as `store.register`
       // (no terminal event to settle through — the original reason this
@@ -3673,7 +3740,39 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (!registeredForRecovery) {
         runAttribution.delete(runId);
       }
+      // COR-424: no acknowledged run resulted, so the claim is released and a
+      // retry starts afresh. That includes a run registered here whose
+      // durable start then failed: the engine holds no record of it to
+      // recover, so there is nothing for a retry to observe.
+      await releaseRunCreationClaim(ledgerClaim, error);
       throw error;
+    }
+    // COR-424: the ledger records the run only once it is durably started,
+    // so a retry never replays a run that a restart could not recover. When
+    // recording fails, the claim stays pending and a retry observes the run.
+    return ledgerClaim === undefined ? created : ledgerClaim.complete(created);
+  }
+
+  /**
+   * COR-424 — release a run-creation claim whose request produced no run, so
+   * a retry claims afresh. A failed release leaves the claim pending, and a
+   * retry then reports the claimed run as not started rather than creating
+   * one; the original failure is still what the caller sees.
+   */
+  async function releaseRunCreationClaim(
+    claim: Extract<RunCreationAttempt, { kind: 'claimed' }> | undefined,
+    cause: unknown,
+  ): Promise<void> {
+    if (claim === undefined) return;
+    try {
+      await claim.release(cause);
+    } catch (releaseError) {
+      diagnose({
+        level: 'error',
+        scope: 'run-creation-ledger',
+        message: '[bureau] Failed to release a run-creation claim after the run was not created.',
+        cause: releaseError,
+      });
     }
   }
 

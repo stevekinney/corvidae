@@ -25,6 +25,7 @@ import type {
   BureauStorageFixture,
   BureauTestHarness,
   BureauTestHarnessOptions,
+  CreatedRunSummary,
   CreateLmdbStorageFixtureOptions,
   CreateMemoryStorageFixtureOptions,
   CreatePersistentStorageFixtureOptions,
@@ -34,19 +35,26 @@ import type {
   DurableRunRegistration,
   ReproductionArtifact,
   ReproductionArtifactEnvironment,
+  RunCreationReceipt,
 } from './index';
 import {
   assembleReproductionArtifact,
   assertBureauQuiescent,
   BureauFaultSelectorResolutionError,
   BureauHarnessUnsupportedError,
+  BureauLedgerConflictError,
   createBureauTestHarness,
+  createCommandLedger,
   createDurableEventHistoryFixture,
   createLmdbStorageFixture,
   createMemoryStorageFixture,
+  createRunCreationLedger,
   createSqliteStorageFixture,
+  digestCommandPayload,
+  digestRunCreationPayload,
   DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
   locateWorkspaceRoot,
+  RUN_CREATION_OPERATION_VERSION,
   selectAuditWriteFaultTarget,
   selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
@@ -122,3 +130,16 @@ export const locateToOperative: SchedulerTaskLocation = locateFromBureau;
 export const locateFromOperative: LocateReturn = locationFromOperative;
 export const awaitToOperative: Promise<RunResult | null> = awaitFromBureau;
 export const awaitFromOperativeToBureau: AwaitReturn = awaitFromOperative;
+
+// COR-424: the run-creation command ledger and its receipt are on the barrel,
+// and `createRun` resolves with a summary that can carry the receipt.
+void BureauLedgerConflictError;
+void createCommandLedger;
+void createRunCreationLedger;
+void digestCommandPayload;
+void digestRunCreationPayload;
+void RUN_CREATION_OPERATION_VERSION;
+type CreateRunReturn = Awaited<ReturnType<Bureau['createRun']>>;
+declare const createdRun: CreateRunReturn;
+export const createdRunReceipt: RunCreationReceipt | undefined = createdRun.receipt;
+export const createdRunSummary: CreatedRunSummary = createdRun;

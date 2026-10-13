@@ -117,6 +117,34 @@ export type {
   BureauChildTerminalStatus,
   BureauChildWorkflowIdentity,
 } from './child-topology-store';
+export type {
+  BeginRunCreationInput,
+  CommandLedger,
+  CommandLedgerClaimOutcome,
+  CommandLedgerCompletedEntry,
+  CommandLedgerConflictEntry,
+  CommandLedgerEntry,
+  CommandLedgerIdentity,
+  CommandLedgerPendingEntry,
+  CommandPayloadValue,
+  CreateCommandLedgerOptions,
+  CreatedRunSummary,
+  CreateRunCreationLedgerOptions,
+  RunCreationAttempt,
+  RunCreationClaim,
+  RunCreationLedger,
+  RunCreationLedgerResult,
+  RunCreationObservation,
+  RunCreationReceipt,
+} from './command-ledger';
+export {
+  BureauLedgerConflictError,
+  createCommandLedger,
+  createRunCreationLedger,
+  digestCommandPayload,
+  digestRunCreationPayload,
+  RUN_CREATION_OPERATION_VERSION,
+} from './command-ledger';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 export type {
   BureauErrorNotConfiguredSubject,
