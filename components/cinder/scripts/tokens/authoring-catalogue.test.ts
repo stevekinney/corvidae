@@ -2,9 +2,10 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { TOKEN_REGISTRY } from '../../src/tokens/registry.generated.ts';
-import { buildAuthoringCatalogue, serializeAuthoringCatalogue } from './authoring-catalogue.ts';
+import { buildAuthoringCatalogue } from '../../src/tokens/runtime/authoring-catalogue.ts';
+import type { AuthoringCatalogue } from '../../src/tokens/runtime/authoring-types.ts';
+import { serializeAuthoringCatalogue } from './authoring-catalogue-output.ts';
 import { cloneCorpus, loadProfileCorpus } from './authoring-test-support.ts';
-import type { AuthoringCatalogue } from './authoring-types.ts';
 import { loadCorpus } from './generate.ts';
 import { authoringCataloguePath } from './generator-configuration.ts';
 

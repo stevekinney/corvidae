@@ -9,7 +9,7 @@ Retrieved: 2026-08-26, via `curl -sS <url> -o <file>`.
 
 ## `$schema` draft
 
-Both files declare `"$schema": "http://json-schema.org/draft-07/schema#"`. Despite the resolver schema being newer/more elaborate than the format schema, it is also draft-07— there is no 2020-12 schema in this pair. `components/cinder/scripts/tokens/validate-schema.ts` therefore uses the plain `Ajv` export from `ajv` (draft-07 support is Ajv's default) for _both_ validators. `Ajv2020` from `ajv/dist/2020` is not needed.
+Both files declare `"$schema": "http://json-schema.org/draft-07/schema#"`. Despite the resolver schema being newer/more elaborate than the format schema, it is also draft-07— there is no 2020-12 schema in this pair. `components/cinder/scripts/tokens/schema-validators.ts` therefore uses the plain `Ajv` export from `ajv` (draft-07 support is Ajv's default) for _both_ validators, and compiles each into a standalone module (`src/tokens/runtime/*-validator.generated.js`) at `tokens:generate` time, so the runtime in `src/tokens/runtime/validate-schema.ts` never compiles a schema itself. `Ajv2020` from `ajv/dist/2020` is not needed.
 
 ## These are single, self-contained files—the `format/*` and `resolver/*` sub-paths do not exist as separate endpoints
 
@@ -21,7 +21,7 @@ Cinder originally authored `components/cinder/src/tokens/cinder.resolver.json` w
 
 The official 2025.10 resolver schema requires **objects keyed by name**: `sets` is an object whose values are `{ sources: [...] }` (note: `sources`, not `source`); `modifiers` is an object whose values are `{ contexts: { <contextName>: sources[] }, default? }`; `resolutionOrder` is an array of `{ "$ref": "#/sets/..." }` / `{ "$ref": "#/modifiers/..." }` reference objects (or inline set/modifier definitions), not an array of plain modifier-name strings.
 
-CIN-27 migrated the real `cinder.resolver.json` to this shape and rewrote `scripts/tokens/types.ts` (`ResolverSet`, `ResolverModifier`, `ResolverDocument`, `ResolverReference`), `scripts/tokens/validate.ts` (`validateResolverDocument`'s semantic checks), and `scripts/tokens/validate-corpus.ts` (modifier-context binding now comes from the resolver's `contexts` map, not from scanning each token document's `$extensions["com.lostgradient.cinder"].modifier` marker) to match. `validateResolverDocumentSchema` is now wired into `assertValidResolverDocument` as a first-pass gate, exactly like the format schema is for token documents—see that function's doc comment in `validate.ts`. The token documents' `$extensions...modifier` markers are left in place as now-dead metadata; they are not read by the toolchain anymore.
+CIN-27 migrated the real `cinder.resolver.json` to this shape and rewrote `src/tokens/runtime/types.ts` (`ResolverSet`, `ResolverModifier`, `ResolverDocument`, `ResolverReference`), `src/tokens/runtime/validate-resolver.ts` (`validateResolverDocument`'s semantic checks), and `src/tokens/runtime/corpus-validation.ts` (modifier-context binding now comes from the resolver's `contexts` map, not from scanning each token document's `$extensions["com.lostgradient.cinder"].modifier` marker) to match. `validateResolverDocumentSchema` is now wired into `assertValidResolverDocument` as a first-pass gate, exactly like the format schema is for token documents—see that function's doc comment in `src/tokens/runtime/validate.ts`. The token documents' `$extensions...modifier` markers are left in place as now-dead metadata; they are not read by the toolchain anymore.
 
 ## A note on `$type` inheritance and the format schema
 

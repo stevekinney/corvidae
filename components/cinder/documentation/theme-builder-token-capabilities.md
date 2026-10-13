@@ -2,7 +2,7 @@
 
 This is the clause-linked capability matrix for token authoring and DTCG portability. Every row names a capability Cinder's token tooling claims, the normative [DTCG 2025.10](https://www.designtokens.org/tr/2025.10/format/) clause that defines it, a fixture that must be accepted, a fixture that must be rejected, and the diagnostic the tooling actually reports. The rows are checked by `scripts/tokens/authoring-fixtures.test.ts`, which fails when a linked fixture is missing or a URL points outside the 2025.10 modules and their anchors.
 
-The generated per-token data lives in [`src/tokens/authoring-catalogue.generated.json`](../src/tokens/authoring-catalogue.generated.json). Regenerate it with `bun run --filter=@lostgradient/cinder tokens:generate`; `tokens:check` fails when it drifts. The data model is in `scripts/tokens/authoring-types.ts`.
+The generated per-token data lives in [`src/tokens/runtime/authoring-catalogue.generated.ts`](../src/tokens/runtime/authoring-catalogue.generated.ts). Regenerate it with `bun run --filter=@lostgradient/cinder tokens:generate`; `tokens:check` fails when it drifts. The data model is in `src/tokens/runtime/authoring-types.ts`.
 
 ## How to read the matrix
 

@@ -7,10 +7,10 @@ import {
   profileRangeViolation,
   selectProfile,
   type ProfileSubject,
-} from './authoring-profiles.ts';
+} from '../../src/tokens/runtime/authoring-profiles.ts';
+import { buildBaseIndex } from '../../src/tokens/runtime/registry.ts';
+import { TOKEN_TYPES } from '../../src/tokens/runtime/types.ts';
 import { loadCorpus } from './generate.ts';
-import { buildBaseIndex } from './registry.ts';
-import { TOKEN_TYPES } from './types.ts';
 
 function subject(overrides: Partial<ProfileSubject>): ProfileSubject {
   return { path: 'x.y', type: 'dimension', category: 'spacing', hasRecipe: false, ...overrides };

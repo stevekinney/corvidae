@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { collectEntries, type CorpusEntry } from './corpus.ts';
-import { assertUniqueCssProperties } from './css-support.ts';
-import { serializeEntryValue } from './value-entry.ts';
+import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { assertUniqueCssProperties } from '../../src/tokens/runtime/css-support.ts';
+import { serializeEntryValue } from '../../src/tokens/runtime/value-entry.ts';
 function entry(path: string, type: 'fontFamily' | 'fontWeight'): CorpusEntry {
   return {
     path,

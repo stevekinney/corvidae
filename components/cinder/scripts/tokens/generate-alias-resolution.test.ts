@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { type ValueResolver } from '../../src/tokens/runtime/resolve.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { resolveAlias } from '../../src/tokens/runtime/value-color.ts';
+import { serializeEntryValue } from '../../src/tokens/runtime/value-entry.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
-import { type ValueResolver } from './resolve.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
-import { resolveAlias } from './value-color.ts';
-import { serializeEntryValue } from './value-entry.ts';
 function motionNestedReferenceFixture() {
   // A base "lightness" number and a base "composite" color whose lightness component is a
   // NESTED reference to it. The themes intentionally diverge so reduced-motion output must

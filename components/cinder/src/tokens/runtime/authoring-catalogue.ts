@@ -9,38 +9,22 @@
  * provenance tracer instead of re-deriving evaluation.
  */
 
-import { format } from 'prettier';
-
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import { PROFILES, selectProfile } from './authoring-profiles.ts';
-import {
-  collectCinderExtensions,
-  traceProvenance,
-  type ProvenanceLayerInput,
-} from './authoring-provenance.ts';
+import { collectCinderExtensions, traceProvenance } from './authoring-provenance.ts';
 import {
   UNKNOWN,
-  authoringContextId,
   type AuthoringCatalogue,
-  type AuthoringContext,
   type AuthoringLayer,
   type AuthoringRecord,
   type ProvenanceVariant,
   type TokenContextProvenance,
   type TokenDisposition,
 } from './authoring-types.ts';
+import { authoringContexts, authoringLayerStack } from './context-stack.ts';
 import type { CorpusEntry } from './corpus.ts';
-import { requireDocument } from './css-support.ts';
-import { JSON_PLUGINS, PRETTIER_OPTIONS } from './generator-configuration.ts';
 import { buildBaseIndex, buildTokenRegistryFromIndexes, themeAwarePaths } from './registry.ts';
 import { mergeAndExpandExtends } from './resolve.ts';
 import type { ResolverDocument, TokenDocument } from './types.ts';
-import {
-  combinations,
-  normalizeSourcePath,
-  parseResolutionOrder,
-  sourcesForEntry,
-} from './validate-corpus.ts';
 
 /** Scale name -> the token group whose public literal dimension members form it. */
 export const DEFAULT_SCALE_GROUPS: Readonly<Record<string, string>> = { spacing: 'space' };
@@ -50,41 +34,6 @@ export type CatalogueOptions = {
 };
 
 type Extensions = Record<string, unknown>;
-
-export function authoringContexts(
-  resolver: ResolverDocument,
-): Array<AuthoringContext & Record<string, string>> {
-  const modifiers = Object.keys(resolver.modifiers);
-  if (!modifiers.includes('theme') || !modifiers.includes('motion') || modifiers.length !== 2) {
-    throw new Error(
-      `The authoring catalogue is defined over the "theme" and "motion" modifiers; this resolver declares ${modifiers.join(', ')}.`,
-    );
-  }
-  return combinations(resolver).map((selection) => ({
-    id: authoringContextId(selection['theme']!, selection['motion']!),
-    theme: selection['theme']!,
-    motion: selection['motion']!,
-  }));
-}
-
-export function authoringLayerStack(
-  resolver: ResolverDocument,
-  documentsByPath: Map<string, TokenDocument>,
-  context: AuthoringContext,
-): ProvenanceLayerInput[] {
-  const modifierValues: Record<string, string> = { theme: context.theme, motion: context.motion };
-  return parseResolutionOrder(resolver).flatMap((entry) =>
-    sourcesForEntry(resolver, entry, modifierValues).map((reference) => ({
-      document: normalizeSourcePath(reference.$ref),
-      kind: entry.kind === 'sets' ? ('set' as const) : ('modifier' as const),
-      layer:
-        entry.kind === 'sets'
-          ? `sets.${entry.name}`
-          : `${entry.name}.${modifierValues[entry.name]}`,
-      content: requireDocument(documentsByPath, reference.$ref),
-    })),
-  );
-}
 
 function dispositionOf(
   path: string,
@@ -291,14 +240,4 @@ export function buildAuthoringCatalogue(
     scales,
     records,
   };
-}
-
-/** The committed JSON form, formatted like the registry artifact. */
-export async function serializeAuthoringCatalogue(catalogue: AuthoringCatalogue): Promise<string> {
-  assertPrettierResolvesToRoot();
-  return format(JSON.stringify(catalogue), {
-    ...PRETTIER_OPTIONS,
-    parser: 'json',
-    plugins: JSON_PLUGINS,
-  });
 }

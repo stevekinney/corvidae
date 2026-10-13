@@ -10,9 +10,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ResolverDocument, TokenDocument } from './types.ts';
-import { normalizedDocumentsByPath, validateLoadedTokenDocuments } from './validate-corpus.ts';
-import { assertValidResolverDocument } from './validate.ts';
+import { validateLoadedTokenDocuments } from '../../src/tokens/runtime/corpus-documents.ts';
+import { normalizedDocumentsByPath } from '../../src/tokens/runtime/resolver-order.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { assertValidResolverDocument } from '../../src/tokens/runtime/validate.ts';
 
 export const fixtureDirectory = join(
   dirname(fileURLToPath(import.meta.url)),
