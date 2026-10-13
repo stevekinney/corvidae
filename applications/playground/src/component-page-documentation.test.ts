@@ -996,3 +996,114 @@ describe('component-page stage controls and the shareable URL', () => {
     await tick();
   });
 });
+
+describe('component-page Overview pairs the live preview with its own example code', () => {
+  // A deliberate mismatch: the README documents one thing, the featured example
+  // is another. The stage must follow the selected descriptor, never the README.
+  const readmeOnlyMarker = 'README_ONLY_REFERENCE_SNIPPET';
+  const featuredSource = '<Widget label="Featured example only" />';
+  const secondSource = '<Widget label="Second example only" />';
+  const examples = [
+    { scenario: 'first', title: 'First scenario' },
+    { scenario: 'second', title: 'Second scenario', featured: true },
+  ];
+  const originalFetch = globalThis.fetch;
+  let requestedUrls: string[] = [];
+
+  beforeEach(() => {
+    requestedUrls = [];
+    const probe = (probeModule as unknown as { default: unknown }).default;
+    Reflect.set(window, '__CINDER_SCENARIOS__', { first: probe, second: probe });
+    const fixture = baseFixture();
+    fixture.readme.html = `<h1>Button</h1><p>${readmeOnlyMarker}</p>`;
+    installDocumentationDataIsland(fixture);
+    globalThis.fetch = (async (input: string) => {
+      const url = input;
+      requestedUrls.push(url);
+      if (url.endsWith('/second')) return new Response(featuredSource);
+      if (url.endsWith('/first')) return new Response(secondSource);
+      return new Response('missing', { status: 404 });
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function overviewSection(): HTMLElement {
+    const section = document.getElementById('overview');
+    if (section === null) throw new Error('Overview section is missing');
+    return section;
+  }
+
+  test('labels the README as reference usage, independent of the stage', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    const reference = overviewSection().querySelector('[aria-label="Reference usage"]');
+    expect(reference).not.toBeNull();
+    expect(reference?.textContent).toContain(readmeOnlyMarker);
+    expect(reference?.contains(overviewSection().querySelector('.dx-stage'))).toBe(false);
+
+    unmount();
+    await tick();
+  });
+
+  test('titles the stage with the selected example and mounts that scenario', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    const stage = overviewSection().querySelector('.dx-stage');
+    expect(stage?.querySelector('.dx-stage__title')?.textContent).toBe('Second scenario');
+    expect(stage?.querySelector('#overview-mount-second')).not.toBeNull();
+    expect(stage?.querySelector('#overview-mount-first')).toBeNull();
+    expect(stage?.textContent).not.toContain(readmeOnlyMarker);
+
+    unmount();
+    await tick();
+  });
+
+  test('shows the selected example source, never README code, behind Show code', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    const stage = overviewSection().querySelector<HTMLElement>('.dx-stage');
+    const toggle = stage?.querySelector<HTMLButtonElement>(
+      '[data-accordion-toggle="overview-source-second"]',
+    );
+    expect(toggle).not.toBeNull();
+    await fireEvent.click(toggle as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(stage?.querySelector('pre[data-language="svelte"]')?.textContent).toBe(featuredSource);
+    });
+    expect(stage?.textContent).not.toContain(readmeOnlyMarker);
+    expect(stage?.textContent).not.toContain('Second example only');
+    expect(requestedUrls).toEqual(['/example-src/button/second']);
+
+    unmount();
+    await tick();
+  });
+
+  test('renders no stage and no reference label in snapshot mode', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: true } });
+    await tick();
+
+    expect(document.querySelector('.dx-stage')).toBeNull();
+    expect(document.querySelector('[aria-label="Reference usage"]')).toBeNull();
+
+    unmount();
+    await tick();
+  });
+
+  test('renders no stage and no reference label when there are no examples', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples: [], snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    expect(overviewSection().querySelector('.dx-stage')).toBeNull();
+    expect(overviewSection().querySelector('[aria-label="Reference usage"]')).toBeNull();
+
+    unmount();
+    await tick();
+  });
+});
