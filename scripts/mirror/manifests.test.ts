@@ -555,7 +555,7 @@ describe('workspace and catalog resolution', () => {
           packageMap: await packageMapWithCurrentDigests(root),
         });
         expect(parse(plan, 'packages/weft/package.json')['dependencies']).toEqual({
-          '@lostgradient/cinder': '^0.26.3',
+          '@lostgradient/cinder': '^0.27.0',
         });
       },
     );
