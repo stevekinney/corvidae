@@ -739,6 +739,24 @@ describe('encoding refuses invalid messages', () => {
     ).toEqual({ code: 'frame-too-large', reason: 'oversized' });
   });
 
+  test('counts a control message in UTF-8 bytes when it is encoded, as the peer will when it decodes', () => {
+    const message: ProtocolMessage = {
+      kind: 'operation-failure',
+      ...header,
+      operationSequence: 1,
+      code: 'backend-failed',
+      message: '\u00e9'.repeat(MAXIMUM_FRAME_PAYLOAD_BYTES / 2),
+    };
+    expect(JSON.stringify(message).length).toBeLessThan(MAXIMUM_FRAME_PAYLOAD_BYTES);
+    expect(failureOf(encodeFrame(message))).toEqual({
+      code: 'frame-too-large',
+      reason: 'oversized',
+    });
+    const fits: ProtocolMessage = { ...message, message: '\u00e9'.repeat(1000) };
+    const frame = expectOk(encodeFrame(fits));
+    expect(decodeFrame(frame, 'client').ok).toBe(true);
+  });
+
   test('never throws on arbitrary garbage frames', () => {
     const samples: Array<Uint8Array | string> = [
       '',

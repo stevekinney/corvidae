@@ -118,7 +118,7 @@ export function encodeFrame(
     return accept(encodeBinary(normalizedMessage as InputMessage | OutputMessage, direction));
   }
   const json = JSON.stringify({ ...normalizedMessage, version: PROTOCOL_VERSION, direction });
-  if (json.length > maxFrameBytes && utf8ByteLength(json) > maxFrameBytes) {
+  if (json.length > maxFrameBytes || utf8ByteLength(json) > maxFrameBytes) {
     return reject('frame-too-large', 'oversized');
   }
   return accept(json);
