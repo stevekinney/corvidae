@@ -8358,7 +8358,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // is known; closed() means teardown actually finished), and a caller-
     // supplied `ModelCatalogService` is explicitly allowed to do that — so
     // only awaiting `closed()` observes the real cleanup fence (review
-    // finding, PR #432).
+    // finding, PR #432). Only this one captured handle is awaited: a refresh
+    // newly started by an observer notified during that handle's settlement
+    // is a different handle, and this `shutdown()` call does NOT wait for it.
     const modelCatalogRefreshClosedPromise = modelCatalog.inFlightRefresh()?.closed();
 
     // Which owners this bureau actually composes — a report row is emitted
