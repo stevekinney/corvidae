@@ -241,3 +241,72 @@ test('accepts a squash merge whose parent and tree match the App sync commit', a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('accepts an intervening commit that only adds or deletes a pending changeset', async () => {
+  await withVersionRelease(
+    async ({ source, target, sourceCommit, mirrorCommit, releaseCommit }) => {
+      const options = {
+        sourceRoot: source,
+        targetRoot: target,
+        target: 'weft',
+        workspace: '@lostgradient/weft',
+        targetDirectory: 'packages/weft',
+        mirrorCommit,
+        gitHead: releaseCommit,
+      };
+      const changesetPath = '.changeset/corvidae-0123456789ab-x.md';
+
+      // A sync pull request that delivered the changeset, and the Version Packages commit that
+      // consumed it: the shape of the history a recorded publication must walk across (COR-1433).
+      await Bun.write(
+        join(target, changesetPath),
+        '---\n"@lostgradient/weft": patch\n---\n\nFix.\n',
+      );
+      const added = await commit(target, 'Deliver a changeset');
+      expect(await verifyHistoricalCheckout({ ...options, gitHead: added })).toBe(sourceCommit);
+
+      await requireGit(target, ['rm', '--quiet', changesetPath]);
+      const deleted = await commit(target, 'Version Packages');
+      expect(await verifyHistoricalCheckout({ ...options, gitHead: deleted })).toBe(sourceCommit);
+
+      // Editing a changeset is neither of those, and the README is never a pending changeset.
+      await Bun.write(
+        join(target, changesetPath),
+        '---\n"@lostgradient/weft": patch\n---\n\nFix.\n',
+      );
+      await commit(target, 'Deliver the changeset again');
+      await Bun.write(
+        join(target, changesetPath),
+        '---\n"@lostgradient/weft": major\n---\n\nFix.\n',
+      );
+      const edited = await commit(target, 'Edit a delivered changeset');
+      expect(
+        await throwingRejectionOf(verifyHistoricalCheckout({ ...options, gitHead: edited })),
+      ).toThrow('non-target-owned path');
+    },
+  );
+});
+
+test('still refuses an intervening commit that edits a source file', async () => {
+  await withVersionRelease(async ({ source, target, mirrorCommit }) => {
+    await Bun.write(join(target, 'packages/weft/src/index.ts'), 'export const edited = true;\n');
+    await Bun.write(
+      join(target, '.changeset/corvidae-0123456789ab-x.md'),
+      '---\n"@lostgradient/weft": patch\n---\n\nFix.\n',
+    );
+    const mixed = await commit(target, 'Edit source beside a changeset');
+    expect(
+      await throwingRejectionOf(
+        verifyHistoricalCheckout({
+          sourceRoot: source,
+          targetRoot: target,
+          target: 'weft',
+          workspace: '@lostgradient/weft',
+          targetDirectory: 'packages/weft',
+          mirrorCommit,
+          gitHead: mixed,
+        }),
+      ),
+    ).toThrow('packages/weft/src/index.ts');
+  });
+});
