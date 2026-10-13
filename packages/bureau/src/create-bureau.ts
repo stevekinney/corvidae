@@ -1801,6 +1801,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const BOOT_FRAME_BUFFER_LIMIT = 1024;
   let bootFrameBufferOpen = true;
   const bootFrameBuffer: ServerFrame[] = [];
+  // Frames emitted while the first subscriber is being replayed queue behind
+  // the remaining replay instead of interleaving with it.
+  let frameReplayQueue: ServerFrame[] | undefined;
   const bootFrameRunIds = new Set<string>();
   // The same retention for the Bureau's own event emitter (`addEventListener`,
   // `once`, `on`, `subscribe`, `events` all route through
@@ -1811,7 +1814,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // events live, so they neither replay nor release anything.
   const bootEventBuffer = new Map<string, Event[]>();
   const releasedBootEventTypes = new Set<string>();
-  let bootEventBufferedCount = 0;
+  // While a listener is being replayed, events of its type that arrive are
+  // queued behind the replay (it registers only once the queue drains).
+  let eventReplayQueue: { type: string; events: Event[] } | undefined;
   let bootEventReplayEnabled = false;
   const baseDispatchEvent = emitter.dispatchEvent.bind(emitter);
   const baseAddEventListener = emitter.addEventListener.bind(emitter);
@@ -1825,14 +1830,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (
       runId !== undefined &&
       bootFrameRunIds.has(runId) &&
-      !releasedBootEventTypes.has(event.type) &&
-      bootEventBufferedCount < BOOT_FRAME_BUFFER_LIMIT
+      !releasedBootEventTypes.has(event.type)
     ) {
       const buffered = bootEventBuffer.get(event.type);
-      if (buffered) buffered.push(event);
-      else bootEventBuffer.set(event.type, [event]);
-      bootEventBufferedCount += 1;
+      if (buffered) {
+        buffered.push(event);
+        // Overflow evicts the oldest event of this type, so a late listener
+        // sees the most recent history rather than only the earliest.
+        if (buffered.length > BOOT_FRAME_BUFFER_LIMIT) buffered.shift();
+      } else {
+        bootEventBuffer.set(event.type, [event]);
+      }
     }
+    if (eventReplayQueue?.type === event.type) eventReplayQueue.events.push(event);
     return baseDispatchEvent(event);
   };
   (emitter as unknown as { addEventListener: typeof baseAddEventListener }).addEventListener = (
@@ -1840,29 +1850,45 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     listener: EventListenerOrEventListenerObject | null,
     listenerOptions?: boolean | AddEventListenerOptions,
   ) => {
-    baseAddEventListener(type, listener, listenerOptions);
-    if (!bootEventReplayEnabled || listener === null || releasedBootEventTypes.has(type)) return;
+    if (
+      !bootEventReplayEnabled ||
+      listener === null ||
+      releasedBootEventTypes.has(type) ||
+      eventReplayQueue !== undefined
+    ) {
+      baseAddEventListener(type, listener, listenerOptions);
+      return;
+    }
     releasedBootEventTypes.add(type);
-    const replayed = bootEventBuffer.get(type) ?? [];
+    const queue = { type, events: bootEventBuffer.get(type) ?? [] };
     bootEventBuffer.delete(type);
-    bootEventBufferedCount -= replayed.length;
     const once = typeof listenerOptions === 'object' && listenerOptions.once === true;
     const signal = typeof listenerOptions === 'object' ? listenerOptions.signal : undefined;
-    for (const event of replayed) {
-      if (signal?.aborted) return;
-      try {
-        if (typeof listener === 'function') listener.call(emitter, event);
-        else listener.handleEvent(event);
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'live-frames',
-          message: `[bureau] event listener threw on a replayed "${event.type}" event:`,
-          cause: error,
-        });
+    // The listener registers only after the queue drains, so an event its own
+    // callback causes lands behind the remaining replay, in emission order.
+    eventReplayQueue = queue;
+    let consumed = false;
+    try {
+      while (queue.events.length > 0 && !consumed) {
+        if (signal?.aborted) break;
+        const event = queue.events.shift()!;
+        try {
+          if (typeof listener === 'function') listener.call(emitter, event);
+          else listener.handleEvent(event);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'live-frames',
+            message: `[bureau] event listener threw on a replayed "${event.type}" event:`,
+            cause: error,
+          });
+        }
+        consumed = once;
       }
-      if (once) return;
+    } finally {
+      eventReplayQueue = undefined;
     }
+    if (!consumed && !signal?.aborted) baseAddEventListener(type, listener, listenerOptions);
   };
   // AB-96 — terminal RunReports, cached at the moment each run's lifecycle
   // event fires so `getRunReport` never needs to re-derive them.
@@ -1992,14 +2018,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // and log per-listener instead, matching the isolation every other fan-out
     // in this file already gives its listeners (see `disposeRegisteredStreamListeners`
     // callers, `emitter.dispatch`).
-    if (
-      bootFrameBufferOpen &&
-      'runId' in frame &&
-      bootFrameRunIds.has(frame.runId) &&
-      bootFrameBuffer.length < BOOT_FRAME_BUFFER_LIMIT
-    ) {
+    if (bootFrameBufferOpen && 'runId' in frame && bootFrameRunIds.has(frame.runId)) {
       bootFrameBuffer.push(frame);
+      // Overflow evicts the oldest frame, keeping the most recent history.
+      if (bootFrameBuffer.length > BOOT_FRAME_BUFFER_LIMIT) bootFrameBuffer.shift();
     }
+    frameReplayQueue?.push(frame);
     for (const listener of liveFrameListeners) {
       deliverLiveFrame(listener, frame);
     }
@@ -9676,10 +9700,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     subscribeLiveFrames(listener) {
       // COR-1421 — the first subscriber closes the boot buffer and is replayed
       // what recovered runs emitted before it attached.
-      const replayedFrames = bootFrameBufferOpen ? bootFrameBuffer.splice(0) : [];
+      if (bootFrameBufferOpen && frameReplayQueue === undefined) {
+        bootFrameBufferOpen = false;
+        // The listener joins the live set only once the replay queue drains, so
+        // a frame its own callback causes is delivered after the remaining
+        // replay, in emission order.
+        const queue = bootFrameBuffer.splice(0);
+        frameReplayQueue = queue;
+        try {
+          while (queue.length > 0) deliverLiveFrame(listener, queue.shift()!);
+        } finally {
+          frameReplayQueue = undefined;
+        }
+      }
       bootFrameBufferOpen = false;
       liveFrameListeners.add(listener);
-      for (const frame of replayedFrames) deliverLiveFrame(listener, frame);
       return () => {
         liveFrameListeners.delete(listener);
       };

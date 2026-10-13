@@ -2367,134 +2367,222 @@ describe('createBureau', () => {
     }
   });
 
-  // COR-1421 regression: `recoverAll()` resumes recovered workflows without
-  // awaiting them, so a recovered run emits frames while the rest of boot
-  // recovery is still awaiting. Callers can only subscribe after
-  // `createBureau()` returns, so any awaited work in that tail used to drop
-  // every frame the run emitted meanwhile. The delay hook below is
-  // deliberately awaited work in the boot tail (the post-recovery goal sweep's
-  // storage listing is stalled for 25ms while the recovered run steps); the first subscriber must still
-  // receive the frames the run produced before it attached.
-  it("replays a recovered run's boot-time frames to a subscriber that attaches after createBureau returns (COR-1421)", async () => {
+  // COR-1421: boots Bureau B over the SQLite file a never-disposed Bureau A
+  // left behind, so B recovers A's parked run. The delay hook is deliberately
+  // awaited work in B's boot tail (the post-recovery goal sweep's storage
+  // listing stalls 25ms while the recovered run steps), and it asserts that
+  // the recovered run stepped before `createBureau` returned. The recovered
+  // run takes `recoveredToolSteps` further tool-calling steps before it ends.
+  async function bootRecoveredBureauWithDelayedTail(recoveredToolSteps: number, runCount = 1) {
     const databasePath = join(
       tmpdir(),
       `bureau-recovery-boot-frames-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
     );
+    let bureauAReachedStep1 = false;
+    let recoveredRunStepping = false;
+    let recoveredRunsAtFinalStep = 0;
+    let tailDelayCount = 0;
+    let recoveredRunScanned = false;
+    const bureauA = await createBureau({
+      agents: {},
+      generate: async ({ step }) => {
+        if (step === 0) {
+          return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        bureauAReachedStep1 = true;
+        return new Promise<never>(() => {});
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const runs = [];
+    for (let index = 0; index < runCount; index += 1) {
+      runs.push(await bureauA.createRun({ message: `Recover me ${index}` }));
+    }
+    await pollUntil(() => bureauAReachedStep1);
+    // Bureau A stays undisposed so its workflow is still recoverable, as in
+    // the AB-15 test below; it is released by `cleanup`.
+    const realStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+    const delayedStorage = new Proxy(realStorage, {
+      get(target, property, receiver) {
+        if (property === 'scan') {
+          return (prefix: string, ...rest: unknown[]) => {
+            if (prefix.startsWith('upd:')) recoveredRunScanned = true;
+            return target.scan(prefix, ...(rest as []));
+          };
+        }
+        if (property === 'keys') {
+          return (prefix: string, ...rest: unknown[]) =>
+            (async function* () {
+              if (recoveredRunScanned && prefix.startsWith('bureau-goal:')) {
+                tailDelayCount += 1;
+                await new Promise<void>((resolve) => setTimeout(resolve, 25));
+              }
+              yield* (
+                target as unknown as {
+                  keys(prefix: string, ...options: unknown[]): AsyncIterable<string>;
+                }
+              ).keys(prefix, ...rest);
+            })();
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const bureau = await createBureau({
+      agents: {
+        echo: createAgent({
+          generate: async () => ({ content: 'echo', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      scheduler: { enabled: true },
+      generate: async ({ step }) => {
+        recoveredRunStepping = true;
+        // Every agent is capped at 25 steps (steps 0 through 24).
+        if (step === 24 || step > recoveredToolSteps) recoveredRunsAtFinalStep += 1;
+        return {
+          content: `B recovered step ${step}`,
+          toolCalls: step <= recoveredToolSteps ? [{ name: 'next', arguments: {} }] : [],
+        };
+      },
+      toolbox: createToolbox([createNextTool()]),
+      storage: delayedStorage,
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    // The scenario these tests exist for: the recovered run stepped, and the
+    // boot tail awaited real work afterwards, before createBureau returned.
+    expect(recoveredRunStepping).toBe(true);
+    expect(tailDelayCount).toBeGreaterThan(0);
+    return {
+      bureau,
+      runId: runs[0]!.id,
+      runIds: runs.map((run) => run.id),
+      recoveredRunsFinished: () => recoveredRunsAtFinalStep >= runCount,
+      async cleanup() {
+        await bureau.dispose();
+        await bureauA.dispose();
+        await rm(databasePath, { force: true });
+        await rm(`${databasePath}-wal`, { force: true });
+        await rm(`${databasePath}-shm`, { force: true });
+      },
+    };
+  }
+
+  // COR-1421 regression: `recoverAll()` resumes recovered workflows without
+  // awaiting them, so a recovered run emits frames while the rest of boot
+  // recovery is still awaiting. Callers can only subscribe after
+  // `createBureau()` returns, so any awaited work in that boot tail used to
+  // drop every frame and event the run emitted meanwhile. The first
+  // subscriber, through `subscribeLiveFrames` or the Bureau's event emitter,
+  // must still receive what the run produced before it attached.
+  it("replays a recovered run's boot-time frames and events to subscribers that attach after createBureau returns (COR-1421)", async () => {
+    const { bureau: bureauB, runId, cleanup } = await bootRecoveredBureauWithDelayedTail(0);
+    const framesFromB: ServerFrame[] = [];
+    const unsubscribeB = bureauB.subscribeLiveFrames((frame) => {
+      if ('runId' in frame && frame.runId === runId) {
+        framesFromB.push(frame);
+      }
+    });
+
+    // The Bureau's own event emitter, through both a direct listener and the
+    // observable path, each on a different event type.
+    const registeredRunIds: string[] = [];
+    bureauB.addEventListener('run.registered', (event) => {
+      registeredRunIds.push(event.runId);
+    });
+    const actionRunIds: string[] = [];
+    const actionSubscription = bureauB.subscribe('action', (event) => {
+      actionRunIds.push(event.action.runId);
+    });
 
     try {
-      let bureauAReachedStep1 = false;
-      const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
-        },
-        toolbox: createToolbox([createNextTool()]),
-        storage: { type: 'sqlite', path: databasePath },
-        durableExecution: true,
-        durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
-      });
-      const run = await bureauA.createRun({ message: 'Recover me' });
-      await pollUntil(() => bureauAReachedStep1);
-      // Bureau A stays undisposed so its workflow is still recoverable, as in
-      // the AB-15 test above; it is released at the end.
-
-      let recoveredRunStepping = false;
-      let tailDelayCount = 0;
-      let recoveredRunScanned = false;
-      const realStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
-      // Awaited work in the boot tail: once recovery has read the recovered
-      // run's `upd:` records (it has resumed the workflow by then), the goal
-      // sweep that runs after `recoverAll()` stalls on its key listing.
-      const delayedStorage = new Proxy(realStorage, {
-        get(target, property, receiver) {
-          if (property === 'scan') {
-            return (prefix: string, ...rest: unknown[]) => {
-              if (prefix.startsWith('upd:')) recoveredRunScanned = true;
-              return target.scan(prefix, ...(rest as []));
-            };
-          }
-          if (property === 'keys') {
-            return (prefix: string, ...rest: unknown[]) =>
-              (async function* () {
-                if (recoveredRunScanned && prefix.startsWith('bureau-goal:')) {
-                  tailDelayCount += 1;
-                  await new Promise<void>((resolve) => setTimeout(resolve, 25));
-                }
-                yield* (
-                  target as unknown as {
-                    keys(prefix: string, ...options: unknown[]): AsyncIterable<string>;
-                  }
-                ).keys(prefix, ...rest);
-              })();
-          }
-          const value: unknown = Reflect.get(target, property, receiver);
-          return typeof value === 'function' ? value.bind(target) : value;
-        },
-      });
-
-      const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          recoveredRunStepping = true;
-          return { content: `B recovered step ${step}`, toolCalls: [] };
-        },
-        toolbox: createToolbox([createNextTool()]),
-        storage: delayedStorage,
-        durableExecution: true,
-        durableOwnership: { ownership: 'none' },
-        stopWhen: stopWhen.noToolCalls(),
-      });
-      // The scenario this test exists for: the recovered run stepped, and the
-      // boot tail awaited real work afterwards, before createBureau returned.
-      expect(recoveredRunStepping).toBe(true);
-      expect(tailDelayCount).toBeGreaterThan(0);
-
-      const framesFromB: ServerFrame[] = [];
-      const unsubscribeB = bureauB.subscribeLiveFrames((frame) => {
-        if ('runId' in frame && frame.runId === run.id) {
-          framesFromB.push(frame);
+      expect(framesFromB.some((frame) => frame.type === 'run-envelope')).toBe(true);
+      expect(registeredRunIds).toContain(runId);
+      expect(actionRunIds).toContain(runId);
+      // A later subscriber does not receive the buffered boot frames again.
+      const laterFrames: ServerFrame[] = [];
+      const unsubscribeLater = bureauB.subscribeLiveFrames((frame) => {
+        if ('runId' in frame && frame.runId === runId) {
+          laterFrames.push(frame);
         }
       });
-
-      // The Bureau's own event emitter, through both a direct listener and
-      // the observable path, each on a different event type.
-      const registeredRunIds: string[] = [];
-      bureauB.addEventListener('run.registered', (event) => {
-        registeredRunIds.push(event.runId);
-      });
-      const actionRunIds: string[] = [];
-      const actionSubscription = bureauB.subscribe('action', (event) => {
-        actionRunIds.push(event.action.runId);
-      });
-
-      try {
-        expect(framesFromB.some((frame) => frame.type === 'run-envelope')).toBe(true);
-        expect(registeredRunIds).toContain(run.id);
-        expect(actionRunIds).toContain(run.id);
-        // A later subscriber does not receive the buffered boot frames again.
-        const laterFrames: ServerFrame[] = [];
-        const unsubscribeLater = bureauB.subscribeLiveFrames((frame) => {
-          if ('runId' in frame && frame.runId === run.id) {
-            laterFrames.push(frame);
-          }
-        });
-        unsubscribeLater();
-        expect(laterFrames).toHaveLength(0);
-      } finally {
-        unsubscribeB();
-        actionSubscription.unsubscribe();
-        await bureauB.dispose();
-      }
-      await bureauA.dispose();
+      unsubscribeLater();
+      expect(laterFrames).toHaveLength(0);
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      unsubscribeB();
+      actionSubscription.unsubscribe();
+      await cleanup();
+    }
+  });
+
+  it('keeps replayed frames in emission order when the first listener causes a new frame during replay (COR-1421)', async () => {
+    const { bureau, runId, cleanup } = await bootRecoveredBureauWithDelayedTail(0);
+    try {
+      // The listener synchronously submits a scheduler task mid-replay, which
+      // emits a `scheduler.state` frame at once. It must queue behind the
+      // rest of the replay, never re-enter the listener while it is still
+      // being replayed to.
+      let causing = false;
+      let reentrantFrames = 0;
+      let schedulerFrames = 0;
+      let replayedFrames = 0;
+      bureau.subscribeLiveFrames((frame) => {
+        if (causing) reentrantFrames += 1;
+        if (frame.type === 'scheduler.state') schedulerFrames += 1;
+        if (!('runId' in frame) || frame.runId !== runId) return;
+        replayedFrames += 1;
+        if (!causing && replayedFrames === 1) {
+          causing = true;
+          void bureau.submitSchedulerTask({ message: 'cause a frame', priority: 'background' });
+          causing = false;
+        }
+      });
+      expect(replayedFrames).toBeGreaterThan(1);
+      expect(schedulerFrames).toBeGreaterThan(0);
+      expect(reentrantFrames).toBe(0);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('evicts the oldest boot frames and events at overflow so the newest history survives (COR-1421)', async () => {
+    const { bureau, runIds, recoveredRunsFinished, cleanup } =
+      await bootRecoveredBureauWithDelayedTail(100, 3);
+    try {
+      // Nobody subscribes until the recovered run has finished, so its frames
+      // and events overflow the 1024-entry boot buffers.
+      await pollUntil(() => recoveredRunsFinished(), 5_000);
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      const frames: ServerFrame[] = [];
+      bureau.subscribeLiveFrames((frame) => {
+        if ('runId' in frame && runIds.includes(frame.runId)) frames.push(frame);
+      });
+      expect(frames).toHaveLength(1024);
+      // The run's terminal frame is its newest; drop-newest would have lost it.
+      expect(
+        frames.some(
+          (frame) => frame.type === 'run-envelope' && frame.frame.type === 'run-finished',
+        ),
+      ).toBe(true);
+
+      const actions: number[] = [];
+      bureau.addEventListener('action', (event) => {
+        if (runIds.includes(event.action.runId)) actions.push(event.action.sequence);
+      });
+      expect(actions).toHaveLength(1024);
+      // Sequences ascend, so the newest action is last; eviction removed the
+      // oldest, which a drop-newest buffer would have kept.
+      expect(actions).toEqual([...actions].sort((left, right) => left - right));
+      expect(actions[0]).toBeGreaterThan(1);
+    } finally {
+      await cleanup();
     }
   });
 
