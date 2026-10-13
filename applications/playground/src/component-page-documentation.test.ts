@@ -318,15 +318,13 @@ describe('component-page single-scroll layout', () => {
     }
   });
 
-  test('renders the hero, spec card, and section anchors from a fixture', async () => {
+  test('renders the hero and section anchors from a fixture', async () => {
     const { unmount } = render(ComponentPage);
 
     expect(await findHeroHeading('Button')).toBeTruthy();
     expect(screen.getByText('Fixture purpose for a documentation page.')).toBeTruthy();
     // Import line built from exportName + importSpecifier.
     expect(screen.getByText("import { Button } from '@lostgradient/cinder';")).toBeTruthy();
-    // Spec card version row.
-    expect(screen.getByText('v0.2.0')).toBeTruthy();
 
     // Section anchors resolve.
     for (const id of ['overview', 'guidance', 'props', 'related']) {
@@ -355,32 +353,42 @@ describe('component-page single-scroll layout', () => {
     await tick();
   });
 
-  test('maps a non-stable status to a non-success badge variant', async () => {
-    const beta = baseFixture();
-    beta.component.status = 'beta';
-    installDocumentationDataIsland(beta);
-
+  test('renders no Component facts card, keeping the import control and category heading', async () => {
     const { unmount } = render(ComponentPage);
-    const statusBadge = await screen.findByText('beta');
-    expect(statusBadge.getAttribute('data-variant')).toBe('info');
+    await findHeroHeading('Button');
+
+    expect(document.querySelector('.dx-spec')).toBeNull();
+    expect(document.querySelector('aside[aria-label="Component facts"]')).toBeNull();
+    expect(screen.queryByLabelText('Component facts')).toBeNull();
+    // The facts card is the only place the version and A11y pattern rows lived.
+    expect(document.body.textContent).not.toContain('v0.2.0');
+    expect(document.querySelector('.dx-import')).not.toBeNull();
+    expect(document.querySelector('.dx-eyebrow__index')?.textContent).toBe('Actions');
+    // The hero's only child grid track is gone with the card.
+    expect(document.querySelector('.dx-hero__grid')).toBeNull();
 
     unmount();
     await tick();
   });
 
-  test('renders the status dot as decorative so it does not re-announce the badge text', async () => {
-    // Regression for #388/#372: the spec-row StatusDot sits next to a Badge that
-    // already names the status visibly. The dot must be decorative
-    // (`aria-hidden`) — if it carried `aria-label={status}` it would speak the
-    // same word the Badge already announces (the audible duplication).
+  test('puts the documentation canvas gutter on one owner with no enclosing frame', async () => {
     const { unmount } = render(ComponentPage);
     await findHeroHeading('Button');
 
-    const dot = document.querySelector('.dx-spec__val [role="img"]');
-    expect(dot).not.toBeNull();
-    expect(dot?.getAttribute('aria-hidden')).toBe('true');
-    // The decorative dot carries no accessible name of its own.
-    expect(dot?.getAttribute('aria-label')).toBeNull();
+    const canvas = document.querySelector('.dx');
+    expect(canvas).not.toBeNull();
+    // Every hero and layout section takes its horizontal gutter from `.dx__inner`.
+    expect(document.querySelectorAll('.dx__inner').length).toBeGreaterThan(0);
+    expect(canvas?.parentElement?.closest('.dx__inner')).toBeNull();
+
+    // The component CSS is the only source of the frame and the gutter.
+    const source = await Bun.file(new URL('./component-page.svelte', import.meta.url)).text();
+    const canvasRule = /\n {2}\.dx \{([^}]*)\}/.exec(source)?.[1] ?? '';
+    expect(canvasRule).toContain('--dx-gutter');
+    expect(canvasRule).not.toMatch(/border|padding/);
+    const innerRule = /\n {2}\.dx__inner \{([^}]*)\}/.exec(source)?.[1] ?? '';
+    expect(innerRule).toContain('padding-inline: var(--dx-gutter)');
+    expect(source).not.toContain('dx-spec');
 
     unmount();
     await tick();

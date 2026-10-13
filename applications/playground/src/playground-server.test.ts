@@ -1420,6 +1420,20 @@ describe('/page/:name', () => {
     expect(response.status).toBe(404);
   });
 
+  it('gives only the documentation page an unpadded body, leaving snapshot and preview gutters unchanged', async () => {
+    const bodyPadding = async (query: string): Promise<string> => {
+      const response = await handleRequest(req(`/page/${FIXTURE_COMPONENT}${query}`));
+      const html = await response.text();
+      const bodyRule = /\n\s+body \{([^}]*)\}/.exec(html)?.[1] ?? '';
+      return /padding:\s*([^;]+);/.exec(bodyRule)?.[1]?.trim() ?? '';
+    };
+    const gutter = 'clamp(var(--cinder-space-1), 2.5vw, var(--cinder-space-6))';
+
+    expect(await bodyPadding('')).toBe('0');
+    expect(await bodyPadding('?snapshot=1')).toBe(gutter);
+    expect(await bodyPadding('?preview=1')).toBe(gutter);
+  });
+
   it('does NOT include data-snapshot-mode on <html> without ?snapshot=1', async () => {
     const response = await handleRequest(req(`/page/${FIXTURE_COMPONENT}`));
     const html = await response.text();

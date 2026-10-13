@@ -1,0 +1,24 @@
+import { defineConfig, devices } from '@playwright/test';
+
+// Playwright forces color in its workers and web servers. Remove the conflicting
+// inherited opt-out in this test process before those children are created.
+delete process.env['NO_COLOR'];
+
+const port = 5597;
+const origin = `http://localhost:${port}`;
+
+export default defineConfig({
+  testDir: './tests',
+  testMatch: '**/*.playwright.ts',
+  timeout: 60_000,
+  use: { baseURL: origin, trace: 'retain-on-failure' },
+  webServer: {
+    command: 'bun src/playground-server.ts',
+    cwd: import.meta.dirname,
+    env: { PORT: String(port) },
+    url: `${origin}/ready`,
+    reuseExistingServer: false,
+    timeout: 300_000,
+  },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+});
