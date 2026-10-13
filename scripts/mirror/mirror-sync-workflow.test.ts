@@ -119,6 +119,17 @@ describe('mirror-sync.yaml', () => {
     expect(disabledCredentials).toHaveLength(checkoutSteps.length);
   });
 
+  test('checks out the full corvidae history in every job that reads provenance', async () => {
+    // Changeset emission walks (trailer SHA, HEAD] and asks for ancestry, and supersession checks
+    // whether an older pull request's trailer is an ancestor. A shallow checkout answers neither.
+    const text = await readWorkflow();
+    const checkouts = [
+      ...text.matchAll(/uses: actions\/checkout@v4\n {8}with:\n((?: {10}\S.*\n)+)/g),
+    ];
+    expect(checkouts).toHaveLength(3);
+    for (const checkout of checkouts) expect(checkout[1]).toMatch(/^ {10}fetch-depth: 0$/m);
+  });
+
   test('serializes a manual dispatch at workflow scope rather than per job', async () => {
     const text = await readWorkflow();
     expect(text).toMatch(/concurrency:\n\s+group: mirror-sync-\$\{\{ github\.event_name \}\}-/);
