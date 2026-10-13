@@ -280,19 +280,23 @@ describe('a Bureau parent with one child across fresh invocations', () => {
       writeClock(directory, startedAt);
 
       const started = await invoke(BUREAU, 'start', 'start');
+      expect(started['diagnostics']).toEqual([]);
       expect(started['shutdown']).toEqual({ policy: 'abort', unresolved: 0 });
       expect(bureauStateOf(started)).toEqual({
         parent: { status: 'running', content: null },
         child: { status: 'completed', content: 'child done in start' },
       });
 
-      expect(bureauStateOf(await invoke(BUREAU, 'read', 'read'))).toEqual({
+      const read = await invoke(BUREAU, 'read', 'read');
+      expect(read['diagnostics']).toEqual([]);
+      expect(bureauStateOf(read)).toEqual({
         parent: { status: 'cancelled', content: null },
         child: { status: 'completed', content: 'child done in start' },
       });
 
       writeClock(directory, startedAt + 2 * WAKEUP_MS);
       const woken = await invoke(BUREAU, 'maintain', 'wake');
+      expect(woken['diagnostics']).toEqual([]);
       expect(woken['parentGenerateSteps']).toEqual([]);
       expect(bureauStateOf(woken).parent).toEqual({ status: 'cancelled', content: null });
     },
@@ -311,6 +315,7 @@ describe('a Bureau parent with one child across fresh invocations', () => {
       // the driver then kills the invocation, as a platform would reclaim it.
       const draining = driver.spawn(BUREAU, 'start-drain', 'start');
       const drained = await draining.waitFor('finished');
+      expect(drained['diagnostics']).toEqual([]);
       expect(drained['shutdown']).toEqual({ policy: 'drain', unresolved: expect.any(Number) });
       expect((drained['shutdown'] as { unresolved: number }).unresolved).toBeGreaterThan(0);
       expect(bureauStateOf(drained).parent).toEqual({ status: 'running', content: null });
@@ -320,6 +325,7 @@ describe('a Bureau parent with one child across fresh invocations', () => {
 
       writeClock(directory, startedAt + 2 * WAKEUP_MS);
       const woken = await invoke(BUREAU, 'maintain', 'wake');
+      expect(woken['diagnostics']).toEqual([]);
       expect(woken['parentGenerateSteps']).toEqual([1]);
       expect(bureauStateOf(woken)).toEqual({
         parent: { status: 'completed', content: 'parent woke in wake' },
