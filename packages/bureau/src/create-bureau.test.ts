@@ -2612,7 +2612,7 @@ describe('createBureau', () => {
         durableOwnership: { ownership: 'none' },
         stopWhen: stopWhen.noToolCalls(),
         onEvent: (event) => {
-          events.push(event as { type: string; runId?: string; verdict?: string });
+          events.push(event);
         },
       });
       expect(recoveredFireStepped).toBe(true);
