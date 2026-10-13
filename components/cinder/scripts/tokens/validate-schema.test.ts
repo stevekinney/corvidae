@@ -3,9 +3,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { TokenValidationError } from './types.ts';
-import { validateResolverDocumentSchema, validateTokenDocumentSchema } from './validate-schema.ts';
-import { assertValidTokenDocument, validateTokenDocument } from './validate.ts';
+import { TokenValidationError } from '../../src/tokens/runtime/types.ts';
+import {
+  validateResolverDocumentSchema,
+  validateTokenDocumentSchema,
+} from '../../src/tokens/runtime/validate-schema.ts';
+import { validateTokenDocument } from '../../src/tokens/runtime/validate-tokens.ts';
+import { assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
 
 const inheritedTypeCases = [
   ['color', { colorSpace: 'oklch', components: [0.5, 0.1, 255] }],

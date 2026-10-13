@@ -1,6 +1,6 @@
 /**
  * First-pass structural validation against the official DTCG 2025.10 JSON
- * Schemas (vendored under `./schemas`, see that directory's README.md).
+ * Schemas (vendored under `scripts/tokens/schemas`, see that directory's README.md).
  *
  * This layer catches shape violations JSON Schema can express directly:
  * required composite members, enum membership, value types, and pattern
@@ -15,14 +15,11 @@
  * effective inherited types, including `$extends` group references, so valid
  * lossless source documents do not need authored discriminator properties.
  */
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import type { ErrorObject } from 'ajv';
 
-import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
-import addFormats from 'ajv-formats';
-
+import validateFormat from './format-validator.generated.js';
 import { mergeAndExpandExtends } from './resolve.ts';
+import validateResolver from './resolver-validator.generated.js';
 import {
   TOKEN_TYPES,
   TokenValidationError,
@@ -30,17 +27,13 @@ import {
   type ValidationIssue,
 } from './types.ts';
 
-const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-const schemaDirectory = join(scriptDirectory, 'schemas');
-
 /**
- * The two `format` keywords the vendored DTCG schemas actually apply. Ajv
- * treats an unknown format as unconstrained, so these are registered with
- * `ajv-formats`' real validators rather than no-op stubs — otherwise a
- * malformed `$ref` (a bad percent-escape in a token JSON Pointer, say) would
- * sail through the official-schema gate that exists to catch exactly that.
+ * The validators are standalone modules generated from the vendored schemas
+ * (`scripts/tokens/schemas`) by `tokens:generate`, so this module needs no
+ * filesystem access and no runtime code generation. They are CSP-safe and run
+ * in the browser unchanged.
  */
-const SCHEMA_FORMATS = ['uri-reference', 'json-pointer-uri-fragment'] as const;
+type SchemaValidator = ((data: unknown) => boolean) & { errors?: ErrorObject[] | null };
 
 function isJsonSchemaDocument(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -48,32 +41,6 @@ function isJsonSchemaDocument(value: unknown): value is Record<string, unknown> 
 
 function isTokenDocument(value: unknown): value is TokenDocument {
   return isJsonSchemaDocument(value);
-}
-
-function loadSchema(fileName: string): object {
-  const parsed: unknown = JSON.parse(readFileSync(join(schemaDirectory, fileName), 'utf8'));
-  if (!isJsonSchemaDocument(parsed)) throw new Error(`${fileName} did not parse to a JSON object`);
-  return parsed;
-}
-
-function createValidator(schema: object): ValidateFunction {
-  const ajv = new Ajv({ allErrors: true, strict: false, logger: false, addUsedSchema: false });
-  addFormats(ajv, [...SCHEMA_FORMATS]);
-  return ajv.compile(schema);
-}
-
-let formatValidator: ValidateFunction | undefined;
-let resolverValidator: ValidateFunction | undefined;
-
-/** Ajv instances cannot share `$id`s, so the format and resolver schemas each get their own. */
-function getFormatValidator(): ValidateFunction {
-  formatValidator ??= createValidator(loadSchema('dtcg-format-2025-10.json'));
-  return formatValidator;
-}
-
-function getResolverValidator(): ValidateFunction {
-  resolverValidator ??= createValidator(loadSchema('dtcg-resolver-2025-10.json'));
-  return resolverValidator;
 }
 
 function decodeJsonPointerSegment(segment: string): string {
@@ -250,14 +217,14 @@ function projectTokenDocumentForValidation(
 }
 
 function runSchemaValidation(
-  validator: ValidateFunction,
+  validator: SchemaValidator,
   document: unknown,
   source: string,
   lookupDocuments: readonly unknown[] = [],
   sourceByDocument?: ReadonlyMap<object, string>,
 ): unknown {
   const schemaDocument =
-    validator === getFormatValidator()
+    validator === validateFormat
       ? projectTokenDocumentForValidation(document, lookupDocuments, source, sourceByDocument)
       : document;
   if (validator(schemaDocument)) return schemaDocument;
@@ -276,13 +243,7 @@ export function validateTokenDocumentSchema(
   lookupDocuments: readonly unknown[] = [],
   sourceByDocument?: ReadonlyMap<object, string>,
 ): unknown {
-  return runSchemaValidation(
-    getFormatValidator(),
-    document,
-    source,
-    lookupDocuments,
-    sourceByDocument,
-  );
+  return runSchemaValidation(validateFormat, document, source, lookupDocuments, sourceByDocument);
 }
 
 /**
@@ -304,5 +265,5 @@ export function validateTokenDocumentSchema(
  * rejected so it cannot come back.
  */
 export function validateResolverDocumentSchema(document: unknown, source = '$'): void {
-  runSchemaValidation(getResolverValidator(), document, source);
+  runSchemaValidation(validateResolver, document, source);
 }

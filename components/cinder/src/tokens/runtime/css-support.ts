@@ -1,39 +1,11 @@
 import { type CorpusEntry, isPlainObject } from './corpus.ts';
 import { DEFERRED_COMPONENT_ALIAS_FAMILIES } from './css-configuration.ts';
+import { sanitizeComment, stylelintDisableCommentFor } from './css-stylelint.ts';
 import type { ValueResolver } from './resolve.ts';
-import type { ResolverDocument, ResolverReference, TokenDocument } from './types.ts';
-import { normalizeSourcePath, parseResolutionOrder } from './validate-corpus.ts';
+import { parseResolutionOrder } from './resolver-order.ts';
+import type { ResolverDocument } from './types.ts';
 import { serializeEntryValue } from './value-entry.ts';
 import { isAliasReference } from './value-formatters.ts';
-
-import { sanitizeComment, stylelintDisableCommentFor } from './css-stylelint.ts';
-
-/**
- * `documentsByPath` is keyed by the normalized relative path `loadTokenDocuments`
- * reports (see `load.ts`'s `Glob` scan), but a resolver `$ref` is a URI reference
- * that may spell the same file differently (`./sets/x.tokens.json`, a percent-escaped
- * path). `normalizeSourcePath` -- reused from `validate-corpus.ts`, which faces the
- * identical lookup and already normalizes before comparing -- collapses both to the
- * same key, so a schema-valid ref that validation accepts also resolves here.
- */
-export function requireDocument(
-  documentsByPath: Map<string, TokenDocument>,
-  ref: string,
-): TokenDocument {
-  const normalizedRef = normalizeSourcePath(ref);
-  const document = documentsByPath.get(normalizedRef);
-  if (!document) {
-    throw new Error(`Resolver references "${ref}" but no loaded token document has that path.`);
-  }
-  return document;
-}
-
-export function refsFor(
-  documentsByPath: Map<string, TokenDocument>,
-  refs: readonly ResolverReference[],
-): TokenDocument[] {
-  return refs.map((ref) => requireDocument(documentsByPath, ref.$ref));
-}
 
 export function isRootDeclaredEntry(entry: CorpusEntry): boolean {
   return !(

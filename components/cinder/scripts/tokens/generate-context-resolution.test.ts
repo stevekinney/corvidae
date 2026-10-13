@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { serializeTypedValue } from '../../src/tokens/runtime/value-formatters.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
-import { serializeTypedValue } from './value-formatters.ts';
 function overrideResolverFixture() {
   // A base "lightness" token and a base "composite" color whose lightness component is a
   // NESTED reference (not a whole-token alias) to it. The dark theme context overrides BOTH

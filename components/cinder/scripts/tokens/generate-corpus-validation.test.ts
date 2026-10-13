@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { collectEntries, type CorpusEntry } from './corpus.ts';
-import { assertUniqueCssProperties } from './css-support.ts';
-import { mergeAndExpandExtends } from './resolve.ts';
+import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { assertUniqueCssProperties } from '../../src/tokens/runtime/css-support.ts';
+import { mergeAndExpandExtends } from '../../src/tokens/runtime/resolve.ts';
 function entry(
   path: string,
   cssProperty: string | undefined,
