@@ -67,6 +67,7 @@ import {
   type TeardownHold,
 } from './finalizer-claim.ts';
 import { deadLetterWithoutRunning, spentTeardownAttempts } from './finalizer-dead-letter.ts';
+import { runFinalizerUnderHeartbeat } from './finalizer-heartbeat.ts';
 import { resolveFinalizerRegistration } from './finalizer-registration.ts';
 
 export { teardownStaleThresholdMs, type TeardownDeadLetterRecord } from './finalizer-claim.ts';
@@ -356,11 +357,13 @@ async function driveResolvedTeardown(
     return;
   }
 
-  const result = await runFinalizerActivity(
+  const result = await runFinalizerUnderHeartbeat(
+    internals,
+    workflowId,
+    hold,
+    { spentAttempts: consumed, attempt, token, firedAt },
     finalizer,
     finalizerInput,
-    attempt,
-    internals.abortController.signal,
     state.workflowExecutionToken,
   );
 
