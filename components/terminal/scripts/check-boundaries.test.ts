@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -162,13 +162,37 @@ describe('importReferences', () => {
       "type D = import('node:url').URL;",
       "import { type E } from 'node:crypto';",
       "import F = require('node:zlib');",
-      'export const dynamicName = await import(`./${name}.ts`);',
       'const g = await import(`node:http`);',
     ].join('\n');
     expect(importReferences(source, 'module.ts')).toEqual([
       { specifier: 'node:crypto', line: 5 },
       { specifier: 'node:zlib', line: 6 },
-      { specifier: 'node:http', line: 8 },
+      { specifier: 'node:http', line: 7 },
+    ]);
+  });
+
+  test.each([
+    ['a variable', 'const a = await import(name);'],
+    ['a template with a substitution', 'const a = await import(`./${name}.ts`);'],
+    ['a concatenation', "const a = await import('./' + name);"],
+    ['a call', 'const a = require(resolveName());'],
+    ['no argument', 'const a = require();'],
+  ])(
+    'marks a dynamic load of %s as computed, because it cannot be checked statically',
+    (_name, line) => {
+      expect(importReferences(`\n${line}`, 'module.ts')).toEqual([
+        { specifier: '', line: 2, computed: true },
+      ]);
+    },
+  );
+
+  test('marks a computed load in Svelte markup, and leaves a literal one alone', () => {
+    const source =
+      '<script lang="ts">\n</script>\n{#await import(name)}{/await}\n{#await import(`./${name}`)}{/await}\n{#await import("./ok.ts")}{/await}';
+    expect(importReferences(source, 'component.svelte')).toEqual([
+      { specifier: '', line: 3, computed: true },
+      { specifier: '', line: 4, computed: true },
+      { specifier: './ok.ts', line: 5 },
     ]);
   });
 
@@ -238,6 +262,21 @@ describe('findImportViolations', () => {
     },
   );
 
+  test('fails closed on a computed dynamic import or require in browser source', () => {
+    const { packageRoot } = workspaceFixture({
+      'src/lib/computed.ts': [
+        'export const load = (name: string) => import(name);',
+        "export const ok = () => import('./local.ts');",
+      ].join('\n'),
+      'src/lib/view.svelte':
+        '<script lang="ts">\n  const load = (name: string) => require(name);\n</script>\n',
+    });
+    expect(formatViolations(findImportViolations(packageRoot)).split('\n')).toEqual([
+      'src/lib/computed.ts:1: a dynamic import or require with a computed specifier cannot be checked; pass a string literal',
+      'src/lib/view.svelte:2: a dynamic import or require with a computed specifier cannot be checked; pass a string literal',
+    ]);
+  });
+
   test('allows type-only imports of server entries, which erase before runtime', () => {
     const { packageRoot } = workspaceFixture({
       'src/lib/types.ts': [
@@ -299,6 +338,32 @@ describe('findImportViolations', () => {
 });
 
 describe('findManifestViolations', () => {
+  test.each([
+    ['catalog', { catalog: { '@xterm/xterm': '6.0.0', 'ghostty-web': '0.4.0' } }],
+    [
+      'named catalog',
+      { catalog: { '@xterm/xterm': '6.0.0' }, catalogs: { lab: { '@wterm/dom': '1' } } },
+    ],
+    [
+      'workspaces catalog',
+      { catalog: { '@xterm/xterm': '6.0.0' }, workspaces: { catalog: { '@wterm/core': '1' } } },
+    ],
+    [
+      'workspaces named catalog',
+      {
+        catalog: { '@xterm/xterm': '6.0.0' },
+        workspaces: { catalogs: { lab: { 'ghostty-web': '1' } } },
+      },
+    ],
+  ])('rejects a comparison engine in the root %s, even unused', (_name, manifest) => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/package.json': JSON.stringify(manifest),
+    });
+    expect(formatViolations(findManifestViolations(packageRoot, workspaceRoot))).toMatch(
+      /package\.json:1: (?:ghostty-web|@wterm\/\w+) is a comparison engine .* root catalog/,
+    );
+  });
+
   test('accepts the selected engine through the root catalog', () => {
     const { packageRoot, workspaceRoot } = workspaceFixture();
     expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
@@ -541,6 +606,29 @@ describe('import probe', () => {
       'src/index.ts: importing the package failed: boom',
     ]);
   });
+});
+
+describe('README contract', () => {
+  const readme = readFileSync(join(realPackageRoot, 'README.md'), 'utf8').replace(/\s+/g, ' ');
+
+  test.each([
+    'computed specifier',
+    'tsconfig `paths`',
+    'bundler aliases',
+    'browser typecheck',
+    '--frozen-lockfile',
+    'only `src/index.ts`',
+    'the listed DOM globals',
+  ])('states what the checks delegate or cover: %s', (phrase) => {
+    expect(readme).toContain(phrase);
+  });
+
+  test.each(['every DOM global', 'any manifest', 'every DOM-global'])(
+    'does not promise more than the code checks: %s',
+    (phrase) => {
+      expect(readme).not.toContain(phrase);
+    },
+  );
 });
 
 describe('checkBoundaries', () => {

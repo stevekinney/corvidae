@@ -1,7 +1,10 @@
 /**
  * Runs in a plain Bun process, never under `bun test`, so no test preload installs DOM globals.
- * Imports the entry named on the command line while trapping the calls that would mean importing
- * the package did real work, then prints a JSON report for `check-boundaries.ts`.
+ * Imports the entry named on the command line (only the modules that entry reaches) while
+ * trapping the calls that would mean importing the package did real work, then prints a JSON
+ * report for `check-boundaries.ts`. It reports reads of the globals listed in `DOM_GLOBALS` only,
+ * the trapped calls and constructors named below, loads of the engine and Bun-only ventriloquist
+ * entries, globals the import added, and an error thrown by the import.
  */
 import { plugin } from 'bun';
 import { resolve } from 'node:path';

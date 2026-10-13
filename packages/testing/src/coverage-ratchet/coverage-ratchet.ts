@@ -322,6 +322,7 @@ export function sourceFilesMissingFromLcov(
     .filter(
       (file) =>
         !file.endsWith('.d.ts') &&
+        !/\.(?:test|spec)\.[cm]?tsx?$/.test(file) &&
         !isTransientTestArtifact(file, packageRoot) &&
         scopes.some((scope) => !isOutsideCoverageScope(file, scope, packageRoot)) &&
         !recorded.has(file),

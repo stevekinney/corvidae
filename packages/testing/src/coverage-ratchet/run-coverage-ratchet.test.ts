@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { rejectionOf } from '../helpers/promise-outcome.ts';
-import { runCoverageRatchet } from './run-coverage-ratchet.ts';
+import { EXPECTED_SOURCE_GLOBS, runCoverageRatchet } from './run-coverage-ratchet.ts';
 
 const scratchDirectories: string[] = [];
 
@@ -200,6 +200,28 @@ describe('checkCoverageRatchet', () => {
       'src/widget.svelte': '<p>hi</p>\n',
     };
     const expectedSourceGlobs = ['src/**/*.ts', 'src/**/*.svelte'];
+
+    test('EXPECTED_SOURCE_GLOBS expects every TypeScript extension, but not test files', async () => {
+      const files = {
+        'src/index.ts': '',
+        'src/a.ts': '',
+        'src/b.tsx': '',
+        'src/c.mts': '',
+        'src/d.cts': '',
+        'src/f.test.tsx': '',
+        'src/g.spec.mts': '',
+      };
+      const root = packageFixture({ lines: 1, functions: 1 }, covered, files);
+      const result = await runCoverageRatchet({
+        packageRoot: root,
+        expectedSourceGlobs: EXPECTED_SOURCE_GLOBS,
+      });
+      const text = result.messages.map((message) => message.text).join('\n');
+      for (const file of ['a.ts', 'b.tsx', 'c.mts', 'd.cts']) {
+        expect(text).toContain(`  src/${file}`);
+      }
+      expect(text).not.toMatch(/f\.test|g\.spec/);
+    });
 
     test('ignores files the tests never loaded unless the option is given', async () => {
       const root = packageFixture({ lines: 1, functions: 1 }, covered, sources);

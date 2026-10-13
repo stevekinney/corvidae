@@ -59,9 +59,12 @@ export function mountHarness<Props extends Record<string, unknown>>(
       if (destroyed) return;
       destroyed = true;
       liveHarnesses.delete(harness);
-      recordUnmount(instance);
-      flushSync();
-      target.remove();
+      try {
+        recordUnmount(instance);
+        flushSync();
+      } finally {
+        target.remove();
+      }
     },
   };
   liveHarnesses.add(harness);

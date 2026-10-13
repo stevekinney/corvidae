@@ -17,6 +17,12 @@ import {
   type SvelteMeasurementPlatform,
 } from './coverage-ratchet.ts';
 
+/**
+ * The source globs a package passes as `expectedSourceGlobs`: every TypeScript module extension
+ * and Svelte components under `src`.
+ */
+export const EXPECTED_SOURCE_GLOBS = ['src/**/*.{ts,tsx,mts,cts}', 'src/**/*.svelte'];
+
 export type CoverageRatchetMessage = {
   stream: 'log' | 'warn' | 'error';
   text: string;

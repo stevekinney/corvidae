@@ -1,3 +1,20 @@
+/**
+ * Boundary checks for `@lostgradient/terminal`. Each check states what it enforces and what it
+ * leaves to another backstop; `README.md` repeats this contract and a test keeps the two honest.
+ *
+ * - `findImportViolations`: static scan of browser source under `src/` for runtime loads of Bun,
+ *   Node, ventriloquist server entries, rejected engines, and paths that leave the package. A
+ *   computed `import()` or `require()` specifier fails closed. It does not resolve `tsconfig`
+ *   `paths` or bundler aliases; the browser typecheck backstops those.
+ * - `findManifestViolations`: the `@xterm/xterm` pin in the root catalog and this package's
+ *   `catalog:` dependency, and rejected engine names in the root catalogs (catalog entries nothing
+ *   installs are invisible to the lockfile).
+ * - `findLockfileViolations`: `bun.lock` as resolved by Bun, which replaces parsing aliases, git
+ *   sources, overrides, and resolutions. A stale lockfile is the frozen-lockfile preflight's job
+ *   (`bun install --frozen-lockfile` runs before every turbo task).
+ * - `runImportProbe`: importing `src/index.ts` only, under plain Bun; what the probe traps is
+ *   listed in `import-probe.ts`.
+ */
 import { readdirSync, readFileSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -61,7 +78,8 @@ function browserSourceFiles(directory: string): string[] {
   return files.toSorted();
 }
 
-type ImportReference = { specifier: string; line: number };
+/** A module load in source. `computed` marks a dynamic load whose specifier is not a literal. */
+type ImportReference = { specifier: string; line: number; computed?: true };
 
 function lineAt(text: string, position: number): number {
   let line = 1;
@@ -76,10 +94,10 @@ function stringLiteral(node: ts.Node | undefined): ts.StringLiteralLike | undefi
 /**
  * The specifier a node loads at runtime. Type-only imports and exports erase before runtime, so
  * they return nothing; `import { type A } from 'x'` still loads `x` and is kept. A dynamic import
- * or `require` with a computed specifier cannot be resolved statically and is out of scope here;
- * the import probe catches what it loads.
+ * or `require` with a computed specifier cannot be resolved statically, so it comes back as
+ * `'computed'` and the caller fails closed.
  */
-function runtimeSpecifier(node: ts.Node): ts.StringLiteralLike | undefined {
+function runtimeSpecifier(node: ts.Node): ts.StringLiteralLike | 'computed' | undefined {
   if (ts.isImportDeclaration(node)) {
     return node.importClause?.isTypeOnly ? undefined : stringLiteral(node.moduleSpecifier);
   }
@@ -97,7 +115,7 @@ function runtimeSpecifier(node: ts.Node): ts.StringLiteralLike | undefined {
     const loads =
       callee.kind === ts.SyntaxKind.ImportKeyword ||
       (ts.isIdentifier(callee) && callee.text === 'require');
-    return loads ? stringLiteral(node.arguments[0]) : undefined;
+    return loads ? (stringLiteral(node.arguments[0]) ?? 'computed') : undefined;
   }
   return undefined;
 }
@@ -118,8 +136,12 @@ function scriptReferences(text: string, firstLine: number, fileName: string): Im
   const visit = (node: ts.Node): void => {
     const specifier = runtimeSpecifier(node);
     if (specifier !== undefined) {
-      const { line } = file.getLineAndCharacterOfPosition(specifier.getStart(file));
-      references.push({ specifier: specifier.text, line: firstLine + line });
+      const { line } = file.getLineAndCharacterOfPosition(node.getStart(file));
+      references.push(
+        specifier === 'computed'
+          ? { specifier: '', line: firstLine + line, computed: true }
+          : { specifier: specifier.text, line: firstLine + line },
+      );
     }
     ts.forEachChild(node, visit);
   };
@@ -128,7 +150,8 @@ function scriptReferences(text: string, firstLine: number, fileName: string): Im
 }
 
 const SCRIPT_BLOCK = /<script\b[^>]*>([\s\S]*?)<\/script>/g;
-const MARKUP_LOAD = /\b(?:import|require)\s*\(\s*(['"`])([^'"`$\n]+)\1\s*\)/g;
+/** `import(` or `require(`, then a plain literal argument when there is one (otherwise computed). */
+const MARKUP_LOAD = /\b(?:import|require)\s*\(\s*(?:(['"`])([^'"`$\n]+)\1\s*\))?/g;
 
 /**
  * Every module specifier a TypeScript, JavaScript, or Svelte source file loads at runtime: static
@@ -145,7 +168,12 @@ export function importReferences(source: string, fileName: string): ImportRefere
   }
   const markup = source.replace(SCRIPT_BLOCK, (block) => block.replace(/[^\n]/g, ' '));
   for (const match of markup.matchAll(MARKUP_LOAD)) {
-    references.push({ specifier: match[2] ?? '', line: lineAt(markup, match.index ?? 0) });
+    const line = lineAt(markup, match.index ?? 0);
+    references.push(
+      match[2] === undefined
+        ? { specifier: '', line, computed: true }
+        : { specifier: match[2], line },
+    );
   }
   return references.toSorted((left, right) => left.line - right.line);
 }
@@ -155,7 +183,19 @@ export function findImportViolations(packageRoot: string): BoundaryViolation[] {
   const sourceRoot = join(packageRoot, 'src');
   const violations: BoundaryViolation[] = [];
   for (const file of browserSourceFiles(sourceRoot)) {
-    for (const { specifier, line } of importReferences(readFileSync(file, 'utf8'), file)) {
+    for (const { specifier, line, computed } of importReferences(
+      readFileSync(file, 'utf8'),
+      file,
+    )) {
+      if (computed) {
+        violations.push({
+          file: relative(packageRoot, file),
+          line,
+          message:
+            'a dynamic import or require with a computed specifier cannot be checked; pass a string literal',
+        });
+        continue;
+      }
       const leavesPackage =
         (specifier.startsWith('.') || isAbsolute(specifier)) &&
         relative(packageRoot, resolve(dirname(file), specifier)).startsWith('..');
@@ -179,8 +219,11 @@ const DEPENDENCY_SECTIONS = [
   'optionalDependencies',
 ] as const;
 
+type CatalogMap = Record<string, string>;
 type Manifest = {
-  catalog?: Record<string, string>;
+  catalog?: CatalogMap;
+  catalogs?: Record<string, CatalogMap>;
+  workspaces?: string[] | { catalog?: CatalogMap; catalogs?: Record<string, CatalogMap> };
   dependencies?: Record<string, string>;
 };
 
@@ -201,13 +244,30 @@ export function findManifestViolations(
 ): BoundaryViolation[] {
   const violations: BoundaryViolation[] = [];
   const rootManifestPath = join(workspaceRoot, 'package.json');
-  const catalogVersion = readManifest(rootManifestPath).catalog?.[SELECTED_ENGINE];
+  const rootManifest = readManifest(rootManifestPath);
+  const catalogVersion = rootManifest.catalog?.[SELECTED_ENGINE];
   if (catalogVersion !== SELECTED_ENGINE_VERSION) {
     violations.push({
       file: relative(packageRoot, rootManifestPath),
       line: 1,
       message: `root catalog must pin ${SELECTED_ENGINE} to ${SELECTED_ENGINE_VERSION}, found ${catalogVersion ?? 'nothing'}`,
     });
+  }
+  const nested = Array.isArray(rootManifest.workspaces) ? undefined : rootManifest.workspaces;
+  const catalogs = [
+    rootManifest.catalog,
+    ...Object.values(rootManifest.catalogs ?? {}),
+    nested?.catalog,
+    ...Object.values(nested?.catalogs ?? {}),
+  ];
+  for (const name of catalogs.flatMap((catalog) => Object.keys(catalog ?? {}))) {
+    if (COMPARISON_ENGINE.test(name)) {
+      violations.push({
+        file: relative(packageRoot, rootManifestPath),
+        line: 1,
+        message: `${name} is a comparison engine the terminal contract rejected, found in a root catalog`,
+      });
+    }
   }
   const terminalManifestPath = join(packageRoot, 'package.json');
   const declared = readManifest(terminalManifestPath).dependencies?.[SELECTED_ENGINE];

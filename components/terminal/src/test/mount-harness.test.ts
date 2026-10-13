@@ -3,6 +3,7 @@ import type { Component } from 'svelte';
 
 import HarnessProbe from './harness-probe.svelte';
 import HarnessThrowingEffect from './harness-throwing-effect.svelte';
+import HarnessThrowingUpdate from './harness-throwing-update.svelte';
 import {
   destroyAllHarnesses,
   liveHarnessCount,
@@ -173,5 +174,18 @@ describe('mount harness', () => {
     expect(takeUnmountFailures()).toEqual([new Error('teardown failed')]);
     expect(takeUnmountFailures()).toEqual([]);
     expect(harness.destroyed).toBe(true);
+  });
+
+  test('detaches the container even when the flush during destroy throws', () => {
+    const first = mountHarness(HarnessProbe, { label: 'First' });
+    const second = mountHarness(HarnessThrowingUpdate, {});
+    queryRequired(second.target, 'button').click();
+
+    expect(() => first.destroy()).toThrow('update failed');
+
+    expect(first.destroyed).toBe(true);
+    expect(first.target.isConnected).toBe(false);
+    expect(liveHarnessCount()).toBe(1);
+    expect(() => second.destroy()).not.toThrow();
   });
 });
