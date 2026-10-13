@@ -4,7 +4,7 @@
    * the Export action, and the status area (save state, findings, preview revision).
    * It stays visible on every pane. Export is a placeholder until COR-486 supplies it.
    */
-  import { Button, Select } from '@lostgradient/cinder';
+  import { Button, Callout, Select } from '@lostgradient/cinder';
 
   import {
     THEME_PREVIEW_COLOR_MODES,
@@ -96,6 +96,14 @@
       Preview revision {workbench.revision}{workbench.previewIsStale ? ' (updating)' : ''}
     </li>
   </ul>
+
+  {#if workbench.storageNotice?.notice}
+    <div class="toolbar__notice" data-testid="storage-notice">
+      <Callout variant="warning" title="Unsaved locally">
+        {workbench.storageNotice.notice}
+      </Callout>
+    </div>
+  {/if}
 </header>
 
 <style>
@@ -149,6 +157,10 @@
     list-style: none;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
+  }
+  .toolbar__notice {
+    flex: 1 1 100%;
+    min-width: 0;
   }
   .sr-only {
     position: absolute;

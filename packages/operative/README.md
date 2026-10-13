@@ -2432,7 +2432,7 @@ watchdog.dispose(); // clears the internal cadence timer
 
 **Exported functions:** `createStallWatchdog`, `createDefaultRunIdentifierSeam(runtime?: RuntimeServices)`, `sessionMonitorPolicy`, `toolCallPolicy`.
 
-`createDefaultRunIdentifierSeam` (AB-325) reads through a `RuntimeServices` instance (`options.runtime`, defaulting to `createDefaultRuntimeServices()` from `lifecycle`) rather than a bare `crypto.randomUUID()` call, so a manual runtime controls its minted ids in tests. `createActiveRunLiveness`'s `ActiveRunLivenessOptions` gains the same `runtime?: RuntimeServices` option (AB-325), backing `startedAt`/`lastTransitionAt` and—when `options.clock` is not separately supplied—the watchdog's monotonic/timer seam too; `options.clock` still takes precedence over `runtime` for that seam when both are supplied.
+`createDefaultRunIdentifierSeam` (AB-325) reads through a `RuntimeServices` instance (`options.runtime`, defaulting to `createDefaultRuntimeServices()`) rather than a bare `crypto.randomUUID()` call, so a manual runtime controls its minted ids in tests. `createActiveRunLiveness`'s `ActiveRunLivenessOptions` gains the same `runtime?: RuntimeServices` option (AB-325), backing `startedAt`/`lastTransitionAt` and—when `options.clock` is not separately supplied—the watchdog's monotonic/timer seam too; `options.clock` still takes precedence over `runtime` for that seam when both are supplied.
 
 **Exported constants:** `LIVENESS_POLICY_VERSION`, `defaultRunIdentifierSeam`, `AGENT_RUN_PROVIDER_TURN_POLICY`, `TOOL_CALL_POLICY`, `SCHEDULER_TASK_POLICY`, `GATEWAY_CONNECTION_POLICY`, `BACKGROUND_EVALUATION_POLICY`, `WEBHOOK_DELIVERY_POLICY`, `WEFT_ACTIVITY_POLICY`, `WEFT_WORKER_POLICY`, `WEFT_TASK_POLICY`, `WEFT_STREAM_POLICY`.
 
@@ -2913,7 +2913,7 @@ expect(report.quiescent).toBe(true);
 | `createMockGenerateOnce(response)` | Returns response once; throws on subsequent calls. |
 | `createRunRecorder(activeRun, runtime?)` | Records all events from an `ActiveRun` for assertion. Exposes `.events`, `.steps`, `.clear()`. Built on `createEventRecorder`. |
 | `createEventRecorder(runtime)` | AB-92/AB-255's `EventRecorder`: `attach`/`attachIterable` a resource's complete event-map type, `normalize()` into a portable `CausalTraceEntry[]`, `assertSequence`/`assertHappensBefore`. |
-| `createManualRuntimeServices(options?)` | Deterministic `RuntimeServices` (AB-92/AB-252): explicit `advance(ms)`/`setTime(epoch)` time control, seeded identifiers and randomness, no real timer. |
+| `createManualRuntimeServices(options?)` | Deterministic `RuntimeServices` (AB-92/AB-252): explicit `advance(ms)`/`setTime(epoch)` time control, seeded identifiers and randomness, no real timer. Re-exported from `@lostgradient/lifecycle`, a private workspace inlined into this package, so import it from `@lostgradient/operative` (COR-89). An `options.origin` that `Date.parse` cannot read throws a `RangeError` at construction. |
 | `createMockScratchpad(initialValues?)` | In-memory `Scratchpad` for testing scratchpad-dependent agents. |
 | `createTestStore()` | In-memory `Store` instance from `@lostgradient/operative`. |
 | `createResourceScope(label, runtime)` | AB-92/AB-256's `ResourceScope`: `register()` a run, timer, subscription, deferred-queue item, or `ChildRunRegistry`; `child(label)` nests a scope; `assertQuiescent()` probes without aborting; `close()` aborts every registered run, awaits its `closed()`, and rejects with a `QuiescenceError` naming every resource still live. |
@@ -2931,9 +2931,10 @@ expect(report.quiescent).toBe(true);
 
 ```typescript
 import { createToolbox } from 'armorer';
-import { HookRegistry, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { Conversation } from 'conversationalist';
 import {
+  HookRegistry,
+  createManualRuntimeServices,
   createScriptedGenerate,
   createScriptedHook,
   createScriptedTool,

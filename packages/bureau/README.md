@@ -701,12 +701,15 @@ The root exports `createBureau` and the Bureau-specific test harnesses. `waitFor
 
 ### `createBureauTestHarness(options)` (AB-261)
 
-Composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, defaulting to a freshly constructed one) and an owned `BureauStorageFixture` (`options.storage`, required). The returned promise resolves only once `bureau.ready` is `true` and boot recovery has completed. Every other `BureauOptions` field passes through unchanged.
+Composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, defaulting to a freshly constructed one) and an owned `BureauStorageFixture` (`options.storage`, required). The returned promise resolves only once `bureau.ready` is `true` and boot recovery has completed. Every other `BureauOptions` field passes through unchanged. `createManualRuntimeServices` and the `ManualRuntimeServices` type are re-exported from `@lostgradient/bureau` (and `@lostgradient/operative`); their source owner, `@lostgradient/lifecycle`, is a private workspace inlined into these packages, so a consumer never imports it directly (COR-89).
 
 ```typescript
 import { createAgent } from '@lostgradient/operative';
-import { createBureauTestHarness, createSqliteStorageFixture } from '@lostgradient/bureau';
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createBureauTestHarness,
+  createManualRuntimeServices,
+  createSqliteStorageFixture,
+} from '@lostgradient/bureau';
 
 const runtime = createManualRuntimeServices();
 const storage = createSqliteStorageFixture({ runtime });
