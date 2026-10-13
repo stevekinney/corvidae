@@ -135,9 +135,11 @@ describe('mirror target-owned enumeration', () => {
     expect(findTargetOwner(policy, '.github/workflows/release-manual.yaml', 'cinder')?.glob).toBe(
       '.github/workflows/release-manual.yaml',
     );
+    // COR-1201 deleted Cinder's playground deployment workflow in cinder#1602 once cinder.website
+    // built from corvidae, so nothing preserves it any longer.
     expect(
-      findTargetOwner(policy, '.github/workflows/deploy-playground.yaml', 'cinder')?.glob,
-    ).toBe('.github/workflows/deploy-playground.yaml');
+      findTargetOwner(policy, '.github/workflows/deploy-playground.yaml', 'cinder'),
+    ).toBeUndefined();
     expect(findTargetOwner(policy, '.github/workflows/mcp-verify.yaml', 'cinder')?.glob).toBe(
       '.github/workflows/mcp-verify.yaml',
     );

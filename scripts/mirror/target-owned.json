@@ -64,11 +64,6 @@
       "targets": ["cinder"]
     },
     {
-      "glob": ".github/workflows/deploy-playground.yaml",
-      "reason": "Cinder's playground deployment workflow, target-owned until COR-1201 resolves its disposition.",
-      "targets": ["cinder"]
-    },
-    {
       "glob": ".github/workflows/pr-title.yaml",
       "reason": "Weft's PR-title enforcement workflow. Unrelated to `verifyTarget`'s jobs and not something COR-1286's ruling touches — kept target-owned so the narrower `.github/**` enumeration below does not accidentally make it transform-writable.",
       "targets": ["weft"]
