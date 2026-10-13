@@ -220,8 +220,9 @@ export interface SchedulerConfiguration {
   /**
    * How long a settled scheduler task stays resolvable through
    * `locateSchedulerTask` / `awaitSchedulerTask` before it expires (and one
-   * window later is forgotten). Finite and greater than zero; unset keeps
-   * outcomes indefinitely. Forwarded unchanged to `createScheduler`.
+   * window later is forgotten). Finite and greater than zero; unset defaults to
+   * 3600000 milliseconds (one hour), and an explicit value overrides that
+   * default. Forwarded to `createScheduler`.
    */
   retentionWindowMs?: number;
 }
