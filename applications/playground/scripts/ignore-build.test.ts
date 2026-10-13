@@ -84,8 +84,8 @@ describe('ignore-build.sh', () => {
   // Vercel sets the previous SHA to the branch's last successful deployment. A force-push after
   // an amend or rebase orphans that commit, and a branch can also fall further behind than the
   // shallow clone reaches; either way the object is absent and `git diff` exits 128, which Vercel
-  // reports as a failed deployment rather than a build. A failure never advances the previous
-  // SHA, so the branch would stay broken on every later push.
+  // reports as a failed deployment rather than a build. Because a failed deployment is not a
+  // successful one, the previous SHA should not advance past it either.
   test('builds when the previous deployment commit is not in the clone', () => {
     const absentCommit = 'deadbeef'.repeat(5);
     expect(ignoreExit(absentCommit, base)).toBe(1);
