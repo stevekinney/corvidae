@@ -1,5 +1,5 @@
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS, storageConditionalBatch } from '../../storage/interface.ts';
 import { AtomicState, atomicStateVersionKey, readAtomicStateSnapshot } from '../atomic-state.ts';
 import { decode, encode } from '../codec.ts';
 import {
@@ -11,6 +11,11 @@ import {
 import type { WorkflowConcurrencyOptions } from '../types.ts';
 import { WorkflowConcurrencyLimitExceededError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
+import {
+  bytesEqual,
+  committedStateCondition,
+  type TerminalFence,
+} from './termination/terminal-fence.ts';
 
 const WORKFLOW_CONCURRENCY_HOLDER_VERSION = 1;
 const NON_EXPIRING_WORKFLOW_CONCURRENCY_LEASE = Number.MAX_SAFE_INTEGER;
@@ -191,24 +196,10 @@ export async function buildWorkflowConcurrencyStartOperations(
   };
 }
 
-/**
- * Release `workflowId`'s workflow-concurrency slot.
- *
- * The slot entry and the holder marker are keyed by workflow id alone, and an
- * `onTerminalConflict: 'start-new'` replacement re-stamps the very entry the
- * old run held (or adds a fresh one), so after a replacement lands the slot
- * belongs to it. A terminal teardown that began for the old run passes
- * `isSuperseded`; it is re-checked at each point just before a write, and a
- * superseded release leaves both the entry and the marker for the
- * replacement's own terminal release. The check is synchronous, so it adds no
- * await to the caller's path.
- */
 export async function releaseWorkflowConcurrencySlot(
   internals: EngineInternals,
   workflowId: string,
-  isSuperseded: () => boolean = () => false,
 ): Promise<void> {
-  if (isSuperseded()) return;
   const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
   const markerBytes = await internals.storage.get(holderKey);
   if (markerBytes === null) {
@@ -217,7 +208,6 @@ export async function releaseWorkflowConcurrencySlot(
 
   const marker = decodeHolderRecord(markerBytes);
   if (marker === null) {
-    if (isSuperseded()) return;
     await internals.storage.delete(holderKey);
     return;
   }
@@ -226,15 +216,89 @@ export async function releaseWorkflowConcurrencySlot(
   const slot = new AtomicState<LockRecord>(internals.storage, stateKey, {
     initial: initialLockRecord(),
   });
-  let skipped = false;
-  await slot.update((current) => {
-    // Evaluated on every optimistic retry, immediately before the commit.
-    skipped = isSuperseded();
-    const record = current ?? initialLockRecord();
-    return skipped
-      ? record
-      : reduceRelease(record, { holderId: workflowId, now: internals.options.getNow() });
-  });
-  if (skipped || isSuperseded()) return;
+  await slot.update((current) =>
+    reduceRelease(current, { holderId: workflowId, now: internals.options.getNow() }),
+  );
   await internals.storage.delete(holderKey);
+}
+
+/**
+ * Release the concurrency slot a terminal commit's run held, fenced on that
+ * commit's durable identity (see {@link TerminalFence}).
+ *
+ * The slot entry and the holder marker are keyed by workflow id, and a
+ * same-id `start-new` replacement re-stamps or replaces them. The partition is
+ * read from the marker captured before the commit, so it is still known after
+ * a replacement purged the marker. While the id still belongs to the committing
+ * run, one conditional batch frees the entry and drops the marker. Once a
+ * replacement owns the id, a same-partition entry is the replacement's and is
+ * left alone, and a different-partition entry is the old run's own and is
+ * freed, fenced on the replacement's marker staying as observed.
+ */
+export async function releaseWorkflowConcurrencySlotForRun(
+  internals: EngineInternals,
+  workflowId: string,
+  fence: TerminalFence,
+): Promise<void> {
+  const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
+  const capturedMarker = await fence.holderMarker;
+  if (capturedMarker === null) return;
+  const marker = decodeHolderRecord(capturedMarker);
+  const ownCommit = committedStateCondition(workflowId, fence);
+  if (marker === null) {
+    await storageConditionalBatch(
+      internals.storage,
+      [ownCommit, { key: holderKey, expectedValue: capturedMarker }],
+      [{ type: 'delete', key: holderKey }],
+    );
+    return;
+  }
+
+  const stateKey = KEYS.workflowConcurrency(marker.workflowType, marker.partitionKey);
+  for (;;) {
+    const snapshot = await readAtomicStateSnapshot<LockRecord>(internals.storage, stateKey, {
+      initial: initialLockRecord(),
+    });
+    const released = reduceRelease(snapshot.value, {
+      holderId: workflowId,
+      now: internals.options.getNow(),
+    });
+    const slotOperations: BatchOperation[] = [
+      { type: 'put', key: stateKey, value: encode(released) },
+      { type: 'put', key: atomicStateVersionKey(stateKey), value: encode(snapshot.version + 1) },
+    ];
+    const slotVersion = encodeVersionCondition(stateKey, snapshot.version);
+    if (
+      await storageConditionalBatch(
+        internals.storage,
+        [slotVersion, ownCommit],
+        [...slotOperations, { type: 'delete', key: holderKey }],
+      )
+    ) {
+      return;
+    }
+
+    // Either the slot version moved or the id changed hands; find out which.
+    const [stateNow, markerNow] = await Promise.all([
+      internals.storage.get(KEYS.workflow(workflowId)),
+      internals.storage.get(holderKey),
+    ]);
+    if (bytesEqual(stateNow, fence.committedState)) continue;
+    if (isSamePartitionMarker(markerNow, marker)) return;
+    const conditions = [slotVersion, { key: holderKey, expectedValue: markerNow }];
+    if (await storageConditionalBatch(internals.storage, conditions, slotOperations)) return;
+  }
+}
+
+/** Whether `markerBytes` is a holder marker for the same concurrency partition as `marker`. */
+function isSamePartitionMarker(
+  markerBytes: Uint8Array | null,
+  marker: WorkflowConcurrencyHolderRecord,
+): boolean {
+  const current = markerBytes === null ? null : decodeHolderRecord(markerBytes);
+  return (
+    current !== null &&
+    current.workflowType === marker.workflowType &&
+    current.partitionKey === marker.partitionKey
+  );
 }

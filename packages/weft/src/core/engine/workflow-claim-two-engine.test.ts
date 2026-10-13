@@ -1595,135 +1595,231 @@ describe('COR-1383: an old run terminal in-memory teardown must not wipe a same-
   });
 });
 
-describe('COR-1384: an old failed or terminated run durable teardown must not touch a same-id start-new replacement', () => {
+describe('COR-1384: an old run durable terminal teardown must not touch a same-id start-new replacement', () => {
   const TYPE = 'teardown-durable';
-  const teardownWorkflow = workflow({ name: TYPE, concurrency: { max: 1 } })
+  /** Input is `partition:behavior`; the partition names the concurrency slot, the behavior is `fail` or anything else. */
+  const teardownWorkflow = workflow({
+    name: TYPE,
+    concurrency: { max: 1, key: (input) => (input as string).split(':')[0]! },
+  })
     .searchAttributes({ tag: { type: 'string' } })
     .execute(async function* (ctx: WorkflowContext, input: string) {
       yield* ctx.waitForSignal('go');
-      if (input === 'fail') throw new Error('old run failed');
+      if (input.endsWith(':fail')) throw new Error('old run failed');
       return input;
     });
 
-  /** An engine whose first concurrency-holder read for `id` (the old run's first post-commit step) parks on a gate. */
-  async function createHolderReadGatedEngine(id: string) {
-    const storage = new MemoryStorage();
-    const engine = await Engine.create({
-      storage,
-      workflows: { [TYPE]: teardownWorkflow },
-      recover: false,
-    });
-    const reached = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const holderKey = KEYS.workflowConcurrencyHolder(id);
+  const expectedStatus = { fail: 'failed', cancel: 'cancelled', complete: 'completed' } as const;
+
+  type Gate = { reached: PromiseWithResolvers<void>; release: PromiseWithResolvers<void> };
+  const newGate = (): Gate => ({
+    reached: Promise.withResolvers<void>(),
+    release: Promise.withResolvers<void>(),
+  });
+
+  /**
+   * Wrap `storage` so the first `conditionalBatch`/`batch` that satisfies `matches` parks on `gate`
+   * before it runs: the old run is then frozen between its terminal commit and one durable teardown write.
+   */
+  function gateFirstWrite(
+    storage: MemoryStorage,
+    gate: Gate,
+    matches: (operations: BatchOperation[]) => boolean,
+  ): MemoryStorage {
     let armed = true;
-    const gated = new Proxy(storage, {
+    const park = async (operations: BatchOperation[]) => {
+      if (armed && matches(operations)) {
+        armed = false;
+        gate.reached.resolve();
+        await gate.release.promise;
+      }
+    };
+    return new Proxy(storage, {
       get(target, property, receiver) {
-        if (property === 'get') {
-          return async (key: string) => {
-            if (armed && key === holderKey) {
-              armed = false;
-              reached.resolve();
-              await release.promise;
-            }
-            return target.get(key);
+        if (property === 'conditionalBatch') {
+          return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+            await park(operations);
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        if (property === 'batch') {
+          return async (operations: BatchOperation[]) => {
+            await park(operations);
+            return target.batch(operations);
           };
         }
         const value = Reflect.get(target, property, receiver);
         return typeof value === 'function' ? value.bind(target) : value;
       },
     });
-    getInternals(engine).storage = gated;
-    const slotHolders = async (): Promise<string[]> => {
-      const bytes = await storage.get(KEYS.workflowConcurrency(TYPE, TYPE));
-      if (bytes === null) return [];
-      const record = decode(bytes) as { holders: { holderId: string }[] };
-      return record.holders.map((holder) => holder.holderId);
-    };
-    return { storage, engine, reached, release, slotHolders };
   }
 
-  const expectedStatus = {
-    fail: 'failed',
-    cancel: 'cancelled',
-    complete: 'completed',
-  } as const;
+  const deletes = (key: string) => (operations: BatchOperation[]) =>
+    operations.some((operation) => operation.type === 'delete' && operation.key === key);
 
-  async function runScenario(mode: 'fail' | 'cancel' | 'complete') {
-    const id = `teardown-durable-${mode}-${nextInvocation()}`;
-    const { storage, engine, reached, release, slotHolders } =
-      await createHolderReadGatedEngine(id);
-    try {
-      const old = await engine.start(TYPE, mode === 'fail' ? 'fail' : 'OLD', {
-        id,
-        searchAttributes: { tag: 'old' },
-      });
-      void old.result().catch(() => undefined);
-      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
-      expect(await slotHolders()).toEqual([id]);
+  const slotHolders = async (storage: MemoryStorage, partition: string): Promise<string[]> => {
+    const bytes = await storage.get(KEYS.workflowConcurrency(TYPE, partition));
+    if (bytes === null) return [];
+    return (decode(bytes) as { holders: { holderId: string }[] }).holders.map((h) => h.holderId);
+  };
 
-      let oldDone: Promise<unknown>;
-      if (mode === 'fail' || mode === 'complete') {
-        oldDone = new Promise<void>((resolve) =>
-          engine.addEventListener(
-            mode === 'fail' ? 'workflow:failed' : 'workflow:completed',
-            () => resolve(),
-            { once: true },
-          ),
-        );
-        await engine.signal(id, 'go');
-      } else {
-        oldDone = engine.cancel(id);
+  async function createEngine(storage: MemoryStorage) {
+    return Engine.create({ storage, workflows: { [TYPE]: teardownWorkflow }, recover: false });
+  }
+
+  /** Park the old run, then commit its terminal state and freeze it at `gate`. */
+  async function terminateOldRun(
+    engine: Awaited<ReturnType<typeof createEngine>>,
+    id: string,
+    mode: 'fail' | 'cancel' | 'complete',
+    gate: Gate,
+  ) {
+    const old = await engine.start(TYPE, mode === 'fail' ? 'P1:fail' : 'P1:OLD', {
+      id,
+      searchAttributes: { tag: 'old' },
+    });
+    void old.result().catch(() => undefined);
+    await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    let oldDone: Promise<unknown>;
+    if (mode === 'cancel') {
+      oldDone = engine.cancel(id);
+    } else {
+      const event = mode === 'fail' ? 'workflow:failed' : 'workflow:completed';
+      oldDone = new Promise<void>((resolve) =>
+        engine.addEventListener(event, () => resolve(), { once: true }),
+      );
+      await engine.signal(id, 'go');
+    }
+    await gate.reached.promise;
+    const committed = await engine.get(id);
+    expect(committed?.status).toBe(expectedStatus[mode]);
+    return oldDone;
+  }
+
+  async function expectReplacementIntact(
+    storage: MemoryStorage,
+    engine: Awaited<ReturnType<typeof createEngine>>,
+    id: string,
+    replacement: Awaited<ReturnType<Awaited<ReturnType<typeof createEngine>>['start']>>,
+    partition: string,
+  ) {
+    expect(await engine.getAttributes(id)).toEqual({ tag: 'new' });
+    expect(await slotHolders(storage, partition)).toEqual([id]);
+    expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).not.toBeNull();
+    await engine.signal(id, 'go');
+    expect(await replacement.result()).toBe(`${partition}:NEW`);
+    await waitForCondition(
+      async () => {
+        const holders = await slotHolders(storage, partition);
+        return holders.length === 0;
+      },
+      { label: 'replacement releases its own slot' },
+    );
+  }
+
+  for (const mode of ['fail', 'cancel', 'complete'] as const) {
+    it(`${mode}: a same-engine replacement landed before teardown keeps its attributes, slot and marker`, async () => {
+      const id = `teardown-durable-${mode}-${nextInvocation()}`;
+      const storage = new MemoryStorage();
+      const gate = newGate();
+      await using engine = await createEngine(
+        gateFirstWrite(storage, gate, deletes(KEYS.workflowConcurrencyHolder(id))),
+      );
+      try {
+        const oldDone = terminateOldRun(engine, id, mode, gate);
+        await gate.reached.promise;
+        const replacement = await engine.start(TYPE, 'P1:NEW', {
+          id,
+          onTerminalConflict: 'start-new',
+          searchAttributes: { tag: 'new' },
+        });
+        await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+        gate.release.resolve();
+        await oldDone;
+        await Bun.sleep(50);
+        await expectReplacementIntact(storage, engine, id, replacement, 'P1');
+      } finally {
+        gate.release.resolve();
       }
-      await reached.promise;
-      const committed = await engine.get(id);
-      expect(committed?.status).toBe(expectedStatus[mode]);
+    });
+  }
 
-      // The replacement lands while the old run is still between commit and teardown.
-      const replacement = await engine.start(TYPE, 'NEW', {
+  it('cross-engine: a replacement started on another engine survives the old engine teardown', async () => {
+    const id = `teardown-durable-cross-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    await using engineA = await createEngine(
+      gateFirstWrite(storage, gate, deletes(KEYS.workflowConcurrencyHolder(id))),
+    );
+    await using engineB = await createEngine(storage);
+    try {
+      const oldDone = terminateOldRun(engineA, id, 'fail', gate);
+      await gate.reached.promise;
+      const replacement = await engineB.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      gate.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+      await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
+    } finally {
+      gate.release.resolve();
+    }
+  });
+
+  it('a replacement that commits mid-batch makes the fenced attribute write fail its condition', async () => {
+    const id = `teardown-durable-midbatch-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    // The in-memory check passes when the batch is issued; only the durable condition sees the replacement.
+    await using engine = await createEngine(
+      gateFirstWrite(storage, gate, deletes(KEYS.attribute(id))),
+    );
+    try {
+      const oldDone = terminateOldRun(engine, id, 'cancel', gate);
+      await gate.reached.promise;
+      const replacement = await engine.start(TYPE, 'P1:NEW', {
         id,
         onTerminalConflict: 'start-new',
         searchAttributes: { tag: 'new' },
       });
       await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
-      expect(await slotHolders()).toEqual([id]);
-
-      release.resolve();
+      gate.release.resolve();
       await oldDone;
       await Bun.sleep(50);
-
-      // The old run's durable teardown wiped none of the replacement's state.
-      expect(await engine.getAttributes(id)).toEqual({ tag: 'new' });
-      expect(await slotHolders()).toEqual([id]);
-      expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).not.toBeNull();
-
-      await engine.signal(id, 'go');
-      expect(await replacement.result()).toBe('NEW');
-      await waitForCondition(
-        async () => {
-          const holders = await slotHolders();
-          return holders.length === 0;
-        },
-        {
-          label: 'replacement releases its own slot',
-        },
-      );
+      await expectReplacementIntact(storage, engine, id, replacement, 'P1');
     } finally {
-      release.resolve();
-      await engine[Symbol.asyncDispose]();
+      gate.release.resolve();
     }
-  }
-
-  it('failWorkflow: attributes and the concurrency slot of a replacement landed before teardown survive', async () => {
-    await runScenario('fail');
   });
 
-  it('completeWorkflow: the concurrency slot of a replacement landed before teardown survives', async () => {
-    await runScenario('complete');
-  });
-
-  it('terminateWorkflow: attributes and the concurrency slot of a replacement landed before teardown survive', async () => {
-    await runScenario('cancel');
+  it('a replacement with a different concurrency partition leaves no stranded slot', async () => {
+    const id = `teardown-durable-partition-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    await using engine = await createEngine(
+      gateFirstWrite(storage, gate, deletes(KEYS.workflowConcurrencyHolder(id))),
+    );
+    try {
+      const oldDone = terminateOldRun(engine, id, 'cancel', gate);
+      await gate.reached.promise;
+      const replacement = await engine.start(TYPE, 'P2:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      gate.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+      expect(await slotHolders(storage, 'P1')).toEqual([]);
+      await expectReplacementIntact(storage, engine, id, replacement, 'P2');
+    } finally {
+      gate.release.resolve();
+    }
   });
 });
 

@@ -275,6 +275,7 @@ export async function cleanupWorkflowStorage(
   internals: EngineInternals,
   workflowId: string,
   includeOutputArtifacts: boolean,
+  releaseConcurrencySlot = true,
 ): Promise<void> {
   const encodedWorkflowId = encodeStorageKeyComponent(workflowId);
 
@@ -302,7 +303,8 @@ export async function cleanupWorkflowStorage(
 
   await internals.storage.delete(KEYS.workflowHeaders(workflowId));
   await internals.storage.delete(KEYS.signalSequence(workflowId));
-  await releaseWorkflowConcurrencySlot(internals, workflowId);
+  // A terminal commit's own teardown already released its slot, fenced on that commit.
+  if (releaseConcurrencySlot) await releaseWorkflowConcurrencySlot(internals, workflowId);
   // The "expects services" marker is per-run bookkeeping, not an output artifact,
   // so drop it on every terminal cleanup regardless of `includeOutputArtifacts`.
   await internals.storage.delete(KEYS.workflowHasServices(workflowId));
@@ -427,6 +429,7 @@ export async function cleanupTerminalWorkflowSynchronously(
     workflowId,
     includeOutputArtifacts,
     callbacks,
+    false,
   );
 }
 
@@ -435,9 +438,15 @@ export async function cleanupTerminalWorkflowDurableState(
   workflowId: string,
   includeOutputArtifacts: boolean,
   callbacks: TerminationCallbacks,
+  releaseConcurrencySlot = true,
 ): Promise<void> {
   await callbacks.cleanupReviews(workflowId);
-  await cleanupWorkflowStorage(internals, workflowId, includeOutputArtifacts);
+  await cleanupWorkflowStorage(
+    internals,
+    workflowId,
+    includeOutputArtifacts,
+    releaseConcurrencySlot,
+  );
   await internals.storage.delete(KEYS.terminalCleanupNeeded(workflowId));
 }
 

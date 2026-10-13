@@ -23,6 +23,7 @@ import {
   commitSelfWorkflowStateOperations,
   runSerializedWorkflowStateWrite,
 } from './storage-io.ts';
+import { startHolderMarkerRead, type TerminalFence } from './termination/terminal-fence.ts';
 import {
   decodeWorkflowState,
   isTerminalWorkflowStatus,
@@ -54,13 +55,19 @@ type WorkflowStateUpdateOptions = {
 type WorkflowStateUpdateResult = {
   previousState: WorkflowState;
   updatedAt: number;
+  /** Durable identity of this commit; see {@link TerminalFence}. */
+  fence: TerminalFence;
 };
+
+/** Commits one teardown batch; the default applies it unconditionally. */
+type TeardownBatchCommit = (operations: BatchOperation[]) => Promise<unknown>;
 
 /** Delete a workflow's stored search attributes and their secondary index entries. */
 export async function cleanupAttributeIndex(
   internals: EngineInternals,
   workflowId: string,
   currentAttributes?: Record<string, SearchAttributeValue>,
+  commitBatch: TeardownBatchCommit = (operations) => internals.storage.batch(operations),
 ): Promise<void> {
   if (currentAttributes === undefined) {
     const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
@@ -75,7 +82,7 @@ export async function cleanupAttributeIndex(
   deleteOperations.push({ type: 'delete', key: KEYS.attribute(workflowId) });
 
   if (deleteOperations.length > 0) {
-    await internals.storage.batch(deleteOperations);
+    await commitBatch(deleteOperations);
   }
 }
 
@@ -102,13 +109,14 @@ export async function writeRetainedTerminalSearchAttributes(
   internals: EngineInternals,
   workflowId: string,
   attributes: Record<string, SearchAttributeValue>,
+  commitBatch: TeardownBatchCommit = (operations) => internals.storage.batch(operations),
 ): Promise<void> {
   if (Object.keys(attributes).length === 0) {
     return;
   }
 
   const indexOperations = buildIndexOperations(workflowId, {}, attributes);
-  await internals.storage.batch([
+  await commitBatch([
     { type: 'put', key: KEYS.attribute(workflowId), value: encode(attributes) },
     ...indexOperations,
   ]);
@@ -148,6 +156,7 @@ export async function updateWorkflowState(
   options: WorkflowStateUpdateOptions = {},
 ): Promise<WorkflowStateUpdateResult | null> {
   return await runSerializedWorkflowStateWrite(internals, workflowId, async () => {
+    const holderMarker = startHolderMarkerRead(internals, workflowId);
     const bytes = await internals.storage.get(KEYS.workflow(workflowId));
     if (!bytes) {
       return null;
@@ -180,12 +189,13 @@ export async function updateWorkflowState(
       category === 'self'
         ? commitSelfWorkflowStateOperations
         : commitExternalTerminalWorkflowStateOperations;
+    const committedState = encode(updated);
     await commit(
       internals,
       state,
       [
         ...buildTerminalWorkflowIndexOperations(state, updated),
-        { type: 'put', key: KEYS.workflow(workflowId), value: encode(updated) },
+        { type: 'put', key: KEYS.workflow(workflowId), value: committedState },
         ...buildWorkflowVisibilityIndexTransition(workflowId, state, updated).batchOps,
         ...additionalOperations,
       ],
@@ -197,6 +207,7 @@ export async function updateWorkflowState(
     return {
       previousState: state,
       updatedAt,
+      fence: { committedState, holderMarker },
     };
   });
 }
