@@ -470,7 +470,7 @@ for (const mode of MULTI_ENGINE_MODES) {
           await engineB.scheduler.tick(clock.now);
         }
         expect(parked.starts()).toBe(1);
-        expect((await readClaim(storage, id))!.claimedAt!).toBeGreaterThan(claimedAtStart);
+        expect((await readClaim(storage, id))!.renewedAt!).toBeGreaterThan(claimedAtStart);
         expect(eventsB).toEqual([]);
 
         parked.release();
@@ -481,6 +481,58 @@ for (const mode of MULTI_ENGINE_MODES) {
           attempts: 1,
         });
         expect(await timerCount(storage)).toBe(0);
+      } finally {
+        restoreRealTimers();
+      }
+    });
+
+    it('retries a failed renewal on the next tick and reports the original start time (COR-1422)', async () => {
+      const storage = new MemoryStorage();
+      const clock: Clock = { now: 43_000_000 };
+      const parked = parkedFinalizer(`destroy-heartbeat-retry-${mode}`);
+      await using engine = await createEngine(mode, storage, clock);
+      registerTeardownType(engine, `heartbeat-retry-${mode}`, parked.destroy);
+      const id = `heartbeat-retry-${mode}-1`;
+      await startAndTerminate(engine, storage, `heartbeat-retry-${mode}`, id);
+      useFakeTimers();
+      try {
+        const drive = engine.scheduler.tick(clock.now);
+        await parked.started;
+        const startedAt = clock.now;
+        const step = DEFAULT_STALE_HORIZON_MS / 3;
+
+        // One transient write failure: the renewal throws, the marker stays as claimed.
+        const engineStorage = getInternals(engine).storage;
+        const realBatch = engineStorage.conditionalBatch!.bind(engineStorage);
+        let failures = 1;
+        engineStorage.conditionalBatch = async (
+          ...batchArguments: Parameters<typeof realBatch>
+        ) => {
+          if (failures > 0) {
+            failures -= 1;
+            throw new Error('transient storage failure');
+          }
+          return realBatch(...batchArguments);
+        };
+        clock.now += step;
+        await advanceTimersByTime(step);
+        await flushMicrotasks(50);
+        expect((await readClaim(storage, id))!.renewedAt).toBeUndefined();
+
+        // The next tick retries and lands; the status keeps the attempt's original start.
+        clock.now += step;
+        await advanceTimersByTime(step);
+        await flushMicrotasks(50);
+        expect((await readClaim(storage, id))!.renewedAt).toBe(clock.now);
+        expect(await engine.getFinalizerStatus(id)).toEqual({
+          status: 'running',
+          attempts: 1,
+          startedAt,
+        });
+
+        parked.release();
+        await drive;
+        expect(await engine.getFinalizerStatus(id)).toMatchObject({ status: 'succeeded' });
       } finally {
         restoreRealTimers();
       }
@@ -504,7 +556,7 @@ for (const mode of MULTI_ENGINE_MODES) {
         clock.now += DEFAULT_STALE_HORIZON_MS / 3;
         await advanceTimersByTime(DEFAULT_STALE_HORIZON_MS / 3);
         await flushMicrotasks(50);
-        const renewed = (await readClaim(storage, id))!.claimedAt!;
+        const renewed = (await readClaim(storage, id))!.renewedAt!;
         expect(renewed).toBe(clock.now);
 
         engineA[Symbol.dispose]();
@@ -513,7 +565,7 @@ for (const mode of MULTI_ENGINE_MODES) {
           await advanceTimersByTime(DEFAULT_STALE_HORIZON_MS / 3);
           await flushMicrotasks(50);
         }
-        expect((await readClaim(storage, id))!.claimedAt).toBe(renewed);
+        expect((await readClaim(storage, id))!.renewedAt).toBe(renewed);
 
         const eventsB = collectTeardownEvents(engineB);
         await engineB.scheduler.tick(clock.now);
@@ -542,7 +594,7 @@ for (const mode of MULTI_ENGINE_MODES) {
         clock.now += DEFAULT_STALE_HORIZON_MS / 3;
         await advanceTimersByTime(DEFAULT_STALE_HORIZON_MS / 3);
         await flushMicrotasks(50);
-        expect((await readClaim(storage, id))!.claimedAt).toBe(clock.now);
+        expect((await readClaim(storage, id))!.renewedAt).toBe(clock.now);
         // Another drive reclaimed the marker: the holder's bytes no longer match.
         const foreign = encodeRunningClaim(5, 'foreign-token', clock.now);
         await storage.put(KEYS.teardownOwed(id), foreign);

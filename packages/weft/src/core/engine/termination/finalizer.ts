@@ -50,7 +50,6 @@ import {
   clearTeardownMarker,
   deadLetterTeardown,
   encodeOwedClaim,
-  liveClaimWatchdogFireAt,
   MAX_TEARDOWN_ATTEMPTS,
   newTeardownToken,
   observedMarkerHold,
@@ -58,7 +57,6 @@ import {
   rearmLiveClaimWatchdog,
   rearmTeardownTimer,
   reassertOwedAfterShutdown,
-  runningClaimIsStale,
   settleOnRunningClaim,
   TEARDOWN_SELF_HEAL_DELAY_MS,
   teardownBackoffMs,
@@ -67,7 +65,11 @@ import {
   type TeardownHold,
 } from './finalizer-claim.ts';
 import { deadLetterWithoutRunning, spentTeardownAttempts } from './finalizer-dead-letter.ts';
-import { runFinalizerUnderHeartbeat } from './finalizer-heartbeat.ts';
+import {
+  liveClaimWatchdogFireAt,
+  runFinalizerUnderHeartbeat,
+  runningClaimIsStale,
+} from './finalizer-heartbeat.ts';
 import { resolveFinalizerRegistration } from './finalizer-registration.ts';
 
 export { teardownStaleThresholdMs, type TeardownDeadLetterRecord } from './finalizer-claim.ts';

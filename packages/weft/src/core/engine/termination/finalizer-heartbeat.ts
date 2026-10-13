@@ -1,11 +1,13 @@
 /**
  * Liveness heartbeat for a teardown drive (COR-1422). A finalizer that declares no `timeout`
  * runs unbounded, so the stale-running horizon cannot tell a live owner from a dead host. While
- * such a drive is live it renews its `running` marker with a fenced CAS: a fresh `claimedAt`
+ * such a drive is live it renews its `running` marker with a fenced CAS: a fresh `renewedAt`
  * and a replacement watchdog, same token and attempt count. A marker that stops being renewed
  * is a dead host, which the stale reclaim may then take over and count.
  *
- * Renewal runs as a side timer. It never settles the marker: it only moves the hold's bytes
+ * Renewal runs as a side timer scoped to the awaited drive, so `backgroundTasks: 'manual'`'s
+ * no-background-timers guarantee (no engine-lifetime interval) is unaffected, as for the per-attempt
+ * timeout timer. It never settles the marker: it only moves the hold's bytes
  * forward, so the drive's settle CAS follows the renewed bytes. A renewal that loses its CAS
  * means another drive reclaimed the marker, so renewal stops for good. It also stops on settle
  * and once the engine's shutdown signal aborts.
@@ -17,6 +19,7 @@ import type { BatchOperation } from '../../../storage/interface.ts';
 import { KEYS } from '../../../storage/interface.ts';
 import { commitFencedEngineWriteAllowingPreconditionFailure } from '../fenced-write.ts';
 import type { EngineInternals } from '../internals.ts';
+import type { TeardownClaim } from '../state-utilities.ts';
 import {
   runFinalizerActivity,
   type FinalizerAttemptResult,
@@ -28,6 +31,36 @@ import {
   teardownTimerOperations,
   type TeardownHold,
 } from './finalizer-claim.ts';
+
+/** Whether a `running` claim is reclaimable: its holder has not settled within the stale window. */
+export function runningClaimIsStale(
+  internals: EngineInternals,
+  claim: TeardownClaim,
+  finalizer: RunnableFinalizer,
+): boolean {
+  if (claim.status !== 'running') return true; // an `owed` claim is always claimable.
+  if (claim.claimedAt === undefined) return true; // malformed `running` (no stamp) — reclaim.
+  return (
+    internals.options.getNow() - (claim.renewedAt ?? claim.claimedAt) >=
+    teardownStaleThresholdMs(finalizer)
+  );
+}
+
+/**
+ * The fire time of the watchdog a drive re-arms when it yields to a `running` claim it judged
+ * fresh: the claim CAS armed one watchdog, and the yield consumed it (the scheduler deletes
+ * the fired key), which happens whenever this engine's horizon or clock disagrees with the
+ * claimer's. The target is `claimedAt` plus THIS drive's horizon, a key every engine computes
+ * identically so concurrent yields collapse onto one timer; the write moves it past the fired
+ * key when needed (see {@link fireAtAfterFired}).
+ */
+export function liveClaimWatchdogFireAt(
+  claim: TeardownClaim,
+  finalizer: RunnableFinalizer,
+  firedAt: number,
+): number {
+  return (claim.renewedAt ?? claim.claimedAt ?? firedAt) + teardownStaleThresholdMs(finalizer);
+}
 
 /** Renewals per stale horizon: a live drive renews well before a peer could judge it stale. */
 const RENEWALS_PER_HORIZON = 3;
@@ -68,9 +101,14 @@ export function startTeardownHeartbeat(
   };
 
   const renew = async (): Promise<boolean> => {
-    const claimedAt = internals.options.getNow();
-    const runningBytes = encodeRunningClaim(spentAttempts, token, claimedAt);
-    const watchdog = teardownTimerOperations(token, workflowId, claimedAt + horizonMs, firedAt);
+    const renewedAt = internals.options.getNow();
+    const runningBytes = encodeRunningClaim(
+      spentAttempts,
+      token,
+      hold.claimedAt ?? renewedAt,
+      renewedAt,
+    );
+    const watchdog = teardownTimerOperations(token, workflowId, renewedAt + horizonMs, firedAt);
     const renewed = await commitFencedEngineWriteAllowingPreconditionFailure(
       internals,
       null,
@@ -98,10 +136,15 @@ export function startTeardownHeartbeat(
         halt();
         return;
       }
-      const current: Promise<void> = renew().then((renewed) => {
-        if (!renewed) halt();
-        return undefined;
-      }, halt);
+      // A transient write failure leaves the marker as it was: retry on the next tick. Only a
+      // lost CAS, a settle, or an abort ends renewal.
+      const current: Promise<void> = renew().then(
+        (renewed) => {
+          if (!renewed) halt();
+          return undefined;
+        },
+        () => undefined,
+      );
       inFlight = current;
       void current.then(() => {
         if (inFlight === current) inFlight = undefined;
