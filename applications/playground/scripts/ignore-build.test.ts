@@ -81,6 +81,10 @@ describe('ignore-build.sh', () => {
     expect(ignoreExit(undefined, base)).toBe(1);
   });
 
+  test('builds when the previous deployment commit is not in the clone, as after a force-push', () => {
+    expect(ignoreExit('ca186eea94591c83f07a1d2c4d72b6ca4bf0148b', base)).toBe(1);
+  });
+
   test('is what vercel.json runs, within the 256-character limit Vercel enforces', async () => {
     const config = JSON.parse(await readFile(vercelConfigPath, 'utf8')) as Record<string, unknown>;
     for (const key of ['installCommand', 'buildCommand', 'ignoreCommand']) {
