@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 import type { DocSection } from './docs-sections.ts';
 import { DOC_MARKER_PATTERN, buildTokensDocMarkdown, renderDocTable } from './docs.ts';
 

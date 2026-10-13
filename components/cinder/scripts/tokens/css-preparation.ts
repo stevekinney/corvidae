@@ -1,20 +1,24 @@
-import { collectEntries, type CorpusEntry } from './corpus.ts';
-import {
-  assertResolutionOrderMatchesCssBlockStructure,
-  assertUniqueCssProperties,
-  assertUniqueOverrideCssProperties,
-  refsFor,
-} from './css-support.ts';
-import { validateCssScopes } from './css-validation.ts';
-import { createValueResolver, mergeAndExpandExtends } from './resolve.ts';
 import {
   documentsForResolutionOrder,
   documentsForSystemMotionScope,
   modifierValuesForCombo,
   modifierValuesForContext,
-} from './resolved-contexts.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
-import { expandContextSources, parseResolutionOrder, sourcesForEntry } from './validate-corpus.ts';
+  refsFor,
+} from '../../src/tokens/runtime/context-order.ts';
+import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import {
+  assertResolutionOrderMatchesCssBlockStructure,
+  assertUniqueCssProperties,
+  assertUniqueOverrideCssProperties,
+} from '../../src/tokens/runtime/css-support.ts';
+import { createValueResolver, mergeAndExpandExtends } from '../../src/tokens/runtime/resolve.ts';
+import {
+  expandContextSources,
+  parseResolutionOrder,
+  sourcesForEntry,
+} from '../../src/tokens/runtime/resolver-order.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { validateCssScopes } from './css-validation.ts';
 
 export type CssPreparation = {
   baseIndex: any;

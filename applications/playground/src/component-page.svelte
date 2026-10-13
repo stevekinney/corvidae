@@ -24,6 +24,7 @@
   import Moon from 'lucide-svelte/icons/moon';
   import ShieldCheck from 'lucide-svelte/icons/shield-check';
   import Sliders from 'lucide-svelte/icons/sliders-horizontal';
+  import SwatchBook from 'lucide-svelte/icons/swatch-book';
   import Sun from 'lucide-svelte/icons/sun';
   import X from 'lucide-svelte/icons/x';
   import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
@@ -2100,6 +2101,12 @@
             <li class="dx-nav__empty">No components match “{navFilter}”.</li>
           {/if}
         </ul>
+        <!-- A plain link, not a client-side route: the theme builder is its own
+             document and bundle, so a documentation page imports none of it. -->
+        <a class="dx-nav__action" href="/theme-builder">
+          <SwatchBook size={16} strokeWidth={1.5} aria-hidden="true" />
+          Theme builder
+        </a>
         <!-- The two page actions live here, not in a top bar. The band they
              came from restated the sidebar brand, the hero eyebrow, and the
              page `<h1>` — three duplications and one row of chrome for two
@@ -2274,6 +2281,26 @@
     font-size: var(--cinder-text-sm);
   }
 
+  .dx-nav__action {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    padding: var(--cinder-space-3) var(--cinder-space-5);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    text-decoration: none;
+  }
+  .dx-nav__action:focus-visible {
+    outline: 2px solid var(--cinder-accent-solid);
+    outline-offset: -2px;
+  }
+  @media (hover: hover) {
+    .dx-nav__action:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
   .dx-nav__footer {
     display: flex;
     align-items: center;

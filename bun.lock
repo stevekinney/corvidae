@@ -83,6 +83,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@axe-core/playwright": "catalog:",
         "@lostgradient/typescript": "workspace:*",
         "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",
@@ -138,6 +139,7 @@
         "json-schema-library": "catalog:",
         "libphonenumber-js": "catalog:",
         "lucide-svelte": "catalog:",
+        "postcss-value-parser": "catalog:",
         "qrcode": "catalog:",
         "shiki": "catalog:",
         "svelte": "catalog:",
@@ -164,7 +166,6 @@
         "oxlint-tsgolint": "catalog:",
         "postcss": "catalog:",
         "postcss-selector-parser": "catalog:",
-        "postcss-value-parser": "catalog:",
         "prettier": "catalog:",
         "prettier-plugin-organize-imports": "catalog:",
         "prettier-plugin-svelte": "catalog:",
