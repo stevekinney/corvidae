@@ -18,7 +18,7 @@
  * from `Bun.Subprocess.resourceUsage()` after it exits (no polling — no
  * sampling race), and prints one line:
  *
- *   memory-canary: peak RSS <N> MB over <M> suites
+ *   memory-canary: peak RSS <N> MB (<bytes> bytes) over <M> suites, Bun <version>
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -53,20 +53,25 @@ function componentTestDirectories(slugs: readonly string[]): string[] {
 }
 
 export type CanaryResult = {
-  /** Peak RSS across the child test process, normalized to bytes (see {@link bytesFromMaxRss}). */
-  peakRssBytes: number;
+  /** The child's peak RSS in bytes, or `undefined` when Bun reported no resource usage. */
+  peakRssBytes: number | undefined;
   exitCode: number;
 };
 
 /**
  * Run `bun test` over the given component directories and report the child's
- * peak RSS, normalized to bytes regardless of platform.
+ * peak RSS in bytes.
  */
 export async function runMemoryCanary(
   slugs: readonly string[] = CANARY_COMPONENT_SLUGS,
 ): Promise<CanaryResult> {
   const directories = componentTestDirectories(slugs);
-  const child = Bun.spawn(['bun', 'test', ...BUN_TEST_FLAGS, ...directories], {
+  return runMemoryCanaryCommand([process.execPath, 'test', ...BUN_TEST_FLAGS, ...directories]);
+}
+
+/** Spawn one command and report its exit code and peak RSS in bytes. */
+export async function runMemoryCanaryCommand(command: readonly string[]): Promise<CanaryResult> {
+  const child = Bun.spawn([...command], {
     cwd: packageRoot,
     stdio: ['inherit', 'inherit', 'inherit'],
     env: { ...process.env, TZ: 'UTC', LANG: 'en_US.UTF-8' },
@@ -75,31 +80,47 @@ export async function runMemoryCanary(
   const exitCode = await child.exited;
   // `resourceUsage()` is only populated once the process has exited; reading
   // it before `exited` resolves would race the child's own accounting.
-  const usage = child.resourceUsage();
-  const peakRssBytes = bytesFromMaxRss(usage?.maxRSS ?? 0);
-
-  return { peakRssBytes, exitCode };
+  return { peakRssBytes: peakRssBytesFrom(child.resourceUsage()), exitCode };
 }
 
 /**
- * `resourceUsage().maxRSS` reports `getrusage`'s `ru_maxrss` verbatim, whose
- * unit is platform-dependent: bytes on Darwin/macOS, kibibytes on Linux
- * (glibc). CI (`main-green.yaml`) runs on `ubuntu-latest`; local development on
- * this repo runs on macOS. Detect via `process.platform` rather than assuming
- * either unit, so the printed megabyte figure is correct on both.
+ * `Bun.Subprocess.resourceUsage().maxRSS` is already in bytes on every
+ * platform: Bun normalizes `getrusage`'s `ru_maxrss`, which is kibibytes on
+ * Linux and bytes on macOS. Node-compatible `process.resourceUsage().maxRSS`
+ * is a different API and reports kibibytes, so never scale this value by
+ * platform. A missing or zero reading stays `undefined` rather than becoming
+ * a successful-looking zero.
  */
-function bytesFromMaxRss(maxRss: number): number {
-  return process.platform === 'darwin' ? maxRss : maxRss * 1024;
+export function peakRssBytesFrom(usage: { maxRSS?: number } | undefined): number | undefined {
+  const maxRss = usage?.maxRSS;
+  return maxRss !== undefined && maxRss > 0 ? maxRss : undefined;
 }
 
 function bytesToMegabytes(bytes: number): number {
   return bytes / 1024 / 1024;
 }
 
+/** The single summary line the canary prints and appends to the step summary. */
+export function formatCanaryReport(report: {
+  peakRssBytes: number | undefined;
+  suiteCount: number;
+  runtimeVersion: string;
+}): string {
+  const { peakRssBytes, suiteCount, runtimeVersion } = report;
+  const measurement =
+    peakRssBytes === undefined
+      ? 'unavailable'
+      : `${bytesToMegabytes(peakRssBytes).toFixed(1)} MB (${peakRssBytes} bytes)`;
+  return `memory-canary: peak RSS ${measurement} over ${suiteCount} suites, Bun ${runtimeVersion}`;
+}
+
 async function main(): Promise<void> {
   const result = await runMemoryCanary();
-  const peakMegabytes = bytesToMegabytes(result.peakRssBytes);
-  const summary = `memory-canary: peak RSS ${peakMegabytes.toFixed(1)} MB over ${CANARY_COMPONENT_SLUGS.length} suites`;
+  const summary = formatCanaryReport({
+    peakRssBytes: result.peakRssBytes,
+    suiteCount: CANARY_COMPONENT_SLUGS.length,
+    runtimeVersion: Bun.version,
+  });
   console.log(summary);
 
   // GitHub Actions treats $GITHUB_STEP_SUMMARY as an append-only Markdown file
