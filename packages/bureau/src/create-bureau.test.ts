@@ -2367,13 +2367,22 @@ describe('createBureau', () => {
     }
   });
 
-  // COR-1421: a storage adapter whose post-recovery goal sweep stalls 25ms.
-  // That is deliberately awaited work in `createBureau`'s boot tail, after
-  // `recoverAll()` has resumed the recovered workflows: once recovery has read
-  // a recovered run's `upd:` records, the sweep's key listing awaits.
+  const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(resolve));
+
+  // COR-1421: a storage adapter whose post-recovery goal sweep stalls until the
+  // test calls `releaseTail()`. That is deliberately awaited work in
+  // `createBureau`'s boot tail, after `recoverAll()` has resumed the recovered
+  // workflows: once recovery has read a recovered run's `upd:` records, the
+  // sweep's key listing awaits. Tests release it from the recovered run's own
+  // `generate`, so boot ends only after the run has stepped (a state signal,
+  // not a sleep).
   async function createTailDelayedStorage(databasePath: string) {
     let tailDelayCount = 0;
     let recoveredRunScanned = false;
+    let releaseTail: () => void = () => {};
+    const tailGate = new Promise<void>((resolve) => {
+      releaseTail = resolve;
+    });
     const realStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const storage = new Proxy(realStorage, {
       get(target, property, receiver) {
@@ -2388,7 +2397,7 @@ describe('createBureau', () => {
             (async function* () {
               if (recoveredRunScanned && prefix.startsWith('bureau-goal:')) {
                 tailDelayCount += 1;
-                await new Promise<void>((resolve) => setTimeout(resolve, 25));
+                await tailGate;
               }
               yield* (
                 target as unknown as {
@@ -2401,7 +2410,7 @@ describe('createBureau', () => {
         return typeof value === 'function' ? value.bind(target) : value;
       },
     });
-    return { storage, tailDelayCount: () => tailDelayCount };
+    return { storage, releaseTail, tailDelayCount: () => tailDelayCount };
   }
 
   async function removeRecoveryDatabase(databasePath: string) {
@@ -2426,7 +2435,6 @@ describe('createBureau', () => {
     );
     let bureauAReachedStep1 = false;
     let recoveredRunStepping = false;
-    let recoveredRunsAtFinalStep = 0;
     const bureauA = await createBureau({
       agents: {},
       generate: async ({ step }) => {
@@ -2442,7 +2450,7 @@ describe('createBureau', () => {
       durableOwnership: { ownership: 'none' },
       stopWhen: stopWhen.noToolCalls(),
     });
-    const runs = [];
+    const runs: { id: string }[] = [];
     for (let index = 0; index < runCount; index += 1) {
       runs.push(await bureauA.createRun({ message: `Recover me ${index}` }));
     }
@@ -2461,8 +2469,7 @@ describe('createBureau', () => {
       scheduler: { enabled: true },
       generate: async ({ step }) => {
         recoveredRunStepping = true;
-        // Every agent is capped at 25 steps (steps 0 through 24).
-        if (step === 24 || step > recoveredToolSteps) recoveredRunsAtFinalStep += 1;
+        delayed.releaseTail();
         return {
           content: `B recovered step ${step}`,
           toolCalls: step <= recoveredToolSteps ? [{ name: 'next', arguments: {} }] : [],
@@ -2483,7 +2490,11 @@ describe('createBureau', () => {
       bureau,
       runId: runs[0]!.id,
       runIds: runs.map((run) => run.id),
-      recoveredRunsFinished: () => recoveredRunsAtFinalStep >= runCount,
+      runsSettled: () =>
+        runs.every((run) => {
+          const status = bureau.getRun(run.id)?.status;
+          return status !== undefined && status !== 'running';
+        }),
       async cleanup() {
         await bureau.dispose();
         await bureauA.dispose();
@@ -2505,6 +2516,7 @@ describe('createBureau', () => {
       if ('runId' in frame && frame.runId === runId) frames.push(frame);
     });
     try {
+      await flushMicrotasks();
       expect(frames.some((frame) => frame.type === 'run-envelope')).toBe(true);
       // A later subscriber does not receive the buffered boot frames again.
       const laterFrames: ServerFrame[] = [];
@@ -2604,6 +2616,7 @@ describe('createBureau', () => {
         agents: {},
         generate: async () => {
           recoveredFireStepped = true;
+          delayed.releaseTail();
           return { content: 'recovered scheduled fire', toolCalls: [] };
         },
         toolbox: createEmptyToolbox(),
@@ -2635,6 +2648,76 @@ describe('createBureau', () => {
     }
   });
 
+  it('lets a replayed listener unsubscribe itself from inside the replay (COR-1421)', async () => {
+    const { bureau, cleanup } = await bootRecoveredBureauWithDelayedTail(0);
+    try {
+      let delivered = 0;
+      const unsubscribe = bureau.subscribeLiveFrames(() => {
+        delivered += 1;
+        unsubscribe();
+      });
+      await flushMicrotasks();
+      // The handle was usable during the replay, so the replay stopped after
+      // the first frame and the listener never joined the live set.
+      expect(delivered).toBe(1);
+      await bureau.createRun({ message: 'after unsubscribe' });
+      expect(delivered).toBe(1);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('reports a rejected async onEvent listener through onDiagnostic (COR-1421)', async () => {
+    const diagnostics: { scope: string; message: string }[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      onEvent: async () => {
+        throw new Error('async listener failed');
+      },
+      onDiagnostic: (diagnostic) => {
+        diagnostics.push(diagnostic);
+      },
+    });
+    try {
+      await bureau.createRun({ message: 'trigger an event' });
+      expect(
+        await pollUntil(() => diagnostics.some((diagnostic) => diagnostic.scope === 'events')),
+      ).toBe(true);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('records an event in the bureau feed before the onEvent callback runs (COR-1421)', async () => {
+    let recordedWhenCallbackRan: Promise<string[]> | undefined;
+    let bureauReference: Awaited<ReturnType<typeof createBureau>> | undefined;
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      onEvent: (event) => {
+        if (event.type !== 'run.registered' || recordedWhenCallbackRan || !bureauReference) return;
+        // Snapshot the feed at the moment the callback runs.
+        const reference = bureauReference;
+        recordedWhenCallbackRan = (async () => {
+          const kinds: string[] = [];
+          for await (const envelope of reference.eventFeed.feed.replay()) kinds.push(envelope.kind);
+          return kinds;
+        })();
+      },
+    });
+    bureauReference = bureau;
+    try {
+      await bureau.createRun({ message: 'trigger run.registered' });
+      expect(recordedWhenCallbackRan).toBeDefined();
+      expect(await recordedWhenCallbackRan).toContain('run.registered');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('keeps replayed frames in emission order when the first listener causes a new frame during replay (COR-1421)', async () => {
     const { bureau, runId, cleanup } = await bootRecoveredBureauWithDelayedTail(0);
     try {
@@ -2657,6 +2740,7 @@ describe('createBureau', () => {
           causing = false;
         }
       });
+      await flushMicrotasks();
       expect(replayedFrames).toBeGreaterThan(1);
       expect(schedulerFrames).toBeGreaterThan(0);
       expect(reentrantFrames).toBe(0);
@@ -2666,17 +2750,19 @@ describe('createBureau', () => {
   });
 
   it('evicts the oldest boot frames at overflow so the newest history survives (COR-1421)', async () => {
-    const { bureau, runIds, recoveredRunsFinished, cleanup } =
-      await bootRecoveredBureauWithDelayedTail(100, 3);
+    const { bureau, runIds, runsSettled, cleanup } = await bootRecoveredBureauWithDelayedTail(
+      100,
+      3,
+    );
     try {
       // Nobody subscribes until the recovered runs have finished, so their
       // frames overflow the 1024-frame boot buffer.
-      await pollUntil(() => recoveredRunsFinished(), 5_000);
-      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      expect(await pollUntil(() => runsSettled(), 20_000)).toBe(true);
       const frames: ServerFrame[] = [];
       bureau.subscribeLiveFrames((frame) => {
         frames.push(frame);
       });
+      await flushMicrotasks();
       expect(frames).toHaveLength(1024);
       // The newest frames survive: a terminal frame of a recovered run is
       // among them, which a drop-newest buffer would have lost.

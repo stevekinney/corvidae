@@ -1271,24 +1271,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // timestamps (AB-370's regression test did exactly that before this fix).
   const store: Store = options.store ?? createStore({ runtime: runtimeServices });
   const emitter = new CompletableEventTarget<BureauEventMap>();
-  // COR-1421 — `onEvent` listens from here, before any recovery pass can
-  // dispatch, so it hears the boot-time events a listener added after
-  // `createBureau()` returns would miss.
-  if (options.onEvent) {
-    const onEvent = options.onEvent;
-    emitter.toObservable().subscribe((event) => {
-      try {
-        onEvent(event);
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'events',
-          message: `[bureau] onEvent listener threw on a "${event.type}" event:`,
-          cause: error,
-        });
-      }
-    });
-  }
   const bureauId = options.id ?? runtimeServices.identifiers.next('bureau');
   // A bureau owns its own events: every dispatch onto `emitter` is also
   // recorded here, with cursors, so a reconnecting client resumes instead of
@@ -1316,6 +1298,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
     }
   });
+  // COR-1421 — `onEvent` listens from here, before any recovery pass can
+  // dispatch, so it hears the boot-time events a listener added after
+  // `createBureau()` returns would miss. It is registered AFTER the event
+  // feed's recorder above, so an event is recorded before the host callback
+  // runs and anything the callback dispatches in turn lands after it. A
+  // rejected promise from an async callback is reported like a throw.
+  if (options.onEvent) {
+    const onEvent = options.onEvent;
+    const reportOnEventFailure = (event: Event, error: unknown): void => {
+      diagnose({
+        level: 'error',
+        scope: 'events',
+        message: `[bureau] onEvent listener failed on a "${event.type}" event:`,
+        cause: error,
+      });
+    };
+    emitter.toObservable().subscribe((event: Event) => {
+      try {
+        const outcome: unknown = onEvent(event);
+        if (outcome instanceof Promise) {
+          outcome.catch((error: unknown) => reportOnEventFailure(event, error));
+        }
+      } catch (error) {
+        reportOnEventFailure(event, error);
+      }
+    });
+  }
   // ...and its operatives' events: one feed per run, created before the run
   // is registered and reaped when it is removed. See
   // `run-event-feed-attachment.ts`.
@@ -9650,27 +9659,39 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     getConfiguration,
     getTools: getToolSummaries,
     subscribeLiveFrames(listener) {
-      // COR-1421 — the first subscriber closes the boot buffer and is replayed
-      // what recovered runs emitted before it attached.
-      if (!liveFramesSubscribed && frameReplayQueue === undefined) {
-        liveFramesSubscribed = true;
-        // The listener joins the live set only once the replay queue drains, so
-        // a frame its own callback causes is delivered after the remaining
-        // replay, in emission order.
-        const queue = bootFrameBuffer.splice(0);
-        frameReplayQueue = queue;
-        try {
-          while (queue.length > 0) deliverLiveFrame(listener, queue.shift()!);
-        } finally {
-          frameReplayQueue = undefined;
-        }
-      }
-      liveFramesSubscribed = true;
-      bootFrameRunIds.clear();
-      liveFrameListeners.add(listener);
-      return () => {
+      let active = true;
+      const unsubscribe = () => {
+        active = false;
         liveFrameListeners.delete(listener);
       };
+      // COR-1421 — the first subscriber closes the boot buffer and is replayed
+      // what recovery produced before it attached. The replay runs in a
+      // microtask, after this call has returned its unsubscribe handle, so a
+      // listener may unsubscribe itself from inside the replay. The listener
+      // joins the live set only once the replay queue drains, so a frame its
+      // own callback causes is delivered after the remaining replay, in
+      // emission order.
+      const firstSubscriber = !liveFramesSubscribed && frameReplayQueue === undefined;
+      liveFramesSubscribed = true;
+      bootFrameRunIds.clear();
+      const queue = firstSubscriber ? bootFrameBuffer.splice(0) : [];
+      if (queue.length === 0) {
+        liveFrameListeners.add(listener);
+        return unsubscribe;
+      }
+      frameReplayQueue = queue;
+      queueMicrotask(() => {
+        try {
+          while (queue.length > 0) {
+            if (!active) break;
+            deliverLiveFrame(listener, queue.shift()!);
+          }
+        } finally {
+          frameReplayQueue = undefined;
+          if (active) liveFrameListeners.add(listener);
+        }
+      });
+      return unsubscribe;
     },
     addEventListener: (type, listener, listenerOptions) =>
       emitter.addEventListener(type, listener, listenerOptions),
