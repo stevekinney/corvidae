@@ -226,7 +226,13 @@ export class ThemeBuilderController extends ThemeBuilderCore {
       this.setEntry(stored.entry);
       return;
     }
-    const decision = decideRemoteRevision(entry.draft, stored.entry.draft.revision);
+    // Partial input that was autosaved is still the user's unfinished work in this tab, and the
+    // newer stored record does not carry it: treat it as unsaved so it is never replaced silently.
+    const holdsInput = Object.keys(entry.draft.inputBuffer).length > 0;
+    const decision = decideRemoteRevision(
+      holdsInput ? { ...entry.draft, unsavedInput: true } : entry.draft,
+      stored.entry.draft.revision,
+    );
     if (decision.kind === 'ignore') return;
     if (decision.kind === 'auto-reload') {
       await this.#takeStored(stored.entry, decision.announcement);

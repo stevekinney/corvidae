@@ -69,6 +69,11 @@ const isTokenNode = (node: JsonObject): boolean =>
 
 function collectTokenPaths(tree: JsonObject, prefix: string, into: Set<string>): void {
   for (const [key, child] of Object.entries(tree)) {
+    // A group's `$root` is the token at the group's own path.
+    if (key === '$root' && isObject(child) && prefix !== '') {
+      into.add(prefix);
+      continue;
+    }
     if (key.startsWith('$') || !isObject(child)) continue;
     const path = prefix === '' ? key : `${prefix}.${key}`;
     if (isTokenNode(child)) into.add(path);

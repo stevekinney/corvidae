@@ -69,15 +69,17 @@
 </script>
 
 <section class="library" aria-label="Theme library" data-testid="theme-library">
-  <div class="library__switcher">
-    <Select
-      id="theme-builder-theme-switcher"
-      label="Theme"
-      {options}
-      value={activeId ?? ''}
-      onchange={(event) => void controller.switchTheme(event.currentTarget.value)}
-    />
-  </div>
+  {#if options.length > 0}
+    <div class="library__switcher">
+      <Select
+        id="theme-builder-theme-switcher"
+        label="Theme"
+        {options}
+        value={activeId ?? ''}
+        onchange={(event) => void controller.switchTheme(event.currentTarget.value)}
+      />
+    </div>
+  {/if}
   <div class="library__actions" role="group" aria-label="Theme actions">
     <Button label="New theme" variant="secondary" size="sm" onclick={() => openName('create')} />
     <Button label="Rename" variant="secondary" size="sm" onclick={() => openName('rename')} />

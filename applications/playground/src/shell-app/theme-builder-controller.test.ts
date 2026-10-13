@@ -212,6 +212,18 @@ describe('two tabs', () => {
     expect(two.controller.conflict).toBeNull();
   });
 
+  test('partial input that was already autosaved still counts as unsaved work in a conflict', async () => {
+    const { one, two } = await pair();
+    two.controller.setInputBuffer('radius.medium@source', { text: '{"va', error: null });
+    await two.controller.flush();
+    expect(two.workbench.saveStatus).toBe('saved');
+    await one.controller.commit(setRadius(8));
+    await one.controller.flush();
+    await settle();
+    expect(two.controller.conflict).not.toBeNull();
+    expect(two.controller.draft!.inputBuffer['radius.medium@source']?.text).toBe('{"va');
+  });
+
   test('a dirty tab is never overwritten and can reload the stored version or save a copy', async () => {
     const { one, two } = await pair();
     two.controller.setInputBuffer('radius.medium@source', { text: '{"va', error: null });

@@ -144,7 +144,8 @@ test.describe('responsive layout', () => {
     await target.click();
     await selectContext(page, { colorMode: 'dark', motion: 'reduced' });
     const scrollBefore = await page.evaluate(() => {
-      window.scrollTo(0, 180);
+      // The site styles smooth scrolling; an instant jump makes the reading deterministic.
+      window.scrollTo({ top: 180, behavior: 'instant' });
       return window.scrollY;
     });
 
@@ -392,8 +393,15 @@ test.describe('contexts', () => {
       })
       .toBe('dark');
     const reloaded = await previewFrame(page);
-    // The builder's own context was sent again, and the extreme value is gone.
+    // The builder's own context was sent again with the draft's real map: the extreme value
+    // is gone and the shipped one is back.
     await expect(reloaded.locator('html')).toHaveAttribute('data-cinder-motion', 'reduced');
-    expect(await inlineVariables(reloaded)).toEqual([]);
+    await expect
+      .poll(() =>
+        reloaded.evaluate(() =>
+          document.documentElement.style.getPropertyValue('--cinder-space-4'),
+        ),
+      )
+      .toBe('1rem');
   });
 });

@@ -22,6 +22,7 @@
     literalValueOf,
     overrideScopeFor,
     scopeOptions,
+    sourcePathOf,
     valueToText,
     type EditScope,
   } from './theme-token-edit.ts';
@@ -112,7 +113,8 @@
   }
 
   async function resetField(): Promise<void> {
-    await controller.reset({ kind: 'field', path: row.path }, `Reset ${row.path}`);
+    const path = envelope === null ? row.path : sourcePathOf(envelope, row.path);
+    await controller.reset({ kind: 'field', path }, `Reset ${row.path}`);
     controller.clearInputBuffer(key);
     replacing = false;
   }

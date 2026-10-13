@@ -100,6 +100,27 @@ export function parseValueText(text: string): ParsedValue {
   return { ok: true, value: trimmed };
 }
 
+// --- where a token's source node lives -----------------------------------------------------
+
+const isGroupWithRoot = (node: JsonValue | undefined): boolean =>
+  typeof node === 'object' &&
+  node !== null &&
+  !Array.isArray(node) &&
+  '$root' in node &&
+  !('$value' in node);
+
+/**
+ * The path of the DTCG node that holds a token's value. Most tokens are their own node; a
+ * token that is also a group (`accent.solid` has children such as `accent.solid.active`) keeps
+ * its value in the group's `$root`, so edits and resets must address `<path>.$root`.
+ */
+export function sourcePathOf(envelope: ThemeEnvelope, path: string): string {
+  for (const document of Object.values(envelope.base.documents)) {
+    if (isGroupWithRoot(getNode(document as JsonObject, path))) return `${path}.$root`;
+  }
+  return path;
+}
+
 // --- reading the current literal ----------------------------------------------------------
 
 type ResolverShape = {
@@ -140,8 +161,9 @@ export function literalValueOf(
   let current = path;
   for (let hops = 0; hops < 12; hops += 1) {
     let value: JsonValue | undefined;
+    const sourcePath = sourcePathOf(envelope, current);
     for (const document of documents) {
-      const node = getNode(document, current);
+      const node = getNode(document, sourcePath);
       if (typeof node === 'object' && node !== null && !Array.isArray(node) && '$value' in node) {
         value = node['$value'];
       }
@@ -173,7 +195,7 @@ export function overrideValue(
   scope: OverrideScope,
   path: string,
 ): JsonValue | undefined {
-  const node = getNode(envelope.overrides[scope], path);
+  const node = getNode(envelope.overrides[scope], sourcePathOf(envelope, path));
   return typeof node === 'object' && node !== null && !Array.isArray(node)
     ? node['$value']
     : undefined;
@@ -243,7 +265,8 @@ export function buildEdit(
   if (!parsed.ok) return parsed;
   const violation = usageViolation(row, parsed.value);
   if (violation !== undefined) return { ok: false, message: violation };
-  const existing = getNode(envelope.overrides[scope], row.path);
+  const sourcePath = sourcePathOf(envelope, row.path);
+  const existing = getNode(envelope.overrides[scope], sourcePath);
   const base: JsonObject =
     typeof existing === 'object' && existing !== null && !Array.isArray(existing) ? existing : {};
   const node: JsonObject = {
@@ -251,5 +274,5 @@ export function buildEdit(
     ...(row.type === 'unknown' || '$type' in base ? {} : { $type: row.type }),
     $value: parsed.value,
   };
-  return { ok: true, edit: { kind: 'set-override', scope, path: row.path, node } };
+  return { ok: true, edit: { kind: 'set-override', scope, path: sourcePath, node } };
 }

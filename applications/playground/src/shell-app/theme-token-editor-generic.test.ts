@@ -9,6 +9,7 @@ import { catalogueRowByPath, catalogueRows } from './theme-builder-catalogue.ts'
 import { tab } from './theme-builder-test-support.ts';
 import { memoryThemeStore } from './theme-draft-test-support.ts';
 import { createEnvelope } from './theme-envelope.ts';
+import { overriddenPaths } from './theme-override-tree.ts';
 import {
   buildEdit,
   defaultScope,
@@ -16,6 +17,7 @@ import {
   overrideScopeFor,
   parseValueText,
   scopeOptions,
+  sourcePathOf,
   usageViolation,
 } from './theme-token-edit.ts';
 import GenericTokenEditor from './theme-token-editor-generic.svelte';
@@ -217,5 +219,39 @@ describe('the editing rules', () => {
     });
     expect(usageViolation(row, { value: -1, unit: 'px' })).toContain('radius.medium');
     expect(buildEdit(row, envelope, context, null, '1')).toMatchObject({ ok: false });
+  });
+
+  test('a token that is also a group keeps its value, edits and resets at its $root', () => {
+    expect(sourcePathOf(envelope, 'accent.solid')).toBe('accent.solid.$root');
+    expect(sourcePathOf(envelope, 'radius.medium')).toBe('radius.medium');
+    const row = catalogueRowByPath('accent.solid')!;
+    expect(literalValueOf(envelope, context, 'accent.solid')).toMatchObject({
+      colorSpace: 'oklch',
+    });
+    const built = buildEdit(
+      row,
+      envelope,
+      context,
+      'dark',
+      '{"colorSpace": "srgb", "components": [0.1, 0.4, 0.8]}',
+    );
+    expect(built).toMatchObject({
+      ok: true,
+      edit: { kind: 'set-override', scope: 'dark', path: 'accent.solid.$root' },
+    });
+  });
+
+  test('the Changed filter sees an override at a $root as that token', () => {
+    const changed = overriddenPaths({
+      overrides: {
+        shared: {},
+        light: { accent: { solid: { $root: { $type: 'color', $value: '#fff' } } } },
+        dark: {},
+        reduced: {},
+        forcedReduced: {},
+      },
+      cssOverrides: {},
+    });
+    expect([...changed]).toEqual(['accent.solid']);
   });
 });
