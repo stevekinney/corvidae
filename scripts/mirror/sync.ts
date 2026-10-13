@@ -355,7 +355,7 @@ export async function findForeignCommits(
   if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
   const foreign: ForeignCommit[] = [];
   for (const { sha, subject } of candidates) {
-    if (!(await isTargetOwnedCommit(directory, sha, mirrorCommit, ownership)))
+    if (!(await isAcceptableCommit(directory, sha, mirrorCommit, ownership)))
       foreign.push({ sha, subject });
   }
   return foreign;
@@ -410,6 +410,13 @@ function transformReaches(reach: TransformReach, path: string): boolean {
   );
 }
 
+/** A path a commit changed that the per-commit rules do not accept, with the manifest keys at fault. */
+interface BlockingChange {
+  path: string;
+  /** Set when the path is a modified manifest: only these transform-owned keys block it. */
+  manifestKeys?: readonly string[];
+}
+
 /**
  * Whether every change a commit makes is one the transform preserves.
  *
@@ -425,29 +432,112 @@ function transformReaches(reach: TransformReach, path: string): boolean {
  * tree it prunes. The one exception is an emitted file a commit modifies to exactly the bytes and
  * mode the trusted source now emits: the source already carries that change, so the sync writes
  * the file back unchanged. Weft PR1020 edited the emitted package README that way.
+ *
+ * Returns every change those rules reject, or `undefined` when no parent descends from the mirror
+ * commit (such a commit has nothing to judge and is never the target's own).
  */
-async function isTargetOwnedCommit(
+async function blockingChanges(
   directory: string,
   sha: string,
   mirrorCommit: string,
   ownership: ForeignCommitOwnership,
-): Promise<boolean> {
+): Promise<BlockingChange[] | undefined> {
   const parentRecord = await git(directory, 'rev-list', '--parents', '-n', '1', sha);
   const parents = parentRecord.trim().split(/\s+/).slice(1);
   let inspected = false;
+  const blocking: BlockingChange[] = [];
   for (const parent of parents) {
     const ancestor = await tryGit(directory, 'merge-base', '--is-ancestor', mirrorCommit, parent);
     if (ancestor.exitCode === 1) continue;
     if (ancestor.exitCode !== 0)
       throw new SyncError(`Cannot inspect mirror ancestry: ${ancestor.stderr}`);
     inspected = true;
-    if (!(await isTargetOwnedDelta(directory, parent, sha, ownership))) return false;
+    blocking.push(...(await blockingDeltaChanges(directory, parent, sha, ownership)));
   }
-  return inspected;
+  return inspected ? blocking : undefined;
+}
+
+/**
+ * Whether the guard lets a commit above the mirror's own stand: either every change is the
+ * target's own (`blockingChanges` finds none), or the net-effect rule holds.
+ *
+ * Net effect (COR-1200, owner ruling 2026-10-12). The per-commit rules judge a commit by what it
+ * did, so a commit that regenerated or edited a path the sync owns stays foreign even after a
+ * later commit undoes it, and every sync would refuse for as long as that commit is in history.
+ * The property the guard protects is that a sync clobbers nothing the target currently holds. So a
+ * rejected commit is still acceptable when every path it changed — added, modified, deleted or
+ * mode-changed — is, at the target's HEAD, byte- and mode-identical either to that path at the
+ * mirror commit (still absent counts, when it was absent there) or to what this sync emits for
+ * it. For a manifest, the test applies to the transform-owned keys the commit changed: each must
+ * hold the mirror commit's value or this sync's generated value. A path changed by several
+ * commits is judged against the same HEAD each time, so a commit that touched anything which
+ * still differs stays foreign, while one whose paths were all restored is accepted.
+ */
+async function isAcceptableCommit(
+  directory: string,
+  sha: string,
+  mirrorCommit: string,
+  ownership: ForeignCommitOwnership,
+): Promise<boolean> {
+  const blocking = await blockingChanges(directory, sha, mirrorCommit, ownership);
+  if (blocking === undefined) return false;
+  for (const change of blocking) {
+    if (!(await endsWhereTheSyncLeavesIt(directory, mirrorCommit, change, ownership))) return false;
+  }
+  return true;
+}
+
+/** Whether a path at HEAD already holds what the mirror commit held or what this sync writes. */
+async function endsWhereTheSyncLeavesIt(
+  directory: string,
+  mirrorCommit: string,
+  { path, manifestKeys }: BlockingChange,
+  { generatedFiles, generatedManifestKeys }: ForeignCommitOwnership,
+): Promise<boolean> {
+  if (manifestKeys !== undefined) {
+    const head = await readManifest(directory, 'HEAD', path);
+    if (head === undefined) return false;
+    const mirror = await readManifest(directory, mirrorCommit, path);
+    const generated = generatedManifestKeys?.get(path);
+    return manifestKeys.every((key) => {
+      const value = JSON.stringify(head[key]);
+      return (
+        (mirror !== undefined && value === JSON.stringify(mirror[key])) ||
+        (generated !== undefined && value === JSON.stringify(generated[key]))
+      );
+    });
+  }
+  const headEntry = await treeEntry(directory, 'HEAD', path);
+  if (headEntry === (await treeEntry(directory, mirrorCommit, path))) return true;
+  const emitted = generatedFiles?.get(path);
+  return emitted !== undefined && (await matchesEmission(directory, 'HEAD', path, emitted));
+}
+
+/** `<mode> <type> <blob>` for a path at a commit, or the empty string when the path is absent. */
+async function treeEntry(directory: string, commit: string, path: string): Promise<string> {
+  const entry = await git(directory, 'ls-tree', '-z', commit, '--', path);
+  return entry.split('\t', 1)[0] ?? '';
+}
+
+/** A manifest at a commit, or `undefined` when it is absent or not a JSON object. */
+async function readManifest(
+  directory: string,
+  commit: string,
+  path: string,
+): Promise<Record<string, unknown> | undefined> {
+  if ((await treeEntry(directory, commit, path)) === '') return undefined;
+  try {
+    const value: unknown = JSON.parse(await git(directory, 'show', `${commit}:${path}`));
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Compare every ancestry edge after the mirror; combined merge diffs can omit imported changes. */
-async function isTargetOwnedDelta(
+async function blockingDeltaChanges(
   directory: string,
   parent: string,
   sha: string,
@@ -460,7 +550,8 @@ async function isTargetOwnedDelta(
     generatedFiles,
     transform,
   }: ForeignCommitOwnership,
-): Promise<boolean> {
+): Promise<BlockingChange[]> {
+  const blocking: BlockingChange[] = [];
   // `--no-renames`: a rename is judged as the deletion of its old path plus the addition of its
   // new one, so moving an emitted file out of the sync's reach is still a deletion the sync would
   // undo. `-z`: paths arrive unquoted, so one git would escape still matches the plan's keys.
@@ -495,23 +586,26 @@ async function isTargetOwnedDelta(
         (await matchesEmission(directory, sha, path, emitted))
       )
         continue;
-      return false;
+      blocking.push({ path });
+      continue;
     }
-    if (!kind.startsWith('M')) return false;
+    if (!kind.startsWith('M')) {
+      blocking.push({ path });
+      continue;
+    }
     const before = await git(directory, 'show', `${parent}:${path}`);
     const after = await git(directory, 'show', `${sha}:${path}`);
     const afterManifest = JSON.parse(after) as Record<string, unknown>;
     const generated = generatedManifestKeys?.get(path);
-    for (const key of changedTopLevelKeys(before, after)) {
-      if (
+    const manifestKeys = changedTopLevelKeys(before, after).filter(
+      (key) =>
         transformOwnedKeys.has(key) &&
         (generated === undefined ||
-          JSON.stringify(afterManifest[key]) !== JSON.stringify(generated[key]))
-      )
-        return false;
-    }
+          JSON.stringify(afterManifest[key]) !== JSON.stringify(generated[key])),
+    );
+    if (manifestKeys.length > 0) blocking.push({ path, manifestKeys });
   }
-  return true;
+  return blocking;
 }
 
 /** Whether a path at one commit holds exactly the bytes and executable bit the sync would write. */
