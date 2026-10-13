@@ -2367,6 +2367,123 @@ describe('createBureau', () => {
     }
   });
 
+  // COR-1421 regression: `recoverAll()` resumes recovered workflows without
+  // awaiting them, so a recovered run emits frames while the rest of boot
+  // recovery is still awaiting. Callers can only subscribe after
+  // `createBureau()` returns, so any awaited work in that tail used to drop
+  // every frame the run emitted meanwhile. The delay hook below is
+  // deliberately awaited work in the boot tail (the post-recovery goal sweep's
+  // storage listing is stalled for 25ms while the recovered run steps); the first subscriber must still
+  // receive the frames the run produced before it attached.
+  it("replays a recovered run's boot-time frames to a subscriber that attaches after createBureau returns (COR-1421)", async () => {
+    const databasePath = join(
+      tmpdir(),
+      `bureau-recovery-boot-frames-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+
+    try {
+      let bureauAReachedStep1 = false;
+      const bureauA = await createBureau({
+        agents: {},
+        generate: async ({ step }) => {
+          if (step === 0) {
+            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+          }
+          bureauAReachedStep1 = true;
+          return new Promise<never>(() => {});
+        },
+        toolbox: createToolbox([createNextTool()]),
+        storage: { type: 'sqlite', path: databasePath },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      const run = await bureauA.createRun({ message: 'Recover me' });
+      await pollUntil(() => bureauAReachedStep1);
+      // Bureau A stays undisposed so its workflow is still recoverable, as in
+      // the AB-15 test above; it is released at the end.
+
+      let recoveredRunStepping = false;
+      let tailDelayCount = 0;
+      let recoveredRunScanned = false;
+      const realStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+      // Awaited work in the boot tail: once recovery has read the recovered
+      // run's `upd:` records (it has resumed the workflow by then), the goal
+      // sweep that runs after `recoverAll()` stalls on its key listing.
+      const delayedStorage = new Proxy(realStorage, {
+        get(target, property, receiver) {
+          if (property === 'scan') {
+            return (prefix: string, ...rest: unknown[]) => {
+              if (prefix.startsWith('upd:')) recoveredRunScanned = true;
+              return target.scan(prefix, ...(rest as []));
+            };
+          }
+          if (property === 'keys') {
+            return (prefix: string, ...rest: unknown[]) =>
+              (async function* () {
+                if (recoveredRunScanned && prefix.startsWith('bureau-goal:')) {
+                  tailDelayCount += 1;
+                  await new Promise<void>((resolve) => setTimeout(resolve, 25));
+                }
+                yield* (
+                  target as unknown as {
+                    keys(prefix: string, ...options: unknown[]): AsyncIterable<string>;
+                  }
+                ).keys(prefix, ...rest);
+              })();
+          }
+          const value: unknown = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+
+      const bureauB = await createBureau({
+        agents: {},
+        generate: async ({ step }) => {
+          recoveredRunStepping = true;
+          return { content: `B recovered step ${step}`, toolCalls: [] };
+        },
+        toolbox: createToolbox([createNextTool()]),
+        storage: delayedStorage,
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      // The scenario this test exists for: the recovered run stepped, and the
+      // boot tail awaited real work afterwards, before createBureau returned.
+      expect(recoveredRunStepping).toBe(true);
+      expect(tailDelayCount).toBeGreaterThan(0);
+
+      const framesFromB: ServerFrame[] = [];
+      const unsubscribeB = bureauB.subscribeLiveFrames((frame) => {
+        if ('runId' in frame && frame.runId === run.id) {
+          framesFromB.push(frame);
+        }
+      });
+
+      try {
+        expect(framesFromB.some((frame) => frame.type === 'run-envelope')).toBe(true);
+        // A later subscriber does not receive the buffered boot frames again.
+        const laterFrames: ServerFrame[] = [];
+        const unsubscribeLater = bureauB.subscribeLiveFrames((frame) => {
+          if ('runId' in frame && frame.runId === run.id) {
+            laterFrames.push(frame);
+          }
+        });
+        unsubscribeLater();
+        expect(laterFrames).toHaveLength(0);
+      } finally {
+        unsubscribeB();
+        await bureauB.dispose();
+      }
+      await bureauA.dispose();
+    } finally {
+      await rm(databasePath, { force: true });
+      await rm(`${databasePath}-wal`, { force: true });
+      await rm(`${databasePath}-shm`, { force: true });
+    }
+  });
+
   // AB-15 regression: a recovered run's runSeq generation must never overlap
   // the pre-restart generation, or a browser reconnecting with a pre-restart
   // cursor (e.g. `since: 25`) would have every post-restart frame filtered

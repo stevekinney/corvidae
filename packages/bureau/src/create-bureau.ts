@@ -1786,6 +1786,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // resolved report, and never leaks into a later pass.
   let currentRecoverySweepFailure: { message: string } | undefined;
   const liveFrameListeners = new Set<(frame: ServerFrame) => void>();
+  // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
+  // awaiting them, so a recovered run emits live frames while the rest of boot
+  // still awaits, before `createBureau()` returns and a caller can subscribe.
+  // Every frame of a run reattached by recovery is therefore retained, up to a
+  // bound, until the FIRST `subscribeLiveFrames` listener attaches; that
+  // listener is replayed the retained frames in emission order and the buffer
+  // closes for good. Replaying rather than registering subscribers earlier (or
+  // deferring the resume) keeps delivery independent of how many awaits the
+  // boot tail happens to contain. The bound keeps a Bureau nobody subscribes to
+  // from growing without limit; a recovered run noisy enough to exceed it
+  // loses its newest boot frames, which a reconnecting client still gets
+  // through durable event history.
+  const BOOT_FRAME_BUFFER_LIMIT = 1024;
+  let bootFrameBufferOpen = true;
+  const bootFrameBuffer: ServerFrame[] = [];
+  const bootFrameRunIds = new Set<string>();
   // AB-96 — terminal RunReports, cached at the moment each run's lifecycle
   // event fires so `getRunReport` never needs to re-derive them.
   const runReports = new Map<string, RunReport>();
@@ -1914,17 +1930,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // and log per-listener instead, matching the isolation every other fan-out
     // in this file already gives its listeners (see `disposeRegisteredStreamListeners`
     // callers, `emitter.dispatch`).
+    if (
+      bootFrameBufferOpen &&
+      'runId' in frame &&
+      bootFrameRunIds.has(frame.runId) &&
+      bootFrameBuffer.length < BOOT_FRAME_BUFFER_LIMIT
+    ) {
+      bootFrameBuffer.push(frame);
+    }
     for (const listener of liveFrameListeners) {
-      try {
-        listener(frame);
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'live-frames',
-          message: `[bureau] subscribeLiveFrames listener threw on a "${frame.type}" frame:`,
-          cause: error,
-        });
-      }
+      deliverLiveFrame(listener, frame);
+    }
+  }
+
+  function deliverLiveFrame(listener: (frame: ServerFrame) => void, frame: ServerFrame): void {
+    try {
+      listener(frame);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'live-frames',
+        message: `[bureau] subscribeLiveFrames listener threw on a "${frame.type}" frame:`,
+        cause: error,
+      });
     }
   }
 
@@ -3732,6 +3760,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (store.getRun(runId)) {
       return;
     }
+    // COR-1421 — retain this run's frames for the first live-frame subscriber.
+    if (bootFrameBufferOpen) bootFrameRunIds.add(runId);
 
     const recoveredRun = reattachDurableActiveRun(
       {
@@ -9580,7 +9610,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     getConfiguration,
     getTools: getToolSummaries,
     subscribeLiveFrames(listener) {
+      // COR-1421 — the first subscriber closes the boot buffer and is replayed
+      // what recovered runs emitted before it attached.
+      const replayedFrames = bootFrameBufferOpen ? bootFrameBuffer.splice(0) : [];
+      bootFrameBufferOpen = false;
+      bootFrameRunIds.clear();
       liveFrameListeners.add(listener);
+      for (const frame of replayedFrames) deliverLiveFrame(listener, frame);
       return () => {
         liveFrameListeners.delete(listener);
       };
