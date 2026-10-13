@@ -14,9 +14,14 @@ export type MountedHarness = {
 
 const liveHarnesses = new Set<MountedHarness>();
 const unmountFailures: unknown[] = [];
+const pendingUnmounts = new Set<Promise<void>>();
 
 function recordUnmount(instance: Parameters<typeof unmount>[0]): void {
-  unmount(instance).catch((error: unknown) => unmountFailures.push(error));
+  const pending = unmount(instance).catch((error: unknown) => {
+    unmountFailures.push(error);
+  });
+  pendingUnmounts.add(pending);
+  void pending.finally(() => pendingUnmounts.delete(pending));
 }
 
 /**
@@ -85,8 +90,12 @@ export function liveHarnessCount(): number {
   return liveHarnesses.size;
 }
 
-/** Destroy every live harness, so one test never leaks a mounted component into the next. */
-export function destroyAllHarnesses(): void {
+/**
+ * Destroy every live harness, so one test never leaks a mounted component into the next. Waits for
+ * every pending unmount and fails with any teardown error, so a test whose component teardown
+ * rejects does not pass silently.
+ */
+export async function destroyAllHarnesses(): Promise<void> {
   const failures: unknown[] = [];
   for (const harness of liveHarnesses) {
     try {
@@ -95,6 +104,8 @@ export function destroyAllHarnesses(): void {
       failures.push(error);
     }
   }
+  await Promise.all(pendingUnmounts);
+  failures.push(...takeUnmountFailures());
   if (failures.length === 1) throw failures[0];
   if (failures.length > 1) {
     throw new AggregateError(failures, `${failures.length} harnesses failed to destroy`);

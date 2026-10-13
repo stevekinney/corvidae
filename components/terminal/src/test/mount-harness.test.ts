@@ -13,6 +13,15 @@ import {
 
 afterEach(destroyAllHarnesses);
 
+async function failureOf(work: () => unknown): Promise<unknown> {
+  try {
+    await work();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('Expected the work to fail');
+}
+
 function queryRequired(root: ParentNode, selector: string): HTMLElement {
   const element = root.querySelector<HTMLElement>(selector);
   if (element === null) throw new Error(`Expected ${selector} to be rendered`);
@@ -84,7 +93,7 @@ describe('mount harness', () => {
     expect(calls).toEqual(['teardown']);
   });
 
-  test('keeps harnesses independent and destroys all of them on request', () => {
+  test('keeps harnesses independent and destroys all of them on request', async () => {
     const calls: string[] = [];
     const first = mountHarness(HarnessProbe, {
       label: 'First',
@@ -100,7 +109,7 @@ describe('mount harness', () => {
     expect(second.target.isConnected).toBe(true);
     expect(calls).toEqual(['first']);
 
-    destroyAllHarnesses();
+    await destroyAllHarnesses();
 
     expect(calls).toEqual(['first', 'second']);
     expect(liveHarnessCount()).toBe(0);
@@ -176,6 +185,22 @@ describe('mount harness', () => {
     expect(harness.destroyed).toBe(true);
   });
 
+  test('fails cleanup when a component teardown rejects during destroyAllHarnesses', async () => {
+    takeUnmountFailures();
+    mountHarness(HarnessProbe, {
+      label: 'Failing teardown',
+      onteardown: () => {
+        throw new Error('teardown failed');
+      },
+    });
+
+    const thrown = await failureOf(destroyAllHarnesses);
+
+    expect((thrown as Error).message).toBe('teardown failed');
+    expect(takeUnmountFailures()).toEqual([]);
+    expect(liveHarnessCount()).toBe(0);
+  });
+
   test('detaches the container even when the flush during destroy throws', () => {
     const first = mountHarness(HarnessProbe, { label: 'First' });
     const second = mountHarness(HarnessThrowingUpdate, {});
@@ -189,20 +214,20 @@ describe('mount harness', () => {
     expect(() => second.destroy()).not.toThrow();
   });
 
-  test('destroys every harness and rethrows the only error when one destroy fails', () => {
+  test('destroys every harness and rethrows the only error when one destroy fails', async () => {
     const first = mountHarness(HarnessProbe, { label: 'First' });
     const failing = mountHarness(HarnessThrowingUpdate, {});
     const last = mountHarness(HarnessProbe, { label: 'Last' });
     queryRequired(failing.target, 'button').click();
 
-    expect(destroyAllHarnesses).toThrow('update failed');
+    expect(((await failureOf(destroyAllHarnesses)) as Error).message).toStartWith('update failed');
 
     expect([first, failing, last].map((harness) => harness.destroyed)).toEqual([true, true, true]);
     expect(document.body.children).toHaveLength(0);
     expect(liveHarnessCount()).toBe(0);
   });
 
-  test('collects the errors in an AggregateError when several destroys fail', () => {
+  test('collects the errors in an AggregateError when several destroys fail', async () => {
     const triggers: HarnessProbeTarget[] = [];
     mountHarness(HarnessProbe, {
       label: 'One',
@@ -217,12 +242,7 @@ describe('mount harness', () => {
       mountHarness(HarnessThrowingUpdate, {}).target,
     );
 
-    let thrown: unknown;
-    try {
-      destroyAllHarnesses();
-    } catch (error) {
-      thrown = error;
-    }
+    const thrown = await failureOf(destroyAllHarnesses);
 
     expect(thrown).toBeInstanceOf(AggregateError);
     expect((thrown as AggregateError).errors).toHaveLength(2);
