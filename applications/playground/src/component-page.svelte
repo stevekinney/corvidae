@@ -1119,13 +1119,7 @@
             <p class="dx-hero__lede">{component.purpose}</p>
             <div class="dx-hero__meta">
               <div class="dx-import">
-                <span
-                  class="dx-import__code"
-                  role="textbox"
-                  aria-readonly="true"
-                  aria-label="Import statement"
-                  tabindex="0"
-                >
+                <span class="dx-import__code">
                   {#if highlightedImportStatement !== ''}
                     {@html highlightedImportStatement}
                   {:else}
@@ -2485,22 +2479,19 @@
     max-width: 100%;
   }
   .dx-import__code {
-    display: inline-flex;
-    align-items: center;
+    /* A block, not a flex container: its text and highlighted spans must flow
+       and wrap as one run. The control centers it vertically. */
+    display: block;
+    align-self: center;
     padding: var(--cinder-space-2) var(--cinder-space-3);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
-    white-space: nowrap;
-    /* Shrinkable and scrollable: a long statement stays reachable inside the
-       control instead of being clipped, and never widens the page. */
+    /* Wraps inside the control at narrow widths so the whole statement stays
+       visible without scrolling or widening the page. */
     min-inline-size: 0;
-    overflow-x: auto;
-    scrollbar-width: thin;
-  }
-  .dx-import__code:focus-visible {
-    outline: 2px solid var(--cinder-focus-ring, var(--cinder-accent-text));
-    outline-offset: -2px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   /* A real button affordance, not a bare icon hugging the code field's edge:
      a comfortable square hit target with its own raised surface, separated from

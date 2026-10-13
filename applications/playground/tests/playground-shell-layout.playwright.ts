@@ -154,44 +154,37 @@ test.describe('component pages at phone width', () => {
 test.describe('import control at phone width', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('keeps the full import statement reachable without widening the page', async ({ page }) => {
+  test('shows the full import statement without scrolling or widening the page', async ({
+    page,
+  }) => {
     await openDocumentation(page, '/page/action-row');
 
-    const reachability = await page.evaluate(() => {
+    const geometry = await page.evaluate(() => {
       const control = document.querySelector('.dx-import');
       const code = document.querySelector<HTMLElement>('.dx-import__code');
-      if (control === null || code === null) throw new Error('The import control is missing.');
-      const clippedBefore = code.scrollWidth > code.clientWidth;
-      code.scrollLeft = code.scrollWidth;
+      const copy = document.querySelector('.dx-import__copy');
+      if (control === null || code === null || copy === null) {
+        throw new Error('The import control is missing.');
+      }
+      const controlBox = control.getBoundingClientRect();
+      const copyBox = copy.getBoundingClientRect();
       return {
-        statement: code.textContent?.trim() ?? '',
-        clippedBefore,
-        scrolledToEnd: Math.ceil(code.scrollLeft + code.clientWidth) >= code.scrollWidth,
-        controlRight: control.getBoundingClientRect().right,
+        statement: code.textContent?.replaceAll(/\s+/g, ' ').trim() ?? '',
+        codeScrollWidth: code.scrollWidth,
+        codeClientWidth: code.clientWidth,
+        controlRight: controlBox.right,
+        copyRight: copyBox.right,
+        copyInsideControl: copyBox.top >= controlBox.top && copyBox.bottom <= controlBox.bottom,
         viewportWidth: document.documentElement.clientWidth,
         pageScrollWidth: document.documentElement.scrollWidth,
-        overflowX: getComputedStyle(code).overflowX,
-        tabIndex: code.tabIndex,
       };
     });
 
-    expect(reachability.statement).toBe("import { ActionRow } from '@lostgradient/cinder';");
-    // The statement is wider than the control, so it must scroll rather than clip.
-    expect(reachability.clippedBefore).toBe(true);
-    expect(reachability.overflowX).toBe('auto');
-    expect(reachability.scrolledToEnd).toBe(true);
-    expect(reachability.controlRight).toBeLessThanOrEqual(reachability.viewportWidth);
-    expect(reachability.pageScrollWidth).toBeLessThanOrEqual(reachability.viewportWidth);
-
-    // The scroll region is keyboard reachable and shows a focus indicator.
-    expect(reachability.tabIndex).toBe(0);
-    await page.locator('.dx-import__code').focus();
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Shift+Tab');
-    await expect(page.locator('.dx-import__code')).toBeFocused();
-    const outlineWidth = await page
-      .locator('.dx-import__code')
-      .evaluate((element) => getComputedStyle(element).outlineWidth);
-    expect(Number.parseFloat(outlineWidth)).toBeGreaterThan(0);
+    expect(geometry.statement).toBe("import { ActionRow } from '@lostgradient/cinder';");
+    expect(geometry.codeScrollWidth).toBeLessThanOrEqual(geometry.codeClientWidth + 1);
+    expect(geometry.controlRight).toBeLessThanOrEqual(geometry.viewportWidth);
+    expect(geometry.copyRight).toBeLessThanOrEqual(geometry.controlRight);
+    expect(geometry.copyInsideControl).toBe(true);
+    expect(geometry.pageScrollWidth).toBeLessThanOrEqual(geometry.viewportWidth);
   });
 });
