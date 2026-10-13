@@ -117,6 +117,15 @@ function fakeGitHub(options: FakeOptions = {}): { api: GitHubApi; calls: Recorde
         headSha: 'c0ffee',
       };
     },
+    // Supersession belongs to the publish job; a dry run never lists, reads or closes anything.
+    async listOpenPullRequests() {
+      return [];
+    },
+    async getCommitMessage() {
+      return '';
+    },
+    async createIssueComment() {},
+    async closePullRequest() {},
     async readCheckRuns() {
       return [{ name: 'build', status: 'completed', conclusion: 'success' }];
     },

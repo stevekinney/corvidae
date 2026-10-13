@@ -4,13 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
+import type { GitHubApi, OpenPullRequestRecord } from './github-api.ts';
 import {
   dispatchSnapshotWorkflow,
+  openSyncPullRequest,
   pullRequestBodyFor,
   pullRequestBranchFor,
   reportDrift,
   runMirrorSyncActionCommand,
   snapshotDispatchFor,
+  supersedeOlderPullRequests,
   targetRemoteUrl,
   targetRepositoryFullName,
 } from './mirror-sync-action.ts';
@@ -485,4 +488,214 @@ test('snapshot dispatch discovers the release workflow filename from the staged 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+describe('supersession (COR-1433)', () => {
+  const bot = 'lost-gradient-mirror-sync[bot]';
+  const newNumber = 20;
+
+  /** A corvidae history `older -> newer` plus a commit on a side branch that is not an ancestor. */
+  async function withCorvidae(
+    body: (shas: { older: string; newer: string; side: string }, root: string) => Promise<void>,
+  ): Promise<void> {
+    const root = await mkdtemp(join(tmpdir(), 'supersession-corvidae-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      await git(root, 'config', 'user.email', 'fixture@example.test');
+      await git(root, 'config', 'user.name', 'Fixture');
+      const commit = async (message: string): Promise<string> => {
+        await git(root, 'commit', '--quiet', '--allow-empty', '--message', message);
+        return (await git(root, 'rev-parse', 'HEAD')).trim();
+      };
+      const older = await commit('Older');
+      await git(root, 'checkout', '--quiet', '-b', 'side');
+      const side = await commit('Side');
+      await git(root, 'checkout', '--quiet', 'main');
+      const newer = await commit('Newer');
+      await body({ older, newer, side }, root);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+
+  function record(
+    number: number,
+    overrides: Partial<OpenPullRequestRecord> = {},
+  ): OpenPullRequestRecord {
+    return {
+      number,
+      htmlUrl: `https://github.com/stevekinney/weft/pull/${number}`,
+      author: bot,
+      headRef: `mirror-sync-${number}`,
+      headSha: `head-${number}`,
+      baseRef: 'main',
+      ...overrides,
+    };
+  }
+
+  interface Fake {
+    api: Pick<
+      GitHubApi,
+      | 'createPullRequest'
+      | 'dispatchWorkflow'
+      | 'listOpenPullRequests'
+      | 'getCommitMessage'
+      | 'createIssueComment'
+      | 'closePullRequest'
+    >;
+    events: string[];
+  }
+
+  function fake(
+    open: readonly OpenPullRequestRecord[],
+    messages: Record<string, string>,
+    failClosing: ReadonlySet<number> = new Set(),
+  ): Fake {
+    const events: string[] = [];
+    return {
+      events,
+      api: {
+        async createPullRequest() {
+          events.push('create');
+          return {
+            number: newNumber,
+            htmlUrl: `https://github.com/stevekinney/weft/pull/${newNumber}`,
+            headSha: 'new-head',
+          };
+        },
+        async listOpenPullRequests() {
+          return open;
+        },
+        async getCommitMessage(_fullName, sha) {
+          return messages[sha] ?? '';
+        },
+        async createIssueComment({ issueNumber, body }) {
+          events.push(`comment ${issueNumber}: ${body}`);
+        },
+        async closePullRequest(_fullName, number) {
+          if (failClosing.has(number)) throw new Error(`HTTP 500 closing ${number}`);
+          events.push(`close ${number}`);
+        },
+      },
+    };
+  }
+
+  const trailer = (sha: string): string => `Sync weft from corvidae\n\nCorvidae-Commit: ${sha}`;
+
+  test('closes an older sync pull request whose trailer is an ancestor, and nothing else', async () => {
+    await withCorvidae(async ({ older, newer, side }, root) => {
+      const { api, events } = fake(
+        [
+          record(11),
+          record(newNumber),
+          record(12),
+          record(13),
+          record(14),
+          record(15, { author: 'someone-else' }),
+          record(16, { baseRef: 'release' }),
+          record(17, { headRef: 'feature/something' }),
+          record(18, { headRef: 'mirror-sync-snapshot-18' }),
+        ],
+        {
+          'head-11': trailer(older),
+          [`head-${newNumber}`]: trailer(newer),
+          'head-12': trailer(side),
+          'head-13': 'Sync weft from corvidae\n\nno trailer here',
+          'head-14': trailer('f'.repeat(40)),
+          'head-15': trailer(older),
+          'head-16': trailer(older),
+          'head-17': trailer(older),
+          'head-18': trailer(older),
+        },
+      );
+      const logged: string[] = [];
+      const outcome = await supersedeOlderPullRequests({
+        api,
+        corvidaeRoot: root,
+        fullName: 'stevekinney/weft',
+        base: 'main',
+        newPullRequest: {
+          number: newNumber,
+          htmlUrl: `https://github.com/stevekinney/weft/pull/${newNumber}`,
+        },
+        newCorvidaeCommit: newer,
+        log: (line) => logged.push(line),
+      });
+
+      // 11 and the snapshot pull request 18 are provably older; the new pull request is never touched.
+      expect(outcome.closed).toEqual([11, 18]);
+      expect(events.filter((event) => event.startsWith('close'))).toEqual(['close 11', 'close 18']);
+      expect(events.find((event) => event.startsWith('comment 11'))).toContain(`pull/${newNumber}`);
+      expect(outcome.left.map(({ number }) => number)).toEqual([12, 13, 14]);
+      expect(logged.join('\n')).toContain('#12: left open');
+      expect(logged.join('\n')).toContain('not an ancestor');
+      expect(logged.join('\n')).toContain('no single parsable');
+      expect(logged.join('\n')).toContain('not an object in the corvidae checkout');
+    });
+  });
+
+  test('a sync of the same corvidae commit closes the earlier attempt', async () => {
+    await withCorvidae(async ({ newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
+      await supersedeOlderPullRequests({
+        api,
+        corvidaeRoot: root,
+        fullName: 'stevekinney/weft',
+        base: 'main',
+        newPullRequest: { number: newNumber, htmlUrl: 'https://example.test/pr/20' },
+        newCorvidaeCommit: newer,
+        log: () => {},
+      });
+      expect(events.some((event) => event === 'close 11')).toBe(true);
+    });
+  });
+
+  test('opens the new pull request first, and a failed close fails the job after it exists', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake(
+        [record(11), record(12)],
+        { 'head-11': trailer(older), 'head-12': trailer(older) },
+        new Set([11]),
+      );
+      const failure = await throwingRejectionOf(
+        openSyncPullRequest({
+          api,
+          target: 'weft',
+          manifest: { baseBranch: 'main', baseCommit: 'base', changed: [], commit: 'c'.repeat(40) },
+          snapshot: false,
+          branch: 'mirror-sync-new',
+          corvidaeCommit: newer,
+          corvidaeRoot: root,
+          log: () => {},
+        }),
+      );
+      expect(failure).toThrow(/#11: HTTP 500 closing 11/);
+      expect(events[0]).toBe('create');
+      // The other superseded pull request was still attempted before the job failed.
+      expect(events).toContain('close 12');
+    });
+  });
+
+  test('a clean publish returns the opened message and leaves unrelated pull requests alone', async () => {
+    await withCorvidae(async ({ newer }, root) => {
+      const { api, events } = fake([record(15, { author: 'someone-else' })], {});
+      const message = await openSyncPullRequest({
+        api,
+        target: 'weft',
+        manifest: {
+          baseBranch: 'main',
+          baseCommit: 'base',
+          changed: ['a'],
+          commit: 'c'.repeat(40),
+        },
+        snapshot: false,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      expect(message).toBe(`weft: opened https://github.com/stevekinney/weft/pull/${newNumber}\n`);
+      expect(events).toEqual(['create']);
+    });
+  });
 });
