@@ -56,8 +56,9 @@ function unescapeJsonQuoting(text: string): string {
 
 /**
  * Whether the data URI starting at `start` is the `src` of an image: written
- * directly as `src="…"` / `src={'…'}`, or assigned to a `const` that the same
- * source passes as `src={name}`.
+ * directly as `src="…"` / `src={'…'}`, or assigned to a `const` whose every
+ * other reference in the same source is a `src={name}` binding. A constant that
+ * also feeds CSS or anything else stays checked.
  */
 function isImageSourceUri(source: string, start: number): boolean {
   const prefix = unescapeJsonQuoting(
@@ -66,10 +67,12 @@ function isImageSourceUri(source: string, start: number): boolean {
   if (/\bsrc\s*=\s*\{?\s*["'`]$/.test(prefix)) return true;
   const assignment = /\bconst\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*["'`]$/.exec(prefix);
   if (assignment === null) return false;
-  const name = assignment[1]!;
-  return new RegExp(`\\bsrc\\s*=\\s*\\{\\s*${name.replaceAll('$', '\\$')}\\s*\\}`).test(
-    unescapeJsonQuoting(source),
-  );
+  const name = assignment[1]!.replaceAll('$', '\\$');
+  const unescaped = unescapeJsonQuoting(source);
+  const references = unescaped.match(new RegExp(`(?<![\\w$])${name}(?![\\w$])`, 'g'))?.length ?? 0;
+  const imageSources =
+    unescaped.match(new RegExp(`\\bsrc\\s*=\\s*\\{\\s*${name}\\s*\\}`, 'g'))?.length ?? 0;
+  return imageSources > 0 && references === imageSources + 1;
 }
 
 function resolveScanRoots(): string[] {
@@ -309,6 +312,11 @@ describe('image source detection', () => {
 
   test('keeps checking a const that never reaches src', () => {
     const source = `const chevron = "${uri}";\nconst style = \`background: url(\${chevron})\`;`;
+    expect(isImageSourceUri(source, source.indexOf('data:'))).toBe(false);
+  });
+
+  test('keeps checking a const that reaches src and also feeds CSS', () => {
+    const source = `<script>\n  const art = "${uri}";\n</script>\n<img src={art} alt="" />\n<div style="background: url({art})"></div>`;
     expect(isImageSourceUri(source, source.indexOf('data:'))).toBe(false);
   });
 
