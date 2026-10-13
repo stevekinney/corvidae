@@ -19,6 +19,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The `Bureau` Object](#the-bureau-object)
   - [`streamEventToFrame`](#streameventtoframe)
   - [The Audit Trail](#the-audit-trail)
+  - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
   - [Durable goals (COR-851)](#durable-goals-cor-851)
@@ -183,7 +184,7 @@ The most commonly used members:
 | `memory` | `GovernedMemory \| undefined` | COR-41—the governed memory passed as `BureauOptions.memory`, for host-side reads, legal holds, retention sweeps, deletions, and deletion propagation under the host's own authority. See [Governed memory](#governed-memory-cor-41). |
 | `children` | `BureauChildren` | COR-772—dispatch a catalog agent as the child of a run this bureau knows, then `list`/`get`/`wait`/`signal`/`cancel` it by its stable identifier, including after a restart. See [Parent-child topology](#parent-child-topology-cor-772). |
 | `goals` | `BureauGoals` | COR-851—create a durable goal, then `get`/`list`/`active`/`cancel`/`close` it and `recover` every unfinished one after a restart. Needs a durable engine. See [Durable goals](#durable-goals-cor-851). |
-| `createRun(request)` **(deprecated)** | `Promise<RunSummary>` | Create and start a run against a session. Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
+| `createRun(request)` **(deprecated)** | `Promise<CreatedRunSummary>` | Create and start a run against a session. With `runCreationRequestId`, resolves with a durable `receipt` and replays exact retries (see [Run-creation receipts](#run-creation-receipts-cor-424)). Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
 | `submitSchedulerTask(request)` | `Promise<SubmitSchedulerTaskResponse>` | Queue a task on the in-process scheduler. |
 | `locateSchedulerTask(taskId)` | `SchedulerTaskLocation` | Resolve a receipt's `taskId` to `in-progress`, `terminal` (with a `PromiseSettledResult` outcome), `expired`, or `not-found`. Synchronous; throws `BureauError` (`NOT_CONFIGURED`) when the scheduler is not enabled. In-process and in-memory only: a restart loses it. |
 | `awaitSchedulerTask(taskId)` | `Promise<RunResult \| null>` | Await a task's settlement from its `taskId` alone, mirroring what the scheduler's `submit()` promise settled with. An `expired` or unknown id rejects with `SchedulerTaskLookupError` (`reason: 'expired' \| 'not-found'`). Throws `BureauError` (`NOT_CONFIGURED`) synchronously when the scheduler is not enabled. |
@@ -295,6 +296,19 @@ The acknowledgement is operative's `CleanupAcknowledgement`: `{ status: 'complet
 Weft exposes no engine-wide operation timeout to inherit, so `timeoutMilliseconds` is opt-in. When set, the bound sleeps on `BureauOptions.shutdownTimeoutSleep`—`RuntimeServices.timers`-backed, never a real timer—and its abort signal is passed into `pruneCheckpoints({ signal })`, so Weft aborts before issuing any delete. Abandoning only the wait would leave unowned deletes running behind a cached `'timed-out'` result. Omitted, the step is unbounded and a caller bounds its own wait through `closed({ signal })`.
 
 The step also folds into the durable run's `closed()`, where it only ever _downgrades_: a step reporting `completed` or `not-required` leaves a `completed` run `completed`, while `unresolved` or `failed` surfaces in its place. The run's own cleanup genuinely did finish; a retention step with nothing to prune is a separate fact, and it belongs in the audit record rather than in the run's acknowledgement. The hook is registered on a run's `closed()` only when a retention policy is actually configured—registering it disqualifies `closed()`'s `not-required` fast path (a run with cleanup registered does have cleanup left to do), which would otherwise change `closed()`'s answer for every bureau that never asked for retention. The audit record is written either way.
+
+### Run-creation receipts (COR-424)
+
+A `createRun` request that names `runCreationRequestId` goes through a durable command ledger (`command-ledger.ts`) and resolves with a `RunCreationReceipt`: `{ runId, requestId, createdAt, status }`, where `status` is the run's status when the receipt was issued. The request must also carry `principal`; a request id without one is a `BAD_REQUEST`.
+
+The ledger keys each entry on `(principal, runCreationRequestId, operationVersion)` and stores a SHA-256 digest of the payload that decides the run: `message`, `sessionId`, `systemPrompt`, `maximumSteps`, `maximumTokens`, and `agentName`. The request context is not part of the digest, because its credentials and tracing legitimately differ between retries. Entries live in the same key-value store as the bureau's sessions, so a persistent backend keeps them across a restart; an ephemeral bureau keeps them in memory.
+
+- **Exact retry.** The same principal, request id, and payload return the original run and the original receipt. Nothing is written, and flow control is not consulted, so a retry is never rejected as a duplicate trigger.
+- **Conflicting retry.** The same principal and request id with a different payload reject with `BureauLedgerConflictError` (`requestId`, `reason: 'payload-mismatch'`). The attempt is recorded as its own failed entry; the original entry is never changed. This is not a `BureauError`.
+- **Retry while pending.** The ledger claims the identity, with the run and session identifiers it minted, before flow control admits the run, and records the receipt once the run is durably started. A retry that finds the claim pending waits for the attempt when it is in flight in the same process. After a restart it reports the claimed run instead of starting another: the live run when the bureau recovered it, the durable engine's status when it did not, and `pending` when the run never started.
+- **Failure.** When no run results (flow control rejects it, or a session or durable write fails), the claim is released and a retry starts afresh.
+
+`run-creation-fault-points.test.ts` covers the crash-before-claim, after-claim, after-work-start, after-effect-before-ack, and during-cancellation fault points over both SQLite and LMDB. Session-input admission, schedule mutation, review resolution, and cancellation do not use this ledger yet.
 
 ### The Durable Event History Store (AB-91)
 
