@@ -92,6 +92,12 @@
       "cache": false,
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
     },
+    "@lostgradient/bureau#test": {
+      "dependsOn": ["transit"],
+      "outputs": [],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/documentation/runtime-contracts.md"]
+    },
     "@lostgradient/weft#test": {
       "outputs": ["test-output/junit/**"],
       "inputs": [

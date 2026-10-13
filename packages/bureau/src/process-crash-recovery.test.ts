@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
+import type { Subprocess } from 'bun';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -263,4 +264,68 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash recovery over %s', (ba
   it('recovers in exactly one racer, fences the other, and keeps event streams continuous', () => {
     expectScenarioPassed(outcomes[backend]);
   });
+});
+
+interface RelaunchMarker {
+  readonly runId: string;
+  readonly recoveryOutcome?: string;
+  readonly durableStatus?: string;
+  readonly runStatus?: string;
+  readonly stepZeroCalls: number;
+  readonly laterStepCalls: number;
+}
+
+/**
+ * COR-1439 — the supervisor shape: the process dies from SIGKILL mid-run, and
+ * a relaunched process (not an in-test Bureau) recovers the durable run to its
+ * terminal result. The relaunched child waits for the dead holder's claim to
+ * lapse itself, by polling and driving durable maintenance, so this test never
+ * sleeps.
+ */
+describe.each(['sqlite', 'lmdb'] as const)('process crash relaunch over %s', (backend) => {
+  it('relaunches a Bureau killed with SIGKILL mid-run and recovers the durable run to its terminal result', async () => {
+    const directory = mkdtempSync(join(tmpdir(), `corvidae-process-relaunch-${backend}-`));
+    const storagePath = join(directory, 'bureau');
+    const markerPath = join(directory, 'marker.json');
+    const children: Subprocess[] = [];
+    const spawnChild = (scenario: string) => {
+      const child = Bun.spawn(['bun', CHILD, scenario, backend, storagePath, markerPath], {
+        stdout: 'ignore',
+        stderr: 'pipe',
+      });
+      children.push(child);
+      return child;
+    };
+
+    try {
+      const crashed = spawnChild('park-after-step-0');
+      await crashed.exited;
+      expect(crashed.signalCode ?? (await new Response(crashed.stderr).text())).toBe('SIGKILL');
+      const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as CrashMarker;
+
+      const relaunched = spawnChild('relaunch-recover');
+      await relaunched.exited;
+      const stderr = await new Response(relaunched.stderr).text();
+      expect({ exitCode: relaunched.exitCode, stderr }).toEqual({ exitCode: 0, stderr: '' });
+
+      const marker = JSON.parse(
+        readFileSync(join(directory, 'relaunched.json'), 'utf8'),
+      ) as RelaunchMarker;
+      expect(marker).toEqual({
+        runId,
+        recoveryOutcome: 'clean',
+        durableStatus: 'completed',
+        runStatus: 'completed',
+        // Step 0 committed before the kill; only the interrupted step ran again.
+        stepZeroCalls: 0,
+        laterStepCalls: 1,
+      });
+    } finally {
+      for (const child of children) {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+        await child.exited;
+      }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 120_000);
 });

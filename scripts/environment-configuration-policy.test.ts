@@ -73,5 +73,8 @@ test('registers runtime and script boundaries separately', () => {
     'script',
   );
   expect(boundaryKind('scripts/environment-configuration.ts')).toBe('script');
+  expect(
+    boundaryKind('packages/bureau/src/test/signal-shutdown/environment-configuration.ts'),
+  ).toBe('script');
   expect(boundaryKind('packages/example/src/environment-configuration.ts')).toBeUndefined();
 });
