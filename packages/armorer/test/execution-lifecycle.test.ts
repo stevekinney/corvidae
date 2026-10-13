@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
 import { createExecutionLifecycle, type EffectiveToolExecutionContext } from '../src';
+import { createTool, createToolCall } from '../src/create-tool';
 import { createConcurrencyLimiter } from '../src/utilities/concurrency';
 
 function requiredValue<T>(value: T | undefined, description: string): T {
@@ -617,5 +619,125 @@ describe('execution lifecycle', () => {
       secondHandle.id,
       secondSecondHandle.id,
     ]);
+  });
+});
+
+// COR-95: `context.progress()` stays live for exactly as long as the tool's
+// work is actually running: through the consumption of a streamed
+// async-iterable result, and no longer than a callback that throws
+// synchronously.
+describe('progress reporting lifecycle (COR-95)', () => {
+  type ProgressReporter = (update: {
+    percent?: number;
+    message?: string;
+    checkpoint?: unknown;
+  }) => void;
+
+  function createStreamingProgressTool(
+    name: string,
+    onContext?: (report: ProgressReporter) => void,
+  ) {
+    return createTool({
+      name,
+      description: 'reports progress while its streamed result is consumed',
+      input: z.object({}),
+      async execute(_params, context) {
+        onContext?.(context.progress);
+        return {
+          async *[Symbol.asyncIterator]() {
+            context.progress({ percent: 0, checkpoint: { cursor: 0 } });
+            yield 'a';
+            context.progress({ percent: 50, checkpoint: { cursor: 1 } });
+            yield 'b';
+            context.progress({ percent: 100, checkpoint: { cursor: 2 } });
+          },
+        };
+      },
+    });
+  }
+
+  function recordProgress(tool: ReturnType<typeof createStreamingProgressTool>): unknown[] {
+    const progress: unknown[] = [];
+    tool.addEventListener('progress', (event) => {
+      progress.push({ percent: event.percent, checkpoint: event.checkpoint });
+    });
+    return progress;
+  }
+
+  const expectedStreamProgress = [
+    { percent: 0, checkpoint: { cursor: 0 } },
+    { percent: 50, checkpoint: { cursor: 1 } },
+    { percent: 100, checkpoint: { cursor: 2 } },
+  ];
+
+  it('keeps progress active until a collected async-iterable result is fully consumed', async () => {
+    const tool = createStreamingProgressTool('collected-stream-progress');
+    const progress = recordProgress(tool);
+
+    const result = await tool.execute(createToolCall('collected-stream-progress', {}));
+
+    expect(result.outcome).toBe('success');
+    expect(result.result).toEqual(['a', 'b']);
+    expect(progress).toEqual(expectedStreamProgress);
+  });
+
+  it('deactivates progress once a collected stream has been consumed', async () => {
+    let report: ProgressReporter | undefined;
+    const tool = createStreamingProgressTool('collected-stream-deactivation', (reporter) => {
+      report = reporter;
+    });
+    const progress = recordProgress(tool);
+
+    await tool.execute(createToolCall('collected-stream-deactivation', {}));
+    requiredValue(report, 'progress reporter')({ percent: 101 });
+    await Promise.resolve();
+
+    expect(progress).toHaveLength(3);
+  });
+
+  it('keeps progress active until a live stream is fully consumed, then deactivates it', async () => {
+    let report: ProgressReporter | undefined;
+    const tool = createStreamingProgressTool('live-stream-progress', (reporter) => {
+      report = reporter;
+    });
+    const progress = recordProgress(tool);
+
+    const result = await tool.execute(createToolCall('live-stream-progress', {}), {
+      stream: true,
+    });
+    const chunks: unknown[] = [];
+    for await (const chunk of requiredValue(result.stream, 'live stream')) chunks.push(chunk);
+
+    expect(chunks).toEqual(['a', 'b']);
+    expect(progress).toEqual(expectedStreamProgress);
+
+    requiredValue(report, 'progress reporter')({ percent: 101 });
+    await Promise.resolve();
+    expect(progress).toHaveLength(3);
+  });
+
+  it('cleans up progress state when the executor throws synchronously', async () => {
+    let report: ProgressReporter | undefined;
+    const tool = createTool({
+      name: 'synchronous-throw-progress',
+      description: 'throws before returning a promise',
+      input: z.object({}),
+      execute(_params, context): Promise<string> {
+        report = context.progress;
+        throw new Error('synchronous failure');
+      },
+    });
+    const progress: unknown[] = [];
+    tool.addEventListener('progress', (event) => {
+      progress.push(event.percent);
+    });
+
+    const result = await tool.execute(createToolCall('synchronous-throw-progress', {}));
+    expect(result.outcome).toBe('error');
+
+    requiredValue(report, 'progress reporter')({ percent: 50 });
+    await Promise.resolve();
+    expect(progress).toEqual([]);
+    expect(tool.activeExecutions).toBe(0);
   });
 });

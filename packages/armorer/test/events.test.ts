@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createTool, createToolCall } from '../src/create-tool';
+import { createToolbox } from '../src/create-toolbox';
 import { ToolCancelledEvent, ToolStatusUpdateEvent } from '../src/tool-lifecycle-events';
 import { ToolProgressEvent } from '../src/tool-stream-events';
 import {
@@ -183,5 +184,123 @@ describe('event classes', () => {
     expect(blocked.detector).toBe('simple-repeat');
     expect(blocked.count).toBe(5);
     expect(blocked.message).toBe('Loop blocked');
+  });
+});
+
+// COR-95: progress events carry their checkpoint verbatim at the tool level
+// and keep it when a toolbox wraps the tool.
+describe('progress checkpoint data (COR-95)', () => {
+  it('keeps the checkpoint on a constructed ToolProgressEvent', () => {
+    const checkpoint = { cursor: 'abc', step: 3 };
+    const progress = new ToolProgressEvent({ percent: 30, message: 'step 3', checkpoint });
+
+    expect(progress.checkpoint).toBe(checkpoint);
+  });
+
+  it('keeps the checkpoint on a constructed ToolboxProgressEvent', () => {
+    const { call, tool } = createFixtures();
+    const checkpoint = { cursor: 'abc', step: 3 };
+    const progress = new ToolboxProgressEvent({ tool, call, percent: 30, checkpoint });
+
+    expect(progress.checkpoint).toBe(checkpoint);
+    expect(new ToolboxProgressEvent({ tool, call }).checkpoint).toBeUndefined();
+  });
+
+  it('preserves progress events and their checkpoints end to end through a toolbox', async () => {
+    const [starting, halfway, done] = [{ cursor: 0 }, { cursor: 1 }, { cursor: 2 }] as const;
+    const checkpoints = [starting, halfway, done];
+    const tool = createTool({
+      name: 'toolbox-progress-tool',
+      description: 'reports progress around a streamed result',
+      input: z.object({}),
+      async execute(_params, context) {
+        context.progress({ percent: 0, message: 'starting', checkpoint: starting });
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield 'a';
+            context.progress({ percent: 50, message: 'halfway', checkpoint: halfway });
+            yield 'b';
+            context.progress({ percent: 100, message: 'done', checkpoint: done });
+          },
+        };
+      },
+    });
+    const toolbox = createToolbox([tool]);
+    const toolboxLevel: ToolboxProgressEvent[] = [];
+    toolbox.addEventListener('progress', (event) => {
+      toolboxLevel.push(event);
+    });
+    let executionId: string | undefined;
+    toolbox.addEventListener('execute-start', (event) => {
+      executionId = event.executionId;
+    });
+
+    const result = await toolbox.execute({
+      id: 'toolbox-progress-call',
+      name: 'toolbox-progress-tool',
+      arguments: {},
+    });
+
+    expect(result.outcome).toBe('success');
+    expect(result.result as unknown).toEqual(['a', 'b']);
+    expect(executionId).toBeTruthy();
+    expect(
+      toolboxLevel.map((event) => ({
+        percent: event.percent,
+        message: event.message,
+        executionId: event.executionId,
+        callId: event.call.id,
+        toolName: event.tool.name,
+      })),
+    ).toEqual(
+      [0, 50, 100].map((percent, index) => ({
+        percent,
+        message: ['starting', 'halfway', 'done'][index],
+        executionId,
+        callId: 'toolbox-progress-call',
+        toolName: 'toolbox-progress-tool',
+      })),
+    );
+    for (const [index, event] of toolboxLevel.entries()) {
+      expect(event).toBeInstanceOf(ToolboxProgressEvent);
+      expect(event.checkpoint).toBe(checkpoints[index]);
+    }
+  });
+
+  it('bubbles progress checkpoints through a toolbox while a live stream is consumed', async () => {
+    const [halfway, done] = [{ cursor: 1 }, { cursor: 2 }] as const;
+    const checkpoints = [halfway, done];
+    const tool = createTool({
+      name: 'toolbox-live-progress-tool',
+      description: 'reports progress while its live stream is consumed',
+      input: z.object({}),
+      async execute(_params, context) {
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield 'a';
+            context.progress({ percent: 50, checkpoint: halfway });
+            yield 'b';
+            context.progress({ percent: 100, checkpoint: done });
+          },
+        };
+      },
+    });
+    const toolbox = createToolbox([tool]);
+    const toolboxLevel: ToolboxProgressEvent[] = [];
+    toolbox.addEventListener('progress', (event) => {
+      toolboxLevel.push(event);
+    });
+
+    const result = await toolbox.execute(
+      { id: 'toolbox-live-progress-call', name: 'toolbox-live-progress-tool', arguments: {} },
+      { stream: true },
+    );
+    const chunks: unknown[] = [];
+    if (result.stream) for await (const chunk of result.stream) chunks.push(chunk);
+
+    expect(chunks).toEqual(['a', 'b']);
+    expect(toolboxLevel.map((event) => event.percent)).toEqual([50, 100]);
+    expect(toolboxLevel.map((event) => event.checkpoint)).toEqual(checkpoints);
+    expect(toolboxLevel[0]?.checkpoint).toBe(halfway);
   });
 });
