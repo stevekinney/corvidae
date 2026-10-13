@@ -507,10 +507,10 @@ for (const theme of THEMES) {
         const pressCount = index + 1;
         await page.keyboard.press('Shift+ArrowRight');
         await expect
-          .poll(async () => (await readDomSelection(paragraph)).text, {
+          .poll(() => readDomSelection(paragraph), {
             message: `insert with selection: DOM selection after press ${pressCount}`,
           })
-          .toBe(expectedText);
+          .toMatchObject({ text: expectedText });
         if (selectionAnchor === null) {
           await expect
             .poll(() => readProseMirrorSelectionLength(page), {
