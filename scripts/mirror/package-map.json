@@ -12678,6 +12678,16 @@
       "basis": "private-application-hosted-in-corvidae",
       "reason": "The playground application moved into corvidae in COR-1200, and COR-1201 moved the cinder.website deployment onto it, building from `applications/playground` in this repository. The public stevekinney/cinder repository's former copy at `packages/playground` was deleted in that repository's own pull request (cinder#1602), because the same change had to remove the copy's references from Cinder-owned release tooling that the transform cannot write; `target-owned.json`'s `retired` list names the directory and its deployment workflow so that a restored copy is removed by the next sync. The entry stays `exclude` because the application is private to corvidae and hosts a deployment, not a published package."
     },
+    "@lostgradient/terminal": {
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "New in COR-482 and never published. Excluded from the mirror by the repository owner's ruling of 2026-09-25 (not published until a later publication project). It is the browser terminal component and controller, and it imports only the platform-neutral root export of `@lostgradient/ventriloquist`. It depends on published workspaces (cinder) but nothing the mirror emits depends on it. Reversible: promote to `private-workspace` or `publish-as` when the later publication project rules on a public home."
+    },
+    "@lostgradient/ventriloquist": {
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "New in COR-482 and never published. Excluded from the mirror by the repository owner's ruling of 2026-09-25 (not published until a later publication project). It is the terminal wire protocol and session core with Bun pipe, PTY, and WebSocket host helpers behind `./bun` and `./websocket`. Its only consumer is `@lostgradient/terminal`, which is itself excluded, so nothing the mirror emits depends on it. Reversible: promote to `private-workspace` or `publish-as` when the later publication project rules on a public home."
+    },
     "@lostgradient/bureau": {
       "disposition": "private-workspace",
       "basis": "already-public-in-target",

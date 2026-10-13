@@ -127,6 +127,18 @@
       "issue": "COR-1348",
       "reason": "Excluded from the mirror in `package-map.json`, so no placement is needed. New in this repository and never published, and no workspace the mirror emits depends on it. `deferred` rather than a directory, matching every other excluded workspace here, so the sync refuses rather than guessing if the exclusion is lifted."
     },
+    "@lostgradient/terminal": {
+      "disposition": "deferred",
+      "corvidaeDirectory": "components/terminal",
+      "issue": "COR-482",
+      "reason": "Excluded from the mirror in `package-map.json` by the owner ruling of 2026-09-25 (not published until a later publication project), so no placement is needed and the plan never consults this entry. COR-482 created the workspace. It stays `deferred` rather than being given a directory, matching `@lostgradient/desktop`, so that lifting the exclusion forces a ruling on placement before anything is emitted."
+    },
+    "@lostgradient/ventriloquist": {
+      "disposition": "deferred",
+      "corvidaeDirectory": "packages/ventriloquist",
+      "issue": "COR-482",
+      "reason": "Excluded from the mirror in `package-map.json` by the owner ruling of 2026-09-25 (not published until a later publication project), so no placement is needed and the plan never consults this entry. COR-482 created the workspace; its only consumer is `@lostgradient/terminal`, which is itself excluded. It stays `deferred` rather than being given a directory, matching `@lostgradient/desktop`, so that lifting the exclusion forces a ruling on placement before anything is emitted."
+    },
     "@lostgradient/telephone": {
       "disposition": "deferred",
       "corvidaeDirectory": "packages/telephone",
