@@ -4,7 +4,10 @@ import { defineConfig, devices } from '@playwright/test';
 // inherited opt-out in this test process before those children are created.
 delete process.env['NO_COLOR'];
 
-const port = Number(process.env['PLAYGROUND_E2E_PORT'] ?? 5597);
+// A fixed port: the repository's environment-configuration policy allows
+// environment reads only through a registered `environment-configuration.ts`,
+// and a busy port fails this run loudly rather than drifting.
+const port = 5597;
 const origin = `http://localhost:${port}`;
 
 export default defineConfig({

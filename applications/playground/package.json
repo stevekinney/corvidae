@@ -31,8 +31,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@playwright/test": "catalog:",
     "@lostgradient/typescript": "workspace:*",
+    "@playwright/test": "catalog:",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
     "@types/estree": "catalog:",
