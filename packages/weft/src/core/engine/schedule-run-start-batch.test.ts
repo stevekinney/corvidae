@@ -15,8 +15,9 @@
  * The clock and the UUID source are fixed so that every encoded value is reproducible. This file
  * does not import anything the pull request added, so it passed unchanged against that commit as
  * well. Since COR-1387 the batch carries no `wf-idx-*` visibility rows: an engine writes them only
- * once a backfill has made the index live, and this engine never ran one. Every other operation
- * and every byte is still what main committed.
+ * once a backfill has made the index live, and this engine never ran one. It also ends with a
+ * `wf-gen` bump, because an occurrence starts under an id the schedule chose rather than one the
+ * engine generated. Every other operation and every byte is still what main committed.
  */
 import { createHash } from 'node:crypto';
 
@@ -97,6 +98,9 @@ const FOLDED_IN_OPERATIONS = [
 
 const SERVICES_MARKER = `put ${KEYS.workflowHasServices(WORKFLOW_ID)}`;
 
+/** An occurrence names its own workflow id, so its create batch bumps that id's generation (COR-1387). */
+const GENERATION_BUMP = `put ${KEYS.workflowGeneration(WORKFLOW_ID)}`;
+
 function expectedBatch(resolution: Resolution, foldedIn: boolean): string[] {
   return [
     ...WORKFLOW_RECORD_OPERATIONS,
@@ -104,6 +108,7 @@ function expectedBatch(resolution: Resolution, foldedIn: boolean): string[] {
     ...(foldedIn ? FOLDED_IN_OPERATIONS : []),
     // Written for every resolution that was attempted, available or not, and last.
     ...(resolution === 'none' ? [] : [SERVICES_MARKER]),
+    GENERATION_BUMP,
   ];
 }
 
@@ -211,6 +216,9 @@ const MAIN_VALUE_DIGESTS: Record<string, string> = {
   [KEYS.terminalCleanupNeeded(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
   [KEYS.workflowHasServices(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
   [KEYS.schedule(SCHEDULE_ID)]: 'eb320cee97dea7f255efc4ebdf98392157748fe5f676c2283a72b6822a061b6b',
+  // Generation 1, as an 8-byte big-endian counter.
+  [KEYS.workflowGeneration(WORKFLOW_ID)]:
+    'cd2662154e6d76b2b2b92e70c0cac3ccf534f9b74eb5b89819ec509083d00a50',
 };
 
 describe('the start batch of a scheduled occurrence', () => {
