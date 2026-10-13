@@ -265,11 +265,11 @@
   const liveReloadEvents = { reload: handleLiveReload, 'shell-reload': handleLiveReload };
 
   // --- Theme toggle -----------------------------------------------------
-  // Cinder tokens switch on `color-scheme` (via `light-dark()`); the playground
-  // bridge mirrors the same value onto `data-cinder-theme` for bookkeeping. We
-  // read the active scheme on mount and, on toggle, write BOTH `color-scheme`
-  // (the real switch) and `data-cinder-theme` so we stay consistent with the
-  // bridge, plus persist to localStorage under the pre-paint key.
+  // Cinder's built tokens switch on `data-theme` (Bun lowers their `light-dark()`
+  // to toggles keyed on `prefers-color-scheme` and `:root[data-theme]`), and the
+  // playground's own CSS reads `data-cinder-theme`. We read the active scheme on
+  // mount and, on toggle, `applyTheme` writes `color-scheme`, `data-theme` and
+  // `data-cinder-theme`, plus persists to localStorage under the pre-paint key.
   // Server rendering has no `document`, so the SSR tree seeds `light` — matching
   // the base `color-scheme: light dark` first argument — and the real preference
   // is adopted in `onMount`. Seeding from the document during init would make the

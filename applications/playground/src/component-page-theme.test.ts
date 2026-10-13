@@ -182,10 +182,22 @@ describe('the data-theme attribute Cinder tokens switch on', () => {
     expect(document.documentElement.dataset['theme']).toBe('dark');
   });
 
-  it('the pre-paint script pins data-theme to a stored or linked choice', () => {
+  it('the pre-paint script pins data-theme to a stored choice', () => {
     localStorage.setItem(THEME_STORAGE_KEY, 'light');
     runInNewContext(PRE_PAINT_THEME_SCRIPT, { window, document, localStorage, URLSearchParams });
     expect(document.documentElement.dataset['theme']).toBe('light');
+  });
+
+  it('the pre-paint script pins data-theme to a linked choice over a stored one', () => {
+    const happyWindow = window as unknown as { happyDOM: { setURL(url: string): void } };
+    happyWindow.happyDOM.setURL('http://localhost/page/button?theme=dark');
+    localStorage.setItem(THEME_STORAGE_KEY, 'light');
+    try {
+      runInNewContext(PRE_PAINT_THEME_SCRIPT, { window, document, localStorage, URLSearchParams });
+      expect(document.documentElement.dataset['theme']).toBe('dark');
+    } finally {
+      happyWindow.happyDOM.setURL('http://localhost/');
+    }
   });
 
   it('the pre-paint script leaves data-theme unset with no choice, so the system governs', () => {

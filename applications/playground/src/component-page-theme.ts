@@ -38,8 +38,10 @@ export const PREVIEW_WIDTHS = [
 export const NAV_FILTER_STORAGE_KEY = 'cinder-playground-nav-filter';
 
 /**
- * Cinder tokens switch on `color-scheme` (via `light-dark()`); the playground
- * bridge mirrors the same value onto `data-cinder-theme` for bookkeeping.
+ * A chosen theme is written as `color-scheme`, `data-theme` and `data-cinder-theme`.
+ * `data-theme` is the switch Cinder's built tokens honor, because Bun lowers
+ * their `light-dark()` to toggles keyed on `prefers-color-scheme` and
+ * `:root[data-theme]`; `data-cinder-theme` is the playground's own signal.
  * Server rendering has no `document`, so the SSR tree seeds `light` —
  * matching the base `color-scheme: light dark` first argument — and the
  * real preference is adopted in an `$effect` after hydration. Seeding from
