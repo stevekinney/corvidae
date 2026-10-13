@@ -468,7 +468,9 @@ async function blockingChanges(
  * rejected commit is still acceptable when every path it changed — added, modified, deleted or
  * mode-changed — is, at the target's HEAD, byte- and mode-identical either to that path at the
  * mirror commit (still absent counts, when it was absent there) or to what this sync emits for
- * it. For a manifest, the test applies to the transform-owned keys the commit changed: each must
+ * it, or is absent at HEAD while the sync writes nothing at that path, because a path the sync
+ * retires or prunes and does not emit stays absent after it (COR-1201: cinder#1602 deleted the
+ * retired playground copy). For a manifest, the test applies to the transform-owned keys the commit changed: each must
  * hold the mirror commit's value or this sync's generated value. A path changed by several
  * commits is judged against the same HEAD each time, so a commit that touched anything which
  * still differs stays foreign, while one whose paths were all restored is accepted.
@@ -487,13 +489,20 @@ async function isAcceptableCommit(
   return true;
 }
 
-/** Whether a path at HEAD already holds what the mirror commit held or what this sync writes. */
+/**
+ * Whether a path at HEAD already holds what the mirror commit held, what this sync writes, or the
+ * absence this sync leaves.
+ */
 async function endsWhereTheSyncLeavesIt(
   directory: string,
   mirrorCommit: string,
   { path, manifestKeys }: BlockingChange,
-  { generatedFiles, generatedManifestKeys }: ForeignCommitOwnership,
+  { generatedFiles, generatedManifestKeys, transform }: ForeignCommitOwnership,
 ): Promise<boolean> {
+  const headEntry = await treeEntry(directory, 'HEAD', path);
+  // Before the manifest branch, so an edited manifest the sync retires and a later commit deleted
+  // ends where the sync leaves it too.
+  if (headEntry === '' && !transform.files.has(path)) return true;
   if (manifestKeys !== undefined) {
     const head = await readManifest(directory, 'HEAD', path);
     if (head === undefined) return false;
@@ -507,7 +516,6 @@ async function endsWhereTheSyncLeavesIt(
       );
     });
   }
-  const headEntry = await treeEntry(directory, 'HEAD', path);
   if (headEntry === (await treeEntry(directory, mirrorCommit, path))) return true;
   const emitted = generatedFiles?.get(path);
   return emitted !== undefined && (await matchesEmission(directory, 'HEAD', path, emitted));
