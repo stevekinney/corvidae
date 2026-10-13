@@ -10799,7 +10799,7 @@
       "name": "@lostgradient/editor",
       "basis": "settled",
       "reason": "Already published under this name.",
-      "lastPublishedVersion": "0.15.0"
+      "lastPublishedVersion": "0.15.1"
     },
     "@lostgradient/chat": {
       "disposition": "publish-as",

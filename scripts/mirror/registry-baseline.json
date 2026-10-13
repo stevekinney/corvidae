@@ -1048,8 +1048,8 @@
     },
     "@lostgradient/editor": {
       "workspace": "@lostgradient/editor",
-      "version": "0.15.0",
-      "fetchedAt": "2026-10-02",
+      "version": "0.15.1",
+      "fetchedAt": "2026-10-10",
       "subpaths": [
         ".",
         "./anchor-decorations",
