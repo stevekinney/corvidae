@@ -79,10 +79,7 @@ describe('workflow-generation-fence (WFT-153)', () => {
     ]);
     // MemoryStorage reports conditionalBatch: true, so the condition is present
     // and pins the pre-bump generation this read observed.
-    expect(first.conditions).toEqual([
-      baseCondition,
-      { key, expectedValue: encodeGeneration(1) },
-    ]);
+    expect(first.conditions).toEqual([baseCondition, { key, expectedValue: encodeGeneration(1) }]);
     const firstBump = first.operations.at(-1);
     if (firstBump === undefined || firstBump.type !== 'put') {
       throw new Error('expected a put operation');

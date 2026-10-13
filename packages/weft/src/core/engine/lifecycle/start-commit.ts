@@ -22,9 +22,9 @@ import {
   type WorkflowClaimFold,
 } from '../workflow-claim-fold.ts';
 import type { WorkflowConcurrencyStartOperations } from '../workflow-concurrency.ts';
+import { buildWorkflowGenerationBumpOperation } from '../workflow-generation-fence.ts';
 import { refreshWorkflowVisibilityMaintenance } from '../workflow-visibility-maintenance.ts';
 import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
-import { buildWorkflowGenerationBumpOperation } from '../workflow-generation-fence.ts';
 import { buildStartBatchOperations } from './start-batch.ts';
 import { StartIdempotencyRaceLostError } from './start-commit-errors.ts';
 import { tagStartConditions, type TaggedStartCondition } from './start-condition-tags.ts';

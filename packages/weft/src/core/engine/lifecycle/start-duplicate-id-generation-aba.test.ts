@@ -231,7 +231,11 @@ describe('COR-1387: generated-id runs never write wf-gen:<id>', () => {
       Array.from({ length: 5 }, () => engine.start('aba-race', null)),
     );
     await Promise.all(handles.map((handle) => handle.result()));
-    await runRetentionSweep(getInternals(engine), () => undefined, () => undefined);
+    await runRetentionSweep(
+      getInternals(engine),
+      () => undefined,
+      () => undefined,
+    );
 
     for (const handle of handles) {
       expect(await engine.get(handle.id)).toBeNull();
