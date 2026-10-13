@@ -193,15 +193,18 @@ export async function terminateWorkflow(
     // Run teardown handlers only after the state transition succeeds — this
     // prevents handlers from firing when the workflow was already terminal.
     await runCancellationHandlersForStatus(internals, workflowId, status, callbacks);
-    await releaseWorkflowConcurrencySlot(internals, workflowId);
+    const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
+    await releaseWorkflowConcurrencySlot(internals, workflowId, isSuperseded);
 
     const { previousState, updatedAt } = terminationResult;
     const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
-    await cleanupAttributeIndex(internals, workflowId, attributes);
-    await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes);
-    // A same-id `start-new` replacement owns the durable deadline / delayed-start
-    // timer keys and the in-memory state once it lands; see `isSupersededBySameIdRun`.
-    if (!isSupersededBySameIdRun(internals, workflowId, executionToken)) {
+    // The id's attribute record is the replacement's once one lands.
+    if (!isSuperseded()) await cleanupAttributeIndex(internals, workflowId, attributes);
+    if (!isSuperseded()) {
+      await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes);
+    }
+    // A same-id `start-new` replacement owns the deadline / delayed-start timer keys.
+    if (!isSuperseded()) {
       void callbacks.swallowPromiseRejection(
         internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
       );
@@ -212,12 +215,10 @@ export async function terminateWorkflow(
       }
     }
 
-    const resolver = isSupersededBySameIdRun(internals, workflowId, executionToken)
-      ? undefined
-      : internals.resultResolvers.get(workflowId);
+    const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
     const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
     await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
-    const superseded = isSupersededBySameIdRun(internals, workflowId, executionToken);
+    const superseded = isSuperseded();
 
     try {
       if (!superseded) {
@@ -641,28 +642,27 @@ export async function failWorkflow(
   // `releaseWorkflowClaimAfterTerminalSettlement`'s doc.
   const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
   const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
+  const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
+  await releaseWorkflowConcurrencySlot(internals, workflowId, isSuperseded);
 
-  await releaseWorkflowConcurrencySlot(internals, workflowId);
-
-  // Clean up user-set attribute indexes; fire-and-forget the deadline
-  // timer cancel since the workflow is terminal. A superseded run must not
-  // cancel: the durable deadline timer keys now belong to the replacement.
-  await cleanupAttributeIndex(internals, workflowId, attributes);
-  if (!isSupersededBySameIdRun(internals, workflowId, executionToken)) {
+  // Clean up user-set attribute indexes; fire-and-forget the deadline timer
+  // cancel. A superseded run touches neither: the id's attribute record and
+  // durable deadline timer keys belong to the replacement.
+  if (!isSuperseded()) await cleanupAttributeIndex(internals, workflowId, attributes);
+  if (!isSuperseded()) {
     void callbacks.swallowPromiseRejection(
       internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
     );
   }
 
-  // Re-write engine-managed terminal attributes so they remain queryable
-  // after the user-defined search attributes have been removed.
-  await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes);
+  // Keep engine-managed terminal attributes queryable after the cleanup above.
+  if (!isSuperseded()) {
+    await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes);
+  }
 
-  const resolver = isSupersededBySameIdRun(internals, workflowId, executionToken)
-    ? undefined
-    : internals.resultResolvers.get(workflowId);
+  const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
   await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
-  const superseded = isSupersededBySameIdRun(internals, workflowId, executionToken);
+  const superseded = isSuperseded();
   try {
     if (!superseded) {
       await cleanupTerminalWorkflowSynchronously(internals, workflowId, false, callbacks);
