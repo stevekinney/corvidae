@@ -191,10 +191,24 @@ export async function buildWorkflowConcurrencyStartOperations(
   };
 }
 
+/**
+ * Release `workflowId`'s workflow-concurrency slot.
+ *
+ * The slot entry and the holder marker are keyed by workflow id alone, and an
+ * `onTerminalConflict: 'start-new'` replacement re-stamps the very entry the
+ * old run held (or adds a fresh one), so after a replacement lands the slot
+ * belongs to it. A terminal teardown that began for the old run passes
+ * `isSuperseded`; it is re-checked at each point just before a write, and a
+ * superseded release leaves both the entry and the marker for the
+ * replacement's own terminal release. The check is synchronous, so it adds no
+ * await to the caller's path.
+ */
 export async function releaseWorkflowConcurrencySlot(
   internals: EngineInternals,
   workflowId: string,
+  isSuperseded: () => boolean = () => false,
 ): Promise<void> {
+  if (isSuperseded()) return;
   const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
   const markerBytes = await internals.storage.get(holderKey);
   if (markerBytes === null) {
@@ -203,6 +217,7 @@ export async function releaseWorkflowConcurrencySlot(
 
   const marker = decodeHolderRecord(markerBytes);
   if (marker === null) {
+    if (isSuperseded()) return;
     await internals.storage.delete(holderKey);
     return;
   }
@@ -211,8 +226,15 @@ export async function releaseWorkflowConcurrencySlot(
   const slot = new AtomicState<LockRecord>(internals.storage, stateKey, {
     initial: initialLockRecord(),
   });
-  await slot.update((current) =>
-    reduceRelease(current, { holderId: workflowId, now: internals.options.getNow() }),
-  );
+  let skipped = false;
+  await slot.update((current) => {
+    // Evaluated on every optimistic retry, immediately before the commit.
+    skipped = isSuperseded();
+    const record = current ?? initialLockRecord();
+    return skipped
+      ? record
+      : reduceRelease(record, { holderId: workflowId, now: internals.options.getNow() });
+  });
+  if (skipped || isSuperseded()) return;
   await internals.storage.delete(holderKey);
 }
