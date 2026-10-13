@@ -329,6 +329,8 @@ export async function executeChildWorkflow(
     ChildWorkflowOperationCallbacks,
     'getComposedWorkflowInterceptor' | 'getHandle' | 'loadWorkflowState' | 'start'
   >,
+  /** Aborted when a `ctx.race` branch awaiting this child loses; its conflicts then concern nobody. */
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const rawId = operation.options?.['id'];
   const childWorkflowId = typeof rawId === 'string' ? rawId : crypto.randomUUID();
@@ -372,7 +374,7 @@ export async function executeChildWorkflow(
     // waiter would advance the deposed parent while the successor advances its
     // replayed one (ADR 0002). Marking it generator-owned fences the settle on
     // the parent's claim generation.
-    return getGeneratorOwnedWorkflowResultPromise(internals, childHandle.id, workflowId);
+    return getGeneratorOwnedWorkflowResultPromise(internals, childHandle.id, workflowId, signal);
   };
 
   const composedInterceptor = callbacks.getComposedWorkflowInterceptor();

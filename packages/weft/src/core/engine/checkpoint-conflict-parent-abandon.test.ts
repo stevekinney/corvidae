@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   expectPromisePending,
@@ -37,6 +38,7 @@ import { getGeneratorOwnedWorkflowResultPromise } from './generator-owned-result
 import { createWorkflowResultWaiter } from './handle-result.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
+import { encodeEpoch, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 
 interceptConflictWarnings();
 
@@ -107,6 +109,15 @@ describe('a parent awaiting a child its engine abandoned', () => {
       );
       await warning.received;
       warning.stop();
+      // The parent's own checkpoint did not lose a race, so the error and the warning must say the
+      // child did, rather than claiming a lost checkpoint for a parent that is unchanged.
+      expect((reason as WorkflowCheckpointConflictError).lostChildWorkflowId).toBe(CHILD_ID);
+      expect((reason as WorkflowCheckpointConflictError).message).toContain(`child "${CHILD_ID}"`);
+      expect((reason as WorkflowCheckpointConflictError).message).not.toContain(
+        'Checkpoint commit for workflow',
+      );
+      expect(warning.warnings.map((w) => w.lostChildWorkflowId)).toContain(CHILD_ID);
+      expect(warning.warnings.at(-1)?.message).toContain('is abandoned because its child');
       expect(isGenerationAbandoned(loserInternals, PARENT_ID, parentToken)).toBe(true);
       expect(watched.writes).toEqual([]);
       expect(await readStatus(shared, PARENT_ID)).toBe('running');
@@ -164,5 +175,69 @@ describe('abandoning a parent for a lost child', () => {
     expect(abandonedExecutionAttemptCount(internals)).toBe(0);
     await engine.signal(parentHandle.id, 'go', 'still driven');
     expect(await parentHandle.result()).toBe('still driven');
+  });
+});
+
+describe('a lost child that no longer concerns the parent', () => {
+  it('leaves a parent alone when the awaiting ctx.race branch was aborted', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'race-parent', 'race-parent-id');
+    const loserBranch = new AbortController();
+    const waiter = createWorkflowResultWaiter(internals, 'race-lost-child');
+    const view = getGeneratorOwnedWorkflowResultPromise(
+      internals,
+      'race-lost-child',
+      parentHandle.id,
+      loserBranch.signal,
+    );
+    loserBranch.abort();
+
+    waiter.reject(new WorkflowCheckpointConflictError('race-lost-child'));
+    await yieldToEventLoop();
+
+    await expectPromisePending(view);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+    await engine.signal(parentHandle.id, 'go', 'still driven');
+    expect(await parentHandle.result()).toBe('still driven');
+  });
+
+  it('leaves a parent alone once a successor holds its ownership claim', async () => {
+    const storage = new MemoryStorage();
+    await using engine = await Engine.create({
+      storage,
+      ownership: 'workflow-lease',
+      workflowClaimTtl: 200,
+      workflowClaimRenewInterval: 20,
+      recover: false,
+    });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'claim-parent', 'claim-parent-id');
+    const waiter = createWorkflowResultWaiter(internals, 'claim-lost-child');
+    const view = getGeneratorOwnedWorkflowResultPromise(
+      internals,
+      'claim-lost-child',
+      parentHandle.id,
+    );
+    // A successor takes the parent over before the child's conflict is delivered.
+    await storage.batch([
+      { type: 'put', key: KEYS.workflowOwnerEpoch(parentHandle.id), value: encodeEpoch(99) },
+      {
+        type: 'put',
+        key: KEYS.workflowOwnerHolder(parentHandle.id),
+        value: encodeWorkflowClaimHolder({
+          engineId: 'successor-engine',
+          epoch: 99,
+          expiresAt: internals.options.getNow() + 60_000,
+          claimedAt: internals.options.getNow(),
+        }),
+      },
+    ]);
+
+    waiter.reject(new WorkflowCheckpointConflictError('claim-lost-child'));
+    await yieldToEventLoop();
+
+    await expectPromisePending(view);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
   });
 });

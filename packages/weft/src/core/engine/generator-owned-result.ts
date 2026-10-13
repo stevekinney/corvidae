@@ -32,6 +32,7 @@ export function getGeneratorOwnedWorkflowResultPromise(
   internals: EngineInternals,
   workflowId: string,
   parentWorkflowId: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   return fenceResultOnParentGeneration(
     internals,
@@ -41,6 +42,7 @@ export function getGeneratorOwnedWorkflowResultPromise(
     // Captured now, while the parent is the run that began awaiting: a loss of the child arrives
     // later and must not reach a parent this engine has relaunched or replaced since.
     currentExecutionAttempt(internals, parentWorkflowId),
+    signal,
   );
 }
 
@@ -67,6 +69,7 @@ function fenceResultOnParentGeneration(
   promise: Promise<unknown>,
   childWorkflowId: string,
   parentAttempt: ExecutionAttempt | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<unknown> {
   const gate = Promise.withResolvers<unknown>();
   void promise.then(
@@ -80,12 +83,21 @@ function fenceResultOnParentGeneration(
       // it either, and the winner may have resumed only the child, so the parent gives up the
       // same way the child did (see `abandonParentAfterChildCheckpointConflict`).
       if (isCheckpointConflictFor(error, childWorkflowId)) {
-        abandonParentAfterChildCheckpointConflict(
-          internals,
-          parentWorkflowId,
-          parentAttempt,
-          error,
-        );
+        // A losing `ctx.race` branch aborted this await: the parent moved on, so a late conflict
+        // of that child concerns nobody. Otherwise abandon only a parent this engine still owns
+        // (the claim-generation check the other branches make), judged again, synchronously, by
+        // the attempt comparison inside the abandonment.
+        if (
+          signal?.aborted !== true &&
+          (await parentStillOwnsGeneration(internals, parentWorkflowId))
+        ) {
+          abandonParentAfterChildCheckpointConflict(
+            internals,
+            parentWorkflowId,
+            parentAttempt,
+            error,
+          );
+        }
         return undefined;
       }
       if (await parentStillOwnsGeneration(internals, parentWorkflowId)) gate.reject(error);

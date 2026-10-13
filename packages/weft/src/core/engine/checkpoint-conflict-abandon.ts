@@ -64,7 +64,9 @@ export function abandonWorkflowAfterCheckpointConflict(
     internals.handleCache.delete(workflowId);
   }
 
-  emitCheckpointConflictWarning(new WeftWorkflowCheckpointConflictWarning(workflowId));
+  emitCheckpointConflictWarning(
+    new WeftWorkflowCheckpointConflictWarning(workflowId, error.lostChildWorkflowId),
+  );
 }
 
 /**
@@ -98,6 +100,7 @@ export function abandonParentAfterChildCheckpointConflict(
     internals,
     new WorkflowCheckpointConflictError(parentWorkflowId, {
       cause: childConflict,
+      lostChildWorkflowId: childConflict.workflowId,
       workflowExecutionToken: parkedAttempt.workflowExecutionToken,
     }),
   );
