@@ -59,6 +59,20 @@ describe('createManualRuntimeServices', () => {
       expect(runtime.monotonic.now()).toBe(0);
     });
 
+    it('rejects an unparsable origin synchronously at construction (COR-89)', () => {
+      expect(() => createManualRuntimeServices({ origin: 'not-a-timestamp' })).toThrow(RangeError);
+      expect(() => createManualRuntimeServices({ origin: '' })).toThrow(
+        /origin "" is not a parsable ISO-8601 timestamp/,
+      );
+    });
+
+    it('still accepts the default origin and any valid ISO-8601 origin (COR-89)', () => {
+      expect(Number.isNaN(createManualRuntimeServices().clock.now())).toBe(false);
+      const runtime = createManualRuntimeServices({ origin: '2031-02-03T04:05:06.789Z' });
+      expect(runtime.clock.nowISO()).toBe('2031-02-03T04:05:06.789Z');
+      expect(runtime.clockOrigin).toBe('2031-02-03T04:05:06.789Z');
+    });
+
     it('advance() moves both the monotonic clock and the wall clock forward together', async () => {
       const runtime = createManualRuntimeServices({ origin: '2024-01-01T00:00:00.000Z' });
       await runtime.advance(1000);

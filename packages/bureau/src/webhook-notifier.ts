@@ -442,6 +442,10 @@ export function createWebhookNotifier<D extends AgentDefinitions = AgentDefiniti
   // exported factory (including this package's own test suite) is
   // unaffected by construction. `options.sleep`/`options.now` (this module's
   // own pre-existing injectable seam) still take precedence when supplied.
+  // COR-89: an omitted-`runtime` caller has no handle on that default
+  // instance, so its `deferred` ledger is never the only path to the work
+  // tracked on it: every promise passed to `runtime.deferred.track` below is
+  // also held in `activeDeliveries`, which `flush()`/`dispose()` awaits.
   runtime: RuntimeServices = createDefaultRuntimeServices(),
 ): WebhookNotifier {
   const diagnose = resolveDiagnosticSink(onDiagnostic);

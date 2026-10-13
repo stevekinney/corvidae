@@ -123,28 +123,54 @@ export function validateThemeSources(sources: ThemeSources): ThemeValidation {
 }
 
 /**
- * Evaluates a theme across `light|dark` by `default|reduced|forced-reduced-motion`:
- * validates it, computes every context from source (the two forced contexts
- * included), projects each to its public CSS property map, and traces the
- * evaluated provenance. Does not mutate its input.
+ * The result of `evaluateThemeProperties`: property maps for the requested contexts and no
+ * provenance.
  */
-export function evaluateTheme(sources: ThemeSources): ThemeEvaluation {
+export type ThemePropertiesEvaluation =
+  | {
+      ok: true;
+      revision: number | string;
+      contexts: AuthoringContext[];
+      properties: Record<string, PropertyMap>;
+      diagnostics: ThemeDiagnostic[];
+    }
+  | { ok: false; revision: number | string; diagnostics: ThemeDiagnostic[] };
+
+type Selection = { contexts?: readonly string[]; provenance: boolean };
+
+type Evaluated = {
+  contexts: AuthoringContext[];
+  properties: Record<string, PropertyMap>;
+  layerStacks: Record<string, AuthoringLayer[]>;
+  tokens: Record<string, TokenEvaluation[]>;
+};
+
+/**
+ * The one per-context loop behind both entry points. Validation always covers every
+ * context; `selection` only narrows which contexts are projected (and traced).
+ */
+function evaluateSelected(
+  sources: ThemeSources,
+  selection: Selection,
+): Evaluated | ThemeDiagnostic[] {
   const { revision } = sources;
   const validated = validateSources(sources);
-  if (Array.isArray(validated)) return { ok: false, revision, diagnostics: validated };
+  if (Array.isArray(validated)) return validated;
 
-  let contexts: Array<AuthoringContext & Record<string, string>>;
+  let all: Array<AuthoringContext & Record<string, string>>;
   try {
-    contexts = authoringContexts(validated.resolver);
+    all = authoringContexts(validated.resolver);
   } catch (error) {
-    return { ok: false, revision, diagnostics: diagnosticsFor(revision, error) };
+    return diagnosticsFor(revision, error);
   }
+  const wanted = selection.contexts;
+  const selected = wanted === undefined ? all : all.filter(({ id }) => wanted.includes(id));
 
   const diagnostics: ThemeDiagnostic[] = [];
   const properties: Record<string, PropertyMap> = {};
   const layerStacks: Record<string, AuthoringLayer[]> = {};
   const tokens: Record<string, TokenEvaluation[]> = {};
-  for (const context of contexts) {
+  for (const context of selected) {
     try {
       const stack = authoringLayerStack(validated.resolver, validated.documentsByPath, context);
       const documents = stack.map((layer) => layer.content);
@@ -156,6 +182,8 @@ export function evaluateTheme(sources: ThemeSources): ThemeEvaluation {
         }
         continue;
       }
+      properties[context.id] = projection.properties;
+      if (!selection.provenance) continue;
       const cssPropertyToPath: Record<string, string> = {};
       for (const entry of index.values()) {
         if (entry.cssProperty !== undefined) cssPropertyToPath[entry.cssProperty] = entry.path;
@@ -165,7 +193,6 @@ export function evaluateTheme(sources: ThemeSources): ThemeEvaluation {
         kind,
         layer,
       }));
-      properties[context.id] = projection.properties;
       tokens[context.id] = evaluateContextProvenance(
         layerStacks[context.id]!,
         traceProvenance(stack, { cssPropertyToPath }),
@@ -174,15 +201,62 @@ export function evaluateTheme(sources: ThemeSources): ThemeEvaluation {
       diagnostics.push(...diagnosticsFor(revision, error, context.id));
     }
   }
-  if (diagnostics.length > 0) return { ok: false, revision, diagnostics };
+  if (diagnostics.length > 0) return diagnostics;
+  return {
+    contexts: selected.map(({ id, theme, motion }) => ({ id, theme, motion })),
+    properties,
+    layerStacks,
+    tokens,
+  };
+}
 
-  const plainContexts = contexts.map(({ id, theme, motion }) => ({ id, theme, motion }));
+/**
+ * The cheap path for an edit loop. It validates every context exactly as `evaluateTheme`
+ * does, so an edit that is invalid in any context is still rejected, but it projects only
+ * `options.contexts` (default: all six) and traces no provenance. Its property maps equal
+ * `evaluateTheme`'s for the contexts they share.
+ */
+export function evaluateThemeProperties(
+  sources: ThemeSources,
+  options: { contexts?: readonly string[] } = {},
+): ThemePropertiesEvaluation {
+  const { revision } = sources;
+  const result = evaluateSelected(sources, {
+    provenance: false,
+    ...(options.contexts === undefined ? {} : { contexts: options.contexts }),
+  });
+  if (Array.isArray(result)) return { ok: false, revision, diagnostics: result };
   return {
     ok: true,
     revision,
-    contexts: plainContexts,
-    properties,
+    contexts: result.contexts,
+    properties: result.properties,
     diagnostics: [],
-    provenance: { revision, contexts: plainContexts, layerStacks, tokens },
+  };
+}
+
+/**
+ * Evaluates a theme across `light|dark` by `default|reduced|forced-reduced-motion`:
+ * validates it, computes every context from source (the two forced contexts
+ * included), projects each to its public CSS property map, and traces the
+ * evaluated provenance. Does not mutate its input, and its sources must not be mutated
+ * afterwards: validation results are remembered by document identity.
+ */
+export function evaluateTheme(sources: ThemeSources): ThemeEvaluation {
+  const { revision } = sources;
+  const result = evaluateSelected(sources, { provenance: true });
+  if (Array.isArray(result)) return { ok: false, revision, diagnostics: result };
+  return {
+    ok: true,
+    revision,
+    contexts: result.contexts,
+    properties: result.properties,
+    diagnostics: [],
+    provenance: {
+      revision,
+      contexts: result.contexts,
+      layerStacks: result.layerStacks,
+      tokens: result.tokens,
+    },
   };
 }

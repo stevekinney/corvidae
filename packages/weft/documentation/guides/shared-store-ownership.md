@@ -70,6 +70,8 @@ It resolves to one of three shapes:
 
 With `backgroundTasks: 'manual'`, the host owns the maintenance cadence. Per-workflow ownership supports this mode: call and await `engine.runMaintenance()` regularly enough to renew claims before they expire. Concurrent calls are supported, but awaiting each cycle before scheduling the next keeps the host's cadence easier to reason about. A virtual clock in a test must advance along with explicit maintenance calls.
 
+`backgroundTasks: 'manual'` starts no engine-lifetime timers or intervals. Work that is awaited inside a host call can still hold a call-scoped timer for exactly as long as that call runs: an activity's per-attempt timeout does, and so does a workflow finalizer that declares no `timeout`, which renews its `running` teardown marker on a short interval while the finalizer executes so a peer does not mistake a slow finalizer for a crashed host. The timer is cleared when the finalizer settles or the engine is disposed, and a host that is suspended mid-call stops renewing along with the finalizer itself.
+
 The store-wide `'lease'` mode does not support manual background tasks. Configure the supported posture rather than assuming a manual host tick renews a global lease.
 
 ### The clock seam

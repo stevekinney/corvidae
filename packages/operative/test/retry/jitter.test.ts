@@ -1,5 +1,6 @@
+import * as lifecycle from '@lostgradient/lifecycle';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { addJitter } from '../../src/retry/jitter';
 
@@ -70,6 +71,24 @@ describe('addJitter', () => {
         const result = addJitter(delay, { maxJitter: 500 });
         expect(result).toBeGreaterThanOrEqual(500);
         expect(result).toBeLessThanOrEqual(1500);
+      }
+    });
+
+    it('reuses one module-scoped default random source instead of constructing a RuntimeServices per call (COR-89)', () => {
+      // Warm the lazy default first, so this assertion holds regardless of
+      // which earlier test in the process resolved it.
+      addJitter(1000);
+      const factory = spyOn(lifecycle, 'createDefaultRuntimeServices');
+      factory.mockClear();
+      try {
+        for (let i = 0; i < 10; i++) {
+          const result = addJitter(1000);
+          expect(result).toBeGreaterThanOrEqual(500);
+          expect(result).toBeLessThanOrEqual(1500);
+        }
+        expect(factory).toHaveBeenCalledTimes(0);
+      } finally {
+        factory.mockRestore();
       }
     });
   });

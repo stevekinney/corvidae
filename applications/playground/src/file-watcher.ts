@@ -26,6 +26,7 @@ import { bundleEntryByKey } from './scenario-bundle.ts';
 import { resetShellBuildPromise } from './shell-bundle.ts';
 import { triggerReload } from './sse-broadcast.ts';
 import { resetPageServerRendererPromise, resetShellRendererWarmupState } from './ssr-renderer.ts';
+import { invalidateThemeBuilderBundles } from './theme-builder-bundle.ts';
 
 /**
  * The blast radius of a watched change, computed once per debounce window.
@@ -171,6 +172,9 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // fires the event that causes the browser to re-request — guarantees any
   // post-invalidation request starts a genuinely new build instead.
   scenarioBuildPromiseByKey.clear();
+  // The theme builder bundles import both the shell sources and the examples, so every
+  // tier of change can affect them. Rebuilding is lazy, on the next request.
+  invalidateThemeBuilderBundles();
 
   if (scope.kind === 'examples') {
     for (const name of scope.names) {

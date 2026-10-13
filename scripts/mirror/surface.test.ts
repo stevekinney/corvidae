@@ -258,7 +258,7 @@ describe('surface parity', () => {
   test('cinder is regenerated to the full published surface, not a subset', () => {
     const { plan } = committedPlans.cinder;
     const result = plan.parity.find((entry) => entry.publicName === '@lostgradient/cinder');
-    expect(result?.baselineVersion).toBe('0.26.3');
+    expect(result?.baselineVersion).toBe('0.27.0');
     expect(result?.missing).toEqual([]);
     // `./tokens/runtime` (COR-491) is the first subpath the registry baseline has not seen; it
     // joins the baseline when that version is published and the baseline is refreshed.

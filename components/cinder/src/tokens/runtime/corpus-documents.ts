@@ -128,8 +128,94 @@ export function assertValidLoadedDocument(
 ): asserts document is TokenDocument {
   if (contexts.length === 0) assertValidTokenDocument(document, path, [], sourceByDocument);
   else
-    for (const context of contexts)
-      assertValidTokenDocument(document, path, context, sourceByDocument);
+    for (const context of contexts) assertValidInContext(document, path, context, sourceByDocument);
+}
+
+const documentIds = new WeakMap<object, number>();
+const validatedStacks = new Set<string>();
+const REMEMBERED_STACKS = 96;
+let nextDocumentId = 1;
+
+function stackKey(documents: readonly object[]): string {
+  return documents
+    .map((document) => {
+      let id = documentIds.get(document);
+      if (id === undefined) {
+        id = nextDocumentId++;
+        documentIds.set(document, id);
+      }
+      return id;
+    })
+    .join(',');
+}
+
+/**
+ * Resolves one context's ordered documents and validates every resolved token. A pass is
+ * remembered by the identity of the ordered documents, so a context whose documents did not
+ * change since the last validation (the dark stacks after a light-only edit) is not resolved
+ * again. Only a pass is remembered. Sources must not be mutated after validation.
+ */
+function assertResolvedTokensValid(documents: TokenDocument[]): void {
+  const key = stackKey(documents);
+  if (validatedStacks.has(key)) return;
+  const resolved = resolveDocuments(documents);
+  for (const [path, token] of Object.entries(resolved)) validateResolvedToken(token, path);
+  validatedStacks.add(key);
+  if (validatedStacks.size > REMEMBERED_STACKS) {
+    const oldest = validatedStacks.values().next().value;
+    if (oldest !== undefined) validatedStacks.delete(oldest);
+  }
+}
+
+/** Cap on remembered ordered prefixes per document; edits mint new override identities. */
+const REMEMBERED_PREFIXES = 24;
+const validatedPrefixes = new WeakMap<object, unknown[][]>();
+const extendsFlags = new WeakMap<object, boolean>();
+
+function mentionsExtends(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const cached = extendsFlags.get(value);
+  if (cached !== undefined) return cached;
+  const found = Object.entries(value).some(
+    ([key, child]) =>
+      key === '$extends' || ((key === '$root' || !key.startsWith('$')) && mentionsExtends(child)),
+  );
+  extendsFlags.set(value, found);
+  return found;
+}
+
+const sameIdentities = (left: readonly unknown[], right: readonly unknown[]): boolean =>
+  left.length === right.length && left.every((entry, index) => entry === right[index]);
+
+/**
+ * Validates one document in one context's ordered stack. A document's validity depends on the
+ * ordered prefix through itself (the lookup scope matters only through `$extends`), so a pass
+ * is remembered by document and prefix identity and not repeated while neither changes: the
+ * same document appears in several contexts with the same prefix, and an edit to an override
+ * document leaves every earlier document's prefix intact. Only a pass is remembered, and only
+ * when no document in the stack uses `$extends`. Sources must not be mutated after validation.
+ */
+function assertValidInContext(
+  document: unknown,
+  path: string,
+  context: readonly unknown[],
+  sourceByDocument: ReadonlyMap<object, string>,
+): void {
+  const position = context.indexOf(document);
+  const memoizable =
+    position >= 0 &&
+    typeof document === 'object' &&
+    document !== null &&
+    !context.some(mentionsExtends);
+  if (!memoizable) {
+    assertValidTokenDocument(document, path, context, sourceByDocument);
+    return;
+  }
+  const prefix = context.slice(0, position + 1);
+  const remembered = validatedPrefixes.get(document) ?? [];
+  if (remembered.some((entry) => sameIdentities(entry, prefix))) return;
+  assertValidTokenDocument(document, path, context, sourceByDocument);
+  validatedPrefixes.set(document, [prefix, ...remembered].slice(0, REMEMBERED_PREFIXES));
 }
 
 /**
@@ -197,8 +283,7 @@ export function validateCorpus(
           : contextSourcesByModifier.get(entry.name)!.get(modifierValues[entry.name]!)!;
       return sources.map((source) => documentsByPath.get(normalizeSourcePath(source.$ref))!);
     });
-    const resolved = resolveDocuments(orderedDocuments);
-    for (const [path, token] of Object.entries(resolved)) validateResolvedToken(token, path);
+    assertResolvedTokensValid(orderedDocuments);
   }
   return documentsByPath;
 }

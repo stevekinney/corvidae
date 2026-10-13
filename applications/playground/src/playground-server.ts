@@ -19,6 +19,9 @@
  *                         renders callouts and code blocks that shell.css omits)
  *   GET /package-components/:source/*.css → CSS owned by extracted component packages
  *   GET /example-src/:name/:scenario → raw .example.svelte source
+ *   GET /theme-builder → the theme builder workbench (canonical, in the sitemap)
+ *   GET /theme-builder/preview → the trusted preview frame the workbench embeds (noindex)
+ *   GET /theme-builder-bundle/:name.js → the workbench and preview bundles and their chunks
  *   GET /events        → Server-Sent Events stream for live reload
  *   GET /ping          → health check ("pong")
  *   GET /ready         → warmed-bundle readiness check ("ready")
@@ -140,6 +143,12 @@ import {
 } from './static-assets.ts';
 import { stripExampleHarness } from './strip-example-harness.ts';
 import { stripInlineSourcemaps } from './strip-inline-sourcemaps.ts';
+import {
+  isThemeBuilderEntryName,
+  themeBuilderArtifact,
+  themeBuilderEntryCode,
+} from './theme-builder-bundle.ts';
+import { renderThemeBuilderPage, renderThemePreviewPage } from './theme-builder-page.ts';
 import type { ComponentManifest } from './types.ts';
 
 export const PORT = resolvePreferredPort();
@@ -887,6 +896,38 @@ async function handleLandingRoute(url: URL): Promise<Response> {
   return new Response(html, { headers: { 'Content-Type': 'text/html' } });
 }
 
+function handleThemeBuilderRoute(url: URL): Response {
+  const html = renderThemeBuilderPage({
+    baseUrl: readEnvironmentConfiguration().playgroundBaseUrl ?? url.origin,
+  });
+  return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+}
+
+function handleThemePreviewRoute(): Response {
+  return new Response(renderThemePreviewPage(), { headers: { 'Content-Type': 'text/html' } });
+}
+
+async function handleThemeBuilderBundleRoute(filename: string): Promise<Response> {
+  const chunk = themeBuilderArtifact(`${filename}.js`);
+  if (chunk !== undefined) {
+    // A hashed entry or chunk: the name carries the content hash, so cache it forever.
+    return new Response(chunk, {
+      headers: {
+        'Content-Type': 'application/javascript',
+        'Cache-Control': IMMUTABLE_CACHE_CONTROL,
+      },
+    });
+  }
+  // The bare entry names are the only URLs built on demand; every other name is a chunk
+  // that a build already published.
+  if (!isThemeBuilderEntryName(filename)) return notFound();
+  const code = await themeBuilderEntryCode(filename);
+  if (code === null) return notFound(`Theme builder bundle "${filename}" failed to build`);
+  return new Response(code, {
+    headers: { 'Content-Type': 'application/javascript', 'Cache-Control': NO_STORE_CACHE_CONTROL },
+  });
+}
+
 async function handleSocialImageRoute(): Promise<Response> {
   const image = Bun.file(SOCIAL_IMAGE_FILE);
   if (!(await image.exists())) return notFound('social image not found');
@@ -1099,6 +1140,21 @@ export const ROUTES: RouteDefinition[] = [
     method: 'GET',
     pattern: /^\/$/,
     handler: ({ url }) => handleLandingRoute(url),
+  },
+  {
+    method: 'GET',
+    pattern: /^\/theme-builder$/,
+    handler: ({ url }) => handleThemeBuilderRoute(url),
+  },
+  {
+    method: 'GET',
+    pattern: /^\/theme-builder\/preview$/,
+    handler: () => handleThemePreviewRoute(),
+  },
+  {
+    method: 'GET',
+    pattern: /^\/theme-builder-bundle\/([A-Za-z0-9_-]+)\.js$/,
+    handler: ({ match }) => handleThemeBuilderBundleRoute(match[1]!),
   },
 ];
 
@@ -1564,11 +1620,11 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
     //
     // Units: `process.resourceUsage().maxRSS` is kibibytes on BOTH macOS and
     // Linux — libuv normalizes Darwin's byte-valued `ru_maxrss` on the way out.
-    // That is not true of `Bun.spawn`'s subprocess `resourceUsage()`, which
-    // hands back Darwin's raw bytes; that difference is what
-    // `memory-canary.ts`'s `bytesFromMaxRss` exists for, and applying it here
-    // would under-report by 1024x on macOS. Measured on darwin at a 611 MB
-    // resident size: this API reports 625,856, the subprocess API 641,024,000.
+    // `Bun.spawn`'s subprocess `resourceUsage()` is a different API that reports
+    // bytes on both platforms (see `memory-canary.ts`'s `peakRssBytesFrom`), so
+    // the two differ by 1024x and must never share a conversion. Measured on
+    // darwin at a 611 MB resident size: this API reports 625,856, the subprocess
+    // API 641,024,000.
     const peakResidentMegabytes = Math.round(process.resourceUsage().maxRSS / 1024);
     process.stdout.write(
       `[playground] Pre-built ${prebuild.succeeded}/${total} page bundles${failedSuffix} ` +
