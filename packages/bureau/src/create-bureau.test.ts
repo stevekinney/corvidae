@@ -2461,8 +2461,21 @@ describe('createBureau', () => {
         }
       });
 
+      // The Bureau's own event emitter, through both a direct listener and
+      // the observable path, each on a different event type.
+      const registeredRunIds: string[] = [];
+      bureauB.addEventListener('run.registered', (event) => {
+        registeredRunIds.push(event.runId);
+      });
+      const actionRunIds: string[] = [];
+      const actionSubscription = bureauB.subscribe('action', (event) => {
+        actionRunIds.push(event.action.runId);
+      });
+
       try {
         expect(framesFromB.some((frame) => frame.type === 'run-envelope')).toBe(true);
+        expect(registeredRunIds).toContain(run.id);
+        expect(actionRunIds).toContain(run.id);
         // A later subscriber does not receive the buffered boot frames again.
         const laterFrames: ServerFrame[] = [];
         const unsubscribeLater = bureauB.subscribeLiveFrames((frame) => {
@@ -2474,6 +2487,7 @@ describe('createBureau', () => {
         expect(laterFrames).toHaveLength(0);
       } finally {
         unsubscribeB();
+        actionSubscription.unsubscribe();
         await bureauB.dispose();
       }
       await bureauA.dispose();

@@ -1802,6 +1802,72 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let bootFrameBufferOpen = true;
   const bootFrameBuffer: ServerFrame[] = [];
   const bootFrameRunIds = new Set<string>();
+  // The same retention for the Bureau's own event emitter (`addEventListener`,
+  // `once`, `on`, `subscribe`, `events` all route through
+  // `emitter.addEventListener`). Events of recovered runs are kept per event
+  // type until the first listener for that type attaches after boot; that
+  // listener is replayed them and the type is released. Listeners attached
+  // DURING boot (the audit trail, event history, webhooks) already saw the
+  // events live, so they neither replay nor release anything.
+  const bootEventBuffer = new Map<string, Event[]>();
+  const releasedBootEventTypes = new Set<string>();
+  let bootEventBufferedCount = 0;
+  let bootEventReplayEnabled = false;
+  const baseDispatchEvent = emitter.dispatchEvent.bind(emitter);
+  const baseAddEventListener = emitter.addEventListener.bind(emitter) as unknown as (
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ) => void;
+  function bootEventRunId(event: Event): string | undefined {
+    const carrier = event as { runId?: unknown; action?: { runId?: unknown } };
+    const runId = typeof carrier.runId === 'string' ? carrier.runId : carrier.action?.runId;
+    return typeof runId === 'string' ? runId : undefined;
+  }
+  emitter.dispatchEvent = (event: Event): boolean => {
+    const runId = bootEventRunId(event);
+    if (
+      runId !== undefined &&
+      bootFrameRunIds.has(runId) &&
+      !releasedBootEventTypes.has(event.type) &&
+      bootEventBufferedCount < BOOT_FRAME_BUFFER_LIMIT
+    ) {
+      const buffered = bootEventBuffer.get(event.type);
+      if (buffered) buffered.push(event);
+      else bootEventBuffer.set(event.type, [event]);
+      bootEventBufferedCount += 1;
+    }
+    return baseDispatchEvent(event);
+  };
+  (emitter as unknown as { addEventListener: typeof baseAddEventListener }).addEventListener = (
+    type,
+    listener,
+    options,
+  ) => {
+    baseAddEventListener(type, listener, options);
+    if (!bootEventReplayEnabled || listener === null || releasedBootEventTypes.has(type)) return;
+    releasedBootEventTypes.add(type);
+    const replayed = bootEventBuffer.get(type) ?? [];
+    bootEventBuffer.delete(type);
+    bootEventBufferedCount -= replayed.length;
+    const once = typeof options === 'object' && options.once === true;
+    const signal = typeof options === 'object' ? options.signal : undefined;
+    for (const event of replayed) {
+      if (signal?.aborted) return;
+      try {
+        if (typeof listener === 'function') listener.call(emitter, event);
+        else listener.handleEvent(event);
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'live-frames',
+          message: `[bureau] event listener threw on a replayed "${event.type}" event:`,
+          cause: error,
+        });
+      }
+      if (once) return;
+    }
+  };
   // AB-96 — terminal RunReports, cached at the moment each run's lifecycle
   // event fires so `getRunReport` never needs to re-derive them.
   const runReports = new Map<string, RunReport>();
@@ -3761,7 +3827,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     // COR-1421 — retain this run's frames for the first live-frame subscriber.
-    if (bootFrameBufferOpen) bootFrameRunIds.add(runId);
+    bootFrameRunIds.add(runId);
 
     const recoveredRun = reattachDurableActiveRun(
       {
@@ -4135,6 +4201,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runId: string,
     classification: { verdict: RecoveredRunVerdict; rejection?: RecoveryRejectionReason },
   ): void {
+    bootFrameRunIds.add(runId);
     emitter.dispatch(new RecoveryAttemptedEvent(runId, classification.verdict));
     if (classification.rejection !== undefined) {
       emitter.dispatch(new RecoveryRejectedEvent(runId, classification.rejection));
@@ -4155,6 +4222,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!runtime.durable) return;
     const lease = leaseEvidenceFromLostHealth(runtime.durable.engine.getLeaseHealth());
     if (lease !== undefined) {
+      bootFrameRunIds.add(runId);
       emitter.dispatch(new RecoveryLeaseReleasedEvent(runId, lease));
     }
   }
@@ -9614,7 +9682,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // what recovered runs emitted before it attached.
       const replayedFrames = bootFrameBufferOpen ? bootFrameBuffer.splice(0) : [];
       bootFrameBufferOpen = false;
-      bootFrameRunIds.clear();
       liveFrameListeners.add(listener);
       for (const frame of replayedFrames) deliverLiveFrame(listener, frame);
       return () => {
@@ -9860,5 +9927,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     await durableRecoveryBarrier;
   }
 
+  // COR-1421 — from here on a listener is a post-boot subscriber: replay it
+  // what recovered runs emitted before it attached.
+  bootEventReplayEnabled = true;
   return bureau;
 }
