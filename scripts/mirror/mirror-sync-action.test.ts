@@ -505,7 +505,8 @@ describe('supersession (COR-1433)', () => {
       await git(root, 'config', 'user.name', 'Fixture');
       const commit = async (message: string): Promise<string> => {
         await git(root, 'commit', '--quiet', '--allow-empty', '--message', message);
-        return (await git(root, 'rev-parse', 'HEAD')).trim();
+        const head = await git(root, 'rev-parse', 'HEAD');
+        return head.trim();
       };
       const older = await commit('Older');
       await git(root, 'checkout', '--quiet', '-b', 'side');

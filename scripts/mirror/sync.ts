@@ -392,7 +392,8 @@ export async function findForeignCommits(
   const mirrorCommit = newest.commit;
   const ancestry = await git(directory, 'rev-list', '--ancestry-path', `${mirrorCommit}..HEAD`);
   const descendants = new Set(ancestry.trim().split('\n'));
-  const candidates = (await readHistory(directory)).filter(({ sha }) => descendants.has(sha));
+  const history = await readHistory(directory);
+  const candidates = history.filter(({ sha }) => descendants.has(sha));
   if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
   const foreign: ForeignCommit[] = [];
   for (const { sha, subject } of candidates) {

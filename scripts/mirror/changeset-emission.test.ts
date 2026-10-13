@@ -38,7 +38,8 @@ async function write(directory: string, path: string, contents: string): Promise
 async function commit(directory: string, message: string): Promise<string> {
   await git(directory, 'add', '--all');
   await git(directory, 'commit', '--quiet', '--allow-empty', '--message', message);
-  return (await git(directory, 'rev-parse', 'HEAD')).trim();
+  const head = await git(directory, 'rev-parse', 'HEAD');
+  return head.trim();
 }
 
 /** A corvidae history whose first commit carries only the README, as the real directory does. */

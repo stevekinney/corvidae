@@ -161,7 +161,8 @@ export async function supersedeOlderPullRequests(options: {
 }): Promise<{ closed: number[]; left: { number: number; reason: string }[] }> {
   const { api, corvidaeRoot, fullName, base, newPullRequest, newCorvidaeCommit } = options;
   const log = options.log ?? ((line: string) => void process.stdout.write(`${line}\n`));
-  const candidates = (await api.listOpenPullRequests(fullName)).filter(
+  const open = await api.listOpenPullRequests(fullName);
+  const candidates = open.filter(
     (pullRequest) =>
       pullRequest.number !== newPullRequest.number &&
       pullRequest.headRef.startsWith('mirror-sync-') &&

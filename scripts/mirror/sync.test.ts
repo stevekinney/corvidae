@@ -1809,11 +1809,13 @@ describe('changeset emission through the sync (COR-1433)', () => {
         await corvidaeGit('init', '--quiet', '--initial-branch=main');
         await corvidaeGit('add', '--all');
         await corvidaeGit('commit', '--quiet', '--message', 'Corvidae before the changeset');
-        const start = (await corvidaeGit('rev-parse', 'HEAD')).trim();
+        const startHead = await corvidaeGit('rev-parse', 'HEAD');
+        const start = startHead.trim();
         await Bun.write(join(harness.corvidae, '.changeset/note.md'), changesetText);
         await corvidaeGit('add', '--all');
         await corvidaeGit('commit', '--quiet', '--message', 'Add a changeset');
-        const adding = (await corvidaeGit('rev-parse', 'HEAD')).trim();
+        const addingHead = await corvidaeGit('rev-parse', 'HEAD');
+        const adding = addingHead.trim();
 
         // A target the mirror has already written to, as of `start`.
         const seed = await cloneTarget({

@@ -176,7 +176,8 @@ export async function planChangesetEmission({
   if (targetDirectory === undefined || trailerSha === null || trailerSha === undefined) return {};
   // A checkout with no changeset file has no release intent to place, so it needs neither the
   // history nor a trailer that resolves in it.
-  if ((await listChangesetFiles(corvidaeRoot)).length === 0) return {};
+  const present = await listChangesetFiles(corvidaeRoot);
+  if (present.length === 0) return {};
 
   await assertPlaceable(corvidaeRoot, trailerSha);
   const [headFiles, syncedFiles] = await Promise.all([
