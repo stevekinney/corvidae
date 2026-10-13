@@ -310,16 +310,10 @@ function buildBaseCompletionOperations(
   previousState: WorkflowState,
   updatedState: WorkflowState,
 ): BatchOperation[] {
-  const visibilityOperations = visibilityIndexOperations(
-    internals,
-    workflowId,
-    previousState,
-    updatedState,
-  );
   const operations: BatchOperation[] = [
     ...buildTerminalWorkflowIndexOperations(previousState, updatedState),
     { type: 'put', key: KEYS.workflow(workflowId), value: encode(updatedState) },
-    ...visibilityOperations,
+    ...visibilityIndexOperations(internals, workflowId, previousState, updatedState),
   ];
   const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
   if (pendingTimelineOperation) {
