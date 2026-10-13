@@ -251,6 +251,84 @@ function lastParagraph(page: Page): Locator {
   return richEditor(page).locator('p').last();
 }
 
+type RichSelection = { from: number; to: number };
+
+/**
+ * The rich editor's ProseMirror selection. The fixture mirrors the template
+ * editor's `onSelectionChange` into `data-selection-from` and
+ * `data-selection-to` on its mount; either attribute missing means the
+ * selection is unknown, reported as `null` so a wait on it keeps polling.
+ */
+function readRichSelection(page: Page): Promise<RichSelection | null> {
+  return page.locator('#template-editor-mount').evaluate((element) => {
+    const from = element.getAttribute('data-selection-from');
+    const to = element.getAttribute('data-selection-to');
+    if (from === null || to === null) return null;
+    return { from: Number(from), to: Number(to) };
+  });
+}
+
+/**
+ * The text of the last paragraph before the DOM caret, or `null` when the
+ * DOM selection is not a collapsed caret inside that paragraph.
+ */
+function readTextBeforeRichCaret(page: Page): Promise<string | null> {
+  return lastParagraph(page).evaluate((paragraph) => {
+    const selection = window.getSelection();
+    if (selection === null || selection.rangeCount === 0 || !selection.isCollapsed) return null;
+    const caret = selection.getRangeAt(0);
+    if (!paragraph.contains(caret.startContainer)) return null;
+    const before = document.createRange();
+    before.setStart(paragraph, 0);
+    before.setEnd(caret.startContainer, caret.startOffset);
+    return before.toString();
+  });
+}
+
+/**
+ * Put the rich caret right after `prefix`, the opening text of the document's
+ * only paragraph, with the click that first focuses the editor, and wait
+ * until both the DOM and ProseMirror have it there.
+ *
+ * Arrow keys are not used to get there. On first focus prosemirror-view
+ * schedules a one-shot write of its own selection into the DOM; a native
+ * caret move ProseMirror has not read yet when that write runs is undone,
+ * and under machine load key presses routinely beat it. A caret ProseMirror
+ * has already read matches the DOM, so the write changes nothing.
+ */
+async function placeRichCaretAfter(page: Page, prefix: string): Promise<void> {
+  const point = await lastParagraph(page).evaluate((paragraph, length) => {
+    // Find the character right after `prefix` and aim at the left edge of its
+    // glyph, so the caret lands before it rather than after it.
+    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+    let remaining = length;
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const text = node.textContent ?? '';
+      if (remaining < text.length) {
+        const glyph = document.createRange();
+        glyph.setStart(node, remaining);
+        glyph.setEnd(node, remaining + 1);
+        const box = glyph.getBoundingClientRect();
+        return { x: box.left + 1, y: box.top + box.height / 2 };
+      }
+      remaining -= text.length;
+    }
+    return null;
+  }, prefix.length);
+  if (point === null)
+    throw new Error(`The paragraph must have text after ${JSON.stringify(prefix)}.`);
+  await page.mouse.click(point.x, point.y);
+  await expect(richEditor(page)).toBeFocused();
+  await expect
+    .poll(() => readTextBeforeRichCaret(page), { message: 'the DOM caret follows the click' })
+    .toBe(prefix);
+  // The paragraph's content starts at position 1, inside the document node.
+  const caret = 1 + prefix.length;
+  await expect
+    .poll(() => readRichSelection(page), { message: 'ProseMirror has read the click' })
+    .toEqual({ from: caret, to: caret });
+}
+
 /** A DevTools session with touch emulation, for real touch event sequences. */
 async function touchSession(page: Page): Promise<CDPSession> {
   const session = await page.context().newCDPSession(page);
@@ -904,14 +982,13 @@ test.describe('MarkdownEditor rich-mode placeholder completion', () => {
     componentPage,
   }) => {
     const page = await openFixture(componentPage);
-    await editRichAtEnd(page, 'A {{.na}} B');
-    await page.keyboard.press('ArrowLeft', { delay: 0 });
-    for (let step = 1; step < '.na}} B'.length; step += 1) {
-      await page.keyboard.press('ArrowLeft');
-    }
+    await setDocument(page, 'A {{.na}} B');
+    const editor = await showRichEditor(page);
+    await placeRichCaretAfter(page, 'A {{');
     await page.keyboard.type('user');
     await expect.poll(() => optionPaths(page, RICH_LISTBOX_ID)).toEqual(['user', 'user.name']);
     await page.keyboard.press('ArrowDown');
+    await expect(editor).toHaveAttribute('aria-activedescendant', `${RICH_LISTBOX_ID}-user.name`);
     await page.keyboard.press('Enter');
     await expect(lastParagraph(page)).toHaveText('A {{user.name}} B');
   });
