@@ -9169,7 +9169,9 @@ describe('toolbox parent execution stays live until owned callbacks settle (COR-
       ],
       { errorMode: 'failFast' },
     );
-    await expect(pending).rejects.toThrow('sibling failed');
+    await expectPromiseToReject(pending, (error) => {
+      expect(error).toMatchObject({ message: 'sibling failed' });
+    });
 
     const parent = toolbox.executions
       .inspect()
