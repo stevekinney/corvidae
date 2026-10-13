@@ -13,12 +13,16 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import {
+  buildBaseIndex,
+  buildTokenRegistryFromIndexes,
+  themeAwarePaths,
+} from '../../src/tokens/runtime/registry.ts';
+import type { ResolverDocument } from '../../src/tokens/runtime/types.ts';
 import type { DocSection } from './docs-sections.ts';
 import { buildTokensDocMarkdown, renderDocTable } from './docs.ts';
 import { loadCorpus } from './generate.ts';
-import { buildBaseIndex, buildTokenRegistryFromIndexes, themeAwarePaths } from './registry.ts';
-import type { ResolverDocument } from './types.ts';
 
 async function expectRejected(promise: Promise<unknown>, pattern: RegExp): Promise<void> {
   let error: unknown;

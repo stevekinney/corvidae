@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { assertResolutionOrderMatchesCssBlockStructure } from './css-support.ts';
-import type { ResolverDocument } from './types.ts';
+import { assertResolutionOrderMatchesCssBlockStructure } from '../../src/tokens/runtime/css-support.ts';
+import type { ResolverDocument } from '../../src/tokens/runtime/types.ts';
 function resolverWithOrder(refs: string[]): ResolverDocument {
   return {
     version: '2025.10',
