@@ -12,8 +12,8 @@ export function cinderThemeBase(): ThemeBase {
   return {
     packageVersion: CINDER_BASE.packageVersion,
     sourceDigest: CINDER_BASE.sourceDigest,
-    resolver: CINDER_BASE.resolver as unknown as JsonValue,
-    documents: CINDER_BASE.documents as unknown as Record<string, JsonValue>,
+    resolver: CINDER_BASE.resolver,
+    documents: CINDER_BASE.documents as Record<string, JsonValue>,
   };
 }
 

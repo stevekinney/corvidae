@@ -138,14 +138,73 @@ test.describe('input to render', () => {
     expectWithinBudget('switch light/dark', samples);
   });
 
-  // The two commit measurements need the token editors, which later issues add: COR-489
-  // (foundation editors, the radius edit) and COR-263 (palettes and color roles, the accent
-  // edit). They are left as marked placeholders so the budget list stays complete.
-  test.fixme('committing a radius edit', async () => {
-    // Needs COR-489's radius editor: commit a value and time it to the painted preview.
+  test('committing a radius edit', async ({ page }) => {
+    await selectToken(page, 'Foundations', 'radius.medium');
+    const samples = await collect((index) =>
+      commitEdit(page, {
+        field: '#theme-builder-value-radius-medium',
+        text: `{"value": ${2 + (index % 9)}, "unit": "px"}`,
+        property: '--cinder-radius-md',
+        expected: `${2 + (index % 9)}px`,
+      }),
+    );
+    expectWithinBudget('commit radius edit', samples);
   });
 
-  test.fixme('committing an accent edit', async () => {
-    // Needs COR-263's accent editor: commit a value and time it to the painted preview.
+  test('committing an accent edit', async ({ page }) => {
+    await selectToken(page, 'Semantic', 'accent.solid');
+    const samples = await collect((index) =>
+      commitEdit(page, {
+        field: '#theme-builder-value-accent-solid',
+        text: `{"colorSpace": "srgb", "components": [${(0.1 + (index % 8) * 0.1).toFixed(1)}, 0.4, 0.8]}`,
+        property: '--cinder-accent-solid',
+        expected: null,
+      }),
+    );
+    expectWithinBudget('commit accent edit', samples);
   });
 });
+
+async function selectToken(page: Page, group: string, path: string): Promise<void> {
+  await page.getByRole('navigation', { name: 'Token categories' }).getByText(group).click();
+  await page.locator(`[data-token-path="${path}"]`).click();
+  await expect(page.getByTestId('selected-token-path')).toHaveText(path);
+}
+
+/**
+ * Type a value into the generic editor, press Apply, and time the click until the preview
+ * frame has the new property and has painted twice. With `expected: null` the value must
+ * merely differ from the one before the click.
+ */
+async function commitEdit(
+  page: Page,
+  edit: { field: string; text: string; property: string; expected: string | null },
+): Promise<number> {
+  await page.evaluate(
+    ({ field, text }) => {
+      const input = document.querySelector(field) as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, text);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    { field: edit.field, text: edit.text },
+  );
+  return page.evaluate(async ({ property, expected }) => {
+    const root = (document.querySelector('iframe') as HTMLIFrameElement).contentDocument!
+      .documentElement;
+    const read = () => root.style.getPropertyValue(property);
+    const before = read();
+    const apply = [...document.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Apply',
+    ) as HTMLButtonElement;
+    const start = performance.now();
+    apply.click();
+    const deadline = start + 5000;
+    while (expected === null ? read() === before : read() !== expected) {
+      if (performance.now() > deadline) throw new Error(`the frame never took ${property}`);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return performance.now() - start;
+  }, edit);
+}

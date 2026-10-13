@@ -32,6 +32,8 @@ export async function openBuilder(page: Page, size?: { width: number; height: nu
   if (size !== undefined) await page.setViewportSize(size);
   await page.goto('/theme-builder');
   await expect(page.getByTestId('theme-workbench')).toBeVisible();
+  // The first evaluation of the draft runs the whole validation once, which takes seconds.
+  await expect(page.getByTestId('draft-ready')).toBeAttached({ timeout: 30_000 });
   await waitForPreviewApplied(page);
 }
 

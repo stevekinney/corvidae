@@ -10,7 +10,12 @@
  * context never touches `selectedTokenPath`; only `selectToken` does.
  */
 
-import { firstFoundationPath, type CatalogueGroupId } from './theme-builder-catalogue.ts';
+import {
+  firstFoundationPath,
+  NO_FILTERS,
+  type CatalogueFilters,
+  type CatalogueGroupId,
+} from './theme-builder-catalogue.ts';
 import type { ThemePreviewContext, ThemePreviewProperty } from './theme-preview-message.ts';
 import { DEFAULT_THEME_PREVIEW_SCENE_ID, themePreviewSceneById } from './theme-preview-scenes.ts';
 import type { SaveIndicator } from './theme-save-status.ts';
@@ -42,6 +47,15 @@ export class ThemeWorkbenchState {
   pane = $state<WorkbenchPane>('edit');
   groupId = $state<CatalogueGroupId>('foundations');
   filter = $state('');
+  /** The changed, alias, and recipe filters; each active one must hold. */
+  filters = $state.raw<CatalogueFilters>(NO_FILTERS);
+  /** True while the invalid-input buffer diverges from the last-valid revision (COR-490). */
+  previewIsLastValid = $state(false);
+  /**
+   * Set by the draft controller: a context change is evaluated against the draft there and
+   * lands through `applyContext`, so the preview never shows one context's map under another.
+   */
+  contextChangeHandler: ((context: ThemePreviewContext) => void) | null = null;
   saveStatus = $state<SaveStatus>('saved');
   /** Actionable copy for a storage failure; `null` while persistence is healthy. */
   storageNotice = $state.raw<Pick<SaveIndicator, 'notice' | 'actions'> | null>(null);
@@ -69,7 +83,18 @@ export class ThemeWorkbenchState {
     if (context.colorMode === this.context.colorMode && context.motion === this.context.motion) {
       return;
     }
+    if (this.contextChangeHandler !== null) {
+      this.contextChangeHandler(context);
+      return;
+    }
     this.context = context;
+    this.revision += 1;
+  }
+
+  /** Land a context switch together with that context's committed map: one preview revision. */
+  applyContext(context: ThemePreviewContext, properties: readonly ThemePreviewProperty[]): void {
+    this.context = context;
+    this.properties = properties;
     this.revision += 1;
   }
 
@@ -96,6 +121,10 @@ export class ThemeWorkbenchState {
 
   setFilter(filter: string): void {
     this.filter = filter;
+  }
+
+  setFilters(filters: CatalogueFilters): void {
+    this.filters = filters;
   }
 
   noteFrameLoading(): void {
