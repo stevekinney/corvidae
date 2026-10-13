@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 
+import { KEYS } from '../../storage/interface.ts';
 import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { TestEngine } from '../../testing/test-engine.ts';
+import { decode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { WorkflowConcurrencyLimitExceededError } from './errors.ts';
+import { getInternals } from './internals.ts';
+import {
+  buildWorkflowConcurrencyStartOperations,
+  releaseWorkflowConcurrencySlot,
+} from './workflow-concurrency.ts';
 
 async function* waitForRelease(
   ctx: WorkflowContext,
@@ -177,5 +184,58 @@ describe('workflow definition concurrency', () => {
     const next = await disposableRecovered.start('limited-recovered', { value: 'second' });
     await disposableRecovered.signal(next.id, 'release', 'done');
     expect(await next.result()).toBe('second:done');
+  });
+
+  it('keeps a held slot for the replacement when the releasing run is superseded, and drops a corrupt marker otherwise', async () => {
+    await using engine = new TestEngine({ startTime: 1_000 });
+    engine.register(
+      workflow({ name: 'limited-release', concurrency: { max: 2 } }).execute(waitForRelease),
+    );
+    const first = await engine.start('limited-release', { value: 'first' });
+    const second = await engine.start('limited-release', { value: 'second' });
+    const internals = getInternals(engine);
+    const slotKey = KEYS.workflowConcurrency('limited-release', 'limited-release');
+    const holderIds = async (): Promise<string[]> => {
+      const bytes = await internals.storage.get(slotKey);
+      const record = decode(bytes!) as { holders: { holderId: string }[] };
+      return record.holders.map((holder) => holder.holderId);
+    };
+    expect(await holderIds()).toEqual([first.id, second.id]);
+
+    // Re-acquiring an id that already holds keeps every other holder intact.
+    const reacquire = await buildWorkflowConcurrencyStartOperations(
+      internals,
+      'limited-release',
+      second.id,
+      { value: 'second' },
+      { max: 2 },
+    );
+    expect(reacquire.operations.length).toBeGreaterThan(0);
+
+    // A superseded release leaves both the slot entry and the marker alone.
+    await releaseWorkflowConcurrencySlot(internals, second.id, () => true);
+    expect(await holderIds()).toEqual([first.id, second.id]);
+    expect(await internals.storage.get(KEYS.workflowConcurrencyHolder(second.id))).not.toBeNull();
+
+    // A superseded release stops after reading the marker too.
+    await releaseWorkflowConcurrencySlot(
+      internals,
+      second.id,
+      (() => {
+        let calls = 0;
+        return () => ++calls > 1;
+      })(),
+    );
+    expect(await holderIds()).toEqual([first.id, second.id]);
+
+    // A marker that does not decode is dropped without touching the slot entry.
+    await internals.storage.put(KEYS.workflowConcurrencyHolder(first.id), new Uint8Array([0xc0]));
+    await releaseWorkflowConcurrencySlot(internals, first.id);
+    expect(await internals.storage.get(KEYS.workflowConcurrencyHolder(first.id))).toBeNull();
+    expect(await holderIds()).toEqual([first.id, second.id]);
+
+    // An unsuperseded release frees only its own entry.
+    await releaseWorkflowConcurrencySlot(internals, second.id);
+    expect(await holderIds()).toEqual([first.id]);
   });
 });
