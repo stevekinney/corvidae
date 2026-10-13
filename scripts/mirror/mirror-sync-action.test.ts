@@ -564,6 +564,9 @@ describe('supersession (COR-1433)', () => {
             headSha: 'new-head',
           };
         },
+        async dispatchWorkflow() {
+          events.push('dispatch');
+        },
         async listOpenPullRequests() {
           return open;
         },
@@ -657,6 +660,55 @@ describe('supersession (COR-1433)', () => {
       expect(outcome.closed).toEqual([newNumber]);
       expect(events.filter((event) => event.startsWith('close'))).toEqual([`close ${newNumber}`]);
       expect(events.find((event) => event.startsWith(`comment ${newNumber}`))).toContain('pull/11');
+    });
+  });
+
+  test('a stale snapshot dispatch never dispatches the snapshot workflow', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
+      const message = await openSyncPullRequest({
+        api,
+        target: 'weft',
+        manifest: {
+          baseBranch: 'main',
+          baseCommit: 'base',
+          changed: [],
+          commit: 'c'.repeat(40),
+          workflowFile: 'release.yaml',
+        },
+        snapshot: true,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: older,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      expect(events).not.toContain('dispatch');
+      expect(events).toContain(`close ${newNumber}`);
+      expect(message).toContain('superseded');
+    });
+  });
+
+  test('a current snapshot dispatch dispatches before it closes the older pull requests', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(older) });
+      await openSyncPullRequest({
+        api,
+        target: 'weft',
+        manifest: {
+          baseBranch: 'main',
+          baseCommit: 'base',
+          changed: [],
+          commit: 'c'.repeat(40),
+          workflowFile: 'release.yaml',
+        },
+        snapshot: true,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      const order = events.filter((event) => /^(create|dispatch|close)/.test(event));
+      expect(order).toEqual(['create', 'dispatch', 'close 11']);
     });
   });
 

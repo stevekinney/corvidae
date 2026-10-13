@@ -157,6 +157,11 @@ export async function supersedeOlderPullRequests(options: {
   newPullRequest: { number: number; htmlUrl: string };
   /** The corvidae commit the new pull request was built from. */
   newCorvidaeCommit: string;
+  /**
+   * Runs once the new pull request is known not to be stale and before any older one is closed.
+   * The snapshot dispatch hangs here so a stale dispatch can never publish.
+   */
+  beforeClosingOlder?: (() => Promise<void>) | undefined;
   log?: ((line: string) => void) | undefined;
 }): Promise<{ closed: number[]; left: { number: number; reason: string }[] }> {
   const { api, corvidaeRoot, fullName, base, newPullRequest, newCorvidaeCommit } = options;
@@ -206,6 +211,8 @@ export async function supersedeOlderPullRequests(options: {
     log(`${fullName}#${newPullRequest.number}: closed; superseded by newer ${candidate.htmlUrl}`);
     return { closed: [newPullRequest.number], left: [] };
   }
+
+  await options.beforeClosingOlder?.();
 
   for (const candidate of candidates) {
     const trailerSha = trailers.get(candidate.number);
@@ -260,8 +267,8 @@ export async function supersedeOlderPullRequests(options: {
 }
 
 /**
- * Open the sync pull request, dispatch the snapshot workflow when asked, then close the pull
- * requests the new one supersedes. The order is the contract: the new pull request exists before
+ * Open the sync pull request, check that it is not stale, dispatch the snapshot workflow when
+ * asked, then close the pull requests the new one supersedes. The order is the contract: the new pull request exists before
  * anything is closed, so a failure to close can never leave a target with no sync pull request.
  */
 export async function openSyncPullRequest(options: {
@@ -294,31 +301,35 @@ export async function openSyncPullRequest(options: {
     body: pullRequestBodyFor({ target, corvidaeCommit, changed: manifest.changed }),
   });
   let message = `${target}: opened ${pullRequest.htmlUrl}\n`;
-  if (snapshot) {
-    if (manifest.workflowFile === undefined) {
-      throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
-    }
-    if (api.dispatchWorkflow === undefined) {
-      throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
-    }
-    await api.dispatchWorkflow(
-      snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, {
-        ...manifest,
-        decision: 'pushed',
-        pullRequest,
-      }),
-    );
-    message = `${target}: source pull request ${pullRequest.htmlUrl}; snapshot workflow dispatched for ${fullName}@${branch} (${manifest.commit})\n`;
-  }
-  await supersedeOlderPullRequests({
+  const outcome = await supersedeOlderPullRequests({
     api,
     corvidaeRoot,
     fullName,
     base: manifest.baseBranch,
     newPullRequest: pullRequest,
     newCorvidaeCommit: corvidaeCommit,
+    beforeClosingOlder: async () => {
+      if (!snapshot) return;
+      if (manifest.workflowFile === undefined) {
+        throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
+      }
+      if (api.dispatchWorkflow === undefined) {
+        throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+      }
+      await api.dispatchWorkflow(
+        snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, {
+          ...manifest,
+          decision: 'pushed',
+          pullRequest,
+        }),
+      );
+      message = `${target}: source pull request ${pullRequest.htmlUrl}; snapshot workflow dispatched for ${fullName}@${branch} (${manifest.commit})\n`;
+    },
     log: options.log,
   });
+  if (outcome.closed.includes(pullRequest.number)) {
+    message = `${target}: ${pullRequest.htmlUrl} was opened and immediately closed as superseded by a newer open sync pull request; no snapshot was dispatched\n`;
+  }
   return message;
 }
 

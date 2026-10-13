@@ -54,7 +54,10 @@ export interface ChangesetEmissionOptions {
    * which emits nothing as well; `sync.ts` resolves it once per run.
    */
   trailerSha: string | null | undefined;
-  /** Receives one line per skipped path. Defaults to standard error, which reports never parse. */
+  /**
+   * Receives one human-readable line per skipped path. These lines are a report for whoever
+   * reads the run's output; nothing parses them. Defaults to standard error.
+   */
   log?: ((line: string) => void) | undefined;
 }
 
@@ -184,6 +187,38 @@ async function assertNoReusedNames(
   }
 }
 
+/**
+ * A rename whose source existed at the trailer is a rename of something already synced, whether
+ * or not the file was edited with it. Emitting the destination would release it twice; skipping
+ * it would guess. Git's own rename detection is the judge, so an edit cannot hide one.
+ */
+async function assertNoRenamedSyncedNames(
+  corvidaeRoot: string,
+  trailerSha: string,
+  synced: ReadonlySet<string>,
+): Promise<void> {
+  const output = await requireGit(corvidaeRoot, [
+    'log',
+    '--find-renames',
+    '--diff-filter=R',
+    '--name-status',
+    '-z',
+    '--format=',
+    `${trailerSha}..HEAD`,
+    '--',
+    `${changesetDirectory}/`,
+  ]);
+  const fields = output.split('\0').map((field) => field.replace(/^\n+/, ''));
+  for (let index = 0; index + 2 < fields.length; index += 3) {
+    const [status, from, to] = [fields[index]!, fields[index + 1]!, fields[index + 2]!];
+    if (/^R\d*$/.test(status) && synced.has(from)) {
+      throw new ChangesetEmissionError(
+        `${to} is a rename of ${from}, which was already synced: emitting it would release it twice. Revert the rename; fix a synced changeset in the target's .changeset/ instead.`,
+      );
+    }
+  }
+}
+
 /** Whether the target's current history has ever contained the path. */
 async function inTargetHistory(targetDirectory: string, path: string): Promise<boolean> {
   const output = await requireGit(targetDirectory, [
@@ -195,10 +230,6 @@ async function inTargetHistory(targetDirectory: string, path: string): Promise<b
     path,
   ]);
   return output.trim().length > 0;
-}
-
-function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
-  return Buffer.from(left).equals(right);
 }
 
 /** The emitted target-relative path to bytes, or `{}` when nothing is pending for this target. */
@@ -222,6 +253,7 @@ export async function planChangesetEmission({
   ]);
   const synced = new Set(syncedFiles);
   await assertNoReusedNames(corvidaeRoot, trailerSha, synced);
+  await assertNoRenamedSyncedNames(corvidaeRoot, trailerSha, synced);
   const pending = headFiles.filter((path) => !synced.has(path));
 
   const mine: { path: string; bytes: Uint8Array }[] = [];
@@ -236,19 +268,6 @@ export async function planChangesetEmission({
     }
   }
   if (mine.length === 0) return {};
-
-  // A pending file byte-equal to a synced file that no longer exists is a rename of something the
-  // target already has. Emitting it would release twice; skipping it would guess. Neither.
-  const head = new Set(headFiles);
-  for (const gone of syncedFiles.filter((path) => !head.has(path))) {
-    const goneBytes = await blobBytes(corvidaeRoot, trailerSha, gone);
-    const renamed = mine.find(({ bytes }) => sameBytes(bytes, goneBytes));
-    if (renamed !== undefined) {
-      throw new ChangesetEmissionError(
-        `${renamed.path} has the same content as ${gone}, which was already synced and no longer exists: it looks like a rename of a synced changeset. Revert the rename; fix a synced changeset in the target's .changeset/ instead.`,
-      );
-    }
-  }
 
   if (!(await Bun.file(join(targetDirectory, changesetDirectory, 'config.json')).exists())) {
     throw new ChangesetEmissionError(

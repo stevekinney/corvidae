@@ -242,7 +242,7 @@ test('accepts a squash merge whose parent and tree match the App sync commit', a
   }
 });
 
-test('accepts an intervening commit that only adds or deletes a pending changeset', async () => {
+test('accepts an intervening commit that adds, edits or deletes a pending changeset', async () => {
   await withVersionRelease(
     async ({ source, target, sourceCommit, mirrorCommit, releaseCommit }) => {
       const options = {
@@ -269,7 +269,7 @@ test('accepts an intervening commit that only adds or deletes a pending changese
       const deleted = await commit(target, 'Version Packages');
       expect(await verifyHistoricalCheckout({ ...options, gitHead: deleted })).toBe(sourceCommit);
 
-      // Editing a changeset is neither of those, and the README is never a pending changeset.
+      // A correction made in the target is an edit of a delivered changeset, and is accepted too.
       await Bun.write(
         join(target, changesetPath),
         '---\n"@lostgradient/weft": patch\n---\n\nFix.\n',
@@ -279,10 +279,8 @@ test('accepts an intervening commit that only adds or deletes a pending changese
         join(target, changesetPath),
         '---\n"@lostgradient/weft": major\n---\n\nFix.\n',
       );
-      const edited = await commit(target, 'Edit a delivered changeset');
-      expect(
-        await throwingRejectionOf(verifyHistoricalCheckout({ ...options, gitHead: edited })),
-      ).toThrow('non-target-owned path');
+      const edited = await commit(target, 'Correct a delivered changeset');
+      expect(await verifyHistoricalCheckout({ ...options, gitHead: edited })).toBe(sourceCommit);
     },
   );
 });

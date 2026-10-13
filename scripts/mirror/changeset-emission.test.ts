@@ -152,6 +152,23 @@ describe('changeset emission', () => {
     expect((error as Error).message).toContain('.changeset/new-name.md');
   });
 
+  test('(e2) a rename that also edits the file after the sync throws and names both files', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/old-name.md', weftChangeset);
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'mv', '.changeset/old-name.md', '.changeset/new-name.md');
+    await write(
+      root,
+      '.changeset/new-name.md',
+      changeset('@lostgradient/weft', 'Fix the thing.\n\nAnd one more sentence.'),
+    );
+    await commit(root, 'Rename and edit the changeset');
+    const error = await rejectionOf(emit(root, await target(synced), synced));
+    expect(error).toBeInstanceOf(ChangesetEmissionError);
+    expect((error as Error).message).toContain('.changeset/old-name.md');
+    expect((error as Error).message).toContain('.changeset/new-name.md');
+  });
+
   test('(f) the same trailer gives identical output on a repeat run', async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);

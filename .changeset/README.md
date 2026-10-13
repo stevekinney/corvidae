@@ -2,7 +2,7 @@
 
 This directory holds release intent for the packages the mirror sync publishes. A changeset is a Markdown file with YAML frontmatter of `"<npm name>": patch|minor|major` lines, followed by a non-empty body that becomes the changelog entry.
 
-Three rules apply:
+Four rules apply:
 
 - Author the intent here. Write the changeset in the same pull request as the change it describes, and the next sync copies it into the mirror that releases the package.
 - One target per file. Every name in a file must belong to the same mirror (`weft`, `cinder` or `agent-bureau`). To release packages in two mirrors, write two files.
