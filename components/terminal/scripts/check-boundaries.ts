@@ -105,38 +105,30 @@ export function findImportViolations(packageRoot: string): BoundaryViolation[] {
   return violations;
 }
 
+const DEPENDENCY_SECTIONS = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+] as const;
+
 type Manifest = {
   name?: string;
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
+  workspaces?: string[];
   catalog?: Record<string, string>;
-};
+} & { [section in (typeof DEPENDENCY_SECTIONS)[number]]?: Record<string, string> };
 
 function readManifest(path: string): Manifest {
   return JSON.parse(readFileSync(path, 'utf8')) as Manifest;
 }
 
+/** The root manifest and the manifest of every workspace its `workspaces` field declares. */
 function workspaceManifestPaths(workspaceRoot: string): string[] {
-  const paths = [join(workspaceRoot, 'package.json')];
-  for (const group of ['applications', 'components', 'packages', 'internal']) {
-    let entries;
-    try {
-      entries = readdirSync(join(workspaceRoot, group), { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) paths.push(join(workspaceRoot, group, entry.name, 'package.json'));
-    }
-  }
-  return paths.filter((path) => {
-    try {
-      readFileSync(path);
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  const patterns = readManifest(join(workspaceRoot, 'package.json')).workspaces ?? [];
+  const paths = patterns.flatMap((pattern) => [
+    ...new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: workspaceRoot, absolute: true }),
+  ]);
+  return [join(workspaceRoot, 'package.json'), ...paths.toSorted()];
 }
 
 /**
@@ -169,8 +161,7 @@ export function findManifestViolations(
   for (const path of workspaceManifestPaths(workspaceRoot)) {
     const manifest = readManifest(path);
     const names = [
-      ...Object.keys(manifest.dependencies ?? {}),
-      ...Object.keys(manifest.devDependencies ?? {}),
+      ...DEPENDENCY_SECTIONS.flatMap((section) => Object.keys(manifest[section] ?? {})),
       ...Object.keys(manifest.catalog ?? {}),
     ];
     for (const name of names) {
@@ -189,9 +180,9 @@ export function findManifestViolations(
 export type ImportProbeReport = {
   /** Source modules the entry's import graph loaded that it must not: the engine and Bun-only entries. */
   forbiddenModules: string[];
-  /** Calls to `fetch`, WebAssembly compilation, workers, or sockets made while importing. */
+  /** Calls to `fetch`, WebAssembly compilation or construction, timers, workers, or sockets made while importing. */
   trappedCalls: string[];
-  /** DOM globals the import read, which a plain Bun process does not define. */
+  /** DOM globals the import read, including ones a plain Bun process already defines. */
   domGlobals: string[];
   /** Globals the import added to `globalThis`. */
   addedGlobals: string[];

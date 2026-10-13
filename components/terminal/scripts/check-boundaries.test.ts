@@ -34,7 +34,11 @@ const terminalManifest = JSON.stringify({
   name: '@lostgradient/terminal',
   dependencies: { '@xterm/xterm': 'catalog:' },
 });
-const rootManifest = JSON.stringify({ name: 'corvidae', catalog: { '@xterm/xterm': '6.0.0' } });
+const rootManifest = JSON.stringify({
+  name: 'corvidae',
+  workspaces: ['components/*', 'packages/*', 'scripts/browser-fixtures'],
+  catalog: { '@xterm/xterm': '6.0.0' },
+});
 
 /** A scratch workspace shaped like this repository, returning its `components/terminal` root. */
 function workspaceFixture(files: Record<string, string> = {}): {
@@ -211,6 +215,8 @@ describe('findManifestViolations', () => {
   test.each([
     ['dependencies', 'ghostty-web'],
     ['devDependencies', '@wterm/dom'],
+    ['peerDependencies', 'ghostty-web'],
+    ['optionalDependencies', '@wterm/core'],
   ])('rejects a comparison engine in any workspace %s', (field, name) => {
     const { packageRoot, workspaceRoot } = workspaceFixture({
       '/packages/other/package.json': JSON.stringify({ [field]: { [name]: '1.0.0' } }),
@@ -218,6 +224,24 @@ describe('findManifestViolations', () => {
     const [violation] = findManifestViolations(packageRoot, workspaceRoot);
     expect(violation).toMatchObject({ file: '../../packages/other/package.json' });
     expect(violation?.message).toContain(`${name} is a comparison engine`);
+  });
+
+  test('inspects a workspace the root declares by exact path, not only by group glob', () => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/scripts/browser-fixtures/package.json': JSON.stringify({
+        dependencies: { 'ghostty-web': '1.0.0' },
+      }),
+    });
+    const [violation] = findManifestViolations(packageRoot, workspaceRoot);
+    expect(violation).toMatchObject({ file: '../../scripts/browser-fixtures/package.json' });
+    expect(violation?.message).toContain('ghostty-web is a comparison engine');
+  });
+
+  test('ignores a manifest in a directory the root does not declare as a workspace', () => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/elsewhere/package.json': JSON.stringify({ dependencies: { 'ghostty-web': '1.0.0' } }),
+    });
+    expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
   });
 
   test('rejects a comparison engine in the root catalog', () => {
@@ -254,6 +278,19 @@ describe('import probe', () => {
       'await WebAssembly.compile(new Uint8Array());',
       ['WebAssembly.compile'],
     ],
+    [
+      'WebAssembly module construction',
+      'new WebAssembly.Module(new Uint8Array());',
+      ['new WebAssembly.Module'],
+    ],
+    [
+      'WebAssembly instance construction',
+      'new WebAssembly.Instance({});',
+      ['new WebAssembly.Instance'],
+    ],
+    ['a timeout', 'setTimeout(() => {}, 60_000);', ['setTimeout']],
+    ['an interval', 'setInterval(() => {}, 60_000);', ['setInterval']],
+    ['an immediate', 'setImmediate(() => {});', ['setImmediate']],
     ['a worker', "new Worker('worker.js');", ['new Worker']],
     ['a socket', "new WebSocket('ws://example.invalid/');", ['new WebSocket']],
   ])('traps %s made while importing', (_name, statement, calls) => {
@@ -265,6 +302,12 @@ describe('import probe', () => {
     expect(probe("export const live = typeof document !== 'undefined';\n").domGlobals).toEqual([
       'document',
     ]);
+  });
+
+  test('reports a read of a DOM-like global Bun already defines', () => {
+    const report = probe('export const agent = navigator.userAgent;\n');
+    expect(report.domGlobals).toEqual(['navigator']);
+    expect(report.error).toBeUndefined();
   });
 
   test('reports a global the import defines', () => {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import type { Component } from 'svelte';
 
 import HarnessProbe from './harness-probe.svelte';
 import { destroyAllHarnesses, liveHarnessCount, mountHarness } from './mount-harness.ts';
@@ -97,5 +98,16 @@ describe('mount harness', () => {
     expect(calls).toEqual(['first', 'second']);
     expect(liveHarnessCount()).toBe(0);
     expect(document.body.children).toHaveLength(0);
+  });
+
+  test('removes the container and rethrows when mounting throws', () => {
+    const failing = (() => {
+      throw new Error('mount failed');
+    }) as unknown as Component<Record<string, unknown>>;
+
+    expect(() => mountHarness(failing, {})).toThrow('mount failed');
+
+    expect(document.body.children).toHaveLength(0);
+    expect(liveHarnessCount()).toBe(0);
   });
 });

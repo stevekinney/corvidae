@@ -26,8 +26,14 @@ export function mountHarness<Props extends Record<string, unknown>>(
 ): MountedHarness {
   const target = document.createElement('div');
   document.body.append(target);
-  const instance = mount(component, { target, props });
-  flushSync();
+  let instance: ReturnType<typeof mount>;
+  try {
+    instance = mount(component, { target, props });
+    flushSync();
+  } catch (error) {
+    target.remove();
+    throw error;
+  }
 
   let destroyed = false;
   const harness: MountedHarness = {

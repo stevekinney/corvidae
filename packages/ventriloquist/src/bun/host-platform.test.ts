@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import { isSupportedHost } from './host-platform.ts';
+import {
+  isSupportedHost,
+  SUPPORTED_HOST_ARCHITECTURES,
+  SUPPORTED_HOST_PLATFORMS,
+} from './host-platform.ts';
 
 describe('isSupportedHost', () => {
   test.each([
@@ -23,7 +27,20 @@ describe('isSupportedHost', () => {
     expect(isSupportedHost({ platform, architecture })).toBe(false);
   });
 
-  test('supports the host this suite runs on', () => {
-    expect(isSupportedHost({ platform: process.platform, architecture: process.arch })).toBe(true);
+  test('answers for the running host exactly as the declared matrix does', () => {
+    const declared =
+      (SUPPORTED_HOST_PLATFORMS as readonly string[]).includes(process.platform) &&
+      (SUPPORTED_HOST_ARCHITECTURES as readonly string[]).includes(process.arch);
+    expect(isSupportedHost({ platform: process.platform, architecture: process.arch })).toBe(
+      declared,
+    );
+  });
+
+  test('supports every declared platform on every declared architecture', () => {
+    for (const platform of SUPPORTED_HOST_PLATFORMS) {
+      for (const architecture of SUPPORTED_HOST_ARCHITECTURES) {
+        expect(isSupportedHost({ platform, architecture })).toBe(true);
+      }
+    }
   });
 });

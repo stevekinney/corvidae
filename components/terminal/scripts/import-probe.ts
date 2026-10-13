@@ -37,36 +37,46 @@ function trapFunction(owner: object, name: string, label: string): void {
   });
 }
 
-function trapConstructor(name: string): void {
-  Object.defineProperty(globalThis, name, {
+function trapConstructor(owner: object, name: string, label: string): void {
+  Object.defineProperty(owner, name, {
     configurable: true,
     writable: true,
     value: function trapped() {
-      trappedCalls.push(`new ${name}`);
-      throw new Error(`new ${name} must not run while importing the package`);
+      trappedCalls.push(`new ${label}`);
+      throw new Error(`new ${label} must not run while importing the package`);
     },
   });
 }
 
-// Bun already defines some of these names (`navigator`), so only the absent ones can be trapped; a
-// read of an absent one, even behind a `typeof` guard, means the import looked at the DOM.
+// Any read of a DOM global, even behind a `typeof` guard, means the import looked at the DOM. A
+// name Bun already defines (`navigator`) keeps its value, behind a getter that records the read.
 for (const name of DOM_GLOBALS) {
-  if (name in globalThis) continue;
+  const existing = Object.getOwnPropertyDescriptor(globalThis, name);
+  const inherited = name in globalThis ? (globalThis as Record<string, unknown>)[name] : undefined;
   Object.defineProperty(globalThis, name, {
     configurable: true,
     get() {
       domGlobalReads.push(name);
-      return undefined;
+      return existing?.get ? existing.get.call(globalThis) : (existing?.value ?? inherited);
     },
   });
 }
+
+// A timer armed on import would keep a real process alive, and the explicit exit below would hide
+// it, so creating one is a finding. The originals come back before the report is written.
+const timerNames = ['setTimeout', 'setInterval', 'setImmediate'] as const;
+const originalTimers = timerNames.map((name) => [name, globalThis[name]] as const);
+for (const name of timerNames) trapFunction(globalThis, name, name);
 
 trapFunction(globalThis, 'fetch', 'fetch');
 for (const name of ['compile', 'instantiate', 'compileStreaming', 'instantiateStreaming']) {
   trapFunction(WebAssembly, name, `WebAssembly.${name}`);
 }
+for (const name of ['Module', 'Instance']) {
+  trapConstructor(WebAssembly, name, `WebAssembly.${name}`);
+}
 for (const name of ['Worker', 'SharedWorker', 'WebSocket', 'EventSource', 'XMLHttpRequest']) {
-  trapConstructor(name);
+  trapConstructor(globalThis, name, name);
 }
 
 // Record every source module the import graph loads. A forbidden module is replaced with an empty
@@ -104,6 +114,10 @@ try {
   await import(resolve(entry));
 } catch (caught) {
   error = caught instanceof Error ? caught.message : String(caught);
+}
+
+for (const [name, original] of originalTimers) {
+  Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: original });
 }
 
 const report = {
