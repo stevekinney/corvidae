@@ -18,7 +18,7 @@ import {
   registerChildCancellationHandler,
 } from './child-workflow-cancellation.ts';
 import { WorkflowAlreadyExistsError } from './errors.ts';
-import { getGeneratorOwnedWorkflowResultPromise } from './handle-result.ts';
+import { getGeneratorOwnedWorkflowResultPromise } from './generator-owned-result.ts';
 import type { WorkflowHandle } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
 import { encodedValuesEqual } from './state-utilities.ts';

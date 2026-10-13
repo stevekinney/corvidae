@@ -66,9 +66,12 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
  * `handle.result()` on the losing engine rejects with this error, including a
  * call made after the loss, for as long as this engine still holds the lost
  * generation. A parent workflow on the losing engine that was awaiting a child
- * this engine abandoned never receives a failure for it: the engine that won the
- * child drives the parent too. The loser writes nothing durable and releases
- * nothing locally, and it does not recover on its own: recovering the workflow on
+ * this engine abandoned is never failed because of the child: the child is healthy
+ * under its winner. Nothing on this engine can settle the parent's view of that
+ * child, though, and the winner may have resumed only the child, so the parent is
+ * abandoned the same way, and its `result()` rejects with this error for the
+ * parent, whose `cause` is the child's. The loser writes nothing durable and
+ * releases nothing locally, and it does not recover on its own: recovering the workflow on
  * the losing engine means re-resuming it from the winner's checkpoint, which this
  * error does not do for you. `ownership: 'workflow-lease'` is the complete
  * answer for two live engines over one store.
@@ -115,6 +118,9 @@ export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpoi
 }
 
 /** Whether `error` reports a lost checkpoint race for exactly this workflow. */
-export function isCheckpointConflictFor(error: unknown, workflowId: string): boolean {
+export function isCheckpointConflictFor(
+  error: unknown,
+  workflowId: string,
+): error is WorkflowCheckpointConflictError {
   return error instanceof WorkflowCheckpointConflictError && error.workflowId === workflowId;
 }

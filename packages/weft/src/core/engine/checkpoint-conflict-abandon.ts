@@ -2,7 +2,11 @@ import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
-import { abandonExecutionAttempt, currentExecutionAttempt } from './execution-attempts.ts';
+import {
+  abandonExecutionAttempt,
+  currentExecutionAttempt,
+  type ExecutionAttempt,
+} from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 
 /**
@@ -61,6 +65,42 @@ export function abandonWorkflowAfterCheckpointConflict(
   }
 
   emitCheckpointConflictWarning(new WeftWorkflowCheckpointConflictWarning(workflowId));
+}
+
+/**
+ * Give up a parent that is parked on a child this engine abandoned after a lost checkpoint race,
+ * the same way the child was given up: nothing durable is written, and the parent's pending
+ * `result()` rejects with a {@link WorkflowCheckpointConflictError} for the parent whose `cause`
+ * is the child's loss.
+ *
+ * Under `ownership: 'none'` nothing on the losing engine can ever settle the parent's view of that
+ * child. The winner may have recovered every workflow, in which case it drives the parent too, or
+ * it may have resumed only the child, in which case the parent would stay parked here for good with
+ * no durable record of why. Either way this engine is no longer the one to drive the parent, so it
+ * stops, exactly as {@link persistCheckpointAbandoningOnConflict} stops a workflow whose own
+ * commit lost.
+ *
+ * `parkedAttempt` is the execution attempt this engine held for the parent when it began awaiting
+ * the child. The loss arrives later, so the abandonment is bound to that attempt rather than to the
+ * generation's token: a parent this engine has since relaunched or replaced is healthy and is left
+ * alone. A parent the engine never held an attempt for has nothing to abandon. Idempotent, so a
+ * parent awaiting several lost children is abandoned once.
+ */
+export function abandonParentAfterChildCheckpointConflict(
+  internals: EngineInternals,
+  parentWorkflowId: string,
+  parkedAttempt: ExecutionAttempt | undefined,
+  childConflict: WorkflowCheckpointConflictError,
+): void {
+  if (parkedAttempt === undefined) return;
+  if (currentExecutionAttempt(internals, parentWorkflowId) !== parkedAttempt) return;
+  abandonWorkflowAfterCheckpointConflict(
+    internals,
+    new WorkflowCheckpointConflictError(parentWorkflowId, {
+      cause: childConflict,
+      workflowExecutionToken: parkedAttempt.workflowExecutionToken,
+    }),
+  );
 }
 
 /**
