@@ -22,12 +22,6 @@ artifacts/
 # but an interrupted build can leave them behind.
 applications/playground/.tmp/
 applications/playground/src/.tmp-*/
-# Electrobun projects its devkit here via `electrobun prepare`; it is a cached
-# download, not source.
-.hutch/
-.cottontail-tmp/
-# The main process pre-bundled by `applications/desktop`'s `build:main`.
-.main-bundle/
 .svelte-kit/
 coverage/
 playwright-report/

@@ -2,7 +2,7 @@
 
 This is the historical consolidation record, including decisions and validation results from the migration. Use the [workspace README](README.md) for current commands and package boundaries. Temporary evidence paths and test totals below describe their recorded runs; they are not prerequisites or current validation results.
 
-This inventory records the consolidation boundaries and validation evidence. The architecture and dependency tables describe the current workspace; later sections retain earlier checkpoints and their original commands. Dependency arrows point from consumer to provider. All fifteen libraries are private source workspaces; Chat-room is the application.
+This inventory records the consolidation boundaries and validation evidence. The architecture and dependency tables describe the current workspace; later sections retain earlier checkpoints and their original commands. Dependency arrows point from consumer to provider. All fifteen libraries are private source workspaces; the playground is the application.
 
 ## Source revisions
 
@@ -32,9 +32,9 @@ This inventory records the consolidation boundaries and validation evidence. The
 | `/Users/stevekinney/Developer/cinder/packages/editor` | `components/editor` | `@lostgradient/editor` | `@lostgradient/editor` | Browser component library |
 | `/Users/stevekinney/Developer/cinder/packages/markdown` | `packages/markdown` | `@lostgradient/markdown` | `@lostgradient/markdown` | Library |
 | `/Users/stevekinney/Developer/cinder/packages/testing` | `packages/testing` | `@cinder/testing` | `@lostgradient/testing` | Library |
-| `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room`, later `applications/desktop` | `@cinder/chat-room-lab` | `@lostgradient/chat-room`, later `@lostgradient/desktop` | Application |
+| `/Users/stevekinney/Developer/cinder/labs/chat-room` | `applications/chat-room`, later `applications/desktop`, since removed | `@cinder/chat-room-lab` | `@lostgradient/chat-room`, later `@lostgradient/desktop` | Application |
 | `/Users/stevekinney/Developer/cinder/packages/playground` | `applications/playground` | `@cinder/playground` | `@lostgradient/playground` | Application |
-| Extracted from `applications/chat-room` | `packages/telephone` | — | `@lostgradient/telephone` | Library |
+| Extracted from `applications/chat-room` | `packages/telephone`, since removed | — | `@lostgradient/telephone` | Library |
 | New in COR-1348 | `packages/evaluation` | — | `@lostgradient/evaluation` | Library |
 
 ## Architecture
@@ -45,21 +45,19 @@ All source libraries are private ESM packages with the sole export `{ ".": "./sr
 
 Shared tool and JSON contracts belong to `@lostgradient/tool-protocol`. Embedding contracts and vector mathematics belong to `@lostgradient/embeddings`. Hashing, signing, and timing-safe comparison belong to `@lostgradient/cryptography`. Armorer owns its Standard Schema detection and declares `@standard-schema/spec` directly.
 
-The desktop chat room and the playground are the applications. The desktop application owns its Electrobun toolchain and builds its renderer with Vite; the playground owns a Bun dev server and static exporter. The `weft` package owns the `weft` and `weft-mcp` source executables. Weft UI owns its Bun browser test host in `components/weft-ui/scripts/browser`. Cross-component browser tests and their Bun host belong to root `scripts/browser-fixtures`; neither test host has a workspace identity. The unused starter server and greeting library have been removed. Libraries have no build or upstream-build dependency.
+The playground is the application. It owns a Bun dev server and static exporter. The `weft` package owns the `weft` and `weft-mcp` source executables. Weft UI owns its Bun browser test host in `components/weft-ui/scripts/browser`. Cross-component browser tests and their Bun host belong to root `scripts/browser-fixtures`; neither test host has a workspace identity. The unused starter server and greeting library have been removed. Libraries have no build or upstream-build dependency.
 
-Turbo's transit task incorporates upstream source in check hashes without executing builds. Application build outputs are `build/**` and `.svelte-kit/**`. Root browser fixture tests cache their generated manifest and lazy-import catalog; Chat-room lint and typecheck cache SvelteKit's generated configuration and types without capturing production output. Dev, preview, clean, and lint-fix tasks are uncached. Workspace tests execute serially because absolute performance assertions require an uncontended workload. Thresholds, assertions, timeouts, and retries are preserved.
+Turbo's transit task incorporates upstream source in check hashes without executing builds. Application build outputs are `build/**` and `.svelte-kit/**`. Root browser fixture tests cache their generated manifest and lazy-import catalog; Dev, preview, clean, and lint-fix tasks are uncached. Workspace tests execute serially because absolute performance assertions require an uncontended workload. Thresholds, assertions, timeouts, and retries are preserved.
 
 File length, closure hoisting, and generic simplification are design-review guidance. Classic cyclomatic complexity is capped at 100 in implementation and tests and 300 under `scripts/`. Refactors retained here establish specific source owners, remove duplication, or repair demonstrated defects. TypeScript's strict configuration, including `noImplicitReturns`, enforces the contracts; lint remains warning-failing. Cinder retains its ES2022 browser runtime contract.
 
 ## Complete internal dependency graph
 
-Arrows run from consumer to provider. Every manifest edge appears below, including development dependencies. The 22-workspace graph has 86 edges. Root tooling adds 6 development edges; no package depends on the root.
+Arrows run from consumer to provider. Every manifest edge appears below, including development dependencies. The 20-workspace graph has 79 edges. Root tooling adds 1 development edge; no package depends on the root.
 
 | Consumer | Runtime or source-contract providers | Development providers |
 | --- | --- | --- |
-| `@lostgradient/desktop` | `armorer`, `@lostgradient/chat`, `@lostgradient/cinder`, `conversationalist`, `@lostgradient/operative`, `@lostgradient/telephone` | `@lostgradient/typescript` |
 | `@lostgradient/playground` | `@lostgradient/chat`, `@lostgradient/cinder`, `@lostgradient/editor`, `@lostgradient/markdown`, `@lostgradient/testing` | `@lostgradient/typescript` |
-| `@lostgradient/telephone` | `armorer`, `@lostgradient/chat`, `@lostgradient/operative` | `conversationalist`, `@lostgradient/typescript` |
 | `@lostgradient/chat` | `@lostgradient/cinder`, `conversationalist`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/cinder` | `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
 | `@lostgradient/editor` | `@lostgradient/cinder`, `@lostgradient/markdown` | `@lostgradient/testing`, `@lostgradient/typescript` |
@@ -89,9 +87,7 @@ A root override consolidates SvelteKit and Express on `cookie@0.7.2`. This remov
 
 | Workspace | Direct external dependencies |
 | --- | --- |
-| `@lostgradient/desktop` | `@lostgradient/environmentalist`, `electrobun`, `svelte`, `zod` |
 | `@lostgradient/playground` | `@lostgradient/environmentalist`, `@shikijs/themes`, `lucide-svelte`, `postcss`, `shiki`, `svelte`, `ts-morph`, `zod` |
-| `@lostgradient/telephone` | none |
 | `armorer` | `@modelcontextprotocol/client`, `@modelcontextprotocol/core`, `@modelcontextprotocol/server`, `@openai/agents`, `@opentelemetry/api`, `@standard-schema/spec`, `zod` |
 | `@lostgradient/bureau` | `zod` |
 | `@lostgradient/chat` | `decode-named-character-reference`, `micromark-util-decode-numeric-character-reference`, `svelte`, `zod` |

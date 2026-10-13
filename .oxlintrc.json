@@ -74,8 +74,6 @@
     "**/*.generated.d.ts",
     "*.lock",
     "**/.playwright/**",
-    "**/.hutch/**",
-    "**/.cottontail-tmp/**",
     "**/dist/**",
     "**/artifacts/**"
   ],

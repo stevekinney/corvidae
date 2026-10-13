@@ -46,7 +46,7 @@ beforeAll(async () => {
   git('config', 'user.name', 'test');
   for (const path of [
     'applications/playground/package.json',
-    'applications/desktop/package.json',
+    'applications/example/package.json',
     'packages/weft/package.json',
     'scripts/mirror/package-map.json',
     'scripts/mirror/sync.ts',
@@ -70,7 +70,7 @@ describe('ignore-build.sh', () => {
     ['packages/weft/package.json', 1],
     ['scripts/mirror/package-map.json', 1],
     ['tsconfig.json', 1],
-    ['applications/desktop/package.json', 0],
+    ['applications/example/package.json', 0],
     ['scripts/mirror/sync.ts', 0],
   ])('a commit touching only %s exits %i', async (path, expected) => {
     const head = await commitTouching(path);

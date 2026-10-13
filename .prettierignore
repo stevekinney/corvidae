@@ -3,8 +3,6 @@ bun.lock
 build/
 dist/
 artifacts/
-.hutch/
-.cottontail-tmp/
 .svelte-kit/
 coverage/
 .turbo/
