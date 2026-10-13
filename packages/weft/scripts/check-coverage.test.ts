@@ -49,6 +49,7 @@ describe('listCoverageTestFiles', () => {
       'scripts/benchmarks/bun-sql.test.ts',
       'scripts/benchmarks/cold-start.test.ts',
       'scripts/benchmarks/load-growth-memory.test.ts',
+      'scripts/benchmarks/memory-footprint-growth.test.ts',
       'scripts/benchmarks/memory-per-workflow.test.ts',
       'scripts/benchmarks/recovery.test.ts',
       'scripts/benchmarks/token-stream-latency.test.ts',

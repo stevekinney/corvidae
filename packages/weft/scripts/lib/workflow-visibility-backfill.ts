@@ -33,14 +33,24 @@ const VISIBILITY_INDEX_PREFIXES = [
 ];
 
 /**
- * How long a run waits after announcing a change to whether engines must write
- * index rows (the `wf-idx-meta:building` marker going up, or the watermark and
- * marker coming down) before it depends on that change. Engines re-read the
- * decision at most every {@link WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS}, so
- * twice that window covers the cache age plus the read itself.
+ * How long a run waits after removing the `wf-idx-meta:version` watermark before
+ * it touches any index row. Engines cache the watermark for up to
+ * {@link WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS}, so twice that window
+ * covers the cache age plus the read itself, after which no `list()` or
+ * `aggregate()` still trusts rows the run is about to clear.
  */
 export const WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS =
   2 * WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS;
+
+/** Thrown when another backfill run holds `wf-idx-meta:building`. */
+export class WorkflowVisibilityBackfillInProgressError extends Error {
+  constructor() {
+    super(
+      'Another workflow visibility backfill holds wf-idx-meta:building. Wait for it to finish; if it crashed, run --drop and start again.',
+    );
+    this.name = 'WorkflowVisibilityBackfillInProgressError';
+  }
+}
 
 export type BackfillReport = {
   processed: number;
@@ -63,8 +73,8 @@ export type WorkflowVisibilityBackfillOptions = {
   checkpointEvery?: number;
   onWatermarkWritten?: () => void;
   /**
-   * Milliseconds to wait, after writing the `wf-idx-meta:building` marker, for
-   * running engines to notice it and start writing index rows. Defaults to
+   * Milliseconds to wait, after removing the watermark, for running engines to
+   * stop trusting the index. Defaults to
    * {@link WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS}; pass `0` only
    * when no engine can be running against the storage.
    */
@@ -104,7 +114,10 @@ async function loadCursor(storage: Storage): Promise<string | undefined> {
  * Returns a {@link BackfillReport}. `watermarkWritten` is `true` only
  * when the full scan completed with no conditional-batch conflicts —
  * any conflicts indicate the engine wrote to a workflow during the
- * pass, in which case the caller should re-run the backfill.
+ * pass, in which case the caller should re-run the backfill. Throws
+ * {@link WorkflowVisibilityBackfillInProgressError} when another run holds
+ * the backfill lock, or when a `--drop` cleared this run's lock before it
+ * published the watermark.
  */
 export async function runWorkflowVisibilityBackfill(
   storage: Storage,
@@ -119,22 +132,53 @@ export async function runWorkflowVisibilityBackfill(
     );
   }
 
-  // Announce first. From here on, every engine that re-reads the marker writes
-  // index rows with the workflow state, so a workflow created or changed after
-  // the cursor passed it is already indexed. The marker goes up BEFORE the
-  // watermark comes down so an engine never sees neither. Engines that skipped
-  // index writes while the watermark was stale may have left stale or orphaned
-  // rows, so a run with no saved cursor rebuilds from empty (readers already
-  // take the scan path because the watermark is gone); a resumed run keeps its
-  // own rows.
+  // Claim the run. Two runs sweeping and rebuilding at once could let one
+  // publish the watermark while the other is still deleting rows, so only the
+  // run that wrote its own token into an absent key proceeds. The key is
+  // released on every return or throw; a run killed outright leaves it, and
+  // `--drop` clears it.
+  const lockToken = encode(crypto.randomUUID());
+  const claimed = await storageConditionalBatch(
+    storage,
+    [{ key: KEYS.workflowVisibilityMetaBuilding(), expectedValue: null }],
+    [{ type: 'put', key: KEYS.workflowVisibilityMetaBuilding(), value: lockToken }],
+  );
+  if (!claimed) {
+    throw new WorkflowVisibilityBackfillInProgressError();
+  }
+
+  try {
+    return await backfillWhileHoldingLock(storage, options, logger, checkpointEvery, lockToken);
+  } finally {
+    await storageConditionalBatch(
+      storage,
+      [{ key: KEYS.workflowVisibilityMetaBuilding(), expectedValue: lockToken }],
+      [{ type: 'delete', key: KEYS.workflowVisibilityMetaBuilding() }],
+    );
+  }
+}
+
+async function backfillWhileHoldingLock(
+  storage: Storage,
+  options: WorkflowVisibilityBackfillOptions,
+  logger: BackfillLogger,
+  checkpointEvery: number,
+  lockToken: Uint8Array,
+): Promise<BackfillReport> {
+  // Readers stop trusting the index before any row changes. Engines that keep
+  // writing during the run must have been created with
+  // `maintainWorkflowVisibilityIndexes: true` (or `ownership: 'workflow-lease'`),
+  // so every workflow that changes after the scan passed it is indexed by the
+  // write that changed it. A run with no saved cursor rebuilds from empty,
+  // because engines that skipped index writes while the watermark was stale may
+  // have left stale or orphaned rows; a resumed run keeps its own rows.
   const resumeCursor = await loadCursor(storage);
-  await storage.put(KEYS.workflowVisibilityMetaBuilding(), encode(Date.now()));
   await storage.delete(KEYS.workflowVisibilityMetaVersion());
   await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
   await settle(
     options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
     logger,
-    'observe the backfill marker and start writing index rows',
+    'stop trusting the visibility index',
   );
   if (resumeCursor === undefined) {
     const cleared = await sweepVisibilityIndexRows(storage, logger, 500);
@@ -150,24 +194,29 @@ export async function runWorkflowVisibilityBackfill(
     return { processed, conflicts, watermarkWritten: false };
   }
 
-  // Advance the watermark, clear the cursor and lower the building marker
-  // atomically. The engine either sees the new index version with no
-  // in-progress marker, or it sees neither — never the partial state — and it
-  // keeps writing index rows either way because the watermark is now current.
-  await storage.batch([
-    {
-      type: 'put',
-      key: KEYS.workflowVisibilityMetaVersion(),
-      value: encode(WORKFLOW_VISIBILITY_INDEX_VERSION),
-    },
-    {
-      type: 'put',
-      key: KEYS.workflowVisibilityMetaBuiltAt(),
-      value: encode(Date.now()),
-    },
-    { type: 'delete', key: KEYS.workflowVisibilityMetaCursor() },
-    { type: 'delete', key: KEYS.workflowVisibilityMetaBuilding() },
-  ]);
+  // Advance the watermark and clear the cursor atomically, and only while this
+  // run still holds the lock, so a `--drop` that cleared it mid-run is not
+  // overwritten by a watermark for rows it has since swept.
+  const published = await storageConditionalBatch(
+    storage,
+    [{ key: KEYS.workflowVisibilityMetaBuilding(), expectedValue: lockToken }],
+    [
+      {
+        type: 'put',
+        key: KEYS.workflowVisibilityMetaVersion(),
+        value: encode(WORKFLOW_VISIBILITY_INDEX_VERSION),
+      },
+      {
+        type: 'put',
+        key: KEYS.workflowVisibilityMetaBuiltAt(),
+        value: encode(Date.now()),
+      },
+      { type: 'delete', key: KEYS.workflowVisibilityMetaCursor() },
+    ],
+  );
+  if (!published) {
+    throw new WorkflowVisibilityBackfillInProgressError();
+  }
   options.onWatermarkWritten?.();
 
   return { processed, conflicts: 0, watermarkWritten: true };
@@ -275,13 +324,14 @@ async function sweepVisibilityIndexRows(
 }
 
 /**
- * Drop every visibility-index row plus the watermark. Order is
- * load-bearing: the watermark and the building marker go first so the
- * engine immediately falls back to the slow path and, once it re-reads them,
- * stops writing index rows; the script waits that out, then the rows
- * themselves are removed, then the cursor is cleared. Reversing this order
- * would leave a window where the engine trusts a watermark for indexes that
- * no longer exist, or writes rows back behind the sweep.
+ * Drop every visibility-index row plus the watermark. Order is load-bearing:
+ * the watermark goes first so engines fall back to the slow path once they
+ * re-read it; the script waits that out, then the rows themselves are removed,
+ * then the cursor is cleared. Reversing this order would leave a window where
+ * an engine trusts a watermark for indexes that no longer exist. The backfill
+ * lock is cleared with the watermark, which is how a run that was killed
+ * outright is recovered; a backfill still running when its lock is cleared
+ * cannot publish its watermark afterwards.
  */
 export async function runWorkflowVisibilityDrop(
   storage: Storage,
@@ -301,7 +351,7 @@ export async function runWorkflowVisibilityDrop(
   await settle(
     options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
     logger,
-    'observe the drop and stop writing index rows',
+    'stop trusting the visibility index',
   );
 
   const rowsDeleted = await sweepVisibilityIndexRows(storage, logger, fallbackBatchSize);

@@ -11,10 +11,14 @@ The backfill script builds the index rows for every existing workflow. When the 
 A state write maintains the index rows only when one of these holds:
 
 - The watermark is current, so the indexes are live and must stay exact.
-- A backfill is running. The script writes `wf-idx-meta:building` before it scans, so a workflow that changes or appears after the cursor passed it is indexed by the write that produced it.
 - The engine runs with `ownership: 'workflow-lease'`. Its reclaim scan reads the `running` status index regardless of the watermark.
+- The engine was created with `maintainWorkflowVisibilityIndexes: true`. This is fixed for the engine's lifetime, so it can't change between assembling a write and committing it.
 
-Every other write skips the indexes. A fresh database therefore pays nothing for them until you run the backfill. Engines re-read the watermark and the marker at most once per second, so the script waits two seconds after writing the marker (and after removing the watermark in `--drop`) before it touches any rows. That wait is what lets an engine that was still running observe the change.
+Every other write skips the indexes. A fresh database therefore pays nothing for them until you run the backfill.
+
+Engines cache the watermark for at most one second. Both the backfill and `--drop` remove the watermark first, then wait two seconds before touching any rows. After that wait, no running engine still trusts rows that are about to be cleared.
+
+Only one backfill runs at a time. A run claims `wf-idx-meta:building` before it does anything else and releases it when it returns. A second run started while the first holds it exits with code `4`.
 
 ## When to run it
 
@@ -24,7 +28,11 @@ You do not need this script for browser storage, because it instantiates `BunSQL
 
 ## Before running
 
-Pause every path that can write workflow state or write directly to Weft storage:
+The backfill scans each workflow once. A workflow that changes after the scan passed it stays exact only if the write that changed it also wrote its index rows.
+
+An engine can keep running during the backfill only if it was created with `maintainWorkflowVisibilityIndexes: true` or `ownership: 'workflow-lease'`. An engine without either skips index rows until it observes the new watermark, so a change it commits during the run leaves that workflow under stale index rows. Once the watermark is current, every engine maintains the indexes and the option no longer changes anything.
+
+Pause every other path that can write workflow state or write directly to Weft storage:
 
 - Weft engine processes that can start, update, signal, cancel, time out, recover, or complete workflows.
 - Import scripts that create or mutate workflow records.
@@ -32,7 +40,7 @@ Pause every path that can write workflow state or write directly to Weft storage
 - Custom storage-layer write paths that call `put`, `delete`, `batch`, `conditionalBatch`, `deletePrefix`, or raw SQL against the Weft key-value table.
 - Direct database jobs, migrations, or maintenance scripts that touch `wf:*`, `wf-idx-*`, `attr:*`, `idx:*`, `tag:*`, or related workflow visibility keys.
 
-The engine's normal write path is safe because it updates visibility indexes together with workflow state whenever the indexes are live. The dangerous case is a foreign write path that changes a workflow below the current cursor without also maintaining its manifest and index rows.
+The engine's normal write path is safe because it updates visibility indexes together with workflow state whenever the indexes are live, or whenever the engine runs with the option above. The dangerous case is a foreign write path that changes a workflow below the current cursor without also maintaining its manifest and index rows.
 
 ## Run the backfill
 
@@ -73,6 +81,7 @@ Only resume a paused foreign write path if it now uses the engine write path or 
 | `1` | Fatal usage or runtime error | Fix the reported problem, such as a missing `--storage` value or an unexpected exception, then run the command again. |
 | `2` | Backend lacks `conditionalBatch` | Use the Bun SQLite storage file targeted by this script. The backfill refuses unsafe backends because racing writes could leave workflows un-indexed. |
 | `3` | Conditional conflicts occurred | Keep writers paused, run `--drop`, then run the backfill again from the beginning. A conflict means the script skipped at least one workflow that changed during the scan. |
+| `4` | Another backfill holds the lock | Wait for the other run to finish. If no other run is alive, a killed run left the lock behind; run `--drop`, then start the backfill again. A run whose lock `--drop` cleared also exits with `4`, without publishing a watermark. |
 
 Exit code `3` is retryable, but do not retry against the saved cursor. A conflicted workflow may be below that cursor, so reset the visibility-index state first:
 
@@ -93,12 +102,12 @@ bun scripts/rebuild-workflow-visibility-indexes.ts --storage /var/lib/weft/weft.
 
 The drop order is intentional:
 
-- The watermark and the building marker are removed first, so the engine immediately stops trusting the index.
-- The script waits for running engines to observe that they no longer need to write index rows.
+- The watermark and the backfill lock are removed first, so engines stop trusting the index once their cached watermark expires.
+- The script waits for running engines to observe that.
 - The `wf-idx-*` rows are swept after the wait.
 - The cursor is cleared last.
 
-That ordering avoids the unsafe window where the engine sees a current watermark but the indexed rows are missing or partially deleted, and it keeps an engine that had not yet noticed the drop from writing rows back behind the sweep.
+That ordering avoids the unsafe window where an engine sees a current watermark but the indexed rows are missing or partially deleted. An engine that still writes index rows after the drop, under `workflow-lease` or the option, only leaves rows the next backfill clears before it rebuilds.
 
 ## Verify the rollout
 

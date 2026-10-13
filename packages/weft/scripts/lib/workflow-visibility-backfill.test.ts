@@ -10,6 +10,7 @@ import { KEYS, type ScanOptions } from '../../src/storage/interface.ts';
 import { MemoryStorage } from '../../src/storage/memory.ts';
 
 import {
+  WorkflowVisibilityBackfillInProgressError,
   runWorkflowVisibilityBackfill,
   runWorkflowVisibilityDrop,
 } from './workflow-visibility-backfill.ts';
@@ -183,25 +184,24 @@ describe('runWorkflowVisibilityBackfill', () => {
     },
   );
 
-  it('raises the building marker before scanning and lowers it with the watermark', async () => {
+  it('holds the backfill lock through the watermark batch and releases it afterwards', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
-    const markerSeenAtWatermark: boolean[] = [];
+    const lockHeldAtWatermark: boolean[] = [];
     const observingStorage = new RacingStorage(storage, new Set(), async () => {
-      markerSeenAtWatermark.push(await storage.has(KEYS.workflowVisibilityMetaBuilding()));
+      lockHeldAtWatermark.push(await storage.has(KEYS.workflowVisibilityMetaBuilding()));
     });
     expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(false);
 
     const report = await runWorkflowVisibilityBackfill(observingStorage, { settleMilliseconds: 0 });
 
     expect(report.watermarkWritten).toBe(true);
-    // Still up when the watermark batch is about to commit, so an engine never sees neither.
-    expect(markerSeenAtWatermark).toEqual([true]);
+    expect(lockHeldAtWatermark).toEqual([true]);
     expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(false);
     expect(await getWorkflowVisibilityWatermark(storage)).toBe('current');
   });
 
-  it('leaves the building marker up when conflicts stop the run short of the watermark', async () => {
+  it('releases the backfill lock when conflicts stop the run short of the watermark', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
     const racingStorage = new RacingStorage(storage, new Set(['wf-a']));
@@ -209,7 +209,53 @@ describe('runWorkflowVisibilityBackfill', () => {
     const report = await runWorkflowVisibilityBackfill(racingStorage, { settleMilliseconds: 0 });
 
     expect(report.watermarkWritten).toBe(false);
-    expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(true);
+    expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(false);
+  });
+
+  it('lets only one of two concurrent runs proceed', async () => {
+    using storage = new MemoryStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
+
+    const outcomes = await Promise.allSettled([
+      runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 20 }),
+      runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 20 }),
+    ]);
+
+    expect(outcomes.map((outcome) => outcome.status).toSorted()).toEqual(['fulfilled', 'rejected']);
+    const rejected = outcomes.find((outcome) => outcome.status === 'rejected');
+    expect(rejected?.reason).toBeInstanceOf(WorkflowVisibilityBackfillInProgressError);
+    expect(await getWorkflowVisibilityWatermark(storage)).toBe('current');
+    expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(false);
+  });
+
+  it('refuses to start while another run holds the lock, touching nothing', async () => {
+    using storage = new MemoryStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
+    await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+    const heldLock = encode('another-run');
+    await storage.put(KEYS.workflowVisibilityMetaBuilding(), heldLock);
+
+    expect(
+      await throwingRejectionOf(runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 })),
+    ).toThrow(WorkflowVisibilityBackfillInProgressError);
+    expect(await storage.get(KEYS.workflowVisibilityMetaBuilding())).toEqual(heldLock);
+    expect(await getWorkflowVisibilityWatermark(storage)).toBe('current');
+  });
+
+  it('does not publish the watermark after a drop cleared its lock mid-run', async () => {
+    using storage = new MemoryStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
+    const droppingStorage = new RacingStorage(storage, new Set(), async () => {
+      await runWorkflowVisibilityDrop(storage, { settleMilliseconds: 0 });
+    });
+
+    expect(
+      await throwingRejectionOf(
+        runWorkflowVisibilityBackfill(droppingStorage, { settleMilliseconds: 0 }),
+      ),
+    ).toThrow(WorkflowVisibilityBackfillInProgressError);
+    expect(await getWorkflowVisibilityWatermark(storage)).toBe('stale');
+    expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([]);
   });
 
   it('takes the watermark down before it clears rows for a full rebuild', async () => {
@@ -260,7 +306,7 @@ describe('runWorkflowVisibilityBackfill', () => {
     ]);
   });
 
-  it('waits the settle window after announcing itself and before it touches any row', async () => {
+  it('waits the settle window after removing the watermark and before it touches any row', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
     const messages: string[] = [];
@@ -374,7 +420,7 @@ describe('runWorkflowVisibilityDrop', () => {
 
     expect(await storage.get(KEYS.workflow('wf-a'))).not.toBeNull();
   });
-  it('removes the building marker and waits the settle window before sweeping rows', async () => {
+  it('clears a lock a killed run left and waits the settle window before sweeping rows', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
     await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });

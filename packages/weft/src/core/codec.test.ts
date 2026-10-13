@@ -3,6 +3,10 @@ import { describe, expect, it } from 'bun:test';
 import { encode as msgpackEncode } from '@msgpack/msgpack';
 
 import { decode, encode, validateCloneable } from './codec.ts';
+import {
+  SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES,
+  sharedEncoderScratchBytesForTesting,
+} from './codec/api.ts';
 import { extensionCodec, replaceUndefined } from './codec/extension-codec.ts';
 import {
   registerSerializer,
@@ -664,5 +668,25 @@ describe('encode output ownership', () => {
     } finally {
       resetSerializerRegistryForTesting();
     }
+  });
+
+  it('releases the scratch buffer an oversized encode grew', () => {
+    const oversized = new Uint8Array(SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES * 4);
+
+    const bytes = encode({ oversized });
+
+    expect(bytes.byteLength).toBeGreaterThan(SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES * 4);
+    expect(sharedEncoderScratchBytesForTesting()).toBeLessThanOrEqual(
+      SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES,
+    );
+    expect((decode(bytes) as { oversized: Uint8Array }).oversized).toEqual(oversized);
+  });
+
+  it('keeps reusing its scratch buffer for encodes under the limit', () => {
+    encode({ payload: 'w'.repeat(SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES / 2) });
+
+    expect(sharedEncoderScratchBytesForTesting()).toBeGreaterThan(
+      SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES / 2,
+    );
   });
 });

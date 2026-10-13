@@ -12,12 +12,14 @@
  * policy: when `conditionalBatch` is unavailable the library refuses
  * to run; stop the engine, re-run the backfill, then restart.
  *
- * Engines write index rows only while the watermark is current or a backfill
- * is running (`wf-idx-meta:building`), so a database that has never been
+ * Engines write index rows only once the watermark is current, under
+ * `ownership: 'workflow-lease'`, or when created with
+ * `maintainWorkflowVisibilityIndexes: true`, so a database that has never been
  * backfilled carries no index rows. A run that starts without a saved cursor
- * therefore rebuilds every row from the workflow records, and both a run and
- * `--drop` wait two seconds after changing that decision so a running engine
- * can observe it (see `scripts/lib/workflow-visibility-backfill.ts`).
+ * therefore rebuilds every row from the workflow records. Both a run and
+ * `--drop` wait two seconds after removing the watermark so a running engine
+ * stops trusting the index, and only one run holds `wf-idx-meta:building` at a
+ * time (see `scripts/lib/workflow-visibility-backfill.ts`).
  *
  * @module scripts/rebuild-workflow-visibility-indexes
  */
@@ -28,6 +30,7 @@ import { parseArgs } from 'node:util';
 import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
 
 import {
+  WorkflowVisibilityBackfillInProgressError,
   runWorkflowVisibilityBackfill,
   runWorkflowVisibilityDrop,
 } from './lib/workflow-visibility-backfill.ts';
@@ -115,6 +118,10 @@ async function main(): Promise<void> {
         `Backfill complete. Processed ${report.processed} workflows. Watermark advanced.`,
       );
     } catch (error) {
+      if (error instanceof WorkflowVisibilityBackfillInProgressError) {
+        console.error(error.message);
+        exit(4);
+      }
       if (error instanceof Error && error.message.startsWith('Storage backend does not expose')) {
         console.error(
           [

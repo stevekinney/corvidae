@@ -17,32 +17,31 @@
  *
  * - `ownership: 'workflow-lease'` always maintains: the reclaim scan enumerates
  *   `wf-idx-status:running:` regardless of the watermark.
+ * - The engine was created with `maintainWorkflowVisibilityIndexes: true`. An
+ *   engine that keeps writing while the backfill runs needs it: the backfill
+ *   scans `wf:` once, so a workflow that changes after the scan passed it must
+ *   already be indexed by the write that changed it. The decision is fixed for
+ *   the engine's lifetime, so there is no window in which a write assembled
+ *   under one answer commits under another.
  * - The watermark is `current`: the indexes are live and must stay exact.
- * - A backfill is in flight (`wf-idx-meta:building` exists): the backfill scans
- *   `wf:` once, and any workflow that changes or appears after its cursor
- *   passed must already be indexed by the runtime write that produced it.
  *
- * Every other write skips the indexes entirely.
+ * Every other write skips the indexes.
  *
- * The decision is read from storage and cached for
- * {@link WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS}, the same window the
- * query planner already accepts for the watermark. The write paths every
+ * The watermark half of the decision is read from storage and cached for
+ * {@link WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS}. The write paths every
  * workflow passes through (start, completion, retention purge, failure and
  * termination, tag and attribute updates, delayed-start launch) `await`
- * {@link refreshWorkflowVisibilityMaintenance} before they assemble operations,
- * so the decision they use is never older than that window; the backfill relies
- * on this by writing the marker, then waiting out the window before it scans
- * (see `scripts/lib/workflow-visibility-backfill.ts`). The occasional paths
- * (fork, resume, checkpoint retry) do not refresh: they use the last decision
- * while it is fresh and maintain when it is missing or expired. That is the
- * safe direction, so the worst case is a few index rows on a database whose
- * indexes are not live, which the next backfill discards when it rebuilds from
- * empty.
+ * {@link refreshWorkflowVisibilityMaintenance} before they assemble operations.
+ * The occasional paths (fork, resume, checkpoint retry) do not refresh: they
+ * use the last decision while it is fresh and maintain when it is missing or
+ * expired. That is the safe direction, so the worst case is a few index rows on
+ * a database whose indexes are not live, which the next backfill discards when
+ * it rebuilds from empty.
  *
  * @module core/engine/workflow-visibility-maintenance
  */
 
-import { KEYS, storageHas, type BatchOperation } from '../../storage/interface.ts';
+import type { BatchOperation } from '../../storage/interface.ts';
 import type { WorkflowState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
 import {
@@ -65,7 +64,7 @@ export type WorkflowVisibilityMaintenanceDecision = {
  * {@link refreshWorkflowVisibilityMaintenance}.
  */
 export function shouldMaintainWorkflowVisibilityIndexes(internals: EngineInternals): boolean {
-  if (internals.options.ownershipMode === 'workflow-lease') {
+  if (maintainsRegardlessOfWatermark(internals)) {
     return true;
   }
   const decision = internals.workflowVisibilityMaintenance;
@@ -81,7 +80,7 @@ export function shouldMaintainWorkflowVisibilityIndexes(internals: EngineInterna
 export function refreshWorkflowVisibilityMaintenance(
   internals: EngineInternals,
 ): Promise<void> | undefined {
-  if (internals.options.ownershipMode === 'workflow-lease') {
+  if (maintainsRegardlessOfWatermark(internals)) {
     return undefined;
   }
   const decision = internals.workflowVisibilityMaintenance;
@@ -99,16 +98,20 @@ export function refreshWorkflowVisibilityMaintenance(
   return refresh;
 }
 
+function maintainsRegardlessOfWatermark(internals: EngineInternals): boolean {
+  return (
+    internals.options.ownershipMode === 'workflow-lease' ||
+    internals.options.maintainWorkflowVisibilityIndexes
+  );
+}
+
 async function readWorkflowVisibilityMaintenance(internals: EngineInternals): Promise<void> {
   const readAt = Date.now();
-  const [watermark, buildInFlight] = await Promise.all([
-    getWorkflowVisibilityWatermark(internals.storage),
-    storageHas(internals.storage, KEYS.workflowVisibilityMetaBuilding()),
-  ]);
+  const watermark = await getWorkflowVisibilityWatermark(internals.storage);
   internals.workflowVisibilityMaintenance = {
-    maintain: watermark === 'current' || buildInFlight,
-    // Anchored to when the read STARTED: the backfill's settle wait is measured
-    // from its marker write, so a decision must not outlive that by the read latency.
+    maintain: watermark === 'current',
+    // Anchored to when the read STARTED, so a decision never outlives the cache
+    // window by the read latency.
     expiresAt: readAt + WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS,
   };
 }

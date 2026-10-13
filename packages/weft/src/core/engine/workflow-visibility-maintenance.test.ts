@@ -123,25 +123,73 @@ describe('workflow visibility index maintenance', () => {
     }
   });
 
-  it('maintains the indexes while a backfill is in flight', async () => {
-    const storage = new MemoryStorage();
-    await storage.put(KEYS.workflowVisibilityMetaBuilding(), encode(Date.now()));
+  it('writes no index rows for a held backfill lock alone, because engines never read it', async () => {
+    const storage = new ReadCountingStorage();
+    await storage.put(KEYS.workflowVisibilityMetaBuilding(), encode('another-run'));
     const engine = new Engine({ storage });
     engine.register(noopWorkflow);
 
     try {
-      await runToCompletion(engine, 'building-1');
+      await runToCompletion(engine, 'locked-1');
 
-      expect(await storage.has(KEYS.workflowVisibilityStatus('completed', 'building-1'))).toBe(
-        true,
-      );
-      expect(await storage.has(KEYS.workflowVisibilityManifest('building-1'))).toBe(true);
+      expect(await indexKeys(storage)).toEqual([]);
+      expect(storage.hasCounts.get(KEYS.workflowVisibilityMetaBuilding())).toBeUndefined();
+      expect(storage.getCounts.get(KEYS.workflowVisibilityMetaBuilding())).toBeUndefined();
     } finally {
       engine[Symbol.dispose]();
     }
   });
 
-  it('starts maintaining once the cached decision expires after a backfill begins', async () => {
+  it('maintains from the first write, without reading storage, when created with maintainWorkflowVisibilityIndexes', async () => {
+    const storage = new ReadCountingStorage();
+    const engine = new Engine({ storage, maintainWorkflowVisibilityIndexes: true });
+    engine.register(noopWorkflow);
+
+    try {
+      expect(shouldMaintainWorkflowVisibilityIndexes(getInternals(engine))).toBe(true);
+      expect(refreshWorkflowVisibilityMaintenance(getInternals(engine))).toBeUndefined();
+
+      await runToCompletion(engine, 'option-1');
+
+      expect(await storage.has(KEYS.workflowVisibilityStatus('completed', 'option-1'))).toBe(true);
+      expect(await storage.has(KEYS.workflowVisibilityManifest('option-1'))).toBe(true);
+      expect(storage.getCounts.get(KEYS.workflowVisibilityMetaVersion())).toBeUndefined();
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('keeps a workflow exact when it changes after a concurrent backfill scanned it', async () => {
+    const storage = new MemoryStorage();
+    const engine = new Engine({ storage, maintainWorkflowVisibilityIndexes: true });
+    engine.register(
+      workflow({ name: 'visibility-maintenance-parked' }).execute(async function* (context) {
+        return yield* context.waitForSignal<string>('go');
+      }),
+    );
+
+    try {
+      const handle = await engine.start('visibility-maintenance-parked', undefined, {
+        id: 'parked-1',
+      });
+      // The backfill scans the workflow while it is running, publishes the
+      // watermark, and only then does the workflow change. With the indexes
+      // live the change has to move the workflow to its completed rows.
+      const report = await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+      expect(report.watermarkWritten).toBe(true);
+      expect(await storage.has(KEYS.workflowVisibilityStatus('running', 'parked-1'))).toBe(true);
+
+      await engine.signal('parked-1', 'go', 'now');
+      await handle.result();
+
+      expect(await storage.has(KEYS.workflowVisibilityStatus('running', 'parked-1'))).toBe(false);
+      expect(await storage.has(KEYS.workflowVisibilityStatus('completed', 'parked-1'))).toBe(true);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('starts maintaining once the cached decision expires after the watermark becomes current', async () => {
     const storage = new MemoryStorage();
     const startedAt = freezeClock();
     const engine = new Engine({ storage });
@@ -151,10 +199,12 @@ describe('workflow visibility index maintenance', () => {
       await runToCompletion(engine, 'before-1');
       expect(await indexKeys(storage)).toEqual([]);
 
-      await storage.put(KEYS.workflowVisibilityMetaBuilding(), encode(startedAt));
+      await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
       // Still inside the freshness window: the engine keeps acting on what it last read.
       await runToCompletion(engine, 'inside-window-1');
-      expect(await indexKeys(storage)).toEqual([]);
+      expect(await storage.has(KEYS.workflowVisibilityStatus('completed', 'inside-window-1'))).toBe(
+        false,
+      );
 
       setSystemTime(startedAt + WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS + 1);
       await runToCompletion(engine, 'after-window-1');
@@ -166,7 +216,7 @@ describe('workflow visibility index maintenance', () => {
     }
   });
 
-  it('stops maintaining after the watermark and marker are removed', async () => {
+  it('stops maintaining after the watermark is removed', async () => {
     const storage = new MemoryStorage();
     await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
     const startedAt = freezeClock();
@@ -204,7 +254,7 @@ describe('workflow visibility index maintenance', () => {
       expect(refreshes.every((refresh) => refresh !== undefined)).toBe(true);
       await Promise.all(refreshes);
 
-      expect(storage.hasCounts.get(KEYS.workflowVisibilityMetaBuilding())).toBe(1);
+      expect(storage.hasCounts.get(KEYS.workflowVisibilityMetaBuilding())).toBeUndefined();
       expect(storage.getCounts.get(KEYS.workflowVisibilityMetaVersion())).toBe(1);
       expect(refreshWorkflowVisibilityMaintenance(internals)).toBeUndefined();
       expect(shouldMaintainWorkflowVisibilityIndexes(internals)).toBe(false);

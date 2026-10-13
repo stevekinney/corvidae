@@ -7,7 +7,19 @@ import { extensionCodec, replaceUndefined } from './extension-codec.ts';
 // (two encodes per start), and returns a view into that buffer rather than an exact-size copy.
 // `Encoder#encode` returns an exact-size copy and clones itself when re-entered (an extension
 // encoder that calls back into `encode`), so sharing one instance is safe.
-const sharedEncoder = new Encoder({ extensionCodec });
+//
+// The encoder grows its scratch buffer to fit the largest value it has encoded and never shrinks
+// it, so after an encode larger than this the shared instance is replaced. One oversized input,
+// checkpoint or signal therefore does not pin its size in memory for the life of the process,
+// while the small payloads of the start path keep reusing one instance.
+export const SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES = 1024 * 1024;
+
+let sharedEncoder = new Encoder({ extensionCodec });
+
+/** The size of the shared encoder's scratch buffer, for tests that check it is released. */
+export function sharedEncoderScratchBytesForTesting(): number {
+  return (sharedEncoder as unknown as { bytes: Uint8Array }).bytes.byteLength;
+}
 
 // Public API
 // ---------------------------------------------------------------------------
@@ -30,7 +42,11 @@ const sharedEncoder = new Encoder({ extensionCodec });
  */
 export function encode(value: unknown): Uint8Array {
   const preprocessed = replaceUndefined(value, new Set());
-  return sharedEncoder.encode(preprocessed);
+  const bytes = sharedEncoder.encode(preprocessed);
+  if (bytes.byteLength > SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES) {
+    sharedEncoder = new Encoder({ extensionCodec });
+  }
+  return bytes;
 }
 
 /**
