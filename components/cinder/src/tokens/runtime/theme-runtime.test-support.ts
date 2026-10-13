@@ -12,7 +12,7 @@
  * understood; any other selector fails the test rather than being guessed at.
  */
 
-import postcss from 'postcss';
+import { parse, type AtRule } from 'postcss';
 import { format } from 'prettier';
 import postcssPlugin from 'prettier/plugins/postcss';
 
@@ -59,10 +59,10 @@ export function cascadeCustomProperties(css: string, context: CascadeContext): M
   };
   const winners = new Map<string, { value: string; specificity: number; order: number }>();
   let order = 0;
-  postcss.parse(css).walkRules((rule) => {
+  parse(css).walkRules((rule) => {
     const parent = rule.parent;
     if (parent?.type === 'atrule') {
-      const atRule = parent as postcss.AtRule;
+      const atRule = parent as AtRule;
       if (atRule.name !== 'media') return;
       const wantsReduced = /prefers-reduced-motion:\s*reduce/.test(atRule.params);
       const wantsScheme = /prefers-color-scheme/.test(atRule.params);
@@ -100,7 +100,7 @@ export async function normalizeCssValues(
     plugins: [postcssPlugin],
   });
   const normalized = new Map<string, string>();
-  postcss.parse(formatted).walkDecls((declaration) => {
+  parse(formatted).walkDecls((declaration) => {
     normalized.set(declaration.prop, declaration.value.replace(/\s+/g, ' ').trim());
   });
   return normalized;
