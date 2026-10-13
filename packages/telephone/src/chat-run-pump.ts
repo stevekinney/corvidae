@@ -19,7 +19,7 @@ import {
 } from './chat-agent.ts';
 import { toJSONValue } from './json-value.ts';
 
-import type { ChatStreamEvent } from '@lostgradient/chat';
+import type { ChatStreamEvent } from '@lostgradient/chat/stream-events';
 import type { ToolExecutionResult, ToolResult } from 'armorer';
 
 type ChatToolResult = Extract<ChatStreamEvent, { type: 'tool.settled' }>['result'];

@@ -9,7 +9,9 @@
     //
     // The renderer program keeps the workspace default of `true`, which is
     // why `@lostgradient/chat`'s decoder — which depends on it — is imported only
-    // there. This program takes `@lostgradient/chat/wire`, the encoder-only entry.
+    // there. This program reaches the codec through
+    // `@lostgradient/chat/stream-events` (by way of telephone), the subpath that
+    // carries no Svelte or Cinder module.
     "exactOptionalPropertyTypes": false,
     "incremental": true,
     "tsBuildInfoFile": "node_modules/.cache/typescript/tsconfig.main.json.tsbuildinfo"
