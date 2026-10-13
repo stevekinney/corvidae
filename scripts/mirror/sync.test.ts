@@ -1054,13 +1054,18 @@ describe('the foreign-commit guard', () => {
         'Mark the readme executable',
       ]);
 
+      // COR-1200 net-effect rule: the restore leaves HEAD at exactly this sync's emission, so the
+      // sync clobbers nothing and the commits it undid are no longer foreign.
       await Bun.write(join(root, path), 'Five signed binaries.\n');
       await git(root, 'add', '-A');
       await git(root, 'commit', '--quiet', '-m', 'Restore the emitted readme');
-      expect(await foreignSubjects(ownership('Five signed binaries.\n'))).toEqual([
+      expect(await foreignSubjects(ownership('Five signed binaries.\n'))).toEqual([]);
+      // A different emission is the same HEAD judged against other bytes: all four are foreign.
+      expect(await foreignSubjects(ownership('Six binaries.\n'))).toEqual([
         'Restore the emitted readme',
         'Delete the emitted readme',
         'Mark the readme executable',
+        'Sign compiled binaries',
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -1287,7 +1292,7 @@ describe('the foreign-commit guard', () => {
     }
   });
 
-  test('rejects a transient source edit even when a later commit reverts its bytes', async () => {
+  test('rejects a source edit while HEAD still differs from the mirror, and accepts it once a revert restores the mirror bytes', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-transient-source-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1305,14 +1310,17 @@ describe('the foreign-commit guard', () => {
       await git(root, 'add', '-A');
       await git(root, 'commit', '--quiet', '-m', 'Foreign source edit');
       const changedHead = await git(root, 'rev-parse', 'HEAD');
-      await git(root, 'revert', '--no-edit', 'HEAD');
-      const foreign = await findForeignCommits(root, {
+      const ownership = {
         policy: await loadTargetOwnedPolicy(),
-        target: 'agent-bureau',
+        target: 'agent-bureau' as const,
         transform: { files: new Set([path]), prefixes: [] },
-      });
-      expect(foreign.map(({ sha }) => sha)).toContain(changedHead.trim());
-      expect(foreign).toHaveLength(2);
+      };
+      const stillChanged = await findForeignCommits(root, ownership);
+      expect(stillChanged.map(({ sha }) => sha)).toEqual([changedHead.trim()]);
+      // COR-1200 net-effect rule: the revert leaves HEAD at the mirror bytes, so the sync would
+      // clobber nothing, and neither the edit nor its revert is foreign any longer.
+      await git(root, 'revert', '--no-edit', 'HEAD');
+      expect(await findForeignCommits(root, ownership)).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1810,5 +1818,184 @@ describe('the private-workspace check', () => {
         },
       ]),
     ).not.toThrow();
+  });
+});
+
+/**
+ * COR-1200 net-effect rule. A commit the per-commit rules reject is still acceptable when every
+ * path it changed ends, at the target's HEAD, exactly where the mirror commit left it or exactly
+ * where this sync would write it: the sync then clobbers nothing the target holds.
+ */
+describe('the foreign-commit guard net-effect rule', () => {
+  const sourcePath = 'packages/weft/src/index.ts';
+  const otherPath = 'packages/weft/src/other.ts';
+  const manifestPath = 'packages/weft/package.json';
+
+  async function withRepository(
+    run: (root: string, ownership: Awaited<ReturnType<typeof createOwnership>>) => Promise<void>,
+    options: Parameters<typeof createOwnership>[0] = {},
+  ): Promise<void> {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-net-effect-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      await run(root, await createOwnership(options));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+
+  async function createOwnership(options: {
+    generatedFiles?: Map<string, { contents: string; executable: boolean }>;
+    generatedManifest?: Record<string, unknown>;
+  }) {
+    return {
+      policy: await loadTargetOwnedPolicy(),
+      target: 'weft' as const,
+      transform: { files: new Set([sourcePath, otherPath, manifestPath]), prefixes: [] },
+      generatedFiles: options.generatedFiles,
+      generatedManifestKeys:
+        options.generatedManifest === undefined
+          ? undefined
+          : new Map([[manifestPath, options.generatedManifest]]),
+    };
+  }
+
+  async function commitAll(root: string, message: string): Promise<void> {
+    await git(root, 'add', '-A');
+    await git(root, 'commit', '--quiet', '-m', message);
+  }
+
+  async function commitMirror(root: string): Promise<void> {
+    await commitAll(root, `Mirror\n\n${provenanceTrailer}: ${'a'.repeat(40)}`);
+  }
+
+  async function subjects(
+    root: string,
+    ownership: Awaited<ReturnType<typeof createOwnership>>,
+  ): Promise<string[]> {
+    const foreign = await findForeignCommits(root, ownership);
+    return foreign.map(({ subject }) => subject);
+  }
+
+  test('accepts a foreign edit that a later commit restores to the mirror bytes', async () => {
+    await withRepository(async (root, ownership) => {
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await commitMirror(root);
+      await Bun.write(join(root, sourcePath), 'export const value = 1;\n');
+      await commitAll(root, 'Edit source');
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await commitAll(root, 'Restore source');
+      expect(await subjects(root, ownership)).toEqual([]);
+    });
+  });
+
+  test('keeps a foreign edit foreign while HEAD still differs from the mirror', async () => {
+    await withRepository(async (root, ownership) => {
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await commitMirror(root);
+      await Bun.write(join(root, sourcePath), 'export const value = 1;\n');
+      await commitAll(root, 'Edit source');
+      await Bun.write(join(root, sourcePath), 'export const value = 2;\n');
+      await commitAll(root, 'Edit source again');
+      expect(await subjects(root, ownership)).toEqual(['Edit source again', 'Edit source']);
+    });
+  });
+
+  test('accepts a deleted path that a later commit restores to the mirror bytes', async () => {
+    await withRepository(async (root, ownership) => {
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await commitMirror(root);
+      await git(root, 'rm', '--quiet', sourcePath);
+      await commitAll(root, 'Delete source');
+      expect(await subjects(root, ownership)).toEqual(['Delete source']);
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await commitAll(root, 'Restore source');
+      expect(await subjects(root, ownership)).toEqual([]);
+    });
+  });
+
+  test('accepts an added path that a later commit removes again', async () => {
+    await withRepository(async (root, ownership) => {
+      await Bun.write(join(root, otherPath), 'export {};\n');
+      await commitMirror(root);
+      await Bun.write(join(root, sourcePath), 'export const added = true;\n');
+      await commitAll(root, 'Add source');
+      expect(await subjects(root, ownership)).toEqual(['Add source']);
+      await git(root, 'rm', '--quiet', sourcePath);
+      await commitAll(root, 'Remove source');
+      expect(await subjects(root, ownership)).toEqual([]);
+    });
+  });
+
+  test('accepts a mode-only change that a later commit reverts', async () => {
+    await withRepository(async (root, ownership) => {
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await commitMirror(root);
+      await chmod(join(root, sourcePath), 0o755);
+      await commitAll(root, 'Make source executable');
+      expect(await subjects(root, ownership)).toEqual(['Make source executable']);
+      await chmod(join(root, sourcePath), 0o644);
+      await commitAll(root, 'Make source plain again');
+      expect(await subjects(root, ownership)).toEqual([]);
+    });
+  });
+
+  test('accepts a transform-owned manifest key change that a later commit reverts', async () => {
+    const original = { name: '@lostgradient/weft', version: '0.27.0', files: ['dist'] };
+    const changed = { ...original, files: ['dist', '!src/**'] };
+    await withRepository(
+      async (root, ownership) => {
+        await Bun.write(join(root, manifestPath), `${JSON.stringify(original)}\n`);
+        await commitMirror(root);
+        await Bun.write(join(root, manifestPath), `${JSON.stringify(changed)}\n`);
+        await commitAll(root, 'Change manifest files');
+        expect(await subjects(root, ownership)).toEqual(['Change manifest files']);
+        await Bun.write(join(root, manifestPath), `${JSON.stringify(original)}\n`);
+        await commitAll(root, 'Revert manifest files');
+        expect(await subjects(root, ownership)).toEqual([]);
+        await Bun.write(join(root, manifestPath), `${JSON.stringify(changed)}\n`);
+        await commitAll(root, 'Change manifest files again');
+        // The revert is the target's own on its face: it writes the generated key values.
+        expect(await subjects(root, ownership)).toEqual([
+          'Change manifest files again',
+          'Change manifest files',
+        ]);
+      },
+      { generatedManifest: original },
+    );
+  });
+
+  test('judges each commit by its own paths when only the second restores a shared path', async () => {
+    await withRepository(async (root, ownership) => {
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await Bun.write(join(root, otherPath), 'export const other = 0;\n');
+      await commitMirror(root);
+      await Bun.write(join(root, sourcePath), 'export const value = 1;\n');
+      await Bun.write(join(root, otherPath), 'export const other = 1;\n');
+      await commitAll(root, 'Edit both');
+      await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+      await commitAll(root, 'Restore one');
+      expect(await subjects(root, ownership)).toEqual(['Edit both']);
+    });
+  });
+
+  test('accepts a foreign edit whose path ends at this sync emission rather than the mirror bytes', async () => {
+    const emission = 'export const value = 2;\n';
+    await withRepository(
+      async (root, ownership) => {
+        await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+        await commitMirror(root);
+        await Bun.write(join(root, sourcePath), 'export const value = 1;\n');
+        await commitAll(root, 'Edit source');
+        await Bun.write(join(root, sourcePath), emission);
+        await commitAll(root, 'Match emission');
+        expect(await subjects(root, ownership)).toEqual([]);
+        await Bun.write(join(root, sourcePath), 'export const value = 3;\n');
+        await commitAll(root, 'Drift from emission');
+        // 'Match emission' is the target's own on its face: it writes exactly the emission.
+        expect(await subjects(root, ownership)).toEqual(['Drift from emission', 'Edit source']);
+      },
+      { generatedFiles: new Map([[sourcePath, { contents: emission, executable: false }]]) },
+    );
   });
 });
