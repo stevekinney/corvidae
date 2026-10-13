@@ -12,6 +12,7 @@ Run every command from the repository root.
 bun run --filter=@lostgradient/playground dev
 bun run --filter=@lostgradient/playground build
 bun run --filter=@lostgradient/playground test
+bun run --filter=@lostgradient/playground test:browser
 bun run --filter=@lostgradient/playground lint
 bun run --filter=@lostgradient/playground typecheck
 bun run --filter=@lostgradient/playground validate
@@ -20,6 +21,7 @@ bun run --filter=@lostgradient/playground validate
 - `dev` starts the server with `bun --watch`. It prefers port 5555 (or `PORT`) and scans upward when that port is busy.
 - `build` writes the static export to `build/` and needs no flags. The script supplies the one setting the exporter requires, `PLAYGROUND_BASE_URL=https://cinder.website`, because the exporter refuses to run without an HTTPS origin and `turbo run build` supplies no environment. That origin is a deployment constant; change it in `package.json` if the site moves.
 - `test` runs `scripts/run-tests.ts`, which starts one fresh `bun test` process for each test file that drives a build, so one file's compiled state cannot corrupt another's.
+- `test:browser` runs the Playwright specs in `tests/` against the dev server, which it starts on port 54231 (`PLAYGROUND_BROWSER_PORT`). The server warms every documentation bundle before it reports ready, so a cold start takes minutes; `PLAYGROUND_BROWSER_REUSE=1` reuses one that is already running. `PLAYGROUND_BROWSER_STATIC=1` adds a project that exports the site and runs the theme builder spec against the exported files. It is an explicit command, not part of the turbo `test` or root `validate` graph.
 - `lint` runs oxlint, then `scripts/check-raw-native-controls.ts --strict` and `scripts/check-source-temp.ts`.
 - `validate` starts the server in-process and crawls every documentation route. It is a manual gate, not part of the root `validate` graph.
 

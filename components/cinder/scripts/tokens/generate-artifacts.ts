@@ -14,9 +14,11 @@ import estreePlugin from 'prettier/plugins/estree';
 import typescriptPlugin from 'prettier/plugins/typescript';
 import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 
+import { buildAuthoringCatalogue, serializeAuthoringCatalogue } from './authoring-catalogue.ts';
 import { buildTokensDocMarkdown, validateDocSections } from './docs.ts';
 import { buildGeneratedOutputs, findDriftedPaths, loadCorpus, readExisting } from './generate.ts';
 import {
+  authoringCataloguePath,
   JSON_PLUGINS,
   PRETTIER_OPTIONS,
   REGENERATE_COMMAND,
@@ -205,6 +207,10 @@ async function buildAllGeneratedOutputs(): Promise<Map<string, string>> {
   generated.set(tokensDocPath, docMarkdown);
   generated.set(registryModulePath, registryModule);
   generated.set(tokenIndexPath, tokenIndex);
+  generated.set(
+    authoringCataloguePath,
+    await serializeAuthoringCatalogue(buildAuthoringCatalogue(resolver, documentsByPath)),
+  );
   return generated;
 }
 

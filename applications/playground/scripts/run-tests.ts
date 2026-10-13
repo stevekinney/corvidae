@@ -70,6 +70,7 @@ export const BUILD_PIPELINE_MODULE_NAMES = [
   'shell-bundle.ts',
   'ssr-renderer.ts',
   'static-export.ts',
+  'theme-builder-bundle.ts',
 ] as const;
 
 export type PlaygroundTestFile = {

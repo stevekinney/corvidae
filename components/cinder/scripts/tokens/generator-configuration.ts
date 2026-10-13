@@ -10,6 +10,7 @@ export const tokensBaseCssPath = join(packageRoot, 'src', 'styles', 'tokens-base
 export const resolvedDirectory = join(tokenRoot, 'resolved');
 export const registryJsonPath = join(tokenRoot, 'registry.generated.json');
 export const registryModulePath = join(tokenRoot, 'registry.generated.ts');
+export const authoringCataloguePath = join(tokenRoot, 'authoring-catalogue.generated.json');
 export const tokenIndexPath = join(tokenRoot, 'index.json');
 export const tokensDocPath = join(packageRoot, 'documentation', 'tokens.md');
 export const REGENERATE_COMMAND = 'bun run --filter=@lostgradient/cinder tokens:generate';
