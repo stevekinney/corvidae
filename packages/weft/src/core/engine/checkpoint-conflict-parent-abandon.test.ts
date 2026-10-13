@@ -13,6 +13,7 @@ import { describe, expect, it } from 'bun:test';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
+  createDeferred,
   expectPromisePending,
   waitForCondition,
   yieldToEventLoop,
@@ -29,6 +30,7 @@ import {
   startParked,
   tokenOf,
 } from './checkpoint-conflict.test-support.ts';
+import { executeChildWorkflow } from './child-workflow.ts';
 import {
   abandonedExecutionAttemptCount,
   beginExecutionAttempt,
@@ -241,3 +243,114 @@ describe('a lost child that no longer concerns the parent', () => {
     expect(abandonedExecutionAttemptCount(internals)).toBe(0);
   });
 });
+
+describe('the parent a lost child is judged against', () => {
+  it('binds to the run that began awaiting, not one relaunched during child startup', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'startup-parent', 'startup-parent-id');
+    const waiter = createWorkflowResultWaiter(internals, 'startup-child');
+    const startupRead = createDeferred<null>();
+    const awaiting = executeChildWorkflow(
+      internals,
+      parentHandle.id,
+      {
+        type: 'child-workflow',
+        workflowType: 'startup-child-type',
+        input: null,
+        operationId: 'op',
+      } as never,
+      0,
+      {
+        getComposedWorkflowInterceptor: () => null,
+        getHandle: () => ({ id: 'startup-child' }) as never,
+        loadWorkflowState: () => startupRead.promise,
+        start: async () => ({ id: 'startup-child' }) as never,
+      } as never,
+    );
+    // The engine launches the same generation again while the child is still starting up.
+    beginExecutionAttempt(internals, parentHandle.id, tokenOf(internals, parentHandle.id));
+    startupRead.resolve(null);
+    // Attached before the rejection can land, so the parent's view is never unobserved.
+    const view = rejectionOrNothing(awaiting);
+
+    waiter.reject(new WorkflowCheckpointConflictError('startup-child'));
+    await yieldToEventLoop();
+
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+    void view;
+    await engine.signal(parentHandle.id, 'go', 'still driven');
+    expect(await parentHandle.result()).toBe('still driven');
+  });
+
+  it('does not abandon for a race branch that is aborted while the ownership check is in flight', async () => {
+    const storage = new MemoryStorage();
+    const gate = createDeferred<void>();
+    let gating = false;
+    const gated = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (gating && key === KEYS.workflowOwnerHolder('inflight-parent-id'))
+              await gate.promise;
+            return (original as (k: string) => Promise<unknown>).call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+    await using engine = await Engine.create({
+      storage: gated,
+      ownership: 'workflow-lease',
+      workflowClaimTtl: 200,
+      workflowClaimRenewInterval: 20,
+      recover: false,
+    });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'inflight-parent', 'inflight-parent-id');
+    const branch = new AbortController();
+    const waiter = createWorkflowResultWaiter(internals, 'inflight-child');
+    const view = getGeneratorOwnedWorkflowResultPromise(
+      internals,
+      'inflight-child',
+      parentHandle.id,
+      branch.signal,
+    );
+    gating = true;
+
+    waiter.reject(new WorkflowCheckpointConflictError('inflight-child'));
+    await yieldToEventLoop();
+    branch.abort();
+    gate.resolve();
+    await yieldToEventLoop();
+
+    await expectPromisePending(view);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+  });
+
+  it('keeps naming the lost child to a later getHandle(parent).result()', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'named-parent', 'named-parent-id');
+    const first = rejectionOf(parentHandle.result());
+    const waiter = createWorkflowResultWaiter(internals, 'named-child');
+    void getGeneratorOwnedWorkflowResultPromise(internals, 'named-child', parentHandle.id);
+
+    waiter.reject(new WorkflowCheckpointConflictError('named-child'));
+    await first;
+
+    const later = await rejectionOf(engine.getHandle(parentHandle.id).result());
+    expect(later).toBeInstanceOf(WorkflowCheckpointConflictError);
+    expect((later as WorkflowCheckpointConflictError).lostChildWorkflowId).toBe('named-child');
+    expect((later as WorkflowCheckpointConflictError).message).toContain('child "named-child"');
+  });
+});
+
+function rejectionOrNothing(promise: Promise<unknown>): Promise<unknown> {
+  return promise.then(
+    (value) => value,
+    (reason: unknown) => reason,
+  );
+}

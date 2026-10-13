@@ -72,11 +72,14 @@ export type ExecutionAttempt = {
   readonly workflowExecutionToken: string | undefined;
   /** This engine lost the generation's checkpoint compare-and-swap race, so it is the winner's. */
   readonly abandoned: boolean;
+  /** Set when the attempt was abandoned because this awaited child lost its race, not its own. */
+  readonly lostChildWorkflowId?: string | undefined;
 };
 
 type ExecutionAttemptRecord = {
   readonly workflowExecutionToken: string | undefined;
   abandoned: boolean;
+  lostChildWorkflowId?: string | undefined;
 };
 
 const attemptsByEngine = new WeakMap<EngineInternals, Map<string, ExecutionAttemptRecord>>();
@@ -139,6 +142,7 @@ export function abandonExecutionAttempt(
   internals: EngineInternals,
   workflowId: string,
   workflowExecutionToken: string | undefined,
+  lostChildWorkflowId?: string,
 ): boolean {
   const attempt = attemptsByEngine.get(internals)?.get(workflowId);
   if (
@@ -149,6 +153,7 @@ export function abandonExecutionAttempt(
     return false;
   }
   attempt.abandoned = true;
+  attempt.lostChildWorkflowId = lostChildWorkflowId;
   return true;
 }
 

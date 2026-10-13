@@ -33,15 +33,20 @@ export function getGeneratorOwnedWorkflowResultPromise(
   workflowId: string,
   parentWorkflowId: string,
   signal?: AbortSignal,
+  // Captured by the caller before it awaited anything on the parent's behalf (child startup reads
+  // storage and dispatches the start first), so a relaunch during that window is not mistaken for
+  // the run that began awaiting. Defaults to the attempt held at this call.
+  parentAttempt: ExecutionAttempt | undefined = currentExecutionAttempt(
+    internals,
+    parentWorkflowId,
+  ),
 ): Promise<unknown> {
   return fenceResultOnParentGeneration(
     internals,
     parentWorkflowId,
     getWorkflowResultPromise(internals, workflowId),
     workflowId,
-    // Captured now, while the parent is the run that began awaiting: a loss of the child arrives
-    // later and must not reach a parent this engine has relaunched or replaced since.
-    currentExecutionAttempt(internals, parentWorkflowId),
+    parentAttempt,
     signal,
   );
 }
@@ -87,10 +92,11 @@ function fenceResultOnParentGeneration(
         // of that child concerns nobody. Otherwise abandon only a parent this engine still owns
         // (the claim-generation check the other branches make), judged again, synchronously, by
         // the attempt comparison inside the abandonment.
-        if (
+        // The signal is read again after the ownership await: a branch can lose during it.
+        const ownsParent =
           signal?.aborted !== true &&
-          (await parentStillOwnsGeneration(internals, parentWorkflowId))
-        ) {
+          (await parentStillOwnsGeneration(internals, parentWorkflowId));
+        if (ownsParent && signal?.aborted !== true) {
           abandonParentAfterChildCheckpointConflict(
             internals,
             parentWorkflowId,

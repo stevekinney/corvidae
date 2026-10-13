@@ -46,7 +46,15 @@ export function abandonWorkflowAfterCheckpointConflict(
   error: WorkflowCheckpointConflictError,
 ): void {
   const { workflowId, workflowExecutionToken } = error;
-  if (!abandonExecutionAttempt(internals, workflowId, workflowExecutionToken)) return;
+  if (
+    !abandonExecutionAttempt(
+      internals,
+      workflowId,
+      workflowExecutionToken,
+      error.lostChildWorkflowId,
+    )
+  )
+    return;
   try {
     internals.strategy.retireWorkflow(workflowId);
   } catch {
@@ -120,6 +128,10 @@ export function abandonedGenerationConflict(
   if (held?.abandoned !== true) return undefined;
   return new WorkflowCheckpointConflictError(workflowId, {
     workflowExecutionToken: held.workflowExecutionToken,
+    // A parent abandoned for its child keeps saying so to a later `getHandle(parent).result()`.
+    ...(held.lostChildWorkflowId !== undefined && {
+      lostChildWorkflowId: held.lostChildWorkflowId,
+    }),
   });
 }
 
