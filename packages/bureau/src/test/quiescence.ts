@@ -238,8 +238,9 @@ function renderReport(report: BureauQuiescenceReport): string {
     }
   }
   // A `timer`/`listener` leak lives only in `harness.scope`'s own report —
-  // folded into `leaked` above, but not one of the ten Bureau-specific
-  // named rows (none of them is "timer" or "listener"; only a registered
+  // folded into `leaked` above, but not one of the eleven Bureau-specific
+  // named rows (none of them carries a scope-registered timer or listener —
+  // `assetWork`'s timers are the asset service's own; only a registered
   // `'run'` resource's leak is re-surfaced, as `activeRoots`). Render it
   // here so the error message still names every non-empty row, per this
   // issue's own acceptance criterion.
