@@ -39,4 +39,4 @@ bun run --filter=@lostgradient/playground validate
 
 ## Deployment
 
-The live cinder.website deployment is still served from the public Cinder repository's copy of the playground until the Vercel project is repointed at this application. `vercel.json` is intentionally not part of this application yet; the deployment issue owns adapting it to `build/` and `bun run build`.
+cinder.website is served by the existing Vercel project through its Git integration, with this directory as the project's Root Directory. `vercel.json` here configures it: the install command runs from the workspace root with the repository's pinned Bun, the build command is `bun run build` (the static export) with output in `build/`, and an ignore command skips deployments for commits that cannot change the playground. It also carries the site's response headers, clean URLs, the `/` rewrite, and the `/c/:name` redirect, which project settings cannot express. Until the project is repointed here from the public Cinder repository, the live site is still built from Cinder's copy of the playground.
