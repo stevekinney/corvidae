@@ -4,5 +4,11 @@
     "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
     "customConditions": ["svelte"]
   },
-  "include": ["src/**/*", "scripts/**/*", "tests/**/*", "playwright-static.config.ts"]
+  "include": [
+    "src/**/*",
+    "scripts/**/*",
+    "tests/**/*",
+    "playwright.config.ts",
+    "playwright-static.config.ts"
+  ]
 }

@@ -37,6 +37,12 @@ One sharp edge worth knowing: `toolbarActions`—documented as the way to add a 
 
 ## Breaking changes
 
+### MarkdownEditor loads Milkdown lazily (COR-1322)
+
+- **Import cost**: importing `MarkdownEditor` used to evaluate Milkdown and ProseMirror through the `editor/index.ts` barrel. The component now imports the Milkdown-free `editor/component-runtime.ts` surface, and Milkdown and ProseMirror load on the first rich-editor mount. Importing the package root still evaluates them, because the root re-exports the whole editor barrel.
+- **`createEditorAttachment` timing**: it used to call `createEditor` synchronously when attached. It now loads the editor runtime with a dynamic `import()` first, so creation starts a few ticks later. An attachment detached before that load finishes no longer builds an editor at all; one detached after creation starts is still destroyed when creation resolves, as before.
+- **No export moved off the barrel**: every name `editor/index.ts` exported is still exported from it, with the same signature. Inside the package, `getShortcutDisplay`, `getShortcutDefinitions` and `ShortcutDefinition` moved from `keymap-plugin.ts` to `keymap-shortcuts.ts`, and `templateCompletionPluginKey`, `computeCompletionState` and `detectTokenQuery` moved from `template-completion-state.ts` and `template-completion-query.ts` to `template-completion-transaction.ts`. Neither old path is a package export.
+
 ### MarkdownEditor template placeholders (COR-526)
 
 - **Low-level props are reactive**: `placeholderCompletion` and `placeholderDecoration` used to be read once when the editor mounted. Replacing either object now updates the live editor without recreating it. They can no longer be combined with the new `placeholderDefinitions`; see the component README.

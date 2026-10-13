@@ -98,8 +98,6 @@
       __CINDER_EXAMPLES__?: CinderExampleDescriptor[];
       __CINDER_SNAPSHOT_READY__?: Promise<void>;
     };
-  type BadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'accent';
-  type StatusDotStatus = 'online' | 'warning' | 'danger' | 'pending' | 'neutral' | 'accent';
 
   // The bare component's module namespace is loaded by the page-bundle entry
   // only after a reader opens Playground. Keeping the loader as a prop rather
@@ -665,32 +663,6 @@
    */
   const SINGLE_TYPE_PREVIEW_CHARS = 160;
 
-  function statusDotStatus(status: string): StatusDotStatus {
-    switch (status) {
-      case 'stable':
-        return 'online';
-      case 'beta':
-        return 'accent';
-      case 'alpha':
-        return 'warning';
-      default:
-        return 'neutral';
-    }
-  }
-
-  function statusBadgeVariant(status: string): BadgeVariant {
-    switch (status) {
-      case 'stable':
-        return 'success';
-      case 'beta':
-        return 'info';
-      case 'alpha':
-        return 'warning';
-      default:
-        return 'neutral';
-    }
-  }
-
   // --- Import line copy --------------------------------------------------
   let importCopied = $state(false);
   const importStatement = $derived(
@@ -1140,84 +1112,44 @@
         <!-- ===== Hero ===== -->
         <div class="dx-hero">
           <div class="dx__inner">
-            <div class="dx-hero__grid">
-              <div>
-                <div class="dx-eyebrow">
-                  <span class="dx-eyebrow__index">{component.categoryLabel}</span>
-                  <span class="dx-eyebrow__rule" aria-hidden="true"></span>
-                </div>
-                <h1 id="component-name">{component.name}</h1>
-                <p class="dx-hero__lede">{component.purpose}</p>
-                <div class="dx-hero__meta">
-                  <div class="dx-import">
-                    <span class="dx-import__code">
-                      {#if highlightedImportStatement !== ''}
-                        {@html highlightedImportStatement}
-                      {:else}
-                        {importStatement}
-                      {/if}
-                    </span>
-                    <Tooltip text={importCopied ? 'Copied' : 'Copy import'}>
-                      <button
-                        type="button"
-                        class="dx-import__copy"
-                        data-copied={importCopied ? '' : undefined}
-                        aria-label={importCopied ? 'Copied import' : 'Copy import'}
-                        onclick={copyImport}
-                      >
-                        {#if importCopied}
-                          <Check size={14} strokeWidth={1.5} aria-hidden="true" />
-                        {:else}
-                          <Copy size={14} strokeWidth={1.5} aria-hidden="true" />
-                        {/if}
-                      </button>
-                    </Tooltip>
-                  </div>
-                  {#if component.tags.length > 0}
-                    <div class="dx-tags">
-                      {#each component.tags as tag (tag)}
-                        <Badge variant="neutral" size="sm">{tag}</Badge>
-                      {/each}
-                    </div>
+            <div class="dx-eyebrow">
+              <span class="dx-eyebrow__index">{component.categoryLabel}</span>
+              <span class="dx-eyebrow__rule" aria-hidden="true"></span>
+            </div>
+            <h1 id="component-name">{component.name}</h1>
+            <p class="dx-hero__lede">{component.purpose}</p>
+            <div class="dx-hero__meta">
+              <div class="dx-import">
+                <span class="dx-import__code">
+                  {#if highlightedImportStatement !== ''}
+                    {@html highlightedImportStatement}
+                  {:else}
+                    {importStatement}
                   {/if}
-                </div>
-              </div>
-
-              <aside class="dx-spec" aria-label="Component facts">
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Status</span>
-                  <span class="dx-spec__val">
-                    <!-- The adjacent Badge is the accessible status text. The dot
-                       is a redundant color cue, so mark it decorative — otherwise
-                       its role="img" name re-announces the same word the Badge
-                       already speaks (the audible half of #388). -->
-                    <StatusDot status={statusDotStatus(component.status)} aria-hidden="true" />
-                    <Badge variant={statusBadgeVariant(component.status)} size="sm">
-                      {component.status}
-                    </Badge>
-                  </span>
-                </div>
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Category</span>
-                  <span class="dx-spec__val">{component.categoryLabel}</span>
-                </div>
-                {#if component.a11y?.pattern !== undefined}
-                  <div class="dx-spec__row">
-                    <span class="dx-spec__key">A11y pattern</span>
-                    <span class="dx-spec__val">{component.a11y.pattern}</span>
-                  </div>
-                {/if}
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Export</span>
-                  <span class="dx-spec__val dx-spec__val--monospace">{component.exportName}</span>
-                </div>
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Version</span>
-                  <span class="dx-spec__val dx-spec__val--monospace"
-                    >v{component.packageVersion}</span
+                </span>
+                <Tooltip text={importCopied ? 'Copied' : 'Copy import'}>
+                  <button
+                    type="button"
+                    class="dx-import__copy"
+                    data-copied={importCopied ? '' : undefined}
+                    aria-label={importCopied ? 'Copied import' : 'Copy import'}
+                    onclick={copyImport}
                   >
+                    {#if importCopied}
+                      <Check size={14} strokeWidth={1.5} aria-hidden="true" />
+                    {:else}
+                      <Copy size={14} strokeWidth={1.5} aria-hidden="true" />
+                    {/if}
+                  </button>
+                </Tooltip>
+              </div>
+              {#if component.tags.length > 0}
+                <div class="dx-tags">
+                  {#each component.tags as tag (tag)}
+                    <Badge variant="neutral" size="sm">{tag}</Badge>
+                  {/each}
                 </div>
-              </aside>
+              {/if}
             </div>
           </div>
         </div>
@@ -2264,7 +2196,6 @@
        page is expressed as a `calc()` against it. */
     --dx-topbar-h: 0rem;
     min-height: 100vh;
-    border: 1px solid var(--cinder-border);
     background: light-dark(oklch(100% 0 0), var(--cinder-surface-canvas));
   }
 
@@ -2490,12 +2421,6 @@
     padding-block: clamp(2rem, 5vw, 3.75rem) clamp(1.25rem, 2.5vw, 1.75rem);
     border-block-end: 1px solid var(--cinder-border-muted);
   }
-  .dx-hero__grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 19rem;
-    gap: clamp(1.5rem, 4vw, 3.5rem);
-    align-items: end;
-  }
   .dx-eyebrow {
     display: flex;
     align-items: center;
@@ -2545,42 +2470,6 @@
     gap: var(--cinder-space-1-5, 0.375rem);
   }
 
-  .dx-spec {
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised);
-    box-shadow: var(--cinder-shadow-sm);
-    overflow: hidden;
-  }
-  .dx-spec__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-4);
-    padding: var(--cinder-space-3) var(--cinder-space-4);
-    font-size: var(--cinder-text-sm);
-  }
-  .dx-spec__row + .dx-spec__row {
-    border-block-start: 1px solid var(--cinder-border-muted);
-  }
-  .dx-spec__key {
-    color: var(--cinder-text-subtle);
-    font-size: var(--cinder-text-xs);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .dx-spec__val {
-    color: var(--cinder-text-default);
-    font-weight: var(--cinder-font-medium);
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-  }
-  .dx-spec__val--monospace {
-    font-family: var(--cinder-font-mono);
-    font-weight: var(--cinder-font-normal);
-  }
-
   .dx-import {
     display: inline-flex;
     align-items: stretch;
@@ -2591,15 +2480,19 @@
     max-width: 100%;
   }
   .dx-import__code {
-    display: inline-flex;
-    align-items: center;
+    /* A block, not a flex container: its text and highlighted spans must flow
+       and wrap as one run. The control centers it vertically. */
+    display: block;
+    align-self: center;
     padding: var(--cinder-space-2) var(--cinder-space-3);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* Wraps inside the control at narrow widths so the whole statement stays
+       visible without scrolling or widening the page. */
+    min-inline-size: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   /* A real button affordance, not a bare icon hugging the code field's edge:
      a comfortable square hit target with its own raised surface, separated from
@@ -3951,16 +3844,6 @@
     margin: 0 0 var(--cinder-space-2);
   }
   /* ===== Responsive ===== */
-  @media (max-width: 1080px) {
-    .dx-hero__grid {
-      grid-template-columns: minmax(0, 1fr);
-      align-items: start;
-    }
-    .dx-spec {
-      max-width: 26rem;
-    }
-  }
-
   @media (max-width: 920px) {
     .dx-layout {
       grid-template-columns: minmax(0, 1fr);
@@ -3976,9 +3859,6 @@
   @media (max-width: 640px) {
     .dx-guide {
       grid-template-columns: minmax(0, 1fr);
-    }
-    .dx-spec {
-      max-width: none;
     }
   }
   @media (prefers-reduced-motion: reduce) {
