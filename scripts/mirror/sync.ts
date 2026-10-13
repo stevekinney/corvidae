@@ -352,9 +352,23 @@ export interface MirrorProvenance {
 export async function newestMirrorProvenance(
   directory: string,
   target?: string,
-  { strict = false }: { strict?: boolean } = {},
+  options: { strict?: boolean } = {},
 ): Promise<MirrorProvenance | null> {
-  for (const commit of await readHistory(directory)) {
+  return provenanceFromHistory(
+    directory,
+    await readHistory(directory),
+    target,
+    options.strict ?? false,
+  );
+}
+
+async function provenanceFromHistory(
+  directory: string,
+  history: readonly CommitRecord[],
+  target: string | undefined,
+  strict: boolean,
+): Promise<MirrorProvenance | null> {
+  for (const commit of history) {
     const trailerSha =
       commit.provenance ||
       (target === undefined
@@ -384,15 +398,15 @@ export async function findForeignCommits(
   directory: string,
   ownership?: ForeignCommitOwnership,
 ): Promise<ForeignCommit[]> {
+  const history = await readHistory(directory);
   const newest =
     ownership?.provenance !== undefined
       ? ownership.provenance
-      : await newestMirrorProvenance(directory, ownership?.target);
+      : await provenanceFromHistory(directory, history, ownership?.target, false);
   if (newest === null) return [];
   const mirrorCommit = newest.commit;
   const ancestry = await git(directory, 'rev-list', '--ancestry-path', `${mirrorCommit}..HEAD`);
   const descendants = new Set(ancestry.trim().split('\n'));
-  const history = await readHistory(directory);
   const candidates = history.filter(({ sha }) => descendants.has(sha));
   if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
   const foreign: ForeignCommit[] = [];
