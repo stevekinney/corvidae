@@ -189,6 +189,110 @@ describe('tool protocol materialization', () => {
     expect(closed).toBe(true);
   });
 
+  test('rejects a non-stream result when the signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort(new DOMException('cancelled', 'AbortError'));
+
+    const abortError = await materializeToolResultAsync(
+      { callId: 'call-1', outcome: 'success', content: { value: 1 } },
+      { signal: controller.signal },
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(abortError).toMatchObject({ name: 'AbortError', message: 'cancelled' });
+
+    const aborted = new AbortController();
+    aborted.abort('stop');
+    const normalized = await materializeToolResultsAsync(
+      [{ callId: 'call-2', outcome: 'success', content: 'done' }],
+      { signal: aborted.signal },
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(normalized).toMatchObject({ name: 'AbortError' });
+  });
+
+  test('rejects on abort without waiting for an iterator return() that never settles', async () => {
+    const controller = new AbortController();
+    let returnCalls = 0;
+    const materialization = materializeToolResultAsync(
+      {
+        callId: 'call-1',
+        outcome: 'success',
+        content: [],
+        stream: {
+          [Symbol.asyncIterator]() {
+            return {
+              next: () => new Promise<IteratorResult<unknown>>(() => {}),
+              return: () => {
+                returnCalls += 1;
+                return new Promise<IteratorResult<unknown>>(() => {});
+              },
+            };
+          },
+        },
+      },
+      { signal: controller.signal },
+    );
+
+    let settled: unknown;
+    void materialization.then(
+      () => {
+        settled = 'resolved';
+      },
+      (error: unknown) => {
+        settled = error;
+      },
+    );
+
+    controller.abort(new DOMException('cancelled', 'AbortError'));
+    // Drain only already-queued microtasks; no timer or macrotask is involved.
+    for (let turn = 0; turn < 10 && settled === undefined; turn += 1) {
+      await Promise.resolve();
+    }
+
+    expect(settled).toMatchObject({ name: 'AbortError' });
+    expect(returnCalls).toBe(1);
+  });
+
+  test('swallows a rejecting or throwing iterator return() during abort cleanup', async () => {
+    const createStream = (returnImplementation: () => Promise<IteratorResult<unknown>>) => ({
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => new Promise<IteratorResult<unknown>>(() => {}),
+          return: returnImplementation,
+        };
+      },
+    });
+
+    for (const returnImplementation of [
+      () => Promise.reject(new Error('return failed')),
+      () => {
+        throw new Error('return threw');
+      },
+    ]) {
+      const controller = new AbortController();
+      const materialization = materializeToolResultAsync(
+        {
+          callId: 'call-1',
+          outcome: 'success',
+          content: [],
+          stream: createStream(returnImplementation),
+        },
+        { signal: controller.signal },
+      );
+      controller.abort(new DOMException('cancelled', 'AbortError'));
+
+      const abortError = await materialization.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(abortError).toMatchObject({ name: 'AbortError', message: 'cancelled' });
+    }
+  });
+
   test('materializes a stream successfully while an abort signal remains active', async () => {
     const controller = new AbortController();
 
