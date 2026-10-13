@@ -18,8 +18,11 @@ import {
 import { mergeRunHistory } from './session-controller-rows.ts';
 import {
   decodeTransportResult,
+  type ChatElicitationActivity,
   type ChatExecutionOwner,
+  type ChatRunAbortedNotice,
   type ChatSessionControllerOptions,
+  type ChatToolActivity,
 } from './session-controller-support.ts';
 
 type SessionRunnerDependencies = {
@@ -51,6 +54,10 @@ export type TurnState = {
   committed: ConversationHistory;
   toolCalls: Set<string>;
   toolResults: Set<string>;
+  /** Latest `tool.*` activity per call; discarded with the turn. */
+  toolActivity: Map<string, ChatToolActivity>;
+  /** Set by a `run.aborted` frame; acted on once the stream has closed cleanly. */
+  runAborted: ChatRunAbortedNotice | undefined;
   /** The authoritative history a `run.completed` frame carried, if any. */
   terminalConversation: ConversationHistory | undefined;
   /** Rows this run appended itself, which a terminal snapshot may replace. */
@@ -91,6 +98,10 @@ export function createSessionRunner({
       submissionId: lifecycle.submissionId,
       runToken: (lifecycle.activeRunToken += 1),
     };
+    // Run-scoped: a question is not tied to a step, and the consumer's prompt
+    // lives until `onStreamingChange(false)`, so a request still pending at
+    // the end of one turn stays pending into the next.
+    const elicitations = new Map<string, ChatElicitationActivity>();
     let turn = 0;
     notifyStreaming(true);
     try {
@@ -113,6 +124,7 @@ export function createSessionRunner({
           lifecycle,
           toolOwners,
           pendingApprovals,
+          elicitations,
           before,
           messageId,
           controller,
@@ -167,6 +179,7 @@ type TurnDependencies = Pick<
   lifecycle: SessionRunState;
   toolOwners: Map<string, string>;
   pendingApprovals: Set<string>;
+  elicitations: Map<string, ChatElicitationActivity>;
   before: ConversationHistory;
   messageId: string;
   controller: AbortController;
@@ -185,6 +198,7 @@ async function executeTurn({
   lifecycle,
   toolOwners,
   pendingApprovals,
+  elicitations,
   before,
   messageId,
   controller,
@@ -217,6 +231,8 @@ async function executeTurn({
     committed: before,
     toolCalls: new Set<string>(),
     toolResults: new Set<string>(),
+    toolActivity: new Map<string, ChatToolActivity>(),
+    runAborted: undefined,
     terminalConversation: undefined,
     provisionalIds: new Set<string>([messageId, userMessageId]),
     runStartIds: new Set<string>(before.ids),
@@ -258,6 +274,7 @@ async function executeTurn({
       update,
       toolOwners,
       pendingApprovals,
+      elicitations,
       reportError,
       isProtocolFailure: () => protocolFailure,
       markProtocolFailure: () => {
@@ -280,6 +297,20 @@ async function executeTurn({
     // after a cancel, a navigation or a newer accepted snapshot has nothing
     // left to be authoritative about.
     if (!isCurrent()) return false;
+    // `run.aborted` is the cancellation terminal: it carries no history to
+    // reconcile and ends the run, so no continuation turn follows even when
+    // every call resolved. The observer is told only now, once the stream has
+    // closed cleanly — a frame after the terminal rejects through the catch
+    // below instead, and a rejected stream is not an abort.
+    if (turnState.runAborted !== undefined) {
+      try {
+        options.hooks?.onRunAborted?.(turnState.runAborted);
+      } catch (observerError) {
+        reportError(observerError);
+      }
+      finalizeTurn(options, update, turnState);
+      return false;
+    }
     if (turnState.terminalConversation !== undefined)
       update(
         mergeRunHistory(
