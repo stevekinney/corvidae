@@ -306,6 +306,13 @@ function isOutsideCoverageScope(file: string, scope: CoverageScope, packageRoot:
  * file nothing imports is silently absent from the aggregate; this names it. Declaration files
  * carry no executable code and are never expected.
  */
+/**
+ * Test scaffolding at any depth, matching the packages' TypeScript and boundary exclusions. Only
+ * the opt-in missing-file check uses it; the aggregate scope predicate is deliberately narrower.
+ */
+const TEST_SCAFFOLDING =
+  /\.(?:test|spec)\.[cm]?tsx?$|\.test-support\.[cm]?tsx?$|(?:^|\/)(?:__fixtures__|__tests__|__test-helpers__|tests?)\//;
+
 export function sourceFilesMissingFromLcov(
   source: string,
   packageRoot: string,
@@ -322,7 +329,7 @@ export function sourceFilesMissingFromLcov(
     .filter(
       (file) =>
         !/\.d\.[cm]?ts$/.test(file) &&
-        !/\.(?:test|spec)\.[cm]?tsx?$/.test(file) &&
+        !TEST_SCAFFOLDING.test(file) &&
         !isTransientTestArtifact(file, packageRoot) &&
         scopes.some((scope) => !isOutsideCoverageScope(file, scope, packageRoot)) &&
         !recorded.has(file),

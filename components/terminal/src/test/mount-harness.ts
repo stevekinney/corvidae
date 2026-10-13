@@ -87,5 +87,16 @@ export function liveHarnessCount(): number {
 
 /** Destroy every live harness, so one test never leaks a mounted component into the next. */
 export function destroyAllHarnesses(): void {
-  for (const harness of liveHarnesses) harness.destroy();
+  const failures: unknown[] = [];
+  for (const harness of liveHarnesses) {
+    try {
+      harness.destroy();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, `${failures.length} harnesses failed to destroy`);
+  }
 }

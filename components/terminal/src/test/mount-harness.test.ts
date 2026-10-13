@@ -188,4 +188,47 @@ describe('mount harness', () => {
     expect(liveHarnessCount()).toBe(1);
     expect(() => second.destroy()).not.toThrow();
   });
+
+  test('destroys every harness and rethrows the only error when one destroy fails', () => {
+    const first = mountHarness(HarnessProbe, { label: 'First' });
+    const failing = mountHarness(HarnessThrowingUpdate, {});
+    const last = mountHarness(HarnessProbe, { label: 'Last' });
+    queryRequired(failing.target, 'button').click();
+
+    expect(destroyAllHarnesses).toThrow('update failed');
+
+    expect([first, failing, last].map((harness) => harness.destroyed)).toEqual([true, true, true]);
+    expect(document.body.children).toHaveLength(0);
+    expect(liveHarnessCount()).toBe(0);
+  });
+
+  test('collects the errors in an AggregateError when several destroys fail', () => {
+    const triggers: HarnessProbeTarget[] = [];
+    mountHarness(HarnessProbe, {
+      label: 'One',
+      onteardown: () => queryRequired(triggers[0]!, 'button').click(),
+    });
+    mountHarness(HarnessProbe, {
+      label: 'Two',
+      onteardown: () => queryRequired(triggers[1]!, 'button').click(),
+    });
+    triggers.push(
+      mountHarness(HarnessThrowingUpdate, {}).target,
+      mountHarness(HarnessThrowingUpdate, {}).target,
+    );
+
+    let thrown: unknown;
+    try {
+      destroyAllHarnesses();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toHaveLength(2);
+    expect(document.body.children).toHaveLength(0);
+    expect(liveHarnessCount()).toBe(0);
+  });
 });
+
+type HarnessProbeTarget = HTMLElement;

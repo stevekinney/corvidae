@@ -186,6 +186,17 @@ describe('importReferences', () => {
     },
   );
 
+  test('reads a dollar sign in a quoted specifier as part of the literal', () => {
+    const source =
+      '<script lang="ts">\n</script>\n{#await import(\'$lib/widget\')}{/await}\n{#await import("$lib/other")}{/await}\n{#await import(`$lib/third`)}{/await}\n{#await import(`$lib/${name}`)}{/await}';
+    expect(importReferences(source, 'component.svelte')).toEqual([
+      { specifier: '$lib/widget', line: 3 },
+      { specifier: '$lib/other', line: 4 },
+      { specifier: '$lib/third', line: 5 },
+      { specifier: '', line: 6, computed: true },
+    ]);
+  });
+
   test('marks a computed load in Svelte markup, and leaves a literal one alone', () => {
     const source =
       '<script lang="ts">\n</script>\n{#await import(name)}{/await}\n{#await import(`./${name}`)}{/await}\n{#await import("./ok.ts")}{/await}';

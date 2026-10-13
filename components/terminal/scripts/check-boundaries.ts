@@ -150,8 +150,12 @@ function scriptReferences(text: string, firstLine: number, fileName: string): Im
 }
 
 const SCRIPT_BLOCK = /<script\b[^>]*>([\s\S]*?)<\/script>/g;
-/** `import(` or `require(`, then a plain literal argument when there is one (otherwise computed). */
-const MARKUP_LOAD = /\b(?:import|require)\s*\(\s*(?:(['"`])([^'"`$\n]+)\1\s*\))?/g;
+/**
+ * `import(` or `require(`, then a literal argument when there is one (otherwise computed). A
+ * quoted specifier may contain `$` (`'$lib/x'`); `${` is a substitution only inside a template.
+ */
+const MARKUP_LOAD =
+  /\b(?:import|require)\s*\(\s*(?:(?:(['"])([^'"\n]+)\1|`((?:[^`$\n]|\$(?!\{))+)`)\s*\))?/g;
 
 /**
  * Every module specifier a TypeScript, JavaScript, or Svelte source file loads at runtime: static
@@ -170,9 +174,9 @@ export function importReferences(source: string, fileName: string): ImportRefere
   for (const match of markup.matchAll(MARKUP_LOAD)) {
     const line = lineAt(markup, match.index ?? 0);
     references.push(
-      match[2] === undefined
+      match[2] === undefined && match[3] === undefined
         ? { specifier: '', line, computed: true }
-        : { specifier: match[2], line },
+        : { specifier: match[2] ?? match[3] ?? '', line },
     );
   }
   return references.toSorted((left, right) => left.line - right.line);

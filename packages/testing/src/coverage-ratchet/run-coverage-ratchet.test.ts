@@ -209,6 +209,11 @@ describe('checkCoverageRatchet', () => {
         'src/c.mts': '',
         'src/d.cts': '',
         'src/f.test.tsx': '',
+        'src/helpers.test-support.ts': '',
+        'src/nested/__fixtures__/data.ts': '',
+        'src/nested/test/harness.ts': '',
+        'src/nested/tests/harness.ts': '',
+        'src/nested/mount-harness.ts': '',
         'src/g.spec.mts': '',
         'src/h.d.ts': '',
         'src/i.d.mts': '',
@@ -223,7 +228,10 @@ describe('checkCoverageRatchet', () => {
       for (const file of ['a.ts', 'b.tsx', 'c.mts', 'd.cts']) {
         expect(text).toContain(`  src/${file}`);
       }
-      expect(text).not.toMatch(/f\.test|g\.spec|h\.d|i\.d|j\.d/);
+      expect(text).toContain('  src/nested/mount-harness.ts');
+      expect(text).not.toMatch(
+        /f\.test|g\.spec|h\.d|i\.d|j\.d|test-support|__fixtures__|nested\/tests?\//,
+      );
     });
 
     test('ignores files the tests never loaded unless the option is given', async () => {
