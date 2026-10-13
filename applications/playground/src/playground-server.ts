@@ -1620,11 +1620,11 @@ export async function startServer(port: number = PORT): Promise<PlaygroundServer
     //
     // Units: `process.resourceUsage().maxRSS` is kibibytes on BOTH macOS and
     // Linux — libuv normalizes Darwin's byte-valued `ru_maxrss` on the way out.
-    // That is not true of `Bun.spawn`'s subprocess `resourceUsage()`, which
-    // hands back Darwin's raw bytes; that difference is what
-    // `memory-canary.ts`'s `bytesFromMaxRss` exists for, and applying it here
-    // would under-report by 1024x on macOS. Measured on darwin at a 611 MB
-    // resident size: this API reports 625,856, the subprocess API 641,024,000.
+    // `Bun.spawn`'s subprocess `resourceUsage()` is a different API that reports
+    // bytes on both platforms (see `memory-canary.ts`'s `peakRssBytesFrom`), so
+    // the two differ by 1024x and must never share a conversion. Measured on
+    // darwin at a 611 MB resident size: this API reports 625,856, the subprocess
+    // API 641,024,000.
     const peakResidentMegabytes = Math.round(process.resourceUsage().maxRSS / 1024);
     process.stdout.write(
       `[playground] Pre-built ${prebuild.succeeded}/${total} page bundles${failedSuffix} ` +

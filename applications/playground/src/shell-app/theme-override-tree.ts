@@ -63,3 +63,35 @@ export function jsonEquals(left: JsonValue | undefined, right: JsonValue | undef
       jsonEquals((left as JsonObject)[key], (right as JsonObject)[key]),
   );
 }
+
+const isTokenNode = (node: JsonObject): boolean =>
+  Object.hasOwn(node, '$value') || Object.hasOwn(node, '$ref');
+
+function collectTokenPaths(tree: JsonObject, prefix: string, into: Set<string>): void {
+  for (const [key, child] of Object.entries(tree)) {
+    // A group's `$root` is the token at the group's own path.
+    if (key === '$root' && isObject(child) && prefix !== '') {
+      into.add(prefix);
+      continue;
+    }
+    if (key.startsWith('$') || !isObject(child)) continue;
+    const path = prefix === '' ? key : `${prefix}.${key}`;
+    if (isTokenNode(child)) into.add(path);
+    else collectTokenPaths(child, path, into);
+  }
+}
+
+const overridden = new WeakMap<object, Set<string>>();
+
+/** Every token path the envelope overrides, in a source tree or as a CSS-only edit. */
+export function overriddenPaths(envelope: {
+  overrides: Record<string, JsonObject>;
+  cssOverrides: Record<string, unknown>;
+}): ReadonlySet<string> {
+  const known = overridden.get(envelope);
+  if (known !== undefined) return known;
+  const paths = new Set(Object.keys(envelope.cssOverrides));
+  for (const tree of Object.values(envelope.overrides)) collectTokenPaths(tree, '', paths);
+  overridden.set(envelope, paths);
+  return paths;
+}

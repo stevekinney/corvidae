@@ -1,23 +1,54 @@
 <script lang="ts">
   /*
-   * A minimal six-field token catalogue (friendly name, value, path, CSS property, type,
-   * context). At 1200px and wider it is a table in a bounded scroll region; below that it
-   * is a list of stacked label/value rows, so no control hides behind horizontal
-   * overflow and the mobile layout never reuses the desktop table. Selecting a row is the
-   * only thing that changes the selected token. COR-489 replaces the value column and
-   * the rows' editors.
+   * The six-field token catalogue (friendly name, value, path, CSS property, type, context)
+   * with search and the Changed, Alias and Recipe filters. The value is the draft's value for
+   * the active context, with the shipped value beside a changed token. At 1200px and wider
+   * it is a table in a bounded scroll region; from 768px it is a list of stacked rows; below
+   * that each row is one token with its name and value first and the path, property, type
+   * and context behind a disclosure. The mobile layout never reuses the desktop table.
+   * Selecting a row is the only thing that changes the selected token.
    */
-  import { Input } from '@lostgradient/cinder';
+  import { Chip, Input } from '@lostgradient/cinder';
   import Check from 'lucide-svelte/icons/check';
 
-  import { filterRows, rowsInGroup, type CatalogueRow } from './theme-builder-catalogue.ts';
+  import {
+    filterRows,
+    filterRowsBy,
+    rowsInGroup,
+    type CatalogueRow,
+  } from './theme-builder-catalogue.ts';
+  import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
   import type { WorkbenchLayout } from './theme-workbench-layout.ts';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
-  type Props = { workbench: ThemeWorkbenchState; layout: WorkbenchLayout };
-  let { workbench, layout }: Props = $props();
+  type Props = {
+    workbench: ThemeWorkbenchState;
+    layout: WorkbenchLayout;
+    controller?: ThemeBuilderController | undefined;
+  };
+  let { workbench, layout, controller }: Props = $props();
 
-  const rows = $derived(filterRows(rowsInGroup(workbench.groupId), workbench.filter));
+  const changed = $derived(controller?.changedPaths ?? new Set<string>());
+  const rows = $derived(
+    filterRowsBy(
+      filterRows(rowsInGroup(workbench.groupId), workbench.filter),
+      workbench.filters,
+      changed,
+    ),
+  );
+  const FILTERS = [
+    { id: 'changed', label: 'Changed' },
+    { id: 'alias', label: 'Aliases' },
+    { id: 'recipe', label: 'Recipes' },
+  ] as const;
+
+  function draftOf(row: CatalogueRow): string {
+    return controller?.draftValues.get(row.cssProperty) ?? 'Not evaluated yet';
+  }
+
+  function shippedOf(row: CatalogueRow): string | undefined {
+    return controller?.shippedValues.get(row.cssProperty);
+  }
   const tabStopPath = $derived(
     rows.some((row) => row.path === workbench.selectedTokenPath)
       ? workbench.selectedTokenPath
@@ -57,6 +88,13 @@
   }
 </script>
 
+{#snippet valueText(row: CatalogueRow)}
+  <span class="sr-only">Draft value: </span><span data-testid="row-value">{draftOf(row)}</span>
+  {#if changed.has(row.path) && shippedOf(row) !== undefined && shippedOf(row) !== draftOf(row)}
+    <span class="muted"> (shipped <span class="sr-only">value: </span>{shippedOf(row)})</span>
+  {/if}
+{/snippet}
+
 {#snippet rowButton(row: CatalogueRow)}
   <button
     type="button"
@@ -85,6 +123,17 @@
     value={workbench.filter}
     oninput={(event) => workbench.setFilter(event.currentTarget.value)}
   />
+  <div class="filters" role="group" aria-label="Catalogue filters">
+    {#each FILTERS as filter (filter.id)}
+      <Chip
+        mode="toggle"
+        label={filter.label}
+        pressed={workbench.filters[filter.id]}
+        onPressedChange={(pressed) =>
+          workbench.setFilters({ ...workbench.filters, [filter.id]: pressed })}
+      />
+    {/each}
+  </div>
   <p class="count" aria-live="polite" data-testid="catalogue-count">{countText}</p>
 
   {#if rows.length === 0}
@@ -117,7 +166,7 @@
           {#each rows as row (row.path)}
             <tr data-selected={isSelected(row) ? 'true' : undefined}>
               <th scope="row">{@render rowButton(row)}</th>
-              <td class="muted">Not evaluated yet</td>
+              <td>{@render valueText(row)}</td>
               <td><code>{row.path}</code></td>
               <td><code>{row.cssProperty}</code></td>
               <td>{row.type}</td>
@@ -137,12 +186,9 @@
       {#each rows as row (row.path)}
         <li class="stack__row" data-selected={isSelected(row) ? 'true' : undefined}>
           {@render rowButton(row)}
+          <p class="stack__value">{@render valueText(row)}</p>
           {#snippet fields()}
             <dl>
-              <div>
-                <dt>Value</dt>
-                <dd class="muted">Not evaluated yet</dd>
-              </div>
               <div>
                 <dt>Path</dt>
                 <dd><code>{row.path}</code></dd>
@@ -185,6 +231,16 @@
     margin: 0;
     font-size: var(--cinder-text-md);
     font-weight: var(--cinder-font-semibold);
+  }
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .stack__value {
+    margin: 0 0 0 6px;
+    font-size: var(--cinder-text-sm);
+    font-family: var(--cinder-font-mono);
   }
   .count,
   .empty {

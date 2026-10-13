@@ -7,13 +7,16 @@
   import type { Snippet } from 'svelte';
 
   import { catalogueRowByPath } from './theme-builder-catalogue.ts';
+  import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+  import { editorForToken } from './theme-token-editors.ts';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
   type Props = {
     workbench: ThemeWorkbenchState;
     editor?: Snippet<[ThemeWorkbenchState]> | undefined;
+    controller?: ThemeBuilderController | undefined;
   };
-  let { workbench, editor }: Props = $props();
+  let { workbench, editor, controller }: Props = $props();
 
   const row = $derived(catalogueRowByPath(workbench.selectedTokenPath));
 </script>
@@ -48,6 +51,11 @@
   {/if}
   {#if editor !== undefined}
     {@render editor(workbench)}
+  {:else if controller !== undefined && row !== undefined}
+    {#key row.path}
+      {@const Editor = editorForToken(row)}
+      <Editor {controller} {workbench} {row} />
+    {/key}
   {:else}
     <p class="muted">Value editors arrive with the token editors.</p>
   {/if}

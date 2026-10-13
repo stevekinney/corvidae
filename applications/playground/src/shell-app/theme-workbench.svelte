@@ -13,7 +13,10 @@
   import { Tabs } from '@lostgradient/cinder';
   import { onMount, tick, type Snippet } from 'svelte';
 
+  import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
   import ThemeWorkbenchCatalogue from './theme-workbench-catalogue.svelte';
+  import ThemeWorkbenchDraftBar from './theme-workbench-draft-bar.svelte';
+  import ThemeWorkbenchLibrary from './theme-workbench-library.svelte';
   import ThemeWorkbenchLegacyNotice from './theme-workbench-legacy-notice.svelte';
   import ThemeWorkbenchEditor from './theme-workbench-editor.svelte';
   import { observeLayout, type WorkbenchLayout } from './theme-workbench-layout.ts';
@@ -30,8 +33,16 @@
     checks?: Snippet<[ThemeWorkbenchState]>;
     /** Where the preview iframe loads from; tests point it at a static fixture. */
     previewPath?: string;
+    /** The draft, history and storage controller (COR-490); without it the shell is inert. */
+    controller?: ThemeBuilderController;
   };
-  let { workbench = new ThemeWorkbenchState(), editor, checks, previewPath }: Props = $props();
+  let {
+    workbench = new ThemeWorkbenchState(),
+    editor,
+    checks,
+    previewPath,
+    controller,
+  }: Props = $props();
 
   let layout = $state<WorkbenchLayout>('desktop');
   let announcement = $state('');
@@ -46,9 +57,14 @@
 
   onMount(() => {
     announcement = 'Theme builder';
-    return observeLayout(window, (next) => {
+    if (controller !== undefined && !controller.ready) void controller.start();
+    const stop = observeLayout(window, (next) => {
       layout = next;
     });
+    return () => {
+      stop();
+      controller?.stop();
+    };
   });
 
   function remember(pane: WorkbenchPane): void {
@@ -92,9 +108,15 @@
   <a class="skip-link" href="#theme-builder-heading" onclick={focusHeading}>
     Skip to the theme builder
   </a>
-  <div class="sr-only" aria-live="polite" data-testid="workbench-announcer">{announcement}</div>
+  <div class="sr-only" aria-live="polite" data-testid="workbench-announcer">
+    {controller?.announcement || announcement}
+  </div>
 
   <ThemeWorkbenchToolbar {workbench} />
+  {#if controller !== undefined}
+    <ThemeWorkbenchLibrary {controller} />
+    <ThemeWorkbenchDraftBar {controller} {workbench} />
+  {/if}
   <ThemeWorkbenchLegacyNotice />
 
   {#if compact}
@@ -125,8 +147,8 @@
     >
       <ThemeWorkbenchRail {workbench} />
       <div class="main">
-        <ThemeWorkbenchCatalogue {workbench} {layout} />
-        <ThemeWorkbenchEditor {workbench} {editor} />
+        <ThemeWorkbenchCatalogue {workbench} {layout} {controller} />
+        <ThemeWorkbenchEditor {workbench} {editor} {controller} />
       </div>
     </div>
 

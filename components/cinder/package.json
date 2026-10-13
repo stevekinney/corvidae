@@ -12,6 +12,7 @@
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src scripts",
     "test:benchmarks": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 ./scripts/benchmarks/z-index-scale.bench.ts",
+    "test:memory-canary": "bun scripts/memory-canary.ts",
     "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 --coverage --coverage-reporter=lcov src scripts && bun scripts/check-coverage-ratchet.ts",
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
