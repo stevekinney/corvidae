@@ -35,3 +35,19 @@ export type MessageKind = keyof typeof MESSAGE_KIND_DIRECTIONS;
 export function isValidSequence(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0 && value <= MAXIMUM_SEQUENCE;
 }
+
+/** Terminal dimensions are positive integers that fit the unsigned 16-bit fields of a PTY window size. */
+export const MINIMUM_TERMINAL_DIMENSION = 1;
+export const MAXIMUM_TERMINAL_DIMENSION = 65_535;
+
+/** The permitted range for the frame payload budget a host advertises: 1 byte to 256 KiB. */
+export const FRAME_PAYLOAD_BYTES_RANGE = { minimum: 1, maximum: 256 * 1024 } as const;
+
+/** The permitted range for the host operation FIFO a host advertises: 1 to 4,096 operations. */
+export const QUEUED_OPERATIONS_RANGE = { minimum: 1, maximum: 4096 } as const;
+
+/**
+ * The fixed header of a binary frame: version (1), kind (1), direction (1), channel (1), session
+ * identifier (16), generation (8), sequence (8) and payload length (4).
+ */
+export const BINARY_FRAME_HEADER_BYTES = 40;
