@@ -41,10 +41,15 @@ export const richNode: JsonObject = {
   $value: '{palette.ink}',
   $description: 'Alias to ink',
   $deprecated: 'Use palette.accent',
+  $ref: '#/palette/ink',
   $extends: '{palette.accent}',
   $root: { $value: '{palette.ink}' },
   $extensions: {
-    'com.lostgradient.cinder': { cssProperty: '--cinder-accent', recipe: { input: [1, 2, 3] } },
+    'com.lostgradient.cinder': {
+      cssProperty: '--cinder-accent',
+      recipe: { input: [1, 2, 3] },
+      source: { document: 'base.tokens.json', line: 4, origin: 'imported' },
+    },
     'com.example.unknown': { keep: true, nested: { n: [null, 'x'] } },
   },
 };
