@@ -474,7 +474,7 @@ describe('storage failure', () => {
 });
 
 describe('quiescence after shutdown', () => {
-  it('aborts in-flight upload, fetch, scan, and transform work on shutdown and reports nothing leaked', async () => {
+  it('aborts in-flight fetch, scan, and garbage-collection work on shutdown and reports nothing leaked', async () => {
     const never = new Promise<never>(() => {});
     const opened = await open({
       ports: {
