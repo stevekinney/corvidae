@@ -1847,11 +1847,15 @@ describe('the foreign-commit guard net-effect rule', () => {
   async function createOwnership(options: {
     generatedFiles?: Map<string, { contents: string; executable: boolean }>;
     generatedManifest?: Record<string, unknown>;
+    prefixes?: string[];
   }) {
     return {
       policy: await loadTargetOwnedPolicy(),
       target: 'weft' as const,
-      transform: { files: new Set([sourcePath, otherPath, manifestPath]), prefixes: [] },
+      transform: {
+        files: new Set([sourcePath, otherPath, manifestPath]),
+        prefixes: options.prefixes ?? [],
+      },
       generatedFiles: options.generatedFiles,
       generatedManifestKeys:
         options.generatedManifest === undefined
@@ -1924,6 +1928,76 @@ describe('the foreign-commit guard net-effect rule', () => {
       await git(root, 'rm', '--quiet', sourcePath);
       await commitAll(root, 'Remove source');
       expect(await subjects(root, ownership)).toEqual([]);
+    });
+  });
+
+  /**
+   * A deletion the sync would make itself (COR-1201). A path under a prefix the sync retires or
+   * prunes, and absent from everything it writes, stays absent after the sync, so a target
+   * commit that already deleted it clobbers nothing; cinder#1602 deleting the retired playground
+   * copy is the case. An emitted path, or a deleted path restored to anything, still differs from
+   * what the sync leaves.
+   */
+  describe('a deletion the sync would make itself', () => {
+    const retiredPath = 'packages/playground/package.json';
+    const prunedPath = 'packages/weft/src/stale.ts';
+    const reach = { prefixes: ['packages/weft/src', 'packages/playground'] };
+
+    test('accepts deleting a retired path', async () => {
+      await withRepository(async (root, ownership) => {
+        await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+        await Bun.write(join(root, retiredPath), '{"name":"@cinder/playground"}\n');
+        await commitMirror(root);
+        await git(root, 'rm', '--quiet', retiredPath);
+        await commitAll(root, 'Delete retired copy');
+        expect(await subjects(root, ownership)).toEqual([]);
+      }, reach);
+    });
+
+    test('accepts deleting a file the sync prunes', async () => {
+      await withRepository(async (root, ownership) => {
+        await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+        await Bun.write(join(root, prunedPath), 'export {};\n');
+        await commitMirror(root);
+        await git(root, 'rm', '--quiet', prunedPath);
+        await commitAll(root, 'Delete stale source');
+        expect(await subjects(root, ownership)).toEqual([]);
+      }, reach);
+    });
+
+    test('keeps deleting an emitted file foreign', async () => {
+      await withRepository(async (root, ownership) => {
+        await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+        await commitMirror(root);
+        await git(root, 'rm', '--quiet', sourcePath);
+        await commitAll(root, 'Delete emitted source');
+        expect(await subjects(root, ownership)).toEqual(['Delete emitted source']);
+      }, reach);
+    });
+
+    test('keeps deleting an emitted manifest foreign', async () => {
+      await withRepository(async (root, ownership) => {
+        await Bun.write(join(root, manifestPath), '{"name":"@lostgradient/weft"}\n');
+        await commitMirror(root);
+        await git(root, 'rm', '--quiet', manifestPath);
+        await commitAll(root, 'Delete emitted manifest');
+        expect(await subjects(root, ownership)).toEqual(['Delete emitted manifest']);
+      }, reach);
+    });
+
+    test('keeps a deleted retired path foreign once a later commit restores different bytes', async () => {
+      await withRepository(async (root, ownership) => {
+        await Bun.write(join(root, retiredPath), '{"name":"@cinder/playground"}\n');
+        await commitMirror(root);
+        await git(root, 'rm', '--quiet', retiredPath);
+        await commitAll(root, 'Delete retired copy');
+        await Bun.write(join(root, retiredPath), '{"name":"@cinder/playground","private":true}\n');
+        await commitAll(root, 'Restore retired copy');
+        expect(await subjects(root, ownership)).toEqual([
+          'Restore retired copy',
+          'Delete retired copy',
+        ]);
+      }, reach);
     });
   });
 
