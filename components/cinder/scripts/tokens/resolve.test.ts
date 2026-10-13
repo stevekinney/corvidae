@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { tokenPathFromReference } from '../../src/tokens/runtime/resolve-shared.ts';
-import { createValueResolver, mergeAndExpandExtends, mergeDocuments, resolveDocument } from '../../src/tokens/runtime/resolve.ts';
+import {
+  createValueResolver,
+  mergeAndExpandExtends,
+  mergeDocuments,
+  resolveDocument,
+} from '../../src/tokens/runtime/resolve.ts';
 import { TokenValidationError, type TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
 

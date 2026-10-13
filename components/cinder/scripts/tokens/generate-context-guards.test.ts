@@ -1,7 +1,10 @@
 import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
-import { assertOverrideScopeConsistency, assertUniqueOverrideCssProperties } from '../../src/tokens/runtime/css-support.ts';
+import {
+  assertOverrideScopeConsistency,
+  assertUniqueOverrideCssProperties,
+} from '../../src/tokens/runtime/css-support.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
 import { buildGeneratedOutputs } from './generate.ts';

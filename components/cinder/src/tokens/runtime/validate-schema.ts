@@ -1,6 +1,6 @@
 /**
  * First-pass structural validation against the official DTCG 2025.10 JSON
- * Schemas (vendored under `./schemas`, see that directory's README.md).
+ * Schemas (vendored under `scripts/tokens/schemas`, see that directory's README.md).
  *
  * This layer catches shape violations JSON Schema can express directly:
  * required composite members, enum membership, value types, and pattern
@@ -20,7 +20,12 @@ import type { ErrorObject } from 'ajv';
 import validateFormat from './format-validator.generated.js';
 import { mergeAndExpandExtends } from './resolve.ts';
 import validateResolver from './resolver-validator.generated.js';
-import { TOKEN_TYPES, TokenValidationError, type TokenDocument, type ValidationIssue } from './types.ts';
+import {
+  TOKEN_TYPES,
+  TokenValidationError,
+  type TokenDocument,
+  type ValidationIssue,
+} from './types.ts';
 
 /**
  * The validators are standalone modules generated from the vendored schemas

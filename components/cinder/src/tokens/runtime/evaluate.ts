@@ -18,6 +18,7 @@ import { traceProvenance } from './authoring-provenance.ts';
 import type { AuthoringContext, AuthoringLayer } from './authoring-types.ts';
 import { authoringContexts, authoringLayerStack } from './context-stack.ts';
 import { validateCorpus } from './corpus-documents.ts';
+import { assertResolutionOrderMatchesCssBlockStructure } from './css-support.ts';
 import {
   evaluateContextProvenance,
   type EvaluatedProvenance,
@@ -93,6 +94,9 @@ type ValidatedSources = {
 function validateSources(sources: ThemeSources): ValidatedSources | ThemeDiagnostic[] {
   try {
     assertValidResolverDocument(sources.resolver);
+    // The generated stylesheet emits theme blocks before motion blocks; a resolver
+    // that orders them otherwise cannot be exported, so it is not a valid theme.
+    assertResolutionOrderMatchesCssBlockStructure(sources.resolver);
     const documentsByPath = validateCorpus(
       sources.resolver,
       Object.entries(sources.documents).map(([path, document]) => ({ path, document })),

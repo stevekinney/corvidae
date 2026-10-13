@@ -1,7 +1,15 @@
 import valueParser from 'postcss-value-parser';
 import type { CorpusEntry } from './corpus.ts';
 import { tokenPathFromReference } from './resolve-shared.ts';
-import { COLOR_ARGUMENT_FUNCTIONS, COLOR_FUNCTIONS, type ColorValueNode, fallbackNodes, mathFunctionType, splitArguments, stripSpaces } from './value-color-parse.ts';
+import {
+  COLOR_ARGUMENT_FUNCTIONS,
+  COLOR_FUNCTIONS,
+  type ColorValueNode,
+  fallbackNodes,
+  mathFunctionType,
+  splitArguments,
+  stripSpaces,
+} from './value-color-parse.ts';
 
 export function wholeTokenIndexPath(reference: string): string {
   let path = tokenPathFromReference(reference);

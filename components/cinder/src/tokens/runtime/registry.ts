@@ -22,7 +22,11 @@
  * disagree about which base tokens exist.
  */
 
-import { documentsForResolutionOrder, modifierValuesForContext, requireDocument } from './context-order.ts';
+import {
+  documentsForResolutionOrder,
+  modifierValuesForContext,
+  requireDocument,
+} from './context-order.ts';
 import { collectEntries, type CorpusEntry } from './corpus.ts';
 import { assertUniqueCssProperties, withDependentBaseAliases } from './css-support.ts';
 import { createValueResolver, mergeAndExpandExtends } from './resolve.ts';

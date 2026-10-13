@@ -5,8 +5,14 @@ import { fileURLToPath } from 'node:url';
 
 import { TokenValidationError, type TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { validateResolverDocument } from '../../src/tokens/runtime/validate-resolver.ts';
-import { validateResolvedToken, validateTokenDocument } from '../../src/tokens/runtime/validate-tokens.ts';
-import { assertValidResolverDocument, assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
+import {
+  validateResolvedToken,
+  validateTokenDocument,
+} from '../../src/tokens/runtime/validate-tokens.ts';
+import {
+  assertValidResolverDocument,
+  assertValidTokenDocument,
+} from '../../src/tokens/runtime/validate.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const fixturesDirectory = join(scriptDirectory, 'fixtures');

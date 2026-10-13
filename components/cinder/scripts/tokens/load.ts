@@ -3,7 +3,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
-import { assertValidResolverDocument, assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
+import {
+  assertValidResolverDocument,
+  assertValidTokenDocument,
+} from '../../src/tokens/runtime/validate.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 export const tokenRoot = join(scriptDirectory, '..', '..', 'src', 'tokens');

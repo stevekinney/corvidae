@@ -8,7 +8,12 @@
 import type { ProvenanceLayerInput } from './authoring-provenance.ts';
 import { authoringContextId, type AuthoringContext } from './authoring-types.ts';
 import { requireDocument } from './context-order.ts';
-import { combinations, normalizeSourcePath, parseResolutionOrder, sourcesForEntry } from './resolver-order.ts';
+import {
+  combinations,
+  normalizeSourcePath,
+  parseResolutionOrder,
+  sourcesForEntry,
+} from './resolver-order.ts';
 import type { ResolverDocument, TokenDocument } from './types.ts';
 
 export function authoringContexts(

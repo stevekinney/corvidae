@@ -4,7 +4,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { TokenValidationError } from '../../src/tokens/runtime/types.ts';
-import { validateResolverDocumentSchema, validateTokenDocumentSchema } from '../../src/tokens/runtime/validate-schema.ts';
+import {
+  validateResolverDocumentSchema,
+  validateTokenDocumentSchema,
+} from '../../src/tokens/runtime/validate-schema.ts';
 import { validateTokenDocument } from '../../src/tokens/runtime/validate-tokens.ts';
 import { assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
 

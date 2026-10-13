@@ -1,5 +1,12 @@
 import { mergeAndExpandExtends, resolveDocuments } from './resolve.ts';
-import { expandContextSources, expandSetSources, internalSetNames, normalizeSourcePath, parseResolutionOrder, reachableSetNames } from './resolver-order.ts';
+import {
+  expandContextSources,
+  expandSetSources,
+  internalSetNames,
+  normalizeSourcePath,
+  parseResolutionOrder,
+  reachableSetNames,
+} from './resolver-order.ts';
 import { TokenValidationError, type ResolverDocument, type TokenDocument } from './types.ts';
 
 export function validateModifierSetExpansionOrder(

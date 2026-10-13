@@ -13,14 +13,14 @@
  * the digest from these documents and fails if they disagree.
  */
 
-import colorsSet from '../sets/colors.tokens.json' with { type: 'json' };
-import componentsSet from '../sets/components.tokens.json' with { type: 'json' };
-import foundationSet from '../sets/foundation.tokens.json' with { type: 'json' };
-import semanticSet from '../sets/semantic.tokens.json' with { type: 'json' };
 import resolverSource from '../cinder.resolver.json' with { type: 'json' };
 import motionDefault from '../modes/motion-default.tokens.json' with { type: 'json' };
 import motionForcedReduced from '../modes/motion-forced-reduced.tokens.json' with { type: 'json' };
 import motionReduced from '../modes/motion-reduced.tokens.json' with { type: 'json' };
+import colorsSet from '../sets/colors.tokens.json' with { type: 'json' };
+import componentsSet from '../sets/components.tokens.json' with { type: 'json' };
+import foundationSet from '../sets/foundation.tokens.json' with { type: 'json' };
+import semanticSet from '../sets/semantic.tokens.json' with { type: 'json' };
 import darkTheme from '../themes/dark.tokens.json' with { type: 'json' };
 import lightTheme from '../themes/light.tokens.json' with { type: 'json' };
 import { BASE_PACKAGE_VERSION, BASE_SOURCE_DIGEST } from './base-corpus.generated.ts';

@@ -1,5 +1,9 @@
 import { format } from 'prettier';
-import { RESOLVED_CONTEXT_COMBOS, documentsForResolutionOrder, modifierValuesForCombo } from '../../src/tokens/runtime/context-order.ts';
+import {
+  RESOLVED_CONTEXT_COMBOS,
+  documentsForResolutionOrder,
+  modifierValuesForCombo,
+} from '../../src/tokens/runtime/context-order.ts';
 import { cinderExtensions } from '../../src/tokens/runtime/corpus.ts';
 import { resolveDocuments } from '../../src/tokens/runtime/resolve.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';

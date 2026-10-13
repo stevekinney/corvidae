@@ -1,8 +1,22 @@
-import { documentsForResolutionOrder, documentsForSystemMotionScope, modifierValuesForCombo, modifierValuesForContext, refsFor } from '../../src/tokens/runtime/context-order.ts';
+import {
+  documentsForResolutionOrder,
+  documentsForSystemMotionScope,
+  modifierValuesForCombo,
+  modifierValuesForContext,
+  refsFor,
+} from '../../src/tokens/runtime/context-order.ts';
 import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
-import { assertResolutionOrderMatchesCssBlockStructure, assertUniqueCssProperties, assertUniqueOverrideCssProperties } from '../../src/tokens/runtime/css-support.ts';
+import {
+  assertResolutionOrderMatchesCssBlockStructure,
+  assertUniqueCssProperties,
+  assertUniqueOverrideCssProperties,
+} from '../../src/tokens/runtime/css-support.ts';
 import { createValueResolver, mergeAndExpandExtends } from '../../src/tokens/runtime/resolve.ts';
-import { expandContextSources, parseResolutionOrder, sourcesForEntry } from '../../src/tokens/runtime/resolver-order.ts';
+import {
+  expandContextSources,
+  parseResolutionOrder,
+  sourcesForEntry,
+} from '../../src/tokens/runtime/resolver-order.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { validateCssScopes } from './css-validation.ts';
 

@@ -1,5 +1,15 @@
 import { groupMetadataBase } from './resolve-extends.ts';
-import { type JsonObject, type RawRefs, type ResolvedTokens, clone, getByPath, isObject, issue, pointerSegments, tokenPathFromReference } from './resolve-shared.ts';
+import {
+  type JsonObject,
+  type RawRefs,
+  type ResolvedTokens,
+  clone,
+  getByPath,
+  isObject,
+  issue,
+  pointerSegments,
+  tokenPathFromReference,
+} from './resolve-shared.ts';
 import type { DesignToken, TokenGroup } from './types.ts';
 import { TokenValidationError } from './types.ts';
 

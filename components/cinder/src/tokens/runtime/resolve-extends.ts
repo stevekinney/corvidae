@@ -1,4 +1,12 @@
-import { clone, collectGroups, extensionIssue, type ExtensionOrigins, issue, isTokenGroup, tokenPathFromReference } from './resolve-shared.ts';
+import {
+  clone,
+  collectGroups,
+  extensionIssue,
+  type ExtensionOrigins,
+  issue,
+  isTokenGroup,
+  tokenPathFromReference,
+} from './resolve-shared.ts';
 import type { TokenGroup } from './types.ts';
 import { TokenValidationError } from './types.ts';
 

@@ -12,7 +12,15 @@
  * so resetting an override is just tracing the stack without that edit.
  */
 
-import { UNKNOWN, type AuthoringLayer, type ContributingLayer, type EffectiveType, type TokenContextProvenance, type TokenInputs, type TokenLocation } from './authoring-types.ts';
+import {
+  UNKNOWN,
+  type AuthoringLayer,
+  type ContributingLayer,
+  type EffectiveType,
+  type TokenContextProvenance,
+  type TokenInputs,
+  type TokenLocation,
+} from './authoring-types.ts';
 import { collectEntries, type CorpusEntry } from './corpus.ts';
 import { tokenPathFromReference } from './resolve-shared.ts';
 import { mergeAndExpandExtends } from './resolve.ts';

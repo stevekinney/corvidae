@@ -1,6 +1,18 @@
-import { validateModifierSetExpansionOrder, validateModifierTokenPaths } from './corpus-validation.ts';
+import {
+  validateModifierSetExpansionOrder,
+  validateModifierTokenPaths,
+} from './corpus-validation.ts';
 import { resolveDocuments } from './resolve.ts';
-import { buildContextSourcesIndex, combinations, expandContextSources, expandSetSources, normalizeSourcePath, normalizedDocumentsByPath, parseResolutionOrder, validateExpandedSources } from './resolver-order.ts';
+import {
+  buildContextSourcesIndex,
+  combinations,
+  expandContextSources,
+  expandSetSources,
+  normalizeSourcePath,
+  normalizedDocumentsByPath,
+  parseResolutionOrder,
+  validateExpandedSources,
+} from './resolver-order.ts';
 import { TokenValidationError, type ResolverDocument, type TokenDocument } from './types.ts';
 import { validateResolverDocument } from './validate-resolver.ts';
 import { assertSafeExtensionMetadata } from './validate-schema.ts';

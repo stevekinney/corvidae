@@ -16,7 +16,11 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import standaloneCode from 'ajv/dist/standalone';
 
-import { REGENERATE_COMMAND, runtimeDirectory, schemaDirectory } from './generator-configuration.ts';
+import {
+  REGENERATE_COMMAND,
+  runtimeDirectory,
+  schemaDirectory,
+} from './generator-configuration.ts';
 
 /**
  * The two `format` keywords the vendored DTCG schemas actually apply. Ajv

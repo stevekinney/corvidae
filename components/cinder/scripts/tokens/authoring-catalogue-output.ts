@@ -1,10 +1,10 @@
 import { format } from 'prettier';
 
-import type { AuthoringCatalogue } from '../../src/tokens/runtime/authoring-types.ts';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import babelPlugin from 'prettier/plugins/babel';
 import estreePlugin from 'prettier/plugins/estree';
 import typescriptPlugin from 'prettier/plugins/typescript';
+import type { AuthoringCatalogue } from '../../src/tokens/runtime/authoring-types.ts';
+import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import { PRETTIER_OPTIONS, REGENERATE_COMMAND } from './generator-configuration.ts';
 
 const TYPESCRIPT_PLUGINS = [typescriptPlugin, estreePlugin, babelPlugin];

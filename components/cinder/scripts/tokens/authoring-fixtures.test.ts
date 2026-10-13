@@ -5,11 +5,23 @@ import { fileURLToPath } from 'node:url';
 
 import { buildAuthoringCatalogue } from '../../src/tokens/runtime/authoring-catalogue.ts';
 import { resolveDocuments } from '../../src/tokens/runtime/resolve.ts';
-import { TOKEN_TYPES, TokenValidationError, type TokenDocument } from '../../src/tokens/runtime/types.ts';
+import {
+  TOKEN_TYPES,
+  TokenValidationError,
+  type TokenDocument,
+} from '../../src/tokens/runtime/types.ts';
 import { validateTokenDocumentSchema } from '../../src/tokens/runtime/validate-schema.ts';
-import { assertValidResolverDocument, assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
+import {
+  assertValidResolverDocument,
+  assertValidTokenDocument,
+} from '../../src/tokens/runtime/validate.ts';
 import { serializeTypedValue } from '../../src/tokens/runtime/value-formatters.ts';
-import { cloneCorpus, fixtureDirectory, loadProfileCorpus, readFixture } from './authoring-test-support.ts';
+import {
+  cloneCorpus,
+  fixtureDirectory,
+  loadProfileCorpus,
+  readFixture,
+} from './authoring-test-support.ts';
 import { loadCorpus } from './generate.ts';
 import { resolvedDirectory, tokensBaseCssPath } from './generator-configuration.ts';
 

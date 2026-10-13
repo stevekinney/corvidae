@@ -1,6 +1,13 @@
 import { format } from 'prettier';
 import { scopeIndexFromDocuments } from '../../src/tokens/runtime/context-order.ts';
-import { assertUniqueOverrideCssProperties, renderBaseDeclarations, renderOverrideDeclarations, withDependentBaseAliases, withOppositeThemeResets, withThemeDependentOverrides } from '../../src/tokens/runtime/css-support.ts';
+import {
+  assertUniqueOverrideCssProperties,
+  renderBaseDeclarations,
+  renderOverrideDeclarations,
+  withDependentBaseAliases,
+  withOppositeThemeResets,
+  withThemeDependentOverrides,
+} from '../../src/tokens/runtime/css-support.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import { prepareCss } from './css-preparation.ts';

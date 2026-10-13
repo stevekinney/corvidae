@@ -1,6 +1,17 @@
 import { resolveExtends } from './resolve-extends.ts';
 import { resolveToken, resolveValue } from './resolve-references.ts';
-import { type ExtensionOrigins, type RawRefs, type ResolvedTokens, clone, collectExtensionOrigins, collectGroups, collectTokens, isObject, isToken, isTokenGroup } from './resolve-shared.ts';
+import {
+  type ExtensionOrigins,
+  type RawRefs,
+  type ResolvedTokens,
+  clone,
+  collectExtensionOrigins,
+  collectGroups,
+  collectTokens,
+  isObject,
+  isToken,
+  isTokenGroup,
+} from './resolve-shared.ts';
 import type { DesignToken, TokenDocument, TokenExtensions, TokenGroup } from './types.ts';
 
 /**

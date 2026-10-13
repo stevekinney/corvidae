@@ -11,7 +11,15 @@
 
 import { PROFILES, selectProfile } from './authoring-profiles.ts';
 import { collectCinderExtensions, traceProvenance } from './authoring-provenance.ts';
-import { UNKNOWN, type AuthoringCatalogue, type AuthoringLayer, type AuthoringRecord, type ProvenanceVariant, type TokenContextProvenance, type TokenDisposition } from './authoring-types.ts';
+import {
+  UNKNOWN,
+  type AuthoringCatalogue,
+  type AuthoringLayer,
+  type AuthoringRecord,
+  type ProvenanceVariant,
+  type TokenContextProvenance,
+  type TokenDisposition,
+} from './authoring-types.ts';
 import { authoringContexts, authoringLayerStack } from './context-stack.ts';
 import type { CorpusEntry } from './corpus.ts';
 import { buildBaseIndex, buildTokenRegistryFromIndexes, themeAwarePaths } from './registry.ts';

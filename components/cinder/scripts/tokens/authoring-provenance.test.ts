@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { authoringContexts, authoringLayerStack } from '../../src/tokens/runtime/context-stack.ts';
 import { traceProvenance } from '../../src/tokens/runtime/authoring-provenance.ts';
+import { authoringContexts, authoringLayerStack } from '../../src/tokens/runtime/context-stack.ts';
 import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 import { mergeAndExpandExtends, resolveDocuments } from '../../src/tokens/runtime/resolve.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';

@@ -1,8 +1,26 @@
 import { describe, expect, test } from 'bun:test';
-import { orderedTokenValidationContexts, validateLoadedTokenDocuments } from '../../src/tokens/runtime/corpus-documents.ts';
-import { validateModifierSetExpansionOrder, validateModifierTokenPaths } from '../../src/tokens/runtime/corpus-validation.ts';
-import { buildContextSourcesIndex, combinations, expandContextSources, expandSetSources, normalizeSourcePath, parseResolutionOrder, sourcesForEntry } from '../../src/tokens/runtime/resolver-order.ts';
-import { TokenValidationError, type ResolverDocument, type TokenDocument } from '../../src/tokens/runtime/types.ts';
+import {
+  orderedTokenValidationContexts,
+  validateLoadedTokenDocuments,
+} from '../../src/tokens/runtime/corpus-documents.ts';
+import {
+  validateModifierSetExpansionOrder,
+  validateModifierTokenPaths,
+} from '../../src/tokens/runtime/corpus-validation.ts';
+import {
+  buildContextSourcesIndex,
+  combinations,
+  expandContextSources,
+  expandSetSources,
+  normalizeSourcePath,
+  parseResolutionOrder,
+  sourcesForEntry,
+} from '../../src/tokens/runtime/resolver-order.ts';
+import {
+  TokenValidationError,
+  type ResolverDocument,
+  type TokenDocument,
+} from '../../src/tokens/runtime/types.ts';
 import { assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
 
 const resolver: ResolverDocument = {

@@ -1,7 +1,19 @@
 import type { DesignToken, TokenType, ValidationIssue } from './types.ts';
 import { TokenValidationError } from './types.ts';
 import { unknownReservedPropertyReason } from './validate-resolver.ts';
-import { GROUP_METADATA, TOKEN_METADATA, TOKEN_NAME_PATTERN, VENDOR_EXTENSION_PATTERN, addIssue, hasTokenValue, isObject, isReference, isTokenType, validateValue, type JsonObject } from './validate-values.ts';
+import {
+  GROUP_METADATA,
+  TOKEN_METADATA,
+  TOKEN_NAME_PATTERN,
+  VENDOR_EXTENSION_PATTERN,
+  addIssue,
+  hasTokenValue,
+  isObject,
+  isReference,
+  isTokenType,
+  validateValue,
+  type JsonObject,
+} from './validate-values.ts';
 
 export function tokenType(
   token: JsonObject,
