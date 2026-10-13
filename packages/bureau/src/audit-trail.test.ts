@@ -3183,6 +3183,21 @@ describe('COR-89 — omitted runtime', () => {
       const trail = createAuditTrail(bureau, kv);
       expect(factory).toHaveBeenCalledTimes(1);
       const internalRuntime = factory.mock.results[0]!.value as lifecycle.RuntimeServices;
+      // Record the tracked audit-write promise's own settlement the moment it
+      // happens, so the check after `await disposal` reads it synchronously.
+      // `deferred.drain()` waits on its own, so a later drain report would
+      // mask a `dispose()` that resolved before the work finished.
+      const settledLabels: string[] = [];
+      const track = internalRuntime.deferred.track;
+      const trackSpy = spyOn(internalRuntime.deferred, 'track').mockImplementation(
+        (promise, trackedLabel) => {
+          const record = () => {
+            settledLabels.push(trackedLabel);
+          };
+          void promise.then(record, record);
+          track(promise, trackedLabel);
+        },
+      );
 
       emit(
         new ActionEvent({
@@ -3201,6 +3216,11 @@ describe('COR-89 — omitted runtime', () => {
       const disposal = trail.dispose();
       release();
       await disposal;
+
+      // Read before any further await: the audit-write has settled by the time
+      // `dispose()` resolves, not merely by the time `drain()` stops waiting.
+      expect(trackSpy).toHaveBeenCalledTimes(1);
+      expect(settledLabels).toEqual(['audit-write']);
 
       const report = await internalRuntime.deferred.drain();
       expect(report.outstanding).toEqual([]);
