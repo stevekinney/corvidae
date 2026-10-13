@@ -139,6 +139,8 @@ export function synchronizeFocusModeQuery(focused: boolean): void {
  */
 export function applyTheme(theme: 'light' | 'dark'): void {
   document.documentElement.style.colorScheme = theme;
+  // Cinder's built tokens switch on `data-theme`, not `color-scheme`; see `applyThemeToDocument`.
+  document.documentElement.dataset['theme'] = theme;
   document.documentElement.dataset['cinderTheme'] = theme;
   try {
     // Same key the pre-paint script in render-shell.ts reads. It previously
