@@ -30,8 +30,6 @@ import {
   type CommandLedger,
   type CommandLedgerIdentity,
   createCommandLedger,
-  createRunCreationLedger,
-  digestRunCreationPayload,
   RUN_CREATION_OPERATION_VERSION,
   type RunCreationClaim,
   type RunCreationLedgerResult,
@@ -205,11 +203,10 @@ function heldGenerate(): { generate: GenerateFunction; calls: () => number; rele
 }
 
 interface Scenario {
-  readonly runtime: RuntimeServices;
-  readonly storageA: Storage;
+  /** The handle the recovering process boots over. */
   readonly storageB: Storage;
   readonly ledger: CommandLedger<RunCreationClaim, RunCreationLedgerResult>;
-  /** `storageA`, for a process that dies at the first write matching `trigger`. */
+  /** The failing process's handle, which dies at the first write matching `trigger`. */
   crashOn(trigger: (write: PendingWrite) => boolean, point: CrashPoint): CrashingStorage;
   boot(storage: Storage, generate: GenerateFunction): Promise<Bureau>;
 }
@@ -239,8 +236,6 @@ async function withScenario(
   const deadProcessDiagnostics: BureauDiagnostic[] = [];
   try {
     await body({
-      runtime,
-      storageA,
       storageB,
       ledger: createCommandLedger({
         kv: textValueStore(storageB, { disposeUnderlyingStorage: false }),
@@ -326,29 +321,17 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
   });
 
   it('after-claim: the retry observes the pending entry and starts no run of its own', async () => {
-    await withScenario(factory, async ({ runtime, storageA, storageB, ledger, boot }) => {
-      // The claim write is the last thing the failed process did: the entry
-      // exists, pending, and names a run that never reached the engine.
-      const claimant = createRunCreationLedger({
-        kv: textValueStore(storageA, { disposeUnderlyingStorage: false }),
-        clock: runtime.clock,
-        identifiers: runtime.identifiers,
-        observe: async () => ({ live: undefined, durableStatus: undefined }),
-      });
-      const claim: RunCreationClaim = {
-        runId: runtime.identifiers.next('run'),
-        sessionId: runtime.identifiers.next('session'),
-        agentName: 'bureau',
-      };
-      const attempt = await claimant.begin({
-        callerId: 'alice',
-        requestId: 'request-1',
-        payloadDigest: digestRunCreationPayload(REQUEST),
-        claim,
-      });
-      expect(attempt.kind).toBe('claimed');
+    await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+      // The claim lands and the process dies as it returns: the entry exists,
+      // pending, and names a run that never reached the engine.
+      const crash = crashOn(ledgerWriteIn('pending'), 'after-write');
+      const bureauA = await boot(crash.storage, heldGenerate().generate);
+      bureauA.createRun(REQUEST).catch(() => {});
+      expect(await pollUntil(() => crash.crashed())).toBe(true);
       const pending = await ledger.read(IDENTITY);
-      expect(pending).toMatchObject({ state: 'pending', claim });
+      if (pending?.state !== 'pending') throw new Error('expected the claim to be pending');
+      const { claim } = pending;
+      expect(await durableRunIds(bureauA)).toEqual([]);
 
       const generateB = heldGenerate();
       const bureauB = await boot(storageB, generateB.generate);

@@ -21,6 +21,7 @@ import {
 } from './command-ledger';
 import { BureauError } from './create-bureau';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
+import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { RunSummary } from './types';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
@@ -204,9 +205,9 @@ describe('createCommandLedger (memory backend)', () => {
 
       // A second conflicting attempt is its own failed entry, not an
       // overwrite of the first.
-      await expect(ledger.claim(identity(), 'digest-c', { runId: 'run-3' })).rejects.toThrow(
-        BureauLedgerConflictError,
-      );
+      expect(
+        await throwingRejectionOf(ledger.claim(identity(), 'digest-c', { runId: 'run-3' })),
+      ).toThrow(BureauLedgerConflictError);
       const conflicts = await ledger.listConflicts(identity());
       expect(conflicts.map((entry) => entry.payloadDigest).toSorted()).toEqual([
         'digest-b',
@@ -224,9 +225,9 @@ describe('createCommandLedger (memory backend)', () => {
       const first = await ledger.claim(identity(), 'digest-a', { runId: 'run-1' });
       if (first.outcome !== 'claimed') throw new Error('expected a fresh claim');
 
-      await expect(ledger.claim(identity(), 'digest-b', { runId: 'run-2' })).rejects.toThrow(
-        BureauLedgerConflictError,
-      );
+      expect(
+        await throwingRejectionOf(ledger.claim(identity(), 'digest-b', { runId: 'run-2' })),
+      ).toThrow(BureauLedgerConflictError);
 
       expect(await ledger.read(identity())).toEqual(first.entry);
       const completed = await ledger.complete(first.entry, { status: 'running' });
@@ -302,9 +303,9 @@ describe('createCommandLedger (memory backend)', () => {
       const completed = await ledger.complete(first.entry, { status: 'running' });
 
       expect(await ledger.release(first.entry)).toBe(false);
-      await expect(ledger.complete(first.entry, { status: 'completed' })).rejects.toThrow(
-        /no longer pending/,
-      );
+      expect(
+        await throwingRejectionOf(ledger.complete(first.entry, { status: 'completed' })),
+      ).toThrow(/no longer pending/);
       expect(await ledger.read(identity())).toEqual(completed);
     } finally {
       await fixture.dispose();
@@ -319,9 +320,9 @@ describe('createCommandLedger (memory backend)', () => {
       const [key] = await kv.list('');
       await kv.set(key!, '{not json');
 
-      await expect(ledger.claim(identity(), 'digest-a', { runId: 'run-2' })).rejects.toThrow(
-        /unreadable/,
-      );
+      expect(
+        await throwingRejectionOf(ledger.claim(identity(), 'digest-a', { runId: 'run-2' })),
+      ).toThrow(/unreadable/);
       expect(await kv.get(key!)).toBe('{not json');
     } finally {
       await fixture.dispose();
@@ -500,7 +501,7 @@ describe('createRunCreationLedger', () => {
 
       const failure = new Error('session store unavailable');
       await first.release(failure);
-      await expect(retry).rejects.toBe(failure);
+      expect(await rejectionOf(retry)).toBe(failure);
 
       const again = await ledger.begin({
         callerId: 'alice',
@@ -582,14 +583,16 @@ describe('createRunCreationLedger', () => {
       });
       if (first.kind !== 'claimed') throw new Error('expected a fresh claim');
 
-      await expect(
+      const conflict = await rejectionOf(
         ledger.begin({
           callerId: 'alice',
           requestId: 'request-1',
           payloadDigest: 'digest-b',
           claim: { ...CLAIM, runId: 'run-2' },
         }),
-      ).rejects.toMatchObject({ requestId: 'request-1', reason: 'payload-mismatch' });
+      );
+      expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
+      expect(conflict).toMatchObject({ requestId: 'request-1', reason: 'payload-mismatch' });
 
       const created = await first.complete(summary());
       expect(created.receipt?.runId).toBe('run-1');
