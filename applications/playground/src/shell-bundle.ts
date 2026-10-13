@@ -9,6 +9,7 @@ import {
   coordinatedBuild,
   publishShellArtifacts,
   shellArtifactByPath,
+  stableEntryModule,
 } from './build-artifacts-shared.ts';
 import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { getRebuildGeneration, isShellStale, setShellStale } from './rebuild-generation.ts';
@@ -109,7 +110,9 @@ export async function compileShellBundleArtifacts(): Promise<{
 export async function buildShellBundle(): Promise<ShellBuildResult> {
   const cachedEntryPath = shellEntryByName.get('shell');
   const cachedCode =
-    cachedEntryPath !== undefined ? shellArtifactByPath.get(cachedEntryPath) : undefined;
+    cachedEntryPath !== undefined && shellArtifactByPath.has(cachedEntryPath)
+      ? stableEntryModule('shell', cachedEntryPath)
+      : undefined;
   if (cachedCode !== undefined && !isShellStale()) {
     return { code: cachedCode, usedFallback: false };
   }
@@ -143,7 +146,7 @@ export async function buildShellBundle(): Promise<ShellBuildResult> {
       shellEntryByName.set('shell', entry.entryPath);
       setShellStale(false);
     }
-    return { code: entry.entryCode, usedFallback: false };
+    return { code: stableEntryModule('shell', entry.entryPath), usedFallback: false };
   })();
   shellBuildPromise = buildPromise;
 
