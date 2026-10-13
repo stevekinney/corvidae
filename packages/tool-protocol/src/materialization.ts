@@ -704,7 +704,11 @@ async function nextWithSignal<T>(
   return new Promise<IteratorResult<T>>((resolve, reject) => {
     const onAbort = () => {
       signal.removeEventListener('abort', onAbort);
-      reject(toAbortError(signal));
+      reject(
+        signal.reason instanceof Error
+          ? signal.reason
+          : new DOMException('The operation was aborted', 'AbortError'),
+      );
     };
     signal.addEventListener('abort', onAbort, { once: true });
     void iterator.next().then(
