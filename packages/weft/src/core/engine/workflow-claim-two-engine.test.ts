@@ -1643,7 +1643,7 @@ describe('COR-1384: an old failed or terminated run durable teardown must not to
     return { storage, engine, reached, release, slotHolders };
   }
 
-  async function runScenario(mode: 'fail' | 'cancel') {
+  async function runScenario(mode: 'fail' | 'cancel' | 'complete') {
     const id = `teardown-durable-${mode}-${nextInvocation()}`;
     const { storage, engine, reached, release, slotHolders } =
       await createHolderReadGatedEngine(id);
@@ -1657,9 +1657,13 @@ describe('COR-1384: an old failed or terminated run durable teardown must not to
       expect(await slotHolders()).toEqual([id]);
 
       let oldDone: Promise<unknown>;
-      if (mode === 'fail') {
+      if (mode === 'fail' || mode === 'complete') {
         oldDone = new Promise<void>((resolve) =>
-          engine.addEventListener('workflow:failed', () => resolve(), { once: true }),
+          engine.addEventListener(
+            mode === 'fail' ? 'workflow:failed' : 'workflow:completed',
+            () => resolve(),
+            { once: true },
+          ),
         );
         await engine.signal(id, 'go');
       } else {
@@ -1667,7 +1671,9 @@ describe('COR-1384: an old failed or terminated run durable teardown must not to
       }
       await reached.promise;
       const committed = await engine.get(id);
-      expect(committed?.status).toBe(mode === 'fail' ? 'failed' : 'cancelled');
+      expect(committed?.status).toBe(
+        { fail: 'failed', cancel: 'cancelled', complete: 'completed' }[mode],
+      );
 
       // The replacement lands while the old run is still between commit and teardown.
       const replacement = await engine.start(TYPE, 'NEW', {
@@ -1706,6 +1712,10 @@ describe('COR-1384: an old failed or terminated run durable teardown must not to
 
   it('failWorkflow: attributes and the concurrency slot of a replacement landed before teardown survive', async () => {
     await runScenario('fail');
+  });
+
+  it('completeWorkflow: the concurrency slot of a replacement landed before teardown survives', async () => {
+    await runScenario('complete');
   });
 
   it('terminateWorkflow: attributes and the concurrency slot of a replacement landed before teardown survive', async () => {

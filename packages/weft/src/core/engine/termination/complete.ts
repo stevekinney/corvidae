@@ -546,18 +546,12 @@ export async function completeWorkflow(
     },
   );
   if (!completionMetadata) return;
+  const { claimEpoch, executionToken } = completionMetadata;
+  const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
 
-  await releaseWorkflowConcurrencySlot(internals, workflowId);
-  await releaseWorkflowClaimAfterTerminalSettlement(
-    internals,
-    workflowId,
-    completionMetadata.claimEpoch,
-  );
-  const superseded = isSupersededBySameIdRun(
-    internals,
-    workflowId,
-    completionMetadata.executionToken,
-  );
+  await releaseWorkflowConcurrencySlot(internals, workflowId, isSuperseded);
+  await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
+  const superseded = isSuperseded();
   notifyCompletionWaiters(
     internals,
     workflowId,
