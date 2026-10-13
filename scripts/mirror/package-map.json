@@ -12702,7 +12702,7 @@
         "disposition": "orphan-untouched",
         "visibility": "public",
         "reason": "Public with provenance, but it has no corvidae source, so no sync can maintain it. Leaving the registry entry exactly as it is breaks no consumer, whereas deprecating it is a permanently public act. Revisit deliberately rather than as a migration side effect.",
-        "lastPublishedVersion": "0.1.18"
+        "lastPublishedVersion": "0.1.20"
       },
       {
         "name": "cloudflare",
