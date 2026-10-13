@@ -8,13 +8,30 @@
     'You are a careful review agent.\n\n## Instructions\n\n- Read the patch before commenting.',
   );
   let mode = $state<EditorMode>('source');
+
+  // Publishes the basic editor's ProseMirror selection as data attributes on
+  // its mount so browser specs can wait on the selection the toolbar reads.
+  // A `null` selection clears both values, which Svelte renders as absent
+  // attributes: the same "unknown" state as before the first callback.
+  let basicSelectionFrom = $state<number | null>(null);
+  let basicSelectionTo = $state<number | null>(null);
+
+  function publishBasicSelection(selection: { from: number; to: number } | null): void {
+    basicSelectionFrom = selection?.from ?? null;
+    basicSelectionTo = selection?.to ?? null;
+  }
 </script>
 
 <div class="markdown-fixture">
-  <div id="example-mount-basic">
+  <div
+    id="example-mount-basic"
+    data-selection-from={basicSelectionFrom}
+    data-selection-to={basicSelectionTo}
+  >
     <MarkdownEditor
       id="editor-basic"
       bind:value={basicValue}
+      onSelectionChange={publishBasicSelection}
       toolbarEnabled
       modeToggleVisible
       label="Markdown editor"

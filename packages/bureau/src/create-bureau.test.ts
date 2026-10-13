@@ -22006,3 +22006,101 @@ describe('COR-636: scheduler task locator', () => {
     expect((rejection as Error).message).toContain('retentionWindowMs');
   });
 });
+
+// COR-690: shutdown must close run admission before it snapshots the runs and
+// toolboxes it drains, and an aborted run's toolbox must stay discoverable
+// until its own execution lifecycle is idle.
+describe('Bureau shutdown quiescence (COR-690)', () => {
+  it('rejects an API run submitted after shutdown() has started', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+    });
+    const shutdownPromise = bureau.shutdown();
+
+    const rejection = await bureau.createRun({ message: 'too late' }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as { code?: string }).code).toBe('CONFLICT');
+    expect(bureau.listRuns()).toEqual([]);
+    await shutdownPromise;
+  });
+
+  it('rejects a scheduler task submitted after shutdown() has started', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: createMockGenerate(),
+      toolbox: createEmptyToolbox(),
+      scheduler: { enabled: true, idleDelay: 1 },
+    });
+    const shutdownPromise = bureau.shutdown();
+
+    const rejection = await Promise.resolve()
+      .then(() => bureau.submitSchedulerTask({ message: 'too late' }))
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as { code?: string }).code).toBe('CONFLICT');
+    await shutdownPromise;
+  });
+
+  it('keeps an aborted run toolbox discoverable until its ignored-cancellation callback settles', async () => {
+    let releaseTool!: () => void;
+    const toolGate = new Promise<string>((resolve) => {
+      releaseTool = () => resolve('done');
+    });
+    let notifyToolStarted!: () => void;
+    const toolStarted = new Promise<void>((resolve) => {
+      notifyToolStarted = resolve;
+    });
+    let toolSettled = false;
+    const stubbornTool = createTool({
+      name: 'stubborn',
+      description: 'ignores its abort signal and keeps running',
+      input: z.object({}),
+      async execute() {
+        notifyToolStarted();
+        const value = await toolGate;
+        toolSettled = true;
+        return value;
+      },
+    });
+    const bureau = await createBureau({
+      agents: {},
+      generate: async ({ step }) =>
+        step === 0
+          ? { content: 'calling', toolCalls: [{ name: 'stubborn', arguments: {} }] }
+          : { content: 'done', toolCalls: [] },
+      toolbox: createToolbox([stubbornTool]),
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    const run = await bureau.createRun({ message: 'abort me mid-tool' });
+    await toolStarted;
+    bureau.abortRun(run.id);
+    expect(await pollUntil(() => bureau.getRun(run.id)?.status === 'aborted')).toBe(true);
+    // Remove the run's id-keyed entry the way a session deletion does, so only
+    // the tracked-toolbox set can still lead shutdown to the live callback.
+    await bureau.deleteRun(run.id);
+
+    let shutdownSettled = false;
+    const shutdownPromise = bureau.shutdown().then((report) => {
+      shutdownSettled = true;
+      return report;
+    });
+    for (let tick = 0; tick < 5; tick++) await yieldToPortableEventLoop();
+    expect(toolSettled).toBe(false);
+    expect(shutdownSettled).toBe(false);
+
+    releaseTool();
+    await shutdownPromise;
+    expect(toolSettled).toBe(true);
+  });
+});

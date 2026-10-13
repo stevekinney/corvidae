@@ -8,8 +8,29 @@ export type RenderedFeaturedExample = {
   head: string;
 };
 
+export type FeaturedExampleRenderer = (
+  componentName: string,
+  scenario: string,
+  mountIdPrefix: string,
+) => Promise<RenderedFeaturedExample>;
+
 const renderPromises = new Map<string, Promise<RenderedFeaturedExample>>();
 let renderPromiseGeneration = -1;
+let substituteRenderer: FeaturedExampleRenderer | null = null;
+
+/**
+ * Replace the fresh-process render with a deterministic renderer, or restore it with `null`.
+ *
+ * Each real render spawns a `bun` process that cold-compiles the example's Svelte graph, which
+ * costs about a second on an idle host and several under load. Route tests that only need the
+ * page to embed SOME featured example cannot pay that inside Bun's per-test budget, so they
+ * substitute one here, as they already do for the shell renderer with
+ * `setPreparedShellServerRenderer`. The real render is proven by
+ * `featured-example-server-renderer.test.ts`. Production never sets this.
+ */
+export function setFeaturedExampleRenderer(renderer: FeaturedExampleRenderer | null): void {
+  substituteRenderer = renderer;
+}
 
 const SVELTE_HYDRATION_MARKER = /<!--(?:\[(?:!|\?[\s\S]*?|-?\d+)?|\]|\/?\$)?-->/g;
 const SELF_CLOSING_HTML_VOID_ELEMENT =
@@ -80,6 +101,9 @@ export async function renderFeaturedExample(
   scenario: string,
   mountIdPrefix: string,
 ): Promise<RenderedFeaturedExample> {
+  if (substituteRenderer !== null) {
+    return await substituteRenderer(componentName, scenario, mountIdPrefix);
+  }
   const rebuildGeneration = getRebuildGeneration();
   if (renderPromiseGeneration !== rebuildGeneration) {
     renderPromises.clear();
