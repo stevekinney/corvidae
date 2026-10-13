@@ -60,6 +60,7 @@ import {
   reassertOwedAfterShutdown,
   runningClaimIsStale,
   settleOnRunningClaim,
+  spentTeardownAttempts,
   TEARDOWN_SELF_HEAL_DELAY_MS,
   teardownBackoffMs,
   teardownStaleThresholdMs,
@@ -236,7 +237,7 @@ async function resolveTeardownDrive(
       internals,
       workflowId,
       state,
-      claim.attempts,
+      spentTeardownAttempts(claim),
       observedMarkerHold(markerBytes),
       'finalizer state missing — recorded resource cannot be torn down',
       undefined,
@@ -324,7 +325,7 @@ async function driveResolvedTeardown(
   // attempt without settling. That attempt is consumed (COR-1422), so a finalizer that kills
   // its host on every run still reaches the dead-letter horizon. An `owed` claim carries only
   // settled attempts. `consumed` is the count of attempts already spent before this drive.
-  const consumed = claim.status === 'running' ? claim.attempts + 1 : claim.attempts;
+  const consumed = spentTeardownAttempts(claim);
   if (consumed >= MAX_TEARDOWN_ATTEMPTS) {
     // Every attempt crashed its host: dead-letter instead of running the finalizer again.
     await deadLetterWithoutRunning(
