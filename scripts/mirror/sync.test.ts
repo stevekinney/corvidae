@@ -1965,6 +1965,26 @@ describe('the foreign-commit guard net-effect rule', () => {
       }, reach);
     });
 
+    test('accepts a retired manifest edited and then deleted', async () => {
+      const retiredManifest = 'packages/playground/package.json';
+      await withRepository(async (root, ownership) => {
+        await Bun.write(
+          join(root, retiredManifest),
+          '{"name":"@cinder/playground","files":["build"]}\n',
+        );
+        await commitMirror(root);
+        await Bun.write(
+          join(root, retiredManifest),
+          '{"name":"@cinder/playground","files":["dist"]}\n',
+        );
+        await commitAll(root, 'Change retired manifest files');
+        expect(await subjects(root, ownership)).toEqual(['Change retired manifest files']);
+        await git(root, 'rm', '--quiet', retiredManifest);
+        await commitAll(root, 'Delete retired copy');
+        expect(await subjects(root, ownership)).toEqual([]);
+      }, reach);
+    });
+
     test('keeps deleting an emitted file foreign', async () => {
       await withRepository(async (root, ownership) => {
         await Bun.write(join(root, sourcePath), 'export const value = 0;\n');

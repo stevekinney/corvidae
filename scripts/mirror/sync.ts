@@ -499,6 +499,10 @@ async function endsWhereTheSyncLeavesIt(
   { path, manifestKeys }: BlockingChange,
   { generatedFiles, generatedManifestKeys, transform }: ForeignCommitOwnership,
 ): Promise<boolean> {
+  const headEntry = await treeEntry(directory, 'HEAD', path);
+  // Before the manifest branch, so an edited manifest the sync retires and a later commit deleted
+  // ends where the sync leaves it too.
+  if (headEntry === '' && !transform.files.has(path)) return true;
   if (manifestKeys !== undefined) {
     const head = await readManifest(directory, 'HEAD', path);
     if (head === undefined) return false;
@@ -512,9 +516,7 @@ async function endsWhereTheSyncLeavesIt(
       );
     });
   }
-  const headEntry = await treeEntry(directory, 'HEAD', path);
   if (headEntry === (await treeEntry(directory, mirrorCommit, path))) return true;
-  if (headEntry === '' && !transform.files.has(path)) return true;
   const emitted = generatedFiles?.get(path);
   return emitted !== undefined && (await matchesEmission(directory, 'HEAD', path, emitted));
 }
