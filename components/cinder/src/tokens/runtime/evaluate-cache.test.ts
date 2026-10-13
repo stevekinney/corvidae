@@ -49,7 +49,7 @@ describe('evaluateThemeProperties', () => {
     const cheap = evaluateThemeProperties(sources);
     expect(full.ok && cheap.ok).toBe(true);
     if (!full.ok || !cheap.ok) return;
-    for (const id of SIX_CONTEXTS) expect(cheap.properties[id]).toEqual(full.properties[id]!);
+    for (const id of SIX_CONTEXTS) expect(cheap.properties[id]).toEqual(full.properties[id]);
     expect('provenance' in cheap).toBe(false);
   });
 
@@ -60,7 +60,7 @@ describe('evaluateThemeProperties', () => {
     const full = evaluateTheme(sources);
     const cheap = evaluateThemeProperties(sources);
     if (!full.ok || !cheap.ok) throw new Error('expected both to succeed');
-    expect(cheap.properties['dark/reduced']).toEqual(full.properties['dark/reduced']!);
+    expect(cheap.properties['dark/reduced']).toEqual(full.properties['dark/reduced']);
     expect(cheap.properties['light/default']?.['--cinder-radius-md']).toBe('3px');
   });
 

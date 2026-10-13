@@ -283,7 +283,7 @@ export function validateCorpus(
           : contextSourcesByModifier.get(entry.name)!.get(modifierValues[entry.name]!)!;
       return sources.map((source) => documentsByPath.get(normalizeSourcePath(source.$ref))!);
     });
-    assertResolvedTokensValid(orderedDocuments as TokenDocument[]);
+    assertResolvedTokensValid(orderedDocuments);
   }
   return documentsByPath;
 }
