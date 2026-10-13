@@ -48,6 +48,14 @@ A failure carries no property map and no provenance. The six contexts are `light
 
 The property map holds exactly the public `--cinder-*` properties. Private `--_cinder-*` runtime variables and tokens with no `cssProperty` never appear. Values are written in the generated stylesheet's own syntax: a whole-token alias stays `var(--cinder-...)`, a trusted `cssRecipe` is emitted as written, and a typed value is serialized.
 
+### `evaluateThemeProperties(sources, { contexts? })`
+
+The edit-loop path. It validates exactly as `evaluateTheme` does, across all six contexts, so an edit that is invalid in any context is still rejected, but it projects only the requested context ids (default: all six) and traces no provenance. It returns `{ ok, revision, contexts, properties, diagnostics }`; the property maps equal `evaluateTheme`'s for the contexts they share (`evaluate-cache.test.ts` pins that). Provenance is the expensive part of a full evaluation, so a caller that needs only values should use this.
+
+### Remembered validation
+
+Validation results are remembered in module state, so a repeat evaluation only validates what changed. A document that passed is remembered by object identity and the identity of its ordered prefix (a document's validity depends on the documents before it, and on the rest of the stack only through `$extends`, so a stack that uses `$extends` anywhere is never remembered). A context whose ordered documents are all unchanged is not resolved again. Only passes are remembered, and both memos are bounded. The consequence for callers: **do not mutate a source document after passing it in**; replace it with a new object. The theme builder's override trees are already immutable.
+
 ### `validateThemeSources(sources)`
 
 Runs the same validation without evaluating, and returns `{ revision, diagnostics }`. An empty list means the sources are valid.
