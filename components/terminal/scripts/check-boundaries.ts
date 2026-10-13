@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
-import { join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 
 export type BoundaryViolation = {
@@ -11,14 +11,23 @@ export type BoundaryViolation = {
 
 /** The one ventriloquist entry browser code may import. */
 const NEUTRAL_VENTRILOQUIST = '@lostgradient/ventriloquist';
-/** Engines the terminal contract rejected. None may appear in any manifest. */
-const COMPARISON_ENGINES = [/^ghostty-web$/, /^@wterm\//];
+/**
+ * Engines the terminal contract rejected, matched wherever a manifest or import can name one: as a
+ * key, an `npm:` alias, a `workspace:` target, or the last segment of a `file:` or `link:` path.
+ * The leading class keeps `ghostty-web-docs` from matching.
+ */
+const COMPARISON_ENGINE = /(?:^|[/>:])(?:ghostty-web|@wterm\/[^@/]+)(?:@|\/|$)/;
+/** The selected engine named anywhere an override could retarget it. */
+const SELECTED_ENGINE_NAME = /(?:^|[/>:])@xterm\/xterm(?:@|\/|$)/;
 const SELECTED_ENGINE = '@xterm/xterm';
 const SELECTED_ENGINE_VERSION = '6.0.0';
 
 /** Why browser source may not import `specifier`, or `undefined` when it may. */
 export function forbiddenImportReason(specifier: string): string | undefined {
   if (specifier === NEUTRAL_VENTRILOQUIST) return undefined;
+  if (COMPARISON_ENGINE.test(specifier)) {
+    return `${specifier} is a comparison engine the terminal contract rejected`;
+  }
   if (specifier.startsWith(`${NEUTRAL_VENTRILOQUIST}/`)) {
     return `${specifier} is a Bun host entry; browser source imports only ${NEUTRAL_VENTRILOQUIST}`;
   }
@@ -41,7 +50,7 @@ const TEST_DIRECTORIES = new Set([
 ]);
 const TEST_FILE =
   /(?:\.test\.|\.spec\.|\.test-d\.ts$|\.type-test\.ts$|\.playwright\.ts$|-test-[^/]*\.ts$|\.test-support\.ts$)/;
-const SOURCE_FILE = /\.(?:ts|svelte)$/;
+const SOURCE_FILE = /\.(?:[cm]?[jt]s|[jt]sx|svelte)$/;
 
 function browserSourceFiles(directory: string): string[] {
   const files: string[] = [];
@@ -66,28 +75,75 @@ function lineAt(text: string, position: number): number {
   return line;
 }
 
+function stringLiteral(node: ts.Node | undefined): ts.StringLiteralLike | undefined {
+  return node !== undefined && ts.isStringLiteralLike(node) ? node : undefined;
+}
+
 /**
- * Every module specifier a TypeScript or Svelte source file imports: static imports, re-exports,
- * dynamic `import()` and `require()`. A Svelte file contributes the contents of its `<script>`
- * blocks, with line numbers relative to the whole file.
+ * The specifier a node loads at runtime. Type-only imports and exports erase before runtime, so
+ * they return nothing; `import { type A } from 'x'` still loads `x` and is kept. A dynamic import
+ * or `require` with a computed specifier cannot be resolved statically and is out of scope here;
+ * the import probe catches what it loads.
+ */
+function runtimeSpecifier(node: ts.Node): ts.StringLiteralLike | undefined {
+  if (ts.isImportDeclaration(node)) {
+    return node.importClause?.isTypeOnly ? undefined : stringLiteral(node.moduleSpecifier);
+  }
+  if (ts.isExportDeclaration(node)) {
+    return node.isTypeOnly ? undefined : stringLiteral(node.moduleSpecifier);
+  }
+  if (ts.isImportEqualsDeclaration(node)) {
+    const reference = node.moduleReference;
+    return !node.isTypeOnly && ts.isExternalModuleReference(reference)
+      ? stringLiteral(reference.expression)
+      : undefined;
+  }
+  if (ts.isCallExpression(node)) {
+    const callee = node.expression;
+    const loads =
+      callee.kind === ts.SyntaxKind.ImportKeyword ||
+      (ts.isIdentifier(callee) && callee.text === 'require');
+    return loads ? stringLiteral(node.arguments[0]) : undefined;
+  }
+  return undefined;
+}
+
+function scriptReferences(text: string, firstLine: number): ImportReference[] {
+  const file = ts.createSourceFile('script.ts', text, ts.ScriptTarget.Latest, true);
+  const references: ImportReference[] = [];
+  const visit = (node: ts.Node): void => {
+    const specifier = runtimeSpecifier(node);
+    if (specifier !== undefined) {
+      const { line } = file.getLineAndCharacterOfPosition(specifier.getStart(file));
+      references.push({ specifier: specifier.text, line: firstLine + line });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return references;
+}
+
+const SCRIPT_BLOCK = /<script\b[^>]*>([\s\S]*?)<\/script>/g;
+const MARKUP_LOAD = /\b(?:import|require)\s*\(\s*(['"`])([^'"`$\n]+)\1\s*\)/g;
+
+/**
+ * Every module specifier a TypeScript, JavaScript, or Svelte source file loads at runtime: static
+ * imports, re-exports, `import x = require()`, dynamic `import()` and `require()` with a literal
+ * specifier. A Svelte file contributes its `<script>` blocks plus any literal dynamic import in
+ * its markup, such as `{#await import('x')}`, with line numbers relative to the whole file.
  */
 export function importReferences(source: string, fileName: string): ImportReference[] {
-  const blocks = fileName.endsWith('.svelte')
-    ? [...source.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((match) => ({
-        text: match[1] ?? '',
-        offset: (match.index ?? 0) + match[0].indexOf('>') + 1,
-      }))
-    : [{ text: source, offset: 0 }];
+  if (!fileName.endsWith('.svelte')) return scriptReferences(source, 1);
   const references: ImportReference[] = [];
-  for (const { text, offset } of blocks) {
-    for (const imported of ts.preProcessFile(text, true, true).importedFiles) {
-      references.push({
-        specifier: imported.fileName,
-        line: lineAt(source, offset + imported.pos),
-      });
-    }
+  for (const match of source.matchAll(SCRIPT_BLOCK)) {
+    const offset = (match.index ?? 0) + match[0].indexOf('>') + 1;
+    references.push(...scriptReferences(match[1] ?? '', lineAt(source, offset)));
   }
-  return references;
+  const markup = source.replace(SCRIPT_BLOCK, (block) => block.replace(/[^\n]/g, ' '));
+  for (const match of markup.matchAll(MARKUP_LOAD)) {
+    references.push({ specifier: match[2] ?? '', line: lineAt(markup, match.index ?? 0) });
+  }
+  return references.toSorted((left, right) => left.line - right.line);
 }
 
 /** Browser source under `<packageRoot>/src` that imports something the browser cannot run. */
@@ -96,7 +152,14 @@ export function findImportViolations(packageRoot: string): BoundaryViolation[] {
   const violations: BoundaryViolation[] = [];
   for (const file of browserSourceFiles(sourceRoot)) {
     for (const { specifier, line } of importReferences(readFileSync(file, 'utf8'), file)) {
-      const message = forbiddenImportReason(specifier);
+      const leavesPackage =
+        (specifier.startsWith('.') || isAbsolute(specifier)) &&
+        relative(packageRoot, resolve(dirname(file), specifier)).startsWith('..');
+      const message =
+        forbiddenImportReason(specifier) ??
+        (leavesPackage
+          ? `${specifier} leaves the package; import it through its package name`
+          : undefined);
       if (message !== undefined) {
         violations.push({ file: relative(packageRoot, file), line, message });
       }
@@ -112,11 +175,17 @@ const DEPENDENCY_SECTIONS = [
   'optionalDependencies',
 ] as const;
 
+type CatalogMap = Record<string, string>;
 type Manifest = {
   name?: string;
-  workspaces?: string[];
-  catalog?: Record<string, string>;
+  workspaces?: string[] | { packages?: string[]; catalog?: CatalogMap; catalogs?: CatalogMap[] };
+  catalog?: CatalogMap;
+  catalogs?: Record<string, CatalogMap>;
+  overrides?: Record<string, unknown>;
+  resolutions?: Record<string, unknown>;
 } & { [section in (typeof DEPENDENCY_SECTIONS)[number]]?: Record<string, string> };
+
+const OVERRIDE_SECTIONS = ['overrides', 'resolutions'] as const;
 
 function readManifest(path: string): Manifest {
   return JSON.parse(readFileSync(path, 'utf8')) as Manifest;
@@ -124,11 +193,39 @@ function readManifest(path: string): Manifest {
 
 /** The root manifest and the manifest of every workspace its `workspaces` field declares. */
 function workspaceManifestPaths(workspaceRoot: string): string[] {
-  const patterns = readManifest(join(workspaceRoot, 'package.json')).workspaces ?? [];
+  const { workspaces } = readManifest(join(workspaceRoot, 'package.json'));
+  const patterns = (Array.isArray(workspaces) ? workspaces : (workspaces?.packages ?? [])).filter(
+    (pattern) => !pattern.startsWith('!'),
+  );
   const paths = patterns.flatMap((pattern) => [
     ...new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: workspaceRoot, absolute: true }),
   ]);
   return [join(workspaceRoot, 'package.json'), ...paths.toSorted()];
+}
+
+/** Every `[name, specifier]` a manifest declares as a dependency or in a default or named catalog. */
+function declaredSpecifiers(manifest: Manifest): [string, string][] {
+  const { workspaces } = manifest;
+  const nested = Array.isArray(workspaces) ? undefined : workspaces;
+  const catalogs = [
+    manifest.catalog,
+    ...Object.values(manifest.catalogs ?? {}),
+    nested?.catalog,
+    ...Object.values(nested?.catalogs ?? {}),
+  ];
+  return [
+    ...DEPENDENCY_SECTIONS.flatMap((section) => Object.entries(manifest[section] ?? {})),
+    ...catalogs.flatMap((catalog) => Object.entries(catalog ?? {})),
+  ];
+}
+
+/** Every key and string value in an `overrides` or `resolutions` tree, nested objects included. */
+function overrideTexts(tree: Record<string, unknown>): string[] {
+  return Object.entries(tree).flatMap(([key, value]) =>
+    typeof value === 'object' && value !== null
+      ? [key, ...overrideTexts(value as Record<string, unknown>)]
+      : [key, String(value)],
+  );
 }
 
 /**
@@ -160,16 +257,31 @@ export function findManifestViolations(
   }
   for (const path of workspaceManifestPaths(workspaceRoot)) {
     const manifest = readManifest(path);
-    const names = [
-      ...DEPENDENCY_SECTIONS.flatMap((section) => Object.keys(manifest[section] ?? {})),
-      ...Object.keys(manifest.catalog ?? {}),
-    ];
-    for (const name of names) {
-      if (COMPARISON_ENGINES.some((engine) => engine.test(name))) {
+    const file = relative(packageRoot, path);
+    for (const [name, specifier] of declaredSpecifiers(manifest)) {
+      if (COMPARISON_ENGINE.test(name)) {
         violations.push({
-          file: relative(packageRoot, path),
+          file,
           line: 1,
           message: `${name} is a comparison engine the terminal contract rejected`,
+        });
+      } else if (COMPARISON_ENGINE.test(specifier)) {
+        violations.push({
+          file,
+          line: 1,
+          message: `${name} (${specifier}) resolves to a comparison engine the terminal contract rejected`,
+        });
+      }
+    }
+    for (const section of OVERRIDE_SECTIONS) {
+      const retargets = overrideTexts(manifest[section] ?? {}).some(
+        (text) => SELECTED_ENGINE_NAME.test(text) || COMPARISON_ENGINE.test(text),
+      );
+      if (retargets) {
+        violations.push({
+          file,
+          line: 1,
+          message: `${section} may not name the terminal engine or a comparison engine`,
         });
       }
     }

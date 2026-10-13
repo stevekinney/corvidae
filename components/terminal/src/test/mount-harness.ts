@@ -26,11 +26,17 @@ export function mountHarness<Props extends Record<string, unknown>>(
 ): MountedHarness {
   const target = document.createElement('div');
   document.body.append(target);
-  let instance: ReturnType<typeof mount>;
+  let instance: ReturnType<typeof mount> | undefined;
   try {
     instance = mount(component, { target, props });
     flushSync();
   } catch (error) {
+    // Unwind whatever mounted before the failure; a teardown error must not mask the original one.
+    try {
+      if (instance !== undefined) void unmount(instance);
+    } catch {
+      // The mount error below is the one worth reporting.
+    }
     target.remove();
     throw error;
   }

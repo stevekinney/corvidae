@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import type { Component } from 'svelte';
 
 import HarnessProbe from './harness-probe.svelte';
+import HarnessThrowingEffect from './harness-throwing-effect.svelte';
 import { destroyAllHarnesses, liveHarnessCount, mountHarness } from './mount-harness.ts';
 
 afterEach(destroyAllHarnesses);
@@ -109,5 +110,25 @@ describe('mount harness', () => {
 
     expect(document.body.children).toHaveLength(0);
     expect(liveHarnessCount()).toBe(0);
+  });
+
+  test('unmounts the component and removes the container when the first flush throws', () => {
+    const calls: string[] = [];
+
+    expect(() =>
+      mountHarness(HarnessThrowingEffect, { onteardown: () => calls.push('teardown') }),
+    ).toThrow('effect failed');
+
+    expect(calls).toEqual(['teardown']);
+    expect(document.body.children).toHaveLength(0);
+    expect(liveHarnessCount()).toBe(0);
+  });
+
+  test('rethrows the mount error, not a teardown error, and still removes the container', () => {
+    expect(() => mountHarness(HarnessThrowingEffect, { teardownThrows: true })).toThrow(
+      'effect failed',
+    );
+
+    expect(document.body.children).toHaveLength(0);
   });
 });

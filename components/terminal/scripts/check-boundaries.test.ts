@@ -83,6 +83,8 @@ describe('forbiddenImportReason', () => {
     ['bun:sqlite', 'Bun module'],
     ['node:fs', 'Node module'],
     ['node:path', 'Node module'],
+    ['ghostty-web', 'comparison engine'],
+    ['@wterm/dom/styles', 'comparison engine'],
     ['fs', 'Node module'],
     ['path', 'Node module'],
   ])('rejects %s', (specifier, reason) => {
@@ -124,6 +126,38 @@ describe('importReferences', () => {
     ]);
   });
 
+  test('skips type-only imports and exports, which erase before runtime', () => {
+    const source = [
+      "import type { A } from 'node:fs';",
+      "export type { B } from 'node:path';",
+      "import type C = require('node:os');",
+      "type D = import('node:url').URL;",
+      "import { type E } from 'node:crypto';",
+      "import F = require('node:zlib');",
+      'export const dynamicName = await import(`./${name}.ts`);',
+      'const g = await import(`node:http`);',
+    ].join('\n');
+    expect(importReferences(source, 'module.ts')).toEqual([
+      { specifier: 'node:crypto', line: 5 },
+      { specifier: 'node:zlib', line: 6 },
+      { specifier: 'node:http', line: 8 },
+    ]);
+  });
+
+  test('finds dynamic imports and requires in Svelte markup, outside any script block', () => {
+    const source = [
+      '<script lang="ts">',
+      '  let ready = true;',
+      '</script>',
+      "{#await import('node:fs') then fs}{fs}{/await}",
+      '<p>{require("node:path")}</p>',
+    ].join('\n');
+    expect(importReferences(source, 'component.svelte')).toEqual([
+      { specifier: 'node:fs', line: 4 },
+      { specifier: 'node:path', line: 5 },
+    ]);
+  });
+
   test('ignores a Svelte file with no script', () => {
     expect(importReferences('<p>hello</p>', 'component.svelte')).toEqual([]);
   });
@@ -148,6 +182,51 @@ describe('findImportViolations', () => {
       'src/lib/forbidden.ts:3',
       'src/lib/forbidden.ts:4',
       'src/lib/forbidden.ts:5',
+    ]);
+  });
+
+  test.each(['tsx', 'mts', 'cts', 'jsx', 'js', 'mjs', 'cjs', 'svelte.ts', 'svelte.js'])(
+    'scans .%s browser source',
+    (extension) => {
+      const { packageRoot } = workspaceFixture({
+        [`src/lib/forbidden.${extension}`]: "import { readFile } from 'node:fs';\n",
+      });
+      expect(findImportViolations(packageRoot).map(({ file, line }) => `${file}:${line}`)).toEqual([
+        `src/lib/forbidden.${extension}:1`,
+      ]);
+    },
+  );
+
+  test('allows type-only imports of server entries, which erase before runtime', () => {
+    const { packageRoot } = workspaceFixture({
+      'src/lib/types.ts': [
+        "import type { Pty } from '@lostgradient/ventriloquist/bun';",
+        "export type { Socket } from '@lostgradient/ventriloquist/websocket';",
+      ].join('\n'),
+    });
+    expect(findImportViolations(packageRoot)).toEqual([]);
+  });
+
+  test('rejects a rejected comparison engine imported from source', () => {
+    const { packageRoot } = workspaceFixture({
+      'src/lib/engine.ts': "import { init } from 'ghostty-web';\n",
+    });
+    expect(formatViolations(findImportViolations(packageRoot))).toContain(
+      'src/lib/engine.ts:1: ghostty-web is a comparison engine',
+    );
+  });
+
+  test('rejects a relative import that leaves the package, even into a server entry', () => {
+    const { packageRoot } = workspaceFixture({
+      'src/lib/reach.ts': [
+        "import { pty } from '../../../ventriloquist/src/bun/index.ts';",
+        "import { local } from './local.ts';",
+        "import { absolute } from '/etc/anywhere.ts';",
+      ].join('\n'),
+    });
+    expect(formatViolations(findImportViolations(packageRoot)).split('\n')).toEqual([
+      'src/lib/reach.ts:1: ../../../ventriloquist/src/bun/index.ts leaves the package; import it through its package name',
+      'src/lib/reach.ts:3: /etc/anywhere.ts leaves the package; import it through its package name',
     ]);
   });
 
@@ -240,6 +319,95 @@ describe('findManifestViolations', () => {
   test('ignores a manifest in a directory the root does not declare as a workspace', () => {
     const { packageRoot, workspaceRoot } = workspaceFixture({
       '/elsewhere/package.json': JSON.stringify({ dependencies: { 'ghostty-web': '1.0.0' } }),
+    });
+    expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
+  });
+
+  test.each([
+    ['an npm alias to ghostty-web', 'npm:ghostty-web@0.4.0'],
+    ['an npm alias to a wterm package', 'npm:@wterm/dom@1.2.3'],
+    ['a workspace specifier', 'workspace:@wterm/core@*'],
+    ['a file path', 'file:../vendor/ghostty-web'],
+    ['a link path', 'link:../../ghostty-web'],
+  ])('rejects %s under an innocent dependency name', (_name, value) => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/packages/other/package.json': JSON.stringify({
+        optionalDependencies: { 'terminal-engine': value },
+      }),
+    });
+    const text = formatViolations(findManifestViolations(packageRoot, workspaceRoot));
+    expect(text).toContain(`terminal-engine (${value}) resolves to a comparison engine`);
+  });
+
+  test('does not mistake a similarly named package for a comparison engine', () => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/packages/other/package.json': JSON.stringify({
+        dependencies: { 'ghostty-web-docs': 'npm:ghostty-web-docs@1.0.0', left: 'file:../left' },
+      }),
+    });
+    expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
+  });
+
+  test('rejects comparison engines named by the root catalogs form and catalog values', () => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/package.json': JSON.stringify({
+        catalog: { '@xterm/xterm': '6.0.0', aliased: 'npm:@wterm/dom@1.0.0' },
+        catalogs: { experimental: { 'ghostty-web': '0.4.0' }, other: { fine: '1.0.0' } },
+      }),
+    });
+    const text = formatViolations(findManifestViolations(packageRoot, workspaceRoot));
+    expect(text).toContain('aliased (npm:@wterm/dom@1.0.0) resolves to a comparison engine');
+    expect(text).toContain('ghostty-web is a comparison engine');
+    expect(text.split('\n')).toHaveLength(2);
+  });
+
+  test('reads the object form of workspaces, its packages and its catalogs', () => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/package.json': JSON.stringify({
+        workspaces: {
+          packages: ['packages/*', '!packages/ignored'],
+          catalog: { '@xterm/xterm': '6.0.0', 'ghostty-web': '0.4.0' },
+          catalogs: { named: { '@wterm/dom': '1.0.0' } },
+        },
+        catalog: { '@xterm/xterm': '6.0.0' },
+      }),
+      '/packages/other/package.json': JSON.stringify({ dependencies: { '@wterm/core': '1' } }),
+    });
+    const text = formatViolations(findManifestViolations(packageRoot, workspaceRoot));
+    expect(text).toContain('../../packages/other/package.json:1: @wterm/core is a comparison');
+    expect(text).toContain('package.json:1: ghostty-web is a comparison');
+    expect(text).toContain('package.json:1: @wterm/dom is a comparison');
+  });
+
+  test.each([
+    ['overrides', { '@xterm/xterm': '5.5.0' }],
+    ['resolutions', { '**/@xterm/xterm': '5.5.0' }],
+    ['overrides', { 'some-parent': { '@xterm/xterm': '5.5.0' } }],
+    ['resolutions', { 'some-parent>@xterm/xterm@6': '5.5.0' }],
+    ['overrides', { 'some-package': 'npm:@xterm/xterm@5.5.0' }],
+    ['overrides', { 'ghostty-web': '0.4.0' }],
+    ['resolutions', { '**/@wterm/dom': '1.0.0' }],
+    ['overrides', { 'some-package': 'npm:ghostty-web@0.4.0' }],
+  ])('rejects %s that retarget the engine or a comparison engine', (field, value) => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/package.json': JSON.stringify({
+        workspaces: ['components/*'],
+        catalog: { '@xterm/xterm': '6.0.0' },
+        [field]: value,
+      }),
+    });
+    expect(formatViolations(findManifestViolations(packageRoot, workspaceRoot))).toContain(
+      `${field} may not name the terminal engine or a comparison engine`,
+    );
+  });
+
+  test('allows overrides that leave the engines alone', () => {
+    const { packageRoot, workspaceRoot } = workspaceFixture({
+      '/package.json': JSON.stringify({
+        workspaces: ['components/*'],
+        catalog: { '@xterm/xterm': '6.0.0' },
+        overrides: { 'left-pad': '1.3.0', nested: { inner: '2.0.0' } },
+      }),
     });
     expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
   });
