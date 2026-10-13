@@ -89,9 +89,9 @@ type TokenEvaluation = {
 
 - `CINDER_BASE`: the immutable Cinder base. `resolver`, `documents` keyed by relative path, `packageVersion`, and `sourceDigest`. A saved theme embeds these so it can tell when the base it was written against has changed. The documents are the package's own source files; the version and digest are generated and checked by `tokens:check`.
 - `computeSourceDigest(source)` recomputes the digest in any environment with Web Crypto (`sha256:<hex>` over the canonical form of `{ resolver, documents }`), and `canonicalJson` is the canonical form.
-- `AUTHORING_CATALOGUE`: the generated authoring catalogue, one record per public token with its per-context provenance, usage profile, and edit, CSS-export, and DTCG-portability disposition. `buildAuthoringCatalogue(resolver, documentsByPath)` builds the same catalogue over any in-memory corpus.
+- `AUTHORING_CATALOGUE`: the generated authoring catalogue, one record per public token with its per-context provenance, usage profile, and edit, CSS-export, and DTCG-portability disposition. `buildAuthoringCatalogue(resolver, documentsByPath)` builds the same catalogue over any in-memory corpus that already passed `validateThemeSources`; it throws on a token no usage profile covers, as the generator does.
 - `PROFILES`, `selectProfile`, `profileRangeViolation`: the CSS usage profiles and their numeric ranges.
-- `traceProvenance(layers)`: the per-token provenance traversal over an ordered layer stack, for callers that already hold the stack.
+- `traceProvenance(layers)`, `authoringContexts`, `authoringLayerStack`, `evaluateContextProvenance`: the building blocks `evaluateTheme` uses. They expect sources that already passed `validateThemeSources` and throw raw errors on anything else; `evaluateTheme` is the entry point that turns failures into diagnostics.
 
 Presentation grouping and friendly labels are not part of the runtime.
 

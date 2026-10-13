@@ -142,6 +142,28 @@ describe('evaluateTheme', () => {
     );
   });
 
+  test('a new public token appears in every context with no registration step', () => {
+    const result = evaluateTheme(
+      baseSources((documents) => {
+        documents['profile-base.tokens.json']!['badge'] = {
+          $type: 'color',
+          fill: {
+            $value: '{palette.paper}',
+            $extensions: publicToken('--cinder-badge-fill', { component: 'badge' }),
+          },
+        };
+      }),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    for (const id of Object.keys(result.properties)) {
+      expect(result.properties[id]!['--cinder-badge-fill']).toBe('var(--cinder-palette-paper)');
+      const token = result.provenance.tokens[id]!.find(
+        (candidate) => candidate.path === 'badge.fill',
+      );
+      expect(token?.dependencies.map((dependency) => dependency.path)).toEqual(['palette.paper']);
+    }
+  });
+
   test('a private runtime variable never reaches the public output', () => {
     const result = evaluateTheme(
       baseSources((documents) => {

@@ -110,7 +110,8 @@ describe('the token runtime browser bundle', () => {
       entry,
       "import { readFileSync } from 'node:fs';\nimport { format } from 'node:path';\nexport const read = [readFileSync, format];\n",
     );
-    const control = await readGraph((await build(entry)).inputs);
+    const controlBuild = await build(entry);
+    const control = await readGraph(controlBuild.inputs);
     expect(control.flatMap((file) => file.imports).filter(isHostSpecifier)).toEqual([
       'node:fs',
       'node:path',
