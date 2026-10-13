@@ -51,7 +51,7 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
         ? `workflow "${workflowId}" lost a checkpoint compare-and-swap race: another writer advanced its ` +
             'checkpoint over the same store. This engine stops driving that workflow and writes nothing ' +
             'further; the rest of its workflows are unaffected.'
-        : `workflow "${workflowId}" is abandoned because its child "${lostChildWorkflowId}" lost a ` +
+        : `workflow "${workflowId}" is abandoned because the workflow it awaits, "${lostChildWorkflowId}", lost a ` +
             'checkpoint compare-and-swap race: another writer advanced the child over the same store. ' +
             "The parent's own checkpoint is unchanged. This engine stops driving the parent and writes " +
             'nothing further; the rest of its workflows are unaffected.',
@@ -125,7 +125,7 @@ export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpoi
     super(
       'WorkflowCheckpointConflictError',
       options?.lostChildWorkflowId !== undefined
-        ? `Workflow "${workflowId}" was awaiting child "${options.lostChildWorkflowId}", whose checkpoint ` +
+        ? `Workflow "${workflowId}" was awaiting workflow "${options.lostChildWorkflowId}" (its child or a descendant), whose checkpoint ` +
             'commit lost its CAS race against a newer checkpoint written by another writer over the same ' +
             "store. This engine stops driving the parent and writes nothing further; the parent's own " +
             'checkpoint is unchanged, and the winning writer owns the child.'

@@ -51,7 +51,9 @@ export function abandonWorkflowAfterCheckpointConflict(
       internals,
       workflowId,
       workflowExecutionToken,
-      error.lostChildWorkflowId,
+      error.lostChildWorkflowId === undefined
+        ? undefined
+        : { workflowId: error.lostChildWorkflowId, cause: error.cause },
     )
   )
     return;
@@ -104,11 +106,16 @@ export function abandonParentAfterChildCheckpointConflict(
 ): void {
   if (parkedAttempt === undefined) return;
   if (currentExecutionAttempt(internals, parentWorkflowId) !== parkedAttempt) return;
+  // A suspended parent is not awaiting anything: a suspension keeps its attempt but releases its
+  // checkpoint, and resuming it begins a new attempt that replays its own awaits.
+  if (!internals.checkpoints.has(parentWorkflowId)) return;
+  // Through A -> B -> C, A names C, the workflow that actually lost, not B, which only inherited it.
+  const inherited = childConflict.lostChildWorkflowId !== undefined;
   abandonWorkflowAfterCheckpointConflict(
     internals,
     new WorkflowCheckpointConflictError(parentWorkflowId, {
-      cause: childConflict,
-      lostChildWorkflowId: childConflict.workflowId,
+      cause: inherited ? childConflict.cause : childConflict,
+      lostChildWorkflowId: childConflict.lostChildWorkflowId ?? childConflict.workflowId,
       workflowExecutionToken: parkedAttempt.workflowExecutionToken,
     }),
   );
@@ -128,9 +135,11 @@ export function abandonedGenerationConflict(
   if (held?.abandoned !== true) return undefined;
   return new WorkflowCheckpointConflictError(workflowId, {
     workflowExecutionToken: held.workflowExecutionToken,
-    // A parent abandoned for its child keeps saying so to a later `getHandle(parent).result()`.
-    ...(held.lostChildWorkflowId !== undefined && {
-      lostChildWorkflowId: held.lostChildWorkflowId,
+    // A parent abandoned for its child keeps saying so, with the conflict, to a later
+    // `getHandle(parent).result()`.
+    ...(held.lostChild !== undefined && {
+      lostChildWorkflowId: held.lostChild.workflowId,
+      cause: held.lostChild.cause,
     }),
   });
 }

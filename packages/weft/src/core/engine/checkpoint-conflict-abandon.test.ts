@@ -46,6 +46,7 @@ import {
   releaseSuspendedCheckpoint,
 } from './checkpoint-commit-snapshots.ts';
 import {
+  abandonedGenerationConflict,
   abandonWorkflowAfterCheckpointConflict,
   emitCheckpointConflictWarning,
   persistCheckpointAbandoningOnConflict,
@@ -478,6 +479,64 @@ describe('abandoning a workflow after a lost checkpoint compare-and-swap', () =>
 
     expect(await rejectionOf(second.resume('resume-retry'))).toBeInstanceOf(Error);
     expect(isGenerationAbandoned(internals, 'resume-retry', token)).toBe(true);
+  });
+
+  it('keeps what a lost-child abandonment carries when a resume of the abandoned parent fails', async () => {
+    const storage = new MemoryStorage();
+    const first = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'resume-carry': parkedOnSignal('resume-carry') },
+    });
+    await first.start('resume-carry', null, { id: 'resume-carry' });
+    await waitForCondition(() => getInternals(first).parkedInlineWorkflows.has('resume-carry'), {
+      label: 'resume-retry parked on its signal',
+    });
+    await first[Symbol.asyncDispose]();
+    const state = decode((await storage.get(KEYS.workflow('resume-carry')))!) as WorkflowState;
+    const token = state.workflowExecutionToken;
+    expect(token).toBeDefined();
+
+    // The child-cancellation rehydration runs after the checkpoint is adopted.
+    const failingScan = new Proxy(storage, {
+      get(target, property) {
+        if (property === 'scan') {
+          return (prefix: string, ...rest: unknown[]) => {
+            if (prefix === KEYS.childCancellationPrefix('resume-carry')) {
+              throw new Error('storage scan unavailable');
+            }
+            return (target.scan as (...args: unknown[]) => unknown)(prefix, ...rest);
+          };
+        }
+        const original: unknown = Reflect.get(target, property, target);
+        return typeof original === 'function' ? original.bind(target) : original;
+      },
+    });
+    await using second = await Engine.create({
+      storage: failingScan,
+      recover: false,
+      workflows: { 'resume-carry': parkedOnSignal('resume-carry') },
+    });
+    const internals = getInternals(second);
+    // The engine suspended this generation and then lost it: the checkpoint is released, the
+    // attempt stays, and resuming it is what relaunches it.
+    adoptLaunchCheckpoint(internals, 'resume-carry', {
+      workflowExecutionToken: token,
+    } as Checkpoint);
+    releaseSuspendedCheckpoint(internals, 'resume-carry', token);
+    const lostConflict = new WorkflowCheckpointConflictError('lost-descendant');
+    expect(
+      abandonExecutionAttempt(internals, 'resume-carry', token, {
+        workflowId: 'lost-descendant',
+        cause: lostConflict,
+      }),
+    ).toBe(true);
+
+    expect(await rejectionOf(second.resume('resume-carry'))).toBeInstanceOf(Error);
+    expect(isGenerationAbandoned(internals, 'resume-carry', token)).toBe(true);
+    const carried = abandonedGenerationConflict(internals, 'resume-carry');
+    expect(carried?.lostChildWorkflowId).toBe('lost-descendant');
+    expect(carried?.cause).toBe(lostConflict);
   });
 
   it('warns through console.warn where the runtime has no process.emitWarning', () => {

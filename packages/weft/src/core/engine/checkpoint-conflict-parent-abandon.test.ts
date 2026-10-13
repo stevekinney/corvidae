@@ -114,12 +114,16 @@ describe('a parent awaiting a child its engine abandoned', () => {
       // The parent's own checkpoint did not lose a race, so the error and the warning must say the
       // child did, rather than claiming a lost checkpoint for a parent that is unchanged.
       expect((reason as WorkflowCheckpointConflictError).lostChildWorkflowId).toBe(CHILD_ID);
-      expect((reason as WorkflowCheckpointConflictError).message).toContain(`child "${CHILD_ID}"`);
+      expect((reason as WorkflowCheckpointConflictError).message).toContain(
+        `workflow "${CHILD_ID}"`,
+      );
       expect((reason as WorkflowCheckpointConflictError).message).not.toContain(
         'Checkpoint commit for workflow',
       );
       expect(warning.warnings.map((w) => w.lostChildWorkflowId)).toContain(CHILD_ID);
-      expect(warning.warnings.at(-1)?.message).toContain('is abandoned because its child');
+      expect(warning.warnings.at(-1)?.message).toContain(
+        'is abandoned because the workflow it awaits',
+      );
       expect(isGenerationAbandoned(loserInternals, PARENT_ID, parentToken)).toBe(true);
       expect(watched.writes).toEqual([]);
       expect(await readStatus(shared, PARENT_ID)).toBe('running');
@@ -344,7 +348,14 @@ describe('the parent a lost child is judged against', () => {
     const later = await rejectionOf(engine.getHandle(parentHandle.id).result());
     expect(later).toBeInstanceOf(WorkflowCheckpointConflictError);
     expect((later as WorkflowCheckpointConflictError).lostChildWorkflowId).toBe('named-child');
-    expect((later as WorkflowCheckpointConflictError).message).toContain('child "named-child"');
+    expect((later as WorkflowCheckpointConflictError).message).toContain('workflow "named-child"');
+    expect((later as WorkflowCheckpointConflictError).cause).toBeInstanceOf(
+      WorkflowCheckpointConflictError,
+    );
+    expect(
+      ((later as WorkflowCheckpointConflictError).cause as WorkflowCheckpointConflictError)
+        .workflowId,
+    ).toBe('named-child');
   });
 });
 
@@ -354,3 +365,40 @@ function rejectionOrNothing(promise: Promise<unknown>): Promise<unknown> {
     (reason: unknown) => reason,
   );
 }
+
+describe('which parents a lost descendant reaches', () => {
+  it('leaves a suspended parent alone: a suspension keeps its attempt but it awaits nothing', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'suspended-parent', 'suspended-parent-id');
+    const waiter = createWorkflowResultWaiter(internals, 'suspended-lost-child');
+    void getGeneratorOwnedWorkflowResultPromise(internals, 'suspended-lost-child', parentHandle.id);
+    await engine.suspend(parentHandle.id);
+
+    waiter.reject(new WorkflowCheckpointConflictError('suspended-lost-child'));
+    await yieldToEventLoop();
+
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+    expect(await readStatus(internals.storage, parentHandle.id)).toBe('suspended');
+  });
+
+  it('names the descendant that actually lost through A -> B -> C', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const grandparent = await startParked(engine, 'chain-a', 'chain-a-id');
+    const parent = await startParked(engine, 'chain-b', 'chain-b-id');
+    const lostWaiter = createWorkflowResultWaiter(internals, 'chain-c-id');
+    void getGeneratorOwnedWorkflowResultPromise(internals, 'chain-c-id', parent.id);
+    void getGeneratorOwnedWorkflowResultPromise(internals, parent.id, grandparent.id);
+    const grandparentOutcome = rejectionOf(grandparent.result());
+    const parentOutcome = rejectionOf(parent.result());
+
+    lostWaiter.reject(new WorkflowCheckpointConflictError('chain-c-id'));
+    const reason = (await grandparentOutcome) as WorkflowCheckpointConflictError;
+    await parentOutcome;
+
+    expect(reason.workflowId).toBe(grandparent.id);
+    expect(reason.lostChildWorkflowId).toBe('chain-c-id');
+    expect((reason.cause as WorkflowCheckpointConflictError).workflowId).toBe('chain-c-id');
+  });
+});
