@@ -1,3 +1,4 @@
+import { isAbortSignalLike } from './create-tool/execution-options';
 import { freezeToolRequestContext, type EffectiveToolExecutionContext } from './execution-context';
 import type { ExecutionHandle, ExecutionLifecycle } from './execution-lifecycle';
 import type { InternalToolboxExecuteOptions } from './toolbox-contracts';
@@ -90,7 +91,7 @@ export function executionTimingParameters(
   deadline: number | undefined,
 ) {
   return {
-    ...(options.signal instanceof AbortSignal ? { signal: options.signal } : {}),
+    ...(isAbortSignalLike(options.signal) ? { signal: options.signal } : {}),
     ...(deadline !== undefined ? { deadline } : {}),
     now: nowFunction,
     ...(options.setTimeoutFunction ? { setTimeoutFunction: options.setTimeoutFunction } : {}),

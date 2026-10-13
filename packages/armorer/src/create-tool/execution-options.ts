@@ -7,7 +7,7 @@ import {
   policyAuthorizationOnlySymbol,
   policyAuthorizationResultSymbol,
 } from '../internal/approval-resume';
-import type { MinimalAbortSignal, ToolExecuteOptions } from '../is-tool';
+import type { ToolExecuteOptions } from '../is-tool';
 
 export type InternalToolExecuteOptions = ToolExecuteOptions & {
   [approvalConsumeSymbol]?: () => Promise<ApprovalAdmissionRollback>;
@@ -41,11 +41,20 @@ export function resolveSuppliedOwnerId(options: ToolExecuteOptions): string | un
   return options.ownerId ?? options.requestContext?.authority.ownerId;
 }
 
-export function isAbortSignalLike(signal: MinimalAbortSignal | undefined): signal is AbortSignal {
+/**
+ * Structural check for an `AbortSignal`. A signal created in another
+ * JavaScript realm (an iframe, a worker, or a `node:vm` context) fails
+ * `instanceof AbortSignal` against this realm's constructor while remaining
+ * fully usable, so cancellation forwarding must not rely on `instanceof`.
+ */
+export function isAbortSignalLike(value: unknown): value is AbortSignal {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<
+    Record<'aborted' | 'addEventListener' | 'removeEventListener', unknown>
+  >;
   return (
-    signal !== undefined &&
-    typeof signal === 'object' &&
-    typeof signal.aborted === 'boolean' &&
-    typeof signal.addEventListener === 'function'
+    typeof candidate.aborted === 'boolean' &&
+    typeof candidate.addEventListener === 'function' &&
+    typeof candidate.removeEventListener === 'function'
   );
 }
