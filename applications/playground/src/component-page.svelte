@@ -1623,30 +1623,7 @@
                     <h2 class="dx-section__title">Overview</h2>
                     <span class="dx-section__rule" aria-hidden="true"></span>
                   </div>
-                  {#if overviewStage !== undefined}
-                    <div class="dx-reference" role="region" aria-label="Reference usage">
-                      <p class="dx-reference__label">Reference usage</p>
-                      <div class="dx-prose readme-content">
-                        {#each splitReadmeHtml(documentation.readme.html) as segment, i (i)}
-                          {#if segment.type === 'html'}
-                            {@html segment.content}
-                          {:else}
-                            {@const block = documentation.readme.codeBlocks[segment.index]}
-                            {#if block !== undefined}
-                              <StaticCodeBlock
-                                code={block.value}
-                                language={block.language ?? 'plaintext'}
-                                highlightedHtml={segment.fallbackHtml}
-                                copyable
-                              />
-                            {:else}
-                              <div class="readme-pre-fallback">{@html segment.fallbackHtml}</div>
-                            {/if}
-                          {/if}
-                        {/each}
-                      </div>
-                    </div>
-                  {:else}
+                  {#snippet readmeBody()}
                     <div class="dx-prose readme-content">
                       {#each splitReadmeHtml(documentation.readme.html) as segment, i (i)}
                         {#if segment.type === 'html'}
@@ -1666,6 +1643,14 @@
                         {/if}
                       {/each}
                     </div>
+                  {/snippet}
+                  {#if overviewStage !== undefined}
+                    <div class="dx-reference" role="region" aria-label="Reference usage">
+                      <p class="dx-reference__label">Reference usage</p>
+                      {@render readmeBody()}
+                    </div>
+                  {:else}
+                    {@render readmeBody()}
                   {/if}
                   {#if overviewStage !== undefined}
                     <div class="dx-stage">
