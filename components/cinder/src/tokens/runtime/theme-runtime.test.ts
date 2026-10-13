@@ -49,26 +49,6 @@ function sourcesOf(
   };
 }
 
-/**
- * The CLI serializes an override document on its own, so it needs the document
- * to state the group types the runtime and validator infer from the base layer.
- * This restates them without changing any value.
- */
-function withRestatedTypes(corpus: ReturnType<typeof cloneCorpus>) {
-  const copy = cloneCorpus(corpus);
-  const restate = (path: string, group: string, type: string) => {
-    const document = copy.documentsByPath.get(path) as Record<string, Record<string, unknown>>;
-    if (document[group]) document[group] = { $type: type, ...document[group] };
-  };
-  for (const path of ['profile-light.tokens.json', 'profile-dark.tokens.json'])
-    restate(path, 'palette', 'color');
-  for (const path of ['profile-motion-reduced.tokens.json', 'profile-motion-forced.tokens.json']) {
-    restate(path, 'motion', 'duration');
-    restate(path, 'palette', 'color');
-  }
-  return copy;
-}
-
 function expectOk(result: ThemeEvaluation) {
   if (!result.ok) throw new Error(JSON.stringify(result.diagnostics, null, 2));
   return result;
@@ -207,7 +187,7 @@ describe('runtime evaluation of the bundled Cinder base', () => {
   });
 
   test('identifies the base by package version and a digest it can recompute', async () => {
-    expect(CINDER_BASE.packageVersion).toMatch(/^\d+\.\d+\.\d+/);
+    expect(CINDER_BASE.packageVersion).toBe('workspace');
     expect(CINDER_BASE.sourceDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(await computeSourceDigest(CINDER_BASE)).toBe(CINDER_BASE.sourceDigest);
     const reordered = Object.fromEntries(Object.entries(CINDER_BASE.documents).toReversed());
@@ -227,10 +207,33 @@ describe('runtime evaluation of the theme-builder fixtures', () => {
   const result = expectOk(evaluateTheme(sourcesOf(corpus)));
 
   test('agrees with the CLI-generated stylesheet across all six contexts', async () => {
-    const compatible = withRestatedTypes(corpus);
-    const css = await buildTokensBaseCss(compatible.resolver, compatible.documentsByPath);
+    const css = await buildTokensBaseCss(corpus.resolver, corpus.documentsByPath);
     const compared = await expectRuntimeMatchesCss(result, css);
     expect(compared).toBeGreaterThan(SIX_CONTEXTS.length * 10);
+  });
+
+  test('an override that relies on an inherited type yields identical CLI CSS and runtime properties', async () => {
+    // The light, reduced and forced documents state no group `$type`; they inherit
+    // `color` and `duration` from the shared set. Neither the CLI nor the runtime
+    // needs the override to restate it, and both read the same evaluated type.
+    for (const path of ['profile-light.tokens.json', 'profile-motion-reduced.tokens.json']) {
+      const document = corpus.documentsByPath.get(path) as Record<string, Record<string, unknown>>;
+      const groups = Object.values(document).filter((value) => typeof value === 'object');
+      expect(groups.length).toBeGreaterThan(0);
+      for (const group of groups) expect('$type' in group).toBe(false);
+    }
+    const css = await buildTokensBaseCss(corpus.resolver, corpus.documentsByPath);
+    const light = await normalizeCssValues(
+      cascadeCustomProperties(css, { theme: 'light', motion: 'default' }),
+    );
+    const dark = await normalizeCssValues(
+      cascadeCustomProperties(css, { theme: 'dark', motion: 'default' }),
+    );
+    const runtime = await normalizeCssValues(
+      new Map(Object.entries(result.properties['light/default']!)),
+    );
+    expect(light.get('--cinder-palette-paper')).toBe(runtime.get('--cinder-palette-paper'));
+    expect(runtime.get('--cinder-palette-paper')).not.toBe(dark.get('--cinder-palette-paper'));
   });
 
   test('cross-context recipe: a theme override stops inheriting the recipe, a motion override replaces it', () => {
@@ -334,8 +337,7 @@ describe('runtime evaluation of the theme-builder fixtures', () => {
     // The dark context never used the removed override.
     expect(after.properties['dark/default']).toEqual(result.properties['dark/default']);
     // The CLI regenerates the same stylesheet the runtime now describes.
-    const compatible = withRestatedTypes(reset);
-    const css = await buildTokensBaseCss(compatible.resolver, compatible.documentsByPath);
+    const css = await buildTokensBaseCss(reset.resolver, reset.documentsByPath);
     await expectRuntimeMatchesCss(after, css);
     expect(after.revision).toBe(2);
     expect(after.provenance.revision).toBe(2);

@@ -396,6 +396,11 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
  */
 export const versionConstants: Readonly<Record<string, string>> = {
   '@lostgradient/weft': 'src/version.ts',
+  // COR-491: the token runtime reports the version of the package its bundled base ships in.
+  // Corvidae's manifest carries none, so the generated file holds the sentinel `workspace` and
+  // the composed manifest's version replaces it here. The base's `sourceDigest` lives in a
+  // separate file and hashes the documents only, so this rewrite cannot change it.
+  '@lostgradient/cinder': 'src/tokens/runtime/package-version.generated.ts',
 };
 
 /** The one shape a declared version file may have: any leading comment, then the export. */

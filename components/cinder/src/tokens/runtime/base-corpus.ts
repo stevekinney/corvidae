@@ -23,13 +23,17 @@ import foundationSet from '../sets/foundation.tokens.json' with { type: 'json' }
 import semanticSet from '../sets/semantic.tokens.json' with { type: 'json' };
 import darkTheme from '../themes/dark.tokens.json' with { type: 'json' };
 import lightTheme from '../themes/light.tokens.json' with { type: 'json' };
-import { BASE_PACKAGE_VERSION, BASE_SOURCE_DIGEST } from './base-corpus.generated.ts';
+import { BASE_SOURCE_DIGEST } from './base-corpus.generated.ts';
+import { VERSION } from './package-version.generated.ts';
 import type { ResolverDocument, TokenDocument } from './types.ts';
 import { assertValidResolverDocument } from './validate.ts';
 
 /** The bundled Cinder base: what a theme's overrides are applied to. */
 export type CinderBase = {
-  /** The `@lostgradient/cinder` version these sources ship in. */
+  /**
+   * The `@lostgradient/cinder` version these sources ship in: `workspace` in the
+   * monorepo, and the published version in a mirrored package.
+   */
   packageVersion: string;
   /** `sha256:<hex>` over the canonical form of `{ resolver, documents }`. */
   sourceDigest: string;
@@ -65,7 +69,7 @@ const bundledDocuments: Array<[string, unknown]> = [
 ];
 
 export const CINDER_BASE: CinderBase = {
-  packageVersion: BASE_PACKAGE_VERSION,
+  packageVersion: VERSION,
   sourceDigest: BASE_SOURCE_DIGEST,
   resolver: bundledResolver(resolverSource),
   documents: Object.fromEntries(

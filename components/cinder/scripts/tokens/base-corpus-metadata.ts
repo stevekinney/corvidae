@@ -7,7 +7,6 @@
  * exactly what the runtime recomputes in the browser.
  */
 
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { format } from 'prettier';
@@ -21,23 +20,11 @@ import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import {
   PRETTIER_OPTIONS,
   REGENERATE_COMMAND,
-  packageRoot,
   runtimeDirectory,
 } from './generator-configuration.ts';
 
 export const baseCorpusMetadataPath = join(runtimeDirectory, 'base-corpus.generated.ts');
-
-function packageVersion(): string {
-  const manifest: unknown = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  const version =
-    typeof manifest === 'object' && manifest !== null && 'version' in manifest
-      ? manifest.version
-      : undefined;
-  if (typeof version !== 'string' || version === '') {
-    throw new Error('components/cinder/package.json must declare a version.');
-  }
-  return version;
-}
+export const packageVersionPath = join(runtimeDirectory, 'package-version.generated.ts');
 
 /** Absolute output path -> generated content for the base-corpus metadata module. */
 export async function buildBaseCorpusMetadata(
@@ -51,11 +38,10 @@ export async function buildBaseCorpusMetadata(
   const source = `/**
  * GENERATED FILE. Do not edit by hand.
  *
- * The version and source digest of the bundled Cinder token base.
+ * The source digest of the bundled Cinder token base: a digest of the resolver
+ * and documents only, so nothing that changes at publish time can alter it.
  * Regenerate: ${REGENERATE_COMMAND}
  */
-
-export const BASE_PACKAGE_VERSION = ${JSON.stringify(packageVersion())};
 
 export const BASE_SOURCE_DIGEST = ${JSON.stringify(digest)};
 `;
@@ -65,5 +51,21 @@ export const BASE_SOURCE_DIGEST = ${JSON.stringify(digest)};
     parser: 'typescript',
     plugins: [typescriptPlugin, estreePlugin, babelPlugin],
   });
-  return new Map([[baseCorpusMetadataPath, formatted]]);
+  // The published version is not known to the workspace, which carries none. The mirror
+  // transform rewrites this one literal to the composed manifest's version at sync time
+  // (`versionConstants` in scripts/mirror/source.ts), so it must keep exactly this shape.
+  const version = `/**
+ * GENERATED FILE. Do not edit by hand.
+ *
+ * The version of \`@lostgradient/cinder\` these token sources ship in. The workspace
+ * carries no version, so this is the sentinel \`workspace\`; the mirror substitutes
+ * the published version when it composes the package.
+ * Regenerate: ${REGENERATE_COMMAND}
+ */
+export const VERSION = 'workspace';
+`;
+  return new Map([
+    [baseCorpusMetadataPath, formatted],
+    [packageVersionPath, version],
+  ]);
 }

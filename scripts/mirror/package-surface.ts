@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, normalize } from 'node:path';
 import { z } from 'zod';
 
 import type { ComponentDiscovery } from '../../components/cinder/scripts/lib/discover-components.ts';
@@ -369,4 +369,110 @@ export function missingBuildInputs(
   return entry.build.requiredInputs.filter(
     (input) => !existsSync(join(targetPackageDirectory, input)),
   );
+}
+
+export interface ImportGraphFinding {
+  publicName: string;
+  subpath: string;
+  /** The source file the subpath's export target names. */
+  entry: string;
+  /** What the entry's import graph reaches: a package-relative path, or a bare package name. */
+  reached: string;
+  importedBy: string;
+  problem: 'not-shipped' | 'undeclared-dependency';
+}
+
+export interface ImportGraphOptions {
+  publicName: string;
+  exports: SurfaceExportsMap;
+  files: readonly string[];
+  packageRoot: string;
+  /** Dependencies the published manifest declares; a bare import must be one of them. */
+  dependencies: ReadonlySet<string>;
+  /** Limit the check to these subpaths. Defaults to every export. */
+  subpaths?: readonly string[];
+}
+
+const importSpecifier =
+  /(?:\bfrom\s+|\bimport\s+|\bimport\(\s*|\bexport\s+\*\s+from\s+)['"]([^'"]+)['"]/g;
+
+/** The package name of a bare specifier (`@scope/name/sub` -> `@scope/name`). */
+function packageNameOf(specifier: string): string {
+  const segments = specifier.split('/');
+  return specifier.startsWith('@') ? segments.slice(0, 2).join('/') : (segments[0] ?? specifier);
+}
+
+function resolveRelative(
+  packageRoot: string,
+  importer: string,
+  specifier: string,
+): string | undefined {
+  const base = normalize(join(dirname(importer), specifier));
+  for (const candidate of [base, `${base}.ts`, `${base}/index.ts`]) {
+    if (existsSync(join(packageRoot, candidate))) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Whether everything a subpath's source entry imports is actually published.
+ *
+ * `checkTargetCoverage` asks whether the file an export names is shipped. An entry that is
+ * shipped but imports a module no `files` entry covers resolves in the repository and fails from
+ * the registry, one edge further out. This walks each source entry's relative imports (including
+ * JSON imported with an attribute) and reports a reached file `files` does not publish, and a
+ * bare import the manifest does not declare as a dependency. `node:` and `bun:` specifiers are
+ * never allowed to hide here: they are not packages, so they count as undeclared.
+ */
+export function checkPublishedImportGraph(options: ImportGraphOptions): ImportGraphFinding[] {
+  const findings: ImportGraphFinding[] = [];
+  const wanted = options.subpaths === undefined ? undefined : new Set(options.subpaths);
+  for (const [subpath, value] of Object.entries(options.exports)) {
+    if (wanted !== undefined && !wanted.has(subpath)) continue;
+    const entries = new Set(
+      flattenExportTarget(value)
+        .map(([, target]) => packageRelative(target))
+        .filter((relative) => /^src\/.*\.(?:ts|js|mjs)$/.test(relative)),
+    );
+    for (const entry of entries) {
+      const seen = new Set<string>();
+      const queue = [entry];
+      for (let head = 0; head < queue.length; head++) {
+        const file = queue[head]!;
+        if (seen.has(file)) continue;
+        seen.add(file);
+        if (!/\.(?:ts|js|mjs)$/.test(file)) continue;
+        const text = readFileSync(join(options.packageRoot, file), 'utf8');
+        for (const match of text.matchAll(importSpecifier)) {
+          const specifier = match[1]!;
+          if (specifier.startsWith('.')) {
+            const resolved = resolveRelative(options.packageRoot, file, specifier);
+            if (resolved === undefined) continue;
+            if (!filesCoverPath(options.files, resolved)) {
+              findings.push({
+                publicName: options.publicName,
+                subpath,
+                entry,
+                reached: resolved,
+                importedBy: file,
+                problem: 'not-shipped',
+              });
+              continue;
+            }
+            queue.push(resolved);
+          } else if (!options.dependencies.has(packageNameOf(specifier))) {
+            findings.push({
+              publicName: options.publicName,
+              subpath,
+              entry,
+              reached: packageNameOf(specifier),
+              importedBy: file,
+              problem: 'undeclared-dependency',
+            });
+          }
+        }
+      }
+    }
+  }
+  return findings;
 }

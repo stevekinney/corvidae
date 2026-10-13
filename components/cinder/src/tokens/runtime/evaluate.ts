@@ -16,6 +16,7 @@
 
 import { traceProvenance } from './authoring-provenance.ts';
 import type { AuthoringContext, AuthoringLayer } from './authoring-types.ts';
+import { scopeIndexFromDocuments } from './context-order.ts';
 import { authoringContexts, authoringLayerStack } from './context-stack.ts';
 import { validateCorpus } from './corpus-documents.ts';
 import { assertResolutionOrderMatchesCssBlockStructure } from './css-support.ts';
@@ -24,7 +25,7 @@ import {
   type EvaluatedProvenance,
   type TokenEvaluation,
 } from './evaluated-provenance.ts';
-import { contextTokenIndex, projectProperties, type PropertyMap } from './projection.ts';
+import { projectProperties, type PropertyMap } from './projection.ts';
 import { TokenValidationError, type ResolverDocument, type TokenDocument } from './types.ts';
 import { assertValidResolverDocument } from './validate.ts';
 
@@ -147,7 +148,7 @@ export function evaluateTheme(sources: ThemeSources): ThemeEvaluation {
     try {
       const stack = authoringLayerStack(validated.resolver, validated.documentsByPath, context);
       const documents = stack.map((layer) => layer.content);
-      const index = contextTokenIndex(documents);
+      const index = scopeIndexFromDocuments(documents);
       const projection = projectProperties(documents, index);
       if (projection.failures.length > 0) {
         for (const { path, reason } of projection.failures) {

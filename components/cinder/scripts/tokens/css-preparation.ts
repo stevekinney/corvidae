@@ -3,7 +3,9 @@ import {
   documentsForSystemMotionScope,
   modifierValuesForCombo,
   modifierValuesForContext,
+  overrideEntries,
   refsFor,
+  scopeIndexFromDocuments,
 } from '../../src/tokens/runtime/context-order.ts';
 import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 import {
@@ -171,33 +173,15 @@ export function prepareCss(
   // -- and declaration order are unchanged from before), but now looks up `$extends` TARGETS
   // against the wider composed scope, so a theme or motion document's `$extends` can reach a
   // foundation group.
-  const lightOverrides = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(lightDocuments, lightScopeDocuments),
-    '',
-    undefined,
-    lightOverrides,
+  const lightOverrides = overrideEntries(lightDocuments, lightScopeDocuments);
+  const darkOverrides = overrideEntries(darkDocuments, darkScopeDocuments);
+  const reducedMotionOverrides = overrideEntries(
+    reducedMotionDocuments,
+    reducedMotionScopeDocuments,
   );
-  const darkOverrides = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(darkDocuments, darkScopeDocuments),
-    '',
-    undefined,
-    darkOverrides,
-  );
-  const reducedMotionOverrides = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(reducedMotionDocuments, reducedMotionScopeDocuments),
-    '',
-    undefined,
-    reducedMotionOverrides,
-  );
-  const forcedReducedMotionOverrides = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(forcedReducedMotionDocuments, forcedReducedMotionScopeDocuments),
-    '',
-    undefined,
-    forcedReducedMotionOverrides,
+  const forcedReducedMotionOverrides = overrideEntries(
+    forcedReducedMotionDocuments,
+    forcedReducedMotionScopeDocuments,
   );
 
   // Per-block, not just once for `baseIndex`: `$extends` can legitimately give
@@ -209,10 +193,8 @@ export function prepareCss(
   // whichever other modifier's document this block's context implicitly
   // includes), so an unoverridden sibling's comparison value reflects any
   // OTHER modifier's override already baked into that scope, not just base.
-  const lightScopeIndex = new Map<string, CorpusEntry>();
-  collectEntries(mergeAndExpandExtends(lightScopeDocuments), '', undefined, lightScopeIndex);
-  const darkScopeIndex = new Map<string, CorpusEntry>();
-  collectEntries(mergeAndExpandExtends(darkScopeDocuments), '', undefined, darkScopeIndex);
+  const lightScopeIndex = scopeIndexFromDocuments(lightScopeDocuments);
+  const darkScopeIndex = scopeIndexFromDocuments(darkScopeDocuments);
 
   // Use the exact composed scope for uniqueness serialization as well as CSS
   // emission. This matters for nested/property references: resolving against
@@ -260,13 +242,7 @@ export function prepareCss(
       motion: 'reduced',
     }),
   );
-  const lightReducedMotionScopeIndex = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(lightReducedMotionScopeDocuments),
-    '',
-    undefined,
-    lightReducedMotionScopeIndex,
-  );
+  const lightReducedMotionScopeIndex = scopeIndexFromDocuments(lightReducedMotionScopeDocuments);
   const darkReducedMotionScopeDocuments = documentsForResolutionOrder(
     resolver,
     documentsByPath,
@@ -276,13 +252,7 @@ export function prepareCss(
       motion: 'reduced',
     }),
   );
-  const darkReducedMotionScopeIndex = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(darkReducedMotionScopeDocuments),
-    '',
-    undefined,
-    darkReducedMotionScopeIndex,
-  );
+  const darkReducedMotionScopeIndex = scopeIndexFromDocuments(darkReducedMotionScopeDocuments);
   const lightForcedReducedMotionScopeDocuments = documentsForResolutionOrder(
     resolver,
     documentsByPath,
@@ -292,12 +262,8 @@ export function prepareCss(
       motion: 'forced-reduced-motion',
     }),
   );
-  const lightForcedReducedMotionScopeIndex = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(lightForcedReducedMotionScopeDocuments),
-    '',
-    undefined,
-    lightForcedReducedMotionScopeIndex,
+  const lightForcedReducedMotionScopeIndex = scopeIndexFromDocuments(
+    lightForcedReducedMotionScopeDocuments,
   );
   const darkForcedReducedMotionScopeDocuments = documentsForResolutionOrder(
     resolver,
@@ -308,12 +274,8 @@ export function prepareCss(
       motion: 'forced-reduced-motion',
     }),
   );
-  const darkForcedReducedMotionScopeIndex = new Map<string, CorpusEntry>();
-  collectEntries(
-    mergeAndExpandExtends(darkForcedReducedMotionScopeDocuments),
-    '',
-    undefined,
-    darkForcedReducedMotionScopeIndex,
+  const darkForcedReducedMotionScopeIndex = scopeIndexFromDocuments(
+    darkForcedReducedMotionScopeDocuments,
   );
   const lightReducedMotionResolveReferences = createValueResolver(lightReducedMotionScopeDocuments);
   const darkReducedMotionResolveReferences = createValueResolver(darkReducedMotionScopeDocuments);

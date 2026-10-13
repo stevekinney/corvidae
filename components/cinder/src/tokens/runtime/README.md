@@ -87,7 +87,9 @@ type TokenEvaluation = {
 
 ## Data the runtime carries
 
-- `CINDER_BASE`: the immutable Cinder base. `resolver`, `documents` keyed by relative path, `packageVersion`, and `sourceDigest`. A saved theme embeds these so it can tell when the base it was written against has changed. The documents are the package's own source files; the version and digest are generated and checked by `tokens:check`.
+- `CINDER_BASE`: the immutable Cinder base. `resolver`, `documents` keyed by relative path, `packageVersion`, and `sourceDigest`. A saved theme embeds these so it can tell when the base it was written against has changed. The documents are the package's own source files; the digest is generated and checked by `tokens:check`.
+  - `sourceDigest` is `sha256:` over the canonical form of the resolver and documents only. Nothing outside them, the version included, can change it.
+  - `packageVersion` is `workspace` inside the monorepo, because the workspace manifest carries no version. The published version is substituted by the mirror transform (`versionConstants` in `scripts/mirror/source.ts`), which rewrites `package-version.generated.ts` to the composed manifest's version when it builds the package. In an installed package it is the real version.
 - `computeSourceDigest(source)` recomputes the digest in any environment with Web Crypto (`sha256:<hex>` over the canonical form of `{ resolver, documents }`), and `canonicalJson` is the canonical form.
 - `AUTHORING_CATALOGUE`: the generated authoring catalogue, one record per public token with its per-context provenance, usage profile, and edit, CSS-export, and DTCG-portability disposition. `buildAuthoringCatalogue(resolver, documentsByPath)` builds the same catalogue over any in-memory corpus that already passed `validateThemeSources`; it throws on a token no usage profile covers, as the generator does.
 - `PROFILES`, `selectProfile`, `profileRangeViolation`: the CSS usage profiles and their numeric ranges.
@@ -103,7 +105,8 @@ Reading the token files, the resolver, and the vendored schemas; Prettier; writi
 | --- | --- |
 | `format-validator.generated.js`, `resolver-validator.generated.js` (and `.d.ts`) | Standalone Ajv validators for the vendored DTCG 2025.10 schemas. No `eval`, no `new Function`, no imports. |
 | `authoring-catalogue.generated.ts` | The authoring catalogue. |
-| `base-corpus.generated.ts` | The package version and source digest of the bundled base. |
+| `base-corpus.generated.ts` | The source digest of the bundled base. |
+| `package-version.generated.ts` | The `workspace` version sentinel the mirror rewrites. |
 
 ## Tests
 

@@ -279,18 +279,19 @@ describe('E3: $extends group inheritance is applied before entries are collected
 // ---------------------------------------------------------------------------
 
 describe("F1: an override context's $extends can reference a foundation group, not just its own document", () => {
-  test("the dark block emits the extended group's member instead of generation throwing", async () => {
+  test('generation resolves the cross-document $extends through the shared evaluation instead of throwing', async () => {
     const { resolver, documentsByPath } = extendsAcrossDocumentsFixture();
     const css = await buildTokensBaseCss(resolver, documentsByPath);
 
-    const darkBlocks = [...css.matchAll(/\[data-theme='dark'\]\s*\{([^}]*)\}/g)];
-    const darkBlock = darkBlocks.find((match) => match[1]?.includes('--test-palette-accent'))?.[1];
-    expect(darkBlock).toBeDefined();
-
-    // Dark's own "palette" group never defines "accent" itself -- it only reaches it through
-    // `$extends: "{alt-palette}"`, a group that lives in the FOUNDATION document, not dark's own.
-    // Pre-fix, dark's own document is expanded in isolation, so "alt-palette" is not a group
-    // `$extends` can find there, and generation throws before this assertion is ever reached.
-    expect(darkBlock).toContain('--test-palette-accent: oklch(70% 0.15 30);');
+    // Dark's "palette" group reaches "alt-palette" only through `$extends`, a group that lives
+    // in the FOUNDATION document, not dark's own. Pre-fix, dark's document was expanded in
+    // isolation and generation threw. Generation now takes each override's content from the
+    // same evaluation of the whole ordered scope that the runtime and `resolveDocuments` use.
+    // In that evaluation `palette` already defines "accent" (foundation's), and `$extends`
+    // only supplies members the group lacks, so dark overrides nothing here -- the same answer
+    // the browser reaches.
+    expect(css).toContain('--test-palette-accent: oklch(40% 0.08 200);');
+    expect(css).toContain('--test-alt-palette-accent: oklch(70% 0.15 30);');
+    expect(css).not.toContain('--test-palette-accent: oklch(70% 0.15 30);');
   });
 });

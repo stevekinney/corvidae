@@ -25,6 +25,7 @@
 import {
   documentsForResolutionOrder,
   modifierValuesForContext,
+  overrideEntries,
   requireDocument,
 } from './context-order.ts';
 import { collectEntries, type CorpusEntry } from './corpus.ts';
@@ -211,8 +212,7 @@ export function themeAwarePaths(
       documentsByPath,
       modifierValuesForContext(resolver, 'theme', themeName),
     );
-    const overrides = new Map<string, CorpusEntry>();
-    collectEntries(mergeAndExpandExtends(ownDocuments, scopeDocuments), '', undefined, overrides);
+    const overrides = overrideEntries(ownDocuments, scopeDocuments);
     for (const path of withDependentBaseAliases(
       overrides,
       baseIndex,

@@ -110,6 +110,37 @@ export function scopeIndexFromDocuments(
   return index;
 }
 
+/**
+ * The tokens an override context (a theme or motion modifier) defines, each as
+ * that context evaluates it.
+ *
+ * Membership -- which tokens the context overrides, and in what order -- comes
+ * from the context's own documents. Each token's content comes from the same
+ * evaluation the runtime projects (`scopeIndexFromDocuments` over the whole
+ * ordered scope), so a type, `$extends` member, or other metadata the override
+ * document inherits from an earlier layer is resolved once, here, and the
+ * stylesheet generator and the browser cannot disagree about it. An override
+ * document therefore need not restate a group `$type` its base already declares.
+ */
+export function overrideEntries(
+  ownDocuments: readonly TokenDocument[],
+  scopeDocuments: readonly TokenDocument[],
+): Map<string, CorpusEntry> {
+  const entries = new Map<string, CorpusEntry>();
+  collectEntries(
+    mergeAndExpandExtends([...ownDocuments], [...scopeDocuments]),
+    '',
+    undefined,
+    entries,
+  );
+  const evaluated = scopeIndexFromDocuments(scopeDocuments);
+  for (const path of entries.keys()) {
+    const entry = evaluated.get(path);
+    if (entry) entries.set(path, entry);
+  }
+  return entries;
+}
+
 export function documentsForSystemMotionScope(
   resolver: ResolverDocument,
   documentsByPath: Map<string, TokenDocument>,

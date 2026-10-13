@@ -13,8 +13,9 @@
  * a fallback: the caller gets a path-addressed failure and no property map.
  */
 
-import { collectEntries, type CorpusEntry } from './corpus.ts';
-import { createValueResolver, mergeAndExpandExtends } from './resolve.ts';
+import { scopeIndexFromDocuments } from './context-order.ts';
+import type { CorpusEntry } from './corpus.ts';
+import { createValueResolver } from './resolve.ts';
 import type { TokenDocument } from './types.ts';
 import { serializeEntryValue } from './value-entry.ts';
 
@@ -22,13 +23,6 @@ import { serializeEntryValue } from './value-entry.ts';
 export type PropertyMap = Readonly<Record<string, string>>;
 
 export type ProjectionFailure = { path: string; reason: string };
-
-/** The token index of one context: every token, `$extends` already expanded. */
-export function contextTokenIndex(documents: readonly TokenDocument[]): Map<string, CorpusEntry> {
-  const index = new Map<string, CorpusEntry>();
-  collectEntries(mergeAndExpandExtends([...documents]), '', undefined, index);
-  return index;
-}
 
 /** Whether a token belongs to the public `--cinder-*` surface. */
 export function isPublicEntry(entry: CorpusEntry): boolean {
@@ -50,7 +44,7 @@ function compareCodeUnits(left: string, right: string): number {
  */
 export function projectProperties(
   documents: readonly TokenDocument[],
-  index: Map<string, CorpusEntry> = contextTokenIndex(documents),
+  index: Map<string, CorpusEntry> = scopeIndexFromDocuments(documents),
 ): { properties: PropertyMap; failures: ProjectionFailure[] } {
   const resolveReferences = createValueResolver([...documents]);
   const projected: Array<[string, string]> = [];
