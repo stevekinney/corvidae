@@ -59,8 +59,8 @@ export const FEATURED_EXAMPLES: readonly FeaturedExample[] = [
   },
   {
     component: 'combobox',
-    file: 'combobox/basic.example.svelte',
-    oldHardcodedIds: ['combobox-fruit'],
+    file: 'combobox/disabled.example.svelte',
+    oldHardcodedIds: ['combobox-disabled'],
   },
   {
     component: 'command-menu',

@@ -85,6 +85,8 @@
     scrollOverflowSentinel,
   } from './component-page-example-mounts.ts';
 
+  import { describeOverviewStage, selectOverviewExample } from './component-page-overview-stage.ts';
+
   type CinderExampleDescriptor = {
     scenario: string;
     title: string;
@@ -185,7 +187,6 @@
   }
 
   const examples: CinderExampleDescriptor[] = untrack(() => examplesProp) ?? readExamples();
-  const explicitlyFeatured = examples.filter((example) => example.featured === true);
 
   // Snapshot mode (`?snapshot=1`) is how the visual-regression and a11y test
   // harness loads this route. Those tests assert global single-instance counts
@@ -198,12 +199,16 @@
       new URLSearchParams(window.location.search).get('snapshot') === '1');
 
   // The Overview live preview uses the first featured example, or the first
-  // example overall. Undefined when there are no examples at all, and suppressed
-  // in snapshot mode so it never double-mounts a scenario the Examples section
-  // already shows.
-  const overviewExample: CinderExampleDescriptor | undefined = snapshotMode
-    ? undefined
-    : (explicitlyFeatured[0] ?? examples[0]);
+  // example overall (see `selectOverviewExample`). Undefined when there are no
+  // examples at all, and suppressed in snapshot mode so it never double-mounts a
+  // scenario the Examples section already shows. The stage's title, mount, and
+  // code panel are all derived from this one descriptor via `overviewStage`.
+  const overviewExample: CinderExampleDescriptor | undefined = selectOverviewExample(
+    examples,
+    snapshotMode,
+  );
+  const overviewStage =
+    overviewExample === undefined ? undefined : describeOverviewStage(overviewExample);
 
   // The component this page documents. Supplied as a prop by both render paths;
   // falls back to parsing the current URL path (`/page/<name>`) when absent.
@@ -542,6 +547,26 @@
     }
   });
 
+  // The Overview stage's own "Show code" disclosure. It is separate from the
+  // Examples disclosure for the same scenario so opening one never toggles the
+  // other, but both read the one `fetchedSource` entry for the scenario.
+  let overviewExpandedIds: string[] = $state([]);
+
+  $effect(() => {
+    if (
+      overviewStage !== undefined &&
+      overviewExpandedIds.includes(overviewStage.sourceItemId) &&
+      fetchedSource[overviewStage.scenario] === undefined &&
+      !loadingSource[overviewStage.scenario]
+    ) {
+      void fetchExampleSource(componentName, overviewStage.scenario, {
+        fetchedSource,
+        loadingSource,
+        sourceErrors,
+      });
+    }
+  });
+
   // Mount each registered scenario into its preview container via an attachment.
   // An attachment runs exactly when its element is created and tears down when
   // the element is removed, so there is no effect-vs-DOM timing race (the old
@@ -554,7 +579,7 @@
     mountErrors,
     onScenarioSettled: (mountKey, error) => {
       settleSnapshotMount(mountKey, error);
-      if (mountKey === `overview-mount-${overviewExample?.scenario}`) {
+      if (mountKey === overviewStage?.mountId) {
         onOverviewPreviewSettled?.(error);
       }
     },
@@ -1598,30 +1623,56 @@
                     <h2 class="dx-section__title">Overview</h2>
                     <span class="dx-section__rule" aria-hidden="true"></span>
                   </div>
-                  <div class="dx-prose readme-content">
-                    {#each splitReadmeHtml(documentation.readme.html) as segment, i (i)}
-                      {#if segment.type === 'html'}
-                        {@html segment.content}
-                      {:else}
-                        {@const block = documentation.readme.codeBlocks[segment.index]}
-                        {#if block !== undefined}
-                          <StaticCodeBlock
-                            code={block.value}
-                            language={block.language ?? 'plaintext'}
-                            highlightedHtml={segment.fallbackHtml}
-                            copyable
-                          />
+                  {#if overviewStage !== undefined}
+                    <div class="dx-reference" role="region" aria-label="Reference usage">
+                      <p class="dx-reference__label">Reference usage</p>
+                      <div class="dx-prose readme-content">
+                        {#each splitReadmeHtml(documentation.readme.html) as segment, i (i)}
+                          {#if segment.type === 'html'}
+                            {@html segment.content}
+                          {:else}
+                            {@const block = documentation.readme.codeBlocks[segment.index]}
+                            {#if block !== undefined}
+                              <StaticCodeBlock
+                                code={block.value}
+                                language={block.language ?? 'plaintext'}
+                                highlightedHtml={segment.fallbackHtml}
+                                copyable
+                              />
+                            {:else}
+                              <div class="readme-pre-fallback">{@html segment.fallbackHtml}</div>
+                            {/if}
+                          {/if}
+                        {/each}
+                      </div>
+                    </div>
+                  {:else}
+                    <div class="dx-prose readme-content">
+                      {#each splitReadmeHtml(documentation.readme.html) as segment, i (i)}
+                        {#if segment.type === 'html'}
+                          {@html segment.content}
                         {:else}
-                          <div class="readme-pre-fallback">{@html segment.fallbackHtml}</div>
+                          {@const block = documentation.readme.codeBlocks[segment.index]}
+                          {#if block !== undefined}
+                            <StaticCodeBlock
+                              code={block.value}
+                              language={block.language ?? 'plaintext'}
+                              highlightedHtml={segment.fallbackHtml}
+                              copyable
+                            />
+                          {:else}
+                            <div class="readme-pre-fallback">{@html segment.fallbackHtml}</div>
+                          {/if}
                         {/if}
-                      {/if}
-                    {/each}
-                  </div>
-                  {#if overviewExample !== undefined}
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if overviewStage !== undefined}
                     <div class="dx-stage">
                       <div class="dx-stage__bar">
                         <span class="dx-stage__dot" aria-hidden="true"></span>
                         <span class="dx-stage__label">Live preview</span>
+                        <h3 class="dx-stage__title">{overviewStage.title}</h3>
                       </div>
                       <!-- svelte-ignore a11y_no_noninteractive_tabindex (Scrollable previews need keyboard access to overflow content.) -->
                       <div
@@ -1630,20 +1681,20 @@
                         aria-label="Overview preview"
                         tabindex="0"
                       >
-                        {#if mountErrors[`overview-mount-${overviewExample.scenario}`] !== undefined}
-                          {@const error = mountErrors[`overview-mount-${overviewExample.scenario}`]}
+                        {#if mountErrors[overviewStage.mountId] !== undefined}
+                          {@const error = mountErrors[overviewStage.mountId]}
                           <Callout variant="danger" title="This preview failed to render">
                             <p>{error?.message}</p>
                           </Callout>
                         {/if}
                         <div
                           class="example-preview"
-                          id="overview-mount-{overviewExample.scenario}"
+                          id={overviewStage.mountId}
                           data-overview-preview-rendered={overviewExampleHtml !== null &&
                           overviewExampleHtml !== ''
                             ? ''
                             : undefined}
-                          {@attach mountScenario(overviewExample.scenario)}
+                          {@attach mountScenario(overviewStage.scenario)}
                         >
                           {#if overviewExampleHtml !== null && overviewExampleHtml !== ''}
                             {@html overviewExampleHtml}
@@ -1655,6 +1706,11 @@
                           {/if}
                         </div>
                       </div>
+                      <Accordion bind:expandedIds={overviewExpandedIds}>
+                        <AccordionItem id={overviewStage.sourceItemId} title="Show code">
+                          {@render exampleSourcePanel(overviewStage.scenario, overviewStage.title)}
+                        </AccordionItem>
+                      </Accordion>
                     </div>
                   {/if}
                 </section>
@@ -1730,9 +1786,7 @@
                     <div class="dx-examples">
                       {#each examples as { scenario, title, description } (scenario)}
                         {@const disclosure = disclosureFor(exampleDisclosures, scenario)}
-                        {@const source = fetchedSource[scenario]}
                         {@const mountError = mountErrors[`example-mount-${scenario}`]}
-                        {@const sourceError = sourceErrors[scenario]}
                         {#if disclosure}
                           <section id="example-card-{scenario}" class="dx-example">
                             <div class="dx-example__head">
@@ -1783,45 +1837,7 @@
 
                               <Accordion bind:expandedIds={disclosure.expandedIds}>
                                 <AccordionItem id={`source-${scenario}`} title="Show code">
-                                  {#if loadingSource[scenario]}
-                                    <p class="source-loading">Loading…</p>
-                                  {:else if source === null}
-                                    <Callout variant="danger" title="Could not load source">
-                                      <dl class="example-error__detail">
-                                        <dt>Requested</dt>
-                                        <dd>
-                                          <code>
-                                            {sourceError?.url ??
-                                              `/example-src/${componentName}/${scenario}`}
-                                          </code>
-                                        </dd>
-                                        <dt>Reason</dt>
-                                        <dd>{sourceError?.detail ?? 'Unknown error'}</dd>
-                                      </dl>
-                                      <div class="example-error__actions">
-                                        <Button
-                                          size="sm"
-                                          variant="secondary"
-                                          aria-label="Retry loading source for {title}"
-                                          onclick={() =>
-                                            fetchExampleSource(componentName, scenario, {
-                                              fetchedSource,
-                                              loadingSource,
-                                              sourceErrors,
-                                            })}
-                                        >
-                                          Retry
-                                        </Button>
-                                      </div>
-                                    </Callout>
-                                  {:else if source !== undefined}
-                                    <CodeBlock
-                                      highlighter={depictHighlighter}
-                                      code={source}
-                                      language="svelte"
-                                      copyable
-                                    />
-                                  {/if}
+                                  {@render exampleSourcePanel(scenario, title)}
                                 </AccordionItem>
                               </Accordion>
                             </div>
@@ -2204,6 +2220,44 @@
     {/if}
   </div>
 {/if}
+
+{#snippet exampleSourcePanel(scenario: string, title: string)}
+  {@const source = fetchedSource[scenario]}
+  {@const sourceError = sourceErrors[scenario]}
+  {#if loadingSource[scenario]}
+    <p class="source-loading">Loading…</p>
+  {:else if source === null}
+    <Callout variant="danger" title="Could not load source">
+      <dl class="example-error__detail">
+        <dt>Requested</dt>
+        <dd>
+          <code>
+            {sourceError?.url ?? `/example-src/${componentName}/${scenario}`}
+          </code>
+        </dd>
+        <dt>Reason</dt>
+        <dd>{sourceError?.detail ?? 'Unknown error'}</dd>
+      </dl>
+      <div class="example-error__actions">
+        <Button
+          size="sm"
+          variant="secondary"
+          aria-label="Retry loading source for {title}"
+          onclick={() =>
+            fetchExampleSource(componentName, scenario, {
+              fetchedSource,
+              loadingSource,
+              sourceErrors,
+            })}
+        >
+          Retry
+        </Button>
+      </div>
+    </Callout>
+  {:else if source !== undefined}
+    <CodeBlock highlighter={depictHighlighter} code={source} language="svelte" copyable />
+  {/if}
+{/snippet}
 
 <style>
   /* Page surface: pure white in light mode, the system surface in dark. Set
@@ -3216,6 +3270,20 @@
     background: var(--cinder-border-strong);
   }
   .dx-stage__label {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-2xs);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--cinder-text-subtle);
+  }
+  .dx-stage__title {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    font-weight: 600;
+    color: var(--cinder-text);
+  }
+  .dx-reference__label {
+    margin: 0 0 var(--cinder-space-2);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-2xs);
     letter-spacing: 0.1em;
