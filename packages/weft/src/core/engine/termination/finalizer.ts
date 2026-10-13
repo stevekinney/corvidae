@@ -60,14 +60,13 @@ import {
   reassertOwedAfterShutdown,
   runningClaimIsStale,
   settleOnRunningClaim,
-  spentTeardownAttempts,
   TEARDOWN_SELF_HEAL_DELAY_MS,
   teardownBackoffMs,
   teardownStaleThresholdMs,
   teardownTimerOperations,
   type TeardownHold,
 } from './finalizer-claim.ts';
-import { deadLetterWithoutRunning } from './finalizer-dead-letter.ts';
+import { deadLetterWithoutRunning, spentTeardownAttempts } from './finalizer-dead-letter.ts';
 import { resolveFinalizerRegistration } from './finalizer-registration.ts';
 
 export { teardownStaleThresholdMs, type TeardownDeadLetterRecord } from './finalizer-claim.ts';

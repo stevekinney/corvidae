@@ -97,18 +97,6 @@ export function teardownStaleThresholdMs(finalizer: RunnableFinalizer): number {
   return perAttemptBudget + TEARDOWN_STALE_MARGIN_MS;
 }
 
-/**
- * The attempts a claim has already spent (COR-1422): a settled `owed` claim carries its count;
- * a `running` claim that reaches a drive was abandoned mid-attempt, so that attempt counts too.
- * Clamped to {@link MAX_TEARDOWN_ATTEMPTS} so a corrupt near-`MAX_SAFE_INTEGER` count can
- * neither overflow into an unsafe integer nor produce a dead-letter record the status reader
- * rejects.
- */
-export function spentTeardownAttempts(claim: TeardownClaim): number {
-  const spent = claim.status === 'running' ? claim.attempts + 1 : claim.attempts;
-  return Math.min(spent, MAX_TEARDOWN_ATTEMPTS);
-}
-
 /** Whether a `running` claim is reclaimable: its holder has not settled within the stale window. */
 export function runningClaimIsStale(
   internals: EngineInternals,
