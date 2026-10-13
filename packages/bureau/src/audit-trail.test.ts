@@ -4,6 +4,7 @@
  * Uses a hand-crafted `TextValueStore` stub so tests are fully deterministic
  * without starting a live bureau or durable engine.
  */
+import * as lifecycle from '@lostgradient/lifecycle';
 import { CompletableEventTarget, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { Action } from '@lostgradient/operative';
 import {
@@ -3163,5 +3164,50 @@ describe('createAuditTrail', () => {
 
       trail.dispose();
     });
+  });
+});
+
+// COR-89: `createAuditTrail` defaults `runtime` to an internal
+// `createDefaultRuntimeServices()` instance the caller never sees. The writes
+// tracked on that instance's `deferred` ledger must still be drained by the
+// trail's own `dispose()`, so the hidden ledger is never the only path to them.
+describe('COR-89 — omitted runtime', () => {
+  it("dispose() drains every write tracked on the internal default runtime's deferred ledger", async () => {
+    const factory = spyOn(lifecycle, 'createDefaultRuntimeServices');
+    // A namespace spy can carry calls recorded by an earlier spy on the same
+    // export, so count only from here.
+    factory.mockClear();
+    try {
+      const { kv, release } = createControllableKv();
+      const { bureau, emit } = createStubBureau();
+      const trail = createAuditTrail(bureau, kv);
+      expect(factory).toHaveBeenCalledTimes(1);
+      const internalRuntime = factory.mock.results[0]!.value as lifecycle.RuntimeServices;
+
+      emit(
+        new ActionEvent({
+          type: 'tool.started',
+          timestamp: 6000,
+          sequence: 1,
+          runId: 'run-default-runtime',
+          detail: null,
+        }),
+      );
+
+      // The gated write is genuinely tracked on the hidden instance.
+      const inFlight = await internalRuntime.deferred.drain();
+      expect(inFlight.outstanding).toEqual(['audit-write']);
+
+      const disposal = trail.dispose();
+      release();
+      await disposal;
+
+      const report = await internalRuntime.deferred.drain();
+      expect(report.outstanding).toEqual([]);
+      expect(report.settled).toEqual([{ label: 'audit-write', outcome: 'resolved' }]);
+      expect(await trail.query({ runId: 'run-default-runtime' })).toHaveLength(1);
+    } finally {
+      factory.mockRestore();
+    }
   });
 });

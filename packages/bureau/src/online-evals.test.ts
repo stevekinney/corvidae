@@ -6,6 +6,7 @@
  * durable pipeline. Sampling is driven by an injected RNG so `sampleRate` is
  * exercised deterministically: no test depends on `Math.random`.
  */
+import * as lifecycle from '@lostgradient/lifecycle';
 import {
   type Action,
   LIVENESS_POLICY_VERSION,
@@ -1051,5 +1052,54 @@ describe('createOnlineEvalSampler', () => {
       expect(worstProgress([])).toBe('unknown');
       expect(worstProgress(['progressing', 'stalled', 'idle'])).toBe('stalled');
     });
+  });
+});
+
+// COR-89: `createOnlineEvalSampler` defaults `runtime` to an internal
+// `createDefaultRuntimeServices()` instance the caller never sees. The
+// evaluations tracked on that instance's `deferred` ledger must still be
+// drained by the sampler's own `dispose()`, so the hidden ledger is never the
+// only path to them.
+describe('COR-89 — omitted runtime', () => {
+  it("dispose() drains every evaluation tracked on the internal default runtime's deferred ledger", async () => {
+    const factory = spyOn(lifecycle, 'createDefaultRuntimeServices');
+    // A namespace spy can carry calls recorded by an earlier spy on the same
+    // export, so count only from here.
+    factory.mockClear();
+    try {
+      const { bureau, emit } = createStubBureau();
+      const { auditTrail } = createStubAuditTrail();
+      const { judge, resolveAll } = blockingJudge();
+      const sampler = createOnlineEvalSampler(bureau, auditTrail, undefined, {
+        judges: [judge],
+        sampleRate: 1,
+        rng: scriptedRng([0]),
+        clock: manualClock(),
+      });
+      expect(factory).toHaveBeenCalledTimes(1);
+      const internalRuntime = factory.mock.results[0]!.value as lifecycle.RuntimeServices;
+
+      emit(
+        makeAction({
+          type: 'run.completed',
+          runId: 'run-default-runtime',
+          detail: makeRunResult(),
+        }),
+      );
+
+      // The blocked evaluation is genuinely tracked on the hidden instance.
+      const inFlight = await internalRuntime.deferred.drain();
+      expect(inFlight.outstanding).toEqual(['background-evaluation']);
+
+      const disposal = sampler.dispose();
+      resolveAll();
+      await disposal;
+
+      const report = await internalRuntime.deferred.drain();
+      expect(report.outstanding).toEqual([]);
+      expect(report.settled).toEqual([{ label: 'background-evaluation', outcome: 'resolved' }]);
+    } finally {
+      factory.mockRestore();
+    }
   });
 });

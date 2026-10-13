@@ -6,6 +6,7 @@
  * engine. `fetch`, `sleep`, and `now` are all injected so retry/backoff
  * behavior never touches a real timer or the network.
  */
+import * as lifecycle from '@lostgradient/lifecycle';
 import type { Action, StallWatchdogClock } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
@@ -1190,5 +1191,68 @@ describe('createWebhookNotifier', () => {
       expect(worstProgress([])).toBe('unknown');
       expect(worstProgress(['progressing', 'stalled', 'idle'])).toBe('stalled');
     });
+  });
+});
+
+// COR-89: `createWebhookNotifier` defaults `runtime` to an internal
+// `createDefaultRuntimeServices()` instance the caller never sees. The
+// deliveries tracked on that instance's `deferred` ledger must still be
+// drained by the notifier's own `dispose()`, so the hidden ledger is never the
+// only path to them.
+describe('COR-89 — omitted runtime', () => {
+  it("dispose() drains every delivery tracked on the internal default runtime's deferred ledger", async () => {
+    const factory = spyOn(lifecycle, 'createDefaultRuntimeServices');
+    // A namespace spy can carry calls recorded by an earlier spy on the same
+    // export, so count only from here.
+    factory.mockClear();
+    try {
+      const { bureau, emit } = createStubBureau();
+      // A delivery held open until the test releases it — never a real timer.
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      const fetchImpl = (async () => {
+        markStarted();
+        await gate;
+        return new Response(null, { status: 200 });
+      }) as unknown as typeof fetch;
+      const notifier = createWebhookNotifier(bureau, undefined, undefined, {
+        targets: [{ url: 'https://example.com/hook' }],
+        fetch: fetchImpl,
+        clock: manualClock(),
+        maxAttempts: 1,
+      });
+      expect(factory).toHaveBeenCalledTimes(1);
+      const internalRuntime = factory.mock.results[0]!.value as lifecycle.RuntimeServices;
+
+      emit(
+        makeAction({
+          type: 'elicitation.requested',
+          runId: 'run-default-runtime',
+          sequence: 1,
+          detail: { message: 'confirm?' },
+        }),
+      );
+      await started;
+
+      // The held delivery is genuinely tracked on the hidden instance.
+      const inFlight = await internalRuntime.deferred.drain();
+      expect(inFlight.outstanding).toEqual(['webhook-delivery']);
+
+      const disposal = notifier.dispose();
+      release();
+      await disposal;
+
+      const report = await internalRuntime.deferred.drain();
+      expect(report.outstanding).toEqual([]);
+      expect(report.settled).toEqual([{ label: 'webhook-delivery', outcome: 'resolved' }]);
+    } finally {
+      factory.mockRestore();
+    }
   });
 });
