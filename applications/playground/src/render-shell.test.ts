@@ -76,7 +76,7 @@ describe('renderShell live-reload advertisement', () => {
 });
 
 describe('renderShell', () => {
-  it('leaves the shell body unpadded so the landing canvas owns its own gutter', () => {
+  it('regression guard: keeps the shell body unpadded so the landing canvas owns its own gutter (passed before CIN-586; not evidence of the fix)', () => {
     const html = renderShell(null, ['button']);
     const bodyRule = /\n\s+body \{([^}]*)\}/.exec(html)?.[1] ?? '';
     expect(bodyRule).not.toBe('');

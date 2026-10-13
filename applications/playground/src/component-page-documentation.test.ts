@@ -371,24 +371,18 @@ describe('component-page single-scroll layout', () => {
     await tick();
   });
 
-  test('puts the documentation canvas gutter on one owner with no enclosing frame', async () => {
+  test('keeps the hero, tabs and layout sections inside the single gutter owner', async () => {
     const { unmount } = render(ComponentPage);
     await findHeroHeading('Button');
 
     const canvas = document.querySelector('.dx');
     expect(canvas).not.toBeNull();
-    // Every hero and layout section takes its horizontal gutter from `.dx__inner`.
+    // Every hero and layout section takes its horizontal gutter from `.dx__inner`;
+    // the canvas itself is not wrapped by one, and the hero heading sits inside one.
     expect(document.querySelectorAll('.dx__inner').length).toBeGreaterThan(0);
+    expect(document.querySelector('.dx-hero h1')?.closest('.dx__inner')).not.toBeNull();
+    expect(document.querySelector('.dx-views')?.closest('.dx__inner')).not.toBeNull();
     expect(canvas?.parentElement?.closest('.dx__inner')).toBeNull();
-
-    // The component CSS is the only source of the frame and the gutter.
-    const source = await Bun.file(new URL('./component-page.svelte', import.meta.url)).text();
-    const canvasRule = /\n {2}\.dx \{([^}]*)\}/.exec(source)?.[1] ?? '';
-    expect(canvasRule).toContain('--dx-gutter');
-    expect(canvasRule).not.toMatch(/border|padding/);
-    const innerRule = /\n {2}\.dx__inner \{([^}]*)\}/.exec(source)?.[1] ?? '';
-    expect(innerRule).toContain('padding-inline: var(--dx-gutter)');
-    expect(source).not.toContain('dx-spec');
 
     unmount();
     await tick();

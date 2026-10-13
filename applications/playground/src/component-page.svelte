@@ -1119,7 +1119,13 @@
             <p class="dx-hero__lede">{component.purpose}</p>
             <div class="dx-hero__meta">
               <div class="dx-import">
-                <span class="dx-import__code">
+                <span
+                  class="dx-import__code"
+                  role="textbox"
+                  aria-readonly="true"
+                  aria-label="Import statement"
+                  tabindex="0"
+                >
                   {#if highlightedImportStatement !== ''}
                     {@html highlightedImportStatement}
                   {:else}
@@ -2486,8 +2492,15 @@
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* Shrinkable and scrollable: a long statement stays reachable inside the
+       control instead of being clipped, and never widens the page. */
+    min-inline-size: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .dx-import__code:focus-visible {
+    outline: 2px solid var(--cinder-focus-ring, var(--cinder-accent-text));
+    outline-offset: -2px;
   }
   /* A real button affordance, not a bare icon hugging the code field's edge:
      a comfortable square hit target with its own raised surface, separated from

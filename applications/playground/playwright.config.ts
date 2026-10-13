@@ -4,7 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 // inherited opt-out in this test process before those children are created.
 delete process.env['NO_COLOR'];
 
-const port = 5597;
+const port = Number(process.env['PLAYGROUND_E2E_PORT'] ?? 5597);
 const origin = `http://localhost:${port}`;
 
 export default defineConfig({

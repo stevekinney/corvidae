@@ -49,12 +49,23 @@ for (const viewport of viewports) {
               frame.borderBottomWidth,
               frame.borderLeftWidth,
             ],
+            canvasInlinePadding: [frame.paddingLeft, frame.paddingRight],
+            innerInlinePadding: (() => {
+              const inner = document.querySelector('.dx__inner');
+              if (inner === null) throw new Error('The gutter owner .dx__inner is missing.');
+              const owner = getComputedStyle(inner);
+              return [owner.paddingLeft, owner.paddingRight];
+            })(),
             bodyPadding: [body.paddingTop, body.paddingRight, body.paddingBottom, body.paddingLeft],
           };
         });
 
         expect(metrics.borders).toEqual(['0px', '0px', '0px', '0px']);
         expect(metrics.bodyPadding).toEqual(['0px', '0px', '0px', '0px']);
+        expect(metrics.canvasInlinePadding).toEqual(['0px', '0px']);
+        for (const padding of metrics.innerInlinePadding) {
+          expect(Number.parseFloat(padding)).toBeGreaterThan(0);
+        }
       });
     }
 
@@ -138,4 +149,49 @@ test.describe('component pages at phone width', () => {
       expect(geometry.canvasLeft).toBe(0);
     });
   }
+});
+
+test.describe('import control at phone width', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('keeps the full import statement reachable without widening the page', async ({ page }) => {
+    await openDocumentation(page, '/page/action-row');
+
+    const reachability = await page.evaluate(() => {
+      const control = document.querySelector('.dx-import');
+      const code = document.querySelector<HTMLElement>('.dx-import__code');
+      if (control === null || code === null) throw new Error('The import control is missing.');
+      const clippedBefore = code.scrollWidth > code.clientWidth;
+      code.scrollLeft = code.scrollWidth;
+      return {
+        statement: code.textContent?.trim() ?? '',
+        clippedBefore,
+        scrolledToEnd: Math.ceil(code.scrollLeft + code.clientWidth) >= code.scrollWidth,
+        controlRight: control.getBoundingClientRect().right,
+        viewportWidth: document.documentElement.clientWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        overflowX: getComputedStyle(code).overflowX,
+        tabIndex: code.tabIndex,
+      };
+    });
+
+    expect(reachability.statement).toBe("import { ActionRow } from '@lostgradient/cinder';");
+    // The statement is wider than the control, so it must scroll rather than clip.
+    expect(reachability.clippedBefore).toBe(true);
+    expect(reachability.overflowX).toBe('auto');
+    expect(reachability.scrolledToEnd).toBe(true);
+    expect(reachability.controlRight).toBeLessThanOrEqual(reachability.viewportWidth);
+    expect(reachability.pageScrollWidth).toBeLessThanOrEqual(reachability.viewportWidth);
+
+    // The scroll region is keyboard reachable and shows a focus indicator.
+    expect(reachability.tabIndex).toBe(0);
+    await page.locator('.dx-import__code').focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.locator('.dx-import__code')).toBeFocused();
+    const outlineWidth = await page
+      .locator('.dx-import__code')
+      .evaluate((element) => getComputedStyle(element).outlineWidth);
+    expect(Number.parseFloat(outlineWidth)).toBeGreaterThan(0);
+  });
 });
