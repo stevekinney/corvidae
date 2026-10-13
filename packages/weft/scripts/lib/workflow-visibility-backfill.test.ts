@@ -420,6 +420,48 @@ describe('runWorkflowVisibilityDrop', () => {
 
     expect(await storage.get(KEYS.workflow('wf-a'))).not.toBeNull();
   });
+  it('holds the backfill lock until its sweep finishes, so no backfill can start mid-drop', async () => {
+    using storage = new MemoryStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
+    await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+
+    const drop = runWorkflowVisibilityDrop(storage, { settleMilliseconds: 50 });
+    // The drop is waiting out its settle window, rows not yet swept.
+    await Bun.sleep(10);
+    expect(
+      await throwingRejectionOf(runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 })),
+    ).toThrow(WorkflowVisibilityBackfillInProgressError);
+    await drop;
+
+    expect(await getWorkflowVisibilityWatermark(storage)).toBe('stale');
+    expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([]);
+    expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(false);
+
+    const report = await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+    expect(report.watermarkWritten).toBe(true);
+  });
+
+  it('releases its lock on a backend without conditionalBatch, and only its own', async () => {
+    class CompareFreeStorage extends MemoryStorage {
+      override capabilities() {
+        return { ...super.capabilities(), conditionalBatch: false };
+      }
+    }
+    using storage = new CompareFreeStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
+
+    await runWorkflowVisibilityDrop(storage, { settleMilliseconds: 0 });
+    expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(false);
+
+    // A run that took the lock over while this drop swept keeps it.
+    const takeover = encode('another-run');
+    const drop = runWorkflowVisibilityDrop(storage, { settleMilliseconds: 30 });
+    await Bun.sleep(5);
+    await storage.put(KEYS.workflowVisibilityMetaBuilding(), takeover);
+    await drop;
+    expect(await storage.get(KEYS.workflowVisibilityMetaBuilding())).toEqual(takeover);
+  });
+
   it('clears a lock a killed run left and waits the settle window before sweeping rows', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));

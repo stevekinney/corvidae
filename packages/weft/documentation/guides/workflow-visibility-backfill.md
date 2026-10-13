@@ -81,7 +81,7 @@ Only resume a paused foreign write path if it now uses the engine write path or 
 | `1` | Fatal usage or runtime error | Fix the reported problem, such as a missing `--storage` value or an unexpected exception, then run the command again. |
 | `2` | Backend lacks `conditionalBatch` | Use the Bun SQLite storage file targeted by this script. The backfill refuses unsafe backends because racing writes could leave workflows un-indexed. |
 | `3` | Conditional conflicts occurred | Keep writers paused, run `--drop`, then run the backfill again from the beginning. A conflict means the script skipped at least one workflow that changed during the scan. |
-| `4` | Another backfill holds the lock | Wait for the other run to finish. If no other run is alive, a killed run left the lock behind; run `--drop`, then start the backfill again. A run whose lock `--drop` cleared also exits with `4`, without publishing a watermark. |
+| `4` | Another backfill holds the lock | Wait for the other run to finish. A `--drop` in progress also holds the lock. If no other run is alive, a killed run left the lock behind; run `--drop`, then start the backfill again. A run whose lock a `--drop` took over also exits with `4`, without publishing a watermark. |
 
 Exit code `3` is retryable, but do not retry against the saved cursor. A conflicted workflow may be below that cursor, so reset the visibility-index state first:
 
@@ -102,10 +102,11 @@ bun scripts/rebuild-workflow-visibility-indexes.ts --storage /var/lib/weft/weft.
 
 The drop order is intentional:
 
-- The watermark and the backfill lock are removed first, so engines stop trusting the index once their cached watermark expires.
+- The drop takes the backfill lock and holds it until the end, so no backfill can start and publish a watermark over rows it hasn't swept yet. Taking the lock replaces any lock a killed run left behind.
+- The watermark is removed next, so engines stop trusting the index once their cached watermark expires.
 - The script waits for running engines to observe that.
 - The `wf-idx-*` rows are swept after the wait.
-- The cursor is cleared last.
+- The cursor is cleared, and then the lock is released.
 
 That ordering avoids the unsafe window where an engine sees a current watermark but the indexed rows are missing or partially deleted. An engine that still writes index rows after the drop, under `workflow-lease` or the option, only leaves rows the next backfill clears before it rebuilds.
 

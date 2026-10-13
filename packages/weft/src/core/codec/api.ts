@@ -42,7 +42,15 @@ export function sharedEncoderScratchBytesForTesting(): number {
  */
 export function encode(value: unknown): Uint8Array {
   const preprocessed = replaceUndefined(value, new Set());
-  const bytes = sharedEncoder.encode(preprocessed);
+  let bytes: Uint8Array;
+  try {
+    bytes = sharedEncoder.encode(preprocessed);
+  } catch (error) {
+    // A value can grow the scratch buffer and then fail further in, so the size of what it would
+    // have produced is unknown. Failures are rare; start over rather than keep what it grew.
+    sharedEncoder = new Encoder({ extensionCodec });
+    throw error;
+  }
   if (bytes.byteLength > SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES) {
     sharedEncoder = new Encoder({ extensionCodec });
   }

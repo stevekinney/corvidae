@@ -689,4 +689,15 @@ describe('encode output ownership', () => {
       SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES / 2,
     );
   });
+
+  it('releases the scratch buffer an encode grew before it threw', () => {
+    const oversized = new Uint8Array(SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES * 4);
+
+    expect(() => encode({ oversized, unsupported: Symbol('not encodable') })).toThrow();
+
+    expect(sharedEncoderScratchBytesForTesting()).toBeLessThanOrEqual(
+      SHARED_ENCODER_RETAINED_BUFFER_LIMIT_BYTES,
+    );
+    expect(decode(encode({ after: 'failure' }))).toEqual({ after: 'failure' });
+  });
 });

@@ -150,11 +150,7 @@ export async function runWorkflowVisibilityBackfill(
   try {
     return await backfillWhileHoldingLock(storage, options, logger, checkpointEvery, lockToken);
   } finally {
-    await storageConditionalBatch(
-      storage,
-      [{ key: KEYS.workflowVisibilityMetaBuilding(), expectedValue: lockToken }],
-      [{ type: 'delete', key: KEYS.workflowVisibilityMetaBuilding() }],
-    );
+    await releaseBackfillLock(storage, lockToken);
   }
 }
 
@@ -328,9 +324,11 @@ async function sweepVisibilityIndexRows(
  * the watermark goes first so engines fall back to the slow path once they
  * re-read it; the script waits that out, then the rows themselves are removed,
  * then the cursor is cleared. Reversing this order would leave a window where
- * an engine trusts a watermark for indexes that no longer exist. The backfill
- * lock is cleared with the watermark, which is how a run that was killed
- * outright is recovered; a backfill still running when its lock is cleared
+ * an engine trusts a watermark for indexes that no longer exist. The drop holds
+ * the backfill lock under its own token for the whole run, so no backfill can
+ * start and publish a watermark over rows the drop has not yet swept. Taking
+ * the lock overwrites whatever held it, which is how a run that was killed
+ * outright is recovered, and a backfill still running when that happens
  * cannot publish its watermark afterwards.
  */
 export async function runWorkflowVisibilityDrop(
@@ -345,16 +343,42 @@ export async function runWorkflowVisibilityDrop(
   const logger = options.logger ?? (() => undefined);
   const fallbackBatchSize = options.fallbackBatchSize ?? 500;
 
-  await storage.delete(KEYS.workflowVisibilityMetaVersion());
-  await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
-  await storage.delete(KEYS.workflowVisibilityMetaBuilding());
-  await settle(
-    options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
-    logger,
-    'stop trusting the visibility index',
-  );
+  // Take the lock unconditionally and hold it until the sweep and the cursor
+  // cleanup finish. Overwriting it is how a lock a killed run left is cleared,
+  // and it stops a backfill that is still running from publishing; holding it
+  // keeps a new backfill from claiming the key and publishing a watermark over
+  // rows this drop has not finished deleting.
+  const dropToken = encode(crypto.randomUUID());
+  await storage.put(KEYS.workflowVisibilityMetaBuilding(), dropToken);
+  try {
+    await storage.delete(KEYS.workflowVisibilityMetaVersion());
+    await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
+    await settle(
+      options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
+      logger,
+      'stop trusting the visibility index',
+    );
 
-  const rowsDeleted = await sweepVisibilityIndexRows(storage, logger, fallbackBatchSize);
-  await storage.delete(KEYS.workflowVisibilityMetaCursor());
-  return { rowsDeleted };
+    const rowsDeleted = await sweepVisibilityIndexRows(storage, logger, fallbackBatchSize);
+    await storage.delete(KEYS.workflowVisibilityMetaCursor());
+    return { rowsDeleted };
+  } finally {
+    await releaseBackfillLock(storage, dropToken);
+  }
+}
+
+/** Remove the lock only if it still holds `token`, so a run never releases another run's lock. */
+async function releaseBackfillLock(storage: Storage, token: Uint8Array): Promise<void> {
+  if (storage.capabilities().conditionalBatch) {
+    await storageConditionalBatch(
+      storage,
+      [{ key: KEYS.workflowVisibilityMetaBuilding(), expectedValue: token }],
+      [{ type: 'delete', key: KEYS.workflowVisibilityMetaBuilding() }],
+    );
+    return;
+  }
+  const held = await storage.get(KEYS.workflowVisibilityMetaBuilding());
+  if (held !== null && Buffer.from(held).equals(Buffer.from(token))) {
+    await storage.delete(KEYS.workflowVisibilityMetaBuilding());
+  }
 }
