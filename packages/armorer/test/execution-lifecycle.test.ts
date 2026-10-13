@@ -306,6 +306,30 @@ describe('execution lifecycle', () => {
     caller.abort('late caller abort');
   });
 
+  // COR-690: the nested cleanup outcome used to be shared and mutable after
+  // publication, so a snapshot holder could rewrite a failed cleanup.
+  it('publishes a frozen copy of the cleanup outcome', () => {
+    const lifecycle = createExecutionLifecycle();
+    const handle = lifecycle.begin({ toolName: 'cleanup-freeze', callId: 'cleanup-freeze' });
+    const outcome: { status: 'failed'; error: unknown } = {
+      status: 'failed',
+      error: new Error('cleanup failed'),
+    };
+    handle.cleanup(outcome);
+    const snapshot = handle.snapshot();
+    const cleanup = requiredValue(snapshot.cleanup, 'cleanup outcome');
+
+    expect(Object.isFrozen(cleanup)).toBe(true);
+    expect(cleanup).not.toBe(outcome);
+    // Test modules run in strict mode, so a write to a frozen object throws.
+    expect(() => {
+      (cleanup as { status: string }).status = 'completed';
+    }).toThrow(TypeError);
+    // Mutating the caller's original outcome must not reach the published copy.
+    Reflect.set(outcome, 'status', 'completed');
+    expect(lifecycle.inspect({ callId: 'cleanup-freeze' })[0]?.cleanup?.status).toBe('failed');
+  });
+
   it('preserves abort provenance while cleanup is pending', () => {
     const lifecycle = createExecutionLifecycle();
     const handle = lifecycle.begin({ toolName: 'cleanup-race', callId: 'cleanup-race' });

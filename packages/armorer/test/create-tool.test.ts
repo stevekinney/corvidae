@@ -1118,6 +1118,42 @@ describe('createTool', () => {
     });
   });
 
+  // COR-690: a `return()` that throws synchronously used to escape before the
+  // rejection handler was attached, leaving the execution cleanup-pending.
+  it('terminalizes a stream whose return() throws synchronously during shutdown', async () => {
+    const returnFailure = new Error('stream return threw synchronously');
+    const tool = createTool({
+      name: 'sync-failing-stream-return',
+      description: 'throws synchronously from iterator cleanup',
+      input: z.object({}),
+      async execute() {
+        return {
+          [Symbol.asyncIterator]() {
+            return {
+              async next() {
+                return new Promise<IteratorResult<string>>(() => {});
+              },
+              return(): Promise<IteratorResult<string>> {
+                throw returnFailure;
+              },
+            };
+          },
+        };
+      },
+    });
+
+    await tool.execute(
+      { id: 'sync-failing-return', name: tool.name, arguments: {} },
+      { stream: true },
+    );
+    await tool.complete();
+
+    expect(tool.executions.inspect({ callId: 'sync-failing-return' })[0]).toMatchObject({
+      state: 'terminal',
+      cleanup: { status: 'failed', error: returnFailure },
+    });
+  });
+
   it('digests streams incrementally in collect mode', async () => {
     const tool = createTool({
       name: 'stream-validate-digest',

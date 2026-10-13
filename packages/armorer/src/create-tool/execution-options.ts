@@ -18,10 +18,11 @@ export type InternalToolExecuteOptions = ToolExecuteOptions & {
   privilegedContextMirrorHandle?: ExecutionHandle;
   parentCompletionHandle?: ExecutionHandle;
   /**
-   * Reports whether the tool's own callback is still in flight behind
-   * `parentCompletionHandle`. The owner of that handle must not settle it while
-   * this reports `true`: the callback may ignore cancellation and keep running
-   * long after the raced execution promise has already rejected.
+   * Reports whether the tool's own callback is still in flight on behalf of a
+   * parent execution (`parentCompletionHandle` for a single toolbox call, or
+   * the batch parent for a multi-call batch). The parent's owner must not
+   * settle it while this reports `true`: the callback may ignore cancellation
+   * and keep running long after the raced execution promise has rejected.
    */
   onParentCompletionPending?: (pending: boolean) => void;
   [executionCallbackStartSymbol]?: () => void;

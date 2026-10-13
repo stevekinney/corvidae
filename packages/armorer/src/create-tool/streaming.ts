@@ -211,7 +211,16 @@ function handleLiveStreamAbort(
     executionHandle.unknownEffect('stream iterator has no return method');
     return;
   }
-  void Promise.resolve(streamIterator.return()).then(
+  // A `return()` that throws synchronously must terminalize the same way an
+  // asynchronously rejected one does, or the execution stays cleanup-pending.
+  let returned: unknown;
+  try {
+    returned = streamIterator.return();
+  } catch (error) {
+    executionHandle.cleanup({ status: 'failed', error });
+    return;
+  }
+  void Promise.resolve(returned).then(
     () => executionHandle.cleanup(),
     (error) => executionHandle.cleanup({ status: 'failed', error }),
   );

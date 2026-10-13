@@ -9060,3 +9060,123 @@ describe('reusable approval grants (AB-46, AB-346)', () => {
   });
 });
 /* eslint-enable @typescript-eslint/no-deprecated */
+
+// COR-690: toolbox idle must not be reported while an owned tool callback is
+// still genuinely running, and cancellation before a callback starts must not
+// strand the parent execution.
+describe('toolbox parent execution stays live until owned callbacks settle (COR-690)', () => {
+  function createGate() {
+    let release!: (value: string) => void;
+    const promise = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  }
+
+  async function drainTicks(count = 20) {
+    for (let tick = 0; tick < count; tick++) await Promise.resolve();
+  }
+
+  it('keeps a batch parent unsettled until an abort-ignoring child callback settles', async () => {
+    const gate = createGate();
+    let notifyStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const stubborn = createTool({
+      name: 'batch-stubborn',
+      description: 'ignores its abort signal and keeps running',
+      input: z.object({}),
+      async execute() {
+        notifyStarted();
+        return gate.promise;
+      },
+    });
+    const quick = createTool({
+      name: 'batch-quick',
+      description: 'resolves immediately',
+      input: z.object({}),
+      async execute() {
+        return 'ok';
+      },
+    });
+    const toolbox: AnyToolbox = createToolbox([stubborn, quick]);
+    const controller = new AbortController();
+    const pending = toolbox.execute(
+      [
+        { id: 'batch-stubborn-call', name: 'batch-stubborn', arguments: {} },
+        { id: 'batch-quick-call', name: 'batch-quick', arguments: {} },
+      ],
+      { signal: controller.signal },
+    );
+    await started;
+    controller.abort('caller stopped');
+    const results = await pending;
+    expect(results[0]?.error?.category).toBe('cancelled');
+
+    const parent = toolbox.executions
+      .inspect()
+      .find((snapshot) => snapshot.parentExecutionId === undefined);
+    expect(parent).toBeDefined();
+    const handle = toolbox.executions.locate(parent!.executionId)!;
+    let parentSettled = false;
+    void handle.whenSettled().then(() => {
+      parentSettled = true;
+    });
+    let idle = false;
+    void toolbox.whenIdle().then(() => {
+      idle = true;
+    });
+    await drainTicks();
+    expect(parentSettled).toBe(false);
+    expect(idle).toBe(false);
+
+    gate.release('done');
+    expect(await handle.whenSettled()).toMatchObject({ state: 'terminal' });
+    await toolbox.whenIdle();
+    expect(idle).toBe(true);
+  });
+
+  it('terminalizes a single-call parent cancelled before its callback starts', async () => {
+    let executions = 0;
+    let notifyPolicy!: () => void;
+    const policyEntered = new Promise<void>((resolve) => {
+      notifyPolicy = resolve;
+    });
+    const tool = createTool({
+      name: 'pre-execution-cancelled',
+      description: 'blocks in its policy hook',
+      input: z.object({}),
+      policy: {
+        async beforeExecute() {
+          notifyPolicy();
+          await new Promise<void>(() => {});
+          return { allow: true };
+        },
+      },
+      async execute() {
+        executions += 1;
+        return 'unreachable';
+      },
+    });
+    const toolbox: AnyToolbox = createToolbox([tool]);
+    const controller = new AbortController();
+    const pending = toolbox.execute(
+      { id: 'pre-execution-call', name: 'pre-execution-cancelled', arguments: {} },
+      { signal: controller.signal },
+    );
+    await policyEntered;
+    controller.abort('caller stopped');
+    const result = await pending;
+
+    expect(result.error?.category).toBe('cancelled');
+    expect(executions).toBe(0);
+    const [parent] = toolbox.executions.inspect();
+    const settled = await Promise.race([
+      toolbox.executions.locate(parent!.executionId)!.whenSettled(),
+      drainTicks(50).then(() => undefined),
+    ]);
+    expect(settled?.state).toBe('terminal');
+    expect(toolbox.executions.activeExecutions).toBe(0);
+  });
+});

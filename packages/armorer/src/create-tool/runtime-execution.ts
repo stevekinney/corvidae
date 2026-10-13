@@ -288,7 +288,7 @@ function trackParentCompletion(
   options: InternalToolExecuteOptions,
   runner: Promise<unknown>,
 ): void {
-  if (!options.parentCompletionHandle) return;
+  if (!options.parentCompletionHandle && !options.onParentCompletionPending) return;
   options.onParentCompletionPending?.(true);
   void runner.then(
     (result) => {
