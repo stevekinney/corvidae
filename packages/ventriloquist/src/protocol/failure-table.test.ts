@@ -141,6 +141,7 @@ describe('failure table', () => {
 
   test('limits operation failures and attachment errors to the codes that apply to them', () => {
     expect([...OPERATION_FAILURE_CODES]).toEqual([
+      'stale-generation',
       'read-only',
       'fifo-full',
       'backend-failed',

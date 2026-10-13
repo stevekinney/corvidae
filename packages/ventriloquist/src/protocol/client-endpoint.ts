@@ -180,6 +180,8 @@ export class ClientEndpoint {
         return undefined;
       }
       case 'operation-failure': {
+        // The refused operation carried another generation's sequence, so no ledger entry matches it.
+        if (message.code === 'stale-generation') return undefined;
         const submitted = isSubmittedOperationFailure(message.code);
         const verified = submitted
           ? this.#operations.verifySubmitted(message.operationSequence)

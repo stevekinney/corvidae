@@ -123,8 +123,9 @@ export function describeFailure(code: FailureCode): FailureDisposition {
   return FAILURE_TABLE[code];
 }
 
-/** The codes an `operation-failure` message may carry: an input or resize that did not complete. */
+/** The codes an `operation-failure` message may carry: an input or resize that did not complete, including one addressed to a stale session or generation. */
 export const OPERATION_FAILURE_CODES = [
+  'stale-generation',
   'read-only',
   'fifo-full',
   'backend-failed',

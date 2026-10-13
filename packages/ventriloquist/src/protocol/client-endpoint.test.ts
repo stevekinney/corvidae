@@ -409,6 +409,18 @@ describe('acknowledgements from the host', () => {
     });
   });
 
+  test('surfaces a stale-generation failure without touching the operation ledger or authority', () => {
+    const { client, sequences } = withOperations(1);
+    const stale = serverFrame(
+      { kind: 'operation-failure', operationSequence: 50, code: 'stale-generation', message: 'm' },
+      { sequence: 1 },
+    );
+    expect(expectOk(client.receive(stale))).toMatchObject({ code: 'stale-generation' });
+    expect(client.authorityRevoked).toBe(false);
+    expect(client.phase).toBe('attached');
+    expectOk(client.receive(ack(sequences[0]!, 2)));
+  });
+
   test('closes on a failure after acceptance that names an operation never submitted', () => {
     const { client } = withOperations(1);
     const failure = serverFrame(

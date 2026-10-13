@@ -121,10 +121,10 @@ export class HostEndpoint {
   #receiveAttached(message: Exclude<ClientMessage, HelloMessage>): ProtocolResult<ClientMessage> {
     const terms = this.#terms!;
     if (message.sessionId !== this.#hello!.sessionId) {
-      return reject('stale-generation', 'stale-session');
+      return this.#rejectStale(message, 'stale-session');
     }
     if (message.attachmentGeneration !== terms.generation) {
-      return reject('stale-generation', 'stale-generation');
+      return this.#rejectStale(message, 'stale-generation');
     }
     const verified = this.#inbound.verify(message.sequence);
     if (!verified.ok) return this.#close(verified);
@@ -145,6 +145,31 @@ export class HostEndpoint {
     }
     this.#inbound.commit(message.sequence);
     return accept(message);
+  }
+
+  /**
+   * Refuse a message addressed to another session or generation. An input or resize is told so with
+   * an `operation-failure` on this attachment's own session and generation, because the sender's are
+   * stale. The message is never queued, and its foreign sequence is neither committed nor resolved,
+   * so authority, the ledgers and the live attachment are untouched.
+   */
+  #rejectStale(
+    message: Exclude<ClientMessage, HelloMessage>,
+    reason: 'stale-session' | 'stale-generation',
+  ): Rejection {
+    if (message.kind !== 'input' && message.kind !== 'resize') {
+      return reject('stale-generation', reason);
+    }
+    const reply = this.#sendAttached((terms, sequence) => ({
+      kind: 'operation-failure',
+      sessionId: this.#hello!.sessionId,
+      attachmentGeneration: terms.generation,
+      sequence,
+      operationSequence: message.sequence,
+      code: 'stale-generation',
+      message: reason,
+    }));
+    return reject('stale-generation', reason, reply.ok ? (reply.value.frame as string) : undefined);
   }
 
   #receiveOperation(
@@ -277,6 +302,8 @@ export class HostEndpoint {
     code: FailureCode,
     message: string,
   ): ProtocolResult<SentFrame> {
+    // A stale-generation failure answers a foreign message in `receive`; it never names a queued operation.
+    if (code === 'stale-generation') return reject('malformed-frame', 'invalid-field');
     const submitted = isSubmittedOperationFailure(code);
     const verified = submitted
       ? this.#operations.verifySubmitted(operationSequence)

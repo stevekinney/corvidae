@@ -219,6 +219,90 @@ describe('receiving after the handshake', () => {
   });
 
   test.each([
+    [
+      'input',
+      (sequence: number, generation: number, sessionId: string) =>
+        clientFrame(
+          { kind: 'input', payload: Uint8Array.of(1) },
+          { sequence, generation, sessionId },
+        ),
+    ],
+    [
+      'resize',
+      (sequence: number, generation: number, sessionId: string) =>
+        clientFrame({ kind: 'resize', columns: 80, rows: 24 }, { sequence, generation, sessionId }),
+    ],
+  ])(
+    'answers a stale %s with an operation-failure the client surfaces, and never queues it',
+    (_kind, build) => {
+      const { host, client } = connect({ generation: 2, host: { maxQueuedOperations: 1 } });
+      const stale = [
+        build(7, 1, SESSION_IDENTIFIER),
+        build(8, 3, SESSION_IDENTIFIER),
+        build(9, 2, OTHER_SESSION_IDENTIFIER),
+      ];
+      const replies = stale.map((frame) => {
+        const result = host.receive(frame);
+        expect(result.ok).toBe(false);
+        const reply = (result as { failure: { code: string; reply?: string } }).failure;
+        expect(reply.code).toBe('stale-generation');
+        expect(typeof reply.reply).toBe('string');
+        return reply.reply!;
+      });
+      const decoded = replies.map((reply) => expectOk(decodeFrame(reply, 'client')));
+      expect(
+        decoded.map((message) => (message as { operationSequence?: number }).operationSequence),
+      ).toEqual([7, 8, 9]);
+      for (const message of decoded) {
+        expect(message).toMatchObject({
+          kind: 'operation-failure',
+          code: 'stale-generation',
+          sessionId: SESSION_IDENTIFIER,
+          attachmentGeneration: 2,
+        });
+      }
+      for (const reply of replies) {
+        expect(expectOk(client.receive(reply))).toMatchObject({ code: 'stale-generation' });
+      }
+      expect(client.authorityRevoked).toBe(false);
+      expect(host.authorityRevoked).toBe(false);
+      expect(client.phase).toBe('attached');
+      // The one-slot FIFO is still empty and the inbound sequence unspent.
+      expect(host.receive(inputFrame(1, 2)).ok).toBe(true);
+      expect(failureOf(host.receive(inputFrame(2, 2)))).toEqual({
+        code: 'fifo-full',
+        reason: 'operation-window-full',
+      });
+    },
+  );
+
+  test('answers a stale session or generation on a non-operation message without a reply', () => {
+    const { host } = connect({ generation: 2 });
+    const stale = clientFrame({ kind: 'terminate' }, { sequence: 1, generation: 1 });
+    const result = host.receive(stale);
+    expect(failureOf(result)).toEqual({ code: 'stale-generation', reason: 'stale-generation' });
+    expect((result as { failure: { reply?: string } }).failure.reply).toBeUndefined();
+    expect(host.authorityRevoked).toBe(false);
+  });
+
+  test('sends no reply for a stale operation once cleanup has been reported', () => {
+    const { host } = connect({ generation: 2 });
+    expectOk(host.cleanupResult('complete'));
+    const result = host.receive(inputFrame(1, 1)) as { failure: { reply?: string } };
+    expect(result.failure.reply).toBeUndefined();
+  });
+
+  test('refuses to fail a queued operation with a stale-generation code', () => {
+    const { host, client } = connect();
+    const first = expectOk(client.input('a'));
+    expectOk(host.receive(first.frame));
+    expect(failureOf(host.failOperation(first.sequence, 'stale-generation', 'x'))).toEqual({
+      code: 'malformed-frame',
+      reason: 'invalid-field',
+    });
+  });
+
+  test.each([
     ['a duplicate', [1, 1], 'duplicate-sequence'],
     ['a replay', [1, 2, 1], 'out-of-order-sequence'],
     ['a gap', [1, 3], 'out-of-order-sequence'],

@@ -509,7 +509,17 @@ describe('rejecting message fields', () => {
 
   test('rejects a failure code that does not belong to the message', () => {
     const base = { kind: 'operation-failure', ...header, operationSequence: 1, message: 'm' };
-    for (const code of ['stale-generation', 'unsupported-runtime', 'nope', 7]) {
+    const accepted = decodeFrame(
+      JSON.stringify({
+        version: 1,
+        direction: 'server-to-client',
+        ...base,
+        code: 'stale-generation',
+      }),
+      'client',
+    );
+    expect(accepted.ok).toBe(true);
+    for (const code of ['unsupported-runtime', 'nope', 7]) {
       expect(decodeServer({ ...base, code })).toEqual({
         code: 'malformed-frame',
         reason: 'invalid-field',
