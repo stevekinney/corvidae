@@ -283,6 +283,7 @@ async function pullRequestSquashProvenance(
   directory: string,
   { sha, subject }: CommitRecord,
   target: string,
+  strict: boolean,
 ): Promise<string> {
   const prefix = `Sync ${target} from corvidae (#`;
   if (!subject.startsWith(prefix) || !subject.endsWith(')')) return '';
@@ -300,7 +301,16 @@ async function pullRequestSquashProvenance(
     'origin',
     `refs/pull/${number}/head`,
   );
-  if (fetched.exitCode !== 0) return '';
+  if (fetched.exitCode !== 0) {
+    // A guard may call an unfetchable squash foreign and carry on. Changeset emission cannot: it
+    // would place release intent against an older provenance than the one the target really has.
+    if (strict) {
+      throw new SyncError(
+        `Cannot read pull request ${number} of ${target} to recover the provenance of ${sha}: ${fetched.stderr}`,
+      );
+    }
+    return '';
+  }
   const originalSubjectOutput = await git(directory, 'log', '-1', '--format=%s', 'FETCH_HEAD');
   const originalSubject = originalSubjectOutput.trim();
   if (originalSubject !== `Sync ${target} from corvidae`) return '';
@@ -318,6 +328,41 @@ async function pullRequestSquashProvenance(
   );
   const trailer = trailerOutput.trim();
   return /^[0-9a-f]{40}$/.test(trailer) ? trailer : '';
+}
+
+/** The target's newest mirror-authored commit and the corvidae commit it was built from. */
+export interface MirrorProvenance {
+  /** The target commit carrying the provenance. */
+  commit: string;
+  /** The trailer SHA: the `Corvidae-Commit` value, always a corvidae commit and never a target one. */
+  trailerSha: string;
+}
+
+/**
+ * The newest provenance in a target clone's history, or `null` when the mirror has never written
+ * there (a first sync).
+ *
+ * The squash-merge fallback runs only when `target` is supplied, because recovering a squash that
+ * dropped the App's trailer means fetching its pull request and proving the tree matches, and
+ * that is only meaningful for the target the sync names. `strict` makes a failed fetch fatal
+ * instead of skipping the commit: the foreign-commit guard tolerates an unfetchable squash (it
+ * simply stays foreign), but a caller that is about to place release intent against the
+ * provenance must not silently settle for an older one.
+ */
+export async function newestMirrorProvenance(
+  directory: string,
+  target?: string,
+  { strict = false }: { strict?: boolean } = {},
+): Promise<MirrorProvenance | null> {
+  for (const commit of await readHistory(directory)) {
+    const trailerSha =
+      commit.provenance ||
+      (target === undefined
+        ? ''
+        : await pullRequestSquashProvenance(directory, commit, target, strict));
+    if (trailerSha.length > 0) return { commit: commit.sha, trailerSha };
+  }
+  return null;
 }
 
 /**
@@ -339,19 +384,15 @@ export async function findForeignCommits(
   directory: string,
   ownership?: ForeignCommitOwnership,
 ): Promise<ForeignCommit[]> {
-  const history = await readHistory(directory);
-  if (ownership !== undefined) {
-    for (const commit of history) {
-      if (!commit.provenance)
-        commit.provenance = await pullRequestSquashProvenance(directory, commit, ownership.target);
-    }
-  }
-  const newestMirrored = history.findIndex((commit) => commit.provenance.length > 0);
-  if (newestMirrored === -1) return [];
-  const mirrorCommit = history[newestMirrored]!.sha;
+  const newest =
+    ownership?.provenance !== undefined
+      ? ownership.provenance
+      : await newestMirrorProvenance(directory, ownership?.target);
+  if (newest === null) return [];
+  const mirrorCommit = newest.commit;
   const ancestry = await git(directory, 'rev-list', '--ancestry-path', `${mirrorCommit}..HEAD`);
   const descendants = new Set(ancestry.trim().split('\n'));
-  const candidates = history.filter(({ sha }) => descendants.has(sha));
+  const candidates = (await readHistory(directory)).filter(({ sha }) => descendants.has(sha));
   if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
   const foreign: ForeignCommit[] = [];
   for (const { sha, subject } of candidates) {
@@ -365,6 +406,11 @@ export async function findForeignCommits(
 export interface ForeignCommitOwnership {
   policy: TargetOwnedPolicy;
   target: string;
+  /**
+   * The clone's newest mirror provenance when the caller already resolved it (`null` for none),
+   * so a run reads it once. Left `undefined`, the guard resolves it itself.
+   */
+  provenance?: MirrorProvenance | null | undefined;
   /** Declared version constants that a target release may update only to its manifest version. */
   versionConstantPaths?: ReadonlyMap<string, string> | undefined;
   /**
@@ -667,17 +713,26 @@ export async function foreignCommitOwnership(options: {
   corvidaeRoot: string;
   target: MirrorTarget;
   clone: string;
+  /** Resolved by the caller to share one read across the run; resolved here when omitted. */
+  provenance?: MirrorProvenance | null | undefined;
 }): Promise<ForeignCommitOwnership> {
   const policy = await loadTargetOwnedPolicy();
+  // `null` means the caller resolved "no provenance", so only `undefined` asks for a read.
+  const provenance =
+    options.provenance !== undefined
+      ? options.provenance
+      : await newestMirrorProvenance(options.clone, options.target, { strict: true });
   const plan = await planSurface({
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
     targetDirectory: options.clone,
     policy,
+    trailerSha: provenance?.trailerSha ?? null,
   });
   return {
     policy,
     target: options.target,
+    provenance,
     targetOwnedFiles: await declaredBuildInputs(options.target),
     generatedManifestKeys: new Map(
       Object.entries(plan.files)
@@ -775,6 +830,8 @@ export interface StageOptions {
   directory: string;
   /** Extra `bun install` arguments for the lockfile-regenerating install. */
   installArguments?: readonly string[] | undefined;
+  /** The clone's newest mirror provenance, resolved once by the caller; resolved here when omitted. */
+  provenance?: MirrorProvenance | null | undefined;
 }
 
 export interface StageOutcome {
@@ -811,9 +868,20 @@ export async function stageSurface({
   target,
   directory,
   installArguments,
+  provenance,
 }: StageOptions): Promise<StageOutcome> {
   const policy = await loadTargetOwnedPolicy();
-  const plan = await planSurface({ corvidaeRoot, target, targetDirectory: directory, policy });
+  const resolved =
+    provenance !== undefined
+      ? provenance
+      : await newestMirrorProvenance(directory, target, { strict: true });
+  const plan = await planSurface({
+    corvidaeRoot,
+    target,
+    targetDirectory: directory,
+    policy,
+    trailerSha: resolved?.trailerSha ?? null,
+  });
   const surface = await loadPackageSurface();
   assertNothingDeferred(plan);
   assertPublishable(plan, surface.packages);
@@ -1208,12 +1276,16 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     directory: options.directory,
     branch: options.branch,
   });
+  // Read once for the whole run: the guard, the guard's plan and the staging plan all place
+  // changeset emission against this same trailer SHA.
+  const provenance = await newestMirrorProvenance(clone, options.target, { strict: true });
   await assertNoForeignCommits(
     clone,
     await foreignCommitOwnership({
       corvidaeRoot: options.corvidaeRoot,
       target: options.target,
       clone,
+      provenance,
     }),
   );
 
@@ -1236,6 +1308,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     target: options.target,
     directory: clone,
     installArguments: options.installArguments,
+    provenance,
   });
 
   const porcelain = await git(clone, 'status', '--porcelain');

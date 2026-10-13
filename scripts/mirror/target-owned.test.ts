@@ -110,6 +110,24 @@ describe('mirror target-owned enumeration', () => {
     expect(findTargetOwner(policy, 'packages/components/README.md', 'cinder')).toBeUndefined();
   });
 
+  test('owns the target changesets configuration and readme but not the changesets the transform delivers (COR-1433)', async () => {
+    const policy = await loadTargetOwnedPolicy();
+    for (const target of mirrorTargets) {
+      expect(findTargetOwner(policy, '.changeset/config.json', target)?.glob).toBe(
+        '.changeset/config.json',
+      );
+      expect(findTargetOwner(policy, '.changeset/README.md', target)?.glob).toBe(
+        '.changeset/README.md',
+      );
+      expect(
+        findTargetOwner(policy, '.changeset/corvidae-0123456789ab-fix.md', target),
+      ).toBeUndefined();
+      // A target-authored changeset is outside the glob too, but only because the transform never
+      // reaches it: nothing writes, prunes or retires it.
+      expect(findTargetOwner(policy, '.changeset/mcp-x.md', target)).toBeUndefined();
+    }
+  });
+
   test('target-scoped entries only bind their own target', async () => {
     const policy = await loadTargetOwnedPolicy();
     expect(findTargetOwner(policy, 'SECURITY.md', 'weft')?.glob).toBe('SECURITY.md');
