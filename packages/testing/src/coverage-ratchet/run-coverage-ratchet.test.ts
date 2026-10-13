@@ -189,4 +189,59 @@ describe('checkCoverageRatchet', () => {
     expect(result.stderr.toString()).toContain('Failed: runtime');
     expect(result.stdout.toString()).toBe('');
   });
+
+  describe('expectedSourceGlobs', () => {
+    const sources = {
+      'src/index.ts': 'export const value = 1;\n',
+      'src/unloaded.ts': 'export const never = 1;\n',
+      'src/index.test.ts': "import './index.ts';\n",
+      'src/test/harness.ts': 'export {};\n',
+      'src/types.d.ts': 'export type T = 1;\n',
+      'src/widget.svelte': '<p>hi</p>\n',
+    };
+    const expectedSourceGlobs = ['src/**/*.ts', 'src/**/*.svelte'];
+
+    test('ignores files the tests never loaded unless the option is given', async () => {
+      const root = packageFixture({ lines: 1, functions: 1 }, covered, sources);
+      const result = await runCoverageRatchet({ packageRoot: root });
+      expect(result.exitCode).toBe(0);
+    });
+
+    test('fails when an in-scope source file has no LCOV record, naming it', async () => {
+      const root = packageFixture({ lines: 1, functions: 1 }, covered, sources);
+      const result = await runCoverageRatchet({ packageRoot: root, expectedSourceGlobs });
+      expect(result.exitCode).toBe(1);
+      const errors = result.messages.filter((message) => message.stream === 'error');
+      expect(errors.map(({ text }) => text).join('\n')).toContain(
+        'Failed: 1 source file(s) missing from LCOV.',
+      );
+      expect(errors.map(({ text }) => text).join('\n')).toContain('  src/unloaded.ts');
+      // Test files, test directories, declaration files, and unmeasured Svelte are not expected.
+      expect(errors.map(({ text }) => text).join('\n')).not.toMatch(
+        /index\.test|harness|types\.d|widget/,
+      );
+    });
+
+    test('passes when every in-scope file has a record, even one with no executable lines', async () => {
+      const lcov = covered + lcovRecord('src/unloaded.ts', [], [0, 0]);
+      const root = packageFixture({ lines: 1, functions: 1 }, lcov, sources);
+      const result = await runCoverageRatchet({ packageRoot: root, expectedSourceGlobs });
+      expect(result.exitCode).toBe(0);
+    });
+
+    test('expects Svelte modules only when the ratchet measures them', async () => {
+      const lcov =
+        covered +
+        lcovRecord('src/unloaded.ts', [], [0, 0]) +
+        lcovRecord('src/other.svelte', [[1, 1]], [1, 1]);
+      const root = packageFixture(
+        { lines: 1, functions: 1, svelte: { lines: 0, functions: 0 } },
+        lcov,
+        sources,
+      );
+      const result = await runCoverageRatchet({ packageRoot: root, expectedSourceGlobs });
+      expect(result.exitCode).toBe(1);
+      expect(result.messages.map(({ text }) => text).join('\n')).toContain('  src/widget.svelte');
+    });
+  });
 });

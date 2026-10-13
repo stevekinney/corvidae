@@ -300,6 +300,35 @@ function isOutsideCoverageScope(file: string, scope: CoverageScope, packageRoot:
   return !isSvelteSource;
 }
 
+/**
+ * The files among `candidates` (paths under `packageRoot`) that the ratchet would measure in any of
+ * `scopes` but that have no LCOV record. Bun only reports a file the tests loaded, so a source
+ * file nothing imports is silently absent from the aggregate; this names it. Declaration files
+ * carry no executable code and are never expected.
+ */
+export function sourceFilesMissingFromLcov(
+  source: string,
+  packageRoot: string,
+  candidates: string[],
+  scopes: CoverageScope[],
+): string[] {
+  const recorded = new Set(
+    parseAllLcovRecords(source, packageRoot).map(({ file }) =>
+      toPackageRootRelativePath(file, packageRoot),
+    ),
+  );
+  return candidates
+    .map((file) => toPackageRootRelativePath(file, packageRoot))
+    .filter(
+      (file) =>
+        !file.endsWith('.d.ts') &&
+        !isTransientTestArtifact(file, packageRoot) &&
+        scopes.some((scope) => !isOutsideCoverageScope(file, scope, packageRoot)) &&
+        !recorded.has(file),
+    )
+    .toSorted();
+}
+
 export function parseRuntimeLcovRecords(source: string, packageRoot: string): CoverageRecord[] {
   return parseLcovRecords(source, 'runtime', packageRoot);
 }

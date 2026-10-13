@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 
 export type BoundaryViolation = {
@@ -11,14 +11,8 @@ export type BoundaryViolation = {
 
 /** The one ventriloquist entry browser code may import. */
 const NEUTRAL_VENTRILOQUIST = '@lostgradient/ventriloquist';
-/**
- * Engines the terminal contract rejected, matched wherever a manifest or import can name one: as a
- * key, an `npm:` alias, a `workspace:` target, or the last segment of a `file:` or `link:` path.
- * The leading class keeps `ghostty-web-docs` from matching.
- */
-const COMPARISON_ENGINE = /(?:^|[/>:])(?:ghostty-web|@wterm\/[^@/]+)(?:@|\/|$)/;
-/** The selected engine named anywhere an override could retarget it. */
-const SELECTED_ENGINE_NAME = /(?:^|[/>:])@xterm\/xterm(?:@|\/|$)/;
+/** Engines the terminal contract rejected, by resolved package name. */
+const COMPARISON_ENGINE = /^(?:ghostty-web|@wterm\/[^/@]+)(?:\/.*)?$/;
 const SELECTED_ENGINE = '@xterm/xterm';
 const SELECTED_ENGINE_VERSION = '6.0.0';
 
@@ -108,8 +102,18 @@ function runtimeSpecifier(node: ts.Node): ts.StringLiteralLike | undefined {
   return undefined;
 }
 
-function scriptReferences(text: string, firstLine: number): ImportReference[] {
-  const file = ts.createSourceFile('script.ts', text, ts.ScriptTarget.Latest, true);
+const SCRIPT_KINDS: Record<string, ts.ScriptKind> = {
+  '.tsx': ts.ScriptKind.TSX,
+  '.jsx': ts.ScriptKind.JSX,
+  '.js': ts.ScriptKind.JS,
+  '.mjs': ts.ScriptKind.JS,
+  '.cjs': ts.ScriptKind.JS,
+};
+
+/** Parse with the kind the extension implies; a Svelte `<script>` block is TypeScript. */
+function scriptReferences(text: string, firstLine: number, fileName: string): ImportReference[] {
+  const kind = SCRIPT_KINDS[extname(fileName)] ?? ts.ScriptKind.TS;
+  const file = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, kind);
   const references: ImportReference[] = [];
   const visit = (node: ts.Node): void => {
     const specifier = runtimeSpecifier(node);
@@ -133,11 +137,11 @@ const MARKUP_LOAD = /\b(?:import|require)\s*\(\s*(['"`])([^'"`$\n]+)\1\s*\)/g;
  * its markup, such as `{#await import('x')}`, with line numbers relative to the whole file.
  */
 export function importReferences(source: string, fileName: string): ImportReference[] {
-  if (!fileName.endsWith('.svelte')) return scriptReferences(source, 1);
+  if (!fileName.endsWith('.svelte')) return scriptReferences(source, 1, fileName);
   const references: ImportReference[] = [];
   for (const match of source.matchAll(SCRIPT_BLOCK)) {
     const offset = (match.index ?? 0) + match[0].indexOf('>') + 1;
-    references.push(...scriptReferences(match[1] ?? '', lineAt(source, offset)));
+    references.push(...scriptReferences(match[1] ?? '', lineAt(source, offset), 'script.ts'));
   }
   const markup = source.replace(SCRIPT_BLOCK, (block) => block.replace(/[^\n]/g, ' '));
   for (const match of markup.matchAll(MARKUP_LOAD)) {
@@ -175,63 +179,22 @@ const DEPENDENCY_SECTIONS = [
   'optionalDependencies',
 ] as const;
 
-type CatalogMap = Record<string, string>;
 type Manifest = {
-  name?: string;
-  workspaces?: string[] | { packages?: string[]; catalog?: CatalogMap; catalogs?: CatalogMap[] };
-  catalog?: CatalogMap;
-  catalogs?: Record<string, CatalogMap>;
-  overrides?: Record<string, unknown>;
-  resolutions?: Record<string, unknown>;
-} & { [section in (typeof DEPENDENCY_SECTIONS)[number]]?: Record<string, string> };
+  catalog?: Record<string, string>;
+  dependencies?: Record<string, string>;
+};
 
-const OVERRIDE_SECTIONS = ['overrides', 'resolutions'] as const;
+type Lockfile = {
+  workspaces: Record<string, Partial<Record<(typeof DEPENDENCY_SECTIONS)[number], object>>>;
+  /** Install path to `[resolvedNameAtSource, …]`; an alias, git source, or override shows here. */
+  packages: Record<string, [string, ...unknown[]]>;
+};
 
 function readManifest(path: string): Manifest {
   return JSON.parse(readFileSync(path, 'utf8')) as Manifest;
 }
 
-/** The root manifest and the manifest of every workspace its `workspaces` field declares. */
-function workspaceManifestPaths(workspaceRoot: string): string[] {
-  const { workspaces } = readManifest(join(workspaceRoot, 'package.json'));
-  const patterns = (Array.isArray(workspaces) ? workspaces : (workspaces?.packages ?? [])).filter(
-    (pattern) => !pattern.startsWith('!'),
-  );
-  const paths = patterns.flatMap((pattern) => [
-    ...new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: workspaceRoot, absolute: true }),
-  ]);
-  return [join(workspaceRoot, 'package.json'), ...paths.toSorted()];
-}
-
-/** Every `[name, specifier]` a manifest declares as a dependency or in a default or named catalog. */
-function declaredSpecifiers(manifest: Manifest): [string, string][] {
-  const { workspaces } = manifest;
-  const nested = Array.isArray(workspaces) ? undefined : workspaces;
-  const catalogs = [
-    manifest.catalog,
-    ...Object.values(manifest.catalogs ?? {}),
-    nested?.catalog,
-    ...Object.values(nested?.catalogs ?? {}),
-  ];
-  return [
-    ...DEPENDENCY_SECTIONS.flatMap((section) => Object.entries(manifest[section] ?? {})),
-    ...catalogs.flatMap((catalog) => Object.entries(catalog ?? {})),
-  ];
-}
-
-/** Every key and string value in an `overrides` or `resolutions` tree, nested objects included. */
-function overrideTexts(tree: Record<string, unknown>): string[] {
-  return Object.entries(tree).flatMap(([key, value]) =>
-    typeof value === 'object' && value !== null
-      ? [key, ...overrideTexts(value as Record<string, unknown>)]
-      : [key, String(value)],
-  );
-}
-
-/**
- * The terminal engine must be `@xterm/xterm` at its exact contract version through the root
- * catalog, and no comparison engine may appear in any manifest in the workspace.
- */
+/** The pin the contract states: the exact engine version, through the root catalog. */
 export function findManifestViolations(
   packageRoot: string,
   workspaceRoot: string,
@@ -255,37 +218,60 @@ export function findManifestViolations(
       message: `${SELECTED_ENGINE} must be a dependency through the root catalog, found ${declared ?? 'nothing'}`,
     });
   }
-  for (const path of workspaceManifestPaths(workspaceRoot)) {
-    const manifest = readManifest(path);
-    const file = relative(packageRoot, path);
-    for (const [name, specifier] of declaredSpecifiers(manifest)) {
-      if (COMPARISON_ENGINE.test(name)) {
-        violations.push({
-          file,
-          line: 1,
-          message: `${name} is a comparison engine the terminal contract rejected`,
-        });
-      } else if (COMPARISON_ENGINE.test(specifier)) {
-        violations.push({
-          file,
-          line: 1,
-          message: `${name} (${specifier}) resolves to a comparison engine the terminal contract rejected`,
-        });
-      }
-    }
-    for (const section of OVERRIDE_SECTIONS) {
-      const retargets = overrideTexts(manifest[section] ?? {}).some(
-        (text) => SELECTED_ENGINE_NAME.test(text) || COMPARISON_ENGINE.test(text),
-      );
-      if (retargets) {
-        violations.push({
-          file,
-          line: 1,
-          message: `${section} may not name the terminal engine or a comparison engine`,
-        });
+  return violations;
+}
+
+/**
+ * What Bun actually resolved is the source of truth, so no alias, git, override, or resolution
+ * syntax can hide an engine: every `bun.lock` package must not be a rejected comparison engine,
+ * and `@xterm/xterm` must resolve to exactly the contract version wherever it is installed. The
+ * lockfile's `workspaces` section also names every workspace's declared dependencies directly,
+ * which gives a clearer error than the resolved package would.
+ */
+export function findLockfileViolations(
+  packageRoot: string,
+  workspaceRoot: string,
+): BoundaryViolation[] {
+  const lockPath = join(workspaceRoot, 'bun.lock');
+  const lockfile = Bun.JSONC.parse(readFileSync(lockPath, 'utf8')) as Lockfile;
+  const file = relative(packageRoot, lockPath);
+  const violation = (message: string): BoundaryViolation => ({ file, line: 1, message });
+  const violations: BoundaryViolation[] = [];
+  for (const [path, workspace] of Object.entries(lockfile.workspaces)) {
+    for (const section of DEPENDENCY_SECTIONS) {
+      for (const name of Object.keys(workspace[section] ?? {})) {
+        if (COMPARISON_ENGINE.test(name)) {
+          violations.push(
+            violation(
+              `${path === '' ? 'the root workspace' : path} declares ${name}, a comparison engine the terminal contract rejected`,
+            ),
+          );
+        }
       }
     }
   }
+  let engineResolved = false;
+  for (const [key, [resolved]] of Object.entries(lockfile.packages)) {
+    const separator = resolved.indexOf('@', 1);
+    const name = resolved.slice(0, separator);
+    const source = resolved.slice(separator + 1);
+    if (COMPARISON_ENGINE.test(name)) {
+      violations.push(
+        violation(`${key} resolves to ${name}, a comparison engine the terminal contract rejected`),
+      );
+    } else if (name === SELECTED_ENGINE) {
+      engineResolved = true;
+      if (source !== SELECTED_ENGINE_VERSION) {
+        violations.push(
+          violation(
+            `${SELECTED_ENGINE} resolves to ${source}, but the contract pins ${SELECTED_ENGINE_VERSION}`,
+          ),
+        );
+      }
+    }
+  }
+  if (!engineResolved)
+    violations.push(violation(`${SELECTED_ENGINE} does not resolve in the lockfile`));
   return violations;
 }
 
@@ -356,6 +342,7 @@ export function checkBoundaries(
   return [
     ...findImportViolations(packageRoot),
     ...findManifestViolations(packageRoot, workspaceRoot),
+    ...findLockfileViolations(packageRoot, workspaceRoot),
     ...importProbeViolations(runImportProbe(packageRoot, entry), packageRoot, entry),
   ];
 }
@@ -368,7 +355,9 @@ export function main(argv: string[]): number {
   const packageRoot = argument ? resolve(process.cwd(), argument) : resolve(import.meta.dir, '..');
   const violations = checkBoundaries(packageRoot);
   if (violations.length === 0) {
-    console.log('Terminal boundaries hold: browser imports, engine manifest, and package import.');
+    console.log(
+      'Terminal boundaries hold: browser imports, engine manifest, lockfile, and package import.',
+    );
     return 0;
   }
   console.error(`Terminal boundary violations:\n${formatViolations(violations)}`);

@@ -10,6 +10,7 @@ import {
   parseSvelteLcovRecords,
   parseSvelteMeasurementPlatform,
   runtimeImportsOfTestSupport,
+  sourceFilesMissingFromLcov,
   svelteCoveragePlatformNotice,
   uncoveredLineReport,
   type CoverageScope,
@@ -33,6 +34,13 @@ export type CoverageRatchetOptions = {
   packageRoot: string;
   /** Overrides the running platform when comparing it with `svelteMeasuredOn`. */
   platform?: SvelteMeasurementPlatform;
+  /**
+   * Opt-in. Globs, relative to `packageRoot`, of the source files the tests are expected to load.
+   * A file that matches, falls inside the ratchet's scope, and has no LCOV record fails the check,
+   * because Bun reports only files that were loaded and an unimported file otherwise costs
+   * nothing. Omitted, only files that appear in the report are measured.
+   */
+  expectedSourceGlobs?: string[];
 };
 
 /**
@@ -74,6 +82,24 @@ export async function runCoverageRatchet(
       platform,
     );
     if (platformNotice) messages.push({ stream: 'warn', text: platformNotice });
+  }
+
+  if (options.expectedSourceGlobs !== undefined) {
+    const candidates = options.expectedSourceGlobs.flatMap((pattern) => [
+      ...new Bun.Glob(pattern).scanSync({ cwd: packageRoot }),
+    ]);
+    const scopes: CoverageScope[] = thresholds.svelte ? ['runtime', 'svelte'] : ['runtime'];
+    const missing = sourceFilesMissingFromLcov(coverageSource, packageRoot, candidates, scopes);
+    if (missing.length > 0) {
+      failures.push(`${missing.length} source file(s) missing from LCOV`);
+      messages.push({
+        stream: 'error',
+        text: [
+          'Source files with no LCOV record (no test loads them):',
+          ...missing.map((file) => `  ${file}`),
+        ].join('\n'),
+      });
+    }
   }
 
   const supportImports = runtimeImportsOfTestSupport(packageRoot);

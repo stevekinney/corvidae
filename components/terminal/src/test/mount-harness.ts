@@ -13,6 +13,11 @@ export type MountedHarness = {
 };
 
 const liveHarnesses = new Set<MountedHarness>();
+const unmountFailures: unknown[] = [];
+
+function recordUnmount(instance: Parameters<typeof unmount>[0]): void {
+  unmount(instance).catch((error: unknown) => unmountFailures.push(error));
+}
 
 /**
  * Mount a Svelte component into a fresh container on `document.body`, for tests that need to prove
@@ -32,10 +37,10 @@ export function mountHarness<Props extends Record<string, unknown>>(
     flushSync();
   } catch (error) {
     // Unwind whatever mounted before the failure; a teardown error must not mask the original one.
-    try {
-      if (instance !== undefined) void unmount(instance);
-    } catch {
-      // The mount error below is the one worth reporting.
+    if (instance !== undefined) {
+      unmount(instance).catch(() => {
+        // The mount error below is the one worth reporting.
+      });
     }
     target.remove();
     throw error;
@@ -54,13 +59,22 @@ export function mountHarness<Props extends Record<string, unknown>>(
       if (destroyed) return;
       destroyed = true;
       liveHarnesses.delete(harness);
-      void unmount(instance);
+      recordUnmount(instance);
       flushSync();
       target.remove();
     },
   };
   liveHarnesses.add(harness);
   return harness;
+}
+
+/**
+ * Teardown errors from components the harness unmounted. Svelte's `unmount` returns a promise that
+ * rejects when a teardown throws; the harness records the error here instead of letting it escape
+ * as an unhandled rejection. Returns the recorded errors and clears the list.
+ */
+export function takeUnmountFailures(): unknown[] {
+  return unmountFailures.splice(0);
 }
 
 /** The harnesses that have been mounted and not yet destroyed. */

@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import {
   checkBoundaries,
   findImportViolations,
+  findLockfileViolations,
   findManifestViolations,
   forbiddenImportReason,
   formatViolations,
@@ -34,11 +35,37 @@ const terminalManifest = JSON.stringify({
   name: '@lostgradient/terminal',
   dependencies: { '@xterm/xterm': 'catalog:' },
 });
-const rootManifest = JSON.stringify({
-  name: 'corvidae',
-  workspaces: ['components/*', 'packages/*', 'scripts/browser-fixtures'],
-  catalog: { '@xterm/xterm': '6.0.0' },
-});
+const rootManifest = JSON.stringify({ name: 'corvidae', catalog: { '@xterm/xterm': '6.0.0' } });
+/** bun.lock is JSONC: trailing commas are part of the format. */
+const cleanLockfile = `{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": { "name": "corvidae" },
+    "components/terminal": {
+      "name": "@lostgradient/terminal",
+      "dependencies": { "@xterm/xterm": "catalog:", },
+    },
+  },
+  "packages": {
+    "@xterm/xterm": ["@xterm/xterm@6.0.0", "", {}, "sha512-fixture"],
+    "ghostty-web-docs": ["ghostty-web-docs@1.0.0", "", {}, "sha512-fixture"],
+  },
+}
+`;
+
+/** A lockfile whose `packages` and `workspaces` sections are the given entries. */
+function lockfile(
+  packages: Record<string, string>,
+  workspaces: Record<string, object> = { '': { name: 'corvidae' } },
+): string {
+  return JSON.stringify({
+    lockfileVersion: 1,
+    workspaces,
+    packages: Object.fromEntries(
+      Object.entries(packages).map(([key, resolved]) => [key, [resolved, '', {}, 'sha512-x']]),
+    ),
+  });
+}
 
 /** A scratch workspace shaped like this repository, returning its `components/terminal` root. */
 function workspaceFixture(files: Record<string, string> = {}): {
@@ -50,6 +77,7 @@ function workspaceFixture(files: Record<string, string> = {}): {
   const packageRoot = join(workspaceRoot, 'components/terminal');
   write(workspaceRoot, {
     'package.json': rootManifest,
+    'bun.lock': cleanLockfile,
     'components/terminal/package.json': terminalManifest,
     'components/terminal/src/index.ts': 'export {};\n',
     ...Object.fromEntries(
@@ -141,6 +169,19 @@ describe('importReferences', () => {
       { specifier: 'node:crypto', line: 5 },
       { specifier: 'node:zlib', line: 6 },
       { specifier: 'node:http', line: 8 },
+    ]);
+  });
+
+  test('parses each extension with its own script kind, so JSX does not hide an import', () => {
+    const source = [
+      'export const Lazy = () => (',
+      "  <Suspense>{import('node:fs').then((fs) => <p>{String(fs)}</p>)}</Suspense>",
+      ');',
+    ].join('\n');
+    expect(importReferences(source, 'component.tsx')).toEqual([{ specifier: 'node:fs', line: 2 }]);
+    expect(importReferences(source, 'component.jsx')).toEqual([{ specifier: 'node:fs', line: 2 }]);
+    expect(importReferences("module.exports = require('node:fs');", 'index.cjs')).toEqual([
+      { specifier: 'node:fs', line: 1 },
     ]);
   });
 
@@ -291,136 +332,80 @@ describe('findManifestViolations', () => {
     expect(text.split('\n')).toHaveLength(2);
   });
 
+  test('accepts the clean lockfile', () => {
+    const { packageRoot, workspaceRoot } = workspaceFixture();
+    expect(findLockfileViolations(packageRoot, workspaceRoot)).toEqual([]);
+  });
+});
+
+describe('findLockfileViolations', () => {
+  function lockViolations(lock: string): string {
+    const { packageRoot, workspaceRoot } = workspaceFixture({ '/bun.lock': lock });
+    return formatViolations(findLockfileViolations(packageRoot, workspaceRoot));
+  }
+  const xterm = { '@xterm/xterm': '@xterm/xterm@6.0.0' };
+
   test.each([
-    ['dependencies', 'ghostty-web'],
-    ['devDependencies', '@wterm/dom'],
-    ['peerDependencies', 'ghostty-web'],
-    ['optionalDependencies', '@wterm/core'],
-  ])('rejects a comparison engine in any workspace %s', (field, name) => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/packages/other/package.json': JSON.stringify({ [field]: { [name]: '1.0.0' } }),
-    });
-    const [violation] = findManifestViolations(packageRoot, workspaceRoot);
-    expect(violation).toMatchObject({ file: '../../packages/other/package.json' });
-    expect(violation?.message).toContain(`${name} is a comparison engine`);
-  });
-
-  test('inspects a workspace the root declares by exact path, not only by group glob', () => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/scripts/browser-fixtures/package.json': JSON.stringify({
-        dependencies: { 'ghostty-web': '1.0.0' },
-      }),
-    });
-    const [violation] = findManifestViolations(packageRoot, workspaceRoot);
-    expect(violation).toMatchObject({ file: '../../scripts/browser-fixtures/package.json' });
-    expect(violation?.message).toContain('ghostty-web is a comparison engine');
-  });
-
-  test('ignores a manifest in a directory the root does not declare as a workspace', () => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/elsewhere/package.json': JSON.stringify({ dependencies: { 'ghostty-web': '1.0.0' } }),
-    });
-    expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
+    ['an engine under its own name', { 'ghostty-web': 'ghostty-web@0.4.0' }],
+    ['an aliased engine', { 'terminal-engine': 'ghostty-web@0.4.0' }],
+    ['an aliased scoped engine', { renderer: '@wterm/dom@1.2.3' }],
+    ['a git engine', { 'ghostty-web': 'ghostty-web@github:ghostty-org/ghostty-web#v0.4.0' }],
+    ['a git URL engine', { engine: '@wterm/core@git+https://example.invalid/wterm.git#abc123' }],
+    ['a nested engine', { 'parent/ghostty-web': 'ghostty-web@0.4.0' }],
+  ])('rejects %s resolved in the lockfile', (_name, packages) => {
+    expect(lockViolations(lockfile({ ...xterm, ...packages }))).toMatch(
+      /bun\.lock:1: \S+ resolves to (?:ghostty-web|@wterm\/\w+), a comparison engine/,
+    );
   });
 
   test.each([
-    ['an npm alias to ghostty-web', 'npm:ghostty-web@0.4.0'],
-    ['an npm alias to a wterm package', 'npm:@wterm/dom@1.2.3'],
-    ['a workspace specifier', 'workspace:@wterm/core@*'],
-    ['a file path', 'file:../vendor/ghostty-web'],
-    ['a link path', 'link:../../ghostty-web'],
-  ])('rejects %s under an innocent dependency name', (_name, value) => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/packages/other/package.json': JSON.stringify({
-        optionalDependencies: { 'terminal-engine': value },
-      }),
-    });
-    const text = formatViolations(findManifestViolations(packageRoot, workspaceRoot));
-    expect(text).toContain(`terminal-engine (${value}) resolves to a comparison engine`);
+    ['an overridden version', '@xterm/xterm@5.5.0', '5.5.0'],
+    ['a git source', '@xterm/xterm@github:xtermjs/xterm.js#abc', 'github:xtermjs/xterm.js#abc'],
+  ])('rejects the engine resolving to %s', (_name, resolved, shown) => {
+    expect(lockViolations(lockfile({ '@xterm/xterm': resolved }))).toContain(
+      `bun.lock:1: @xterm/xterm resolves to ${shown}, but the contract pins 6.0.0`,
+    );
+  });
+
+  test('rejects a second, nested copy of the engine at another version', () => {
+    expect(
+      lockViolations(lockfile({ ...xterm, 'other/@xterm/xterm': '@xterm/xterm@5.5.0' })),
+    ).toContain('@xterm/xterm resolves to 5.5.0');
+  });
+
+  test('requires the engine to resolve at all', () => {
+    expect(lockViolations(lockfile({ left: 'left@1.0.0' }))).toContain(
+      'bun.lock:1: @xterm/xterm does not resolve in the lockfile',
+    );
   });
 
   test('does not mistake a similarly named package for a comparison engine', () => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/packages/other/package.json': JSON.stringify({
-        dependencies: { 'ghostty-web-docs': 'npm:ghostty-web-docs@1.0.0', left: 'file:../left' },
-      }),
-    });
-    expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
+    expect(
+      lockViolations(lockfile({ ...xterm, 'ghostty-web-docs': 'ghostty-web-docs@1.0.0' })),
+    ).toBe('');
   });
 
-  test('rejects comparison engines named by the root catalogs form and catalog values', () => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/package.json': JSON.stringify({
-        catalog: { '@xterm/xterm': '6.0.0', aliased: 'npm:@wterm/dom@1.0.0' },
-        catalogs: { experimental: { 'ghostty-web': '0.4.0' }, other: { fine: '1.0.0' } },
+  test('reads workspaces from the lockfile, including ones a glob would not describe', () => {
+    const text = lockViolations(
+      lockfile(xterm, {
+        '': { name: 'corvidae' },
+        'scripts/browser-fixtures': { dependencies: { 'ghostty-web': '1.0.0' } },
+        'packages/other': { optionalDependencies: { '@wterm/dom': '1.0.0' } },
+        'packages/peer': { peerDependencies: { 'ghostty-web': '1' }, devDependencies: { ok: '1' } },
       }),
-    });
-    const text = formatViolations(findManifestViolations(packageRoot, workspaceRoot));
-    expect(text).toContain('aliased (npm:@wterm/dom@1.0.0) resolves to a comparison engine');
-    expect(text).toContain('ghostty-web is a comparison engine');
-    expect(text.split('\n')).toHaveLength(2);
-  });
-
-  test('reads the object form of workspaces, its packages and its catalogs', () => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/package.json': JSON.stringify({
-        workspaces: {
-          packages: ['packages/*', '!packages/ignored'],
-          catalog: { '@xterm/xterm': '6.0.0', 'ghostty-web': '0.4.0' },
-          catalogs: { named: { '@wterm/dom': '1.0.0' } },
-        },
-        catalog: { '@xterm/xterm': '6.0.0' },
-      }),
-      '/packages/other/package.json': JSON.stringify({ dependencies: { '@wterm/core': '1' } }),
-    });
-    const text = formatViolations(findManifestViolations(packageRoot, workspaceRoot));
-    expect(text).toContain('../../packages/other/package.json:1: @wterm/core is a comparison');
-    expect(text).toContain('package.json:1: ghostty-web is a comparison');
-    expect(text).toContain('package.json:1: @wterm/dom is a comparison');
-  });
-
-  test.each([
-    ['overrides', { '@xterm/xterm': '5.5.0' }],
-    ['resolutions', { '**/@xterm/xterm': '5.5.0' }],
-    ['overrides', { 'some-parent': { '@xterm/xterm': '5.5.0' } }],
-    ['resolutions', { 'some-parent>@xterm/xterm@6': '5.5.0' }],
-    ['overrides', { 'some-package': 'npm:@xterm/xterm@5.5.0' }],
-    ['overrides', { 'ghostty-web': '0.4.0' }],
-    ['resolutions', { '**/@wterm/dom': '1.0.0' }],
-    ['overrides', { 'some-package': 'npm:ghostty-web@0.4.0' }],
-  ])('rejects %s that retarget the engine or a comparison engine', (field, value) => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/package.json': JSON.stringify({
-        workspaces: ['components/*'],
-        catalog: { '@xterm/xterm': '6.0.0' },
-        [field]: value,
-      }),
-    });
-    expect(formatViolations(findManifestViolations(packageRoot, workspaceRoot))).toContain(
-      `${field} may not name the terminal engine or a comparison engine`,
     );
-  });
-
-  test('allows overrides that leave the engines alone', () => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/package.json': JSON.stringify({
-        workspaces: ['components/*'],
-        catalog: { '@xterm/xterm': '6.0.0' },
-        overrides: { 'left-pad': '1.3.0', nested: { inner: '2.0.0' } },
-      }),
-    });
-    expect(findManifestViolations(packageRoot, workspaceRoot)).toEqual([]);
-  });
-
-  test('rejects a comparison engine in the root catalog', () => {
-    const { packageRoot, workspaceRoot } = workspaceFixture({
-      '/package.json': JSON.stringify({
-        catalog: { '@xterm/xterm': '6.0.0', 'ghostty-web': '0.4.0' },
-      }),
-    });
-    expect(formatViolations(findManifestViolations(packageRoot, workspaceRoot))).toContain(
-      'ghostty-web is a comparison engine',
+    expect(text).toContain(
+      'bun.lock:1: scripts/browser-fixtures declares ghostty-web, a comparison engine',
     );
+    expect(text).toContain('packages/other declares @wterm/dom');
+    expect(text).toContain('packages/peer declares ghostty-web');
+    expect(text.split('\n')).toHaveLength(3);
+  });
+
+  test('names the root workspace when the root declares an engine', () => {
+    expect(
+      lockViolations(lockfile(xterm, { '': { devDependencies: { 'ghostty-web': '1' } } })),
+    ).toContain('the root workspace declares ghostty-web');
   });
 });
 

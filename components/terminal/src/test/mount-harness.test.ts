@@ -3,7 +3,12 @@ import type { Component } from 'svelte';
 
 import HarnessProbe from './harness-probe.svelte';
 import HarnessThrowingEffect from './harness-throwing-effect.svelte';
-import { destroyAllHarnesses, liveHarnessCount, mountHarness } from './mount-harness.ts';
+import {
+  destroyAllHarnesses,
+  liveHarnessCount,
+  mountHarness,
+  takeUnmountFailures,
+} from './mount-harness.ts';
 
 afterEach(destroyAllHarnesses);
 
@@ -124,11 +129,49 @@ describe('mount harness', () => {
     expect(liveHarnessCount()).toBe(0);
   });
 
-  test('rethrows the mount error, not a teardown error, and still removes the container', () => {
-    expect(() => mountHarness(HarnessThrowingEffect, { teardownThrows: true })).toThrow(
-      'effect failed',
-    );
+  /** Run `action`, let pending promise jobs settle, and return every rejection nothing handled. */
+  async function unhandledRejectionsDuring(action: () => void): Promise<unknown[]> {
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', listener);
+    try {
+      action();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      process.off('unhandledRejection', listener);
+    }
+    return unhandled;
+  }
 
+  test('rethrows the mount error, not a teardown error, and leaks no rejection', async () => {
+    let thrown: unknown;
+    const unhandled = await unhandledRejectionsDuring(() => {
+      try {
+        mountHarness(HarnessThrowingEffect, { teardownThrows: true });
+      } catch (error) {
+        thrown = error;
+      }
+    });
+
+    expect((thrown as Error).message).toStartWith('effect failed');
+    expect(unhandled).toEqual([]);
     expect(document.body.children).toHaveLength(0);
+  });
+
+  test('records a teardown that rejects on destroy instead of leaking the rejection', async () => {
+    takeUnmountFailures();
+    const harness = mountHarness(HarnessProbe, {
+      label: 'Failing teardown',
+      onteardown: () => {
+        throw new Error('teardown failed');
+      },
+    });
+
+    const unhandled = await unhandledRejectionsDuring(() => harness.destroy());
+
+    expect(unhandled).toEqual([]);
+    expect(takeUnmountFailures()).toEqual([new Error('teardown failed')]);
+    expect(takeUnmountFailures()).toEqual([]);
+    expect(harness.destroyed).toBe(true);
   });
 });
