@@ -457,7 +457,17 @@ for (const theme of THEMES) {
       // Each input is awaited on the observed DOM and ProseMirror selections
       // before the next one is sent, so a lagging selection update under load
       // cannot shorten the selection the toolbar reads when Link is clicked.
-      await paragraph.click();
+      //
+      // The editor reports its initial selection (the end of the document)
+      // before it is ever clicked, and when ProseMirror is first focused it
+      // writes its own selection back into the DOM a moment later. If that
+      // write-back runs after Home and before ProseMirror has read the click,
+      // it moves the DOM caret back to the stale position. So the click lands
+      // on the paragraph's first line at its left edge, and the case waits for
+      // the ProseMirror reading to move off its pre-click value: any later
+      // write-back then targets the paragraph start, the same place Home does.
+      const selectionBeforeClick = await readProseMirrorSelection(page);
+      await paragraph.click({ position: { x: 2, y: 4 } });
       await expect(
         editorWrapper.locator('.ProseMirror'),
         'insert with selection: click focuses the editor content',
@@ -467,6 +477,16 @@ for (const theme of THEMES) {
           message: 'insert with selection: click leaves a collapsed caret in the first paragraph',
         })
         .toMatchObject({ collapsed: true, insideParagraph: true });
+      await expect
+        .poll(() => readProseMirrorSelection(page), {
+          message: 'insert with selection: ProseMirror selection reflects the click',
+        })
+        .not.toEqual(selectionBeforeClick);
+      await expect
+        .poll(() => readProseMirrorSelectionLength(page), {
+          message: 'insert with selection: ProseMirror selection is collapsed after the click',
+        })
+        .toBe(0);
 
       await page.keyboard.press('Home');
       await expect
