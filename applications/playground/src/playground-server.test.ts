@@ -1228,7 +1228,7 @@ describe('/styles/* (path traversal guard)', () => {
 
 describe('stable entry URLs evaluate the hashed entry once', () => {
   it.each([
-    ['/page-bundle/chat.js', 'hydratePage()'],
+    ['/page-bundle/chat.js', 'data-playground-controls-hydrated'],
     ['/shell-bundle/shell.js', 'Preview theme:'],
   ])(
     'serves %s as one import of the hashed entry, never a copy of it',

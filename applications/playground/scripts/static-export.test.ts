@@ -443,7 +443,8 @@ describe('static export', () => {
       for (const url of rendered) {
         if (!url.endsWith('.js')) continue;
         const code = await readFile(join(outputDirectory, url.slice(1)), 'utf8');
-        if (code.includes('hydratePage()')) entryCopies.push(url);
+        // A string literal, not an identifier, so minification cannot rename it away.
+        if (code.includes('data-playground-controls-hydrated')) entryCopies.push(url);
       }
       expect(stableEntries.length).toBeGreaterThan(0);
       expect(entryCopies).toHaveLength(stableEntries.length);
