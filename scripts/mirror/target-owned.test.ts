@@ -135,9 +135,11 @@ describe('mirror target-owned enumeration', () => {
     expect(findTargetOwner(policy, '.github/workflows/release-manual.yaml', 'cinder')?.glob).toBe(
       '.github/workflows/release-manual.yaml',
     );
+    // COR-1201 deleted Cinder's playground deployment workflow in cinder#1602 once cinder.website
+    // built from corvidae, so nothing preserves it any longer.
     expect(
-      findTargetOwner(policy, '.github/workflows/deploy-playground.yaml', 'cinder')?.glob,
-    ).toBe('.github/workflows/deploy-playground.yaml');
+      findTargetOwner(policy, '.github/workflows/deploy-playground.yaml', 'cinder'),
+    ).toBeUndefined();
     expect(findTargetOwner(policy, '.github/workflows/mcp-verify.yaml', 'cinder')?.glob).toBe(
       '.github/workflows/mcp-verify.yaml',
     );
@@ -731,6 +733,28 @@ describe('retiring a directory the target still carries', () => {
     },
   );
 
+  test('a restored cinder playground copy and its deployment workflow are collected for deletion', async () => {
+    await withFixtureTarget(
+      async (directory) => {
+        const policy = await loadTargetOwnedPolicy();
+        // COR-1201: cinder#1602 deleted both, and the deployment workflow would overwrite the
+        // production site that now builds from corvidae, so a sync must remove either if restored.
+        expect(
+          await collectRetiredPaths({
+            policy,
+            target: 'cinder',
+            directory,
+            directories: retiredDirectoriesFor(policy, 'cinder'),
+          }),
+        ).toEqual(['.github/workflows/deploy-playground.yaml', 'packages/playground/package.json']);
+      },
+      {
+        'packages/playground/package.json': '{"name":"@cinder/playground"}\n',
+        '.github/workflows/deploy-playground.yaml': 'name: deploy-playground\n',
+      },
+    );
+  });
+
   test('the committed enumeration retires each target only what its own issue ruled on', async () => {
     const policy = await loadTargetOwnedPolicy();
     const retired = retiredDirectoriesFor(policy, 'weft');
@@ -785,14 +809,18 @@ describe('retiring a directory the target still carries', () => {
     // that does not reuse either filename — so there is nothing to declare under `source.ts`'s
     // `validationInputs` at these two paths, unlike `generate-component-examples.ts` above, which
     // corvidae genuinely has no replacement for at all.
+    // COR-1201: the playground copy and its deployment workflow, which cinder#1602 deleted once
+    // cinder.website built from corvidae; retired so a restored copy cannot survive a sync.
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([
       'packages/components/scripts/tokens/generate-artifacts.test.ts',
       'packages/components/scripts/tokens/generate.test.ts',
+      'packages/playground',
+      '.github/workflows/deploy-playground.yaml',
     ]);
     for (const entry of policy.retired.entries) {
       expect(['weft', 'agent-bureau', 'cinder']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286', 'COR-1287', 'COR-1196']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1286', 'COR-1287', 'COR-1196', 'COR-1201']).toContain(entry.issue);
     }
     // A retirement names exactly one repository, so no target's list may reach another's paths.
     for (const target of mirrorTargets) {

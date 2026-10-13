@@ -64,11 +64,6 @@
       "targets": ["cinder"]
     },
     {
-      "glob": ".github/workflows/deploy-playground.yaml",
-      "reason": "Cinder's playground deployment workflow, target-owned until COR-1201 resolves its disposition.",
-      "targets": ["cinder"]
-    },
-    {
       "glob": ".github/workflows/pr-title.yaml",
       "reason": "Weft's PR-title enforcement workflow. Unrelated to `verifyTarget`'s jobs and not something COR-1286's ruling touches — kept target-owned so the narrower `.github/**` enumeration below does not accidentally make it transform-writable.",
       "targets": ["weft"]
@@ -583,6 +578,18 @@
         "target": "agent-bureau",
         "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
         "issue": "COR-1287"
+      },
+      {
+        "directory": "packages/playground",
+        "target": "cinder",
+        "reason": "COR-1201 moved cinder.website onto corvidae's `applications/playground`, which `package-map.json` excludes from the mirror because the application is private to corvidae. Cinder's own pull request (cinder#1602) deleted its former copy along with the references in Cinder-owned release tooling that the transform cannot write. Retired here so that a copy restored in the target is removed by the next sync rather than surviving beside the deployment it no longer serves.",
+        "issue": "COR-1201"
+      },
+      {
+        "directory": ".github/workflows/deploy-playground.yaml",
+        "target": "cinder",
+        "reason": "Cinder's former playground deployment workflow, deleted by cinder#1602 once cinder.website built from corvidae through the Vercel Git integration (COR-1201). It deployed to the same Vercel project as production, so a restored copy would overwrite the live site from Cinder's retired playground; the retirement removes it on the next sync.",
+        "issue": "COR-1201"
       }
     ]
   },

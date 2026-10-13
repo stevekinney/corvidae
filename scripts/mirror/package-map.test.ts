@@ -133,12 +133,13 @@ describe('mirror package map', () => {
     expect(armorer.name, 'armorer keeps its unscoped name').toBe('armorer');
   });
 
-  test('excludes the playground application so the transform never emits it over the live cinder copy', async () => {
+  test('excludes the playground application so the transform never emits it into the cinder target', async () => {
     const playground = await dispositionFor('@lostgradient/playground');
     const { publishedOnly } = await loadPackageMap();
 
-    // `private-workspace` would emit the application into the cinder target at a directory that
-    // collides with the live `packages/playground` the public site deploys from.
+    // The application is private to corvidae, which hosts cinder.website from it (COR-1201).
+    // `private-workspace` would emit it into the public cinder target, where `target-owned.json`
+    // retires the former `packages/playground` copy.
     expect(playground.disposition).toBe('exclude');
     expect(await publishableNames()).not.toContain('@lostgradient/playground');
     // The playground is a workspace now, so it must not also be ruled on as a published-only name.

@@ -119,7 +119,7 @@
       "disposition": "deferred",
       "corvidaeDirectory": "applications/playground",
       "issue": "COR-1201",
-      "reason": "Excluded from the mirror (`package-map.json` carries the `exclude` ruling), so no placement is needed and the plan never consults this entry. The public cinder repository keeps its own live copy at `packages/playground` until COR-1201 retires it. It stays `deferred` rather than being given a directory, as `@lostgradient/desktop` does, so that lifting the exclusion forces a ruling on placement before anything is emitted."
+      "reason": "Excluded from the mirror (`package-map.json` carries the `exclude` ruling), so no placement is needed and the plan never consults this entry. COR-1201 moved cinder.website onto this application and deleted the public cinder repository's former copy at `packages/playground` in cinder#1602. It stays `deferred` rather than being given a directory, as `@lostgradient/desktop` does, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/evaluation": {
       "disposition": "deferred",
