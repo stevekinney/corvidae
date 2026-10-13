@@ -836,6 +836,7 @@ const INHERITED_EXTENSION_KEYS = [
   'category',
   'component',
   'contrastPairs',
+  'scale',
 ] as const;
 
 const CINDER_EXTENSION_NAMESPACE = 'com.lostgradient.cinder';
