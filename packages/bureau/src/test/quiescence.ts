@@ -175,6 +175,18 @@ export interface BureauQuiescenceReport {
   readonly openStorageResources: readonly LeakedResource[];
   readonly durableAttempts: readonly LeakedResource[];
   /**
+   * COR-794: every managed-asset operation (`bureau.assets.activeWork()`)
+   * whose cleanup had not settled when `shutdown()` returned — an upload,
+   * fetch, scan, transform, metadata extraction, provider transfer,
+   * deletion, garbage collection, or the admission composing them — plus
+   * any collection timer the service still had armed
+   * (`bureau.assets.activeTimers()`). Folded into `leaked` unless
+   * `shutdown()` itself reported the `'assets'` owner `'unresolved'`, in
+   * which case the same fact is already under `incomplete` (the
+   * double-count rule the module doc explains for `activeEvaluations`).
+   */
+  readonly assetWork: readonly LeakedResource[];
+  /**
    * AB-369: every run `bureau.listAbortingRuns()` still names — `abortRun`
    * requested cancellation for it, but its `activeRun.closed()` has not yet
    * settled. Unlike `incomplete`, a non-empty row here DOES fold into
@@ -201,6 +213,7 @@ const NAMED_ROWS = [
   'pendingWebhookDeliveries',
   'openStorageResources',
   'durableAttempts',
+  'assetWork',
 ] as const;
 
 function renderLeak(leak: LeakedResource): string {
@@ -432,6 +445,29 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
   }
   const activeRoots = scopeReport.leaked.filter((leak) => leak.kind === 'durable-owner');
 
+  // COR-794: read AFTER `shutdown()` returns, like the fault-forced rows
+  // above — `shutdown()` aborted every asset operation and awaited its
+  // cleanup, so anything still listed here outlived that drain.
+  const assets = bureau.assets;
+  const assetWork: LeakedResource[] = [
+    ...(assets?.activeWork() ?? []).map((snapshot) => ({
+      kind: 'queue-item' as const,
+      identifier: snapshot.id,
+      owner: snapshot.kind,
+      parentId: snapshot.parentId,
+      discoveredVia: 'public-snapshot' as const,
+    })),
+    ...(assets?.activeTimers() ?? []).map((timer) => ({
+      kind: 'timer' as const,
+      identifier: timer,
+      owner: 'assets',
+      discoveredVia: 'public-snapshot' as const,
+    })),
+  ];
+  const assetsUnresolved = shutdownReport.owners.some(
+    (owner) => owner.kind === 'assets' && owner.outcome === 'unresolved',
+  );
+
   const incomplete: BureauIncompleteWork[] = [];
   for (const owner of shutdownReport.owners) {
     if (owner.outcome === 'unresolved') {
@@ -448,6 +484,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
     ...pendingWebhookDeliveries,
     ...durableAttempts,
     ...openStorageResources,
+    ...(assetsUnresolved ? [] : assetWork),
   ];
 
   const detached = [...scopeReport.detached, ...detachedDurable];
@@ -467,6 +504,7 @@ export async function assertBureauQuiescent<D extends AgentDefinitions = AgentDe
     pendingWebhookDeliveries,
     openStorageResources,
     durableAttempts,
+    assetWork,
     abortingRuns,
     incomplete,
     shutdownReport,

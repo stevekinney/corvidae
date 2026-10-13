@@ -9,6 +9,7 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
+export * from './assets';
 export type {
   AuditEventType,
   AuditPruneResult,
