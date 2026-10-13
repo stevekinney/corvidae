@@ -21884,6 +21884,71 @@ describe('COR-636: scheduler task locator', () => {
     }
   });
 
+  it('expires an unconfigured scheduler task outcome after the default retention window', async () => {
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([{ content: 'default window', toolCalls: [] }]),
+      scheduler: { enabled: true },
+      toolbox: createEmptyToolbox(),
+      runtime,
+    });
+
+    try {
+      const submittedAt = runtime.monotonic.now();
+      const { taskId } = await bureau.submitSchedulerTask({
+        message: 'Expire me eventually',
+        priority: 'background',
+      });
+      await bureau.awaitSchedulerTask(taskId);
+      expect(runtime.monotonic.now()).toBe(submittedAt);
+      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
+
+      await runtime.advance(3_599_999);
+      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
+
+      await runtime.advance(1);
+      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'expired' });
+      const expired = await bureau.awaitSchedulerTask(taskId).catch((error: unknown) => error);
+      expect(expired).toBeInstanceOf(SchedulerTaskLookupError);
+      expect(expired).toMatchObject({ taskId, reason: 'expired' });
+
+      await runtime.advance(3_600_000);
+      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'not-found' });
+      const forgotten = await bureau.awaitSchedulerTask(taskId).catch((error: unknown) => error);
+      expect(forgotten).toBeInstanceOf(SchedulerTaskLookupError);
+      expect(forgotten).toMatchObject({ taskId, reason: 'not-found' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('lets an explicit retentionWindowMs override the default retention window', async () => {
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([{ content: 'explicit window', toolCalls: [] }]),
+      scheduler: { enabled: true, retentionWindowMs: 1_000 },
+      toolbox: createEmptyToolbox(),
+      runtime,
+    });
+
+    try {
+      const { taskId } = await bureau.submitSchedulerTask({
+        message: 'Expire me sooner',
+        priority: 'background',
+      });
+      await bureau.awaitSchedulerTask(taskId);
+
+      await runtime.advance(999);
+      expect(bureau.locateSchedulerTask(taskId).status).toBe('terminal');
+      await runtime.advance(1);
+      expect(bureau.locateSchedulerTask(taskId)).toEqual({ status: 'expired' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('reports not-found for an unknown id and rejects awaitSchedulerTask with a lookup error', async () => {
     const bureau = await createBureau({
       agents: {},
