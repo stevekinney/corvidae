@@ -210,6 +210,9 @@ describe('checkCoverageRatchet', () => {
         'src/d.cts': '',
         'src/f.test.tsx': '',
         'src/g.spec.mts': '',
+        'src/h.d.ts': '',
+        'src/i.d.mts': '',
+        'src/j.d.cts': '',
       };
       const root = packageFixture({ lines: 1, functions: 1 }, covered, files);
       const result = await runCoverageRatchet({
@@ -220,7 +223,7 @@ describe('checkCoverageRatchet', () => {
       for (const file of ['a.ts', 'b.tsx', 'c.mts', 'd.cts']) {
         expect(text).toContain(`  src/${file}`);
       }
-      expect(text).not.toMatch(/f\.test|g\.spec/);
+      expect(text).not.toMatch(/f\.test|g\.spec|h\.d|i\.d|j\.d/);
     });
 
     test('ignores files the tests never loaded unless the option is given', async () => {
