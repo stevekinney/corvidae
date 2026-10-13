@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { collectEntries, type CorpusEntry } from './corpus.ts';
-import { assertUniqueCssProperties } from './css-support.ts';
-import { createValueResolver, mergeAndExpandExtends } from './resolve.ts';
-import type { TokenDocument } from './types.ts';
+import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { assertUniqueCssProperties } from '../../src/tokens/runtime/css-support.ts';
+import { createValueResolver, mergeAndExpandExtends } from '../../src/tokens/runtime/resolve.ts';
+import type { TokenDocument } from '../../src/tokens/runtime/types.ts';
 const collect = (documents: TokenDocument[]): Map<string, CorpusEntry> => {
   const entries = new Map<string, CorpusEntry>();
   collectEntries(mergeAndExpandExtends(documents), '', undefined, entries);

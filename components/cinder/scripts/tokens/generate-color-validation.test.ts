@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
-import { resolveAlias } from './value-color.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { resolveAlias } from '../../src/tokens/runtime/value-color.ts';
 describe('CIN-469 finding 4: a $root JSON Pointer alias normalizes like a group.base one', () => {
   // Mirrors resolve.test.ts's "resolves a property-level JSON Pointer through a
   // group's $root token" and "resolves #/$root/$value against the document-level

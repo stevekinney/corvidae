@@ -1,6 +1,5 @@
 import { format } from 'prettier';
-import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
-import { prepareCss } from './css-preparation.ts';
+import { scopeIndexFromDocuments } from '../../src/tokens/runtime/context-order.ts';
 import {
   assertUniqueOverrideCssProperties,
   renderBaseDeclarations,
@@ -8,10 +7,11 @@ import {
   withDependentBaseAliases,
   withOppositeThemeResets,
   withThemeDependentOverrides,
-} from './css-support.ts';
+} from '../../src/tokens/runtime/css-support.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
+import { prepareCss } from './css-preparation.ts';
 import { CSS_PLUGINS, PRETTIER_OPTIONS, REGENERATE_COMMAND } from './generator-configuration.ts';
-import { scopeIndexFromDocuments } from './resolved-contexts.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
 
 export async function buildTokensBaseCss(
   resolver: ResolverDocument,

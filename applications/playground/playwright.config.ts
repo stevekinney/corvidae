@@ -1,27 +1,67 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Playwright forces color in its workers and web servers. Remove the conflicting
-// inherited opt-out in this test process before those children are created.
+// Playwright forces color in its workers and web servers. Remove the conflicting inherited
+// opt-out in this test process before those children are created.
 delete process.env['NO_COLOR'];
 
-// A fixed port: the repository's environment-configuration policy allows
-// environment reads only through a registered `environment-configuration.ts`,
-// and a busy port fails this run loudly rather than drifting.
-const port = 5597;
-const origin = `http://localhost:${port}`;
+/**
+ * Browser tests for the playground. The playground owns this toolchain; it is an explicit
+ * command (`bun run test:browser`), not part of the turbo `test` or `validate` graph.
+ *
+ * The dev server (`src/playground-server.ts`) is the default target. It warms every
+ * documentation bundle before it answers `/ready`, which takes minutes on a cold start, so
+ * its start-up timeout is measured, not arbitrary. `PLAYGROUND_BROWSER_REUSE=1` reuses a
+ * server that is already running on the port. `PLAYGROUND_BROWSER_STATIC=1` adds a second
+ * project that exports the site and serves the exported files.
+ */
+const devPort = Number(process.env['PLAYGROUND_BROWSER_PORT'] ?? 54231);
+const staticPort = Number(process.env['PLAYGROUND_BROWSER_STATIC_PORT'] ?? 54232);
+const devOrigin = `http://127.0.0.1:${devPort}`;
+const staticOrigin = `http://127.0.0.1:${staticPort}`;
+const includeStatic = process.env['PLAYGROUND_BROWSER_STATIC'] === '1';
 
 export default defineConfig({
   testDir: './tests',
   testMatch: '**/*.playwright.ts',
+  fullyParallel: false,
+  workers: 1,
   timeout: 60_000,
-  use: { baseURL: origin, trace: 'retain-on-failure' },
-  webServer: {
-    command: 'bun src/playground-server.ts',
-    cwd: import.meta.dirname,
-    env: { PORT: String(port) },
-    url: `${origin}/ready`,
-    reuseExistingServer: false,
-    timeout: 300_000,
-  },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  expect: { timeout: 10_000 },
+  use: { trace: 'retain-on-failure' },
+  webServer: [
+    {
+      command: 'bun src/playground-server.ts',
+      cwd: import.meta.dirname,
+      env: { PORT: String(devPort) },
+      url: `${devOrigin}/ready`,
+      reuseExistingServer: process.env['PLAYGROUND_BROWSER_REUSE'] === '1',
+      timeout: 360_000,
+    },
+    ...(includeStatic
+      ? [
+          {
+            command: `PLAYGROUND_BASE_URL=https://playground.test bun scripts/static-export.ts && bun scripts/serve-static-export.ts --port ${staticPort}`,
+            cwd: import.meta.dirname,
+            url: `${staticOrigin}/ping`,
+            reuseExistingServer: process.env['PLAYGROUND_BROWSER_REUSE'] === '1',
+            timeout: 900_000,
+          },
+        ]
+      : []),
+  ],
+  projects: [
+    {
+      name: 'dev',
+      use: { ...devices['Desktop Chrome'], baseURL: devOrigin },
+    },
+    ...(includeStatic
+      ? [
+          {
+            name: 'static',
+            testMatch: '**/theme-builder-preview.playwright.ts',
+            use: { ...devices['Desktop Chrome'], baseURL: staticOrigin },
+          },
+        ]
+      : []),
+  ],
 });

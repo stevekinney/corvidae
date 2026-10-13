@@ -17,6 +17,8 @@
  *     documentation surface; `/c/<name>` is a legacy alias redirected by
  *     the hosting configuration and deliberately not written here)
  *   - `/shell-bundle/shell.js` + every hashed chunk it imports
+ *   - `/theme-builder` (canonical, in the sitemap) and `/theme-builder/preview` (noindex,
+ *     never in the sitemap), with the `/theme-builder-bundle/` graphs they load
  *   - `/page-bundle/<name>.js` + every hashed chunk each imports
  *   - `/styles/all.css` and every core or extracted-package CSS asset the
  *     rendered HTML references (`/styles.css` is a dev-server redirect to
@@ -51,6 +53,7 @@ import { readEnvironmentConfiguration } from '../src/environment-configuration.t
 import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
 import { handleRequest } from '../src/playground-server.ts';
 import { COMPOUND_COMPONENT_FAMILIES } from '../src/shell-app/compound-families.ts';
+import { THEME_BUILDER_PATH, THEME_PREVIEW_PATH } from '../src/theme-builder-page.ts';
 import { fingerprintStaticAssets } from './static-asset-fingerprints.ts';
 
 const PLAYGROUND_ROOT = join(import.meta.dirname, '..');
@@ -448,12 +451,13 @@ async function assertInitialRoutePayloadBudgets(
 
 /**
  * Pull the hashed-chunk URLs a built JS bundle imports. Bun emits chunks as
- * `<name>-<hash>.js` siblings under the same `/page-bundle/` or `/shell-bundle/`
+ * `<name>-<hash>.js` siblings under the same `/page-bundle/`, `/shell-bundle/`, or
+ * `/theme-builder-bundle/`
  * prefix, referenced by `import`/`from` specifiers in the entry body.
  */
 function chunkUrlsFromJs(js: string): string[] {
   const urls = new Set<string>();
-  const specifier = /(\/(?:page-bundle|shell-bundle)\/[A-Za-z0-9_-]+\.js)/g;
+  const specifier = /(\/(?:page-bundle|shell-bundle|theme-builder-bundle)\/[A-Za-z0-9_-]+\.js)/g;
   let match: RegExpExecArray | null;
   while ((match = specifier.exec(js)) !== null) urls.add(match[1]!);
   return [...urls];
@@ -579,6 +583,19 @@ export async function runStaticExport(options: StaticExportOptions = {}): Promis
     collect(rootHtml);
   }
   await renderJsBundleGraph('/shell-bundle/shell.js', context);
+
+  // The theme builder: its workbench page is indexable, its preview frame is not. Both load
+  // bundles no documentation route imports.
+  const themeBuilderHtml = await render(THEME_BUILDER_PATH, context);
+  const themePreviewHtml = await render(THEME_PREVIEW_PATH, context);
+  if (themeBuilderHtml === null || themePreviewHtml === null) {
+    throw new Error('[static-export] the theme builder routes rendered no HTML');
+  }
+  assertThemeBuilderPages(themeBuilderHtml, themePreviewHtml, baseUrl);
+  collect(themeBuilderHtml);
+  collect(themePreviewHtml);
+  await renderJsBundleGraph('/theme-builder-bundle/theme-builder.js', context);
+  await renderJsBundleGraph('/theme-builder-bundle/theme-preview.js', context);
   await render('/ping', context);
   // NOTE: the full `/api/manifest` array is intentionally NOT rendered. The UI
   // only ever fetches the per-component `/api/manifest/<name>` route, and
@@ -592,7 +609,12 @@ export async function runStaticExport(options: StaticExportOptions = {}): Promis
    * by the `/c/<name>` loop, which is gone.
    */
   const documentationRoutes = [...new Set([...allComponents, ...sidebarRoutes])];
-  const canonicalRoutes = ['/', ...documentationRoutes.map((name) => `/page/${name}`)];
+  // The preview frame is deliberately absent: it is noindex and never a sitemap entry.
+  const canonicalRoutes = [
+    '/',
+    THEME_BUILDER_PATH,
+    ...documentationRoutes.map((name) => `/page/${name}`),
+  ];
 
   // Per-component: documentation page, page-bundle graph, manifest, sources.
   const documentationPages: { name: string; html: string }[] = [];
@@ -635,6 +657,9 @@ export async function runStaticExport(options: StaticExportOptions = {}): Promis
 
   const sitemap = sitemapXml(baseUrl, canonicalRoutes);
   assertSitemapMatchesRoutes(sitemap, baseUrl, canonicalRoutes);
+  if (sitemap.includes(THEME_PREVIEW_PATH)) {
+    throw new Error('[static-export] the sitemap must not list the theme preview frame');
+  }
   await writeFile(join(outputDirectory, 'sitemap.xml'), sitemap);
   await writeFile(
     join(outputDirectory, 'robots.txt'),
@@ -679,6 +704,30 @@ function assertExactlyOneComponentHeading(name: string, html: string): void {
   const count = html.match(/<h1\b(?=[^>]*\bid="component-name")[^>]*>/gi)?.length ?? 0;
   if (count !== 1) {
     throw new Error(`${name}: expected exactly one #component-name heading, found ${count}`);
+  }
+}
+
+/**
+ * Verify the theme builder's two documents: the workbench carries exactly one canonical URL
+ * and no noindex, and the preview frame is noindex with no canonical URL.
+ */
+export function assertThemeBuilderPages(
+  builderHtml: string,
+  previewHtml: string,
+  baseUrl: string,
+): void {
+  const canonical = `<link rel="canonical" href="${baseUrl}${THEME_BUILDER_PATH}" />`;
+  if (!builderHtml.includes(canonical) || builderHtml.split('rel="canonical"').length !== 2) {
+    throw new Error(`[static-export] ${THEME_BUILDER_PATH}: expected exactly one ${canonical}`);
+  }
+  if (/name="robots"[^>]*noindex/i.test(builderHtml)) {
+    throw new Error(`[static-export] ${THEME_BUILDER_PATH}: must be indexable`);
+  }
+  if (!/<meta name="robots" content="[^"]*noindex/i.test(previewHtml)) {
+    throw new Error(`[static-export] ${THEME_PREVIEW_PATH}: must be noindex`);
+  }
+  if (previewHtml.includes('rel="canonical"')) {
+    throw new Error(`[static-export] ${THEME_PREVIEW_PATH}: must not declare a canonical URL`);
   }
 }
 
