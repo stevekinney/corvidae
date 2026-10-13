@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-import { authoringContexts, authoringLayerStack } from './authoring-catalogue.ts';
-import { traceProvenance } from './authoring-provenance.ts';
+import { authoringContexts, authoringLayerStack } from '../../src/tokens/runtime/context-stack.ts';
+import { traceProvenance } from '../../src/tokens/runtime/authoring-provenance.ts';
+import { collectEntries, type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { mergeAndExpandExtends, resolveDocuments } from '../../src/tokens/runtime/resolve.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { cloneCorpus, loadProfileCorpus } from './authoring-test-support.ts';
-import { collectEntries, type CorpusEntry } from './corpus.ts';
 import { loadCorpus } from './generate.ts';
-import { mergeAndExpandExtends, resolveDocuments } from './resolve.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
 
 const BASE = 'profile-base.tokens.json';
 const LIGHT = 'profile-light.tokens.json';

@@ -34,8 +34,8 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { buildBaseIndex, buildTokenRegistryFromIndexes, themeAwarePaths } from './registry.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
+import { buildBaseIndex, buildTokenRegistryFromIndexes, themeAwarePaths } from '../../src/tokens/runtime/registry.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 
 /** Minimal resolver with a single `foundation` set and no modifiers -- every
  * fixture in this file only needs base-scope tokens, matching the smallest

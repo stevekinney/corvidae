@@ -3,14 +3,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { TokenValidationError, type TokenDocument } from './types.ts';
-import {
-  assertValidResolverDocument,
-  assertValidTokenDocument,
-  validateResolvedToken,
-  validateResolverDocument,
-  validateTokenDocument,
-} from './validate.ts';
+import { TokenValidationError, type TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { validateResolverDocument } from '../../src/tokens/runtime/validate-resolver.ts';
+import { validateResolvedToken, validateTokenDocument } from '../../src/tokens/runtime/validate-tokens.ts';
+import { assertValidResolverDocument, assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const fixturesDirectory = join(scriptDirectory, 'fixtures');

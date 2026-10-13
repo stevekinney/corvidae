@@ -1,13 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  createValueResolver,
-  mergeAndExpandExtends,
-  mergeDocuments,
-  resolveDocument,
-  tokenPathFromReference,
-} from './resolve.ts';
-import { TokenValidationError, type TokenDocument } from './types.ts';
-import { assertValidTokenDocument } from './validate.ts';
+import { tokenPathFromReference } from '../../src/tokens/runtime/resolve-shared.ts';
+import { createValueResolver, mergeAndExpandExtends, mergeDocuments, resolveDocument } from '../../src/tokens/runtime/resolve.ts';
+import { TokenValidationError, type TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
 
 describe('DTCG resolver', () => {
   test.each([

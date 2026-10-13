@@ -12,17 +12,10 @@
  * so resetting an override is just tracing the stack without that edit.
  */
 
-import {
-  UNKNOWN,
-  type AuthoringLayer,
-  type ContributingLayer,
-  type EffectiveType,
-  type TokenContextProvenance,
-  type TokenInputs,
-  type TokenLocation,
-} from './authoring-types.ts';
+import { UNKNOWN, type AuthoringLayer, type ContributingLayer, type EffectiveType, type TokenContextProvenance, type TokenInputs, type TokenLocation } from './authoring-types.ts';
 import { collectEntries, type CorpusEntry } from './corpus.ts';
-import { mergeAndExpandExtends, tokenPathFromReference } from './resolve.ts';
+import { tokenPathFromReference } from './resolve-shared.ts';
+import { mergeAndExpandExtends } from './resolve.ts';
 import type { DesignToken, TokenDocument, TokenGroup } from './types.ts';
 
 /** One layer of a stack: its identity and its raw document. */
@@ -43,6 +36,19 @@ function isTokenNode(value: unknown): value is DesignToken {
   return isNode(value) && ('$value' in value || '$ref' in value);
 }
 
+/** A non-token object node is a group. */
+function asGroup(node: Node): TokenGroup {
+  const group: TokenGroup = {};
+  for (const [key, value] of Object.entries(node))
+    Object.defineProperty(group, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  return group;
+}
+
 type Located = {
   token: DesignToken | undefined;
   groups: Array<{ path: string; group: TokenGroup }>;
@@ -58,7 +64,7 @@ function locate(root: TokenDocument, path: string): Located {
     current = current[segment];
     prefix = prefix ? `${prefix}.${segment}` : segment;
     if (isNode(current) && !isTokenNode(current))
-      groups.push({ path: prefix, group: current as TokenGroup });
+      groups.push({ path: prefix, group: asGroup(current) });
   }
   if (isTokenNode(current)) return { token: current, groups };
   if (isNode(current) && isTokenNode(current['$root'])) return { token: current['$root'], groups };
@@ -105,7 +111,7 @@ export function collectCinderExtensions(root: TokenDocument): Map<string, Record
       if (name.startsWith('$') || !isNode(value)) continue;
       const path = prefix ? `${prefix}.${name}` : name;
       if (isTokenNode(value)) result.set(path, cinderOf(value) ?? {});
-      else walk(value as TokenGroup, path);
+      else walk(asGroup(value), path);
     }
   };
   walk(root, '');

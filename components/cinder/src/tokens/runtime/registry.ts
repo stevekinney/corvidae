@@ -22,17 +22,12 @@
  * disagree about which base tokens exist.
  */
 
+import { documentsForResolutionOrder, modifierValuesForContext, requireDocument } from './context-order.ts';
 import { collectEntries, type CorpusEntry } from './corpus.ts';
-import {
-  assertUniqueCssProperties,
-  requireDocument,
-  withDependentBaseAliases,
-} from './css-support.ts';
-import { loadCorpus } from './generate.ts';
+import { assertUniqueCssProperties, withDependentBaseAliases } from './css-support.ts';
 import { createValueResolver, mergeAndExpandExtends } from './resolve.ts';
-import { documentsForResolutionOrder, modifierValuesForContext } from './resolved-contexts.ts';
+import { expandContextSources, parseResolutionOrder, sourcesForEntry } from './resolver-order.ts';
 import type { ResolverDocument, TokenDocument } from './types.ts';
-import { expandContextSources, parseResolutionOrder, sourcesForEntry } from './validate-corpus.ts';
 
 /**
  * The theme contexts `buildTokensBaseCss` emits a selector for. The registry's
@@ -352,14 +347,6 @@ export function buildTokenRegistryFromIndexes(
     byCategory,
     byComponent,
   };
-}
-
-/** Loads the corpus from disk and builds the {@link TokenRegistry}. */
-export async function buildTokenRegistry(): Promise<TokenRegistry> {
-  const { resolver, documentsByPath } = await loadCorpus();
-  const baseIndex = buildBaseIndex(resolver, documentsByPath);
-  const aware = themeAwarePaths(resolver, documentsByPath);
-  return buildTokenRegistryFromIndexes(baseIndex, aware);
 }
 
 /**

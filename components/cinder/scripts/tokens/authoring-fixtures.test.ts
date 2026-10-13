@@ -3,20 +3,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildAuthoringCatalogue } from './authoring-catalogue.ts';
-import {
-  cloneCorpus,
-  fixtureDirectory,
-  loadProfileCorpus,
-  readFixture,
-} from './authoring-test-support.ts';
+import { buildAuthoringCatalogue } from '../../src/tokens/runtime/authoring-catalogue.ts';
+import { resolveDocuments } from '../../src/tokens/runtime/resolve.ts';
+import { TOKEN_TYPES, TokenValidationError, type TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { validateTokenDocumentSchema } from '../../src/tokens/runtime/validate-schema.ts';
+import { assertValidResolverDocument, assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
+import { serializeTypedValue } from '../../src/tokens/runtime/value-formatters.ts';
+import { cloneCorpus, fixtureDirectory, loadProfileCorpus, readFixture } from './authoring-test-support.ts';
 import { loadCorpus } from './generate.ts';
 import { resolvedDirectory, tokensBaseCssPath } from './generator-configuration.ts';
-import { resolveDocuments } from './resolve.ts';
-import { TOKEN_TYPES, TokenValidationError, type TokenDocument } from './types.ts';
-import { validateTokenDocumentSchema } from './validate-schema.ts';
-import { assertValidResolverDocument, assertValidTokenDocument } from './validate.ts';
-import { serializeTypedValue } from './value-formatters.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 

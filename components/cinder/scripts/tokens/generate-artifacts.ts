@@ -14,31 +14,17 @@ import estreePlugin from 'prettier/plugins/estree';
 import typescriptPlugin from 'prettier/plugins/typescript';
 import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 
-import { buildAuthoringCatalogue, serializeAuthoringCatalogue } from './authoring-catalogue.ts';
+import { buildAuthoringCatalogue } from '../../src/tokens/runtime/authoring-catalogue.ts';
+import { RESOLVED_CONTEXT_COMBOS } from '../../src/tokens/runtime/context-order.ts';
+import { buildBaseDocuments, buildBaseIndex, buildTokenRegistryFromIndexes, serializeTokenRegistry, themeAwarePaths, type TokenRegistry } from '../../src/tokens/runtime/registry.ts';
+import { createValueResolver } from '../../src/tokens/runtime/resolve.ts';
+import type { TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { serializeAuthoringCatalogue } from './authoring-catalogue-output.ts';
 import { buildTokensDocMarkdown, validateDocSections } from './docs.ts';
 import { buildGeneratedOutputs, findDriftedPaths, loadCorpus, readExisting } from './generate.ts';
-import {
-  authoringCataloguePath,
-  JSON_PLUGINS,
-  PRETTIER_OPTIONS,
-  REGENERATE_COMMAND,
-  registryJsonPath,
-  registryModulePath,
-  resolvedDirectory,
-  tokenIndexPath,
-  tokensDocPath,
-} from './generator-configuration.ts';
-import {
-  buildBaseDocuments,
-  buildBaseIndex,
-  buildTokenRegistryFromIndexes,
-  serializeTokenRegistry,
-  themeAwarePaths,
-  type TokenRegistry,
-} from './registry.ts';
-import { createValueResolver } from './resolve.ts';
-import { RESOLVED_CONTEXT_COMBOS } from './resolved-contexts.ts';
-import type { TokenDocument } from './types.ts';
+import { authoringCataloguePath, JSON_PLUGINS, PRETTIER_OPTIONS, REGENERATE_COMMAND, registryJsonPath, registryModulePath, resolvedDirectory, tokenIndexPath, tokensDocPath } from './generator-configuration.ts';
+import { buildBaseCorpusMetadata } from './base-corpus-metadata.ts';
+import { buildSchemaValidatorOutputs } from './schema-validators.ts';
 
 const TYPESCRIPT_PLUGINS = [typescriptPlugin, estreePlugin, babelPlugin];
 /**
@@ -207,6 +193,9 @@ async function buildAllGeneratedOutputs(): Promise<Map<string, string>> {
   generated.set(tokensDocPath, docMarkdown);
   generated.set(registryModulePath, registryModule);
   generated.set(tokenIndexPath, tokenIndex);
+  for (const [path, content] of buildSchemaValidatorOutputs()) generated.set(path, content);
+  for (const [path, content] of await buildBaseCorpusMetadata(resolver, documentsByPath))
+    generated.set(path, content);
   generated.set(
     authoringCataloguePath,
     await serializeAuthoringCatalogue(buildAuthoringCatalogue(resolver, documentsByPath)),

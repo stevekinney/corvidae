@@ -1,19 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { TokenValidationError, type ResolverDocument, type TokenDocument } from './types.ts';
-import {
-  buildContextSourcesIndex,
-  combinations,
-  expandContextSources,
-  expandSetSources,
-  normalizeSourcePath,
-  orderedTokenValidationContexts,
-  parseResolutionOrder,
-  sourcesForEntry,
-  validateLoadedTokenDocuments,
-  validateModifierSetExpansionOrder,
-  validateModifierTokenPaths,
-} from './validate-corpus.ts';
-import { assertValidTokenDocument } from './validate.ts';
+import { orderedTokenValidationContexts, validateLoadedTokenDocuments } from '../../src/tokens/runtime/corpus-documents.ts';
+import { validateModifierSetExpansionOrder, validateModifierTokenPaths } from '../../src/tokens/runtime/corpus-validation.ts';
+import { buildContextSourcesIndex, combinations, expandContextSources, expandSetSources, normalizeSourcePath, parseResolutionOrder, sourcesForEntry } from '../../src/tokens/runtime/resolver-order.ts';
+import { TokenValidationError, type ResolverDocument, type TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
 
 const resolver: ResolverDocument = {
   version: '2025.10',
