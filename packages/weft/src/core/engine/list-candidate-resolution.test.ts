@@ -117,6 +117,7 @@ describe('resolveListCandidateIds', () => {
       expect(state.executionDeadline).toBeDefined();
 
       const report = await runWorkflowVisibilityBackfill(storage, {
+        settleMilliseconds: 0,
         onWatermarkWritten: () => {
           getInternals(engine).workflowVisibilityWatermark = undefined;
         },
@@ -185,6 +186,7 @@ describe('resolveListCandidateIds', () => {
       expect(storage.countScans('wf:')).toBe(2);
 
       const report = await runWorkflowVisibilityBackfill(storage, {
+        settleMilliseconds: 0,
         onWatermarkWritten: () => {
           getInternals(engine).workflowVisibilityWatermark = undefined;
         },
@@ -220,7 +222,9 @@ describe('resolveListCandidateIds', () => {
       expect(storage.countGets(KEYS.workflowVisibilityMetaVersion())).toBe(1);
       expect(storage.countScans('wf:')).toBe(1);
 
-      const backfillReport = await runWorkflowVisibilityBackfill(storage);
+      const backfillReport = await runWorkflowVisibilityBackfill(storage, {
+        settleMilliseconds: 0,
+      });
       expect(backfillReport.watermarkWritten).toBe(true);
 
       const workflowScansAfterBackfill = storage.countScans('wf:');
@@ -233,7 +237,7 @@ describe('resolveListCandidateIds', () => {
       expect(storage.countScans('wf:')).toBe(workflowScansAfterBackfill);
       expect(storage.countScans('wf-idx-status:completed:')).toBe(1);
 
-      const dropReport = await runWorkflowVisibilityDrop(storage);
+      const dropReport = await runWorkflowVisibilityDrop(storage, { settleMilliseconds: 0 });
       expect(dropReport.rowsDeleted).toBeGreaterThan(0);
 
       const workflowScansAfterDrop = storage.countScans('wf:');
@@ -435,10 +439,9 @@ describe('resolveListCandidateIds', () => {
         id: 'attribute-visibility-south',
         searchAttributes: { region: 'ap-south' },
       });
-      await storage.put(
-        KEYS.workflowVisibilityMetaVersion(),
-        encode(WORKFLOW_VISIBILITY_INDEX_VERSION),
-      );
+      // The engine writes no index rows while the watermark is stale, so the indexes these
+      // three workflows need come from the real backfill, exactly as they would in production.
+      await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
 
       const filter = {
         status: 'running' as const,

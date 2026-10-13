@@ -6,9 +6,9 @@ import {
 } from '../../src/core/runtime-workflow-engine.ts';
 import { compileStepWorkflow } from '../../src/core/step-context.ts';
 import { workflow, type StepWorkflowContext } from '../../src/core/types.ts';
-import type { MemorySample } from '../../src/diagnostics/memory-profiler.ts';
-import { MemoryProfiler, linearRegression } from '../../src/diagnostics/memory-profiler.ts';
 import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
+import { readMemoryFootprint, type MemoryMeasure } from './memory-footprint.ts';
+import { summarizeMemoryGrowth } from './memory-growth.ts';
 
 const DEFAULT_DURATION_MILLISECONDS = 12_000;
 const DEFAULT_TARGET_WORKFLOWS_PER_SECOND = 10_000;
@@ -19,6 +19,21 @@ const DEFAULT_WARMUP_WORKFLOWS = 10_000;
 const DEFAULT_RETENTION_DURATION_MILLISECONDS = 0;
 const DEFAULT_RETENTION_SWEEP_INTERVAL = '25ms';
 const DEFAULT_RETENTION_SWEEP_BATCH_SIZE = 10_000;
+
+/**
+ * One reading of the process's memory, taken after a forced collection.
+ *
+ * The benchmark reads the kernel's physical footprint (see `memory-footprint.ts`)
+ * rather than resident set size. On macOS the JavaScriptCore allocator keeps
+ * freed heap pages resident-but-clean, so RSS climbs by several megabytes over a
+ * 12-second run while the physical footprint of the same process falls. RSS
+ * measured the allocator's lazy return of pages, not retained memory.
+ */
+type MemorySample = {
+  timestamp: number;
+  bytes: number;
+  measure: MemoryMeasure;
+};
 
 export type LoadGrowthMemoryMeasurement = {
   configuredDurationMilliseconds: number;
@@ -40,11 +55,14 @@ export type LoadGrowthMemoryMeasurement = {
   samplesCollected: number;
   totalWorkflows: number;
   workflowsPerSecond: number;
-  rssGrowthRatePerSecond: number;
-  peakRss: number;
-  averageRss: number;
-  postWarmupRssDeltaBytes: number;
-  postWarmupRssRangeBytes: number;
+  /** Which kernel measure the readings below are: see `MemoryMeasure`. */
+  memoryMeasure: MemoryMeasure;
+  /** One-sided figures from `summarizeMemoryGrowth`: a fall in memory is never growth. */
+  memoryGrowthRatePerSecond: number;
+  peakMemoryBytes: number;
+  averageMemoryBytes: number;
+  postWarmupMemoryGrowthBytes: number;
+  postWarmupMemoryPeakRiseBytes: number;
 };
 
 type BenchmarkConfiguration = {
@@ -132,72 +150,25 @@ async function runWarmup(engine: RuntimeWorkflowEngine): Promise<number> {
   return calibratedWorkflowsPerSecond;
 }
 
-function snapshotRetainedMemory(profiler: MemoryProfiler): MemorySample {
+function snapshotRetainedMemory(): MemorySample {
   if (typeof Bun.gc === 'function') {
     Bun.gc(true);
   }
 
-  return profiler.snapshot();
-}
+  const reading = readMemoryFootprint();
 
-function summarizeSamples(samples: MemorySample[]): {
-  peakRss: number;
-  averageRss: number;
-  postWarmupRssDeltaBytes: number;
-  postWarmupRssRangeBytes: number;
-  samplesAnalyzed: number;
-} {
-  let peakRss = 0;
-  let totalRss = 0;
-
-  for (const sample of samples) {
-    peakRss = Math.max(peakRss, sample.rss);
-    totalRss += sample.rss;
-  }
-
-  const analyzedSamples = samples.slice(DEFAULT_WARMUP_SAMPLES);
-  const analyzedRssValues = analyzedSamples.map((sample) => sample.rss);
-  const firstRss = analyzedRssValues[0] ?? 0;
-  const lastRss = analyzedRssValues.at(-1) ?? firstRss;
-
-  return {
-    peakRss,
-    averageRss: samples.length === 0 ? 0 : Math.round(totalRss / samples.length),
-    postWarmupRssDeltaBytes: lastRss - firstRss,
-    postWarmupRssRangeBytes:
-      analyzedRssValues.length === 0
-        ? 0
-        : Math.max(...analyzedRssValues) - Math.min(...analyzedRssValues),
-    samplesAnalyzed: analyzedSamples.length,
-  };
-}
-
-function calculateRssGrowthRatePerSecond(samples: MemorySample[]): number {
-  const analyzedSamples = samples.slice(DEFAULT_WARMUP_SAMPLES);
-  if (analyzedSamples.length <= 1) {
-    return 0;
-  }
-
-  const baselineTimestamp = analyzedSamples[0]!.timestamp;
-  const points: [number, number][] = [];
-
-  for (const sample of analyzedSamples) {
-    points.push([(sample.timestamp - baselineTimestamp) / 1000, sample.rss]);
-  }
-
-  return linearRegression(points).slope;
+  return { timestamp: Date.now(), bytes: reading.bytes, measure: reading.measure };
 }
 
 async function runSustainedLoad(
   engine: RuntimeWorkflowEngine,
-  profiler: MemoryProfiler,
   durationMilliseconds: number,
   targetWorkflowsPerSecond: number,
   sampleIntervalMilliseconds: number,
 ): Promise<{ elapsedMilliseconds: number; samples: MemorySample[]; totalWorkflows: number }> {
   const startedAt = performance.now();
   const deadline = startedAt + durationMilliseconds;
-  const samples: MemorySample[] = [snapshotRetainedMemory(profiler)];
+  const samples: MemorySample[] = [snapshotRetainedMemory()];
   let lastSampleTimestamp = samples[0]!.timestamp;
   let totalWorkflows = 0;
 
@@ -206,7 +177,7 @@ async function runSustainedLoad(
     totalWorkflows += DEFAULT_BATCH_SIZE;
 
     if (Date.now() - lastSampleTimestamp >= sampleIntervalMilliseconds) {
-      const sample = snapshotRetainedMemory(profiler);
+      const sample = snapshotRetainedMemory();
       samples.push(sample);
       lastSampleTimestamp = sample.timestamp;
     }
@@ -220,13 +191,13 @@ async function runSustainedLoad(
     await Bun.sleep(sleepMilliseconds);
 
     if (Date.now() - lastSampleTimestamp >= sampleIntervalMilliseconds) {
-      const sample = snapshotRetainedMemory(profiler);
+      const sample = snapshotRetainedMemory();
       samples.push(sample);
       lastSampleTimestamp = sample.timestamp;
     }
   }
 
-  samples.push(snapshotRetainedMemory(profiler));
+  samples.push(snapshotRetainedMemory());
 
   const elapsedMilliseconds = Math.max(1, performance.now() - startedAt);
 
@@ -263,16 +234,13 @@ export async function measureLoadGrowthMemory(
 
     const calibratedWorkflowsPerSecond = await runWarmup(engine);
 
-    const profiler = new MemoryProfiler();
     const { totalWorkflows, elapsedMilliseconds, samples } = await runSustainedLoad(
       engine,
-      profiler,
       configuration.durationMilliseconds,
       configuration.targetWorkflowsPerSecond,
       DEFAULT_SAMPLE_INTERVAL_MILLISECONDS,
     );
-    const summary = summarizeSamples(samples);
-    const rssGrowthRatePerSecond = calculateRssGrowthRatePerSecond(samples);
+    const summary = summarizeMemoryGrowth(samples, DEFAULT_WARMUP_SAMPLES);
 
     return {
       configuredDurationMilliseconds: configuration.durationMilliseconds,
@@ -289,11 +257,12 @@ export async function measureLoadGrowthMemory(
       samplesCollected: samples.length,
       totalWorkflows,
       workflowsPerSecond: Math.round((totalWorkflows / elapsedMilliseconds) * 1000),
-      rssGrowthRatePerSecond,
-      peakRss: summary.peakRss,
-      averageRss: summary.averageRss,
-      postWarmupRssDeltaBytes: summary.postWarmupRssDeltaBytes,
-      postWarmupRssRangeBytes: summary.postWarmupRssRangeBytes,
+      memoryMeasure: samples[0]!.measure,
+      memoryGrowthRatePerSecond: summary.memoryGrowthRatePerSecond,
+      peakMemoryBytes: summary.peakMemoryBytes,
+      averageMemoryBytes: summary.averageMemoryBytes,
+      postWarmupMemoryGrowthBytes: summary.postWarmupMemoryGrowthBytes,
+      postWarmupMemoryPeakRiseBytes: summary.postWarmupMemoryPeakRiseBytes,
     };
   } finally {
     engine[Symbol.dispose]();
