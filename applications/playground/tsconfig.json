@@ -2,14 +2,7 @@
   "extends": "@lostgradient/typescript/library.json",
   "compilerOptions": {
     "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
-    "customConditions": [
-      "svelte"
-    ]
+    "customConditions": ["svelte"]
   },
-  "include": [
-    "src/**/*",
-    "scripts/**/*",
-    "tests/**/*",
-    "playwright.config.ts"
-  ]
+  "include": ["src/**/*", "scripts/**/*", "tests/**/*", "playwright.config.ts"]
 }
