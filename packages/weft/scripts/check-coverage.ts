@@ -1451,10 +1451,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining concurrency branches cover lease-loss and simultaneous-settlement interleavings whose public outcomes are tested without deterministic line attribution.',
         functions: 1,
-        lines: new Set([
-          57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 70, 110, 111, 112, 131, 138, 139, 206,
-          207,
-        ]),
+        lines: new Set([110, 111, 112, 138, 139]),
         requireUncoveredLines: true,
       },
     ],
