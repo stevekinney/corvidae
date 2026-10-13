@@ -4,7 +4,36 @@ import {
   normalizeBrowserSerializedHtml,
   removeHydrationMarkers,
   renderFeaturedExample,
+  setFeaturedExampleRenderer,
+  type RenderedFeaturedExample,
 } from './featured-example-server-renderer.ts';
+
+/*
+ * Every real render spawns a `bun` process that cold-compiles the example's Svelte graph: about a
+ * second each on an idle host, three or more under load. Bun applies its 5-second budget to test
+ * bodies and to `beforeAll` hooks alike, so the renders run here, at module scope, which it does
+ * not time, and one after another so four concurrent compiles do not add their own load. The tests
+ * assert on the settled results. A failed render rejects the whole file rather than one test.
+ */
+const RENDERED_SCENARIOS = [
+  ['banner', 'basic'],
+  ['chat', 'with-tool-approval'],
+  ['diff-viewer', 'basic'],
+  ['markdown-editor', 'basic'],
+] as const;
+const renderedByScenario = new Map<string, RenderedFeaturedExample>();
+for (const [componentName, scenario] of RENDERED_SCENARIOS) {
+  renderedByScenario.set(
+    `${componentName}/${scenario}`,
+    await renderFeaturedExample(componentName, scenario, `overview-mount-${scenario}`),
+  );
+}
+
+function rendered(componentName: string, scenario: string): RenderedFeaturedExample {
+  const result = renderedByScenario.get(`${componentName}/${scenario}`);
+  if (result === undefined) throw new Error(`${componentName}/${scenario} was not rendered`);
+  return result;
+}
 
 describe('featured example server renderer', () => {
   test('removes every Svelte hydration marker form without touching authored comments', () => {
@@ -34,25 +63,46 @@ describe('featured example server renderer', () => {
     expect(workerSource).not.toContain('JSON.stringify(examplePath)');
   });
 
-  test('renders the featured scenario with the same mount prefix used by client hydration', async () => {
-    const rendered = await renderFeaturedExample('banner', 'basic', 'overview-mount-basic');
-
-    expect(rendered.body).toContain('cinder-banner');
-    expect(rendered.body).toContain('Scheduled maintenance is planned');
-    expect(rendered.body).not.toContain('<!--');
-  });
-  test('renders approval arguments and pending decisions from the published action contract', async () => {
-    const rendered = await renderFeaturedExample(
-      'chat',
-      'with-tool-approval',
-      'overview-mount-with-tool-approval',
+  test('delegates to a substitute renderer without spawning, and spawns again once it is cleared', async () => {
+    const calls: string[] = [];
+    setFeaturedExampleRenderer(async (componentName, scenario, mountIdPrefix) => {
+      calls.push(`${componentName}/${scenario}:${mountIdPrefix}`);
+      return { body: '<p>substitute</p>', head: '' };
+    });
+    try {
+      // No such example exists, so only the substitute can answer without throwing.
+      expect(
+        await renderFeaturedExample('no-such-component', 'none', 'overview-mount-none'),
+      ).toEqual({
+        body: '<p>substitute</p>',
+        head: '',
+      });
+      expect(calls).toEqual(['no-such-component/none:overview-mount-none']);
+    } finally {
+      setFeaturedExampleRenderer(null);
+    }
+    // The memoized real render answers again; the substitute is no longer consulted.
+    expect(await renderFeaturedExample('banner', 'basic', 'overview-mount-basic')).toBe(
+      rendered('banner', 'basic'),
     );
+    expect(calls).toHaveLength(1);
+  });
 
-    expect(rendered.body).toContain('Deploying version 2.4.1 to production');
-    expect(rendered.body).toContain('Arguments');
-    expect(rendered.body).toContain('data-cinder-status="pending"');
-    expect(rendered.body).toContain('Approve');
-    expect(rendered.body).toContain('Deny');
+  test('renders the featured scenario with the same mount prefix used by client hydration', () => {
+    const banner = rendered('banner', 'basic');
+
+    expect(banner.body).toContain('cinder-banner');
+    expect(banner.body).toContain('Scheduled maintenance is planned');
+    expect(banner.body).not.toContain('<!--');
+  });
+  test('renders approval arguments and pending decisions from the published action contract', () => {
+    const chat = rendered('chat', 'with-tool-approval');
+
+    expect(chat.body).toContain('Deploying version 2.4.1 to production');
+    expect(chat.body).toContain('Arguments');
+    expect(chat.body).toContain('data-cinder-status="pending"');
+    expect(chat.body).toContain('Approve');
+    expect(chat.body).toContain('Deny');
   });
 
   // A library component keeps its CSS in a sidecar only when it ships one. Editor components carry
@@ -65,18 +115,14 @@ describe('featured example server renderer', () => {
     ['markdown-editor', 'basic'],
   ])(
     'injects the scoped styles of the Editor component %s/%s renders into the head',
-    async (componentName, scenario) => {
-      const rendered = await renderFeaturedExample(
-        componentName,
-        scenario,
-        `overview-mount-${scenario}`,
-      );
+    (componentName, scenario) => {
+      const editor = rendered(componentName, scenario);
 
-      expect(rendered.head).toContain('<style');
+      expect(editor.head).toContain('<style');
       // The component's own scoped class names appear in both the markup and the injected rules.
-      const scopedClasses = new Set(rendered.body.match(/\bsvelte-[a-z0-9]+\b/g) ?? []);
+      const scopedClasses = new Set(editor.body.match(/\bsvelte-[a-z0-9]+\b/g) ?? []);
       expect(scopedClasses.size).toBeGreaterThan(0);
-      for (const scopedClass of scopedClasses) expect(rendered.head).toContain(`.${scopedClass}`);
+      for (const scopedClass of scopedClasses) expect(editor.head).toContain(`.${scopedClass}`);
     },
   );
 });
