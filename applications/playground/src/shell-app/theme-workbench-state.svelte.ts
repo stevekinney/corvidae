@@ -13,6 +13,7 @@
 import { firstFoundationPath, type CatalogueGroupId } from './theme-builder-catalogue.ts';
 import type { ThemePreviewContext, ThemePreviewProperty } from './theme-preview-message.ts';
 import { DEFAULT_THEME_PREVIEW_SCENE_ID, themePreviewSceneById } from './theme-preview-scenes.ts';
+import type { SaveIndicator } from './theme-save-status.ts';
 
 export type WorkbenchPane = 'edit' | 'preview' | 'checks';
 export const WORKBENCH_PANES: readonly WorkbenchPane[] = ['edit', 'preview', 'checks'];
@@ -42,6 +43,8 @@ export class ThemeWorkbenchState {
   groupId = $state<CatalogueGroupId>('foundations');
   filter = $state('');
   saveStatus = $state<SaveStatus>('saved');
+  /** Actionable copy for a storage failure; `null` while persistence is healthy. */
+  storageNotice = $state.raw<Pick<SaveIndicator, 'notice' | 'actions'> | null>(null);
   findingsCount = $state(0);
   preview = $state.raw<PreviewStatus>({ phase: 'loading', appliedRevision: null, error: null });
 
@@ -74,6 +77,13 @@ export class ThemeWorkbenchState {
   setProperties(properties: readonly ThemePreviewProperty[]): void {
     this.properties = properties;
     this.revision += 1;
+  }
+
+  /** Mirror the draft's persistence state (COR-490) into the toolbar's save status. */
+  setPersistence(indicator: SaveIndicator): void {
+    this.saveStatus = indicator.label === 'Saved locally' ? 'saved' : 'unsaved';
+    this.storageNotice =
+      indicator.notice === null ? null : { notice: indicator.notice, actions: indicator.actions };
   }
 
   setPane(pane: WorkbenchPane): void {

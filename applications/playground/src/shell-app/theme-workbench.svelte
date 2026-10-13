@@ -14,6 +14,7 @@
   import { onMount, tick, type Snippet } from 'svelte';
 
   import ThemeWorkbenchCatalogue from './theme-workbench-catalogue.svelte';
+  import ThemeWorkbenchLegacyNotice from './theme-workbench-legacy-notice.svelte';
   import ThemeWorkbenchEditor from './theme-workbench-editor.svelte';
   import { observeLayout, type WorkbenchLayout } from './theme-workbench-layout.ts';
   import ThemeWorkbenchPreview from './theme-workbench-preview.svelte';
@@ -94,6 +95,7 @@
   <div class="sr-only" aria-live="polite" data-testid="workbench-announcer">{announcement}</div>
 
   <ThemeWorkbenchToolbar {workbench} />
+  <ThemeWorkbenchLegacyNotice />
 
   {#if compact}
     <Tabs value={workbench.pane} onValueChange={switchPane}>
