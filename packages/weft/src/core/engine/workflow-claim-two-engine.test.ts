@@ -1643,6 +1643,12 @@ describe('COR-1384: an old failed or terminated run durable teardown must not to
     return { storage, engine, reached, release, slotHolders };
   }
 
+  const expectedStatus = {
+    fail: 'failed',
+    cancel: 'cancelled',
+    complete: 'completed',
+  } as const;
+
   async function runScenario(mode: 'fail' | 'cancel' | 'complete') {
     const id = `teardown-durable-${mode}-${nextInvocation()}`;
     const { storage, engine, reached, release, slotHolders } =
@@ -1671,9 +1677,7 @@ describe('COR-1384: an old failed or terminated run durable teardown must not to
       }
       await reached.promise;
       const committed = await engine.get(id);
-      expect(committed?.status).toBe(
-        { fail: 'failed', cancel: 'cancelled', complete: 'completed' }[mode],
-      );
+      expect(committed?.status).toBe(expectedStatus[mode]);
 
       // The replacement lands while the old run is still between commit and teardown.
       const replacement = await engine.start(TYPE, 'NEW', {
