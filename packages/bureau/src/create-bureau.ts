@@ -1807,10 +1807,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
   // awaiting them, so recovered runs emit live frames while the rest of boot
   // still awaits, before `createBureau()` returns and a caller can subscribe.
-  // From the start of a recovery pass until the FIRST `subscribeLiveFrames`
-  // listener attaches, every live frame is therefore retained (no per-run
-  // attribution, so scheduled fires and anything else the pass starts are
-  // covered). That listener is replayed the retained frames in emission order
+  // Until the FIRST `subscribeLiveFrames` listener attaches, frames are
+  // therefore retained: every frame emitted while a recovery pass runs (no
+  // per-run attribution, so anything the pass starts is covered), and after the
+  // pass the frames of the runs it reattached. Ordinary runs outside a pass are
+  // never retained. That listener is replayed the retained frames in emission order
   // and the buffer closes for good. Replaying rather than deferring the resume
   // keeps delivery independent of how many awaits the boot tail contains.
   // The buffer holds at most BOOT_FRAME_BUFFER_LIMIT frames and evicts the
@@ -1819,7 +1820,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // Emitter listeners are NOT replayed: they register before recovery through
   // `BureauOptions.onEvent`.
   const BOOT_FRAME_BUFFER_LIMIT = 1024;
-  let bootFrameCaptureOpen = false;
+  let recoveryPassActive = false;
+  const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
   const bootFrameBuffer: ServerFrame[] = [];
   // Frames emitted while the first subscriber is being replayed queue behind
@@ -1953,7 +1955,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // and log per-listener instead, matching the isolation every other fan-out
     // in this file already gives its listeners (see `disposeRegisteredStreamListeners`
     // callers, `emitter.dispatch`).
-    if (bootFrameCaptureOpen) {
+    // Retained while a recovery pass runs (any frame: scheduled fires and
+    // anything else the pass starts), and afterwards for the runs it reattached,
+    // until the first subscriber. Frames of ordinary runs outside a pass are
+    // never retained.
+    if (
+      !liveFramesSubscribed &&
+      (recoveryPassActive || ('runId' in frame && bootFrameRunIds.has(frame.runId)))
+    ) {
       bootFrameBuffer.push(frame);
       // Overflow evicts the oldest frame, keeping the most recent history.
       if (bootFrameBuffer.length > BOOT_FRAME_BUFFER_LIMIT) bootFrameBuffer.shift();
@@ -3781,6 +3790,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (store.getRun(runId)) {
       return;
     }
+    if (!liveFramesSubscribed) bootFrameRunIds.add(runId);
+
     const recoveredRun = reattachDurableActiveRun(
       {
         engine: runtime.durable!.engine,
@@ -4330,8 +4341,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * `createBureau()` never rejects on it, in whole or in part).
    */
   async function recoverDurableRuns(): Promise<BureauRecoveryReport> {
-    // COR-1421 — retain live frames for the first subscriber from here on.
-    if (!liveFramesSubscribed) bootFrameCaptureOpen = true;
+    // COR-1421 — retain every live frame for the first subscriber while the
+    // pass runs.
+    recoveryPassActive = true;
+    try {
+      return await recoverDurableRunsPass();
+    } finally {
+      recoveryPassActive = false;
+    }
+  }
+
+  async function recoverDurableRunsPass(): Promise<BureauRecoveryReport> {
     // AB-389 — boot recovery drains the session outbox BEFORE anything
     // else in this pass, so a crash between a commit and its own drain
     // (the post-commit trigger never fired, or fired but the process died
@@ -9632,8 +9652,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     subscribeLiveFrames(listener) {
       // COR-1421 — the first subscriber closes the boot buffer and is replayed
       // what recovered runs emitted before it attached.
-      if (bootFrameCaptureOpen && frameReplayQueue === undefined) {
-        bootFrameCaptureOpen = false;
+      if (!liveFramesSubscribed && frameReplayQueue === undefined) {
+        liveFramesSubscribed = true;
         // The listener joins the live set only once the replay queue drains, so
         // a frame its own callback causes is delivered after the remaining
         // replay, in emission order.
@@ -9645,8 +9665,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           frameReplayQueue = undefined;
         }
       }
-      bootFrameCaptureOpen = false;
       liveFramesSubscribed = true;
+      bootFrameRunIds.clear();
       liveFrameListeners.add(listener);
       return () => {
         liveFrameListeners.delete(listener);

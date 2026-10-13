@@ -1658,8 +1658,8 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getTools(): ToolSummary[];
   /**
    * Subscribe to every live frame. The FIRST subscriber is also replayed, in
-   * emission order, the frames emitted since boot recovery began (at most the
-   * newest 1024), so a recovered run that emitted while `createBureau()` was
+   * emission order, the frames emitted during boot recovery and by the runs it recovered (at
+   * most the newest 1024), so a recovered run that emitted while `createBureau()` was
    * still awaiting is not lost to a caller that can only subscribe after it
    * returns. Later subscribers receive only new frames. Emitter listeners get
    * no such replay; register them through {@link BureauOptions.onEvent}.
