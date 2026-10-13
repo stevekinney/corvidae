@@ -8,4 +8,4 @@
 export const BASE_PACKAGE_VERSION = '0.0.0';
 
 export const BASE_SOURCE_DIGEST =
-  'sha256:4119a0889bcf90e8130ec28152ccdfa7a10222a3886c53ab89d58d5ba95277ca';
+  'sha256:42e8defe6c323d0ee7132acaf222801d9efd3686f9f4bd53d50a2818b93ddf46';

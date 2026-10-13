@@ -284,6 +284,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       'space.2-5',
       'space.3-5',
     ],
+    radius: ['radius.small', 'radius.medium', 'radius.large', 'radius.full'],
   },
   records: [
     {
@@ -1188,6 +1189,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'radius',
+      scale: 'radius',
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -1234,6 +1236,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'radius',
+      scale: 'radius',
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -1280,6 +1283,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'radius',
+      scale: 'radius',
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -1326,6 +1330,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'radius',
+      scale: 'radius',
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
