@@ -436,12 +436,12 @@ describe('runWorkflowFinalizer — defensive bail-out branches', () => {
     expect(succeededBytes).not.toBeNull();
     expect(decode(succeededBytes!)).toMatchObject({
       workflowExecutionToken: `execution-${workflowId}`,
-      attempts: 1,
+      attempts: 2,
       completedAt: expect.any(Number),
     });
     expect(await engine.getFinalizerStatus(workflowId)).toMatchObject({
       status: 'succeeded',
-      attempts: 1,
+      attempts: 2,
     });
     engine[Symbol.dispose]();
   });

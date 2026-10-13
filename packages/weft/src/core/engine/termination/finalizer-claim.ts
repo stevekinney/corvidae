@@ -431,7 +431,8 @@ export async function settleOnRunningClaim(
  * {@link settleOnRunningClaim} as every other settle, so it needs no per-workflow claim and
  * lands under `workflow-lease` and `none` (both tested). Under global `ownership: 'lease'`
  * disposal may release the lease first, in which case the settle cannot land: the marker stays
- * `running` and the watchdog the claim armed reclaims it once the stale horizon passes. A
+ * `running` and the watchdog the claim armed reclaims it once the stale horizon passes; that
+ * abandoned attempt then counts as spent (COR-1422), the same as a crash. A
  * lost CAS means a reclaimer owns the marker and its watchdog; nothing is re-armed.
  */
 export async function reassertOwedAfterShutdown(

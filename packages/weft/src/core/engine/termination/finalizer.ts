@@ -66,6 +66,7 @@ import {
   teardownTimerOperations,
   type TeardownHold,
 } from './finalizer-claim.ts';
+import { deadLetterWithoutRunning } from './finalizer-dead-letter.ts';
 import { resolveFinalizerRegistration } from './finalizer-registration.ts';
 
 export { teardownStaleThresholdMs, type TeardownDeadLetterRecord } from './finalizer-claim.ts';
@@ -231,12 +232,14 @@ async function resolveTeardownDrive(
   if (finalizerStateBytes === null) {
     // The recorded resource state is gone, so dead-letter conditioned on the bytes we read; a
     // lost CAS means a winner already cleared the marker. (Codex round-2 MF2.)
-    await deadLetterMissingState(
+    await deadLetterWithoutRunning(
       internals,
       workflowId,
       state,
       claim.attempts,
       observedMarkerHold(markerBytes),
+      'finalizer state missing — recorded resource cannot be torn down',
+      undefined,
       callbacks,
     );
     return { kind: 'cleared' };
@@ -246,43 +249,6 @@ async function resolveTeardownDrive(
     kind: 'run',
     drive: { state, claim, markerBytes, finalizer, finalizerInput: decode(finalizerStateBytes) },
   };
-}
-
-/**
- * Dead-letter missing finalizer state rather than falsely reporting successful teardown.
- * Condition on the observed marker so a concurrent successful settle cannot be overwritten;
- * emit only after the durable record commits.
- */
-async function deadLetterMissingState(
-  internals: EngineInternals,
-  workflowId: string,
-  state: WorkflowState,
-  attempts: number,
-  expected: TeardownHold,
-  callbacks: FinalizerDriveCallbacks,
-): Promise<void> {
-  const lastError = 'finalizer state missing — recorded resource cannot be torn down';
-  const settled = await deadLetterTeardown(
-    internals,
-    workflowId,
-    state.type,
-    attempts,
-    expected,
-    {
-      lastError,
-      finalizerInput: undefined,
-    },
-    state.workflowExecutionToken,
-    state.revision,
-  );
-  if (settled) {
-    // The event's `error` is present for every 'failed'/'dead-lettered' status (the
-    // documented contract). Carry the same reason the dead-letter record stores so the
-    // event stream is consistent with the attempt-exhausted dead-letter path.
-    callbacks.dispatchEvent(
-      new WorkflowTeardownEvent(workflowId, state.type, 'dead-lettered', attempts, lastError),
-    );
-  }
 }
 
 /**
@@ -354,7 +320,26 @@ async function driveResolvedTeardown(
   firedAt: number,
 ): Promise<void> {
   const { state, claim, markerBytes, finalizer, finalizerInput } = drive;
-  const attempt = claim.attempts + 1;
+  // A `running` claim that reaches a drive is stale: its holder crashed or was deposed mid
+  // attempt without settling. That attempt is consumed (COR-1422), so a finalizer that kills
+  // its host on every run still reaches the dead-letter horizon. An `owed` claim carries only
+  // settled attempts. `consumed` is the count of attempts already spent before this drive.
+  const consumed = claim.status === 'running' ? claim.attempts + 1 : claim.attempts;
+  if (consumed >= MAX_TEARDOWN_ATTEMPTS) {
+    // Every attempt crashed its host: dead-letter instead of running the finalizer again.
+    await deadLetterWithoutRunning(
+      internals,
+      workflowId,
+      state,
+      consumed,
+      observedMarkerHold(markerBytes),
+      'finalizer attempt crashed its host without settling',
+      finalizerInput,
+      callbacks,
+    );
+    return;
+  }
+  const attempt = consumed + 1;
 
   // Claim/reclaim CAS (also arming the watchdog). A lost CAS means another engine claimed
   // it and owns the next timer — stay silent: a loser's re-arm is what multiplied timers.
@@ -362,7 +347,7 @@ async function driveResolvedTeardown(
     internals,
     workflowId,
     markerBytes,
-    claim.attempts,
+    consumed,
     token,
     finalizer,
     firedAt,
@@ -396,7 +381,7 @@ async function driveResolvedTeardown(
     // the UNCHANGED attempt count under a new token with a near-future timer, so the resource is
     // never dead-lettered just because the engine was disposed. Under global `'lease'` disposal
     // may release the lease first; the marker then stays `running` and the watchdog reclaims it.
-    await reassertOwedAfterShutdown(internals, workflowId, hold, claim.attempts, firedAt);
+    await reassertOwedAfterShutdown(internals, workflowId, hold, consumed, firedAt);
     return;
   }
   await settleTeardownFailure(

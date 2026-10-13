@@ -34,6 +34,7 @@ import {
   encodeOwedClaim,
   encodeRunningClaim,
   fireAtAfterFired,
+  MAX_TEARDOWN_ATTEMPTS,
   observedMarkerHold,
   OUTSIDE_FIRED_TIMER,
   rearmLiveClaimWatchdog,
@@ -347,6 +348,97 @@ for (const mode of MULTI_ENGINE_MODES) {
       expect(second.destroyed).toHaveLength(1);
     });
 
+    it('a finalizer that crashes its host on every attempt dead-letters after exactly MAX_TEARDOWN_ATTEMPTS attempts (COR-1422)', async () => {
+      const storage = new MemoryStorage();
+      const clock: Clock = { now: 20_000_000 };
+      // Every attempt "crashes": the finalizer never settles, so its drive never returns and
+      // its engine never writes the settle. Only the stale horizon lets a new engine adopt.
+      let starts = 0;
+      const crashed: Array<() => void> = [];
+      const destroy = activity({
+        name: `destroy-crash-loop-${mode}`,
+        execute: async () => {
+          starts += 1;
+          await new Promise<void>((resolve) => crashed.push(resolve));
+        },
+      });
+      const type = `crash-loop-${mode}`;
+      const id = `${type}-1`;
+      const engines: Engine[] = [];
+      const drives: Promise<void>[] = [];
+      try {
+        for (let attempt = 1; attempt <= MAX_TEARDOWN_ATTEMPTS; attempt += 1) {
+          const engine = await createEngine(mode, storage, clock);
+          engines.push(engine);
+          registerTeardownType(engine, type, destroy);
+          if (attempt === 1) await startAndTerminate(engine, storage, type, id);
+          drives.push(engine.scheduler.tick(clock.now));
+          await waitForCondition(() => starts === attempt, {
+            label: `attempt ${attempt} started`,
+            timeoutMs: 2000,
+            intervalMs: 5,
+          });
+          expect(await engine.getFinalizerStatus(id)).toMatchObject({
+            status: 'running',
+            attempts: attempt,
+          });
+          clock.now += STALE_RUNNING_HORIZON_MS;
+        }
+
+        // The next adopter finds every attempt consumed: it dead-letters without a ninth run.
+        const adopter = await createEngine(mode, storage, clock);
+        engines.push(adopter);
+        registerTeardownType(adopter, type, destroy);
+        const events = collectTeardownEvents(adopter);
+        await adopter.scheduler.tick(clock.now);
+
+        expect(starts).toBe(MAX_TEARDOWN_ATTEMPTS);
+        expect(events).toEqual([
+          {
+            workflowId: id,
+            status: 'dead-lettered',
+            attempts: MAX_TEARDOWN_ATTEMPTS,
+            error: 'finalizer attempt crashed its host without settling',
+          },
+        ]);
+        expect(await adopter.getFinalizerStatus(id)).toMatchObject({
+          status: 'failed',
+          attempts: MAX_TEARDOWN_ATTEMPTS,
+        });
+        expect(await storage.get(KEYS.teardownOwed(id))).toBeNull();
+        expect(await timerCount(storage)).toBe(0);
+      } finally {
+        for (const release of crashed) release();
+        await Promise.all(drives);
+        for (const engine of engines) await engine[Symbol.asyncDispose]();
+      }
+      // The released zombies lost their settle CAS: the dead-letter stands.
+      expect(await storage.get(KEYS.teardownDeadLetter(id))).not.toBeNull();
+      expect(await storage.get(KEYS.teardownSucceeded(id))).toBeNull();
+    });
+
+    it('counts an abandoned running attempt but not a graceful abort, so the next run is attempt 3 (COR-1422)', async () => {
+      // Decision pin: a `running` marker that reaches a drive was abandoned without settling
+      // (a crash, or a disposal whose settle could not land under global `lease`), and that
+      // attempt is spent. A disposal whose settle lands re-asserts `owed` at the unchanged
+      // count (see the abort test above) and spends nothing.
+      const storage = new MemoryStorage();
+      const clock: Clock = { now: 30_000_000 };
+      const second = countingFinalizer(`destroy-abandoned-${mode}`);
+      await using engine = await createEngine(mode, storage, clock);
+      const type = `abandoned-${mode}`;
+      const id = `${type}-1`;
+      registerTeardownType(engine, type, second.destroy);
+      await startAndTerminate(engine, storage, type, id);
+      const owed = (await readClaim(storage, id))!;
+      // Attempt 2 is abandoned mid-run: one settled attempt plus a stale `running` marker.
+      await storage.put(KEYS.teardownOwed(id), encodeRunningClaim(1, owed.token, clock.now));
+      clock.now += STALE_RUNNING_HORIZON_MS;
+      const events = collectTeardownEvents(engine);
+      await engine.scheduler.tick(clock.now);
+      expect(events).toEqual([{ workflowId: id, status: 'completed', attempts: 3 }]);
+    });
+
     it('a rearm resolution leaves exactly one live timer after the tick, even when the slot collides with the fired key', async () => {
       // The first engine terminates the workflow and dies; the second engine has no
       // registration for the type, so the fired teardown timer resolves to `rearm`. Its clock
@@ -456,8 +548,9 @@ for (const mode of MULTI_ENGINE_MODES) {
 
       // The first run never settled, so exactly one more run happens.
       expect(parked.starts()).toBe(2);
+      // The crashed first attempt is consumed (COR-1422), so the reclaim is attempt 2.
       expect([...eventsB, ...eventsC]).toEqual([
-        { workflowId: id, status: 'completed', attempts: 1 },
+        { workflowId: id, status: 'completed', attempts: 2 },
       ]);
       expect(await engineB.getFinalizerStatus(id)).toMatchObject({ status: 'succeeded' });
       expect(await storage.get(KEYS.teardownOwed(id))).toBeNull();
