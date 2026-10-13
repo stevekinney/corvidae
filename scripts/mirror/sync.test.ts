@@ -1879,6 +1879,25 @@ describe('changeset emission through the sync (COR-1433)', () => {
   );
 });
 
+describe('newestMirrorProvenance (COR-1433)', () => {
+  test('strict mode throws when the squash fallback cannot fetch the pull request, and lenient mode does not', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-strict-provenance-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      await Bun.write(join(root, 'file.txt'), 'content\n');
+      await git(root, 'add', '-A');
+      // Subject shaped like a squash merge, no trailer, and no `origin` to fetch the pull from.
+      await git(root, 'commit', '--quiet', '-m', 'Sync weft from corvidae (#7)');
+      expect(await newestMirrorProvenance(root, 'weft')).toBeNull();
+      expect(
+        await throwingRejectionOf(newestMirrorProvenance(root, 'weft', { strict: true })),
+      ).toThrow(SyncError);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('the private-workspace check', () => {
   test('a private workspace that emits TypeScript without a typecheck script is refused', () => {
     expect(() =>

@@ -176,8 +176,39 @@ export async function supersedeOlderPullRequests(options: {
     left.push({ number, reason });
     log(`${fullName}#${number}: left open; ${reason}`);
   };
+  const trailers = new Map<number, string | undefined>();
   for (const candidate of candidates) {
-    const trailerSha = trailerShaOf(await api.getCommitMessage(fullName, candidate.headSha));
+    trailers.set(
+      candidate.number,
+      trailerShaOf(await api.getCommitMessage(fullName, candidate.headSha)),
+    );
+  }
+
+  // A dispatch from an older corvidae ref can finish after a newer one already opened its pull
+  // request. Then the new pull request is the stale one: close it and touch nothing else.
+  for (const candidate of candidates) {
+    const trailerSha = trailers.get(candidate.number);
+    if (trailerSha === undefined || trailerSha === newCorvidaeCommit) continue;
+    const descends = await tryGit(
+      corvidaeRoot,
+      'merge-base',
+      '--is-ancestor',
+      newCorvidaeCommit,
+      trailerSha,
+    );
+    if (descends.exitCode !== 0) continue;
+    await api.createIssueComment({
+      fullName,
+      issueNumber: newPullRequest.number,
+      body: `Superseded by ${candidate.htmlUrl}, which is already open and built from corvidae@${trailerSha}, a descendant of the corvidae commit this pull request mirrors (${newCorvidaeCommit}).`,
+    });
+    await api.closePullRequest(fullName, newPullRequest.number);
+    log(`${fullName}#${newPullRequest.number}: closed; superseded by newer ${candidate.htmlUrl}`);
+    return { closed: [newPullRequest.number], left: [] };
+  }
+
+  for (const candidate of candidates) {
+    const trailerSha = trailers.get(candidate.number);
     if (trailerSha === undefined) {
       leave(
         candidate.number,

@@ -223,6 +223,41 @@ describe('changeset emission', () => {
     ]);
   });
 
+  test('a name that existed at the trailer and was deleted and re-added in the range throws', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/fix-a.md', weftChangeset);
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/fix-a.md');
+    await commit(root, 'Consume the changeset');
+    await write(
+      root,
+      '.changeset/fix-a.md',
+      changeset('@lostgradient/weft', 'Same name, new text.'),
+    );
+    await commit(root, 'Reuse the name');
+    const error = await rejectionOf(emit(root, await target(synced), synced));
+    expect(error).toBeInstanceOf(ChangesetEmissionError);
+    expect((error as Error).message).toContain('.changeset/fix-a.md');
+  });
+
+  test('(g) a merge that brought in a side branch adding and deleting the path still skips it', async () => {
+    const { root, start } = await corvidae();
+    await write(root, '.changeset/fix-a.md', weftChangeset);
+    const adding = await commit(root, 'Add a changeset');
+    const clone = await target(start);
+    const path = emittedPath(adding, 'fix-a');
+    await git(clone, 'checkout', '--quiet', '-b', 'side');
+    await write(clone, path, weftChangeset);
+    await commit(clone, 'Side: deliver');
+    await git(clone, 'rm', '--quiet', path);
+    await commit(clone, 'Side: consume');
+    await git(clone, 'checkout', '--quiet', 'main');
+    await write(clone, 'unrelated.txt', 'main moved\n');
+    await commit(clone, 'Main moves');
+    await git(clone, 'merge', '--quiet', '--no-ff', '--message', 'Merge side', 'side');
+    expect(await emit(root, clone, start)).toEqual({});
+  });
+
   test('(h) a target-authored changeset is neither flagged foreign nor reached by the plan', async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);

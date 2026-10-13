@@ -635,6 +635,31 @@ describe('supersession (COR-1433)', () => {
     });
   });
 
+  test('a stale dispatch closes the new pull request when an open one is strictly newer', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      // The new pull request is built from `older`; pull request 11 is built from `newer`.
+      const { api, events } = fake([record(11), record(12)], {
+        'head-11': trailer(newer),
+        'head-12': trailer(older),
+      });
+      const outcome = await supersedeOlderPullRequests({
+        api,
+        corvidaeRoot: root,
+        fullName: 'stevekinney/weft',
+        base: 'main',
+        newPullRequest: {
+          number: newNumber,
+          htmlUrl: `https://github.com/stevekinney/weft/pull/${newNumber}`,
+        },
+        newCorvidaeCommit: older,
+        log: () => {},
+      });
+      expect(outcome.closed).toEqual([newNumber]);
+      expect(events.filter((event) => event.startsWith('close'))).toEqual([`close ${newNumber}`]);
+      expect(events.find((event) => event.startsWith(`comment ${newNumber}`))).toContain('pull/11');
+    });
+  });
+
   test('a sync of the same corvidae commit closes the earlier attempt', async () => {
     await withCorvidae(async ({ newer }, root) => {
       const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });

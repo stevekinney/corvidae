@@ -155,9 +155,45 @@ async function addingCommit(
   return commit;
 }
 
+/**
+ * A name that existed at the trailer and was added again in `(trailer, HEAD]` was deleted in
+ * between and rewritten. It is not pending (it exists at both ends), so emitting nothing would
+ * lose that release silently. Refuse, and make the author pick a new name.
+ */
+async function assertNoReusedNames(
+  corvidaeRoot: string,
+  trailerSha: string,
+  synced: ReadonlySet<string>,
+): Promise<void> {
+  const output = await requireGit(corvidaeRoot, [
+    'log',
+    '--no-renames',
+    '--diff-filter=A',
+    '--name-only',
+    '-z',
+    '--format=',
+    `${trailerSha}..HEAD`,
+    '--',
+    `${changesetDirectory}/`,
+  ]);
+  const reused = [...new Set(output.split('\0').filter((path) => synced.has(path)))].toSorted();
+  if (reused.length > 0) {
+    throw new ChangesetEmissionError(
+      `${reused.join(', ')} existed when the target last synced and was added again since, so its release cannot be told apart from the synced one. Never reuse a changeset file name; give the new changeset a new name.`,
+    );
+  }
+}
+
 /** Whether the target's current history has ever contained the path. */
 async function inTargetHistory(targetDirectory: string, path: string): Promise<boolean> {
-  const output = await requireGit(targetDirectory, ['log', 'HEAD', '--format=%H', '--', path]);
+  const output = await requireGit(targetDirectory, [
+    'log',
+    'HEAD',
+    '--full-history',
+    '--format=%H',
+    '--',
+    path,
+  ]);
   return output.trim().length > 0;
 }
 
@@ -185,6 +221,7 @@ export async function planChangesetEmission({
     changesetsAt(corvidaeRoot, trailerSha),
   ]);
   const synced = new Set(syncedFiles);
+  await assertNoReusedNames(corvidaeRoot, trailerSha, synced);
   const pending = headFiles.filter((path) => !synced.has(path));
 
   const mine: { path: string; bytes: Uint8Array }[] = [];
