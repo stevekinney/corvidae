@@ -31,12 +31,14 @@ import {
   CLAIM_TAKEOVER_ADVANCE_MS,
   releasePath,
   VIRTUAL_START,
+  WAKEUP_MS,
   WEFT_SLEEP_MS,
   writeClock,
 } from './test/invocation-driven/protocol';
 
 const FIXTURES = join(import.meta.dir, 'test', 'invocation-driven');
 const WEFT = join(FIXTURES, 'weft-invocation.ts');
+const OPERATIVE = join(FIXTURES, 'operative-invocation.ts');
 
 const TIMEOUT_MS = 120_000;
 
@@ -201,6 +203,48 @@ describe('a Weft workflow driven only by fresh invocations', () => {
         '"finished order-1 in successor"',
       ]);
       expect(JSON.stringify(read)).not.toContain('in killed');
+    },
+    TIMEOUT_MS,
+  );
+});
+
+interface RunReport {
+  readonly status: string | null;
+  readonly content: string | null;
+  readonly steps: readonly number[];
+  readonly generateCalls: readonly number[];
+}
+
+function runOf(finished: InvocationEvent): RunReport {
+  return finished['run'] as RunReport;
+}
+
+describe('an Operative durable run driven only by fresh invocations', () => {
+  it(
+    'parks on a wakeup in one invocation and completes its scripted continuation in the next',
+    async () => {
+      const { directory } = setUp();
+
+      const started = await invoke(OPERATIVE, 'start', 'start');
+      expect(started['settled']).toBe('parked');
+      expect(runOf(started)).toEqual({
+        status: 'running',
+        content: null,
+        steps: [0],
+        generateCalls: [0],
+      });
+
+      writeClock(directory, VIRTUAL_START + WAKEUP_MS);
+      const woken = await invoke(OPERATIVE, 'maintain', 'wake');
+      expect(woken['settled']).toBe('terminal');
+      expect(runOf(woken).generateCalls).toEqual([1]);
+
+      expect(runOf(await invoke(OPERATIVE, 'read', 'read'))).toEqual({
+        status: 'completed',
+        content: 'woke in wake',
+        steps: [0, 1],
+        generateCalls: [],
+      });
     },
     TIMEOUT_MS,
   );
