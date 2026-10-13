@@ -9137,6 +9137,58 @@ describe('toolbox parent execution stays live until owned callbacks settle (COR-
     expect(idle).toBe(true);
   });
 
+  it('terminalizes a failFast batch parent once a sibling callback settles after rejection', async () => {
+    const gate = createGate();
+    let notifyStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const slow = createTool({
+      name: 'fail-fast-slow',
+      description: 'keeps running past the batch rejection',
+      input: z.object({}),
+      async execute() {
+        notifyStarted();
+        return gate.promise;
+      },
+    });
+    const failing = createTool({
+      name: 'fail-fast-failing',
+      description: 'throws once its sibling has started',
+      input: z.object({}),
+      async execute() {
+        await started;
+        throw new Error('sibling failed');
+      },
+    });
+    const toolbox: AnyToolbox = createToolbox([slow, failing]);
+    const pending = toolbox.execute(
+      [
+        { id: 'fail-fast-slow-call', name: 'fail-fast-slow', arguments: {} },
+        { id: 'fail-fast-failing-call', name: 'fail-fast-failing', arguments: {} },
+      ],
+      { errorMode: 'failFast' },
+    );
+    await expect(pending).rejects.toThrow('sibling failed');
+
+    const parent = toolbox.executions
+      .inspect()
+      .find((snapshot) => snapshot.parentExecutionId === undefined);
+    expect(parent).toBeDefined();
+    const handle = toolbox.executions.locate(parent!.executionId)!;
+    let idle = false;
+    void toolbox.whenIdle().then(() => {
+      idle = true;
+    });
+    await drainTicks();
+    expect(idle).toBe(false);
+
+    gate.release('done');
+    expect(await handle.whenSettled()).toMatchObject({ state: 'terminal' });
+    await toolbox.whenIdle();
+    expect(idle).toBe(true);
+  });
+
   it('terminalizes a single-call parent cancelled before its callback starts', async () => {
     let executions = 0;
     let notifyPolicy!: () => void;

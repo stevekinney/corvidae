@@ -251,7 +251,16 @@ export function createExecutor<TEntries extends ToolboxEntries>(context: Executo
         call,
       ),
     );
-    const results = await Promise.all(tasks.map((task) => runTask(task)));
+    let results: ToolExecutionResult[];
+    try {
+      results = await Promise.all(tasks.map((task) => runTask(task)));
+    } catch (error) {
+      // COR-690: a `failFast` rejection can leave a sibling callback still
+      // running. Mark the batch returned so that callback's own settlement
+      // can still finalize the parent instead of stranding it.
+      executionReturned = true;
+      throw error;
+    }
     const output = isMultiple ? results : results[0]!;
     executionOutput = output;
     executionReturned = true;
