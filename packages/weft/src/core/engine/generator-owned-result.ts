@@ -93,10 +93,10 @@ function fenceResultOnParentGeneration(
         // (the claim-generation check the other branches make), judged again, synchronously, by
         // the attempt comparison inside the abandonment.
         // The signal is read again after the ownership await: a branch can lose during it.
+        const branchLost = (): boolean => signal?.aborted === true;
         const ownsParent =
-          signal?.aborted !== true &&
-          (await parentStillOwnsGeneration(internals, parentWorkflowId));
-        if (ownsParent && signal?.aborted !== true) {
+          !branchLost() && (await parentStillOwnsGeneration(internals, parentWorkflowId));
+        if (ownsParent && !branchLost()) {
           abandonParentAfterChildCheckpointConflict(
             internals,
             parentWorkflowId,

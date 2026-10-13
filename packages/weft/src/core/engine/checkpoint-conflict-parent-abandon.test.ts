@@ -266,7 +266,7 @@ describe('the parent a lost child is judged against', () => {
         getHandle: () => ({ id: 'startup-child' }) as never,
         loadWorkflowState: () => startupRead.promise,
         start: async () => ({ id: 'startup-child' }) as never,
-      } as never,
+      },
     );
     // The engine launches the same generation again while the child is still starting up.
     beginExecutionAttempt(internals, parentHandle.id, tokenOf(internals, parentHandle.id));
@@ -285,7 +285,7 @@ describe('the parent a lost child is judged against', () => {
 
   it('does not abandon for a race branch that is aborted while the ownership check is in flight', async () => {
     const storage = new MemoryStorage();
-    const gate = createDeferred<void>();
+    const gate = createDeferred();
     let gating = false;
     const gated = new Proxy(storage, {
       get(target, property) {
