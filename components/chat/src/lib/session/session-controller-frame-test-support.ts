@@ -23,6 +23,12 @@ export type FrameHarnessOptions = {
   turns: FrameInput[][];
   executionOwner?: 'browser' | 'server';
   throwingObserver?: ThrowingObserver;
+  /** Which observer, if any, returns a rejected promise instead of throwing. */
+  rejectingObserver?: ThrowingObserver;
+  /** Make every observer scribble over the record it was handed. */
+  mutateReceived?: boolean;
+  /** Runs inside `onRunAborted`, with the controller, before it returns. */
+  onAbortedEffect?: (controller: ReturnType<typeof createChatSessionController>) => void;
   /** Deliver the stream as NDJSON bytes instead of a decoded typed iterable. */
   asBytes?: boolean;
 };
@@ -64,26 +70,37 @@ export function createFrameHarness(options: FrameHarnessOptions) {
   const requests: number[] = [];
   let snapshot: ConversationHistory | undefined;
   let turnIndex = 0;
+  let writes = 0;
+  const scribble = (record: object): void => {
+    if (options.mutateReceived) Object.assign(record, { status: 'tampered' });
+  };
   const hooks: ChatSessionHooks = {
     onToolResult: (result) => toolResults.push(result),
     onError: (error) => errors.push(error),
     onToolActivity: (activity) => {
-      toolActivity.push(activity);
+      toolActivity.push(structuredClone(activity));
+      scribble(activity);
       if (options.throwingObserver === 'onToolActivity') throw thrown;
+      if (options.rejectingObserver === 'onToolActivity') return Promise.reject(thrown);
     },
     onElicitation: (activity) => {
-      elicitations.push(activity);
+      elicitations.push(structuredClone(activity));
+      scribble(activity);
       if (options.throwingObserver === 'onElicitation') throw thrown;
+      if (options.rejectingObserver === 'onElicitation') return Promise.reject(thrown);
     },
     onRunAborted: (notice) => {
-      aborted.push(notice);
+      aborted.push(structuredClone(notice));
+      options.onAbortedEffect?.(controller);
       if (options.throwingObserver === 'onRunAborted') throw thrown;
+      if (options.rejectingObserver === 'onRunAborted') return Promise.reject(thrown);
     },
   };
   const controller = createChatSessionController({
     executionOwner: options.executionOwner ?? 'server',
     getConversation: () => conversation,
     setConversation: (next) => {
+      writes += 1;
       conversation = next;
     },
     hooks,
@@ -107,6 +124,10 @@ export function createFrameHarness(options: FrameHarnessOptions) {
     get conversation() {
       return conversation;
     },
+    get writes() {
+      return writes;
+    },
+    controller,
     get snapshot() {
       return snapshot;
     },

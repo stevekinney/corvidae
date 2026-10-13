@@ -11,6 +11,7 @@ import { remapMessageId } from './session-controller-rows.ts';
 import type { TurnState } from './session-controller-run.ts';
 import {
   ChatRunFailureError,
+  notifyObserver,
   type ChatElicitationActivity,
   type ChatSessionControllerOptions,
   type ChatToolActivity,
@@ -221,11 +222,9 @@ function applyToolActivity(dependencies: SessionEventDependencies, event: ToolAc
   const activity = toolActivityOf(event);
   // Recorded BEFORE the observer runs, so a throwing observer cannot roll it back.
   state.toolActivity.set(id, activity);
-  try {
-    options.hooks?.onToolActivity?.(activity);
-  } catch (observerError) {
-    reportError(observerError);
-  }
+  // A copy, so an observer that keeps or edits what it was handed cannot
+  // change what the reducer remembers.
+  notifyObserver(() => options.hooks?.onToolActivity?.(structuredClone(activity)), reportError);
 }
 
 /**
@@ -262,11 +261,7 @@ function applyElicitation(
     };
   }
   elicitations.set(event.requestId, activity);
-  try {
-    options.hooks?.onElicitation?.(activity);
-  } catch (observerError) {
-    reportError(observerError);
-  }
+  notifyObserver(() => options.hooks?.onElicitation?.(structuredClone(activity)), reportError);
 }
 
 function appendAssistantText(
@@ -340,11 +335,7 @@ function applyToolResult(
   update(next);
   recordProvisionalRow(state, next, (message) => message.toolResult?.callId === callId);
   state.committed = options.getConversation();
-  try {
-    options.hooks?.onToolResult?.(result);
-  } catch (observerError) {
-    reportError(observerError);
-  }
+  notifyObserver(() => options.hooks?.onToolResult?.(result), reportError);
 }
 
 /**

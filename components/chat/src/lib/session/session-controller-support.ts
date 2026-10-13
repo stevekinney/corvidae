@@ -116,6 +116,31 @@ export type ChatElicitationActivity =
 /** What a `run.aborted` terminal reported. */
 export type ChatRunAbortedNotice = { reason?: string };
 
+/**
+ * Calls an observer and routes its failure to `reportError`, whether it
+ * throws or hands back a promise that rejects.
+ *
+ * The hooks are typed `=> void`, which TypeScript still lets an `async`
+ * function satisfy; its rejection would otherwise surface after the
+ * surrounding `try` has finished, as an unhandled rejection no one reports.
+ * A failing observer never fails the run.
+ */
+export function notifyObserver(invoke: () => unknown, reportError: (error: unknown) => void): void {
+  try {
+    const result = invoke();
+    if (
+      typeof result === 'object' &&
+      result !== null &&
+      'then' in result &&
+      typeof result.then === 'function'
+    ) {
+      Promise.resolve(result).then(undefined, reportError);
+    }
+  } catch (observerError) {
+    reportError(observerError);
+  }
+}
+
 /** Optional observers and approval handlers for controller lifecycle events. */
 export type ChatSessionHooks = {
   onToolResult?: (result: ChatToolResult) => void;

@@ -153,4 +153,25 @@ describe('tool activity frames', () => {
     expect(harness.toolActivity).toHaveLength(1);
     expect(harness.errors).toEqual([harness.thrown]);
   });
+
+  test('an observer that mutates its record cannot change reducer state', async () => {
+    const harness = createFrameHarness({
+      turns: [[started, started, failed, progress, abortedFrame()]],
+      mutateReceived: true,
+    });
+    await harness.send();
+    // Were the stored record shared, the scribble would make the duplicate
+    // `started` and the post-error `progress` look like fresh activity.
+    expect(harness.toolActivity.map((activity) => activity.status)).toEqual(['started', 'error']);
+  });
+
+  test('a rejecting onToolActivity is reported once and does not fail the run', async () => {
+    const harness = createFrameHarness({
+      turns: [[started, abortedFrame()]],
+      rejectingObserver: 'onToolActivity',
+    });
+    expect(await harness.send()).toBeUndefined();
+    await Bun.sleep(0);
+    expect(harness.errors).toEqual([harness.thrown]);
+  });
 });

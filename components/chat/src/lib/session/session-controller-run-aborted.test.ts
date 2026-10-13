@@ -107,4 +107,47 @@ describe('run.aborted', () => {
     await harness.send();
     expect(harness.errors).toHaveLength(1);
   });
+
+  test('an observer that disposes the session stops the turn from writing', async () => {
+    let writesAtNotification = -1;
+    const harness = createFrameHarness({
+      turns: [[{ type: 'text', text: 'partial' }, abortedFrame()]],
+      onAbortedEffect: (controller) => {
+        writesAtNotification = harness.writes;
+        controller.dispose();
+      },
+    });
+    await harness.send();
+    expect(harness.aborted).toHaveLength(1);
+    // A disposed session has nothing left to settle: no write may land after it.
+    expect(harness.writes).toBe(writesAtNotification);
+  });
+
+  test('an observer that invalidates the session still settles its own row once', async () => {
+    let writesAtNotification = -1;
+    const harness = createFrameHarness({
+      turns: [[{ type: 'text', text: 'partial' }, abortedFrame()]],
+      onAbortedEffect: (controller) => {
+        writesAtNotification = harness.writes;
+        controller.invalidate();
+      },
+    });
+    await harness.send();
+    expect(harness.aborted).toHaveLength(1);
+    // Invalidating retires the run, so nothing is reconciled, but the row it
+    // was streaming into still settles (as for a user stop) rather than being
+    // left flagged as streaming forever.
+    expect(Object.values(harness.conversation.messages).some(isStreamingMessage)).toBe(false);
+    expect(harness.writes - writesAtNotification).toBe(1);
+  });
+
+  test('a rejecting onRunAborted is reported once and does not fail the run', async () => {
+    const harness = createFrameHarness({
+      turns: [[abortedFrame()]],
+      rejectingObserver: 'onRunAborted',
+    });
+    expect(await harness.send()).toBeUndefined();
+    await Bun.sleep(0);
+    expect(harness.errors).toEqual([harness.thrown]);
+  });
 });

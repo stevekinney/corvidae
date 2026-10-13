@@ -18,6 +18,7 @@ import {
 import { mergeRunHistory } from './session-controller-rows.ts';
 import {
   decodeTransportResult,
+  notifyObserver,
   type ChatElicitationActivity,
   type ChatExecutionOwner,
   type ChatRunAbortedNotice,
@@ -303,12 +304,12 @@ async function executeTurn({
     // closed cleanly — a frame after the terminal rejects through the catch
     // below instead, and a rejected stream is not an abort.
     if (turnState.runAborted !== undefined) {
-      try {
-        options.hooks?.onRunAborted?.(turnState.runAborted);
-      } catch (observerError) {
-        reportError(observerError);
-      }
-      finalizeTurn(options, update, turnState);
+      const notice = turnState.runAborted;
+      notifyObserver(() => options.hooks?.onRunAborted?.({ ...notice }), reportError);
+      // The observer ran arbitrary host code, which may have disposed or
+      // invalidated the session. Settle the row only as a user stop does: if
+      // the conversation on screen is still this run's.
+      if (canSettleRow()) finalizeTurn(options, update, turnState);
       return false;
     }
     if (turnState.terminalConversation !== undefined)

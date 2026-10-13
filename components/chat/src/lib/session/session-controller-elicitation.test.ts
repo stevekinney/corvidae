@@ -175,4 +175,29 @@ describe('elicitation frames', () => {
     await withAction.send();
     expect(withAction.requests).toEqual([1, 2]);
   });
+
+  test('an observer that mutates its record cannot change reducer state', async () => {
+    const harness = createFrameHarness({
+      turns: [[request(), resolution(), abortedFrame()]],
+      mutateReceived: true,
+    });
+    await harness.send();
+    // The scribble would turn `requested` into a non-requested record, and the
+    // real resolution would then be dropped as "nothing pending".
+    expect(harness.elicitations.map((activity) => activity.status)).toEqual([
+      'requested',
+      'resolved',
+    ]);
+  });
+
+  test('a rejecting onElicitation is reported once and does not fail the run', async () => {
+    const harness = createFrameHarness({
+      turns: [[request(), abortedFrame()]],
+      rejectingObserver: 'onElicitation',
+    });
+    expect(await harness.send()).toBeUndefined();
+    await Bun.sleep(0);
+    expect(harness.errors).toEqual([harness.thrown]);
+    expect(harness.elicitations).toHaveLength(1);
+  });
 });
