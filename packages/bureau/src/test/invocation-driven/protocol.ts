@@ -98,9 +98,7 @@ export async function blockIfRequested(
 ): Promise<void> {
   if (process.env[BLOCK_ACTIVITY_VARIABLE] !== name) return;
   emit('activity-started', { activity: name });
-  await pollUntil(`the driver to release ${name}`, () =>
-    existsSync(releasePath(directory, label)),
-  );
+  await pollUntil(`the driver to release ${name}`, () => existsSync(releasePath(directory, label)));
 }
 
 export interface InvocationArguments {

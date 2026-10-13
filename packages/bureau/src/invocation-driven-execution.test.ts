@@ -39,6 +39,7 @@ import {
 const FIXTURES = join(import.meta.dir, 'test', 'invocation-driven');
 const WEFT = join(FIXTURES, 'weft-invocation.ts');
 const OPERATIVE = join(FIXTURES, 'operative-invocation.ts');
+const BUREAU = join(FIXTURES, 'bureau-invocation.ts');
 
 const TIMEOUT_MS = 120_000;
 
@@ -118,7 +119,6 @@ describe('a Weft workflow driven only by fresh invocations', () => {
         ['sleep', 'running'],
       ]);
 
-
       writeClock(directory, VIRTUAL_START + WEFT_SLEEP_MS);
       const due = await invoke(WEFT, 'maintain', 'due');
       expect(due['settled']).toBe('terminal');
@@ -155,7 +155,8 @@ describe('a Weft workflow driven only by fresh invocations', () => {
       expect(completedEntries(workflowOf(b), 'finish')).toEqual([]);
 
       writeFileSync(releasePath(directory, 'a'), '');
-      expect((await expectCleanExit(a))['settled']).toBe('terminal');
+      const finishedA = await expectCleanExit(a);
+      expect(finishedA['settled']).toBe('terminal');
 
       const read = workflowOf(await invoke(WEFT, 'read', 'read'));
       expect(read.status).toBe('completed');
@@ -193,7 +194,8 @@ describe('a Weft workflow driven only by fresh invocations', () => {
       expect(completedEntries(workflowOf(fenced), 'finish')).toEqual([]);
 
       writeClock(directory, dueAt + CLAIM_TAKEOVER_ADVANCE_MS);
-      expect((await invoke(WEFT, 'maintain', 'successor'))['settled']).toBe('terminal');
+      const successor = await invoke(WEFT, 'maintain', 'successor');
+      expect(successor['settled']).toBe('terminal');
 
       const read = workflowOf(await invoke(WEFT, 'read', 'read'));
       expect(read.status).toBe('completed');
@@ -244,6 +246,84 @@ describe('an Operative durable run driven only by fresh invocations', () => {
         content: 'woke in wake',
         steps: [0, 1],
         generateCalls: [],
+      });
+    },
+    TIMEOUT_MS,
+  );
+});
+
+interface BureauState {
+  readonly parent: { readonly status: string | null; readonly content: unknown } | null;
+  readonly child: { readonly status: string; readonly content: unknown } | null;
+}
+
+function bureauStateOf(finished: InvocationEvent): BureauState {
+  return finished['beforeShutdown'] as BureauState;
+}
+
+/**
+ * Bureau's limit. A Bureau invocation can only exit on its own through
+ * `bureau.shutdown()`, and shutdown's default `'abort'` policy cancels every
+ * active run, including a parent durably parked on a timer, so the next
+ * invocation inherits a cancelled run instead of a parked one. `'drain'`
+ * leaves the run recoverable but cannot finish shutting down while it is
+ * parked. Bureau's durable engine schedules its timers on the wall clock (it
+ * takes no `getNow`), so the virtual clock for these invocations starts at the
+ * wall time; only `runDurableMaintenance(now)` reads it.
+ */
+describe('a Bureau parent with one child across fresh invocations', () => {
+  it(
+    'cannot hand a parked run to the next invocation: shutting down to exit cancels it',
+    async () => {
+      const { directory } = setUp();
+      const startedAt = Date.now();
+      writeClock(directory, startedAt);
+
+      const started = await invoke(BUREAU, 'start', 'start');
+      expect(started['shutdown']).toEqual({ policy: 'abort', unresolved: 0 });
+      expect(bureauStateOf(started)).toEqual({
+        parent: { status: 'running', content: null },
+        child: { status: 'completed', content: 'child done in start' },
+      });
+
+      expect(bureauStateOf(await invoke(BUREAU, 'read', 'read'))).toEqual({
+        parent: { status: 'cancelled', content: null },
+        child: { status: 'completed', content: 'child done in start' },
+      });
+
+      writeClock(directory, startedAt + 2 * WAKEUP_MS);
+      const woken = await invoke(BUREAU, 'maintain', 'wake');
+      expect(woken['parentGenerateSteps']).toEqual([]);
+      expect(bureauStateOf(woken).parent).toEqual({ status: 'cancelled', content: null });
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    'completes the same run when the first invocation is killed instead of shut down',
+    async () => {
+      const { directory } = setUp();
+      const startedAt = Date.now();
+      writeClock(directory, startedAt);
+      if (driver === undefined) throw new Error('setUp() was not called');
+
+      // `'drain'` leaves the parked parent recoverable but reports it unresolved;
+      // the driver then kills the invocation, as a platform would reclaim it.
+      const draining = driver.spawn(BUREAU, 'start-drain', 'start');
+      const drained = await draining.waitFor('finished');
+      expect(drained['shutdown']).toEqual({ policy: 'drain', unresolved: expect.any(Number) });
+      expect((drained['shutdown'] as { unresolved: number }).unresolved).toBeGreaterThan(0);
+      expect(bureauStateOf(drained).parent).toEqual({ status: 'running', content: null });
+      draining.kill('SIGKILL');
+      const drainingOutcome = await draining.outcome();
+      expect(drainingOutcome.signalCode).toBe('SIGKILL');
+
+      writeClock(directory, startedAt + 2 * WAKEUP_MS);
+      const woken = await invoke(BUREAU, 'maintain', 'wake');
+      expect(woken['parentGenerateSteps']).toEqual([1]);
+      expect(bureauStateOf(woken)).toEqual({
+        parent: { status: 'completed', content: 'parent woke in wake' },
+        child: { status: 'completed', content: 'child done in start' },
       });
     },
     TIMEOUT_MS,

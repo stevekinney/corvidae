@@ -122,9 +122,8 @@ async function settledReason(): Promise<string | undefined> {
   const state = await engine.get(OPERATIVE_RUN_ID);
   if (state === null) return undefined;
   if (TERMINAL.has(state.status)) return 'terminal';
-  const sleeps = (await engine.getTimeline(OPERATIVE_RUN_ID)).filter(
-    (entry) => entry.operationType === 'sleep',
-  );
+  const timeline = await engine.getTimeline(OPERATIVE_RUN_ID);
+  const sleeps = timeline.filter((entry) => entry.operationType === 'sleep');
   const scheduled = sleeps[0];
   const woke = sleeps.some((entry) => entry.status === 'completed');
   if (scheduled !== undefined && !woke && scheduled.timestamp + WAKEUP_MS > now) return 'parked';

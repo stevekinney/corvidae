@@ -89,9 +89,8 @@ async function settledReason(): Promise<string | undefined> {
   // The workflow sleeps once, and the scenarios never wake it before its
   // timer is due, so the deadline is `WEFT_SLEEP_MS` after the timeline entry
   // that first scheduled it.
-  const sleeps = (await engine.getTimeline(WEFT_WORKFLOW_ID)).filter(
-    (entry) => entry.operationType === 'sleep',
-  );
+  const timeline = await engine.getTimeline(WEFT_WORKFLOW_ID);
+  const sleeps = timeline.filter((entry) => entry.operationType === 'sleep');
   const scheduled = sleeps[0];
   const woke = sleeps.some((entry) => entry.status === 'completed');
   if (scheduled !== undefined && !woke && scheduled.timestamp + WEFT_SLEEP_MS > now) {
@@ -126,7 +125,7 @@ async function readWorkflow() {
     checkpointEventSteps: events
       .filter((event) => event.type === 'workflow:checkpoint')
       .map((event) => event.data['step']),
-    checkpointSteps: checkpoints.map((checkpoint) => checkpoint.step).sort((a, b) => a - b),
+    checkpointSteps: checkpoints.map((checkpoint) => checkpoint.step).toSorted((a, b) => a - b),
   };
 }
 

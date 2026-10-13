@@ -12,7 +12,7 @@
  */
 import type { Subprocess } from 'bun';
 
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 
 import { INVOCATION_LINE_PREFIX } from './protocol';
 
@@ -43,7 +43,7 @@ export interface RunningInvocation {
   waitFor(event: string): Promise<InvocationEvent>;
   /** Resolves once the process has exited and its output is drained. */
   outcome(): Promise<InvocationOutcome>;
-  /** Sends `signal` to this invocation's own pid only. */
+  /** Sends `signal` to this invocation's own pid only, if it is still running. */
   kill(signal: NodeJS.Signals): void;
 }
 
@@ -78,12 +78,14 @@ export class InvocationDriver {
     const events: InvocationEvent[] = [];
     const waiters: Waiter[] = [];
     let leaked = false;
-    let leakTimer: ReturnType<typeof runtime.timers.setTimeout> | undefined;
+    let leakTimerArmed = false;
+    let leakTimer: RuntimeTimeoutHandle;
     const stderr = new Response(child.stderr).text();
 
     const record = (event: InvocationEvent): void => {
       events.push(event);
-      if (event.event === 'finished' && leakTimer === undefined) {
+      if (event.event === 'finished' && !leakTimerArmed) {
+        leakTimerArmed = true;
         leakTimer = runtime.timers.setTimeout(() => {
           leaked = true;
           process.kill(child.pid, 'SIGKILL');
@@ -115,7 +117,7 @@ export class InvocationDriver {
     const finished = (async (): Promise<InvocationOutcome> => {
       await child.exited;
       await drained;
-      if (leakTimer !== undefined) runtime.timers.clearTimeout(leakTimer);
+      if (leakTimerArmed) runtime.timers.clearTimeout(leakTimer);
       this.#live.delete(child);
       const outcome: InvocationOutcome = {
         label,
@@ -148,7 +150,7 @@ export class InvocationDriver {
       },
       outcome: () => finished,
       kill: (signal) => {
-        process.kill(child.pid, signal);
+        if (child.exitCode === null && child.signalCode === null) process.kill(child.pid, signal);
       },
     };
   }
