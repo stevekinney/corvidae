@@ -60,11 +60,12 @@ describe('runMemoryCanaryCommand', () => {
 
     expect(result.exitCode).toBe(0);
     // The child holds the whole buffer resident, so its high-water mark is at
-    // least the allocation. A kibibyte-scaled reading would be ~1024 times
-    // larger than the upper bound, and a kibibyte-valued one ~1024 times smaller
-    // than the lower bound.
+    // least the allocation. These bounds are a unit check, not a memory target:
+    // a kibibyte-valued reading lands ~1024 times below the lower bound, and a
+    // kibibyte-scaled one at least twice the upper bound, which leaves the
+    // child's real footprint hundreds of times of headroom on any host.
     expect(result.peakRssBytes).toBeGreaterThanOrEqual(allocationBytes);
-    expect(result.peakRssBytes).toBeLessThan(allocationBytes * 16);
+    expect(result.peakRssBytes).toBeLessThan(allocationBytes * 512);
   });
 
   test('preserves a failing child exit code', async () => {
