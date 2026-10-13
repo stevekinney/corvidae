@@ -265,12 +265,16 @@ export type LivePreviewMountOptions = {
  *   mountable the attachment clears any stale error and renders nothing, letting
  *   the caller's template fall back to the featured example.
  */
+/** Set on a preview container once its component mounted without throwing. */
+export const PREVIEW_READY_ATTRIBUTE = 'data-example-preview-ready';
+
 export function createLivePreviewMount(
   options: LivePreviewMountOptions,
 ): (component: unknown, props: Record<string, unknown>) => (element: HTMLElement) => () => void {
   const { mountErrors } = options;
   return (component: unknown, props: Record<string, unknown>) => (element: HTMLElement) => {
     const mountKey = element.id;
+    element.removeAttribute(PREVIEW_READY_ATTRIBUTE);
     if (!isMountableComponent(component)) {
       mountErrors[mountKey] = undefined;
       return () => {};
@@ -282,11 +286,15 @@ export function createLivePreviewMount(
         props,
       });
       mountErrors[mountKey] = undefined;
+      // The same positive signal the featured-example mount sets, so a browser check can tell a
+      // mounted live preview from an empty frame or a swallowed construction error.
+      element.setAttribute(PREVIEW_READY_ATTRIBUTE, '');
     } catch (error) {
       console.error('[cinder playground] failed to mount live preview:', error);
       mountErrors[mountKey] = toMountErrorDetail(error);
     }
     return () => {
+      element.removeAttribute(PREVIEW_READY_ATTRIBUTE);
       if (app === undefined) return;
       try {
         // `unmount` returns a Promise (outro animations); the teardown is

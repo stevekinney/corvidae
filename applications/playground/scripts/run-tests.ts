@@ -153,7 +153,7 @@ export function createTestProcessPlan(testFiles: PlaygroundTestFile[]): string[]
 }
 
 /** Discover every playground test and load enough source to classify it. */
-async function discoverTestFiles(): Promise<PlaygroundTestFile[]> {
+export async function discoverTestFiles(): Promise<PlaygroundTestFile[]> {
   const testFiles: PlaygroundTestFile[] = [];
 
   for (const directory of TEST_DIRECTORIES) {

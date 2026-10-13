@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BUILD_PIPELINE_MODULE_NAMES,
   createTestProcessPlan,
+  discoverTestFiles,
   requiresFreshProcess,
   type PlaygroundTestFile,
 } from './run-tests.ts';
@@ -90,5 +91,20 @@ describe('playground test process isolation', () => {
     expect(callers.length).toBeGreaterThan(0);
     const listed: readonly string[] = BUILD_PIPELINE_MODULE_NAMES;
     expect(callers.filter((moduleName) => !listed.includes(moduleName)).toSorted()).toEqual([]);
+  });
+
+  it('runs the stand-in lifecycle cases by default but never the real-Chromium check', async () => {
+    const testFiles = await discoverTestFiles();
+    const paths = testFiles.map((testFile) => testFile.path);
+
+    expect(paths).toContain('scripts/static-playground-lifecycle.test.ts');
+    expect(paths).toContain('scripts/check-static-playground.test.ts');
+    expect(
+      await Bun.file(
+        join(import.meta.dirname, 'static-playground-browser-lifecycle.check.ts'),
+      ).exists(),
+    ).toBe(true);
+    expect(paths.filter((path) => !path.endsWith('.test.ts'))).toEqual([]);
+    expect(paths.filter((path) => path.includes('browser-lifecycle'))).toEqual([]);
   });
 });

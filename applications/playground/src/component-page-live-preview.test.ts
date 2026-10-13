@@ -46,6 +46,7 @@ import {
   createLivePreviewMount,
   LIVE_MOUNT_CONTAINER_ID,
   type MountErrorRecord,
+  PREVIEW_READY_ATTRIBUTE,
   toMountProps,
 } from './component-page-live-preview.ts';
 import type { PlaygroundControl } from './component-page-playground.ts';
@@ -474,6 +475,31 @@ describe('component-page live preview (#405)', () => {
     expect(mountErrors[LIVE_MOUNT_CONTAINER_ID]).toBeUndefined();
     expect(element.querySelector('.live-probe')).not.toBeNull();
     teardownOk();
+
+    element.remove();
+  });
+
+  test('marks the container ready only while a live mount succeeded', () => {
+    const Throwing = function ThrowingComponent() {
+      throw new Error('boom');
+    };
+    const mountErrors: MountErrorRecord = {};
+    const element = document.createElement('div');
+    element.id = LIVE_MOUNT_CONTAINER_ID;
+    document.body.append(element);
+    const factory = createLivePreviewMount({ mountErrors });
+
+    const teardownOk = factory(LiveProbe, { label: 'Save' })(element);
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(true);
+    teardownOk();
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(false);
+
+    const teardownFailed = factory(Throwing, { label: 'Save' })(element);
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(false);
+    teardownFailed();
+
+    factory(undefined, {})(element);
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(false);
 
     element.remove();
   });

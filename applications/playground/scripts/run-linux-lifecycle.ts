@@ -1,0 +1,123 @@
+/**
+ * Runs the static gate's lifecycle cases (`test:lifecycle`: the stand-in cases and the
+ * real-Chromium case) on Linux, in two containers: once under `docker run --init`, where every
+ * captured process must also have been reaped, and once without, where PID 1 is a shell.
+ *
+ *   bun applications/playground/scripts/run-linux-lifecycle.ts
+ *
+ * Each container starts from `mcr.microsoft.com/playwright:v1.63.0-noble` (matching the
+ * installed `@playwright/test`), installs Bun 1.4.2 with its official installer, receives
+ * `git archive HEAD` on stdin, runs `bun install --frozen-lockfile`, and runs the lifecycle
+ * script. Only committed source reaches the container; the host's `node_modules` is never
+ * mounted. The image digest, Bun version, and source SHA are printed for the evidence record.
+ */
+import { join } from 'node:path';
+
+export const IMAGE = 'mcr.microsoft.com/playwright:v1.63.0-noble';
+export const BUN_VERSION = '1.4.2';
+
+const PLAYGROUND_ROOT = join(import.meta.dirname, '..');
+
+export type ContainerMode = 'init' | 'no-init';
+
+/** The shell program each container runs; the source tarball arrives on stdin. */
+export function containerScript(): string {
+  return [
+    'set -euo pipefail',
+    'mkdir /work && tar -x -C /work',
+    'apt-get update -qq && apt-get install -y -qq unzip >/dev/null',
+    `curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}" >/dev/null`,
+    'export PATH="$HOME/.bun/bin:$PATH"',
+    'echo "[linux-lifecycle] bun $(bun --version) on $(uname -srm)"',
+    'cd /work',
+    'bun install --frozen-lockfile',
+    'bun run --filter=@lostgradient/playground test:lifecycle',
+  ].join('\n');
+}
+
+export function dockerArguments(mode: ContainerMode, name: string): string[] {
+  return [
+    'docker',
+    'run',
+    '--rm',
+    '-i',
+    '--name',
+    name,
+    // Chromium's shared memory needs more than Docker's default 64 MB /dev/shm.
+    '--ipc=host',
+    ...(mode === 'init' ? ['--init', '-e', 'PLAYGROUND_LIFECYCLE_REQUIRE_REAPED=1'] : []),
+    IMAGE,
+    'bash',
+    '-c',
+    containerScript(),
+  ];
+}
+
+function git(args: string[]): string {
+  const result = Bun.spawnSync(['git', ...args], { cwd: PLAYGROUND_ROOT, stdout: 'pipe' });
+  if (result.exitCode !== 0) throw new Error(`git ${args.join(' ')} failed`);
+  return result.stdout.toString().trim();
+}
+
+async function run(command: string[]): Promise<number> {
+  return Bun.spawn(command, { stdio: ['ignore', 'inherit', 'inherit'] }).exited;
+}
+
+async function runMode(mode: ContainerMode): Promise<number> {
+  const name = `static-playground-lifecycle-${mode}-${process.pid}`;
+  const archive = Bun.spawn(['git', 'archive', '--format=tar', 'HEAD'], {
+    cwd: git(['rev-parse', '--show-toplevel']),
+    stdout: 'pipe',
+  });
+  const container = Bun.spawn(dockerArguments(mode, name), {
+    stdin: archive.stdout,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  const stop = () => {
+    Bun.spawnSync(['docker', 'rm', '-f', name], { stdout: 'ignore', stderr: 'ignore' });
+  };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  try {
+    const [archiveStatus, status] = await Promise.all([archive.exited, container.exited]);
+    return archiveStatus === 0 ? status : 1;
+  } finally {
+    process.off('SIGINT', stop);
+    process.off('SIGTERM', stop);
+  }
+}
+
+async function main(): Promise<void> {
+  const sha = git(['rev-parse', 'HEAD']);
+  if (git(['status', '--porcelain']) !== '') {
+    process.stderr.write('[linux-lifecycle] the tree is dirty; only HEAD is tested\n');
+  }
+  if ((await run(['docker', 'pull', '--quiet', IMAGE])) !== 0)
+    throw new Error('docker pull failed');
+  const digest = Bun.spawnSync(
+    ['docker', 'image', 'inspect', '--format', '{{index .RepoDigests 0}}', IMAGE],
+    { stdout: 'pipe' },
+  )
+    .stdout.toString()
+    .trim();
+  process.stdout.write(`[linux-lifecycle] source ${sha}, image ${digest}, bun ${BUN_VERSION}\n`);
+  const results: [ContainerMode, number][] = [];
+  for (const mode of ['init', 'no-init'] as const) {
+    process.stdout.write(`[linux-lifecycle] running the lifecycle cases (${mode})\n`);
+    results.push([mode, await runMode(mode)]);
+  }
+  for (const [mode, status] of results) {
+    process.stdout.write(`[linux-lifecycle] ${mode}: exit ${status}\n`);
+  }
+  process.exitCode = results.every(([, status]) => status === 0) ? 0 : 1;
+}
+
+if (import.meta.main) {
+  try {
+    await main();
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  }
+}

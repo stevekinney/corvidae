@@ -22,6 +22,8 @@ artifacts/
 # but an interrupted build can leave them behind.
 applications/playground/.tmp/
 applications/playground/src/.tmp-*/
+# The playground export's report (routes, source SHA, build digest), written beside `build/`.
+build-report/
 # Electrobun projects its devkit here via `electrobun prepare`; it is a cached
 # download, not source.
 .hutch/

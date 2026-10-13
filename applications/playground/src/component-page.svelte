@@ -1095,6 +1095,7 @@
         isFocusMode && 'is-focus-mode',
       ]}
       data-component-page
+      data-page-hydrated={isHydrated ? '' : undefined}
     >
       <!-- ===== Top bar ===== -->
 
