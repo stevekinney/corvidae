@@ -534,6 +534,13 @@ describe('import probe', () => {
     ).toEqual(['leakedByImport']);
   });
 
+  test('reports a symbol-keyed global the import defines', () => {
+    expect(
+      probe("(globalThis as Record<symbol, unknown>)[Symbol.for('terminal')] = 1;\nexport {};\n")
+        .addedGlobals,
+    ).toEqual(['Symbol(terminal)']);
+  });
+
   const installedPackages = {
     'node_modules/@xterm/xterm/package.json': '{"name":"@xterm/xterm","main":"lib/xterm.js"}',
     'node_modules/@xterm/xterm/lib/xterm.js': 'globalThis.engineLoaded = true;\n',

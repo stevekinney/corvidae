@@ -111,7 +111,8 @@ plugin({
   },
 });
 
-const globalsBefore = new Set(Object.getOwnPropertyNames(globalThis));
+// Reflect.ownKeys includes symbol keys, which Object.getOwnPropertyNames omits.
+const globalsBefore = new Set(Reflect.ownKeys(globalThis));
 let error: string | undefined;
 try {
   await import(resolve(entry));
@@ -127,7 +128,9 @@ const report = {
   forbiddenModules,
   trappedCalls,
   domGlobals: domGlobalReads,
-  addedGlobals: Object.getOwnPropertyNames(globalThis).filter((name) => !globalsBefore.has(name)),
+  addedGlobals: Reflect.ownKeys(globalThis)
+    .filter((key) => !globalsBefore.has(key))
+    .map((key) => String(key)),
   ...(error === undefined ? {} : { error }),
 };
 // Exit explicitly once the report is flushed: a module that started a timer or socket on import
