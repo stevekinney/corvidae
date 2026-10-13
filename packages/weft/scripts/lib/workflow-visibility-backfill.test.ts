@@ -228,6 +228,45 @@ describe('runWorkflowVisibilityBackfill', () => {
     expect(await storage.has(KEYS.workflowVisibilityMetaBuilding())).toBe(false);
   });
 
+  it('stops writing index rows and its cursor once a drop takes its lock over mid-scan', async () => {
+    class TakeoverStorage extends MemoryStorage {
+      takenOver = false;
+      override async conditionalBatch(
+        conditions: Parameters<NonNullable<MemoryStorage['conditionalBatch']>>[0],
+        operations: Parameters<NonNullable<MemoryStorage['conditionalBatch']>>[1],
+      ): Promise<boolean> {
+        const indexesWorkflow = conditions.some((condition) => condition.key.startsWith('wf:'));
+        if (indexesWorkflow && !this.takenOver) {
+          this.takenOver = true;
+          await runWorkflowVisibilityDrop(this, { settleMilliseconds: 0 });
+        }
+        return super.conditionalBatch(conditions, operations);
+      }
+    }
+    using storage = new TakeoverStorage();
+    for (const id of ['wf-a', 'wf-b', 'wf-c']) {
+      await seedWorkflow(storage, makeWorkflowState({ id }));
+    }
+
+    expect(
+      await throwingRejectionOf(runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 })),
+    ).toThrow(WorkflowVisibilityBackfillInProgressError);
+
+    // The taken-over run wrote nothing after the drop swept.
+    expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([]);
+    expect(await storage.get(KEYS.workflowVisibilityMetaCursor())).toBeNull();
+    expect(await getWorkflowVisibilityWatermark(storage)).toBe('stale');
+
+    // So the follow-up backfill starts from the beginning and indexes every workflow.
+    const report = await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+    expect(report.watermarkWritten).toBe(true);
+    expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([
+      KEYS.workflowVisibilityStatus('running', 'wf-a'),
+      KEYS.workflowVisibilityStatus('running', 'wf-b'),
+      KEYS.workflowVisibilityStatus('running', 'wf-c'),
+    ]);
+  });
+
   it('refuses to start while another run holds the lock, touching nothing', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));

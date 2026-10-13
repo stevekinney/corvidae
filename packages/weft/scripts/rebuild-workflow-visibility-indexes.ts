@@ -96,7 +96,13 @@ async function main(): Promise<void> {
       const report = await runWorkflowVisibilityDrop(
         storage,
         args.verbose ? { logger: (message: string) => console.log(message) } : {},
-      );
+      ).catch((error: unknown) => {
+        if (error instanceof WorkflowVisibilityBackfillInProgressError) {
+          console.error('Another --drop took over the backfill lock; let it finish.');
+          exit(4);
+        }
+        throw error;
+      });
       console.log(
         `Dropped workflow visibility indexes${args.verbose ? ` (${report.rowsDeleted} rows via fallback path)` : ''}.`,
       );

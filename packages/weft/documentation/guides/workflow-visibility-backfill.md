@@ -81,7 +81,7 @@ Only resume a paused foreign write path if it now uses the engine write path or 
 | `1` | Fatal usage or runtime error | Fix the reported problem, such as a missing `--storage` value or an unexpected exception, then run the command again. |
 | `2` | Backend lacks `conditionalBatch` | Use the Bun SQLite storage file targeted by this script. The backfill refuses unsafe backends because racing writes could leave workflows un-indexed. |
 | `3` | Conditional conflicts occurred | Keep writers paused, run `--drop`, then run the backfill again from the beginning. A conflict means the script skipped at least one workflow that changed during the scan. |
-| `4` | Another backfill holds the lock | Wait for the other run to finish. A `--drop` in progress also holds the lock. If no other run is alive, a killed run left the lock behind; run `--drop`, then start the backfill again. A run whose lock a `--drop` took over also exits with `4`, without publishing a watermark. |
+| `4` | Another backfill holds the lock | Wait for the other run to finish. A `--drop` in progress also holds the lock. If no other run is alive, a killed run left the lock behind; run `--drop`, then start the backfill again. A run whose lock a `--drop` took over also exits with `4` and stops writing at its next batch, without publishing a watermark. A `--drop` that a second `--drop` took over exits with `4` the same way. |
 
 Exit code `3` is retryable, but do not retry against the saved cursor. A conflicted workflow may be below that cursor, so reset the visibility-index state first:
 

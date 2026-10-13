@@ -136,9 +136,6 @@ export class RacingStorage implements Storage {
     return this.#inner.scan(prefix, options);
   }
   async batch(operations: BatchOperation[]): Promise<void> {
-    if (publishesWatermark(operations)) {
-      await this.beforeWatermark?.();
-    }
     return this.#inner.batch(operations);
   }
   [Symbol.dispose](): void {

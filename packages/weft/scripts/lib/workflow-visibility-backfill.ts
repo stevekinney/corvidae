@@ -19,6 +19,7 @@ import {
   storageConditionalBatch,
   tryDecodeStorageKeyComponent,
   type BatchOperation,
+  type ConditionalBatchCondition,
   type Storage,
 } from '../../src/storage/interface.ts';
 
@@ -169,19 +170,23 @@ async function backfillWhileHoldingLock(
   // because engines that skipped index writes while the watermark was stale may
   // have left stale or orphaned rows; a resumed run keeps its own rows.
   const resumeCursor = await loadCursor(storage);
-  await storage.delete(KEYS.workflowVisibilityMetaVersion());
-  await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
+  await commitUnderLock(storage, lockToken, WATERMARK_REMOVAL);
   await settle(
     options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
     logger,
     'stop trusting the visibility index',
   );
   if (resumeCursor === undefined) {
-    const cleared = await sweepVisibilityIndexRows(storage, logger, 500);
+    const cleared = await sweepVisibilityIndexRows(storage, logger, 500, lockToken);
     logger(`Cleared ${cleared} pre-existing index rows before the rebuild.`);
   }
 
-  const { processed, conflicts } = await backfillWorkflowRows(storage, logger, checkpointEvery);
+  const { processed, conflicts } = await backfillWorkflowRows(
+    storage,
+    logger,
+    checkpointEvery,
+    lockToken,
+  );
 
   if (conflicts > 0) {
     logger(
@@ -191,28 +196,21 @@ async function backfillWhileHoldingLock(
   }
 
   // Advance the watermark and clear the cursor atomically, and only while this
-  // run still holds the lock, so a `--drop` that cleared it mid-run is not
+  // run still holds the lock, so a `--drop` that took it over mid-run is not
   // overwritten by a watermark for rows it has since swept.
-  const published = await storageConditionalBatch(
-    storage,
-    [{ key: KEYS.workflowVisibilityMetaBuilding(), expectedValue: lockToken }],
-    [
-      {
-        type: 'put',
-        key: KEYS.workflowVisibilityMetaVersion(),
-        value: encode(WORKFLOW_VISIBILITY_INDEX_VERSION),
-      },
-      {
-        type: 'put',
-        key: KEYS.workflowVisibilityMetaBuiltAt(),
-        value: encode(Date.now()),
-      },
-      { type: 'delete', key: KEYS.workflowVisibilityMetaCursor() },
-    ],
-  );
-  if (!published) {
-    throw new WorkflowVisibilityBackfillInProgressError();
-  }
+  await commitUnderLock(storage, lockToken, [
+    {
+      type: 'put',
+      key: KEYS.workflowVisibilityMetaVersion(),
+      value: encode(WORKFLOW_VISIBILITY_INDEX_VERSION),
+    },
+    {
+      type: 'put',
+      key: KEYS.workflowVisibilityMetaBuiltAt(),
+      value: encode(Date.now()),
+    },
+    { type: 'delete', key: KEYS.workflowVisibilityMetaCursor() },
+  ]);
   options.onWatermarkWritten?.();
 
   return { processed, conflicts: 0, watermarkWritten: true };
@@ -222,6 +220,7 @@ async function backfillWorkflowRows(
   storage: Storage,
   logger: BackfillLogger,
   checkpointEvery: number,
+  lockToken: Uint8Array,
 ): Promise<{ processed: number; conflicts: number }> {
   const startCursor = await loadCursor(storage);
   if (startCursor !== undefined) {
@@ -233,7 +232,7 @@ async function backfillWorkflowRows(
   const scanOptions = startCursor !== undefined ? { gt: startCursor } : undefined;
 
   for await (const [key, value] of storage.scan('wf:', scanOptions)) {
-    const result = await indexWorkflow(storage, key, value, conflicts === 0);
+    const result = await indexWorkflow(storage, key, value, conflicts === 0, lockToken);
     if (result === 'skipped') continue;
     if (result === 'conflict') {
       conflicts += 1;
@@ -260,6 +259,7 @@ async function indexWorkflow(
   key: string,
   value: Uint8Array,
   advanceCursor: boolean,
+  lockToken: Uint8Array,
 ): Promise<'skipped' | 'committed' | 'conflict'> {
   if (!isTopLevelWorkflowKey(key)) return 'skipped';
   const workflowId = tryDecodeStorageKeyComponent(key.slice(3));
@@ -277,46 +277,83 @@ async function indexWorkflow(
       value: encode(key),
     });
   }
-  const committed = await storageConditionalBatch(
-    storage,
-    [{ key, expectedValue: value }],
-    operations,
-  );
-  return committed ? 'committed' : 'conflict';
+  return commitUnderLock(storage, lockToken, operations, [{ key, expectedValue: value }]);
 }
 
 /**
  * Delete every visibility-index row (not the meta keys) and return how many
- * were removed.
+ * were removed. Each batch of deletes commits only while `lockToken` still
+ * holds the lock, so a run that was taken over stops deleting; a single
+ * `deletePrefix` cannot be fenced that way, so it is used only on a backend
+ * without `conditionalBatch`, where nothing can be fenced.
  */
 async function sweepVisibilityIndexRows(
   storage: Storage,
   logger: BackfillLogger,
-  fallbackBatchSize: number,
+  batchSize: number,
+  lockToken: Uint8Array,
 ): Promise<number> {
   let rowsDeleted = 0;
   for (const prefix of VISIBILITY_INDEX_PREFIXES) {
-    if (storage.deletePrefix !== undefined) {
+    if (!storage.capabilities().conditionalBatch && storage.deletePrefix !== undefined) {
       const removed = await storage.deletePrefix(prefix);
       rowsDeleted += removed;
       logger(`Dropped prefix ${prefix} (${removed} rows)`);
       continue;
     }
-    const toDelete: BatchOperation[] = [];
-    for await (const [key] of storage.scan(prefix)) {
-      toDelete.push({ type: 'delete', key });
-      if (toDelete.length >= fallbackBatchSize) {
-        await storage.batch(toDelete);
-        rowsDeleted += toDelete.length;
-        toDelete.length = 0;
-      }
-    }
-    if (toDelete.length > 0) {
-      await storage.batch(toDelete);
-      rowsDeleted += toDelete.length;
+    const keys: string[] = [];
+    for await (const [key] of storage.scan(prefix)) keys.push(key);
+    for (let offset = 0; offset < keys.length; offset += batchSize) {
+      const batch = keys.slice(offset, offset + batchSize);
+      await commitUnderLock(
+        storage,
+        lockToken,
+        batch.map((key) => ({ type: 'delete' as const, key })),
+      );
+      rowsDeleted += batch.length;
     }
   }
   return rowsDeleted;
+}
+
+const WATERMARK_REMOVAL: BatchOperation[] = [
+  { type: 'delete', key: KEYS.workflowVisibilityMetaVersion() },
+  { type: 'delete', key: KEYS.workflowVisibilityMetaBuiltAt() },
+];
+
+/**
+ * Commit `operations` only while `lockToken` still holds the backfill lock, plus any extra
+ * `conditions`. Every write a backfill or drop makes goes through here, so a run whose lock was
+ * taken over stops writing at its next batch instead of resurrecting rows or a cursor the run
+ * that took over has cleared. Throws {@link WorkflowVisibilityBackfillInProgressError} when the
+ * lock is no longer this run's, and returns `'conflict'` when only an extra condition failed. On
+ * a backend without `conditionalBatch`, which only `--drop` accepts, the batch is unfenced.
+ */
+async function commitUnderLock(
+  storage: Storage,
+  lockToken: Uint8Array,
+  operations: BatchOperation[],
+  conditions: ConditionalBatchCondition[] = [],
+): Promise<'committed' | 'conflict'> {
+  if (!storage.capabilities().conditionalBatch) {
+    await storage.batch(operations);
+    return 'committed';
+  }
+  const committed = await storageConditionalBatch(
+    storage,
+    [...conditions, { key: KEYS.workflowVisibilityMetaBuilding(), expectedValue: lockToken }],
+    operations,
+  );
+  if (committed) return 'committed';
+  if (!(await holdsBackfillLock(storage, lockToken))) {
+    throw new WorkflowVisibilityBackfillInProgressError();
+  }
+  return 'conflict';
+}
+
+async function holdsBackfillLock(storage: Storage, lockToken: Uint8Array): Promise<boolean> {
+  const held = await storage.get(KEYS.workflowVisibilityMetaBuilding());
+  return held !== null && Buffer.from(held).equals(Buffer.from(lockToken));
 }
 
 /**
@@ -351,16 +388,22 @@ export async function runWorkflowVisibilityDrop(
   const dropToken = encode(crypto.randomUUID());
   await storage.put(KEYS.workflowVisibilityMetaBuilding(), dropToken);
   try {
-    await storage.delete(KEYS.workflowVisibilityMetaVersion());
-    await storage.delete(KEYS.workflowVisibilityMetaBuiltAt());
+    await commitUnderLock(storage, dropToken, WATERMARK_REMOVAL);
     await settle(
       options.settleMilliseconds ?? WORKFLOW_VISIBILITY_BACKFILL_SETTLE_MILLISECONDS,
       logger,
       'stop trusting the visibility index',
     );
 
-    const rowsDeleted = await sweepVisibilityIndexRows(storage, logger, fallbackBatchSize);
-    await storage.delete(KEYS.workflowVisibilityMetaCursor());
+    const rowsDeleted = await sweepVisibilityIndexRows(
+      storage,
+      logger,
+      fallbackBatchSize,
+      dropToken,
+    );
+    await commitUnderLock(storage, dropToken, [
+      { type: 'delete', key: KEYS.workflowVisibilityMetaCursor() },
+    ]);
     return { rowsDeleted };
   } finally {
     await releaseBackfillLock(storage, dropToken);
@@ -377,8 +420,7 @@ async function releaseBackfillLock(storage: Storage, token: Uint8Array): Promise
     );
     return;
   }
-  const held = await storage.get(KEYS.workflowVisibilityMetaBuilding());
-  if (held !== null && Buffer.from(held).equals(Buffer.from(token))) {
+  if (await holdsBackfillLock(storage, token)) {
     await storage.delete(KEYS.workflowVisibilityMetaBuilding());
   }
 }
