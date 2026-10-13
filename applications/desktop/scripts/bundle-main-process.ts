@@ -26,6 +26,27 @@ export const mainProcessEntrypoint = 'src/bun/index.ts';
 export const mainProcessExternals = ['bun', 'bun:ffi', 'electrobun', 'electrobun/*'] as const;
 
 /**
+ * Runs Bun's bundler over the main-process graph and returns its in-memory
+ * result, throwing on any build failure.
+ */
+export async function buildMainProcess(
+  entrypoint: string = path.join(projectRoot, mainProcessEntrypoint),
+): Promise<Bun.BuildOutput> {
+  const result = await Bun.build({
+    entrypoints: [entrypoint],
+    target: 'node',
+    format: 'esm',
+    external: [...mainProcessExternals],
+  });
+
+  if (!result.success) {
+    const messages = result.logs.map((log) => log.message).join('\n');
+    throw new Error(`Bundling ${entrypoint} failed.\n${messages}`);
+  }
+  return result;
+}
+
+/**
  * Bundles the Bun main process with Bun's own bundler.
  *
  * Electrobun 2 bundles `bun.entrypoint` with Cottontail's `Bun.build`, and on
@@ -41,17 +62,7 @@ export async function bundleMainProcess({
   entrypoint = path.join(projectRoot, mainProcessEntrypoint),
   outputPath = path.join(projectRoot, mainProcessBundlePath),
 }: { entrypoint?: string; outputPath?: string } = {}): Promise<string> {
-  const result = await Bun.build({
-    entrypoints: [entrypoint],
-    target: 'node',
-    format: 'esm',
-    external: [...mainProcessExternals],
-  });
-
-  if (!result.success) {
-    const messages = result.logs.map((log) => log.message).join('\n');
-    throw new Error(`Bundling ${entrypoint} failed.\n${messages}`);
-  }
+  const result = await buildMainProcess(entrypoint);
 
   // With no `outdir`, Bun returns the outputs in memory instead of writing them.
   // Asset imports reachable from the graph (stylesheets, Svelte sources) come

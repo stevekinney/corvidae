@@ -14,7 +14,7 @@
  * pre-Operative shape underneath it, so a client that renders only those
  * (today's `session-controller.ts`) is unaffected by the wider vocabulary.
  */
-import { encodeChatStreamEvent, type ChatStreamEvent } from '@lostgradient/chat';
+import { encodeChatStreamEvent, type ChatStreamEvent } from '@lostgradient/chat/stream-events';
 import {
   AgentRunError,
   classifyError,

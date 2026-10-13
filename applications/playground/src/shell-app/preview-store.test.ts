@@ -291,6 +291,16 @@ describe('applyThemeToDocument', () => {
     }
   });
 
+  it('pins data-theme, which Cinder tokens switch on, to an override and clears it without one', () => {
+    for (const override of ['light', 'dark'] as const) {
+      const doc = makeFakeDocument();
+      applyThemeToDocument(doc, override, 'light');
+      expect(doc.documentElement.dataset['theme']).toBe(override);
+      applyThemeToDocument(doc, null, 'light');
+      expect(doc.documentElement.dataset['theme']).toBeUndefined();
+    }
+  });
+
   it('writes data-cinder-theme to the resolved browser theme when there is no override', () => {
     for (const resolved of ['light', 'dark'] as const) {
       const doc = makeFakeDocument();

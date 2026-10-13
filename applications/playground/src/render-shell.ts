@@ -93,12 +93,15 @@ export const PRE_PAINT_THEME_SCRIPT = `
         } catch (e) { /* ignore — localStorage unavailable in private mode etc. */ }
         if (override) {
           // Explicit override wins over the OS setting.
+          // data-theme is the switch Cinder's built tokens honor; color-scheme alone is not.
           document.documentElement.style.colorScheme = override;
+          document.documentElement.dataset.theme = override;
           document.documentElement.dataset.cinderTheme = override;
         } else {
           // No override: follow the browser. Leave color-scheme to the base
           // 'color-scheme: light dark' declaration and seed data-cinder-theme
           // with the resolved prefers-color-scheme so CSS reads the live theme.
+          delete document.documentElement.dataset.theme;
           var prefersDark =
             typeof window.matchMedia === 'function' &&
             window.matchMedia('(prefers-color-scheme: dark)').matches;

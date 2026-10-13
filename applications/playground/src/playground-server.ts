@@ -47,6 +47,7 @@ import {
   ComponentDocumentationError,
   buildComponentDocumentation,
 } from './component-documentation.ts';
+import { selectOverviewExample } from './component-page-overview-stage.ts';
 import {
   documentationComponentStylesheetUrl,
   documentationExampleStylesheetUrls,
@@ -437,7 +438,7 @@ async function renderComponentPage(
    */
   const sidebarComponents = snapshotMode || previewOnly ? [] : await discoverSidebarComponents();
   const sidebarJson = jsonForScriptTag(sidebarComponents);
-  const overviewExample = examples.find((example) => example.featured === true) ?? examples[0];
+  const overviewExample = selectOverviewExample(examples, false);
 
   let ssrBody = '';
   let ssrHead = '';

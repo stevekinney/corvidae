@@ -47,6 +47,7 @@ afterEach(() => {
   });
   document.documentElement.style.colorScheme = '';
   delete document.documentElement.dataset['cinderTheme'];
+  delete document.documentElement.dataset['theme'];
 });
 
 describe('readInitialTheme', () => {
@@ -160,6 +161,49 @@ describe('applyTheme', () => {
         writable: true,
       });
     }
+  });
+});
+
+/**
+ * Cinder's built token CSS does not switch on `color-scheme`: Bun lowers `light-dark()` to
+ * `--buncss-light`/`--buncss-dark` toggles keyed on `prefers-color-scheme` and `:root[data-theme]`.
+ * A theme chosen against the operating system therefore has to set `data-theme`, or the
+ * playground's own chrome follows the toggle while every Cinder token follows the system.
+ */
+describe('the data-theme attribute Cinder tokens switch on', () => {
+  afterEach(() => {
+    localStorage.removeItem(THEME_STORAGE_KEY);
+  });
+
+  it('applyTheme pins data-theme to the chosen theme', () => {
+    applyTheme('light');
+    expect(document.documentElement.dataset['theme']).toBe('light');
+    applyTheme('dark');
+    expect(document.documentElement.dataset['theme']).toBe('dark');
+  });
+
+  it('the pre-paint script pins data-theme to a stored choice', () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'light');
+    runInNewContext(PRE_PAINT_THEME_SCRIPT, { window, document, localStorage, URLSearchParams });
+    expect(document.documentElement.dataset['theme']).toBe('light');
+  });
+
+  it('the pre-paint script pins data-theme to a linked choice over a stored one', () => {
+    const happyWindow = window as unknown as { happyDOM: { setURL(url: string): void } };
+    happyWindow.happyDOM.setURL('http://localhost/page/button?theme=dark');
+    localStorage.setItem(THEME_STORAGE_KEY, 'light');
+    try {
+      runInNewContext(PRE_PAINT_THEME_SCRIPT, { window, document, localStorage, URLSearchParams });
+      expect(document.documentElement.dataset['theme']).toBe('dark');
+    } finally {
+      happyWindow.happyDOM.setURL('http://localhost/');
+    }
+  });
+
+  it('the pre-paint script leaves data-theme unset with no choice, so the system governs', () => {
+    document.documentElement.dataset['theme'] = 'dark';
+    runInNewContext(PRE_PAINT_THEME_SCRIPT, { window, document, localStorage, URLSearchParams });
+    expect(document.documentElement.dataset['theme']).toBeUndefined();
   });
 });
 

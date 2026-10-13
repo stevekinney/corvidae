@@ -75,11 +75,16 @@ export function writePersistedTheme(value: ThemeChoice): void {
 /**
  * Apply the playground's theme to a document's root element.
  *
- * - With an explicit `override` (light/dark), pin both `color-scheme` and
- *   `data-cinder-theme` to that value so the choice wins over the OS setting.
+ * - With an explicit `override` (light/dark), pin `color-scheme`, `data-theme`
+ *   and `data-cinder-theme` to that value so the choice wins over the OS
+ *   setting. `data-theme` is the switch Cinder's tokens honor: Bun lowers their
+ *   `light-dark()` to toggles keyed on `prefers-color-scheme` and
+ *   `:root[data-theme]`, so `color-scheme` alone leaves every token on the OS
+ *   theme.
  * - With no override (`null`), clear the inline `color-scheme` so the base CSS
  *   declaration (`color-scheme: light dark`) and the OS `prefers-color-scheme`
- *   drive the rendering. `data-cinder-theme` is set to `resolved` — the live
+ *   drive the rendering, and `data-theme` is removed so the tokens' own
+ *   `prefers-color-scheme` rule governs. `data-cinder-theme` is set to `resolved` — the live
  *   browser preference — so the authoritative CSS signal still reflects the
  *   theme actually in effect rather than being left stale.
  */
@@ -89,6 +94,8 @@ export function applyThemeToDocument(
   resolved: ThemeChoice,
 ): void {
   doc.documentElement.style.colorScheme = override ?? '';
+  if (override === null) delete doc.documentElement.dataset['theme'];
+  else doc.documentElement.dataset['theme'] = override;
   doc.documentElement.dataset['cinderTheme'] = override ?? resolved;
 }
 
