@@ -149,6 +149,10 @@ async function runConformanceChecks(
       // one run. Saying so explicitly keeps every run from logging the
       // no-authentication warning into the host server's output.
       unauthenticatedAccess: 'allow',
+      // Nothing in a run requests a discovery route or `/mcp`, so the sandbox
+      // trusts no Host at all. An explicit empty allowlist is the strictest
+      // setting and keeps every run from logging the MCP origin warning.
+      trustedHosts: [],
       workerReconnectGracePeriodMs: 100,
       workerShutdownTimeoutMs: timeoutMs,
     });

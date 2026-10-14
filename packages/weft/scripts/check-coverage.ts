@@ -1088,7 +1088,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'The shared conformance check sequence (COR-1365 moved it here from `src/cli/conformance.ts`, which carried this allowance at lines 91/158/239). Only the three defensive dispatch/cancel/shutdown failure throws remain uncovered: a sandbox server that refuses a dispatch, refuses to record a cancellation it was just handed, or loses the worker it just registered is not something any conformance fixture can produce.',
-        lines: new Set([129, 210, 291]),
+        lines: new Set([129, 214, 295]),
         requireUncoveredLines: true,
       },
     ],

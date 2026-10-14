@@ -11,7 +11,7 @@
  * field the CLI prints.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { executeConformance } from '../../cli/conformance.ts';
 import { createWeftClient } from '../../client/generated/operation-client.generated.ts';
@@ -196,6 +196,24 @@ describe('weft.conformance.report — check results', () => {
   });
 });
 
+describe('weft.conformance.report — host server output', () => {
+  // Regression: every run's sandbox server logged the MCP origin warning into
+  // the host server's console, once per report request.
+  it('runs its sandbox server without logging a startup warning', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = await runReport(
+        'broken',
+        runnerFor({ broken: { command: brokenWorker, timeoutMs: 500 } }),
+      );
+      expect(result.ok).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('weft.conformance.report — target selection and access', () => {
   it('answers NotFound over REST for a target the server did not register', async () => {
     const engine = createOperationTestEngine();
@@ -302,6 +320,7 @@ describe('weft.conformance.* — served through serve() and the generated client
         port: 0,
         hostname: '127.0.0.1',
         auth: adminAuth(),
+        trustedHosts: [],
         conformanceTargets: {
           reference: { command: conformingWorker, timeoutMs: PASSING_RUN_TIMEOUT_MS },
         },
@@ -329,7 +348,13 @@ describe('weft.conformance.* — served through serve() and the generated client
 
   it('registers no targets when conformanceTargets is omitted', async () => {
     const engine = new Engine({ storage: new MemoryStorage() });
-    const server = serve({ engine, port: 0, hostname: '127.0.0.1', auth: adminAuth() });
+    const server = serve({
+      engine,
+      port: 0,
+      hostname: '127.0.0.1',
+      auth: adminAuth(),
+      trustedHosts: [],
+    });
     try {
       const client = createWeftClient({
         server: server.url,
@@ -350,7 +375,13 @@ describe('weft.conformance.* — served through serve() and the generated client
     const engine = new Engine({ storage: new MemoryStorage() });
     try {
       expect(() =>
-        serve({ engine, port: 0, conformanceTargets: { reference: { command: [] } } }),
+        serve({
+          engine,
+          port: 0,
+          unauthenticatedAccess: 'allow',
+          trustedHosts: [],
+          conformanceTargets: { reference: { command: [] } },
+        }),
       ).toThrow('conformanceTargets.reference.command');
     } finally {
       engine[Symbol.dispose]();
