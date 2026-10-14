@@ -47,7 +47,7 @@
     </div>
   {/each}
 
-  <ThemeTypographySpecimen {controller} {workbench} />
+  <ThemeTypographySpecimen {controller} />
 
   <div class="resets" role="group" aria-label="Reset a foundation family">
     {#each FAMILIES as family (family.label)}

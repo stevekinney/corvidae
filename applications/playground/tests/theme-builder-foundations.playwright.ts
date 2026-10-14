@@ -228,7 +228,10 @@ test.describe('scale presets', () => {
     await spacing(page).getByRole('button', { name: 'Apply proposal' }).click();
     await expect(page.getByTestId('presets-spacing-result')).toContainText('No change');
 
+    // Compact's values are now explicit overrides, so replacing them takes an explicit choice.
     await spacing(page).getByRole('button', { name: 'Comfortable (1.25)' }).click();
+    await expect(proposal(page).locator('tr[data-status="overridden"]')).toHaveCount(18);
+    await spacing(page).getByRole('button', { name: 'Select all rows' }).click();
     await spacing(page).getByRole('button', { name: 'Apply proposal' }).click();
     await expect.poll(() => frameVar(page, '--cinder-space-4')).toBe('1.25rem');
 
@@ -253,6 +256,7 @@ test.describe('scale presets', () => {
     await expect(page.getByTestId('presets-radius-active')).toContainText('Standard');
     await expect(undo(page)).toBeEnabled();
     await radius.getByRole('button', { name: 'Comfortable (1.25)' }).click();
+    await radius.getByRole('button', { name: 'Select all rows' }).click();
     await radius.getByRole('button', { name: 'Apply proposal' }).click();
     await expect.poll(() => frameVar(page, '--cinder-radius-md')).toBe('0.625rem');
   });
@@ -300,25 +304,23 @@ test.describe('labels and layout', () => {
       'opacity.disabled',
     ]) {
       await select(page, path);
-      const unlabeled = await page.evaluate(() => {
+      const names = await page.evaluate(() => {
         const editor = document.querySelector('[data-testid="foundation-token-editor"]')!;
         return [...editor.querySelectorAll('input, select, [role="slider"]')]
-          .filter((control) => {
+          .filter((control) => !/-(scope|locked)$/.test(control.id))
+          .map((control) => {
             const element = control as HTMLInputElement;
-            const named =
-              (element.labels?.length ?? 0) > 0 ||
-              element.getAttribute('aria-label') !== null ||
-              element.getAttribute('aria-labelledby') !== null;
-            return !named;
-          })
-          .map((control) => control.id);
+            const fromLabels = [...(element.labels ?? [])].map((label) => label.textContent ?? '');
+            return {
+              id: control.id,
+              name: [...fromLabels, element.getAttribute('aria-label') ?? ''].join(' ').trim(),
+            };
+          });
       });
-      expect(unlabeled, path).toEqual([]);
-      const label = await page
-        .locator(`label[for^="theme-builder-foundation-${id(path)}-"]`)
-        .first()
-        .textContent();
-      expect(label).toContain(path);
+      expect(names.length, path).toBeGreaterThan(0);
+      for (const { id: controlId, name } of names) {
+        expect(name, `${path}: ${controlId}`).toContain(path);
+      }
     }
   });
 

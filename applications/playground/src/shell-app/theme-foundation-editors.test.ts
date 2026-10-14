@@ -7,6 +7,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { catalogueRowByPath, catalogueRows } from './theme-builder-catalogue.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+import type { JsonObject } from './theme-draft-types.ts';
 import { createEnvelope } from './theme-envelope.ts';
 import {
   ENVIRONMENT_DEPENDENT_NOTICE,
@@ -355,7 +356,7 @@ describe('the mounted editors', () => {
     const { controller } = await open('font.mono');
     const names = () =>
       [...target.querySelectorAll<HTMLInputElement>('input[id*="-family-"]')].map((i) => i.value);
-    const first = names();
+    const first = names() as [string, string];
     target.querySelector<HTMLButtonElement>(`button[aria-label="Move ${first[0]} down"]`)!.click();
     await settle();
     expect(names().slice(0, 2)).toEqual([first[1], first[0]]);
@@ -439,7 +440,7 @@ describe('the mounted editors', () => {
       ['ease.standard', { $type: 'cubicBezier', $value: [0.1, 0.1, 0.1, 0.1] }],
       ['space.2', { $type: 'dimension', $value: { value: 1, unit: 'rem' } }],
       ['font.mono', { $type: 'fontFamily', $value: ['monospace'] }],
-    ] as const) {
+    ] as Array<[string, JsonObject]>) {
       await controller.commit({
         kind: 'edit',
         label: path,

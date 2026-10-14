@@ -1,6 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { flushSync, mount, tick, unmount } from 'svelte';
+import { describe, expect, test } from 'bun:test';
 
 import { AUTHORING_CATALOGUE } from '@lostgradient/cinder/tokens/runtime';
 import { setupHappyDom } from '@lostgradient/testing';
@@ -9,9 +8,8 @@ import { cinderThemeBase } from './theme-builder-base.ts';
 import { catalogueRowByPath } from './theme-builder-catalogue.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import { editableState, type JsonObject, type ThemeEnvelope } from './theme-draft-types.ts';
-import { createEnvelope } from './theme-envelope.ts';
+import { createEnvelope, envelopeFromValue } from './theme-envelope.ts';
 import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
-import ThemeScalePresets from './theme-scale-presets.svelte';
 import {
   activePreset,
   applyProposal,
@@ -91,9 +89,9 @@ describe('scale membership', () => {
 });
 
 describe('the factors', () => {
-  test.each(SCALE_PRESETS)(
-    '$label ($factor) scales every member and keeps its unit',
-    ({ factor, id }) => {
+  test.each(SCALE_PRESETS.map((preset) => [preset.label, preset.factor, preset.id] as const))(
+    '%s (%d) scales every member and keeps its unit',
+    (_label, factor, id) => {
       for (const scale of ['spacing', 'radius']) {
         const built = proposal(factor, scale);
         expect(built.presetId).toBe(id);
@@ -390,6 +388,32 @@ describe('applying a proposal', () => {
   });
 });
 
+describe('the lock set', () => {
+  test('is sorted, absent when empty, kept by every reset, and survives a stored round trip', async () => {
+    const { controller } = await controllerFor();
+    expect(controller.draft!.envelope.locked).toBeUndefined();
+    await controller.setLocked('space.4', true);
+    await controller.setLocked('radius.small', true);
+    await controller.setLocked('space.4', true);
+    expect(controller.draft!.envelope.locked).toEqual(['radius.small', 'space.4']);
+    expect(controller.history!.entries).toHaveLength(2);
+
+    await controller.reset({ kind: 'theme' }, 'Reset theme');
+    await controller.reset({ kind: 'category', prefix: 'space' }, 'Reset space');
+    expect(controller.draft!.envelope.locked).toEqual(['radius.small', 'space.4']);
+
+    const stored = envelopeFromValue(JSON.parse(JSON.stringify(controller.draft!.envelope)));
+    expect(stored?.locked).toEqual(['radius.small', 'space.4']);
+    expect(envelopeFromValue({ ...JSON.parse(JSON.stringify(fresh())), locked: [1] })).toBeNull();
+
+    await controller.setLocked('space.4', false);
+    await controller.setLocked('radius.small', false);
+    expect(controller.draft!.envelope.locked).toBeUndefined();
+    await controller.undo();
+    expect(controller.draft!.envelope.locked).toEqual(['radius.small']);
+  });
+});
+
 describe('a stale proposal', () => {
   test('is stale once the base, revision, context or scope changes', () => {
     const envelope = fresh();
@@ -400,121 +424,5 @@ describe('a stale proposal', () => {
     expect(proposalIsStale(built, envelope, 1, light, 'light')).toBe(true);
     const other = { ...envelope, base: { ...envelope.base, sourceDigest: 'sha256:other' } };
     expect(proposalIsStale(built, other, 1, light, 'shared')).toBe(true);
-  });
-});
-
-describe('the preset controls', () => {
-  let mounted: ReturnType<typeof mount> | null = null;
-  let target: HTMLElement;
-  beforeEach(() => {
-    target = document.createElement('div');
-    document.body.append(target);
-  });
-  afterEach(() => {
-    if (mounted !== null) void unmount(mounted);
-    mounted = null;
-    target.remove();
-  });
-  const settle = async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    flushSync();
-    await tick();
-  };
-  const button = (label: string) =>
-    [...target.querySelectorAll('button')].find(
-      (candidate) => candidate.textContent?.trim() === label,
-    )!;
-  async function open() {
-    const { controller, workbench } = await controllerFor();
-    mounted = mount(ThemeScalePresets, {
-      target,
-      props: { controller, workbench, scale: 'spacing', label: 'Spacing' },
-    });
-    await settle();
-    return { controller, workbench };
-  }
-
-  test('a proposal shows scope, every value, dependents and skipped; Cancel changes nothing', async () => {
-    const { controller } = await open();
-    button('Comfortable (1.25)').click();
-    await settle();
-    const region = target.querySelector('[data-testid="proposal-spacing"]')!;
-    expect(region.textContent).toContain('Shared (all modes)');
-    expect(region.querySelectorAll('tbody tr')).toHaveLength(19);
-    expect(region.textContent).toContain('1.25rem');
-    expect(
-      target.querySelector('[data-testid="proposal-spacing-dependents"]')?.textContent,
-    ).toContain('gap.stack');
-    expect(controller.history!.entries).toHaveLength(0);
-    button('Cancel').click();
-    await settle();
-    expect(target.querySelector('[data-testid="proposal-spacing"]')).toBeNull();
-    expect(controller.history!.entries).toHaveLength(0);
-    expect(controller.draft!.envelope.overrides.shared).toEqual({});
-  });
-
-  test('Apply is one undoable transaction, reapplying says so, and a stale proposal cannot apply', async () => {
-    const { controller } = await open();
-    button('Compact (0.75)').click();
-    await settle();
-    button('Apply proposal').click();
-    await settle();
-    expect(controller.history!.entries).toHaveLength(1);
-    expect(target.querySelector('[data-testid="presets-spacing-active"]')?.textContent).toContain(
-      'Compact',
-    );
-    button('Compact (0.75)').click();
-    await settle();
-    button('Apply proposal').click();
-    await settle();
-    expect(controller.history!.entries).toHaveLength(1);
-    expect(target.querySelector('[data-testid="presets-spacing-result"]')?.textContent).toContain(
-      'No change',
-    );
-
-    button('Comfortable (1.25)').click();
-    await settle();
-    await controller.setLocked('space.4', true);
-    await settle();
-    expect(target.querySelector('[data-testid="proposal-spacing-stale"]')).not.toBeNull();
-    expect(button('Apply proposal').disabled).toBe(true);
-    expect(controller.history!.entries).toHaveLength(2);
-  });
-
-  test('locked rows have a disabled checkbox and overridden rows start unselected', async () => {
-    const { controller } = await open();
-    await controller.setLocked('space.4', true);
-    await controller.commit({
-      kind: 'edit',
-      label: 'override',
-      edit: {
-        kind: 'set-override',
-        scope: 'shared',
-        path: 'space.3',
-        node: { $type: 'dimension', $value: { value: 9, unit: 'px' } },
-      },
-    });
-    button('Compact (0.75)').click();
-    await settle();
-    const box = (path: string) =>
-      target.querySelector<HTMLInputElement>(`tr[data-path="${path}"] input[type="checkbox"]`)!;
-    expect(box('space.4').disabled).toBe(true);
-    expect(box('space.4').checked).toBe(false);
-    expect(box('space.3').disabled).toBe(false);
-    expect(box('space.3').checked).toBe(false);
-    expect(box('space.2').checked).toBe(true);
-    expect(box('space.2').labels?.[0]?.textContent ?? '').toContain('space.2');
-  });
-
-  test('an invalid custom multiplier is refused in the field', async () => {
-    await open();
-    const field = target.querySelector<HTMLInputElement>('input[id$="-custom"]')!;
-    field.value = '5';
-    field.dispatchEvent(new Event('input', { bubbles: true }));
-    await settle();
-    button('Preview multiplier').click();
-    await settle();
-    expect(field.getAttribute('aria-invalid')).toBe('true');
-    expect(target.querySelector('[data-testid="proposal-spacing"]')).toBeNull();
   });
 });

@@ -16,7 +16,6 @@ import { catalogueRowByPath, catalogueRows } from './theme-builder-catalogue.ts'
 import {
   contextId,
   editableState,
-  emptyOverrides,
   type EditableState,
   type JsonObject,
   type JsonValue,
@@ -26,8 +25,7 @@ import {
 } from './theme-draft-types.ts';
 import { getNode, jsonEquals, setNode } from './theme-override-tree.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
-import { buildThemeSources } from './theme-runtime-evaluator.ts';
-import { isAliasValue, literalValueOf, overrideValue, sourcePathOf } from './theme-token-edit.ts';
+import { isAliasValue, overrideValue, sourcePathOf } from './theme-token-edit.ts';
 
 export type ScalePresetId = 'compact' | 'standard' | 'comfortable';
 
@@ -120,16 +118,57 @@ const dimensionValue = (dimension: Dimension): JsonObject => ({
   unit: dimension.unit,
 });
 
-/** The envelope with every override removed: what the embedded base alone says. */
-const baselineOf = (envelope: ThemeEnvelope): ThemeEnvelope => {
-  const { locked: _locked, ...rest } = envelope;
-  return { ...rest, overrides: emptyOverrides(), cssOverrides: {} };
+type BaseResolver = {
+  sets: Record<string, { sources: Array<{ $ref: string }> }>;
+  modifiers: Record<string, { contexts: Record<string, Array<{ $ref: string }>> }>;
+  resolutionOrder: Array<{ $ref: string }>;
 };
 
+const layerCache = new WeakMap<object, Map<string, JsonObject[]>>();
+
 /**
- * A member's literal in the base for a scope. The shared scope reads the base set sources
- * alone; a color-mode or motion scope reads the base layers of the active context, in the
- * resolver's own precedence.
+ * The base documents a scope sees, lowest precedence first: the set sources alone for the
+ * shared scope, plus the active color mode's layer for a color-mode scope, plus the active
+ * motion layer for a motion scope. Overrides are never included. Cached per embedded base.
+ */
+function baseLayers(
+  envelope: ThemeEnvelope,
+  scope: OverrideScope,
+  context: ThemePreviewContext,
+): JsonObject[] {
+  const key = `${scope}|${context.colorMode}|${context.motion}`;
+  const remembered = layerCache.get(envelope.base)?.get(key);
+  if (remembered !== undefined) return remembered;
+  const resolver = envelope.base.resolver as unknown as BaseResolver;
+  const documents = envelope.base.documents as Record<string, JsonObject>;
+  const wanted: Record<string, string | null> = {
+    theme: scope === 'shared' ? null : context.colorMode,
+    motion: scope === 'reduced' || scope === 'forcedReduced' ? context.motion : null,
+  };
+  const layers: JsonObject[] = [];
+  for (const { $ref } of resolver.resolutionOrder) {
+    const [, kind, name] = $ref.split('/');
+    if (name === undefined) continue;
+    let sources: Array<{ $ref: string }> | undefined;
+    if (kind === 'sets') sources = resolver.sets[name]?.sources;
+    else if (kind === 'modifiers') {
+      const choice = wanted[name];
+      if (choice != null) sources = resolver.modifiers[name]?.contexts[choice];
+    }
+    for (const source of sources ?? []) {
+      const document = documents[source.$ref];
+      if (document !== undefined) layers.push(document);
+    }
+  }
+  const byKey = layerCache.get(envelope.base) ?? new Map<string, JsonObject[]>();
+  byKey.set(key, layers);
+  layerCache.set(envelope.base, byKey);
+  return layers;
+}
+
+/**
+ * A member's literal in the base for a scope, following aliases through the same layers. The
+ * result never reflects an override, so a proposal always starts from the shipped scale.
  */
 export function baseDimension(
   envelope: ThemeEnvelope,
@@ -137,33 +176,19 @@ export function baseDimension(
   context: ThemePreviewContext,
   path: string,
 ): Dimension | undefined {
-  const baseline = baselineOf(envelope);
-  if (scope !== 'shared') {
-    const value = literalValueOf(baseline, context, path);
-    return isDimension(value) ? { value: value.value, unit: value.unit } : undefined;
-  }
-  const sources = buildThemeSources(baseline, 0);
-  const resolver = sources.resolver as {
-    sets: Record<string, { sources: Array<{ $ref: string }> }>;
-    resolutionOrder: Array<{ $ref: string }>;
-  };
-  const documents = sources.documents as Record<string, JsonObject>;
+  const layers = baseLayers(envelope, scope, context);
   let current = path;
   for (let hops = 0; hops < 12; hops += 1) {
     let value: JsonValue | undefined;
-    for (const { $ref } of resolver.resolutionOrder) {
-      if (!$ref.startsWith('#/sets/')) continue;
-      for (const source of resolver.sets[$ref.slice('#/sets/'.length)]?.sources ?? []) {
-        const document = documents[source.$ref];
-        if (document === undefined) continue;
-        const node = getNode(document, sourcePathOf(baseline, current));
-        if (typeof node === 'object' && node !== null && !Array.isArray(node) && '$value' in node) {
-          value = node['$value'];
-        }
+    for (const document of layers) {
+      const node = getNode(document, current);
+      if (typeof node === 'object' && node !== null && !Array.isArray(node) && '$value' in node) {
+        value = node['$value'];
       }
     }
-    if (!isAliasValue(value))
+    if (!isAliasValue(value)) {
       return isDimension(value) ? { value: value.value, unit: value.unit } : undefined;
+    }
     current = value.slice(1, -1);
   }
   return undefined;

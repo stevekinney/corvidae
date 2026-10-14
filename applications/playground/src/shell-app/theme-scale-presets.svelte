@@ -89,6 +89,13 @@
     selected = on ? [...new Set([...selected, path])] : selected.filter((entry) => entry !== path);
   }
 
+  function selectAll(on: boolean): void {
+    selected =
+      on && proposal !== null
+        ? proposal.rows.filter((row) => row.selectable).map((row) => row.path)
+        : [];
+  }
+
   function cancel(): void {
     proposal = null;
     result = '';
@@ -195,6 +202,22 @@
           to apply.
         </p>
       {/if}
+      <div class="buttons" role="group" aria-label={`${label} selection`}>
+        <Button
+          label="Select all rows"
+          variant="ghost"
+          size="sm"
+          disabled={stale}
+          onclick={() => selectAll(true)}
+        />
+        <Button
+          label="Clear selection"
+          variant="ghost"
+          size="sm"
+          disabled={stale}
+          onclick={() => selectAll(false)}
+        />
+      </div>
       <table>
         <caption class="sr-only">Proposed {label.toLowerCase()} values</caption>
         <thead>

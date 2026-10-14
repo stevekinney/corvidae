@@ -15,15 +15,12 @@
     type FontProbe,
   } from './theme-font-availability.ts';
   import { resolveCssValue } from './theme-foundation-values.ts';
-  import { literalValueOf } from './theme-token-edit.ts';
-  import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
   type Props = {
     controller: ThemeBuilderController;
-    workbench: ThemeWorkbenchState;
     probe?: FontProbe;
   };
-  let { controller, workbench, probe = browserFontProbe() }: Props = $props();
+  let { controller, probe = browserFontProbe() }: Props = $props();
 
   const css = (path: string): string =>
     resolveCssValue(controller.draftValues, catalogueRowByPath(path)?.cssProperty ?? '') ?? '';
@@ -82,19 +79,23 @@
     },
   ];
 
+  /** The complete ordered stack, read from the last-valid CSS value of the family token. */
+  const familiesOf = (value: string): string[] =>
+    value
+      .split(',')
+      .map((family) => family.trim().replace(/^(["'])(.*)\1$/, '$2'))
+      .filter((family) => family !== '');
+
   const stacks = $derived(
     (['font.sans', 'font.mono'] as const).map((path) => {
-      const envelope = controller.draft?.envelope;
-      const literal =
-        envelope === undefined ? undefined : literalValueOf(envelope, workbench.context, path);
-      const stack =
-        typeof literal === 'string' || Array.isArray(literal) ? (literal as string | string[]) : [];
+      const value = css(path);
+      const stack = familiesOf(value);
       return {
         path,
         label: path === 'font.sans' ? 'Base family' : 'Monospace family',
-        stack: typeof stack === 'string' ? [stack] : stack,
+        stack,
         unavailable: environmentDependentFamilies(stack, probe),
-        css: css(path),
+        css: value,
       };
     }),
   );
