@@ -34,6 +34,32 @@ describe('incompleteUtf8Tail', () => {
   ])('passes %s through to the engine', (_name, input) => {
     expect(incompleteUtf8Tail(Uint8Array.from(input))).toBe(0);
   });
+
+  test.each([
+    ['an overlong three-byte prefix (E0 80)', [0x61, 0xe0, 0x80]],
+    ['an overlong three-byte prefix (E0 9F)', [0xe0, 0x9f]],
+    ['a surrogate prefix (ED A0)', [0xed, 0xa0]],
+    ['an overlong four-byte prefix (F0 8F)', [0xf0, 0x8f]],
+    ['an overlong four-byte prefix with two continuations (F0 80 80)', [0xf0, 0x80, 0x80]],
+    ['a prefix past U+10FFFF (F4 90)', [0xf4, 0x90]],
+    ['a prefix past U+10FFFF with two continuations (F4 90 80)', [0xf4, 0x90, 0x80]],
+  ])('passes %s through immediately', (_name, input) => {
+    expect(incompleteUtf8Tail(Uint8Array.from(input))).toBe(0);
+  });
+
+  test.each([
+    ['E0 A0', [0xe0, 0xa0], 2],
+    ['E0 BF', [0xe0, 0xbf], 2],
+    ['ED 80', [0xed, 0x80], 2],
+    ['ED 9F', [0xed, 0x9f], 2],
+    ['F0 90', [0xf0, 0x90], 2],
+    ['F0 BF', [0xf0, 0xbf], 2],
+    ['F4 80', [0xf4, 0x80], 2],
+    ['F4 8F', [0xf4, 0x8f], 2],
+    ['F4 8F BF', [0xf4, 0x8f, 0xbf], 3],
+  ])('still holds the valid prefix %s', (_name, input, expected) => {
+    expect(incompleteUtf8Tail(Uint8Array.from(input))).toBe(expected);
+  });
 });
 
 describe('createUtf8Carry', () => {
@@ -58,6 +84,21 @@ describe('createUtf8Carry', () => {
     const written: number[] = [];
     for (const byte of whole) written.push(...carry.take(Uint8Array.of(byte)));
     expect(written).toEqual([...whole]);
+  });
+
+  test('an invalid prefix is written at once and never held', () => {
+    const carry = createUtf8Carry();
+    expect([...carry.take(Uint8Array.of(0x61, 0xe0, 0x80))]).toEqual([0x61, 0xe0, 0x80]);
+    expect(carry.pending).toBe(0);
+  });
+
+  test('reports what it holds and gives it up on flush', () => {
+    const carry = createUtf8Carry();
+    carry.take(Uint8Array.of(0x61, 0xe2, 0x80));
+    expect(carry.pending).toBe(2);
+    expect([...carry.flush()]).toEqual([0xe2, 0x80]);
+    expect(carry.pending).toBe(0);
+    expect(carry.flush()).toHaveLength(0);
   });
 
   test('an empty chunk writes nothing and keeps what it held', () => {

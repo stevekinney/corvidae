@@ -58,6 +58,9 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
       engine.writes.push(chunk);
       engine.acknowledge.push(parsed);
     },
+    finishOutput() {
+      engine.calls.push('finishOutput');
+    },
     resize(next) {
       engine.calls.push('resize');
       if (engine.throwOn.resize) throw engine.throwOn.resize;
@@ -88,7 +91,7 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     },
     readProjection(maximumBytes) {
       engine.calls.push('readProjection');
-      return { text: 'projection', truncated: false, bytes: maximumBytes ?? 10, retainedBytes: 10 };
+      return { text: 'projection', truncated: false, bytes: maximumBytes ?? 10 };
     },
     dispose() {
       engine.calls.push('dispose');

@@ -53,7 +53,6 @@ describe('projectBuffer', () => {
       text: '',
       truncated: false,
       bytes: 0,
-      retainedBytes: 0,
     });
     expect(projectBuffer(bufferOf(['', false], ['', false])).text).toBe('');
   });
@@ -68,15 +67,14 @@ describe('projectBuffer', () => {
     expect(projectBuffer(bufferOf(['tail', true], ['next', false])).text).toBe('tail\nnext');
   });
 
-  test('reports the byte count of what it returns and of what is retained', () => {
+  test('reports the byte count of what it returns', () => {
     const projection = projectBuffer(bufferOf(['日本', false]));
     expect(projection.bytes).toBe(6);
-    expect(projection.retainedBytes).toBe(6);
   });
 
   test('truncates at the byte limit', () => {
     const projection = projectBuffer(bufferOf(['abcdefghij', false]), 4);
-    expect(projection).toEqual({ text: 'abcd', truncated: true, bytes: 4, retainedBytes: 10 });
+    expect(projection).toEqual({ text: 'abcd', truncated: true, bytes: 4 });
   });
 
   test('never splits a multi-byte code point when it truncates', () => {
@@ -99,7 +97,59 @@ describe('projectBuffer', () => {
     const projection = projectBuffer(big);
     expect(projection.truncated).toBe(true);
     expect(projection.bytes).toBe(65_536);
-    expect(projection.retainedBytes).toBe(100 * 1000 + 99);
+  });
+
+  test('reads only as many rows and cells as the limit needs from a hostile scrollback', () => {
+    const rowText = 'x'.repeat(100);
+    let linesRead = 0;
+    let rowsTranslated = 0;
+    const hostile: ProjectionBuffer = {
+      length: 1_000_000,
+      getLine() {
+        linesRead += 1;
+        return {
+          isWrapped: false,
+          translateToString() {
+            rowsTranslated += 1;
+            return rowText;
+          },
+        };
+      },
+    };
+    const projection = projectBuffer(hostile);
+    expect(projection.truncated).toBe(true);
+    expect(projection.bytes).toBe(DEFAULT_PROJECTION_BYTE_LIMIT);
+    // Each row adds 101 bytes, so 64 KiB is reached within 650 rows, not a million.
+    expect(linesRead).toBeLessThanOrEqual(Math.ceil(DEFAULT_PROJECTION_BYTE_LIMIT / 101) + 2);
+    expect(rowsTranslated).toBe(linesRead);
+  });
+
+  test('stops at the limit inside one very long soft-wrapped line', () => {
+    let linesRead = 0;
+    const wrapped: ProjectionBuffer = {
+      length: 1_000_000,
+      getLine() {
+        linesRead += 1;
+        return { isWrapped: true, translateToString: () => 'y'.repeat(1000) };
+      },
+    };
+    const projection = projectBuffer(wrapped, 4096);
+    expect(projection.truncated).toBe(true);
+    expect(projection.bytes).toBe(4096);
+    expect(linesRead).toBeLessThanOrEqual(6);
+  });
+
+  test('blank rows after the limit cost nothing and are not a truncation', () => {
+    const rows: Array<readonly [string, boolean]> = [['abcd', false]];
+    for (let index = 0; index < 50; index += 1) rows.push(['', false]);
+    const projection = projectBuffer(bufferOf(...rows), 4);
+    expect(projection).toEqual({ text: 'abcd', truncated: false, bytes: 4 });
+  });
+
+  test('keeps a blank line between content that straddles the limit', () => {
+    expect(projectBuffer(bufferOf(['ab', false], ['', false], ['cd', false]), 5).text).toBe(
+      'ab\n\nc',
+    );
   });
 
   test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(

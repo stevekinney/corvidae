@@ -12,7 +12,7 @@ import {
   type FakeEngine,
 } from './terminal-attachment-test-support.ts';
 import { engineLoader } from './terminal-engine-loader.ts';
-import { waitFor } from './terminal-test-support.ts';
+import { settle, waitFor } from './terminal-test-support.ts';
 import Terminal from './terminal.svelte';
 import type { TerminalGeometry, TerminalProps } from './terminal.types.ts';
 
@@ -28,8 +28,8 @@ beforeEach(() => {
   engineLoader.load = () => Promise.resolve(fake.factory);
 });
 
-afterEach(() => {
-  destroyAllHarnesses();
+afterEach(async () => {
+  await destroyAllHarnesses();
   engineLoader.load = originalLoad;
   fake.created.length = 0;
 });
@@ -178,20 +178,96 @@ describe('an engine that fails during a session', () => {
     harness.destroy();
   });
 
-  test('Retry builds a new engine and the failure goes away', async () => {
-    const controller = createFakeController();
-    const harness = await mountWithEngine({ title: 'Shell', state: 'writable', controller });
+  test('Retry asks the host, and only a new controller builds a new engine', async () => {
+    const failedController = createFakeController();
+    const replacement = createFakeController();
+    let requests = 0;
+    const props = reactiveProps<TerminalProps>({
+      title: 'Shell',
+      state: 'writable',
+      controller: failedController,
+      onRecoveryRequest: () => {
+        requests += 1;
+      },
+    });
+    const harness = await mountWithEngine(props);
     engine().throwOn.write = new Error('lost');
-    controller.emit(Uint8Array.of(0x41));
+    failedController.emit(Uint8Array.of(0x41));
     await waitFor(() => message(harness) === 'Terminal engine unavailable', 'the failure');
     const retry = [...harness.target.querySelectorAll('button')].find(
       (button) => button.textContent?.trim() === 'Retry',
     )!;
     retry.click();
     harness.flush();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(requests).toBe(1);
+    expect(fake.created).toHaveLength(1);
+    expect(failedController.subscriptions).toBe(1);
+    expect(message(harness)).toBe('Terminal engine unavailable');
+    props.controller = replacement;
+    harness.flush();
     await waitFor(() => fake.created.length === 2, 'a second engine');
     await waitFor(() => message(harness) === 'Connected', 'the connected state');
-    expect(controller.subscriptions).toBe(2);
+    expect(replacement.subscriptions).toBe(1);
+    expect(failedController.subscriptions).toBe(1);
     harness.destroy();
   });
+
+  test('a geometry handler that throws fails closed instead of escaping the fit', async () => {
+    const controller = createFakeController();
+    const harness = await mountWithEngine({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+      onGeometryChange: () => {
+        throw new Error('host geometry handler threw');
+      },
+    });
+    engine().measurement = { columns: 100, rows: 30 };
+    window.dispatchEvent(new Event('resize'));
+    await waitFor(() => message(harness) === 'Terminal engine unavailable', 'the failure');
+    expect(controller.failures).toEqual([
+      { phase: 'render', message: 'host geometry handler threw' },
+    ]);
+    harness.destroy();
+  });
+
+  test('changing the class re-resolves the engine colors', async () => {
+    const props = reactiveProps<TerminalProps>({ title: 'Shell', state: 'writable', class: 'a' });
+    const harness = await mountWithEngine(props);
+    await settle();
+    const before = engine().updates.length;
+    props.class = 'b';
+    harness.flush();
+    await waitFor(() => engine().updates.length > before, 'the engine to refresh its colors');
+    harness.destroy();
+  });
+
+  test('changing the style re-resolves the engine colors', async () => {
+    const props = reactiveProps<TerminalProps>({
+      title: 'Shell',
+      state: 'writable',
+      style: '--cinder-surface-inset: red',
+    });
+    const harness = await mountWithEngine(props);
+    await settle();
+    const before = engine().updates.length;
+    props.style = '--cinder-surface-inset: blue';
+    harness.flush();
+    await waitFor(() => engine().updates.length > before, 'the engine to refresh its colors');
+    harness.destroy();
+  });
+
+  test.each(['exited', 'disconnected'] as const)(
+    'ending the session (%s) tells the engine the output is over',
+    async (ended) => {
+      const props = reactiveProps<TerminalProps>({ title: 'Shell', state: 'writable' });
+      const harness = await mountWithEngine(props);
+      expect(engine().calls).not.toContain('finishOutput');
+      props.state = ended;
+      harness.flush();
+      await waitFor(() => engine().calls.includes('finishOutput'), 'the end of output');
+      harness.destroy();
+    },
+  );
 });

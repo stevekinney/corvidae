@@ -254,16 +254,67 @@ describe('the accepted parse boundary', () => {
     expect(order).toEqual([0, 1, 2, 3, 4]);
   });
 
-  test('acknowledges a chunk that held only the start of a character', async () => {
+  test('does not acknowledge bytes the engine has not parsed: a held tail waits for its completion', async () => {
+    const { engine } = mountedEngine();
+    const order: string[] = [];
+    engine.write(Uint8Array.of(0x61, 0xe2, 0x80), () => order.push('first'));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    // `a` is parsed, but `E2 80` is not, so the chunk that carried them is not acknowledged.
+    expect(order).toEqual([]);
+    await new Promise<void>((resolve) =>
+      engine.write(Uint8Array.of(0x8d, 0x62), () => {
+        order.push('second');
+        resolve();
+      }),
+    );
+    expect(order).toEqual(['first', 'second']);
+  });
+
+  test('a chunk that holds only the start of a character is acknowledged with its completion', async () => {
+    const { engine } = mountedEngine();
+    const order: string[] = [];
+    engine.write(Uint8Array.of(0xf0, 0x9f), () => order.push('a'));
+    engine.write(Uint8Array.of(0x91), () => order.push('b'));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(order).toEqual([]);
+    await new Promise<void>((resolve) =>
+      engine.write(Uint8Array.of(0xa8), () => {
+        order.push('c');
+        resolve();
+      }),
+    );
+    expect(order).toEqual(['a', 'b', 'c']);
+  });
+
+  test('ending the output parses what was held and acknowledges it', async () => {
+    const { engine } = mountedEngine();
+    const order: string[] = [];
+    engine.write(Uint8Array.of(0x61, 0xe2, 0x80), () => order.push('held'));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(order).toEqual([]);
+    engine.finishOutput();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(order).toEqual(['held']);
+    // Nothing is held any more, so ending again is a no-op.
+    engine.finishOutput();
+  });
+
+  test('an invalid prefix is parsed at once rather than held', async () => {
     const { engine } = mountedEngine();
     let acknowledged = 0;
-    await new Promise<void>((resolve) => {
-      engine.write(Uint8Array.of(0xe2, 0x80), () => {
+    await new Promise<void>((resolve) =>
+      engine.write(Uint8Array.of(0x61, 0xe0, 0x80), () => {
         acknowledged += 1;
         resolve();
-      });
-    });
+      }),
+    );
     expect(acknowledged).toBe(1);
+  });
+
+  test('ending the output after disposal does nothing', () => {
+    const { engine } = mountedEngine();
+    engine.dispose();
+    expect(() => engine.finishOutput()).not.toThrow();
   });
 
   test('never acknowledges a write the engine disposal overtook', async () => {
@@ -500,7 +551,6 @@ describe('retained projection', () => {
       text: `${'1234567890'.repeat(5)}\nsecond line`,
       truncated: false,
       bytes: 50 + 1 + 11,
-      retainedBytes: 50 + 1 + 11,
     });
   });
 
@@ -534,7 +584,6 @@ describe('retained projection', () => {
     const bounded = engine.readProjection(40);
     expect(bounded.truncated).toBe(true);
     expect(bounded.bytes).toBeLessThanOrEqual(40);
-    expect(bounded.retainedBytes).toBe(full.bytes);
   });
 });
 

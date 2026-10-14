@@ -20,8 +20,8 @@ const ESC = '\u001b';
 const encoder = new TextEncoder();
 const bytes = (text: string) => encoder.encode(text);
 
-afterEach(() => {
-  destroyAllHarnesses();
+afterEach(async () => {
+  await destroyAllHarnesses();
 });
 
 function query(harness: MountedHarness, selector: string): HTMLElement | null {
@@ -125,10 +125,15 @@ describe('states', () => {
     expect(harness.target.querySelectorAll('button')).toHaveLength(0);
   });
 
-  test('the live message is a polite status region, not an assertive alert', () => {
+  test('exposes exactly one live status: the frame chip, with the detailed message visible but not live', () => {
     const harness = mountHarness(Terminal, { title: 'Shell', state: 'writable' });
+    const statuses = harness.target.querySelectorAll('[role="status"]');
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]!.classList.contains('cinder-terminal-frame__status')).toBe(true);
     const message = required(harness, '.cinder-terminal__message');
-    expect(message.getAttribute('role')).toBe('status');
+    expect(message.getAttribute('role')).toBeNull();
+    expect(message.hasAttribute('aria-live')).toBe(false);
+    expect(message.textContent).toBe('Loading terminal…');
   });
 
   test('writable offers the capture control, composed from the Cinder Button, and read-only does not', () => {

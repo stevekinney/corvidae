@@ -1,6 +1,10 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @layer cinder.components {
+  /* The frame root fills its container. Without a definite size here, a fixed-height wrapper never
+     reaches the flex viewport, the engine's initial rows set the height, and fitting measures the
+     content it just rendered instead of the space it was given. */
   .cinder-terminal {
+    block-size: 100%;
     min-block-size: 0;
   }
 

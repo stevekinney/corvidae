@@ -92,7 +92,11 @@ type Setup = {
 };
 
 function setup(
-  options: { settings?: Partial<AttachmentSettings>; withController?: boolean } = {},
+  options: {
+    settings?: Partial<AttachmentSettings>;
+    withController?: boolean;
+    onGeometry?: (geometry: TerminalGeometry) => void;
+  } = {},
 ): Setup {
   const host = makeHost();
   const factory = createFakeFactory();
@@ -112,7 +116,10 @@ function setup(
     onReady: () => {
       ready += 1;
     },
-    onGeometry: (geometry) => geometries.push(geometry),
+    onGeometry: (geometry) => {
+      geometries.push(geometry);
+      options.onGeometry?.(geometry);
+    },
     onFailure: (failure) => failures.push(failure),
     onTitle: (title) => titles.push(title),
     scheduleFit: scheduler.schedule,
@@ -374,6 +381,20 @@ describe('failing closed', () => {
     expect(s.geometries).toEqual([]);
   });
 
+  test('a geometry handler that throws fails the render closed instead of escaping the fit', async () => {
+    const s = setup({
+      onGeometry: () => {
+        throw new Error('host handler threw');
+      },
+    });
+    const engine = await s.load();
+    engine.measurement = { columns: 100, rows: 30 };
+    expect(() => s.scheduler.flush()).not.toThrow();
+    expect(s.failures).toEqual([{ phase: 'render', message: 'host handler threw' }]);
+    expect(s.controller.failures).toEqual(s.failures);
+    expect(engine.calls.filter((call) => call === 'dispose')).toHaveLength(1);
+  });
+
   test('applying settings that throws fails the render', async () => {
     const s = setup();
     const engine = await s.load();
@@ -389,6 +410,18 @@ describe('failing closed', () => {
     firstEngine.throwOn.write = new Error('stale');
     first.controller.everRegistered[0]!(bytes(1), () => {});
     expect(first.failures).toEqual([]);
+  });
+});
+
+describe('end of output', () => {
+  test('tells the live engine the output ended, and does nothing after disposal or failure', async () => {
+    const s = setup();
+    const engine = await s.load();
+    s.attachment.finishOutput();
+    expect(engine.calls.filter((call) => call === 'finishOutput')).toHaveLength(1);
+    s.attachment.dispose();
+    expect(() => s.attachment.finishOutput()).not.toThrow();
+    expect(engine.calls.filter((call) => call === 'finishOutput')).toHaveLength(1);
   });
 });
 

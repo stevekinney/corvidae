@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  MAXIMUM_LINK_CELLS,
   MAXIMUM_LINK_LENGTH,
   MAXIMUM_LINK_ROWS,
   MAXIMUM_TITLE_CODE_POINTS,
@@ -38,6 +39,52 @@ describe('parseVisibleHttpsUrl', () => {
   test('rejects an address longer than the limit', () => {
     const long = `https://example.test/${'a'.repeat(MAXIMUM_LINK_LENGTH)}`;
     expect(parseVisibleHttpsUrl(long)).toBeUndefined();
+  });
+});
+
+describe('link scan work is bounded', () => {
+  function countingBuffer(rows: number, columns: number, wrapped = true) {
+    const counts = { lines: 0, cells: 0 };
+    const buffer: LinkBuffer = {
+      length: rows,
+      getLine() {
+        counts.lines += 1;
+        return {
+          isWrapped: wrapped,
+          length: columns,
+          getCell() {
+            counts.cells += 1;
+            return { getChars: () => 'a', getWidth: () => 1 };
+          },
+        };
+      },
+    };
+    return { buffer, counts };
+  }
+
+  test('a wrapped line of enormous rows is refused before any cell is read', () => {
+    const { buffer, counts } = countingBuffer(32, 65_535);
+    expect(linksForRow(buffer, 10)).toEqual([]);
+    expect(counts.cells).toBe(0);
+  });
+
+  test('a wrapped line spanning many thousands of rows reads about the row limit', () => {
+    const { buffer, counts } = countingBuffer(100_000, 80);
+    expect(linksForRow(buffer, 50_000)).toEqual([]);
+    expect(counts.cells).toBe(0);
+    expect(counts.lines).toBeLessThanOrEqual(2 * MAXIMUM_LINK_ROWS + 2);
+  });
+
+  test('a line within the cell budget is still scanned', () => {
+    const { buffer, counts } = countingBuffer(1, MAXIMUM_LINK_CELLS);
+    expect(linksForRow(buffer, 0)).toEqual([]);
+    expect(counts.cells).toBe(MAXIMUM_LINK_CELLS);
+  });
+
+  test('one cell over the budget is refused without reading cells', () => {
+    const { buffer, counts } = countingBuffer(1, MAXIMUM_LINK_CELLS + 1);
+    expect(linksForRow(buffer, 0)).toEqual([]);
+    expect(counts.cells).toBe(0);
   });
 });
 

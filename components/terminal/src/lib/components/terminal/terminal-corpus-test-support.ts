@@ -378,7 +378,7 @@ export type CapturedEngine = {
   titles: string[];
   /** The link providers the engine registered, in order. */
   linkProviders: ILinkProvider[];
-  /** Write `chunks` in order and resolve once the last one has been parsed. */
+  /** Write `chunks` in order, end the output, and resolve once the last one has been parsed. */
   deliver(chunks: readonly Uint8Array[]): Promise<void>;
   /** Forget everything delivered, as a fresh engine would have. */
   reset(): void;
@@ -438,6 +438,9 @@ export function createCapturedEngine(options: Partial<EngineCreateOptions> = {})
             if (index === last) resolve();
           });
         });
+        // The delivery is the whole of the output, so a unicode prefix the last chunk left
+        // unfinished is parsed now and the chunk that carried it is acknowledged.
+        engine.finishOutput();
       });
     },
     reset() {

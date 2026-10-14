@@ -54,9 +54,14 @@
 
   // A failure the renderer found itself. It outranks the state the host passed in: the engine is
   // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
-  let failure = $state<TerminalRendererFailure>();
+  // The failure is remembered with the controller it happened to: that controller was revoked by
+  // the failure, so the failure ends when the host supplies another one, and never before.
+  let failed = $state.raw<{ failure: TerminalRendererFailure; controller: typeof controller }>();
   let ready = $state(false);
 
+  const failure = $derived(
+    failed !== undefined && failed.controller === controller ? failed.failure : undefined,
+  );
   const effectiveState: TerminalState = $derived(
     failure === undefined ? sessionState : 'engine-load-failed',
   );
@@ -97,9 +102,17 @@
   let live: ReturnType<typeof createTerminalAttachment> | undefined;
 
   $effect(() => {
-    // Track every setting the engine mirrors; the attachment re-reads them itself.
+    // Track every setting the engine mirrors; the attachment re-reads them itself. The class and
+    // inline style are styling inputs too: they can change the tokens the engine colors resolve to.
     readSettings();
+    void customClassName;
+    void rest.style;
     live?.refresh();
+  });
+
+  // These states say the process is gone, so no output will finish a held unicode prefix.
+  $effect(() => {
+    if (effectiveState === 'exited' || effectiveState === 'disconnected') live?.finishOutput();
   });
 
   /**
@@ -121,7 +134,7 @@
         },
         onGeometry: (geometry) => onGeometryChange?.(geometry),
         onFailure: (next) => {
-          failure = next;
+          failed = { failure: next, controller: borrowed };
         },
         onTitle: (next) => onTitleChange?.(next),
       }),
@@ -134,18 +147,19 @@
     };
   }
 
-  // A failure the renderer found is cleared here, which remounts the engine. A state the host
-  // passed in is the host's to resolve, so Retry asks it to through the recovery handler, and is
-  // offered only when there is a handler to ask: otherwise it would do nothing.
+  // Recovery is the host's: a renderer failure revoked the controller and cleaned it up, so
+  // remounting against it would revive a dead session. The host answers by supplying a new
+  // controller or session. The one exception is a failure with no controller, where nothing was
+  // revoked, so the engine can be loaded again once the host has been told.
   function retry(): void {
-    if (failure === undefined) onRecoveryRequest?.();
-    else failure = undefined;
+    onRecoveryRequest?.();
+    if (failed !== undefined && failed.controller === undefined) failed = undefined;
   }
 </script>
 
 <TerminalFrame {...frameProps}>
   <div class="cinder-terminal__body" data-state={effectiveState}>
-    <p class="cinder-terminal__message" role="status">{message}</p>
+    <p class="cinder-terminal__message">{message}</p>
     {#if showEngine}
       <div
         class="cinder-terminal__viewport"
@@ -154,7 +168,9 @@
         {@attach attachEngine}
       ></div>
     {/if}
-    {#if effectiveState === 'engine-load-failed' && (failure !== undefined || onRecoveryRequest !== undefined)}
+    <!-- The frame renders Reload for a non-empty error and a handler, so this control exists only
+         when that one does not: exactly one recovery control in every state. -->
+    {#if effectiveState === 'engine-load-failed' && onRecoveryRequest !== undefined && !error}
       <div class="cinder-terminal__actions">
         <Button label="Retry" size="sm" onclick={retry} />
       </div>

@@ -228,6 +228,19 @@ describe('terminal.css', () => {
     expect(bodyOf('.cinder-terminal__viewport .xterm')).toMatch(/\bpadding\s*:/);
   });
 
+  test('gives the frame root a definite block size so the engine viewport fills its container', async () => {
+    // happy-dom has no layout, so the strongest headless proof is the rule itself: without a
+    // definite size on the root, the flex viewport takes its height from the engine's own rows.
+    const source = await read('terminal.css');
+    const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    const root = rules
+      .filter((rule) => rule[1]!.split(',').some((part) => part.trim() === '.cinder-terminal'))
+      .map((rule) => rule[2]!)
+      .join('\n');
+    expect(root).toMatch(/\bblock-size\s*:\s*100%/);
+  });
+
   test('turns non-essential motion off for reduced motion', async () => {
     const css = await read('terminal.css');
     const block = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));

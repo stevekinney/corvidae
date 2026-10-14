@@ -87,9 +87,16 @@ export type RendererEngine = {
    * Parse `chunk`. `parsed` runs once when the engine has parsed it, which is independent of
    * painting, and never runs after {@link RendererEngine.dispose}. The chunk is copied, so the
    * caller may reuse its buffer at once. A unicode sequence the chunk leaves unfinished (at most
-   * three bytes) is held and parsed with the next chunk, and acknowledged with this one.
+   * three bytes) is held and parsed with the next chunk, so the chunk is acknowledged only when
+   * the write that includes its last byte completes: with the next chunk, or on
+   * {@link RendererEngine.finishOutput}.
    */
   write(chunk: Uint8Array, parsed: () => void): void;
+  /**
+   * No more output will arrive. Parse whatever unicode prefix is still held, as the data it now
+   * is, and acknowledge the chunks that carried it. Does nothing when nothing is held.
+   */
+  finishOutput(): void;
   /** Set the engine grid. */
   resize(geometry: TerminalGeometry): void;
   /** The grid that fits the container at the engine's measured cell size, if it can be measured. */
@@ -121,6 +128,15 @@ export function createRendererEngine(
   let disposed = false;
   let activateLink: ((url: string) => void) | undefined;
   const carry = createUtf8Carry();
+  // Acknowledgements for chunks whose last bytes are still held in `carry`, in arrival order.
+  let heldAcknowledgements: Array<() => void> = [];
+
+  function writeBytes(bytes: Uint8Array, acknowledgements: Array<() => void>): void {
+    terminal.write(bytes, () => {
+      if (disposed) return;
+      for (const acknowledge of acknowledgements) acknowledge();
+    });
+  }
 
   terminal.onTitleChange((title) => options.onTitle?.(boundTitle(title)));
   terminal.registerLinkProvider({
@@ -151,9 +167,28 @@ export function createRendererEngine(
     write(chunk, parsed) {
       if (disposed) return;
       // `take` returns a view of a fresh buffer, so the engine never aliases the caller's chunk.
-      terminal.write(carry.take(chunk), () => {
-        if (!disposed) parsed();
-      });
+      const bytes = carry.take(chunk);
+      if (bytes.length === 0 && carry.pending > 0) {
+        // Every byte of this chunk is held, so nothing is parsed and nothing can be acknowledged.
+        heldAcknowledgements.push(parsed);
+        return;
+      }
+      const released = heldAcknowledgements;
+      if (carry.pending > 0) {
+        // This chunk ends inside a sequence: it is acknowledged with the write that finishes it.
+        heldAcknowledgements = [parsed];
+        writeBytes(bytes, released);
+      } else {
+        heldAcknowledgements = [];
+        writeBytes(bytes, [...released, parsed]);
+      }
+    },
+    finishOutput() {
+      if (disposed) return;
+      const rest = carry.flush();
+      const released = heldAcknowledgements;
+      heldAcknowledgements = [];
+      if (rest.length > 0 || released.length > 0) writeBytes(rest, released);
     },
     resize(geometry) {
       terminal.resize(geometry.columns, geometry.rows);

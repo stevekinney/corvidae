@@ -67,6 +67,8 @@ export type AttachmentOptions = {
 export type TerminalAttachment = {
   /** Re-read the settings and the design tokens and apply them to the live engine. */
   refresh(): void;
+  /** No more output will arrive: the engine parses any unicode prefix it was holding. */
+  finishOutput(): void;
   /** Whether the engine is mounted and neither failed nor disposed. */
   readonly ready: boolean;
   /** Whether the viewport follows new output, because it shows the live bottom. */
@@ -224,7 +226,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       },
       apply: (geometry) => guarded('render', () => engine?.resize(geometry)),
       accept: (geometry) => {
-        if (engine !== undefined) options.onGeometry(geometry);
+        if (engine !== undefined) guarded('render', () => options.onGeometry(geometry));
       },
     });
     const colorScheme = watchMediaQuery('(prefers-color-scheme: dark)', refresh);
@@ -263,6 +265,9 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
 
   return {
     refresh,
+    finishOutput() {
+      guarded('parse', () => engine?.finishOutput());
+    },
     get ready() {
       return ready;
     },

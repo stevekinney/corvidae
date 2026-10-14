@@ -8,6 +8,8 @@
 export const MAXIMUM_LINK_LENGTH = 2048;
 /** The most rows of one wrapped logical line scanned for links. */
 export const MAXIMUM_LINK_ROWS = 32;
+/** The most cells of one wrapped logical line scanned for links, across all of its rows. */
+export const MAXIMUM_LINK_CELLS = 8192;
 /** The longest terminal title passed to the host, in code points. */
 export const MAXIMUM_TITLE_CODE_POINTS = 256;
 
@@ -67,12 +69,23 @@ export type CellLink = {
 
 type Position = { x: number; y: number };
 
+/**
+ * The rows of the wrapped line `row` belongs to, or `undefined` when it spans more rows than the
+ * scan allows. The walk stops as soon as the limit is passed, so a line wrapped across the whole
+ * scrollback costs a bounded number of reads.
+ */
 function logicalLineBounds(buffer: LinkBuffer, row: number): [number, number] | undefined {
   let first = row;
-  while (first > 0 && buffer.getLine(first)?.isWrapped === true) first -= 1;
   let last = row;
-  while (last + 1 < buffer.length && buffer.getLine(last + 1)?.isWrapped === true) last += 1;
-  return last - first + 1 > MAXIMUM_LINK_ROWS ? undefined : [first, last];
+  while (first > 0 && buffer.getLine(first)?.isWrapped === true) {
+    first -= 1;
+    if (last - first + 1 > MAXIMUM_LINK_ROWS) return undefined;
+  }
+  while (last + 1 < buffer.length && buffer.getLine(last + 1)?.isWrapped === true) {
+    last += 1;
+    if (last - first + 1 > MAXIMUM_LINK_ROWS) return undefined;
+  }
+  return [first, last];
 }
 
 /**
@@ -84,6 +97,13 @@ export function linksForRow(buffer: LinkBuffer, row: number): CellLink[] {
   const bounds = logicalLineBounds(buffer, row);
   if (bounds === undefined) return [];
   const [first, last] = bounds;
+  // Rows can be 65,535 cells wide, so the row limit alone does not bound the work: count cells
+  // from the rows' lengths before any cell is read or any string or position array is built.
+  let cells = 0;
+  for (let current = first; current <= last; current += 1) {
+    cells += buffer.getLine(current)?.length ?? 0;
+    if (cells > MAXIMUM_LINK_CELLS) return [];
+  }
   let text = '';
   const starts: Position[] = [];
   const ends: Position[] = [];
