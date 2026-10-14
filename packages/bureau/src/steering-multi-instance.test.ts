@@ -26,7 +26,12 @@ import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
-import { appendSteeringLogEvent, readSteeringLogHead, steeringSessionRunTag } from './steering-log';
+import {
+  appendSteeringLogEvent,
+  readSteeringKeyBinding,
+  readSteeringLogHead,
+  steeringSessionRunTag,
+} from './steering-log';
 
 async function openBureau(path: string) {
   return createBureau({
@@ -1098,6 +1103,30 @@ describe('durable steering across two Bureau processes', () => {
         }),
       ).toEqual({ outcome: 'not-found' });
 
+      // A key she decided in a session she holds says nothing about a session
+      // she does not: reusing it against bob's session is `not-found`, not a
+      // conflict that would confirm bob's session exists.
+      const bobsRun = await bureau.createRun({ message: 'Wait forever', principal: 'bob' });
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const bobs = await bureau.getSession(bobsRun.sessionId);
+        if (bobs?.metadata['lastRunStatus'] === 'running') break;
+        await Bun.sleep(10);
+      }
+      const decidedHere = await bureau.submitSteeringCommand(sessionId, {
+        id: 'k-mine',
+        principal: 'alice',
+        runId: second,
+        requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+      });
+      expect(decidedHere.outcome).toBe('accepted');
+      expect(
+        await bureau.submitSteeringCommand(bobsRun.sessionId, {
+          id: 'k-mine',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        }),
+      ).toEqual({ outcome: 'not-found' });
+
       // Nor through another session she holds, once she lost the original.
       const other = await startRunningSession(bureau);
       const otherRun = await lastRunIdOf(other);
@@ -1138,7 +1167,13 @@ describe('durable steering across two Bureau processes', () => {
         sessionId,
         session.incarnation,
         await readSteeringLogHead(kv, sessionId, session.incarnation),
-        { type: 'applied', runId: 'some-run', configVersion: 99, now: new Date().toISOString() },
+        {
+          type: 'applied',
+          // The session's own promoted run, so only the version is impossible.
+          runId: session.metadata['lastRunId'] as string,
+          configVersion: 99,
+          now: new Date().toISOString(),
+        },
       );
       reader = await openBureau(path);
       await expect(
@@ -1181,6 +1216,86 @@ describe('durable steering across two Bureau processes', () => {
     } finally {
       await writer.dispose();
       await reader?.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('fails closed on an applied event outside its run, and on a key decided twice', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-impossible-history-'));
+    const path = join(directory, 'bureau.sqlite');
+    const writer = await openBureau(path);
+    const readers: TestBureau[] = [];
+    try {
+      const plant = async (event: Parameters<typeof appendSteeringLogEvent>[4]) => {
+        const sessionId = await startRunningSession(writer);
+        const session = await writer.getSession(sessionId);
+        const kv = writer.kv;
+        if (session === undefined || kv === undefined) throw new Error('expected a session');
+        await appendSteeringLogEvent(
+          kv,
+          sessionId,
+          session.incarnation,
+          await readSteeringLogHead(kv, sessionId, session.incarnation),
+          event,
+        );
+        return sessionId;
+      };
+      const model = (id: string) =>
+        ({
+          id,
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        }) as const;
+
+      const ghostApplied = await plant({
+        type: 'applied',
+        runId: 'never-promoted',
+        configVersion: 0,
+        now: new Date().toISOString(),
+      });
+      const reader = await openBureau(path);
+      readers.push(reader);
+      await expect(reader.submitSteeringCommand(ghostApplied, model('k-a'))).rejects.toThrow(
+        /applying a version without a promotion/,
+      );
+
+      // A second decision for one key, appended past the binding's guard.
+      const twice = await startRunningSession(writer);
+      const firstDecision = await writer.submitSteeringCommand(twice, model('k-twice'));
+      expect(firstDecision.outcome).toBe('accepted');
+      const session = await writer.getSession(twice);
+      const kv = writer.kv;
+      if (session === undefined || kv === undefined) throw new Error('expected a session');
+      const binding = await readSteeringKeyBinding(kv, 'alice', 'k-twice');
+      if (binding === undefined) throw new Error('expected k-twice bound');
+      await appendSteeringLogEvent(
+        kv,
+        twice,
+        session.incarnation,
+        await readSteeringLogHead(kv, twice, session.incarnation),
+        {
+          type: 'admit',
+          command: {
+            id: 'k-twice',
+            idOrigin: 'caller',
+            sessionId: twice,
+            principal: 'alice',
+            requestedValue: { target: 'model', override: 'claude-opus-4-8' },
+            requestedAt: new Date().toISOString(),
+          },
+          liveRunIds: [],
+          now: new Date().toISOString(),
+        },
+        binding.raw,
+      );
+      const second = await openBureau(path);
+      readers.push(second);
+      await expect(second.submitSteeringCommand(twice, model('k-other'))).rejects.toThrow(
+        /a second decision for steering key/,
+      );
+    } finally {
+      await writer.dispose();
+      for (const reader of readers) await reader.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);

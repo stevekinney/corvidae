@@ -1771,8 +1771,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
      * start concurrently on the session.
      */
     readonly starting: Map<string, string>;
-    /** Every run's lifecycle stage in the log, checked as each event folds. */
-    readonly lifecycle: Map<string, 'promoted' | 'ended'>;
+    /** What the fold has seen so far, checked as each event folds. */
+    readonly history: SteeringFoldHistory;
     /** The last head read or written. Appends are conditioned on it. */
     head: SteeringLogHead;
     /** How many entries have been applied to `gate`. */
@@ -1837,11 +1837,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     refusals: Map<string, Map<string, SteeringRefusal>>,
     event: SteeringLogEvent,
     submitted?: Map<string, Map<string, SteeringRequestedValue>>,
-    // Each run's place in its life, as the log so far has it, when the whole
-    // log is being folded: an ending must follow its run's one promotion.
-    lifecycle?: Map<string, 'promoted' | 'ended'>,
+    // What the log so far established, when the whole log is being folded:
+    // events no process could have logged after it are corruption.
+    history?: SteeringFoldHistory,
   ): SteeringCommandAdmissionOutcome | undefined {
-    if (lifecycle !== undefined) checkSteeringLifecycle(gate.sessionId, lifecycle, event);
+    if (history !== undefined) checkSteeringHistory(gate.sessionId, history, event);
     switch (event.type) {
       case 'admit': {
         const outcome = gate.admit(event.command, {
@@ -1905,26 +1905,56 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /** What a fold of one log has seen, for checking each next event against. */
+  interface SteeringFoldHistory {
+    /** Each run's place in its life: promoted, then (once) ended. */
+    readonly runs: Map<string, 'promoted' | 'ended'>;
+    /** Every `(principal, id)` already decided by an `admit` or `refused`. */
+    readonly keys: Set<string>;
+  }
+
+  function createSteeringFoldHistory(): SteeringFoldHistory {
+    return { runs: new Map(), keys: new Set() };
+  }
+
   /**
-   * Fails closed on a run lifecycle no process could have logged: a second
-   * promotion of a run, or an ending without a promotion or after one.
-   * Folding either would fail or release a real command for a run that
-   * never existed or already ended.
+   * Fails closed on history no process could have logged. A run is promoted
+   * once, observes versions (`applied`) only while promoted, and ends once
+   * after its promotion. A key is decided once: its binding is written in
+   * the same atomic batch as its decision, conditioned on there being none.
+   * Folding anything else would fail, apply, or release real commands for
+   * a run that never existed or already ended, or answer one key two ways.
    */
-  function checkSteeringLifecycle(
+  function checkSteeringHistory(
     sessionId: string,
-    lifecycle: Map<string, 'promoted' | 'ended'>,
+    history: SteeringFoldHistory,
     event: SteeringLogEvent,
   ): void {
-    if (event.type !== 'promoted' && event.type !== 'run-ended') return;
-    const stage = lifecycle.get(event.runId);
-    const valid = event.type === 'promoted' ? stage === undefined : stage === 'promoted';
-    if (!valid) {
-      throw new SteeringLogCorruptError(
-        `Steering log for session "${sessionId}" records run "${event.runId}" ${event.type === 'promoted' ? 'promoted again' : stage === 'ended' ? 'ending twice' : 'ending without a promotion'}.`,
+    const corrupt = (what: string) =>
+      new SteeringLogCorruptError(`Steering log for session "${sessionId}" records ${what}.`);
+    if (event.type === 'admit' || event.type === 'refused') {
+      const key = JSON.stringify([event.command.principal, event.command.id]);
+      if (history.keys.has(key)) {
+        throw corrupt(
+          `a second decision for steering key "${event.command.principal}"/"${event.command.id}"`,
+        );
+      }
+      history.keys.add(key);
+      return;
+    }
+    const stage = history.runs.get(event.runId);
+    if (event.type === 'promoted') {
+      if (stage !== undefined) throw corrupt(`run "${event.runId}" promoted again`);
+      history.runs.set(event.runId, 'promoted');
+      return;
+    }
+    if (stage !== 'promoted') {
+      const verb = event.type === 'applied' ? 'applying a version' : 'ending';
+      throw corrupt(
+        `run "${event.runId}" ${verb} ${stage === 'ended' ? 'after it ended' : 'without a promotion'}`,
       );
     }
-    lifecycle.set(event.runId, event.type === 'promoted' ? 'promoted' : 'ended');
+    if (event.type === 'run-ended') history.runs.set(event.runId, 'ended');
   }
 
   /** Applies a logged event to a cursor's gate and its launch markers. */
@@ -1939,7 +1969,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       cursor.refusals,
       event,
       cursor.submitted,
-      cursor.lifecycle,
+      cursor.history,
     );
   }
 
@@ -2021,7 +2051,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         refusals: new Map(),
         submitted: new Map(),
         starting: new Map(),
-        lifecycle: new Map(),
+        history: createSteeringFoldHistory(),
         head: { raw: null, sequence: 0 },
         applied: 0,
       };
@@ -2125,11 +2155,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<void> {
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
-      // Refused before it is written, never after: a version this gate never
-      // issued would leave the log unfoldable everywhere.
-      if (event.type === 'run-ended' && cursor.lifecycle.get(event.runId) !== 'promoted') {
+      // Refused before it is written, never after: history no process could
+      // log (a run's boundary outside its promotion, a version this gate
+      // never issued) would leave the log unfoldable everywhere.
+      if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) !== 'promoted') {
         throw new BureauError(
-          `Run "${event.runId}" cannot end in session "${sessionId}": the steering log has no live promotion of it.`,
+          `Run "${event.runId}" cannot log "${event.type}" in session "${sessionId}": the steering log has no live promotion of it.`,
           'CONFLICT',
         );
       }
@@ -7902,7 +7933,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // nothing here depends on which runs are live now, so a backend that is
     // unavailable must not stand between a retry and its recorded answer.
     // A new decision is checked here, and again inside admission.
-    const keyAlreadyBound = await durableSteeringKeyIsBound(request.principal, request.id);
+    const keyAlreadyBound = await durableSteeringKeyIsBoundHere(
+      sessionId,
+      session.incarnation,
+      request.principal,
+      request.id,
+    );
     let liveRunIds: string[] = [];
     if (!keyAlreadyBound) {
       try {
@@ -8200,17 +8236,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Whether `(principal, id)` is bound in the durable steering log. An
-   * unreadable binding reads as unbound here; admission fails closed on it.
+   * Whether `(principal, id)` is bound in this very session incarnation's
+   * log, so admission can answer it from that log and authorize against
+   * the run it discloses. A key bound in another session is not: its
+   * answer would also reveal this session, so the caller is checked here
+   * first like any new request. An unreadable binding reads as unbound
+   * here; admission fails closed on it.
    */
-  async function durableSteeringKeyIsBound(
+  async function durableSteeringKeyIsBoundHere(
+    sessionId: string,
+    incarnation: string,
     principal: string,
     id: string | undefined,
   ): Promise<boolean> {
     const kv = durableSteeringStore();
     if (kv === undefined || id === undefined) return false;
     try {
-      return (await readSteeringKeyBinding(kv, principal, id)) !== undefined;
+      const stored = await readSteeringKeyBinding(kv, principal, id);
+      return stored?.binding.sessionId === sessionId && stored.binding.incarnation === incarnation;
     } catch {
       return false;
     }
@@ -8662,8 +8705,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         `Steering key "${command.principal}"/"${command.id}" is bound to sequence ${String(binding.sequence)} of session "${binding.sessionId}", which does not admit it.`,
       );
     }
-    const lifecycle = new Map<string, 'promoted' | 'ended'>();
-    for (const event of events) applySteeringEvent(gate, refusals, event, submitted, lifecycle);
+    const history = createSteeringFoldHistory();
+    for (const event of events) applySteeringEvent(gate, refusals, event, submitted, history);
     return answerSteeringRetry(
       ledger,
       refusals,
