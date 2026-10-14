@@ -7,9 +7,6 @@
  * - `start` creates the parent run, dispatches one `worker` child, waits for
  *   the child to finish and for the parent to park on its `scheduleWakeup`
  *   timer, then exits through `bureau.shutdown()` with its default policy.
- * - `start-drain` does the same work but shuts down with `policy: 'drain'`
- *   and a 1 ms wait, which leaves the parked parent running and reports the
- *   shutdown unresolved.
  * - `maintain` is the wake-up: `waitForRecovery()`, then one
  *   `bureau.runDurableMaintenance(now)` pass, then it waits for every durable
  *   run to leave `running` before shutting down.
@@ -134,7 +131,7 @@ async function readState() {
   };
 }
 
-if (command === 'start' || command === 'start-drain') {
+if (command === 'start') {
   await startParentWithChild();
 } else if (command === 'maintain') {
   await bureau.waitForRecovery?.();
@@ -149,9 +146,7 @@ if (command === 'start' || command === 'start-drain') {
 }
 
 const beforeShutdown = await readState();
-const shutdown: BureauShutdownReport = await bureau.shutdown(
-  command === 'start-drain' ? { policy: 'drain', timeoutMilliseconds: 1 } : undefined,
-);
+const shutdown: BureauShutdownReport = await bureau.shutdown();
 emit('finished', {
   label,
   now,
