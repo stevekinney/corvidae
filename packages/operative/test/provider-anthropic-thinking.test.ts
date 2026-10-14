@@ -73,7 +73,7 @@ describe('Anthropic explicit extended-thinking request', () => {
   it('emits `output_config.effort` alone when only `effort` is set', async () => {
     const client = createMockAnthropicClient([anthropicTextResponse]);
     const generate = createAnthropicProvider({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       client,
       effort: 'high',
     });
@@ -87,7 +87,7 @@ describe('Anthropic explicit extended-thinking request', () => {
   it('emits both `thinking` and `output_config.effort` when both are set, neither overriding the other', async () => {
     const client = createMockAnthropicClient([anthropicTextResponse]);
     const generate = createAnthropicProvider({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       client,
       effort: 'high',
       thinking: { type: 'enabled', budget_tokens: 2048 },
@@ -124,7 +124,7 @@ describe('Anthropic explicit extended-thinking request', () => {
   it('emits `thinking` on the streaming request body alongside `output_config.effort`', async () => {
     const client = createMockAnthropicStreamingClient([anthropicStreamTextEvents]);
     const generate = createAnthropicProviderStream({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       client,
       effort: 'high',
       // 4096 against the default `maximumTokens` of 4096 would be invalid by
@@ -142,7 +142,7 @@ describe('Anthropic explicit extended-thinking request', () => {
   it('emits `{ type: "adaptive" }` with its `display` field on the request body', async () => {
     const client = createMockAnthropicClient([anthropicTextResponse]);
     const generate = createAnthropicProvider({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       client,
       thinking: { type: 'adaptive', display: 'omitted' },
     });
@@ -155,7 +155,7 @@ describe('Anthropic explicit extended-thinking request', () => {
   it('emits an enabled `display` field on the request body', async () => {
     const client = createMockAnthropicClient([anthropicTextResponse]);
     const generate = createAnthropicProvider({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-4-6',
       client,
       maximumTokens: 8192,
       thinking: { type: 'enabled', budget_tokens: 2048, display: 'summarized' },
@@ -402,7 +402,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
 
     expect(() =>
       createAnthropicProvider({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         temperature: 0,
         thinking: { type: 'adaptive' },
@@ -415,7 +415,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
 
     expect(() =>
       createAnthropicProvider({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         temperature: 1,
         thinking: { type: 'adaptive' },
@@ -428,7 +428,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
 
     expect(() =>
       createAnthropicProvider({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         topP: 0.5,
         thinking: { type: 'adaptive' },
@@ -441,7 +441,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
 
     expect(() =>
       createAnthropicProvider({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         topP: 0.95,
         thinking: { type: 'adaptive' },
@@ -488,7 +488,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
 
     expect(() =>
       createAnthropicProvider({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         toolChoice: 'required',
         thinking: { type: 'adaptive' },
@@ -497,7 +497,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
 
     expect(() =>
       createAnthropicProvider({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         toolChoice: { tool: 'search' },
         thinking: { type: 'adaptive' },
@@ -559,7 +559,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
 
     expect(() =>
       createAnthropicProviderStream({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         temperature: 0.2,
         thinking: { type: 'adaptive' },
@@ -573,7 +573,7 @@ describe('Anthropic thinking parameter-compatibility validation', () => {
     let thrown: unknown;
     try {
       createAnthropicProvider({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-6',
         client,
         toolChoice: 'required',
         thinking: { type: 'enabled', budget_tokens: 2048 },
