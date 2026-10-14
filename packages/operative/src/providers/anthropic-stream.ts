@@ -5,10 +5,12 @@ import { createAnthropicSdkClient, isAnthropicStreamingClient } from './anthropi
 import {
   anthropicDescriptorsFor,
   assertDisabledThinkingSupported,
+  assertManualThinkingSupported,
   assertSamplingParametersSupported,
   assertThinkingBudgetBelowMaximum,
   assertThinkingBudgetMeetsMinimum,
   assertThinkingParametersCompatible,
+  assertToolChoiceSupported,
   buildAnthropicMessageRequest,
 } from './anthropic-shared.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
@@ -49,6 +51,8 @@ export function createAnthropicProviderStream(
   const common = resolveCommonParameters(options);
   assertSamplingParametersSupported(resolvedModel, common);
   assertDisabledThinkingSupported(resolvedModel, options.thinking, resolvedEffort);
+  assertManualThinkingSupported(resolvedModel, options.thinking);
+  assertToolChoiceSupported(resolvedModel, options.toolChoice);
   assertThinkingBudgetMeetsMinimum(options.thinking);
   assertThinkingParametersCompatible(options.thinking, options.toolChoice, common);
   let clientPromise: Promise<AnthropicStreamingClient> | undefined;

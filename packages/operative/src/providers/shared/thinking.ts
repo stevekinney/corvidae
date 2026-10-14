@@ -51,3 +51,42 @@ export function anthropicDisabledThinkingRule(
 }
 
 export const EFFORTS_THAT_FORBID_DISABLED_THINKING: readonly Effort[] = ['xhigh', 'max'];
+
+/**
+ * Whether Anthropic accepts manual extended thinking (`thinking: { type:
+ * 'enabled', budget_tokens }`), from the same per-model configuration table
+ * ("enabled" with budget_tokens column) on
+ * https://platform.claude.com/docs/en/build-with-claude/thinking, confirmed
+ * 2026-10-14. https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting
+ * agrees: "Extended thinking ... is deprecated on the Claude 4.6 models
+ * (requests using it still succeed). Claude 4.7 and later models do not support
+ * it and reject requests that use it".
+ * - `rejected`: a 400. Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1, Mythos 5.1,
+ *   Fable 5, Mythos 5, Opus 5, Sonnet 5, Opus 4.8, Opus 4.7.
+ * - `accepted`: Opus 4.6 and Sonnet 4.6 (deprecated, still succeeds), Opus
+ *   4.5 and Haiku 4.5 ("Extended thinking").
+ * Not settled by these pages, so unguarded: the dated Claude 4 and 3.5
+ * snapshots and any ID absent from this table.
+ */
+export const ANTHROPIC_MANUAL_THINKING: Readonly<Record<string, 'accepted' | 'rejected'>> =
+  Object.freeze({
+    'claude-opus-5-5': 'rejected',
+    'claude-sonnet-5-5': 'rejected',
+    'claude-haiku-5-5': 'rejected',
+    'claude-fable-5-1': 'rejected',
+    'claude-mythos-5-1': 'rejected',
+    'claude-fable-5': 'rejected',
+    'claude-mythos-5': 'rejected',
+    'claude-opus-5': 'rejected',
+    'claude-sonnet-5': 'rejected',
+    'claude-opus-4-8': 'rejected',
+    'claude-opus-4-7': 'rejected',
+    'claude-opus-4-6': 'accepted',
+    'claude-sonnet-4-6': 'accepted',
+    'claude-opus-4-5': 'accepted',
+    'claude-haiku-4-5': 'accepted',
+  });
+
+export function anthropicRejectsManualThinking(resolvedModel: string): boolean {
+  return ANTHROPIC_MANUAL_THINKING[resolvedModel] === 'rejected';
+}

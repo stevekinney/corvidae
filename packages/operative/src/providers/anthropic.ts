@@ -5,10 +5,12 @@ import { createAnthropicSdkClient, isAnthropicClient } from './anthropic-sdk.ts'
 import {
   anthropicDescriptorsFor,
   assertDisabledThinkingSupported,
+  assertManualThinkingSupported,
   assertSamplingParametersSupported,
   assertThinkingBudgetBelowMaximum,
   assertThinkingBudgetMeetsMinimum,
   assertThinkingParametersCompatible,
+  assertToolChoiceSupported,
   buildAnthropicMessageRequest,
   buildAnthropicUsage,
 } from './anthropic-shared.ts';
@@ -57,6 +59,8 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
   const common = resolveCommonParameters(options);
   assertSamplingParametersSupported(resolvedModel, common);
   assertDisabledThinkingSupported(resolvedModel, options.thinking, resolvedEffort);
+  assertManualThinkingSupported(resolvedModel, options.thinking);
+  assertToolChoiceSupported(resolvedModel, options.toolChoice);
   assertThinkingBudgetMeetsMinimum(options.thinking);
   assertThinkingParametersCompatible(options.thinking, options.toolChoice, common);
   let clientPromise: Promise<AnthropicClient> | undefined;

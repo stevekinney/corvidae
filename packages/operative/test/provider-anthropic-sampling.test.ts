@@ -205,8 +205,9 @@ describe('Anthropic provider sampling guard from the per-model table', () => {
     expect(error).toBeInstanceOf(ProviderError);
     const message = (error as ProviderError).message;
     expect(message).toContain('claude-opus-5-5');
-    expect(message).toContain('temperature and topP');
-    expect(message).toContain('Omit');
+    expect(message).toContain('temperature (0.5) must be 1');
+    expect(message).toContain('topP (0.9) must be 0.99');
+    expect(message).toContain('omit them');
   });
 
   it('applies the same guard to the streaming factory', () => {
@@ -249,45 +250,64 @@ describe('Anthropic provider sampling guard from the per-model table', () => {
   });
 });
 
-describe('Haiku 5.5 sampling accepts exactly the documented defaults', () => {
-  const model = 'claude-haiku-5-5';
+const DEFAULTS_ONLY_MODELS = [
+  'claude-fable-5-1',
+  'claude-mythos-5-1',
+  'claude-fable-5',
+  'claude-mythos-5',
+  'claude-opus-5-5',
+  'claude-opus-5',
+  'claude-opus-4-8',
+  'claude-opus-4-7',
+  'claude-sonnet-5-5',
+  'claude-sonnet-5',
+  'claude-haiku-5-5',
+];
 
-  it('forwards temperature 1 on its own', async () => {
-    const client = createMockAnthropicClient([anthropicTextResponse]);
-    await createAnthropicProvider({ model, client, temperature: 1 })(makeContext());
-    expect(client._calls[0]?.['temperature']).toBe(1);
-  });
+describe.each(DEFAULTS_ONLY_MODELS)(
+  '%s accepts exactly the documented sampling defaults',
+  (model) => {
+    it('forwards temperature 1 on its own', async () => {
+      const client = createMockAnthropicClient([anthropicTextResponse]);
+      await createAnthropicProvider({ model, client, temperature: 1 })(makeContext());
+      expect(client._calls[0]?.['temperature']).toBe(1);
+    });
 
-  it('forwards topP 0.99 on its own', async () => {
-    const client = createMockAnthropicClient([anthropicTextResponse]);
-    await createAnthropicProvider({ model, client, topP: 0.99 })(makeContext());
-    expect(client._calls[0]?.['top_p']).toBe(0.99);
-  });
+    it('forwards topP 0.99 on its own', async () => {
+      const client = createMockAnthropicClient([anthropicTextResponse]);
+      await createAnthropicProvider({ model, client, topP: 0.99 })(makeContext());
+      expect(client._calls[0]?.['top_p']).toBe(0.99);
+    });
 
-  it.each([
-    ['temperature 0.5', { temperature: 0.5 }],
-    ['topP 1, which the guide calls out as rejected', { topP: 1 }],
-    ['topP 0.9', { topP: 0.9 }],
-  ])('refuses %s', (_label, sampling) => {
-    const client = createMockAnthropicClient([anthropicTextResponse]);
-    expect(() => createAnthropicProvider({ model, client, ...sampling })).toThrow(ProviderError);
-    expect(client._calls).toHaveLength(0);
-  });
+    it.each([
+      ['temperature 0.5', { temperature: 0.5 }],
+      ['topP 1, which the docs call out as rejected', { topP: 1 }],
+      ['topP 0.9', { topP: 0.9 }],
+    ])('refuses %s', (_label, sampling) => {
+      const client = createMockAnthropicClient([anthropicTextResponse]);
+      expect(() => createAnthropicProvider({ model, client, ...sampling })).toThrow(ProviderError);
+      expect(client._calls).toHaveLength(0);
+    });
 
-  it('refuses temperature and topP together even at their defaults', () => {
-    const client = createMockAnthropicClient([anthropicTextResponse]);
-    expect(() => createAnthropicProvider({ model, client, temperature: 1, topP: 0.99 })).toThrow(
-      /cannot be sent together/,
-    );
-  });
+    it('refuses temperature and topP together even at their defaults', () => {
+      const client = createMockAnthropicClient([anthropicTextResponse]);
+      expect(() => createAnthropicProvider({ model, client, temperature: 1, topP: 0.99 })).toThrow(
+        /cannot be sent together/,
+      );
+    });
+  },
+);
 
-  it('applies the same rule to the streaming factory', () => {
-    const streamingClient = createMockAnthropicStreamingClient([]);
+describe('defaults-only sampling on the streaming factory', () => {
+  it('applies the same rule', () => {
+    const client = createMockAnthropicStreamingClient([]);
+    const model = 'claude-opus-5-5';
     expect(() =>
-      createAnthropicProviderStream({ model, client: streamingClient, temperature: 1, topP: 0.99 }),
+      createAnthropicProviderStream({ model, client, temperature: 1, topP: 0.99 }),
     ).toThrow(ProviderError);
-    expect(() =>
-      createAnthropicProviderStream({ model, client: streamingClient, temperature: 1 }),
-    ).not.toThrow();
+    expect(() => createAnthropicProviderStream({ model, client, temperature: 0.2 })).toThrow(
+      ProviderError,
+    );
+    expect(() => createAnthropicProviderStream({ model, client, temperature: 1 })).not.toThrow();
   });
 });
