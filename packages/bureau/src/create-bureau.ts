@@ -1649,17 +1649,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * Durable steering (see `steering-log.ts` and
    * `documentation/durable-steering-log.md`). A durably-configured bureau
    * keeps each session's steering as an append-only log of events in
-   * `runtime.kv`; the session's gate is a fold of it. These track how far
-   * each session's gate has folded, and which session incarnation it folded.
+   * `runtime.kv`; the session's gate is a fold of it, and every change to
+   * the gate — admissions, promotions, and run-boundary transitions alike —
+   * is appended first and applied only after, so the local gate changes in
+   * exactly the log's order.
+   *
+   * A cursor records which gate instance it folded into, which session
+   * incarnation, and how far. Each durable gate has its OWN ledger: the
+   * fold must depend on nothing but the log, and the bureau-wide ledger
+   * can hold entries for sessions another process has since deleted.
+   * Cross-session idempotency comes from the log's durable key bindings.
    */
-  const steeringCursors = new Map<string, { incarnation: string; head: SteeringLogHead }>();
-  /**
-   * Admissions the gate did not accept (rejected, or unsupported), keyed
-   * `principal -> id`, as folded from the log. The gate's ledger records
-   * only accepted commands; these make a refused command's id durable too,
-   * so a retry is answered from the log instead of decided afresh.
-   */
-  const steeringRefusals = new Map<string, Map<string, SteeringRefusal>>();
+  interface SteeringCursor {
+    readonly incarnation: string;
+    readonly gate: BureauSteeringGate;
+    readonly ledger: ReturnType<typeof createSteeringCommandLedger>;
+    /**
+     * Admissions the gate did not accept (rejected, or unsupported), keyed
+     * `principal -> id`, as folded from the log. The ledger records only
+     * accepted commands; these keep a refused command's id decided too, so
+     * a retry is answered from the log instead of decided afresh.
+     */
+    readonly refusals: Map<string, Map<string, SteeringRefusal>>;
+    /** The last head read or written. Appends are conditioned on it. */
+    head: SteeringLogHead;
+    /** How many entries have been applied to `gate`. */
+    applied: number;
+  }
+  const steeringCursors = new Map<string, SteeringCursor>();
   /** One log operation at a time per session, in this process. */
   const steeringQueues = new Map<string, Promise<unknown>>();
 
@@ -1684,7 +1701,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return next;
   }
 
-  /** The session's gate, created on first use. */
+  /** The session's gate, created on first use (non-durable bureaus). */
   function getSessionSteeringGate(sessionId: string): BureauSteeringGate {
     let gate = steeringGates.get(sessionId);
     if (gate === undefined) {
@@ -1735,49 +1752,71 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * Folds every entry this process has not yet applied into the session's
-   * gate. A different incarnation than the one folded so far means the
-   * session was deleted and recreated: its gate starts over.
+   * gate. The fold starts over — a fresh gate and ledger, from entry one —
+   * when the session's incarnation changed (deleted and recreated) or the
+   * gate this cursor folded into is no longer the session's gate (dropped
+   * by a deletion). The cursor advances per entry, so a failure partway
+   * through never re-applies what was already applied.
    */
   async function catchUpSteering(
     kv: ConditionalTextValueStore,
     sessionId: string,
     incarnation: string,
-  ): Promise<BureauSteeringGate> {
+  ): Promise<SteeringCursor> {
     let cursor = steeringCursors.get(sessionId);
-    if (cursor !== undefined && cursor.incarnation !== incarnation) {
+    if (
+      cursor !== undefined &&
+      (cursor.incarnation !== incarnation || steeringGates.get(sessionId) !== cursor.gate)
+    ) {
       forgetSessionSteering(sessionId);
       cursor = undefined;
     }
-    const gate = getSessionSteeringGate(sessionId);
+    if (cursor === undefined) {
+      const ledger = createSteeringCommandLedger();
+      const gate = createSteeringGate(sessionId, ledger, runtimeServices.clock);
+      steeringGates.set(sessionId, gate);
+      cursor = {
+        incarnation,
+        gate,
+        ledger,
+        refusals: new Map(),
+        head: { raw: null, sequence: 0 },
+        applied: 0,
+      };
+      steeringCursors.set(sessionId, cursor);
+    }
     const head = await readSteeringLogHead(kv, sessionId, incarnation);
-    const from = cursor?.head.sequence ?? 0;
-    const events = await readSteeringLogEntries(kv, sessionId, incarnation, from, head.sequence);
-    for (const event of events) applySteeringEvent(gate, steeringRefusals, event);
-    steeringCursors.set(sessionId, { incarnation, head });
-    return gate;
+    const events = await readSteeringLogEntries(
+      kv,
+      sessionId,
+      incarnation,
+      cursor.applied,
+      head.sequence,
+    );
+    for (const event of events) {
+      applySteeringEvent(cursor.gate, cursor.refusals, event);
+      cursor.applied += 1;
+    }
+    cursor.head = head;
+    return cursor;
   }
 
   /** Drops this process's folded view of a session. */
   function forgetSessionSteering(sessionId: string): void {
-    const gate = steeringGates.get(sessionId);
-    gate?.purgeFromLedger();
-    steeringGates.delete(sessionId);
-    steeringCursors.delete(sessionId);
-    for (const [principal, byId] of steeringRefusals) {
-      for (const [id, refusal] of byId) {
-        if (refusal.command.sessionId === sessionId) byId.delete(id);
-      }
-      if (byId.size === 0) steeringRefusals.delete(principal);
+    const cursor = steeringCursors.get(sessionId);
+    if (cursor !== undefined && steeringGates.get(sessionId) === cursor.gate) {
+      steeringGates.delete(sessionId);
     }
+    steeringCursors.delete(sessionId);
   }
 
   /** How many times an append retries after losing a race to another process. */
   const STEERING_APPEND_ATTEMPTS = 25;
 
   /**
-   * Appends `event` to a session's log after catching up, then applies it
-   * locally. Used where nothing has happened yet locally, so the local gate
-   * only ever changes in log order.
+   * Appends a non-admission event after catching up, then applies it. Every
+   * non-admission change to a durable gate goes through here, so the local
+   * gate only ever changes in log order.
    */
   async function appendThenApplySteering(
     kv: ConditionalTextValueStore,
@@ -1786,12 +1825,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     event: Exclude<SteeringLogEvent, { type: 'admit' }>,
   ): Promise<void> {
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
-      const gate = await catchUpSteering(kv, sessionId, incarnation);
-      const head = steeringCursors.get(sessionId)?.head ?? { raw: null, sequence: 0 };
-      const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, head, event);
+      const cursor = await catchUpSteering(kv, sessionId, incarnation);
+      const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, cursor.head, event);
       if (appended.status === 'appended') {
-        applySteeringEvent(gate, steeringRefusals, event);
-        steeringCursors.set(sessionId, { incarnation, head: appended.head });
+        applySteeringEvent(cursor.gate, cursor.refusals, event);
+        cursor.applied += 1;
+        cursor.head = appended.head;
         return;
       }
     }
@@ -1799,48 +1838,36 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Records a run-boundary event the local gate has ALREADY applied — the
-   * run's own boundary needed it immediately — by appending it after
-   * whatever other processes appended meanwhile. Safe to append late: a
-   * boundary only reports versions its own process had folded, so it
-   * commutes with any foreign admission it raced (that admission's version
-   * is necessarily higher). A failure is a diagnostic, not a run failure:
-   * the cost is a stale command state in another process's view.
+   * Logs a run-boundary event (a run observed a version, or ended) and
+   * applies it once logged, in the session's queue. The run's own step does
+   * not wait on it: per-run applied tracking lives in the run's state, so a
+   * boundary event reaching the gate a moment later changes nothing the
+   * run itself reads. A failure is a `steering` diagnostic, and the gate is
+   * left as the log has it.
    */
-  function appendAppliedSteering(
+  function logRunBoundarySteering(
     sessionId: string,
+    gate: BureauSteeringGate,
     event: Extract<SteeringLogEvent, { type: 'applied' | 'run-ended' }>,
   ): void {
     const kv = durableSteeringStore();
     const cursor = steeringCursors.get(sessionId);
-    if (kv === undefined || cursor === undefined) return;
+    if (kv === undefined || cursor === undefined || cursor.gate !== gate) {
+      // Non-durable, or a gate no longer folded from the log (its session
+      // was deleted or recreated): apply directly, as an in-memory gate does.
+      applySteeringEvent(gate, new Map(), event);
+      return;
+    }
     const { incarnation } = cursor;
-    void enqueueSteering(sessionId, async () => {
-      for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
-        await catchUpSteering(kv, sessionId, incarnation);
-        const head = steeringCursors.get(sessionId)?.head ?? { raw: null, sequence: 0 };
-        const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, head, event);
-        if (appended.status === 'appended') {
-          // Already applied locally; only the cursor moves past it.
-          steeringCursors.set(sessionId, { incarnation, head: appended.head });
-          return;
-        }
-      }
-      throw steeringContention(sessionId);
-    }).catch((error: unknown) => {
+    void enqueueSteering(sessionId, () =>
+      appendThenApplySteering(kv, sessionId, incarnation, event),
+    ).catch((error: unknown) => {
       diagnose({
         level: 'error',
         scope: 'steering',
         message: `[bureau] Could not log a steering "${event.type}" event for run "${event.runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
       });
     });
-  }
-
-  /** A run reached a terminal state: settle its steering, and log that. */
-  function endSteeringForRun(sessionId: string, gate: BureauSteeringGate, runId: string): void {
-    const now = runtimeServices.clock.nowISO();
-    gate.failAcceptedForRun(runId, now);
-    appendAppliedSteering(sessionId, { type: 'run-ended', runId, now });
   }
 
   function steeringContention(sessionId: string): BureauError {
@@ -3431,12 +3458,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // (`run-step.ts`'s `maybeDispatchSteeringApplied`), so listening here
       // is the one place that fires for both drivers identically.
       activeRun.addEventListener(SteeringAppliedEvent.type, (event) => {
-        steeringGate.recordApplied(
-          event.effective.appliedAtRunId,
-          event.effective.configVersion,
-          event.effective.appliedAt,
-        );
-        appendAppliedSteering(sessionId, {
+        logRunBoundarySteering(sessionId, steeringGate, {
           type: 'applied',
           runId: event.effective.appliedAtRunId,
           configVersion: event.effective.configVersion,
@@ -3459,7 +3481,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // run transitions to `failed`/`'run-terminal'` the moment the run
         // reaches ANY terminal state — completed here, aborted in the
         // sibling listener below.
-        endSteeringForRun(sessionId, steeringGate, runId);
+        logRunBoundarySteering(sessionId, steeringGate, {
+          type: 'run-ended',
+          runId,
+          now: runtimeServices.clock.nowISO(),
+        });
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
 
@@ -3511,7 +3537,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
         // See the identical call in the `run.completed` listener above.
-        endSteeringForRun(sessionId, steeringGate, runId);
+        logRunBoundarySteering(sessionId, steeringGate, {
+          type: 'run-ended',
+          runId,
+          now: runtimeServices.clock.nowISO(),
+        });
 
         const report = buildTerminalReportFromAbortedEvent(runId, {
           usage: event.usage,
@@ -7252,12 +7282,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // This computation touches only the internal run registry, never
     // anything derived from `request.principal`, so it leaks nothing to an
     // unauthorized caller ahead of the `not-found` check below.
-    const liveRunIds: string[] = [];
-    for (const [runId, runState] of store.getState().runs) {
-      if (runState.status === 'running' && getRunSessionIdentifier(runState) === sessionId) {
-        liveRunIds.push(runId);
-      }
-    }
+    const liveRunIds = liveSessionRunIds(sessionId);
     const targetRunId = request.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
     if (!isSessionAuthorityAuthorized(session.metadata, request.principal, targetRunId)) {
       return { outcome: 'not-found' };
@@ -7465,10 +7490,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return outcome;
     }
     const outcome = await enqueueSteering(sessionId, () =>
-      admitDurableSteeringCommand(kv, session.incarnation, command, liveRunIds, now),
+      admitDurableSteeringCommand(kv, session.incarnation, command, () =>
+        liveSessionRunIds(sessionId),
+      ),
     );
     if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
     return outcome;
+  }
+
+  /** The ids of this process's runs on `sessionId` that are still running. */
+  function liveSessionRunIds(sessionId: string): string[] {
+    const liveRunIds: string[] = [];
+    for (const [runId, runState] of store.getState().runs) {
+      if (runState.status === 'running' && getRunSessionIdentifier(runState) === sessionId) {
+        liveRunIds.push(runId);
+      }
+    }
+    return liveRunIds;
   }
 
   // AB-68: give `steering.accepted` its first production dispatch site.
@@ -7506,13 +7544,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     kv: ConditionalTextValueStore,
     incarnation: string,
     command: ImplementedSteeringCommand,
-    liveRunIds: readonly string[],
-    now: string,
+    liveRunIdsNow: () => string[],
   ): Promise<SteeringCommandAdmissionOutcome> {
     const { sessionId, principal, id } = command;
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
-      const gate = await catchUpSteering(kv, sessionId, incarnation);
-      const answered = answerSteeringRetry(steeringCommandLedger, steeringRefusals, command);
+      const cursor = await catchUpSteering(kv, sessionId, incarnation);
+      const answered = answerSteeringRetry(cursor.ledger, cursor.refusals, command);
       if (answered !== undefined) return answered;
 
       let expectedBinding: string | null = null;
@@ -7539,19 +7576,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         expectedBinding = stored.raw;
       }
 
-      const head = steeringCursors.get(sessionId)?.head ?? { raw: null, sequence: 0 };
-      const event = { type: 'admit', command, liveRunIds: [...liveRunIds], now } as const;
+      // Live runs and the clock are read now, on this attempt, not when the
+      // caller queued: a run that ended (and logged it) while this waited
+      // must not be bound, and a deadline is judged at the moment of decision.
+      const event = {
+        type: 'admit',
+        command,
+        liveRunIds: liveRunIdsNow(),
+        now: runtimeServices.clock.nowISO(),
+      } as const;
       const appended = await appendSteeringLogEvent(
         kv,
         sessionId,
         incarnation,
-        head,
+        cursor.head,
         event,
         expectedBinding,
       );
       if (appended.status === 'appended') {
-        const outcome = applySteeringEvent(gate, steeringRefusals, event);
-        steeringCursors.set(sessionId, { incarnation, head: appended.head });
+        const outcome = applySteeringEvent(cursor.gate, cursor.refusals, event);
+        cursor.applied += 1;
+        cursor.head = appended.head;
         if (outcome === undefined) throw new Error('an admit event always yields an outcome');
         return outcome;
       }
@@ -8993,7 +9038,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             await Promise.allSettled(steeringQueues.values());
             steeringQueues.clear();
             steeringCursors.clear();
-            steeringRefusals.clear();
           } finally {
             try {
               runtime.disposeStorage?.();

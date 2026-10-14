@@ -11,8 +11,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createToolbox } from 'armorer';
+import type { GenerateFunction } from '@lostgradient/operative';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 
@@ -169,6 +171,141 @@ describe('durable steering across two Bureau processes', () => {
       expect(versionOf(fresh)).toBe(1);
     } finally {
       await bureau.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('folds a run boundary and a completion to the same command states everywhere', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-boundary-'));
+    const path = join(directory, 'bureau.sqlite');
+    let releaseTool: (() => void) | undefined;
+    const toolGate = new Promise<void>((resolve) => {
+      releaseTool = resolve;
+    });
+    let releaseSecondTool: (() => void) | undefined;
+    const secondToolGate = new Promise<void>((resolve) => {
+      releaseSecondTool = resolve;
+    });
+    let toolCalls = 0;
+    let generateCalls = 0;
+    // Step 0 calls a tool that waits for the test; step 1 finishes. Steering
+    // admitted while the tool waits is observed at step 1's boundary.
+    const generate: GenerateFunction = async ({ step }) => {
+      generateCalls += 1;
+      return step === 0
+        ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
+        : { content: 'done', toolCalls: [] };
+    };
+    const bureauA = await createBureau({
+      agents: {},
+      generate,
+      toolbox: createToolbox([
+        createTool({
+          name: 'next',
+          description: 'waits for the test',
+          input: z.object({}),
+          execute: async () => {
+            toolCalls += 1;
+            // The first run waits for the test; the second stays live so the
+            // session is not terminal while the test inspects it.
+            await (toolCalls === 1 ? toolGate : secondToolGate);
+            return 'ok';
+          },
+        }),
+      ]),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+    });
+    let bureauB: TestBureau | undefined;
+
+    try {
+      const run = await bureauA.createRun({ message: 'go', principal: 'alice' });
+      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+      const model = (id: string, override: string) =>
+        ({ id, principal: 'alice', requestedValue: { target: 'model', override } }) as const;
+      expect(
+        versionOf(
+          await bureauA.submitSteeringCommand(run.sessionId, model('k1', 'claude-sonnet-5')),
+        ),
+      ).toBe(1);
+      expect(
+        versionOf(
+          await bureauA.submitSteeringCommand(run.sessionId, model('k2', 'claude-opus-4-8')),
+        ),
+      ).toBe(2);
+
+      releaseTool?.();
+      for (let attempt = 0; attempt < 500; attempt += 1) {
+        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        await Bun.sleep(10);
+      }
+      expect(bureauA.getRun(run.id)?.status).toBe('completed');
+
+      // A second run keeps the session live (a terminal session answers
+      // `session-terminal` before any idempotency check).
+      await bureauA.createRun({ message: 'again', principal: 'alice', sessionId: run.sessionId });
+      for (let attempt = 0; attempt < 200 && toolCalls < 2; attempt += 1) await Bun.sleep(10);
+
+      // The boundary's `applied` event is logged in the background; wait for
+      // A itself to report it, then compare with a process that only folds.
+      const stateIn = async (bureau: TestBureau, id: string, override: string) => {
+        const outcome = await bureau.submitSteeringCommand(run.sessionId, model(id, override));
+        if (outcome.outcome !== 'replayed')
+          throw new Error(`expected replayed, got ${outcome.outcome}`);
+        return outcome.command.state;
+      };
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if ((await stateIn(bureauA, 'k2', 'claude-opus-4-8')) === 'applied') break;
+        await Bun.sleep(10);
+      }
+      expect(await stateIn(bureauA, 'k2', 'claude-opus-4-8')).toBe('applied');
+      expect(await stateIn(bureauA, 'k1', 'claude-sonnet-5')).toBe('superseded');
+
+      bureauB = await openBureau(path);
+      await bureauB.waitForRecovery?.();
+      expect(await stateIn(bureauB, 'k2', 'claude-opus-4-8')).toBe('applied');
+      expect(await stateIn(bureauB, 'k1', 'claude-sonnet-5')).toBe('superseded');
+    } finally {
+      releaseTool?.();
+      releaseSecondTool?.();
+      await bureauA.dispose();
+      await bureauB?.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('folds a key reused after another process deleted its session, without stale state', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-deleted-elsewhere-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureauA = await openBureau(path);
+    const bureauB = await openBureau(path);
+
+    try {
+      const model = (id: string, override: string) =>
+        ({ id, principal: 'alice', requestedValue: { target: 'model', override } }) as const;
+      const first = await startRunningSession(bureauA);
+      expect(
+        versionOf(await bureauA.submitSteeringCommand(first, model('k1', 'claude-sonnet-5'))),
+      ).toBe(1);
+
+      // B deletes that session; A never hears about it. B then admits the
+      // same key in a new session, replacing the dead incarnation's binding.
+      await bureauB.deleteSession(first);
+      const second = await startRunningSession(bureauB);
+      expect(
+        versionOf(await bureauB.submitSteeringCommand(second, model('k1', 'claude-opus-4-8'))),
+      ).toBe(1);
+
+      // A folds the new session from its log alone: k1 is that session's
+      // first command, so a new command is version 2 and k1 replays there.
+      expect(
+        versionOf(await bureauA.submitSteeringCommand(second, model('k2', 'claude-sonnet-5'))),
+      ).toBe(2);
+      const replayed = await bureauA.submitSteeringCommand(second, model('k1', 'claude-opus-4-8'));
+      expect(replayed.outcome).toBe('replayed');
+    } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);

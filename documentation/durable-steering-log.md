@@ -40,7 +40,11 @@ The gate is not rewritten. Each event records the inputs one of its existing met
 
 While mutating, the gate reads no other process-local state; its only direct clock read is in a read-only accessor. So the same log folds to the same state, ledger, and command states in every process. Logging recorded inputs replaced the planned `decide`/`apply` split, which would have rewritten the gate for the same result.
 
-Admissions and promotions are appended first and applied only after the append succeeds, so the local gate changes in log order. Run-boundary events (`applied`, `run-ended`) are applied locally at once, because the run's own boundary needs them, and appended afterwards in order. That is safe because a boundary only reports versions its process had already folded. It therefore commutes with any foreign admission it raced, whose version is necessarily higher. A failed boundary append is reported as a `steering` diagnostic.
+Every event is appended first and applied only after the append succeeds, so the local gate changes in exactly the log's order. That includes run-boundary events (`applied`, `run-ended`), which the run's listener queues behind any admission in flight rather than applying at once. An earlier version applied them locally first, on the theory that they commute with a racing foreign admission. Review disproved that: an `applied` that lands locally before a racing supersession leaves the command `applied` here but `superseded` everywhere else. A run does not need its own boundary event immediately, because per-run applied tracking lives in the run's state. A failed boundary append is reported as a `steering` diagnostic.
+
+Each durable gate also folds into its own ledger rather than the bureau-wide one. The fold must depend on the log alone, and a shared in-memory ledger can still hold entries for a session another process has deleted. Cross-session idempotency comes from the durable key bindings instead. A key bound in another session is answered by folding that session's log into a throwaway gate.
+
+Each admission attempt reads live runs and the clock when it is decided, not when it was queued, so a run that ended (and logged it) meanwhile is never bound.
 
 A refused admission (`rejected` or `unsupported-capability`) is logged like any other, so its id stays decided: an exact retry gets the original refusal back, and a mismatched one is a `conflict` against it.
 

@@ -308,7 +308,14 @@ export async function deleteSteeringLog(
     if (bindingKey === null) continue;
     const raw = await kv.get(bindingKey);
     if (raw === null) continue;
-    const parsed = parseJson(raw, 'Steering key binding');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // A corrupt binding is left for whoever reads it to fail closed on;
+      // it must not stop the rest of this incarnation's cleanup.
+      continue;
+    }
     if (
       isRecord(parsed) &&
       parsed['sessionId'] === sessionId &&
