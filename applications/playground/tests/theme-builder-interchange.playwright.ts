@@ -68,13 +68,11 @@ async function downloadSource(page: Page): Promise<string> {
 async function pasteAndCheck(page: Page, text: string) {
   const dialog = await openImport(page);
   if (text.length > 20_000) {
-    await dialog
-      .locator('input[type="file"]')
-      .setInputFiles({
-        name: 'theme.cinder-theme.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(text),
-      });
+    await dialog.locator('input[type="file"]').setInputFiles({
+      name: 'theme.cinder-theme.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(text),
+    });
   } else {
     await dialog.getByLabel('Or paste JSON').fill(text);
     await dialog.getByRole('button', { name: 'Check pasted JSON' }).click();

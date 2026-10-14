@@ -50,7 +50,8 @@
   });
 
   async function copy(file: { filename: string; mime: string; text: string }): Promise<void> {
-    status = (await copyOrDownload(file)).message;
+    const delivered = await copyOrDownload(file);
+    status = delivered.message;
   }
 
   function download(file: { filename: string; mime: string; text: string }): void {

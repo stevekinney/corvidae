@@ -8,9 +8,9 @@ import {
   withOppositeThemeResets,
   withThemeDependentOverrides,
 } from '../../src/tokens/runtime/css-support.ts';
+import { renderStylesheetSkeleton } from '../../src/tokens/runtime/stylesheet-skeleton.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
-import { renderStylesheetSkeleton } from '../../src/tokens/runtime/stylesheet-skeleton.ts';
 import { prepareCss } from './css-preparation.ts';
 import { CSS_PLUGINS, PRETTIER_OPTIONS, REGENERATE_COMMAND } from './generator-configuration.ts';
 
