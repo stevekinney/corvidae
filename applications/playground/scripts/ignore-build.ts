@@ -1,6 +1,7 @@
 /**
  * Decides whether Vercel builds cinder.website. Run by `ignore-build.sh`, Vercel's Ignored Build
- * Step, before anything is installed, so it imports nothing outside Bun and Node built-ins.
+ * Step, before anything is installed, so it imports nothing outside Bun, Node built-ins, and its
+ * own dependency-free environment boundary.
  *
  * A build renders every component page and takes the better part of an hour, so it runs only
  * when the deployed site could differ:
@@ -18,6 +19,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { ignoreStepEnvironment } from './environment-configuration.ts';
 
 export const PREVIEW_OPT_IN = '[playground preview]';
 export const PLAYGROUND_PACKAGE = '@lostgradient/playground';
@@ -266,17 +269,16 @@ export function decide(
 }
 
 if (import.meta.main) {
-  const environment = process.env['VERCEL_ENV'];
-  const commitMessage = process.env['VERCEL_GIT_COMMIT_MESSAGE'];
+  const { vercelEnvironment, commitMessage, previousSha, commitSha } = ignoreStepEnvironment();
   console.log(
-    `Bun ${Bun.version}; VERCEL_ENV=${environment ?? '(unset)'}; ` +
+    `Bun ${Bun.version}; VERCEL_ENV=${vercelEnvironment ?? '(unset)'}; ` +
       `commit message ${commitMessage === undefined ? 'unset' : 'set'}`,
   );
-  const decision = decide(environment, commitMessage, () =>
+  const decision = decide(vercelEnvironment, commitMessage, () =>
     decideFromRepository(
       git(process.cwd(), 'rev-parse', '--show-toplevel').trim(),
-      process.env['VERCEL_GIT_PREVIOUS_SHA'],
-      process.env['VERCEL_GIT_COMMIT_SHA'],
+      previousSha,
+      commitSha,
     ),
   );
   console.log(`${decision.build ? 'Building' : 'Skipping the build'}: ${decision.reason}.`);

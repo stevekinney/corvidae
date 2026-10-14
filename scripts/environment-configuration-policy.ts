@@ -29,6 +29,7 @@ export const environmentBoundaries = [
     kind: 'script',
     paths: new Set([
       'applications/desktop/scripts/environment-configuration.ts',
+      'applications/playground/scripts/environment-configuration.ts',
       'components/cinder/scripts/environment-configuration.ts',
       'components/weft-ui/scripts/browser/environment-configuration.ts',
       'scripts/browser-fixtures/environment-configuration.ts',
