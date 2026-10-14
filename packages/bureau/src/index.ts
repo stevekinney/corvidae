@@ -135,6 +135,7 @@ export type {
   RunCreationLedger,
   RunCreationLedgerResult,
   RunCreationObservation,
+  RunCreationPayload,
   RunCreationReceipt,
 } from './command-ledger';
 export {
@@ -144,6 +145,7 @@ export {
   digestCommandPayload,
   digestRunCreationPayload,
   RUN_CREATION_OPERATION_VERSION,
+  RunCreationReceiptUnrecordedError,
 } from './command-ledger';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 export type {

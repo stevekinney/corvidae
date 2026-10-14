@@ -50,6 +50,7 @@ const REQUEST: CreateRunRequest = {
 
 const IDENTITY: CommandLedgerIdentity = {
   callerId: 'alice',
+  target: 'bureau',
   requestId: 'request-1',
   operationVersion: RUN_CREATION_OPERATION_VERSION,
 };
@@ -352,8 +353,10 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
     });
   });
 
-  it('after-work-start: the retry observes the in-flight run instead of restarting it', async () => {
+  it('after-work-start: the retry observes the in-flight run instead of restarting it, and records its receipt once', async () => {
     await withScenario(factory, async ({ storageB, ledger, crashOn, boot }) => {
+      // The run is durably started, but the process dies before the ledger
+      // records it: the entry stays pending and names a run the engine has.
       const crash = crashOn(ledgerWriteIn('completed'), 'before-write');
       const bureauA = await boot(crash.storage, heldGenerate().generate);
       bureauA.createRun(REQUEST).catch(() => {});
@@ -364,17 +367,36 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       const { runId } = pending.claim;
       expect(await durableRunIds(bureauA)).toEqual([runId]);
 
-      const bureauB = await boot(storageB, heldGenerate().generate);
+      const generateB = heldGenerate();
+      const bureauB = await boot(storageB, generateB.generate);
       const retry = await bureauB.createRun(REQUEST);
 
-      expect(retry).toMatchObject({
-        id: runId,
+      const receipt = {
+        runId,
+        requestId: 'request-1',
+        createdAt: pending.claimedAt,
         status: 'running',
-        receipt: { runId, requestId: 'request-1', createdAt: pending.claimedAt },
-      });
+      };
+      expect(retry).toMatchObject({ id: runId, status: 'running', receipt });
       expect(await durableRunIds(bureauB)).toEqual([runId]);
       expect(bureauB.listRuns().map((run) => run.id)).toEqual([runId]);
-      expect(await ledger.read(IDENTITY)).toEqual(pending);
+      // The retry recorded the receipt, so it no longer depends on when a
+      // retry happens to arrive.
+      expect(await ledger.read(IDENTITY)).toMatchObject({
+        state: 'completed',
+        claimedAt: pending.claimedAt,
+        claim: pending.claim,
+        result: { receipt },
+      });
+
+      generateB.release();
+      expect(
+        await pollUntil(async () => (await durableStatus(bureauB, runId)) === 'completed'),
+      ).toBe(true);
+      const later = await bureauB.createRun(REQUEST);
+      expect(later.id).toBe(runId);
+      expect(later.receipt).toEqual(receipt);
+      expect(await durableRunIds(bureauB)).toEqual([runId]);
     });
   });
 

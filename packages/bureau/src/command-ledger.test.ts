@@ -9,6 +9,7 @@ import { type ConditionalTextValueStore, textValueStore } from '@lostgradient/we
 import { describe, expect, it } from 'bun:test';
 
 import {
+  type BeginRunCreationInput,
   BureauLedgerConflictError,
   type CommandLedgerIdentity,
   createCommandLedger,
@@ -18,6 +19,7 @@ import {
   RUN_CREATION_OPERATION_VERSION,
   type RunCreationClaim,
   type RunCreationObservation,
+  RunCreationReceiptUnrecordedError,
 } from './command-ledger';
 import { BureauError } from './create-bureau';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
@@ -37,6 +39,7 @@ interface TestResult {
 function identity(overrides: Partial<CommandLedgerIdentity> = {}): CommandLedgerIdentity {
   return {
     callerId: 'alice',
+    target: 'bureau',
     requestId: 'request-1',
     operationVersion: RUN_CREATION_OPERATION_VERSION,
     ...overrides,
@@ -83,24 +86,32 @@ describe('digestCommandPayload', () => {
 });
 
 describe('digestRunCreationPayload', () => {
-  it('digests what decides the run, and not who asked or how they authenticated', () => {
+  it('digests what decides the run', () => {
     const base = digestRunCreationPayload({ message: 'hi', sessionId: 'session-1' });
-    expect(
-      digestRunCreationPayload({
-        message: 'hi',
-        sessionId: ' session-1 ',
-        principal: 'alice',
-        runCreationRequestId: 'request-1',
-        requestContext: undefined,
-      }),
-    ).toBe(base);
     expect(digestRunCreationPayload({ message: 'hi', sessionId: 'session-2' })).not.toBe(base);
     expect(
       digestRunCreationPayload({ message: 'hi', sessionId: 'session-1', systemPrompt: 'x' }),
     ).not.toBe(base);
     expect(
+      digestRunCreationPayload({ message: 'hi', sessionId: 'session-1', maximumSteps: 3 }),
+    ).not.toBe(base);
+    expect(
       digestRunCreationPayload({ message: 'hi', sessionId: 'session-1', maximumTokens: 10 }),
     ).not.toBe(base);
+  });
+
+  it('ignores fields that are not the payload, such as who asked and how they authenticated', () => {
+    const request = {
+      message: 'hi',
+      sessionId: 'session-1',
+      principal: 'alice',
+      agentName: 'bureau',
+      runCreationRequestId: 'request-1',
+      requestContext: undefined,
+    };
+    expect(digestRunCreationPayload(request)).toBe(
+      digestRunCreationPayload({ message: 'hi', sessionId: 'session-1' }),
+    );
   });
 });
 
@@ -237,13 +248,16 @@ describe('createCommandLedger (memory backend)', () => {
     }
   });
 
-  it('keys identity on caller, request id, and operation version together', async () => {
+  it('keys identity on caller, target, request id, and operation version together', async () => {
     const { fixture, ledger } = memoryLedger();
     try {
       await ledger.claim(identity(), 'digest-a', { runId: 'run-1' });
 
       const otherCaller = await ledger.claim(identity({ callerId: 'bob' }), 'digest-b', {
         runId: 'run-2',
+      });
+      const otherTarget = await ledger.claim(identity({ target: 'researcher' }), 'digest-b', {
+        runId: 'run-5',
       });
       const otherRequest = await ledger.claim(identity({ requestId: 'request-10' }), 'digest-c', {
         runId: 'run-3',
@@ -255,6 +269,7 @@ describe('createCommandLedger (memory backend)', () => {
       );
 
       expect(otherCaller.outcome).toBe('claimed');
+      expect(otherTarget.outcome).toBe('claimed');
       expect(otherRequest.outcome).toBe('claimed');
       expect(otherVersion.outcome).toBe('claimed');
       expect(await ledger.listConflicts(identity())).toEqual([]);
@@ -295,7 +310,7 @@ describe('createCommandLedger (memory backend)', () => {
     }
   });
 
-  it('never releases or re-completes an entry that is no longer the pending one it claimed', async () => {
+  it('never releases or overwrites an entry that is no longer the pending one it claimed', async () => {
     const { fixture, ledger } = memoryLedger();
     try {
       const first = await ledger.claim(identity(), 'digest-a', { runId: 'run-1' });
@@ -303,10 +318,75 @@ describe('createCommandLedger (memory backend)', () => {
       const completed = await ledger.complete(first.entry, { status: 'running' });
 
       expect(await ledger.release(first.entry)).toBe(false);
-      expect(
-        await throwingRejectionOf(ledger.complete(first.entry, { status: 'completed' })),
-      ).toThrow(/no longer pending/);
+      // Completing the same claim again resolves with the record already
+      // there; it does not replace that record's result.
+      expect(await ledger.complete(first.entry, { status: 'completed' })).toEqual(completed);
       expect(await ledger.read(identity())).toEqual(completed);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('refuses to complete a claim that was released or replaced by another claim', async () => {
+    const { fixture, ledger } = memoryLedger();
+    try {
+      const first = await ledger.claim(identity(), 'digest-a', { runId: 'run-1' });
+      if (first.outcome !== 'claimed') throw new Error('expected a fresh claim');
+      expect(await ledger.release(first.entry)).toBe(true);
+
+      expect(
+        await throwingRejectionOf(ledger.complete(first.entry, { status: 'running' })),
+      ).toThrow(/no longer pending/);
+      expect(await ledger.read(identity())).toBeUndefined();
+
+      const second = await ledger.claim(identity(), 'digest-a', { runId: 'run-2' });
+      if (second.outcome !== 'claimed') throw new Error('expected a fresh claim');
+      expect(
+        await throwingRejectionOf(ledger.complete(first.entry, { status: 'running' })),
+      ).toThrow(/no longer pending/);
+      expect(await ledger.read(identity())).toEqual(second.entry);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('re-reads and resolves against a concurrent claim that wins the compare-and-swap', async () => {
+    const { fixture, kv, runtime } = memoryLedger();
+    try {
+      // The competitor's claim lands between this attempt's read and its
+      // write, so its first compare-and-swap fails and it must re-read.
+      let raced = false;
+      let failedSwaps = 0;
+      const racing: ConditionalTextValueStore = {
+        ...kv,
+        async conditionalBatch(conditions, operations) {
+          if (!raced && conditions[0]?.key.includes(':entry:') === true) {
+            raced = true;
+            const competitor = createCommandLedger<TestClaim, TestResult>({
+              kv,
+              now: () => runtime.clock.nowISO(),
+              nextConflictId: () => runtime.identifiers.next('ledger-conflict'),
+            });
+            await competitor.claim(identity(), 'digest-a', { runId: 'run-competitor' });
+          }
+          const committed = await kv.conditionalBatch(conditions, operations);
+          if (!committed) failedSwaps += 1;
+          return committed;
+        },
+      };
+      const ledger = createCommandLedger<TestClaim, TestResult>({
+        kv: racing,
+        now: () => runtime.clock.nowISO(),
+        nextConflictId: () => runtime.identifiers.next('ledger-conflict'),
+      });
+
+      const outcome = await ledger.claim(identity(), 'digest-a', { runId: 'run-mine' });
+
+      expect(failedSwaps).toBe(1);
+      expect(outcome).toMatchObject({
+        outcome: 'existing',
+        entry: { state: 'pending', claim: { runId: 'run-competitor' } },
+      });
     } finally {
       await fixture.dispose();
     }
@@ -347,7 +427,7 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
   };
 }
 
-const CLAIM: RunCreationClaim = { runId: 'run-1', sessionId: 'session-1', agentName: 'bureau' };
+const CLAIM: RunCreationClaim = { runId: 'run-1', sessionId: 'session-1' };
 
 function runCreationLedger(observe: (claim: RunCreationClaim) => Promise<RunCreationObservation>) {
   const fixture = createMemoryStorageFixture();
@@ -362,6 +442,17 @@ function runCreationLedger(observe: (claim: RunCreationClaim) => Promise<RunCrea
   return { fixture, kv, runtime, ledger };
 }
 
+function beginInput(overrides: Partial<BeginRunCreationInput> = {}): BeginRunCreationInput {
+  return {
+    callerId: 'alice',
+    agentName: 'bureau',
+    requestId: 'request-1',
+    payloadDigest: 'digest-a',
+    claim: CLAIM,
+    ...overrides,
+  };
+}
+
 const notObserved = async (): Promise<RunCreationObservation> => ({
   live: undefined,
   durableStatus: undefined,
@@ -373,6 +464,7 @@ describe('createRunCreationLedger', () => {
     try {
       const attempt = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: CLAIM,
@@ -395,6 +487,7 @@ describe('createRunCreationLedger', () => {
     try {
       const attempt = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: CLAIM,
@@ -405,6 +498,7 @@ describe('createRunCreationLedger', () => {
 
       const retry = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: { ...CLAIM, runId: 'run-2', sessionId: 'session-2' },
@@ -428,6 +522,7 @@ describe('createRunCreationLedger', () => {
     try {
       const attempt = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: CLAIM,
@@ -437,6 +532,7 @@ describe('createRunCreationLedger', () => {
 
       const retry = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: { ...CLAIM, runId: 'run-2' },
@@ -456,6 +552,7 @@ describe('createRunCreationLedger', () => {
     try {
       const first = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: CLAIM,
@@ -464,6 +561,7 @@ describe('createRunCreationLedger', () => {
 
       const retry = ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: { ...CLAIM, runId: 'run-2' },
@@ -487,6 +585,7 @@ describe('createRunCreationLedger', () => {
     try {
       const first = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: CLAIM,
@@ -494,17 +593,21 @@ describe('createRunCreationLedger', () => {
       if (first.kind !== 'claimed') throw new Error('expected a fresh claim');
       const retry = ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: { ...CLAIM, runId: 'run-2' },
       });
 
+      // Let the retry find the pending entry and start waiting on it.
+      for (let turn = 0; turn < 10; turn++) await Promise.resolve();
       const failure = new Error('session store unavailable');
       await first.release(failure);
       expect(await rejectionOf(retry)).toBe(failure);
 
       const again = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: { ...CLAIM, runId: 'run-3' },
@@ -531,6 +634,7 @@ describe('createRunCreationLedger', () => {
       });
       const claimed = await before.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: CLAIM,
@@ -545,6 +649,7 @@ describe('createRunCreationLedger', () => {
       });
       const retry = await after.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: { ...CLAIM, runId: 'run-2', sessionId: 'session-2' },
@@ -577,6 +682,7 @@ describe('createRunCreationLedger', () => {
     try {
       const first = await ledger.begin({
         callerId: 'alice',
+        agentName: 'bureau',
         requestId: 'request-1',
         payloadDigest: 'digest-a',
         claim: CLAIM,
@@ -586,6 +692,7 @@ describe('createRunCreationLedger', () => {
       const conflict = await rejectionOf(
         ledger.begin({
           callerId: 'alice',
+          agentName: 'bureau',
           requestId: 'request-1',
           payloadDigest: 'digest-b',
           claim: { ...CLAIM, runId: 'run-2' },
@@ -593,9 +700,205 @@ describe('createRunCreationLedger', () => {
       );
       expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
       expect(conflict).toMatchObject({ requestId: 'request-1', reason: 'payload-mismatch' });
+      // The original has issued no receipt yet, so the conflict carries none.
+      expect((conflict as BureauLedgerConflictError).originalReceipt).toBeUndefined();
 
       const created = await first.complete(summary());
       expect(created.receipt?.runId).toBe('run-1');
+    } finally {
+      await fixture.dispose();
+    }
+  });
+  it('carries the original receipt on a conflict once the original is completed', async () => {
+    const { fixture, ledger } = runCreationLedger(notObserved);
+    try {
+      const first = await ledger.begin(beginInput());
+      if (first.kind !== 'claimed') throw new Error('expected a fresh claim');
+      const created = await first.complete(summary());
+
+      const conflict = await rejectionOf(ledger.begin(beginInput({ payloadDigest: 'digest-b' })));
+
+      expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
+      expect((conflict as BureauLedgerConflictError).originalReceipt).toEqual(created.receipt);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('keys the request id on the published agent, so one request id for two agents is two commands', async () => {
+    const { fixture, ledger } = runCreationLedger(notObserved);
+    try {
+      const forBureau = await ledger.begin(beginInput());
+      const forResearcher = await ledger.begin(
+        beginInput({
+          agentName: 'researcher',
+          payloadDigest: 'digest-b',
+          claim: { runId: 'run-2', sessionId: 'session-2' },
+        }),
+      );
+
+      expect(forBureau.kind).toBe('claimed');
+      expect(forResearcher.kind).toBe('claimed');
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('makes a concurrent retry in this process wait for the attempt that claimed first', async () => {
+    const fixture = createMemoryStorageFixture();
+    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    // The first attempt's claim lands, but its acknowledgement is held, so
+    // the retry reads the pending entry before the claimant has registered.
+    const acknowledgement = Promise.withResolvers<void>();
+    let claimLanded = false;
+    const slow: ConditionalTextValueStore = {
+      ...kv,
+      async conditionalBatch(conditions, operations) {
+        const committed = await kv.conditionalBatch(conditions, operations);
+        if (!claimLanded) {
+          claimLanded = true;
+          await acknowledgement.promise;
+        }
+        return committed;
+      },
+    };
+    try {
+      const ledger = createRunCreationLedger({
+        kv: slow,
+        clock: runtime.clock,
+        identifiers: runtime.identifiers,
+        observe: notObserved,
+      });
+      const firstAttempt = ledger.begin(beginInput());
+      for (let turn = 0; turn < 20 && !claimLanded; turn++) await Promise.resolve();
+      expect(claimLanded).toBe(true);
+
+      const retry = ledger.begin(beginInput({ claim: { runId: 'run-2', sessionId: 'session-2' } }));
+      let retrySettled = false;
+      void retry.then(() => {
+        retrySettled = true;
+      });
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(retrySettled).toBe(false);
+
+      acknowledgement.resolve();
+      const first = await firstAttempt;
+      if (first.kind !== 'claimed') throw new Error('expected the first attempt to claim');
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(retrySettled).toBe(false);
+
+      const created = await first.complete(summary());
+      expect(await retry).toEqual({ kind: 'replay', result: created });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('records the receipt of a started run a retry observes, so every later retry receives it unchanged', async () => {
+    // The after-work-start and after-effect-before-ack fault points: the run
+    // started, but the process died before the ledger recorded it.
+    const fixture = createMemoryStorageFixture();
+    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    try {
+      const before = createRunCreationLedger({
+        kv,
+        clock: runtime.clock,
+        identifiers: runtime.identifiers,
+        observe: notObserved,
+      });
+      const claimed = await before.begin(beginInput());
+      expect(claimed.kind).toBe('claimed');
+
+      let durableStatus: RunCreationObservation['durableStatus'] = 'running';
+      const after = createRunCreationLedger({
+        kv,
+        clock: runtime.clock,
+        identifiers: runtime.identifiers,
+        observe: async () => ({ live: undefined, durableStatus }),
+      });
+      const retry = await after.begin(
+        beginInput({ claim: { runId: 'run-2', sessionId: 'session-2' } }),
+      );
+      const receipt = {
+        runId: 'run-1',
+        requestId: 'request-1',
+        createdAt: ORIGIN,
+        status: 'running',
+      };
+      expect(retry).toMatchObject({ kind: 'replay', result: { id: 'run-1', receipt } });
+      expect(await after.ledger.read(identity())).toMatchObject({
+        state: 'completed',
+        result: { receipt },
+      });
+
+      durableStatus = 'completed';
+      const later = await after.begin(
+        beginInput({ claim: { runId: 'run-3', sessionId: 'session-3' } }),
+      );
+      expect(later).toMatchObject({
+        kind: 'replay',
+        result: { id: 'run-1', status: 'completed', receipt },
+      });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('names the created run when its receipt cannot be recorded, and a retry records it', async () => {
+    const fixture = createMemoryStorageFixture();
+    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    const writeFailure = new Error('storage unavailable');
+    let failNextCompletion = true;
+    const failing: ConditionalTextValueStore = {
+      ...kv,
+      async conditionalBatch(conditions, operations) {
+        const completing = operations.some(
+          (operation) => operation.type === 'set' && operation.value.includes('"completed"'),
+        );
+        if (failNextCompletion && completing) {
+          failNextCompletion = false;
+          throw writeFailure;
+        }
+        return kv.conditionalBatch(conditions, operations);
+      },
+    };
+    try {
+      let live: RunSummary | undefined;
+      const ledger = createRunCreationLedger({
+        kv: failing,
+        clock: runtime.clock,
+        identifiers: runtime.identifiers,
+        observe: async () => ({ live, durableStatus: undefined }),
+      });
+      const attempt = await ledger.begin(beginInput());
+      if (attempt.kind !== 'claimed') throw new Error('expected a fresh claim');
+      live = summary();
+
+      const failure = await rejectionOf(attempt.complete(summary()));
+      expect(failure).toBeInstanceOf(RunCreationReceiptUnrecordedError);
+      expect(failure).toMatchObject({
+        requestId: 'request-1',
+        runId: 'run-1',
+        cause: writeFailure,
+      });
+
+      const retry = await ledger.begin(
+        beginInput({ claim: { runId: 'run-2', sessionId: 'session-2' } }),
+      );
+      const receipt = {
+        runId: 'run-1',
+        requestId: 'request-1',
+        createdAt: ORIGIN,
+        status: 'running',
+      };
+      expect(retry).toEqual({ kind: 'replay', result: { ...summary(), receipt } });
+      expect(await ledger.ledger.read(identity())).toMatchObject({
+        state: 'completed',
+        result: { receipt },
+      });
     } finally {
       await fixture.dispose();
     }

@@ -796,7 +796,7 @@ function validateCreateRunRequest(request: CreateRunRequest): void {
     ) {
       toBadRequest('"runCreationRequestId" must be a non-empty string');
     }
-    if (typeof request.principal !== 'string' || request.principal.length === 0) {
+    if (typeof request.principal !== 'string' || request.principal.trim().length === 0) {
       toBadRequest('"runCreationRequestId" requires an authenticated "principal"');
     }
   }
@@ -1710,31 +1710,37 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `createRun`'s own entry for a run nobody ever calls `deleteRun` on.
   const runAttribution = new Map<string, RunAttribution>();
   // COR-424 — the run-creation command ledger, in the same store as this
-  // bureau's sessions (or in memory for an ephemeral bureau, which has no
-  // restart to survive). See `command-ledger.ts`.
-  const runCreationLedger = createRunCreationLedger({
-    kv: runtime.kv ?? textValueStore(new MemoryStorage()),
-    clock: runtimeServices.clock,
-    identifiers: runtimeServices.identifiers,
-    observe: async ({ runId }): Promise<RunCreationObservation> => {
-      const runState = store.getRun(runId);
-      if (runState !== undefined) {
-        return {
-          live: serializeRunState(
-            runState,
-            getRunSessionIdentifier(runState),
-            runAttribution.get(runId),
-          ),
-          durableStatus: undefined,
-        };
-      }
-      const durableState = await getDurableRun(runId);
-      return {
-        live: undefined,
-        durableStatus: durableState === undefined ? undefined : (durableState?.status ?? null),
-      };
-    },
-  });
+  // bureau's sessions. Receipts promise that a retry after a restart finds
+  // the original run, so the ledger exists only where a restart can recover
+  // one: a bureau with storage and a durable engine. See `command-ledger.ts`.
+  const runCreationKv = runtime.durable ? runtime.kv : undefined;
+  const runCreationLedger =
+    runCreationKv === undefined
+      ? undefined
+      : createRunCreationLedger({
+          kv: runCreationKv,
+          clock: runtimeServices.clock,
+          identifiers: runtimeServices.identifiers,
+          observe: async ({ runId }): Promise<RunCreationObservation> => {
+            const runState = store.getRun(runId);
+            if (runState !== undefined) {
+              return {
+                live: serializeRunState(
+                  runState,
+                  getRunSessionIdentifier(runState),
+                  runAttribution.get(runId),
+                ),
+                durableStatus: undefined,
+              };
+            }
+            const durableState = await getDurableRun(runId);
+            return {
+              live: undefined,
+              durableStatus:
+                durableState === undefined ? undefined : (durableState?.status ?? null),
+            };
+          },
+        });
   // AB-67/AB-199 — one SteeringGate per session, created (or reused)
   // EAGERLY by `createRunFromRequest` at the start of every in-memory run —
   // NOT lazily on the first `submitSteeringCommand` call, which would miss
@@ -3080,6 +3086,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!runtime.ready) {
       throw new BureauError('No generate function configured', 'NOT_CONFIGURED', 'generate');
     }
+    if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
 
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
     const runId = runtimeServices.identifiers.next('run');
@@ -3118,14 +3125,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // original run instead of being admitted, or rejected, as new work. A
     // fresh claim is settled exactly once below: completed with the run's
     // summary once it is durably started, or released when no run results.
+    // The payload digest takes every default at the value this run will use,
+    // so a retry that spells out a default it first omitted is the same
+    // command. The session is the one the request names: an omitted session
+    // is minted afresh per attempt, so its minted id cannot be part of it.
     const ledgerAttempt =
       request.runCreationRequestId === undefined
         ? undefined
-        : await runCreationLedger.begin({
-            callerId: request.principal ?? '',
-            requestId: request.runCreationRequestId,
-            payloadDigest: digestRunCreationPayload(request),
-            claim: { runId, sessionId, agentName },
+        : await requireRunCreationLedger().begin({
+            callerId: (request.principal ?? '').trim(),
+            agentName,
+            requestId: request.runCreationRequestId.trim(),
+            payloadDigest: digestRunCreationPayload({
+              message: request.message,
+              sessionId: request.sessionId?.trim(),
+              systemPrompt: request.systemPrompt ?? runtime.systemPrompt,
+              maximumSteps: request.maximumSteps ?? runtime.maximumSteps,
+              maximumTokens: request.maximumTokens,
+            }),
+            claim: { runId, sessionId },
           });
     if (ledgerAttempt?.kind === 'replay') return ledgerAttempt.result;
     const ledgerClaim = ledgerAttempt;
@@ -3749,8 +3767,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     // COR-424: the ledger records the run only once it is durably started,
     // so a retry never replays a run that a restart could not recover. When
-    // recording fails, the claim stays pending and a retry observes the run.
+    // recording fails, `complete` rejects with a
+    // `RunCreationReceiptUnrecordedError` naming the run, which keeps
+    // executing; the claim stays pending, and a retry observes the run and
+    // records its receipt.
     return ledgerClaim === undefined ? created : ledgerClaim.complete(created);
+  }
+
+  /**
+   * COR-424 — the run-creation ledger, or `NOT_CONFIGURED` for a bureau whose
+   * receipts could not survive a restart.
+   */
+  function requireRunCreationLedger(): NonNullable<typeof runCreationLedger> {
+    if (runCreationLedger === undefined) {
+      throw new BureauError(
+        'Run-creation receipts need storage and a durable engine: "runCreationRequestId" ' +
+          'is supported only by a bureau with durable execution.',
+        'NOT_CONFIGURED',
+        'durable',
+      );
+    }
+    return runCreationLedger;
   }
 
   /**

@@ -55,6 +55,7 @@ import {
   DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
   locateWorkspaceRoot,
   RUN_CREATION_OPERATION_VERSION,
+  RunCreationReceiptUnrecordedError,
   selectAuditWriteFaultTarget,
   selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
@@ -139,6 +140,7 @@ void createRunCreationLedger;
 void digestCommandPayload;
 void digestRunCreationPayload;
 void RUN_CREATION_OPERATION_VERSION;
+void RunCreationReceiptUnrecordedError;
 type CreateRunReturn = Awaited<ReturnType<Bureau['createRun']>>;
 declare const createdRun: CreateRunReturn;
 export const createdRunReceipt: RunCreationReceipt | undefined = createdRun.receipt;

@@ -3,10 +3,12 @@
  *
  * ## The ledger
  *
- * A command ledger entry is keyed by `(callerId, requestId,
- * operationVersion)`: the authenticated caller, the idempotency key that
- * caller supplied on the request itself, and the version of the operation's
- * contract. Each entry stores a digest of the command's payload beside it.
+ * A command ledger entry is keyed by `(callerId, target, requestId,
+ * operationVersion)`: the authenticated caller, the published agent the
+ * command addresses, the idempotency key that caller supplied on the request
+ * itself, and the version of the operation's contract. One request id sent to
+ * two agents is therefore two commands, not a conflict. Each entry stores a
+ * digest of the command's payload beside it.
  *
  * - An exact retry (same identity, same digest) returns the existing entry
  *   and writes nothing, so the original stays untouched and, while it is
@@ -17,10 +19,15 @@
  *   entry; the original is never read-modify-written by it.
  *
  * Entries live in the same conditional text-value store the Bureau keeps its
- * sessions in, so they share that store's durability: a persistent backend
- * keeps them across a restart, and the memory backend keeps them for the
- * life of the process. Every write is a compare-and-swap, so two attempts
- * racing for one identity cannot both claim it.
+ * sessions in, so they share that store's durability. Every write is a
+ * compare-and-swap, so two attempts racing for one identity cannot both
+ * claim it.
+ *
+ * **Retention.** The ledger keeps every binding indefinitely: entries and
+ * conflict records carry no expiry and nothing prunes them, so a request id
+ * stays bound to its first payload for the life of the store. A retention
+ * window (after which a request id would admit a new command) is not
+ * implemented.
  *
  * An unreadable entry fails closed. Treating it as absent would let a retry
  * claim the identity afresh and create the very duplicate this ledger exists
@@ -29,16 +36,22 @@
  * ## Run creation
  *
  * {@link createRunCreationLedger} applies the ledger to `createRun`. The
- * identity's target is the caller-supplied `runCreationRequestId`, because
- * no run exists to key on until the command has run. A claim carries the
- * run and session identifiers minted for the attempt, so a retry that finds
- * a pending entry knows which run to look for instead of starting another:
+ * identity's target is the published agent the run is for, and its request
+ * id is the caller-supplied `runCreationRequestId`, because no run exists to
+ * key on until the command has run. A claim carries the run and session
+ * identifiers minted for the attempt, so a retry that finds a pending entry
+ * knows which run to look for instead of starting another:
  *
  * - In the process that claimed it, a retry waits for the in-flight attempt
  *   and receives its outcome, including its failure.
- * - Anywhere else (after a restart), a retry observes the run: the live run
- *   when this process has recovered it, the durable engine's status when it
- *   has not, and `pending` when the run never started at all.
+ * - Anywhere else (after a restart), a retry observes the run. When the run
+ *   exists, live in this process or in the durable engine, the retry
+ *   completes the entry with a receipt carrying the status it observed, so
+ *   every later retry receives that same receipt. When the run never
+ *   started, the retry reports it as `pending` and writes nothing: without
+ *   a lease, a crashed claimant cannot be told apart from a slow one, and the
+ *   request id stays bound to the claimed run. A caller that needs the run
+ *   then uses a new request id.
  *
  * A completed entry carries the {@link RunCreationReceipt} and the summary
  * returned to the original caller. A retry receives that original receipt
@@ -52,7 +65,7 @@ import {
   type WorkflowState,
 } from '@lostgradient/weft';
 
-import type { CreateRunRequest, RunSummary } from './types';
+import type { RunSummary } from './types';
 
 /** The version of the run-creation command contract the ledger keys on. */
 export const RUN_CREATION_OPERATION_VERSION = 'bureau.run-creation.v1';
@@ -66,6 +79,8 @@ const COMMAND_LEDGER_MAX_CAS_ATTEMPTS = 10;
 /** Who issued a command, which command it was, and under which contract version. */
 export interface CommandLedgerIdentity {
   readonly callerId: string;
+  /** The resource the command addresses: for run creation, the published agent's name. */
+  readonly target: string;
   readonly requestId: string;
   readonly operationVersion: string;
 }
@@ -124,8 +139,18 @@ export class BureauLedgerConflictError extends Error {
   readonly reason: 'payload-mismatch';
   /** Identifies the failed entry recording this attempt. */
   readonly conflictId: string;
+  /**
+   * The receipt the original command was issued, when it has one. A
+   * run-creation conflict carries it once the original entry is completed;
+   * an original still pending has issued no receipt yet.
+   */
+  readonly originalReceipt: RunCreationReceipt | undefined;
 
-  constructor(requestId: string, conflictId: string) {
+  constructor(
+    requestId: string,
+    conflictId: string,
+    options: { readonly originalReceipt?: RunCreationReceipt | undefined } = {},
+  ) {
     super(
       `Request "${requestId}" was already used for a command with a different payload; ` +
         'retry with the original payload or use a new request id.',
@@ -134,6 +159,31 @@ export class BureauLedgerConflictError extends Error {
     this.requestId = requestId;
     this.reason = 'payload-mismatch';
     this.conflictId = conflictId;
+    this.originalReceipt = options.originalReceipt;
+  }
+}
+
+/**
+ * A run was created and durably started, but the ledger could not record its
+ * receipt. Unlike any other `createRun` failure, the run exists and keeps
+ * executing: `runId` names it, and retrying the same request observes it and
+ * records the receipt rather than creating another run.
+ */
+export class RunCreationReceiptUnrecordedError extends Error {
+  /** The caller-supplied idempotency key whose receipt was not recorded. */
+  readonly requestId: string;
+  /** The run the request created. */
+  readonly runId: string;
+
+  constructor(requestId: string, runId: string, cause: unknown) {
+    super(
+      `Run "${runId}" was created for request "${requestId}", but its receipt was not ` +
+        'recorded; retry the request to obtain it.',
+      { cause },
+    );
+    this.name = 'RunCreationReceiptUnrecordedError';
+    this.requestId = requestId;
+    this.runId = runId;
   }
 }
 
@@ -151,7 +201,12 @@ export interface CommandLedger<TClaim, TResult> {
     payloadDigest: string,
     claim: TClaim,
   ): Promise<CommandLedgerClaimOutcome<TClaim, TResult>>;
-  /** Record `result` on the pending entry this ledger handed back from `claim`. */
+  /**
+   * Record `result` on the pending entry this ledger handed back from `claim`.
+   * Resolves with the completed entry as stored: the one this call wrote, or,
+   * when another attempt already completed the same claim, that one, whose
+   * result then wins. Rejects when the stored entry is neither.
+   */
   complete(
     entry: CommandLedgerPendingEntry<TClaim>,
     result: TResult,
@@ -175,7 +230,7 @@ export interface CreateCommandLedgerOptions {
 }
 
 function identityKeySuffix(identity: CommandLedgerIdentity): string {
-  return [identity.callerId, identity.requestId, identity.operationVersion]
+  return [identity.callerId, identity.target, identity.requestId, identity.operationVersion]
     .map(encodeStorageKeyComponent)
     .join(':');
 }
@@ -197,6 +252,7 @@ function isIdentity(value: unknown): value is CommandLedgerIdentity {
   return (
     isRecord(value) &&
     typeof value['callerId'] === 'string' &&
+    typeof value['target'] === 'string' &&
     typeof value['requestId'] === 'string' &&
     typeof value['operationVersion'] === 'string'
   );
@@ -333,13 +389,23 @@ export function createCommandLedger<TClaim, TResult>(
         [{ key, expectedValue: expected }],
         [{ type: 'set', key, value: JSON.stringify(completed) }],
       );
-      if (!committed) {
-        throw new Error(
-          `Command-ledger entry for request "${entry.identity.requestId}" is no longer pending ` +
-            'as claimed, so its result was not recorded.',
-        );
+      if (committed) return completed;
+      // Another attempt may have completed this same claim first, as a retry
+      // that observed the run does. Its record stands; anything else means
+      // the claim this call held is gone.
+      const raw = await kv.get(key);
+      const stored = raw === null ? undefined : parseEntry<TClaim, TResult>(key, raw);
+      if (
+        stored?.state === 'completed' &&
+        stored.claimedAt === entry.claimedAt &&
+        JSON.stringify(stored.claim) === JSON.stringify(entry.claim)
+      ) {
+        return stored;
       }
-      return completed;
+      throw new Error(
+        `Command-ledger entry for request "${entry.identity.requestId}" is no longer pending ` +
+          'as claimed, so its result was not recorded.',
+      );
     },
 
     async release(entry) {
@@ -386,34 +452,49 @@ export function digestCommandPayload(
 }
 
 /**
- * The digest of a run-creation request's payload: everything that decides
- * which run it creates. The caller and the request id are the identity, not
- * the payload, and the request context carries per-attempt credentials and
- * tracing that legitimately differ between retries, so none of them count.
+ * What decides which run a run-creation request creates, with every default
+ * already resolved to the value the run will use. The caller, the published
+ * agent, and the request id are the identity, not the payload, and the
+ * request context carries per-attempt credentials and tracing that
+ * legitimately differ between retries, so none of them belong here.
  */
-export function digestRunCreationPayload(request: CreateRunRequest): string {
+export interface RunCreationPayload {
+  readonly message: string;
+  /** The session the request names, trimmed; absent when it asks for a new one. */
+  readonly sessionId?: string | undefined;
+  readonly systemPrompt?: string | undefined;
+  readonly maximumSteps?: number | undefined;
+  readonly maximumTokens?: number | undefined;
+}
+
+/**
+ * The digest of a run-creation request's payload. Pass resolved values, so a
+ * retry that spells out a default it first omitted digests the same: both
+ * would create the same run.
+ */
+export function digestRunCreationPayload(payload: RunCreationPayload): string {
   return digestCommandPayload({
-    message: request.message,
-    sessionId: request.sessionId?.trim(),
-    systemPrompt: request.systemPrompt,
-    maximumSteps: request.maximumSteps,
-    maximumTokens: request.maximumTokens,
-    agentName: request.agentName,
+    message: payload.message,
+    sessionId: payload.sessionId,
+    systemPrompt: payload.systemPrompt,
+    maximumSteps: payload.maximumSteps,
+    maximumTokens: payload.maximumTokens,
   });
 }
 
 /**
  * The durable receipt for a run-creation command: which run the request
  * created, the request that created it, when it was claimed, and the run's
- * status at creation. A retry of the same request receives the same receipt.
+ * status when the receipt was recorded. The ledger records it once, so
+ * every retry of the same request receives the same receipt.
  */
 export interface RunCreationReceipt {
   readonly runId: string;
   readonly requestId: string;
   readonly createdAt: string;
   /**
-   * The run's status when the receipt was issued: a `RunSummary` status, or
-   * `pending` for a run that was claimed but has not started.
+   * The run's status when the receipt was recorded: a `RunSummary` status,
+   * or `pending` for a run that was claimed but has not started.
    */
   readonly status: string;
 }
@@ -422,7 +503,6 @@ export interface RunCreationReceipt {
 export interface RunCreationClaim {
   readonly runId: string;
   readonly sessionId: string;
-  readonly agentName: string;
 }
 
 /** What a completed run-creation entry records for later retries. */
@@ -445,6 +525,8 @@ export interface RunCreationObservation {
 /** One run-creation request's identity and payload, with what it would claim. */
 export interface BeginRunCreationInput {
   readonly callerId: string;
+  /** The published agent the run is for: part of the identity, not the payload. */
+  readonly agentName: string;
   readonly requestId: string;
   readonly payloadDigest: string;
   readonly claim: RunCreationClaim;
@@ -460,6 +542,11 @@ export type RunCreationAttempt =
   | { readonly kind: 'replay'; readonly result: CreatedRunSummary }
   | {
       readonly kind: 'claimed';
+      /**
+       * Record the created run's receipt. Rejects with
+       * {@link RunCreationReceiptUnrecordedError} when the record cannot be
+       * written; the run still exists then.
+       */
       complete(summary: RunSummary): Promise<CreatedRunSummary>;
       release(cause: unknown): Promise<void>;
     };
@@ -498,6 +585,47 @@ function runStatusFromDurable(
   }
 }
 
+type RunCreationPendingEntry = CommandLedgerPendingEntry<RunCreationClaim>;
+
+/** The summary of a claimed run that has not started, so has done no work. */
+function notStartedSummary(entry: RunCreationPendingEntry): RunSummary {
+  return {
+    id: entry.claim.runId,
+    sessionId: entry.claim.sessionId,
+    status: 'pending',
+    steps: 0,
+    usage: { prompt: 0, completion: 0, total: 0 },
+    finishReason: undefined,
+    error: undefined,
+    actionCount: 0,
+    agentName: entry.identity.target,
+    principal: entry.identity.callerId,
+    startedAt: undefined,
+  };
+}
+
+function receiptFor(entry: RunCreationPendingEntry, status: string): RunCreationReceipt {
+  return {
+    runId: entry.claim.runId,
+    requestId: entry.identity.requestId,
+    createdAt: entry.claimedAt,
+    status,
+  };
+}
+
+/** What `begin` decided while it held the identity's in-process claim lock. */
+type ClaimDecision =
+  | {
+      readonly kind: 'existing';
+      readonly entry: CommandLedgerEntry<RunCreationClaim, RunCreationLedgerResult>;
+      readonly inFlight: Promise<CreatedRunSummary> | undefined;
+    }
+  | {
+      readonly kind: 'claimed';
+      readonly entry: RunCreationPendingEntry;
+      readonly settlement: PromiseWithResolvers<CreatedRunSummary>;
+    };
+
 /**
  * The run-creation command ledger. See the module doc for how a retry is
  * resolved against a pending or completed entry.
@@ -513,6 +641,24 @@ export function createRunCreationLedger(
   });
   // Attempts this process claimed and has not yet settled, by ledger key.
   const inFlight = new Map<string, Promise<CreatedRunSummary>>();
+  // Serializes this process's claims of one identity, so a concurrent retry
+  // reads the ledger only after the attempt that claimed it has registered
+  // in `inFlight`, and waits for it rather than reporting it not started.
+  const claimLocks = new Map<string, Promise<void>>();
+
+  async function withClaimLock<T>(key: string, body: () => Promise<T>): Promise<T> {
+    const previous = claimLocks.get(key);
+    const released = Promise.withResolvers<void>();
+    const current = (previous ?? Promise.resolve()).then(() => released.promise);
+    claimLocks.set(key, current);
+    if (previous !== undefined) await previous;
+    try {
+      return await body();
+    } finally {
+      released.resolve();
+      if (claimLocks.get(key) === current) claimLocks.delete(key);
+    }
+  }
 
   async function replayCompleted(
     entry: CommandLedgerCompletedEntry<RunCreationClaim, RunCreationLedgerResult>,
@@ -526,33 +672,56 @@ export function createRunCreationLedger(
     return { ...summary, receipt: entry.result.receipt };
   }
 
-  async function replayPending(
-    entry: CommandLedgerPendingEntry<RunCreationClaim>,
-  ): Promise<CreatedRunSummary> {
+  /**
+   * A pending entry nobody in this process is settling: its claimant crashed
+   * (or lives elsewhere). When the run exists, its receipt is recorded now,
+   * once, so later retries replay it instead of each building their own.
+   */
+  async function replayPending(entry: RunCreationPendingEntry): Promise<CreatedRunSummary> {
     const { live, durableStatus } = await observe(entry.claim);
-    const status = live?.status ?? runStatusFromDurable(durableStatus) ?? 'pending';
+    const status = live?.status ?? runStatusFromDurable(durableStatus);
+    if (status === undefined) {
+      const summary = notStartedSummary(entry);
+      return { ...summary, receipt: receiptFor(entry, summary.status) };
+    }
     // Without a live run this process has observed none of the run's work,
-    // so it reports none. A run that never started has done none.
-    const summary: RunSummary = live ?? {
-      id: entry.claim.runId,
-      sessionId: entry.claim.sessionId,
-      status,
-      steps: 0,
-      usage: { prompt: 0, completion: 0, total: 0 },
-      finishReason: undefined,
-      error: undefined,
-      actionCount: 0,
-      agentName: entry.claim.agentName,
-      principal: entry.identity.callerId,
-      startedAt: undefined,
-    };
-    const receipt: RunCreationReceipt = {
-      runId: entry.claim.runId,
-      requestId: entry.identity.requestId,
-      createdAt: entry.claimedAt,
-      status,
-    };
-    return { ...summary, receipt };
+    // so it reports none.
+    const summary: RunSummary = live ?? { ...notStartedSummary(entry), status };
+    const recorded = await ledger.complete(entry, { receipt: receiptFor(entry, status), summary });
+    return { ...summary, receipt: recorded.result.receipt };
+  }
+
+  /** The original receipt a conflicting attempt reports, once the original has one. */
+  async function originalReceipt(
+    identity: CommandLedgerIdentity,
+  ): Promise<RunCreationReceipt | undefined> {
+    const original = await ledger.read(identity);
+    return original?.state === 'completed' ? original.result.receipt : undefined;
+  }
+
+  async function claimOrObserve(
+    identity: CommandLedgerIdentity,
+    key: string,
+    input: BeginRunCreationInput,
+  ): Promise<ClaimDecision> {
+    let outcome: CommandLedgerClaimOutcome<RunCreationClaim, RunCreationLedgerResult>;
+    try {
+      outcome = await ledger.claim(identity, input.payloadDigest, input.claim);
+    } catch (error) {
+      if (!(error instanceof BureauLedgerConflictError)) throw error;
+      throw new BureauLedgerConflictError(error.requestId, error.conflictId, {
+        originalReceipt: await originalReceipt(identity),
+      });
+    }
+    if (outcome.outcome === 'existing') {
+      return { kind: 'existing', entry: outcome.entry, inFlight: inFlight.get(key) };
+    }
+    const settlement = Promise.withResolvers<CreatedRunSummary>();
+    // An attempt nobody is waiting on may still fail; its caller sees that
+    // failure directly, so it must not also surface as an unhandled rejection.
+    settlement.promise.catch(() => {});
+    inFlight.set(key, settlement.promise);
+    return { kind: 'claimed', entry: outcome.entry, settlement };
   }
 
   return {
@@ -560,32 +729,28 @@ export function createRunCreationLedger(
     async begin(input) {
       const identity: CommandLedgerIdentity = {
         callerId: input.callerId,
+        target: input.agentName,
         requestId: input.requestId,
         operationVersion: RUN_CREATION_OPERATION_VERSION,
       };
       const key = entryKey(identity);
-      const outcome = await ledger.claim(identity, input.payloadDigest, input.claim);
+      const decision = await withClaimLock(key, () => claimOrObserve(identity, key, input));
 
-      if (outcome.outcome === 'existing') {
-        const existing = outcome.entry;
+      if (decision.kind === 'existing') {
+        const existing = decision.entry;
         if (existing.state === 'completed') {
           return { kind: 'replay', result: await replayCompleted(existing) };
         }
-        const pending = inFlight.get(key);
         return {
           kind: 'replay',
-          result: pending !== undefined ? await pending : await replayPending(existing),
+          result:
+            decision.inFlight !== undefined
+              ? await decision.inFlight
+              : await replayPending(existing),
         };
       }
 
-      // Registered synchronously on resuming from the claim, before any
-      // other continuation can observe the pending entry this claim wrote.
-      const entry = outcome.entry;
-      const settlement = Promise.withResolvers<CreatedRunSummary>();
-      // An attempt nobody is waiting on may still fail; its caller sees that
-      // failure directly, so it must not also surface as an unhandled rejection.
-      settlement.promise.catch(() => {});
-      inFlight.set(key, settlement.promise);
+      const { entry, settlement } = decision;
       const settle = () => {
         if (inFlight.get(key) === settlement.promise) inFlight.delete(key);
       };
@@ -593,21 +758,24 @@ export function createRunCreationLedger(
       return {
         kind: 'claimed',
         async complete(summary) {
-          const receipt: RunCreationReceipt = {
-            runId: entry.claim.runId,
-            requestId: entry.identity.requestId,
-            createdAt: entry.claimedAt,
-            status: summary.status,
-          };
+          let recorded: CommandLedgerCompletedEntry<RunCreationClaim, RunCreationLedgerResult>;
           try {
-            await ledger.complete(entry, { receipt, summary });
+            recorded = await ledger.complete(entry, {
+              receipt: receiptFor(entry, summary.status),
+              summary,
+            });
           } catch (error) {
-            settlement.reject(error);
-            throw error;
+            const failure = new RunCreationReceiptUnrecordedError(
+              entry.identity.requestId,
+              entry.claim.runId,
+              error,
+            );
+            settlement.reject(failure);
+            throw failure;
           } finally {
             settle();
           }
-          const created: CreatedRunSummary = { ...summary, receipt };
+          const created: CreatedRunSummary = { ...summary, receipt: recorded.result.receipt };
           settlement.resolve(created);
           return created;
         },
