@@ -12,6 +12,7 @@
     type ThemePreviewColorMode,
     type ThemePreviewMotion,
   } from './theme-preview-message.ts';
+  import type { ExportReadiness } from './theme-check-types.ts';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
   type Props = { workbench: ThemeWorkbenchState };
@@ -34,6 +35,15 @@
     value,
     label: MOTION_LABELS[value],
   }));
+
+  const READINESS_LABELS: Record<ExportReadiness, string> = {
+    checking: 'Checks running',
+    stale: 'Checks out of date',
+    'blocked-invalid-source': 'Export blocked: invalid source',
+    'blocked-accessibility-errors': 'Export blocked: accessibility errors',
+    'needs-review': 'Export held: items need review',
+    ready: 'No blocking findings in the checked scenes',
+  };
 
   const findingsLabel = $derived(
     `${workbench.findingsCount} ${workbench.findingsCount === 1 ? 'finding' : 'findings'}`,
@@ -92,6 +102,9 @@
       {workbench.saveStatus === 'saved' ? 'Saved locally' : 'Unsaved locally'}
     </li>
     <li data-testid="findings-count">{findingsLabel}</li>
+    <li data-testid="export-readiness" data-readiness={workbench.exportReadiness}>
+      {READINESS_LABELS[workbench.exportReadiness]}
+    </li>
     <li data-testid="preview-revision">
       Preview revision {workbench.revision}{workbench.previewIsStale ? ' (updating)' : ''}
     </li>

@@ -14,6 +14,7 @@
   import { onMount, tick, type Snippet } from 'svelte';
 
   import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+  import ThemeChecksPanel from './theme-checks-panel.svelte';
   import ThemeWorkbenchCatalogue from './theme-workbench-catalogue.svelte';
   import ThemeWorkbenchDraftBar from './theme-workbench-draft-bar.svelte';
   import ThemeWorkbenchLibrary from './theme-workbench-library.svelte';
@@ -177,10 +178,12 @@
           <h2 id="checks-heading">Checks</h2>
           {#if checks !== undefined}
             {@render checks(workbench)}
+          {:else if controller !== undefined}
+            <ThemeChecksPanel {workbench} {controller} />
           {:else}
             <p class="muted">
               {workbench.findingsCount === 0
-                ? 'No findings. Accessibility checks arrive with the checks pipeline.'
+                ? 'No findings. Checks run once a theme is open.'
                 : `${workbench.findingsCount} findings.`}
             </p>
           {/if}
