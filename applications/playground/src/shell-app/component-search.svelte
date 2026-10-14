@@ -13,7 +13,12 @@
   import Search from 'lucide-svelte/icons/search';
   import { tick, type Component } from 'svelte';
 
-  import { COMPONENT_SEARCH_LABEL, isComponentSearchShortcut } from './component-search.ts';
+  import {
+    COMPONENT_SEARCH_LABEL,
+    COMPONENT_SEARCH_LISTENING_ATTRIBUTE,
+    COMPONENT_SEARCH_TRIGGER_ATTRIBUTE,
+    isComponentSearchShortcut,
+  } from './component-search-shortcut.ts';
 
   type PaletteProps = {
     open: boolean;
@@ -22,7 +27,17 @@
   };
   type PaletteModule = { default: Component<PaletteProps, Record<string, never>, 'open'> };
 
-  let { components }: { components: readonly string[] } = $props();
+  type Props = {
+    components: readonly string[];
+    /**
+     * Loads the palette module. Defaults to the lazy chunk; tests pass their own
+     * to observe loading, failure, and retry without a bundler.
+     */
+    loadPaletteModule?: () => Promise<PaletteModule>;
+  };
+
+  let { components, loadPaletteModule = () => import('./component-search-palette.svelte') }: Props =
+    $props();
 
   let container: HTMLDivElement | undefined = $state();
   let Palette = $state<PaletteModule['default'] | null>(null);
@@ -34,7 +49,7 @@
 
   function loadPalette(): Promise<PaletteModule> {
     if (paletteModule !== null) return paletteModule;
-    const request = import('./component-search-palette.svelte').then((module) => {
+    const request = loadPaletteModule().then((module) => {
       Palette ??= module.default;
       return module;
     });
@@ -87,6 +102,19 @@
     window.addEventListener('keydown', onKeydown);
     return () => window.removeEventListener('keydown', onKeydown);
   });
+
+  /*
+   * Runs after the listener effect above, so the attribute only ever appears
+   * while the listener is attached. It tells the landing entry's pre-hydration
+   * listener that this one now owns the shortcut: that listener keeps handling
+   * presses until then, so none falls between hydration and this attaching.
+   */
+  $effect(() => {
+    const trigger = triggerButton();
+    if (trigger === null) return;
+    trigger.setAttribute(COMPONENT_SEARCH_LISTENING_ATTRIBUTE, '');
+    return () => trigger.removeAttribute(COMPONENT_SEARCH_LISTENING_ATTRIBUTE);
+  });
 </script>
 
 <div class="dx-nav__search" bind:this={container}>
@@ -94,7 +122,9 @@
     variant="secondary"
     size="sm"
     label={COMPONENT_SEARCH_LABEL}
+    aria-haspopup="dialog"
     aria-keyshortcuts="Meta+K Control+K"
+    {...{ [COMPONENT_SEARCH_TRIGGER_ATTRIBUTE]: '' }}
     onfocus={preloadPalette}
     onpointerenter={preloadPalette}
     onclick={(event: MouseEvent) => void openPalette(event.currentTarget as HTMLElement)}

@@ -2,16 +2,14 @@
  * Pure helpers behind the Playground's "Search components" palette.
  *
  * The palette lists the sidebar's own inventory (`sidebarComponents`), so it
- * never keeps a second list of components. Ranking, the shortcut predicate,
- * and the navigation seam live here, away from Svelte, so each is testable from
- * `bun:test` without compiling a component.
+ * never keeps a second list of components. Ranking and the navigation seam
+ * live here, away from Svelte, so each is testable from `bun:test` without
+ * compiling a component. The shortcut lives in `component-search-shortcut.ts`,
+ * which the landing entry bundles on its own.
  */
 
 import { humanizeComponentName } from './humanize.ts';
 import { buildComponentHref } from './routing.ts';
-
-/** Accessible name and visible text of the palette trigger. */
-export const COMPONENT_SEARCH_LABEL = 'Search components';
 
 /** Text the palette shows when no component matches the query. */
 export const COMPONENT_SEARCH_EMPTY_TEXT = 'No matching components.';
@@ -63,30 +61,6 @@ export function rankComponents(
       left.name.localeCompare(right.name, 'en'),
   );
   return ranked.map(({ name, label, href }) => ({ name, label, href }));
-}
-
-function isEditable(element: Element | null): boolean {
-  if (element === null) return false;
-  if (element.closest('input, textarea, select') !== null) return true;
-  return element instanceof HTMLElement && element.isContentEditable;
-}
-
-/**
- * True when a keydown should open the palette: Cmd+K or Ctrl+K with no other
- * modifier, not a held-key repeat, not mid IME composition, not while an
- * editable control has focus, and not while any dialog is already open — a
- * demo dialog, or the palette itself.
- */
-export function isComponentSearchShortcut(event: KeyboardEvent, document: Document): boolean {
-  if (event.defaultPrevented || event.repeat) return false;
-  if (event.isComposing || event.key === 'Process') return false;
-  if (event.key.toLowerCase() !== 'k') return false;
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return false;
-  if (isEditable(document.activeElement)) return false;
-  // A closed `<dialog aria-modal="true">` — the palette's own, kept mounted between
-  // opens — is not an open dialog, so only an open `<dialog>` or a non-dialog
-  // element declaring itself modal blocks the shortcut.
-  return document.querySelector('dialog[open], [aria-modal="true"]:not(dialog)') === null;
 }
 
 /**

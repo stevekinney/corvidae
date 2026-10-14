@@ -8,9 +8,9 @@
    */
   import { CommandItem, CommandPalette } from '@lostgradient/cinder';
 
+  import { COMPONENT_SEARCH_LABEL } from './component-search-shortcut.ts';
   import {
     COMPONENT_SEARCH_EMPTY_TEXT,
-    COMPONENT_SEARCH_LABEL,
     navigateToComponent,
     rankComponents,
   } from './component-search.ts';

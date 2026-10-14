@@ -8,20 +8,20 @@ async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-function setup(options: { hydrate: () => Promise<void> }) {
+function setup(options: { hydrate: () => Promise<void>; attachOnHydrate?: boolean }) {
   const target = new EventTarget() as unknown as Window;
   const errors: unknown[] = [];
   let activations = 0;
   let hydrationCalls = 0;
-  let hydrated = false;
+  let listenerAttached = false;
   attachDeferredShortcut(target, {
     matches: (event) => event.key === 'k' && event.metaKey,
     hydrate: async () => {
       hydrationCalls += 1;
       await options.hydrate();
-      hydrated = true;
+      if (options.attachOnHydrate ?? true) listenerAttached = true;
     },
-    isHydrated: () => hydrated,
+    isLiveListenerAttached: () => listenerAttached,
     activate: () => {
       activations += 1;
     },
@@ -33,6 +33,9 @@ function setup(options: { hydrate: () => Promise<void> }) {
     return event;
   };
   return {
+    attachListener: () => {
+      listenerAttached = true;
+    },
     press,
     errors,
     activations: () => activations,
@@ -81,6 +84,28 @@ describe('attachDeferredShortcut', () => {
     expect(later.defaultPrevented).toBe(false);
     expect(hydrationCalls()).toBe(1);
     expect(activations()).toBe(1);
+  });
+
+  it('keeps handling presses after hydration until the live listener is attached', async () => {
+    const { attachListener, press, activations } = setup({
+      hydrate: async () => {},
+      attachOnHydrate: false,
+    });
+
+    press();
+    await settle();
+    expect(activations()).toBe(1);
+
+    // Hydration has finished but the page's listener is not attached yet: a
+    // press in that gap is still claimed and handled, not lost.
+    expect(press().defaultPrevented).toBe(true);
+    await settle();
+    expect(activations()).toBe(2);
+
+    attachListener();
+    expect(press().defaultPrevented).toBe(false);
+    await settle();
+    expect(activations()).toBe(2);
   });
 
   it('leaves other keys alone', async () => {
