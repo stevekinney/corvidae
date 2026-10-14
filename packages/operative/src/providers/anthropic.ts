@@ -4,6 +4,7 @@ import { toAnthropicMessages } from 'conversationalist';
 import { createAnthropicSdkClient, isAnthropicClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,
+  assertDisabledThinkingSupported,
   assertSamplingParametersSupported,
   assertThinkingBudgetBelowMaximum,
   assertThinkingBudgetMeetsMinimum,
@@ -55,6 +56,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
     : undefined;
   const common = resolveCommonParameters(options);
   assertSamplingParametersSupported(resolvedModel, common);
+  assertDisabledThinkingSupported(resolvedModel, options.thinking, resolvedEffort);
   assertThinkingBudgetMeetsMinimum(options.thinking);
   assertThinkingParametersCompatible(options.thinking, options.toolChoice, common);
   let clientPromise: Promise<AnthropicClient> | undefined;

@@ -248,3 +248,46 @@ describe('Anthropic provider sampling guard from the per-model table', () => {
     expect(client._calls[0]?.['temperature']).toBe(0.4);
   });
 });
+
+describe('Haiku 5.5 sampling accepts exactly the documented defaults', () => {
+  const model = 'claude-haiku-5-5';
+
+  it('forwards temperature 1 on its own', async () => {
+    const client = createMockAnthropicClient([anthropicTextResponse]);
+    await createAnthropicProvider({ model, client, temperature: 1 })(makeContext());
+    expect(client._calls[0]?.['temperature']).toBe(1);
+  });
+
+  it('forwards topP 0.99 on its own', async () => {
+    const client = createMockAnthropicClient([anthropicTextResponse]);
+    await createAnthropicProvider({ model, client, topP: 0.99 })(makeContext());
+    expect(client._calls[0]?.['top_p']).toBe(0.99);
+  });
+
+  it.each([
+    ['temperature 0.5', { temperature: 0.5 }],
+    ['topP 1, which the guide calls out as rejected', { topP: 1 }],
+    ['topP 0.9', { topP: 0.9 }],
+  ])('refuses %s', (_label, sampling) => {
+    const client = createMockAnthropicClient([anthropicTextResponse]);
+    expect(() => createAnthropicProvider({ model, client, ...sampling })).toThrow(ProviderError);
+    expect(client._calls).toHaveLength(0);
+  });
+
+  it('refuses temperature and topP together even at their defaults', () => {
+    const client = createMockAnthropicClient([anthropicTextResponse]);
+    expect(() => createAnthropicProvider({ model, client, temperature: 1, topP: 0.99 })).toThrow(
+      /cannot be sent together/,
+    );
+  });
+
+  it('applies the same rule to the streaming factory', () => {
+    const streamingClient = createMockAnthropicStreamingClient([]);
+    expect(() =>
+      createAnthropicProviderStream({ model, client: streamingClient, temperature: 1, topP: 0.99 }),
+    ).toThrow(ProviderError);
+    expect(() =>
+      createAnthropicProviderStream({ model, client: streamingClient, temperature: 1 }),
+    ).not.toThrow();
+  });
+});

@@ -27,10 +27,9 @@
  *     returns a 400 error") and its migration guide.
  *   - Sonnet 5: https://platform.claude.com/docs/en/models/sonnet-5/overview
  *     (same sentence).
- *   - Haiku 5.5: https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide —
- *     "On Claude Haiku 5.5, omit all three"; only `temperature` 1 and `top_p`
- *     0.99 (the defaults) are accepted. Omitting is the equivalent, so the
- *     model is treated as rejecting.
+ * - `defaults-only`: Haiku 5.5. "Omit all three", but `temperature` 1 or `top_p`
+ *   0.99 is accepted on its own; see {@link HAIKU_5_5_SAMPLING_DEFAULTS}. The
+ *   model is not a place to tune sampling, so the catalog does not advertise it.
  * - `accepted`: the model takes sampling parameters.
  *   - Sonnet 4.6, Haiku 4.5 (alias and pinned snapshot) and every earlier
  *     Sonnet: https://platform.claude.com/docs/en/models/sonnet-5-5/migration-guide —
@@ -51,29 +50,42 @@
  * `toolChoice` is deliberately not decided here: `auto` and `none` stay valid
  * on models that reject forced tool choice, so the catalog keeps advertising it.
  */
-export type SamplingSupport = 'accepted' | 'rejected' | 'unsettled';
+export type SamplingSupport = 'accepted' | 'rejected' | 'defaults-only' | 'unsettled';
 
-export const ANTHROPIC_SAMPLING_SUPPORT: Readonly<Record<string, 'accepted' | 'rejected'>> =
-  Object.freeze({
-    'claude-fable-5-1': 'rejected',
-    'claude-mythos-5-1': 'rejected',
-    'claude-fable-5': 'rejected',
-    'claude-mythos-5': 'rejected',
-    'claude-opus-5-5': 'rejected',
-    'claude-opus-5': 'rejected',
-    'claude-opus-4-8': 'rejected',
-    'claude-opus-4-7': 'rejected',
-    'claude-sonnet-5-5': 'rejected',
-    'claude-sonnet-5': 'rejected',
-    'claude-haiku-5-5': 'rejected',
-    'claude-opus-4-6': 'accepted',
-    'claude-opus-4-5': 'accepted',
-    'claude-sonnet-4-6': 'accepted',
-    'claude-haiku-4-5': 'accepted',
-    'claude-opus-4-20250514': 'accepted',
-    'claude-sonnet-4-20250514': 'accepted',
-    'claude-3-5-sonnet-20241022': 'accepted',
-  });
+/**
+ * Haiku 5.5 is the one model whose documentation gives accepted values
+ * (https://platform.claude.com/docs/en/models/haiku-5-5/migration-guide,
+ * confirmed 2026-10-14): "If a request includes temperature, it must be 1. If
+ * it includes top_p, it must be 0.99, its default. Any other temperature or
+ * top_p value returns a 400 error, including a top_p of 1. So does any top_k
+ * value, and so does a request that includes both temperature and top_p." So
+ * each is accepted alone at its default, and sending both is rejected even at
+ * the defaults.
+ */
+export const HAIKU_5_5_SAMPLING_DEFAULTS = Object.freeze({ temperature: 1, topP: 0.99 });
+
+export const ANTHROPIC_SAMPLING_SUPPORT: Readonly<
+  Record<string, 'accepted' | 'rejected' | 'defaults-only'>
+> = Object.freeze({
+  'claude-fable-5-1': 'rejected',
+  'claude-mythos-5-1': 'rejected',
+  'claude-fable-5': 'rejected',
+  'claude-mythos-5': 'rejected',
+  'claude-opus-5-5': 'rejected',
+  'claude-opus-5': 'rejected',
+  'claude-opus-4-8': 'rejected',
+  'claude-opus-4-7': 'rejected',
+  'claude-sonnet-5-5': 'rejected',
+  'claude-sonnet-5': 'rejected',
+  'claude-haiku-5-5': 'defaults-only',
+  'claude-opus-4-6': 'accepted',
+  'claude-opus-4-5': 'accepted',
+  'claude-sonnet-4-6': 'accepted',
+  'claude-haiku-4-5': 'accepted',
+  'claude-opus-4-20250514': 'accepted',
+  'claude-sonnet-4-20250514': 'accepted',
+  'claude-3-5-sonnet-20241022': 'accepted',
+});
 
 export function anthropicSamplingSupport(resolvedModel: string): SamplingSupport {
   return ANTHROPIC_SAMPLING_SUPPORT[resolvedModel] ?? 'unsettled';
