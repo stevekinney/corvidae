@@ -452,9 +452,7 @@ describe('handleTaskResultRequest', () => {
     // The dead letter itself, then (COR-1366) the recorded `dead-lettered`
     // transport acknowledgement.
     expect(dispatchEventSpy).toHaveBeenCalledTimes(2);
-    expect((dispatchEventSpy.mock.calls[1]?.[0] as Event | undefined)?.type).toBe(
-      'task:result-delivery',
-    );
+    expect(dispatchEventSpy.mock.calls[1]?.[0]?.type).toBe('task:result-delivery');
     const dispatchedEvent = dispatchEventSpy.mock.calls[0]?.[0] as TaskResultDeadLetteredEvent;
     expect(dispatchedEvent.type).toBe('task:dead-lettered');
     expect(dispatchedEvent.operationId).toBe('op-resolved-write-fails');
@@ -497,9 +495,7 @@ describe('handleTaskResultRequest', () => {
     // The dead letter itself, then (COR-1366) the recorded `dead-lettered`
     // transport acknowledgement.
     expect(dispatchEventSpy).toHaveBeenCalledTimes(2);
-    expect((dispatchEventSpy.mock.calls[1]?.[0] as Event | undefined)?.type).toBe(
-      'task:result-delivery',
-    );
+    expect(dispatchEventSpy.mock.calls[1]?.[0]?.type).toBe('task:result-delivery');
     const dispatchedEvent = dispatchEventSpy.mock.calls[0]?.[0] as TaskResultDeadLetteredEvent;
     expect(dispatchedEvent.type).toBe('task:dead-lettered');
     expect(dispatchedEvent.operationId).toBe('op-oversize-rejection-write-fails');
