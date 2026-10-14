@@ -90,13 +90,30 @@ export const BUILD_PIPELINE_MODULE_NAMES = [
   'static-export.ts',
 ] as const;
 
+/**
+ * Modules that own child processes (spawn, signal, and sweep them) for the static production
+ * gate. A test that imports one, or that calls `Bun.spawn`/`Bun.spawnSync` itself, starts in a
+ * fresh process: a turbo-launched shared process that had run the gate's lifecycle cases stalled
+ * at 100% of its main thread in the next file, for over ten hours, while every direct run passed.
+ * `run-tests.test.ts` checks that every test spawning processes is isolated.
+ */
+export const PROCESS_OWNING_MODULE_NAMES = [
+  'check-static-playground.ts',
+  'run-linux-lifecycle.ts',
+  'static-playground-processes.ts',
+] as const;
+
+const PROCESS_SPAWNING_CALLS = new Set(['build', 'spawn', 'spawnSync']);
+
 export type PlaygroundTestFile = {
   path: string;
   source: string;
 };
 
 function isBuildPipelineModule(specifier: string): boolean {
-  return BUILD_PIPELINE_MODULE_NAMES.some((moduleName) => specifier.endsWith(moduleName));
+  return [...BUILD_PIPELINE_MODULE_NAMES, ...PROCESS_OWNING_MODULE_NAMES].some((moduleName) =>
+    specifier.endsWith(moduleName),
+  );
 }
 
 function syntaxDrivesBuildPipeline(testFile: PlaygroundTestFile): boolean {
@@ -136,7 +153,7 @@ function syntaxDrivesBuildPipeline(testFile: PlaygroundTestFile): boolean {
       ts.isPropertyAccessExpression(node.expression) &&
       ts.isIdentifier(node.expression.expression) &&
       node.expression.expression.text === 'Bun' &&
-      node.expression.name.text === 'build'
+      PROCESS_SPAWNING_CALLS.has(node.expression.name.text)
     ) {
       drivesBuildPipeline = true;
       return;
@@ -171,7 +188,8 @@ export function createTestProcessPlan(testFiles: PlaygroundTestFile[]): string[]
 }
 
 /** Discover every playground test and load enough source to classify it. */
-async function discoverTestFiles(lane: TestLane): Promise<PlaygroundTestFile[]> {
+/** Discover the playground's tests: one lane's files, or every file when no lane is named. */
+export async function discoverTestFiles(lane?: TestLane): Promise<PlaygroundTestFile[]> {
   const testFiles: PlaygroundTestFile[] = [];
 
   for (const directory of TEST_DIRECTORIES) {
@@ -187,7 +205,7 @@ async function discoverTestFiles(lane: TestLane): Promise<PlaygroundTestFile[]> 
     }
   }
 
-  return selectLaneFiles(testFiles, lane);
+  return lane === undefined ? testFiles : selectLaneFiles(testFiles, lane);
 }
 
 /**

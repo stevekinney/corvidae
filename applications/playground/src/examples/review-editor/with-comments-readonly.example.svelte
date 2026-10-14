@@ -6,7 +6,7 @@
 
 <script lang="ts">
   import { ReviewEditor, type Thread } from '@lostgradient/editor';
-  const original = `# Architecture Notes
+  const original = `## Architecture Notes
 
 This document describes the review workflow for collaborative editing.
 
@@ -18,7 +18,7 @@ Comments should stay anchored when nearby text changes. Export actions should pr
   // positions, same coordinate-space comment, no front matter — the only
   // difference from that fixture is mode="readonly" below. See that file's
   // own comment for the position math this reuses verbatim.
-  let value = $state(`# Architecture Notes
+  let value = $state(`## Architecture Notes
 
 This document describes the review workflow for collaborative editing and handoff.
 
