@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow, ScenarioHangError } from './module-scope-scenario.test-support.ts';
 
 describe('outcomeOf', () => {
   it('captures nothing when the scenario succeeds', async () => {
@@ -24,6 +24,7 @@ describe('outcomeOf', () => {
 
   it('reports a scenario that never settles as hung once the guard elapses', async () => {
     const outcome = await outcomeOf(() => new Promise<void>(() => {}), 5);
+    expect(outcome).toBeInstanceOf(ScenarioHangError);
     expect(() => rethrow(outcome)).toThrow('scenario did not settle within 5 ms; it is hung');
   });
 });

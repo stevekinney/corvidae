@@ -34,7 +34,11 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  ScenarioHangError,
+} from '../../testing/module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { RealmReadyOutcome } from '../worker-realm-readiness.ts';
 import type { RealmLifecycle, RealmRestartOutcome } from './realm-lifecycle.ts';
@@ -340,7 +344,20 @@ export async function runRealmConformanceAtModuleScope(
 ): Promise<ReadonlyMap<string, unknown>> {
   const outcomes = new Map<string, unknown>();
   for (const [name, run] of REALM_CONFORMANCE_CASES) {
-    outcomes.set(name, await outcomeOf(() => run(harness)));
+    const created: ConformanceRealm[] = [];
+    const tracked: RealmConformanceHarness = {
+      ...harness,
+      create: (options) => {
+        const realm = harness.create(options);
+        created.push(realm);
+        return realm;
+      },
+    };
+    const outcome = await outcomeOf(() => run(tracked));
+    // A case the hang guard abandoned still owns its realms and their child processes; crash
+    // them so a stalled case cannot leave a live child behind. `crash()` is idempotent.
+    if (outcome instanceof ScenarioHangError) for (const realm of created) realm.crash();
+    outcomes.set(name, outcome);
   }
   return outcomes;
 }

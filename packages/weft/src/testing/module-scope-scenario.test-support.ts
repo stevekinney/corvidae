@@ -24,6 +24,14 @@
  */
 export const SCENARIO_HANG_GUARD_MILLISECONDS = 120_000;
 
+/** The outcome {@link outcomeOf} records when a scenario does not settle before its hang guard. */
+export class ScenarioHangError extends Error {
+  constructor(hangGuardMilliseconds: number) {
+    super(`scenario did not settle within ${hangGuardMilliseconds} ms; it is hung, not slow`);
+    this.name = 'ScenarioHangError';
+  }
+}
+
 export async function outcomeOf(
   scenario: () => Promise<void>,
   hangGuardMilliseconds = SCENARIO_HANG_GUARD_MILLISECONDS,
@@ -31,12 +39,7 @@ export async function outcomeOf(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const hang = new Promise<Error>((resolve) => {
     timer = setTimeout(
-      () =>
-        resolve(
-          new Error(
-            `scenario did not settle within ${hangGuardMilliseconds} ms; it is hung, not slow`,
-          ),
-        ),
+      () => resolve(new ScenarioHangError(hangGuardMilliseconds)),
       hangGuardMilliseconds,
     );
   });
