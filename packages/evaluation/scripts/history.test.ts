@@ -79,7 +79,7 @@ interface CommandResult {
 async function spawnHistory(...args: string[]): Promise<CommandResult> {
   const child = Bun.spawn(
     [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, 'history', ...args],
-    { stdout: 'pipe', stderr: 'pipe' },
+    { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),

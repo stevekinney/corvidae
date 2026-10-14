@@ -42,7 +42,7 @@ const fifoRoot = await mkdtemp(join(tmpdir(), 'corvidae-skill-artifact-fifo-'));
 const fifoSkill = join(fifoRoot, 'pdf-processing');
 await write(fifoSkill, 'SKILL.md', MANIFEST);
 await mkdir(join(fifoSkill, 'assets'), { recursive: true });
-const fifoMade = Bun.spawnSync(['mkfifo', join(fifoSkill, 'assets/pipe')]);
+const fifoMade = Bun.spawnSync(['mkfifo', join(fifoSkill, 'assets/pipe')], { timeout: 120_000 });
 
 afterAll(async () => {
   await rm(fifoRoot, { recursive: true, force: true });

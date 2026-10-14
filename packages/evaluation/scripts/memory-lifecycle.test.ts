@@ -235,7 +235,7 @@ const spawnedRun = await (async () => {
         '--artifacts-dir',
         join(spawnedDirectory, 'spawned'),
       ],
-      { stdout: 'pipe', stderr: 'pipe' },
+      { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
     );
     const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
     return { stdout, exitCode };

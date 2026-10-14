@@ -134,7 +134,7 @@ async function spawnChild(
       scenario.markerPath,
       ...(variant === undefined ? [] : [variant]),
     ],
-    { stdout: 'pipe', stderr: 'pipe' },
+    { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
   );
   scenario.onCleanup(() => child.kill());
   await child.exited;

@@ -59,6 +59,7 @@ async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promis
   try {
     // Premise: the child died from SIGKILL and left its marker.
     const child = Bun.spawn(['bun', CHILD, 'human-wait-parked', backend, storagePath, markerPath], {
+      timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',
     });

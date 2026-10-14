@@ -77,6 +77,7 @@ if (validatorCommand !== undefined) {
   for (const fixture of CONFORMANCE_CORPUS) {
     const skillDirectory = await materialize(fixture.directoryName, fixture.skillMarkdown);
     const child = Bun.spawn([...validatorCommand, 'validate', skillDirectory], {
+      timeout: 120_000,
       stderr: 'pipe',
       stdout: 'pipe',
     });

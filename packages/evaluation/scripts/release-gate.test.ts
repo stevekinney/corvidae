@@ -56,7 +56,7 @@ interface CommandResult {
 async function spawnFilteredGate(...args: string[]): Promise<CommandResult> {
   const child = Bun.spawn(
     [process.execPath, 'run', '--filter=@lostgradient/evaluation', 'release-gate', '--', ...args],
-    { cwd: REPOSITORY_ROOT, stdout: 'pipe', stderr: 'pipe' },
+    { timeout: 120_000, cwd: REPOSITORY_ROOT, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -596,6 +596,7 @@ describe('runReleaseGateCommand', () => {
 // commits and every lookup run once here at module scope to stay off the per-test clock.
 function repositoryGit(repository: string, ...args: string[]): string {
   return Bun.spawnSync(['git', ...args], {
+    timeout: 120_000,
     cwd: repository,
     env: {
       ...process.env,

@@ -22,7 +22,10 @@ import { runReplayCommand } from './replay';
 
 const PACKAGE_DIRECTORY = join(import.meta.dir, '..');
 // The revision is incidental to a replay, so it is read once here and injected into the gate run.
-const HEAD = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: PACKAGE_DIRECTORY })
+const HEAD = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
+  timeout: 120_000,
+  cwd: PACKAGE_DIRECTORY,
+})
   .stdout.toString()
   .trim();
 
@@ -46,6 +49,7 @@ interface CommandResult {
 
 async function spawnScript(script: string, args: readonly string[]): Promise<CommandResult> {
   const child = Bun.spawn([process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args], {
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   });

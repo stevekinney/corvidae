@@ -47,6 +47,7 @@ const RECORD_KEY_PREFIX = 'evaluation-history/records/';
 
 function gitIn(cwd: string, ...args: string[]): string {
   return Bun.spawnSync(['git', ...args], {
+    timeout: 120_000,
     cwd,
     env: {
       ...process.env,
@@ -95,6 +96,7 @@ interface Report {
 
 async function spawnScript(script: string, args: readonly string[]): Promise<CommandResult> {
   const child = Bun.spawn([process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args], {
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   });

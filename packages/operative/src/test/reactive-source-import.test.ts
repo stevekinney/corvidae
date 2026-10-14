@@ -9,7 +9,7 @@ const child = Bun.spawn(
     '--eval',
     "const api = await import('@lostgradient/operative'); if (typeof api.runReactiveSourceConformanceSuite !== 'function') throw new Error('Missing conformance API');",
   ],
-  { cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
+  { timeout: 120_000, cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
 );
 const [status, errors] = await Promise.all([child.exited, new Response(child.stderr).text()]);
 

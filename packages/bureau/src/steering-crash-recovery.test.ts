@@ -35,6 +35,7 @@ const storagePath = join(directory, 'bureau.sqlite');
 const markerPath = join(directory, 'admitted.json');
 const signalOrStderr = await (async () => {
   const child = Bun.spawn(['bun', CHILD, storagePath, markerPath], {
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   });

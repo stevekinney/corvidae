@@ -119,6 +119,7 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
   try {
     // Premise: the child died from SIGKILL and left its marker.
     const child = Bun.spawn(['bun', CHILD, 'park-after-step-0', backend, storagePath, markerPath], {
+      timeout: 120_000,
       stdout: 'pipe',
       stderr: 'pipe',
     });
