@@ -489,6 +489,52 @@ describe('changeset emission', () => {
       }
     });
 
+    test('a round trip A to B to A throws for both mirrors, whatever each trailer saw', async () => {
+      const { root, base } = await mapped({ cinder: [weft], weft: [] });
+      await write(root, '.changeset/z.md', weftChangeset);
+      const cinderTrailer = await commit(root, 'Add Z');
+      await write(root, definitionsPath, definitions({ cinder: [], weft: [weft] }));
+      await commit(root, 'Move to weft');
+      await write(root, definitionsPath, definitions({ cinder: [weft], weft: [] }));
+      await commit(root, 'Move back to cinder');
+      // The endpoints agree for the cinder plan; only the range shows the package moved.
+      for (const [mirror, trailer] of [
+        ['cinder', cinderTrailer],
+        ['weft', base],
+      ] as const) {
+        const error = await rejectionOf(emit(root, await target(trailer), trailer, mirror));
+        expect(error).toBeInstanceOf(ChangesetEmissionError);
+        expect((error as Error).message).toContain(weft);
+        expect((error as Error).message).toContain('.changeset/z.md');
+      }
+    });
+
+    test('a changeset added and deleted inside the range still counts for a moved package', async () => {
+      const { root, base } = await mapped({ cinder: [weft], weft: [] });
+      await write(root, '.changeset/z.md', weftChangeset);
+      await commit(root, 'Add Z');
+      await write(root, definitionsPath, definitions({ cinder: [], weft: [weft] }));
+      await commit(root, 'Move to weft');
+      await git(root, 'rm', '--quiet', '.changeset/z.md');
+      await commit(root, 'Consume Z');
+      await write(root, definitionsPath, definitions({ cinder: [weft], weft: [] }));
+      await commit(root, 'Move back');
+      expect(await rejectionOf(emit(root, await target(base), base, 'cinder'))).toBeInstanceOf(
+        ChangesetEmissionError,
+      );
+    });
+
+    test('a round trip of a package no changeset names passes', async () => {
+      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      await write(root, '.changeset/z.md', weftChangeset);
+      const synced = await commit(root, 'Add Z');
+      await write(root, definitionsPath, definitions({ weft: [weft, chat], cinder: [] }));
+      await commit(root, 'Move chat to weft');
+      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
+      await commit(root, 'Move chat back');
+      expect(await emit(root, await target(synced), synced)).toEqual({});
+    });
+
     test('adding a new publish-as workspace with changesets present passes', async () => {
       const { root } = await mapped({ weft: [weft] }, [weft]);
       await write(root, '.changeset/z.md', weftChangeset);
