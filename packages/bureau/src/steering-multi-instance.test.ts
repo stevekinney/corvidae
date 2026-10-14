@@ -387,12 +387,10 @@ describe('durable steering across two Bureau processes', () => {
       const session = await bureau.getSession(sessionId);
       const kv = bureau.kv;
       if (kv === undefined || session === undefined) throw new Error('expected a durable session');
-      const [headKey] = await kv.list(`steering-log:v1:${encodeStorageKeyComponent(sessionId)}:`);
-      expect(headKey).toBeDefined();
-      const heads = (
-        await kv.list(`steering-log:v1:${encodeStorageKeyComponent(sessionId)}:`)
-      ).filter((key) => key.endsWith(':head'));
-      await kv.set(heads[0] ?? '', '{"sequence":-1}');
+      const logKeys = await kv.list(`steering-log:v1:${encodeStorageKeyComponent(sessionId)}:`);
+      const [headKey] = logKeys.filter((key) => key.endsWith(':head'));
+      if (headKey === undefined) throw new Error('expected a steering log head');
+      await kv.set(headKey, '{"sequence":-1}');
 
       await expect(
         bureau.createRun({ message: 'again', principal: 'alice', sessionId }),

@@ -287,12 +287,12 @@ describe('durable steering survives SIGKILL', () => {
         path: join(directory, 'bureau.sqlite'),
       });
       const kv = textValueStore(storage);
-      const [entryKey] = (await kv.list('steering-log:v1:')).filter((key) =>
-        key.includes(':entry:'),
-      );
+      const logKeys = await kv.list('steering-log:v1:');
+      const [entryKey] = logKeys.filter((key) => key.includes(':entry:'));
       if (entryKey === undefined) throw new Error('expected a logged entry');
       await kv.set(entryKey, '{"type":"admit"}');
-      expect((await readSteeringLogHead(kv, sessionId, incarnation)).sequence).toBeGreaterThan(0);
+      const head = await readSteeringLogHead(kv, sessionId, incarnation);
+      expect(head.sequence).toBeGreaterThan(0);
       await kv.close();
       await Bun.sleep(CLAIM_TTL_MS * 10);
 
