@@ -811,9 +811,12 @@ async function commit(
   const release = internals.leases.acquire(measured.digest);
   try {
     const blobKey = KEYS.blob(measured.digest);
-    if ((await context.track(storage.get(blobKey))) === null) {
-      await context.track(storage.set(blobKey, encodeBase64(measured.bytes)));
-    }
+    // Under the blob's lock, which collection takes to purge it: a purge in flight finishes first, and the blob is rewritten.
+    await internals.withLock(blobKey, async () => {
+      if ((await context.track(storage.get(blobKey))) === null) {
+        await context.track(storage.set(blobKey, encodeBase64(measured.bytes)));
+      }
+    });
     // The commit itself is the point of no return: it is not raced against abort.
     return await internals.withLock(plan.assetId, async () => {
       const loaded = await loadRecord(storage, plan.assetId);

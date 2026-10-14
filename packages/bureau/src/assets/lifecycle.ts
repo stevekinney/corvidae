@@ -523,6 +523,13 @@ async function collectUploads(
   }
 }
 
+/**
+ * Purges every blob no asset owns and no lease protects. Each decision and
+ * delete runs under the blob's lock — the one an admission's commit stages
+ * the blob under — so a commit reusing a blob never observes it present and
+ * then loses it to a delete already in flight. Leases and locks are
+ * in-process: collection assumes one collecting process per storage.
+ */
 async function collectBlobs(
   internals: AssetInternals,
   context: AssetWorkContext,
@@ -531,13 +538,16 @@ async function collectBlobs(
   const { storage } = internals;
   for (const key of await context.track(storage.list(KEYS.blobPrefix))) {
     const digest = key.slice(KEYS.blobPrefix.length);
-    const owners = await context.track(storage.list(KEYS.ownerPrefix(digest)));
-    if (owners.length > 0) continue;
-    if (internals.leases.isLeased(digest)) {
-      state.report.leasedBlobs.push(digest);
-      continue;
-    }
-    await context.track(storage.delete(key));
+    const outcome = await context.track(
+      internals.withLock(key, async () => {
+        if ((await storage.list(KEYS.ownerPrefix(digest))).length > 0) return 'owned';
+        if (internals.leases.isLeased(digest)) return 'leased';
+        await storage.delete(key);
+        return 'purged';
+      }),
+    );
+    if (outcome === 'leased') state.report.leasedBlobs.push(digest);
+    if (outcome !== 'purged') continue;
     state.report.purgedBlobs.push(digest);
     await internals.emit({ type: 'asset.blob.purged', digest });
   }

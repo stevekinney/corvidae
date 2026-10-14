@@ -16,6 +16,7 @@
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createFaultEngine, type FaultPlan, waitForCondition } from '@lostgradient/operative';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -377,6 +378,44 @@ describe('concurrent deletion and resolution', () => {
 
     const after = await rejectionOf(opened.assets.resolve(admission.source, alice));
     expect((after as AssetUnavailableError).state).toBe('deleted');
+    await opened.close();
+  });
+});
+
+describe('blob reuse during collection', () => {
+  it('rewrites a blob a collection was purging when a new admission of the same bytes commits', async () => {
+    const memory = createMemoryAssetStorageFixture().storage;
+    const parked = deferred();
+    const release = deferred();
+    let parking = false;
+    // Parks collection's delete of the orphaned blob once it has decided to purge it.
+    const storage: AssetStorage = {
+      ...memory,
+      durability: memory.durability,
+      delete: async (key) => {
+        if (parking && key.startsWith('asset:v1:blob:')) {
+          parking = false;
+          parked.resolve();
+          await release.promise;
+        }
+        return memory.delete(key);
+      },
+    };
+    const opened = await open({ storage });
+    const first = await admitted(opened);
+    expect((await opened.assets.delete(first.assetId, alice).result()).outcome).toBe('completed');
+
+    parking = true;
+    const collection = opened.assets.collectGarbage();
+    await parked.promise;
+    const second = await opened.assets.admit({ source: { kind: 'inline', bytes: PNG } }, alice);
+    for (let turn = 0; turn < 5; turn++) await yieldToPortableEventLoop();
+    release.resolve();
+
+    expect((await collection.result()).outcome).toBe('completed');
+    expect((await second.work.result()).outcome).toBe('completed');
+    const resolved = await opened.assets.resolve(second.source, alice);
+    expect(resolved.content).toEqual({ kind: 'bytes', bytes: PNG });
     await opened.close();
   });
 });
