@@ -424,4 +424,53 @@ describe('durable steering across two Bureau processes', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it('binds pause and resume against live runs in every process, not just its own', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-liveness-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureauA = await openBureau(path);
+    const bureauB = await openBureau(path);
+    try {
+      const sessionId = await startRunningSession(bureauA);
+      const runInA = (await bureauA.getSession(sessionId))?.metadata['lastRunId'];
+      if (typeof runInA !== 'string') throw new Error('expected a run id');
+
+      // The session's only live run is in A. B sees it, so an unscoped pause
+      // binds to it rather than being `run-ambiguous` with zero runs.
+      const unscoped = await bureauB.submitSteeringCommand(sessionId, {
+        id: 'pause-from-b',
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(unscoped.outcome).toBe('accepted');
+      if (unscoped.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(unscoped.command.runId).toBe(runInA);
+
+      // Naming A's run explicitly is not `run-terminal` from B either.
+      const explicit = await bureauB.submitSteeringCommand(sessionId, {
+        id: 'resume-from-b',
+        principal: 'alice',
+        runId: runInA,
+        requestedValue: { target: 'resume' },
+      });
+      expect(explicit.outcome).toBe('accepted');
+
+      // With a live run in each process, an unscoped pause is ambiguous from
+      // either side.
+      await startRunningSession(bureauB, sessionId);
+      for (const bureau of [bureauA, bureauB]) {
+        const ambiguous = await bureau.submitSteeringCommand(sessionId, {
+          principal: 'alice',
+          requestedValue: { target: 'pause' },
+        });
+        expect(ambiguous.outcome).toBe('rejected');
+        if (ambiguous.outcome !== 'rejected') throw new Error('expected rejected');
+        expect(ambiguous.failure.reason).toBe('run-ambiguous');
+      }
+    } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

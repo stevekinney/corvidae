@@ -1453,7 +1453,8 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * it decides. An exact `(principal, id)` retry replays and a mismatched
    * one conflicts after any restart and across sessions and processes; a
    * refused command's id stays decided too, answering an exact retry with
-   * the original refusal. A run reads its own process's gate: steering
+   * the original refusal. `pause`/`resume` bind against the session's live
+   * runs in every process sharing the backend. A run reads its own process's gate: steering
    * admitted by another process reaches it when this process next folds
    * the log (before its next admission or run). `{ outcome:
    * 'unsupported-capability', reason: 'durable-steering-unavailable' }` is

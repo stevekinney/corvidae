@@ -172,7 +172,7 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
   const effortIsValid =
     target !== 'effort' ||
     requested['override'] === undefined ||
-    EFFORTS.has(String(requested['override']));
+    (typeof requested['override'] === 'string' && EFFORTS.has(requested['override']));
   const valueShapeIsValid =
     target === 'pause' || target === 'resume'
       ? true

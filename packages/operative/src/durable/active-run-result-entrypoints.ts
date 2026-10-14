@@ -3,7 +3,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import { type RunOptions, type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
-import { SCHEDULER_ORIGIN_TAG } from './active-run-constants';
+import { agentRunSessionTag, SCHEDULER_ORIGIN_TAG } from './active-run-constants';
 import type { RecoveredRunHandle } from './active-run-event-surface';
 import { reconstructRunResult } from './active-run-result-reconstruction';
 import { normalizeAgentRunWorkflowResult } from './run-workflow-result';
@@ -98,7 +98,7 @@ export async function startDurableRunResult(
     { runId, sessionId, agentName, prompt, maximumSteps: options.maximumSteps },
     {
       id: runId,
-      ...(tags ? { tags } : {}),
+      tags: [...(tags ?? []), agentRunSessionTag(sessionId)],
       ...(isSchedulerOrigin ? { onTerminalConflict: 'start-new' as const } : {}),
       services: {
         // AB-321: snapshots the SAME resolved `runtime` this function reads

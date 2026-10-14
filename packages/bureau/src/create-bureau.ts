@@ -10,6 +10,7 @@ import {
   type ActiveRun,
   type AgentInput,
   type AgentRun,
+  agentRunSessionTag,
   type AgentSession,
   type ChildSignalContract,
   // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
@@ -7487,7 +7488,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // This computation touches only the internal run registry, never
     // anything derived from `request.principal`, so it leaks nothing to an
     // unauthorized caller ahead of the `not-found` check below.
-    const liveRunIds = liveSessionRunIds(sessionId);
+    const liveRunIds =
+      durableSteeringStore() === undefined
+        ? liveSessionRunIds(sessionId)
+        : await liveSessionRunIdsEverywhere(sessionId);
     const targetRunId = request.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
     if (!isSessionAuthorityAuthorized(session.metadata, request.principal, targetRunId)) {
       return { outcome: 'not-found' };
@@ -7522,7 +7526,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           kv,
           session.incarnation,
           refused,
-          () => liveSessionRunIds(sessionId),
+          () => liveSessionRunIdsEverywhere(sessionId),
           outcome,
         ),
       );
@@ -7731,7 +7735,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         kv,
         session.incarnation,
         command,
-        () => liveSessionRunIds(sessionId),
+        () => liveSessionRunIdsEverywhere(sessionId),
         undefined,
         'policyRef' in request.requestedValue && request.requestedValue.policyRef !== undefined
           ? request.requestedValue
@@ -7751,6 +7755,37 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
     return liveRunIds;
+  }
+
+  /** How many workflows one page of the backend-wide liveness query reads. */
+  const LIVE_RUN_PAGE_SIZE = 100;
+
+  /**
+   * The session's live runs in EVERY process sharing this backend: this
+   * process's running runs, plus every non-terminal durable `agentRun`
+   * workflow tagged with the session (`agentRunSessionTag`), whichever
+   * process runs it. Durable steering binds `pause`/`resume` and judges a
+   * session terminal against this view, so a run owned by another process
+   * is neither invisible (`run-terminal`) nor silently excluded from an
+   * ambiguity check. Without a durable engine, this process's view is all
+   * there is.
+   */
+  async function liveSessionRunIdsEverywhere(sessionId: string): Promise<string[]> {
+    const live = new Set(liveSessionRunIds(sessionId));
+    const engine = runtime.durable?.engine;
+    if (engine === undefined) return [...live];
+    for (let offset = 0; ; offset += LIVE_RUN_PAGE_SIZE) {
+      const page = await engine.list({
+        type: 'agentRun',
+        status: ['pending', 'running', 'suspended'],
+        tags: [agentRunSessionTag(sessionId)],
+        limit: LIVE_RUN_PAGE_SIZE,
+        offset,
+      });
+      for (const workflow of page.items) live.add(workflow.id);
+      if (page.items.length < LIVE_RUN_PAGE_SIZE) break;
+    }
+    return [...live].toSorted((left, right) => left.localeCompare(right));
   }
 
   // AB-68: give `steering.accepted` its first production dispatch site.
@@ -7788,7 +7823,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     kv: ConditionalTextValueStore,
     incarnation: string,
     request: ImplementedSteeringCommand,
-    liveRunIdsNow: () => string[],
+    liveRunIdsNow: () => Promise<string[]>,
     refusal?: SteeringRefusal['outcome'],
     submittedValueAsSent?: SteeringRequestedValue,
   ): Promise<SteeringCommandAdmissionOutcome> {
@@ -7858,7 +7893,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (stillLive?.incarnation !== incarnation) return { outcome: 'not-found' };
       // The session's last run may have finished while this waited: the same
       // terminal check `submitSteeringCommand` made up front, made again.
-      if (isSessionRunTerminal(stillLive.metadata) && liveRunIdsNow().length === 0) {
+      const liveRunIds = await liveRunIdsNow();
+      if (isSessionRunTerminal(stillLive.metadata) && liveRunIds.length === 0) {
         return { outcome: 'session-terminal', sessionId };
       }
       const now = runtimeServices.clock.nowISO();
@@ -7867,7 +7903,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? {
               type: 'admit',
               command,
-              liveRunIds: liveRunIdsNow(),
+              liveRunIds,
               now,
               ...(submittedValue !== undefined ? { submittedValue } : {}),
             }
