@@ -1,6 +1,6 @@
 /**
  * Built-in media inspection (COR-794): content sniffing from magic bytes,
- * image dimensions for PNG/GIF/JPEG, and PDF page counts. Everything here is
+ * image dimensions for PNG/GIF/JPEG/WebP, and PDF page counts. Everything here is
  * pure and synchronous over the bytes; facts the format cannot reveal cheaply
  * (audio/video duration) come from the injected metadata extractor instead.
  *
@@ -51,15 +51,39 @@ const SIGNATURES: ReadonlyArray<{
   { mediaType: 'application/zip', signature: [0x50, 0x4b, 0x03, 0x04] },
 ];
 
+/** ISO base media (`ftyp`) major brands that name something other than generic MP4 video. */
+const FTYP_BRANDS: Readonly<Record<string, string>> = {
+  avif: 'image/avif',
+  avis: 'image/avif',
+  heic: 'image/heic',
+  heix: 'image/heic',
+  heim: 'image/heic',
+  heis: 'image/heic',
+  hevc: 'image/heic',
+  hevx: 'image/heic',
+  mif1: 'image/heic',
+  msf1: 'image/heic',
+  'M4A ': 'audio/mp4',
+  'M4B ': 'audio/mp4',
+  'M4P ': 'audio/mp4',
+  'qt  ': 'video/quicktime',
+};
+
+function ftypMediaType(bytes: Uint8Array): string {
+  const brand = String.fromCharCode(...bytes.subarray(8, 12));
+  return FTYP_BRANDS[brand] ?? 'video/mp4';
+}
+
 /**
  * The media type the bytes themselves declare, or `undefined` when nothing
  * recognizable is found. Valid UTF-8 without NUL characters is `text/plain`.
+ * An ISO base media file is refined by its `ftyp` major brand.
  */
 export function detectMediaType(bytes: Uint8Array): string | undefined {
   for (const entry of SIGNATURES) {
     if (!startsWith(bytes, entry.signature, entry.offset ?? 0)) continue;
     if (entry.also && !startsWith(bytes, entry.also.signature, entry.also.offset)) continue;
-    return entry.mediaType;
+    return entry.mediaType === 'video/mp4' ? ftypMediaType(bytes) : entry.mediaType;
   }
   if (bytes.byteLength === 0 || bytes.includes(0)) return undefined;
   try {
@@ -80,6 +104,10 @@ const ALIASES: Readonly<Record<string, string>> = {
   'audio/x-wav': 'audio/wav',
   'audio/wave': 'audio/wav',
   'audio/mp3': 'audio/mpeg',
+  'audio/x-m4a': 'audio/mp4',
+  'audio/m4a': 'audio/mp4',
+  'image/heif': 'image/heic',
+  'application/x-zip-compressed': 'application/zip',
 };
 
 function canonical(mediaType: string): string {
@@ -98,6 +126,35 @@ function isTextual(mediaType: string): boolean {
   );
 }
 
+/** Formats that are containers: sniffing sees the container, and these declarations name what it holds. */
+function isZipFormat(claim: string): boolean {
+  return (
+    claim === 'application/epub+zip' ||
+    claim.startsWith('application/vnd.openxmlformats-officedocument.') ||
+    claim.startsWith('application/vnd.oasis.opendocument.')
+  );
+}
+
+const AUDIO_VIDEO_FTYP = new Set([
+  'video/mp4',
+  'audio/mp4',
+  'video/quicktime',
+  'video/3gpp',
+  'video/3gpp2',
+]);
+
+/**
+ * Whether `claim` names a format carried in the container `detected` found.
+ * An audio/video `ftyp` box accepts any audio/video ISO media declaration; an
+ * image brand (HEIC, AVIF) accepts only its own image type, so an image
+ * claim can never relabel video bytes (or the reverse) to dodge its limits.
+ */
+function containerCarries(detected: string, claim: string): boolean {
+  if (detected === 'application/zip') return isZipFormat(claim);
+  if (AUDIO_VIDEO_FTYP.has(detected)) return AUDIO_VIDEO_FTYP.has(claim);
+  return false;
+}
+
 /**
  * Decides the asset's media type from what the caller declared and what the
  * bytes show, or returns `undefined` when they contradict each other.
@@ -106,6 +163,9 @@ function isTextual(mediaType: string): boolean {
  * - Declared and detected agree (after aliasing): the detected type.
  * - Detected `text/plain` and a textual declaration (`text/*`, JSON, XML):
  *   the declared type — sniffing cannot tell those apart.
+ * - Detected a container (ZIP, an ISO media `ftyp` box) and a declaration of
+ *   a format that container carries (OOXML, ODF, EPUB; MP4 audio,
+ *   QuickTime, 3GP): the declared type.
  * - Nothing detected: only a generic `application/*` declaration is
  *   accepted, since a specific claim (`image/png`) cannot be verified.
  */
@@ -120,6 +180,7 @@ export function reconcileMediaType(
   }
   if (claim === detected) return detected;
   if (detected === 'text/plain' && isTextual(claim)) return claim;
+  if (containerCarries(detected, claim)) return claim;
   return undefined;
 }
 
@@ -196,12 +257,41 @@ function jpegDimensions(bytes: Uint8Array): AssetMediaFacts {
   return {};
 }
 
-/** Counts `/Type /Page` objects (never `/Pages`) — a page-bomb guard, not a PDF parser. */
+/** Reads a WebP's canvas size from its `VP8 `, `VP8L`, or `VP8X` chunk. */
+function webpDimensions(bytes: Uint8Array): AssetMediaFacts {
+  if (bytes.byteLength < 30) return {};
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const chunk = String.fromCharCode(...bytes.subarray(12, 16));
+  if (chunk === 'VP8X') {
+    const width = 1 + (view.getUint16(24, true) | (bytes[26]! << 16));
+    const height = 1 + (view.getUint16(27, true) | (bytes[29]! << 16));
+    return { width, height };
+  }
+  if (chunk === 'VP8L' && bytes[20] === 0x2f) {
+    const packed = view.getUint32(21, true);
+    return { width: (packed & 0x3fff) + 1, height: ((packed >>> 14) & 0x3fff) + 1 };
+  }
+  if (chunk === 'VP8 ' && startsWith(bytes, [0x9d, 0x01, 0x2a], 23)) {
+    return { width: view.getUint16(26, true) & 0x3fff, height: view.getUint16(28, true) & 0x3fff };
+  }
+  return {};
+}
+
+/**
+ * A page-bomb guard, not a PDF parser: the larger of the plaintext
+ * `/Type /Page` objects (never `/Pages`) and the largest page-tree `/Count`.
+ * A PDF always has at least one page, so finding none — page objects packed
+ * into compressed object streams, say — reports the count as unmeasured.
+ */
 function pdfPageCount(bytes: Uint8Array): AssetMediaFacts {
   let text = '';
   for (const byte of bytes) text += String.fromCharCode(byte);
-  const matches = text.match(/\/Type\s*\/Page(?![a-zA-Z])/g);
-  return { pageCount: matches?.length ?? 0 };
+  const pages = text.match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length ?? 0;
+  let pageCount = pages;
+  for (const match of text.matchAll(/\/Count\s+(\d+)/g)) {
+    pageCount = Math.max(pageCount, Number(match[1]));
+  }
+  return pageCount > 0 ? { pageCount } : {};
 }
 
 /** The facts the format itself reveals for `mediaType`. */
@@ -213,6 +303,8 @@ export function inspectMediaFacts(bytes: Uint8Array, mediaType: string): AssetMe
       return gifDimensions(bytes);
     case 'image/jpeg':
       return jpegDimensions(bytes);
+    case 'image/webp':
+      return webpDimensions(bytes);
     case 'application/pdf':
       return pdfPageCount(bytes);
     default:

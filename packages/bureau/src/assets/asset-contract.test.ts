@@ -37,13 +37,17 @@ import {
   bob,
   createAssetHarness,
   deferred,
+  isoMediaBytes,
   mallory,
+  objectStreamPdfBytes,
   pdfBytes,
   pngBytes,
   scriptedFetcher,
   scriptedResolver,
   textBytes,
   wavBytes,
+  webpBytes,
+  zipBytes,
 } from '../testing/asset-fixtures.test-support';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
@@ -581,6 +585,119 @@ describe('admission validation', () => {
       { source: { kind: 'inline', bytes: pdfBytes(4) } },
     );
     expect(result).toMatchObject({ rejection: { code: 'page-count-exceeded' } });
+  });
+});
+
+describe('admission validation fails closed on unmeasured facts', () => {
+  async function outcomeOf(
+    options: Omit<BureauAssetOptions, 'storage'>,
+    request: Parameters<AssetHarness['assets']['admit']>[0],
+  ) {
+    const { assets, harness } = await open({ ...options, storage: memoryFixture().storage });
+    const admission = await assets.admit(request, alice);
+    const result = await admission.work.result();
+    const descriptor = await assets.inspect(admission.assetId, alice);
+    await harness.close();
+    return { result, descriptor };
+  }
+  const maxPixels = {
+    limits: [{ scope: 'per-part' as const, modality: 'image' as const, maxPixels: 100 }],
+  };
+
+  it('measures WebP dimensions and enforces maxPixels on them', async () => {
+    const large = await outcomeOf(
+      { policy: maxPixels },
+      { source: { kind: 'inline', bytes: webpBytes(20, 20) } },
+    );
+    expect(large.result).toMatchObject({ rejection: { code: 'dimensions-exceeded' } });
+    const small = await outcomeOf(
+      { policy: maxPixels },
+      { source: { kind: 'inline', bytes: webpBytes(5, 5) } },
+    );
+    expect(small.result.outcome).toBe('completed');
+  });
+
+  it('refuses an image whose dimensions nothing measured, unless the extractor reports them', async () => {
+    const request = {
+      source: { kind: 'inline' as const, bytes: isoMediaBytes('avif') },
+      declaredMediaType: 'image/avif',
+    };
+    const unmeasured = await outcomeOf({ policy: maxPixels }, request);
+    expect(unmeasured.result).toMatchObject({ rejection: { code: 'media-facts-unmeasured' } });
+    expect(unmeasured.descriptor.rejection?.code).toBe('media-facts-unmeasured');
+    const measured = await outcomeOf(
+      { policy: maxPixels, ports: { extractMetadata: async () => ({ width: 4, height: 4 }) } },
+      request,
+    );
+    expect(measured.result.outcome).toBe('completed');
+    expect(measured.descriptor.modality).toBe('image');
+  });
+
+  it('refuses a PDF whose pages sit in compressed object streams under maxPageCount', async () => {
+    const { result } = await outcomeOf(
+      { policy: { limits: [{ scope: 'per-part', modality: 'document', maxPageCount: 3 }] } },
+      { source: { kind: 'inline', bytes: objectStreamPdfBytes() } },
+    );
+    expect(result).toMatchObject({ rejection: { code: 'media-facts-unmeasured' } });
+  });
+
+  it('refuses audio with no measured duration under a per-part or aggregate duration limit', async () => {
+    for (const scope of ['per-part', 'aggregate'] as const) {
+      const { result } = await outcomeOf(
+        { policy: { limits: [{ scope, modality: 'audio', maxDurationSeconds: 30 }] } },
+        { source: { kind: 'inline', bytes: wavBytes() } },
+      );
+      expect(result).toMatchObject({ rejection: { code: 'media-facts-unmeasured' } });
+    }
+  });
+});
+
+describe('container media types', () => {
+  async function admitted(bytes: Uint8Array, declaredMediaType: string) {
+    const { assets, harness } = await open({ storage: memoryFixture().storage });
+    const admission = await assets.admit(
+      { source: { kind: 'inline', bytes }, declaredMediaType },
+      alice,
+    );
+    const result = await admission.work.result();
+    const descriptor = await assets.inspect(admission.assetId, alice);
+    await harness.close();
+    return { result, descriptor };
+  }
+
+  it('accepts a declared OOXML, ODF, or EPUB document over ZIP bytes as a document', async () => {
+    for (const declared of [
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.oasis.opendocument.text',
+      'application/epub+zip',
+    ]) {
+      const { result, descriptor } = await admitted(zipBytes(), declared);
+      expect(result.outcome).toBe('completed');
+      expect(descriptor).toMatchObject({ mediaType: declared, modality: 'document' });
+    }
+  });
+
+  it('accepts MP4 audio and QuickTime declarations over an audio/video ftyp box', async () => {
+    for (const [brand, declared, modality] of [
+      ['M4A ', 'audio/mp4', 'audio'],
+      ['isom', 'audio/x-m4a', 'audio'],
+      ['isom', 'video/quicktime', 'video'],
+    ] as const) {
+      const { result, descriptor } = await admitted(isoMediaBytes(brand), declared);
+      expect(result.outcome).toBe('completed');
+      expect(descriptor.modality).toBe(modality);
+    }
+  });
+
+  it('still refuses a declaration the container cannot carry', async () => {
+    for (const [bytes, declared] of [
+      [zipBytes(), 'image/png'],
+      [isoMediaBytes('isom'), 'image/avif'],
+      [isoMediaBytes('avif'), 'video/mp4'],
+    ] as const) {
+      const { result } = await admitted(bytes, declared);
+      expect(result).toMatchObject({ rejection: { code: 'media-type-mismatch' } });
+    }
   });
 });
 

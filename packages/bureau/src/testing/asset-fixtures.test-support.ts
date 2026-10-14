@@ -65,6 +65,50 @@ export function pdfBytes(pages: number): Uint8Array {
   );
 }
 
+/** A PDF whose page objects sit in a compressed object stream, so no plaintext page object or `/Count` is visible. */
+export function objectStreamPdfBytes(): Uint8Array {
+  return concatenate([
+    textBytes(
+      '%PDF-1.5\n1 0 obj << /Type /ObjStm /N 40 /First 9 /Filter /FlateDecode >>\nstream\n',
+    ),
+    new Uint8Array([0x78, 0x9c, 0x01, 0xff, 0x00, 0x00, 0xff]),
+    textBytes('\nendstream\nendobj\n%%EOF\n'),
+  ]);
+}
+
+/** A RIFF/WEBP file with an extended (`VP8X`) header declaring a `width`×`height` canvas. */
+export function webpBytes(width: number, height: number): Uint8Array {
+  const header = new Uint8Array(30);
+  const view = new DataView(header.buffer);
+  header.set(textBytes('RIFF'), 0);
+  view.setUint32(4, 22, true);
+  header.set(textBytes('WEBPVP8X'), 8);
+  view.setUint32(16, 10, true);
+  const writeUint24 = (offset: number, value: number) => {
+    view.setUint16(offset, value & 0xffff, true);
+    header[offset + 2] = (value >>> 16) & 0xff;
+  };
+  writeUint24(24, width - 1);
+  writeUint24(27, height - 1);
+  return header;
+}
+
+/** An ISO base media file: a `ftyp` box naming `brand` as its major brand. */
+export function isoMediaBytes(brand: string): Uint8Array {
+  const box = new Uint8Array(24);
+  const view = new DataView(box.buffer);
+  view.setUint32(0, 24);
+  box.set(textBytes('ftyp'), 4);
+  box.set(textBytes(brand), 8);
+  box.set(textBytes(`${brand}isom`), 16);
+  return box;
+}
+
+/** A ZIP local file header — the container OOXML, ODF, and EPUB documents share. */
+export function zipBytes(): Uint8Array {
+  return concatenate([new Uint8Array([0x50, 0x4b, 0x03, 0x04]), textBytes('[Content_Types].xml')]);
+}
+
 /** A RIFF/WAVE header — detected as `audio/wav`; duration comes only from the injected extractor. */
 export function wavBytes(): Uint8Array {
   return concatenate([textBytes('RIFF'), new Uint8Array([36, 0, 0, 0]), textBytes('WAVEfmt ')]);

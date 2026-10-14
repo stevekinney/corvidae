@@ -160,12 +160,49 @@ export function createAggregateBudget(
   };
 }
 
+function unmeasured(fact: string, limit: string): AssetAdmissionError {
+  return new AssetAdmissionError(
+    'media-facts-unmeasured',
+    `The ${fact} could not be measured, so ${limit} cannot be enforced.`,
+  );
+}
+
+/**
+ * Fails closed: a limit that names a fact (pixels, duration, pages) for this
+ * modality refuses a part whose fact neither the built-in inspection nor the
+ * injected extractor measured. Aggregate limits need duration and page
+ * counts to sum; pixels are per-part only.
+ */
+function requireMeasuredFacts(
+  limits: readonly MediaLimits[],
+  modality: Modality,
+  facts: AssetMediaFacts,
+): void {
+  for (const limit of limits) {
+    if (limit.modality !== modality) continue;
+    if (
+      limit.scope === 'per-part' &&
+      limit.maxPixels !== undefined &&
+      (facts.width === undefined || facts.height === undefined)
+    ) {
+      throw unmeasured('image dimensions', 'maxPixels');
+    }
+    if (limit.maxDurationSeconds !== undefined && facts.durationSeconds === undefined) {
+      throw unmeasured('media duration', 'maxDurationSeconds');
+    }
+    if (limit.maxPageCount !== undefined && facts.pageCount === undefined) {
+      throw unmeasured('page count', 'maxPageCount');
+    }
+  }
+}
+
 function checkPerPartLimits(
   limits: readonly MediaLimits[],
   modality: Modality,
   byteLength: number,
   facts: AssetMediaFacts,
 ): void {
+  requireMeasuredFacts(limits, modality, facts);
   for (const limit of limits) {
     if (limit.scope !== 'per-part' || limit.modality !== modality) continue;
     if (limit.maxBytes !== undefined && byteLength > limit.maxBytes) {
@@ -183,19 +220,14 @@ function checkPerPartLimits(
     }
     if (
       limit.maxDurationSeconds !== undefined &&
-      facts.durationSeconds !== undefined &&
-      facts.durationSeconds > limit.maxDurationSeconds
+      (facts.durationSeconds ?? 0) > limit.maxDurationSeconds
     ) {
       throw new AssetAdmissionError(
         'duration-exceeded',
         `The media exceeds ${limit.maxDurationSeconds} seconds.`,
       );
     }
-    if (
-      limit.maxPageCount !== undefined &&
-      facts.pageCount !== undefined &&
-      facts.pageCount > limit.maxPageCount
-    ) {
+    if (limit.maxPageCount !== undefined && (facts.pageCount ?? 0) > limit.maxPageCount) {
       throw new AssetAdmissionError(
         'page-count-exceeded',
         `The document exceeds ${limit.maxPageCount} pages.`,
