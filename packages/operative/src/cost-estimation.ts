@@ -42,12 +42,31 @@ export interface CostEstimationOptions {
  */
 const ANTHROPIC_CACHE_WRITE_MULTIPLIER = 1.25;
 const ANTHROPIC_CACHE_READ_MULTIPLIER = 0.1;
+/** Anthropic prices cache reads on Claude Fable 5.1 and Claude Mythos 5.1 at 0.025x input. */
+const ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER = 0.025;
+/** Anthropic prices cache reads on Claude Opus 5.5 and Claude Sonnet 5.5 at 0.05x input. */
+const ANTHROPIC_5_5_CACHE_READ_MULTIPLIER = 0.05;
 const OPENAI_CACHE_READ_MULTIPLIER = 0.5;
 
-function anthropicCachePricing(promptCostPerMillionTokens: number) {
+function anthropicCachePricing(
+  promptCostPerMillionTokens: number,
+  cacheReadMultiplier = ANTHROPIC_CACHE_READ_MULTIPLIER,
+) {
   return {
     cacheWriteCostPerMillionTokens: promptCostPerMillionTokens * ANTHROPIC_CACHE_WRITE_MULTIPLIER,
-    cacheReadCostPerMillionTokens: promptCostPerMillionTokens * ANTHROPIC_CACHE_READ_MULTIPLIER,
+    cacheReadCostPerMillionTokens: promptCostPerMillionTokens * cacheReadMultiplier,
+  };
+}
+
+function anthropicPricing(
+  promptCostPerMillionTokens: number,
+  completionCostPerMillionTokens: number,
+  cacheReadMultiplier?: number,
+): ModelPricing {
+  return {
+    promptCostPerMillionTokens,
+    completionCostPerMillionTokens,
+    ...anthropicCachePricing(promptCostPerMillionTokens, cacheReadMultiplier),
   };
 }
 
@@ -58,7 +77,27 @@ function openAICachePricing(promptCostPerMillionTokens: number) {
 }
 
 export const defaultPricingTable: Readonly<Record<string, ModelPricing>> = Object.freeze({
-  // Anthropic Claude 4 / 3.5
+  // Anthropic current models, at the first-party list prices on Anthropic's pricing page
+  // (platform.claude.com/docs/en/about-claude/pricing, read 2026-10-13). Cache writes use the
+  // 5-minute rate; consumers on the 1-hour TTL (2x input) can override via `customPricing`.
+  // Claude Haiku 5.5 is priced for prompts up to 100K tokens ($0.50 / $2.50 beyond).
+  'claude-fable-5-1': anthropicPricing(10, 50, ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER),
+  'claude-mythos-5-1': anthropicPricing(10, 50, ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER),
+  'claude-fable-5': anthropicPricing(10, 50),
+  'claude-mythos-5': anthropicPricing(10, 50),
+  'claude-opus-5-5': anthropicPricing(4, 20, ANTHROPIC_5_5_CACHE_READ_MULTIPLIER),
+  'claude-opus-5': anthropicPricing(5, 25),
+  'claude-opus-4-8': anthropicPricing(5, 25),
+  'claude-opus-4-7': anthropicPricing(5, 25),
+  'claude-opus-4-6': anthropicPricing(5, 25),
+  'claude-opus-4-5': anthropicPricing(5, 25),
+  'claude-sonnet-5-5': anthropicPricing(2, 10, ANTHROPIC_5_5_CACHE_READ_MULTIPLIER),
+  'claude-sonnet-5': anthropicPricing(2, 10),
+  'claude-sonnet-4-6': anthropicPricing(3, 15),
+  'claude-haiku-5-5': anthropicPricing(0.1, 0.5),
+  'claude-haiku-4-5': anthropicPricing(1, 5),
+
+  // Anthropic Claude 4 / 3.5 dated snapshots
   'claude-opus-4-20250514': {
     promptCostPerMillionTokens: 15,
     completionCostPerMillionTokens: 75,

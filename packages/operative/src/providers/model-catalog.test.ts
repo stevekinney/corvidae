@@ -17,6 +17,7 @@ import {
   requireLimits,
   requireModalities,
 } from './model-catalog.ts';
+import { pricingFor } from './model-catalog-rows.ts';
 import {
   ANTHROPIC_EFFORT_SUPPORT,
   GEMINI_THINKING_MODELS,
@@ -83,11 +84,11 @@ describe('createModelCatalog: seed model set (computed, not hand-copied)', () =>
     }
   });
 
-  it('produces exactly 25 descriptor rows: 14 Anthropic, 8 OpenAI, 3 Gemini', () => {
-    expect(descriptorsFor('anthropic')).toHaveLength(14);
+  it('produces exactly 31 descriptor rows: 20 Anthropic, 8 OpenAI, 3 Gemini', () => {
+    expect(descriptorsFor('anthropic')).toHaveLength(20);
     expect(descriptorsFor('openai')).toHaveLength(8);
     expect(descriptorsFor('gemini')).toHaveLength(3);
-    expect(createModelCatalog({ now: fixedNow }).descriptors).toHaveLength(25);
+    expect(createModelCatalog({ now: fixedNow }).descriptors).toHaveLength(31);
   });
 
   it('emits no descriptor row for voyage or ollama', () => {
@@ -201,13 +202,16 @@ describe('createModelCatalog: pricing is derived from defaultPricingTable, never
   });
 
   it('omits the pricing field entirely for a model with no defaultPricingTable row', () => {
+    expect(pricingFor('claude-unpriced-fixture')).toBeUndefined();
+  });
+
+  it('prices every catalog row, so no resolvable model reports a fabricated or missing cost', () => {
     const catalog = createModelCatalog({ now: fixedNow });
-    const unpriced = catalog.descriptors.filter(
-      (descriptor) => !(descriptor.model in defaultPricingTable),
-    );
-    expect(unpriced.length).toBeGreaterThan(0);
-    for (const row of unpriced) {
-      expect('pricing' in row).toBe(false);
+    for (const row of catalog.descriptors) {
+      expect({ model: row.model, priced: 'pricing' in row }).toEqual({
+        model: row.model,
+        priced: true,
+      });
     }
   });
 });

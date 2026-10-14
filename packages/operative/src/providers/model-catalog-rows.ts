@@ -127,7 +127,8 @@ function isFreezableObject(value: unknown): value is object {
   return Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype;
 }
 
-function pricingFor(model: string): BackendDescriptor['pricing'] {
+/** Exported only for `model-catalog.test.ts`; not part of the public `./providers` barrel. */
+export function pricingFor(model: string): BackendDescriptor['pricing'] {
   const pricing = getModelPricing(model);
   if (!pricing) return undefined;
   return {
