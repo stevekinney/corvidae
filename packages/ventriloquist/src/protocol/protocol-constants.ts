@@ -14,7 +14,7 @@ export const MAXIMUM_SEQUENCE = Number.MAX_SAFE_INTEGER;
 export type MessageDirection = 'client-to-server' | 'server-to-client';
 
 /** Every message kind a version 1 frame can carry, with the side that sends it. */
-export const MESSAGE_KIND_DIRECTIONS = {
+export const MESSAGE_KIND_DIRECTIONS = Object.freeze({
   hello: 'client-to-server',
   capabilities: 'server-to-client',
   output: 'server-to-client',
@@ -27,7 +27,7 @@ export const MESSAGE_KIND_DIRECTIONS = {
   'attachment-error': 'server-to-client',
   terminate: 'client-to-server',
   'cleanup-result': 'server-to-client',
-} as const satisfies Record<string, MessageDirection>;
+} as const satisfies Record<string, MessageDirection>);
 
 export type MessageKind = keyof typeof MESSAGE_KIND_DIRECTIONS;
 
@@ -56,16 +56,19 @@ export const MINIMUM_FRAME_PAYLOAD_BYTES = 282;
  * the frozen wire schema names as the maximum frame payload ("Versioned wire schema" in
  * `documentation/terminal/contract.md`). A host may advertise less, never more.
  */
-export const FRAME_PAYLOAD_BYTES_RANGE = {
+export const FRAME_PAYLOAD_BYTES_RANGE = Object.freeze({
   minimum: MINIMUM_FRAME_PAYLOAD_BYTES,
   maximum: MAXIMUM_FRAME_PAYLOAD_BYTES,
-} as const;
+} as const);
 
 /**
  * The permitted range for the host operation FIFO a host advertises: 1 operation up to the 256
  * the frozen wire schema names as the bounded host FIFO. A host may advertise less, never more.
  */
-export const QUEUED_OPERATIONS_RANGE = { minimum: 1, maximum: MAXIMUM_QUEUED_OPERATIONS } as const;
+export const QUEUED_OPERATIONS_RANGE = Object.freeze({
+  minimum: 1,
+  maximum: MAXIMUM_QUEUED_OPERATIONS,
+} as const);
 
 /**
  * The fixed header of a binary frame: version (1), kind (1), direction (1), channel (1), session

@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
+import {
+  isSupportedHost,
+  SUPPORTED_HOST_ARCHITECTURES,
+  SUPPORTED_HOST_PLATFORMS,
+} from '../bun/host-platform.ts';
 import { connect } from './endpoint-pair.test-support.ts';
 import { closeCodeForFailure, FAILURE_CLOSE_CODES, type FailureCode } from './failure-codes.ts';
 import {
@@ -8,6 +13,13 @@ import {
   FAILURE_TABLE,
   OPERATION_FAILURE_CODES,
 } from './failure-table.ts';
+import { decodeFrame } from './frame-codec.ts';
+import { HostEndpoint } from './host-endpoint.ts';
+import {
+  FRAME_PAYLOAD_BYTES_RANGE,
+  MESSAGE_KIND_DIRECTIONS,
+  QUEUED_OPERATIONS_RANGE,
+} from './protocol-constants.ts';
 
 /** Each row of the failure and cleanup table in `documentation/terminal/contract.md`, verbatim. */
 const CONTRACT_ROWS: ReadonlyArray<readonly [FailureCode, string, string, number, string]> = [
@@ -203,5 +215,54 @@ describe('the exported failure data is immutable', () => {
     expect(client.receive('not json').ok).toBe(false);
     expect(client.phase).toBe('closed');
     expect(client.authorityRevoked).toBe(true);
+  });
+});
+
+describe('the exported validation data is immutable', () => {
+  test('is frozen', () => {
+    for (const data of [
+      MESSAGE_KIND_DIRECTIONS,
+      FRAME_PAYLOAD_BYTES_RANGE,
+      QUEUED_OPERATIONS_RANGE,
+      SUPPORTED_HOST_PLATFORMS,
+      SUPPORTED_HOST_ARCHITECTURES,
+    ]) {
+      expect(Object.isFrozen(data)).toBe(true);
+    }
+  });
+
+  test('cannot be mutated to weaken what the endpoints enforce', () => {
+    const attempts: Array<() => void> = [
+      () => {
+        (MESSAGE_KIND_DIRECTIONS as Record<string, string>)['output'] = 'client-to-server';
+      },
+      () => {
+        (FRAME_PAYLOAD_BYTES_RANGE as { maximum: number }).maximum = 1_000_000;
+      },
+      () => {
+        (QUEUED_OPERATIONS_RANGE as { maximum: number }).maximum = 1_000_000;
+      },
+      () => {
+        (SUPPORTED_HOST_PLATFORMS as unknown as string[]).push('win32');
+      },
+      () => {
+        (SUPPORTED_HOST_ARCHITECTURES as unknown as string[]).push('ia32');
+      },
+    ];
+    for (const attempt of attempts) expect(attempt).toThrow(TypeError);
+
+    expect(() => new HostEndpoint({ maxFrameBytes: 1_000_000 })).toThrow(RangeError);
+    expect(() => new HostEndpoint({ maxQueuedOperations: 1_000_000 })).toThrow(RangeError);
+    const { host } = connect();
+    const wrongWay = JSON.stringify({
+      version: 1,
+      kind: 'output',
+      direction: 'client-to-server',
+    });
+    expect(decodeFrame(wrongWay, 'host').ok).toBe(false);
+    expect(host.receive(wrongWay).ok).toBe(false);
+    expect(host.authorityRevoked).toBe(true);
+    expect(isSupportedHost({ platform: 'win32', architecture: 'x64' })).toBe(false);
+    expect(isSupportedHost({ platform: 'linux', architecture: 'ia32' })).toBe(false);
   });
 });
