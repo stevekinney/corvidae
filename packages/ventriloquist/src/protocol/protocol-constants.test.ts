@@ -1,16 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import { encodeFrame } from './frame-codec.ts';
-import type { ProtocolMessage } from './messages.ts';
-
 import {
-  FRAME_PAYLOAD_BYTES_RANGE,
   isValidSequence,
   MAXIMUM_FRAME_PAYLOAD_BYTES,
   MAXIMUM_QUEUED_OPERATIONS,
   MAXIMUM_SEQUENCE,
   MESSAGE_KIND_DIRECTIONS,
-  MINIMUM_FRAME_PAYLOAD_BYTES,
   PROTOCOL_VERSION,
 } from './protocol-constants.ts';
 
@@ -59,52 +54,4 @@ describe('isValidSequence', () => {
       expect(isValidSequence(value)).toBe(false);
     },
   );
-});
-
-describe('the minimum frame budget', () => {
-  const header = {
-    sessionId: '0b6f0c3e-8a1d-4c55-9a64-2f6e9b7d1c10',
-    attachmentGeneration: Number.MAX_SAFE_INTEGER,
-    sequence: Number.MAX_SAFE_INTEGER,
-  };
-  const maxed = Number.MAX_SAFE_INTEGER;
-  /** Every JSON control message that follows the handshake, with maximal numeric fields and no text. */
-  const CONTROL_MESSAGES = [
-    { kind: 'resize', columns: 65_535, rows: 65_535 },
-    { kind: 'operation-ack', operationSequence: maxed },
-    { kind: 'operation-failure', operationSequence: maxed, code: 'stale-generation', message: '' },
-    { kind: 'operation-failure', operationSequence: maxed, code: 'transport-failed', message: '' },
-    { kind: 'operation-failure', operationSequence: maxed, code: 'backend-failed', message: '' },
-    { kind: 'operation-failure', operationSequence: maxed, code: 'read-only', message: '' },
-    { kind: 'operation-failure', operationSequence: maxed, code: 'fifo-full', message: '' },
-    { kind: 'output-consumed', consumedBytes: maxed },
-    { kind: 'process-exit', exitCode: Number.MIN_SAFE_INTEGER, signal: null },
-    { kind: 'attachment-error', code: 'unsupported-runtime', message: '' },
-    { kind: 'attachment-error', code: 'spawn-failed', message: '' },
-    { kind: 'attachment-error', code: 'backend-failed', message: '' },
-    { kind: 'attachment-error', code: 'transport-failed', message: '' },
-    { kind: 'terminate' },
-    { kind: 'cleanup-result', outcome: 'incomplete' },
-  ] as const;
-
-  const sizeOf = (message: object, maxFrameBytes?: number): number | undefined => {
-    const encoded = encodeFrame(
-      { ...header, ...message } as unknown as ProtocolMessage,
-      maxFrameBytes === undefined ? undefined : { maxFrameBytes },
-    );
-    return encoded.ok ? (encoded.value as string).length : undefined;
-  };
-
-  test('encodes every control message kind', () => {
-    for (const message of CONTROL_MESSAGES) {
-      expect(sizeOf(message, MINIMUM_FRAME_PAYLOAD_BYTES)).toBeDefined();
-    }
-  });
-
-  test('is exactly the largest control message, so no slack hides growth', () => {
-    const largest = Math.max(...CONTROL_MESSAGES.map((message) => sizeOf(message)!));
-    expect(MINIMUM_FRAME_PAYLOAD_BYTES).toBe(largest);
-    expect(FRAME_PAYLOAD_BYTES_RANGE.minimum as number).toBe(largest);
-    expect(sizeOf(CONTROL_MESSAGES[2], largest - 1)).toBeUndefined();
-  });
 });

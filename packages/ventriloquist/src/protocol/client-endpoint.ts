@@ -44,6 +44,9 @@ export class ClientEndpoint {
   #terms: AttachmentTerms | undefined;
   #authorityRevoked = false;
   #processExitReceived = false;
+  #attachmentErrorReceived = false;
+  /** The host ended the attachment's authority (exit, error or a failed submitted operation). */
+  #hostRevoked = false;
   readonly #inbound: SequenceCursor;
   readonly #outbound: SequenceCursor;
   readonly #operations = new OperationLedger();
@@ -172,12 +175,16 @@ export class ClientEndpoint {
   ): Rejection | undefined {
     switch (message.kind) {
       case 'output':
+        // Output ends before the process-exit result.
+        if (this.#processExitReceived) return reject('malformed-frame', 'unexpected-message');
         if (!channelPermitted(terms.capabilities.mode, message.channel)) {
           return reject('malformed-frame', 'channel-not-permitted');
         }
         this.#output.record(message.payload.length);
         return undefined;
       case 'operation-ack': {
+        // After the host revoked authority it fails pending operations; it never accepts them.
+        if (this.#hostRevoked) return reject('malformed-frame', 'unexpected-message');
         const verified = this.#operations.verifyResolution(message.operationSequence);
         if (!verified.ok) return verified;
         this.#operations.resolve();
@@ -193,6 +200,7 @@ export class ClientEndpoint {
         if (!verified.ok) return verified;
         if (submitted) {
           this.#authorityRevoked = true;
+          this.#hostRevoked = true;
           this.#operations.retire(message.operationSequence);
         } else this.#operations.refuse();
         return undefined;
@@ -202,11 +210,23 @@ export class ClientEndpoint {
           return reject('malformed-frame', 'unexpected-message');
         }
         if (this.#processExitReceived) return reject('malformed-frame', 'already-reported');
+        // A failed connection is not a successful process exit.
+        if (this.#attachmentErrorReceived) return reject('malformed-frame', 'unexpected-message');
         this.#processExitReceived = true;
+        this.#hostRevoked = true;
         // The process is gone, so there is nothing left to receive input or a resize.
         this.#authorityRevoked = true;
         return undefined;
       case 'attachment-error':
+        // `unsupported-runtime` is a startup failure with no attachment, and one terminal event ends it.
+        if (message.code === 'unsupported-runtime') {
+          return reject('malformed-frame', 'unexpected-message');
+        }
+        if (this.#attachmentErrorReceived || this.#processExitReceived) {
+          return reject('malformed-frame', 'unexpected-message');
+        }
+        this.#attachmentErrorReceived = true;
+        this.#hostRevoked = true;
         this.#authorityRevoked = true;
         return undefined;
       case 'cleanup-result':

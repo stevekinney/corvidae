@@ -58,7 +58,7 @@ function failureOf(result: {
 }
 
 describe('constructing a host endpoint', () => {
-  test.each([0, 1, 265, 65_537, 262_144, 1.5])('rejects a frame limit of %j', (maxFrameBytes) => {
+  test.each([0, 1, 281, 65_537, 262_144, 1.5])('rejects a frame limit of %j', (maxFrameBytes) => {
     expect(() => new HostEndpoint({ maxFrameBytes })).toThrow(RangeError);
   });
 
@@ -759,8 +759,7 @@ describe('frames the host sends', () => {
       host.acknowledgeOperation(1),
     ]) {
       expect(
-        failureOf(attempt).reason === 'attachment-revoked' ||
-          failureOf(attempt).reason === 'future-acknowledgement',
+        ['attachment-revoked', 'authority-revoked'].includes(failureOf(attempt).reason ?? ''),
       ).toBe(true);
     }
     expect(failureOf(host.receive(inputFrame(1)))).toEqual({
@@ -804,8 +803,8 @@ describe('frames the host sends', () => {
         host.receive(clientFrame({ kind: 'resize', columns: 80, rows: 24 }, { sequence: 2 })),
       ),
     ).toEqual({ code: 'read-only', reason: 'authority-revoked' });
-    // Nothing was queued, so there is no operation to acknowledge.
-    expect(failureOf(host.acknowledgeOperation(1)).reason).toBe('future-acknowledgement');
+    // Nothing was queued, and revoked authority accepts nothing into the FIFO.
+    expect(failureOf(host.acknowledgeOperation(1)).reason).toBe('authority-revoked');
     // The attachment is still live for cleanup.
     expectOk(host.cleanupResult('complete'));
   });
@@ -990,29 +989,35 @@ describe('final cleanup', () => {
 
 describe('a small advertised frame limit', () => {
   test('still completes the handshake, then binds the attachment', () => {
-    const { host, client } = connect({ host: { maxFrameBytes: 266 } });
-    expect(host.terms?.maxFrameBytes).toBe(266);
-    expect(client.terms?.maxFrameBytes).toBe(266);
+    const { host, client } = connect({ host: { maxFrameBytes: 282 } });
+    expect(host.terms?.maxFrameBytes).toBe(282);
+    expect(client.terms?.maxFrameBytes).toBe(282);
     expect(failureOf(host.receive(`{"padding":"${'x'.repeat(300)}"}`)).code).toBe(
       'frame-too-large',
     );
   });
 
   test('still reports a startup failure before capabilities', () => {
-    const host = new HostEndpoint({ maxFrameBytes: 266 });
+    const host = new HostEndpoint({ maxFrameBytes: 282 });
     expectOk(host.receive(helloFrame()));
     expectOk(host.attachmentError('unsupported-runtime', 'windows'));
   });
 });
 
+function clientTerminate(sequence: number) {
+  return { ok: true as const, value: { frame: clientFrame({ kind: 'terminate' }, { sequence }) } };
+}
+
 describe('terminal failures leave the unresolved queue', () => {
-  test('refuses an acknowledgement after the operation failed terminally, and unblocks the next', () => {
+  test('refuses an acknowledgement after the operation failed terminally, and cancels the next', () => {
     const { host } = connect();
     expectOk(host.receive(inputFrame(1)));
     expectOk(host.receive(inputFrame(2)));
     expectOk(host.failOperation(1, 'backend-failed', 'x'));
     expect(host.acknowledgeOperation(1).ok).toBe(false);
-    expect(expectOk(host.acknowledgeOperation(2)).sequence).toBeGreaterThan(0);
+    // The failure revoked authority, so the next operation is cancelled, not accepted.
+    expect(host.acknowledgeOperation(2).ok).toBe(false);
+    expectOk(host.failOperation(2, 'read-only', 'cancelled'));
   });
 });
 
@@ -1042,5 +1047,54 @@ describe('the smallest frame budget', () => {
     expectOk(client.receive(expectOk(host.processExit(null, null)).frame));
     expectOk(host.receive(expectOk(client.terminate()).frame));
     expectOk(client.receive(expectOk(host.cleanupResult('incomplete')).frame));
+  });
+});
+
+describe('an attachment error is terminal', () => {
+  test('refuses a process exit and a second attachment error after it, and still allows output and cleanup', () => {
+    const { host, client } = connect();
+    expectOk(client.receive(expectOk(host.attachmentError('spawn-failed', 'no shell')).frame));
+    expect(failureOf(host.processExit(1, null))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unexpected-message',
+    });
+    expect(failureOf(host.attachmentError('backend-failed', 'again')).reason).toBe(
+      'unexpected-message',
+    );
+    expectOk(client.receive(expectOk(host.output('pty', 'drain')).frame));
+    expectOk(client.receive(expectOk(host.cleanupResult('complete')).frame));
+  });
+
+  test('refuses an attachment error after a process exit, and output after it', () => {
+    const { host } = connect();
+    expectOk(host.processExit(0, null));
+    expect(failureOf(host.attachmentError('spawn-failed', 'late')).reason).toBe(
+      'unexpected-message',
+    );
+    expect(failureOf(host.output('pty', 'late')).reason).toBe('unexpected-message');
+  });
+
+  test('refuses a second startup failure before capabilities', () => {
+    const host = new HostEndpoint();
+    expectOk(host.receive(helloFrame()));
+    expectOk(host.attachmentError('spawn-failed', 'first'));
+    expect(failureOf(host.attachmentError('spawn-failed', 'second')).reason).toBe(
+      'unexpected-message',
+    );
+  });
+});
+
+describe('cleanup with unresolved operations', () => {
+  test('is refused until each received operation has an explicit result', () => {
+    const { host } = connect();
+    expectOk(host.receive(inputFrame(1)));
+    expectOk(host.receive(inputFrame(2)));
+    expectOk(host.receive(expectOk(clientTerminate(3)).frame));
+    expect(host.acknowledgeOperation(1).ok).toBe(false);
+    expect(failureOf(host.cleanupResult('complete')).reason).toBe('unexpected-message');
+    expectOk(host.failOperation(1, 'read-only', 'cancelled'));
+    expect(host.cleanupResult('complete').ok).toBe(false);
+    expectOk(host.failOperation(2, 'read-only', 'cancelled'));
+    expectOk(host.cleanupResult('complete'));
   });
 });

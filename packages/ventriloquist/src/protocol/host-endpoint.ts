@@ -59,6 +59,7 @@ export class HostEndpoint {
   #inboundClosed = false;
   #authorityRevoked = false;
   #processExitReported = false;
+  #attachmentErrorReported = false;
   #cleanupReported = false;
   readonly #inbound: SequenceCursor;
   readonly #outbound: SequenceCursor;
@@ -297,6 +298,9 @@ export class HostEndpoint {
     if (terms !== undefined && !channelPermitted(terms.capabilities.mode, channel)) {
       return reject('malformed-frame', 'channel-not-permitted');
     }
+    // The process-exit result follows the end of output ("PTY EOF or source completion, then the
+    // distinct process-exit result"), so no output follows it.
+    if (this.#processExitReported) return reject('malformed-frame', 'unexpected-message');
     const payload = toBytes(data);
     const sent = this.#sendAttached((attached, sequence) => ({
       kind: 'output',
@@ -312,6 +316,9 @@ export class HostEndpoint {
 
   /** Report that operation `operationSequence` entered the host FIFO. This is acceptance, never execution. */
   acknowledgeOperation(operationSequence: number): ProtocolResult<SentFrame> {
+    // Once authority is revoked, "stop ... cancels queued but unsubmitted operations with explicit
+    // results": a pending operation is failed, never accepted into the FIFO.
+    if (this.#authorityRevoked) return reject('read-only', 'authority-revoked');
     const verified = this.#operations.verifyResolution(operationSequence);
     if (!verified.ok) return verified;
     const sent = this.#sendAttached((terms, sequence) => ({
@@ -363,6 +370,8 @@ export class HostEndpoint {
   /** Report the process exit, once, separately from PTY end of file and from cleanup. */
   processExit(exitCode: number | null, signal: string | null): ProtocolResult<SentFrame> {
     if (this.#processExitReported) return reject('malformed-frame', 'already-reported');
+    // "A failed connection is not a successful process exit": nothing follows an attachment error.
+    if (this.#attachmentErrorReported) return reject('malformed-frame', 'unexpected-message');
     // An output-only source reports source completion and never invents an exit code.
     if (this.#terms?.capabilities.mode === 'output-only') {
       return reject('malformed-frame', 'unexpected-message');
@@ -393,6 +402,11 @@ export class HostEndpoint {
   ): ProtocolResult<SentFrame> {
     const hello = this.#hello;
     if (hello === undefined) return reject('stale-generation', 'handshake-incomplete');
+    // An attachment error revokes the generation, and a reported process exit already ended it, so
+    // only one terminal event is ever sent.
+    if (this.#attachmentErrorReported || this.#processExitReported) {
+      return reject('malformed-frame', 'unexpected-message');
+    }
     if (this.#terms === undefined) {
       const encoded = encodeFrame(
         {
@@ -408,6 +422,7 @@ export class HostEndpoint {
       if (!encoded.ok) return encoded;
       this.#inboundClosed = true;
       this.#authorityRevoked = true;
+      this.#attachmentErrorReported = true;
       return accept({ frame: encoded.value, sequence: 0 });
     }
     // `unsupported-runtime` is a startup failure with no attachment, so it has no generation to name.
@@ -420,12 +435,20 @@ export class HostEndpoint {
       code,
       message,
     }));
-    if (sent.ok) this.#authorityRevoked = true;
+    if (sent.ok) {
+      this.#authorityRevoked = true;
+      this.#attachmentErrorReported = true;
+    }
     return sent;
   }
 
   /** Send the final cleanup report. It is sent once; nothing can be sent after it. */
   cleanupResult(outcome: CleanupOutcome): ProtocolResult<SentFrame> {
+    // Stop "cancels queued but unsubmitted operations with explicit results" before cleanup is
+    // reported, so a received operation still unresolved must be failed first.
+    if (this.#operations.unresolvedCount > 0) {
+      return reject('malformed-frame', 'unexpected-message');
+    }
     const sent = this.#sendAttached((terms, sequence) => ({
       kind: 'cleanup-result',
       sessionId: this.#hello!.sessionId,

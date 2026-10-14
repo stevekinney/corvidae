@@ -196,8 +196,8 @@ describe('the handshake', () => {
   });
 
   test('applies the limits the host advertised to what it will accept', () => {
-    const client = attached({ maxFrameBytes: 266 });
-    expect(failureOf(client.receive(output(1, 1, 267)))).toEqual({
+    const client = attached({ maxFrameBytes: 282 });
+    expect(failureOf(client.receive(output(1, 1, 283)))).toEqual({
       code: 'frame-too-large',
       reason: 'oversized',
     });
@@ -499,8 +499,8 @@ describe('acknowledgements from the host', () => {
   test('accepts capabilities larger than the limit they advertise', () => {
     const client = newClient();
     expectOk(client.hello());
-    expectOk(client.receive(capabilitiesFrame({ maxFrameBytes: 266 })));
-    expect(client.terms?.maxFrameBytes).toBe(266);
+    expectOk(client.receive(capabilitiesFrame({ maxFrameBytes: 282 })));
+    expect(client.terms?.maxFrameBytes).toBe(282);
   });
 
   test('refuses an acknowledgement after the operation failed terminally, and unblocks the next', () => {
@@ -521,7 +521,7 @@ describe('acknowledgements from the host', () => {
     expect(client.receive(ack(sequences[0]!, 2)).ok).toBe(false);
   });
 
-  test('accepts the acknowledgement of the next operation after a terminal failure', () => {
+  test('accepts the cancellation of the next operation after a terminal failure', () => {
     const { client, sequences } = withOperations(2);
     expectOk(
       client.receive(
@@ -536,7 +536,20 @@ describe('acknowledgements from the host', () => {
         ),
       ),
     );
-    expectOk(client.receive(ack(sequences[1]!, 2)));
+    // The host revoked authority, so it cancels the next operation rather than acknowledging it.
+    expectOk(
+      client.receive(
+        serverFrame(
+          {
+            kind: 'operation-failure',
+            operationSequence: sequences[1],
+            code: 'read-only',
+            message: 'cancelled',
+          },
+          { sequence: 2 },
+        ),
+      ),
+    );
   });
 
   test('rejects a process exit from an output-only source and closes', () => {
@@ -803,4 +816,53 @@ test('a connected pair shares the same view of the attachment', () => {
   const { host, client, generation } = connect({ generation: 12 });
   expect(client.terms?.generation).toBe(generation);
   expect(host.terms?.generation).toBe(generation);
+});
+
+describe('terminal events from the host', () => {
+  test('rejects unsupported-runtime once attached, and closes', () => {
+    const client = attached();
+    const startup = serverFrame(
+      { kind: 'attachment-error', code: 'unsupported-runtime', message: 'late' },
+      { sequence: 1 },
+    );
+    expect(failureOf(client.receive(startup))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unexpected-message',
+    });
+    expect(client.phase).toBe('closed');
+  });
+
+  test.each([
+    ['a second attachment error', { kind: 'attachment-error', code: 'spawn-failed', message: 'm' }],
+    ['a process exit', { kind: 'process-exit', exitCode: 0, signal: null }],
+  ])('rejects %s after an attachment error', (_name, message) => {
+    const client = attached();
+    expectOk(
+      client.receive(
+        serverFrame(
+          { kind: 'attachment-error', code: 'backend-failed', message: 'm' },
+          { sequence: 1 },
+        ),
+      ),
+    );
+    expect(failureOf(client.receive(serverFrame(message, { sequence: 2 })))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unexpected-message',
+    });
+  });
+
+  test('rejects output and an attachment error after a process exit', () => {
+    for (const message of [
+      { kind: 'output', channel: 'pty', payload: Uint8Array.of(1) },
+      { kind: 'attachment-error', code: 'spawn-failed', message: 'm' },
+    ]) {
+      const client = attached();
+      expectOk(
+        client.receive(
+          serverFrame({ kind: 'process-exit', exitCode: 0, signal: null }, { sequence: 1 }),
+        ),
+      );
+      expect(client.receive(serverFrame(message, { sequence: 2 })).ok).toBe(false);
+    }
+  });
 });

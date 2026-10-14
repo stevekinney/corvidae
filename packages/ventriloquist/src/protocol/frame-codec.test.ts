@@ -488,7 +488,7 @@ describe('rejecting message fields', () => {
     });
   });
 
-  test.each([0, 265, 65_537, 262_144, 1.5, '65536', null])(
+  test.each([0, 281, 65_537, 262_144, 1.5, '65536', null])(
     'rejects the frame limit %j',
     (value) => {
       const message = {

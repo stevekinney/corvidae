@@ -43,12 +43,13 @@ export const MAXIMUM_TERMINAL_DIMENSION = 65_535;
 /**
  * The smallest frame budget a host may advertise. Every control frame that follows the handshake is
  * a JSON text frame counted against the budget whole, so a budget below the largest of them could
- * attach but never acknowledge, fail, terminate or clean up. This is the encoded size of the
- * largest such frame (an `operation-failure` with maximal numeric fields, the longest code and an
- * empty message), and a test derives it from the encoder. Free-text `message` and `signal` fields
- * need headroom above it.
+ * attach but never refuse, acknowledge, fail, terminate or clean up. This is the encoded size of the
+ * largest frame either endpoint generates for itself, at maximal numeric fields and with its own
+ * longest built-in reason string (a refusal for `operation-not-permitted` or a stale generation).
+ * `minimum-frame-budget.test.ts` derives it by driving the endpoints. Text a caller supplies, such
+ * as a failure `message` or a `signal`, needs headroom above it.
  */
-export const MINIMUM_FRAME_PAYLOAD_BYTES = 266;
+export const MINIMUM_FRAME_PAYLOAD_BYTES = 282;
 
 /**
  * The permitted range for the frame payload budget a host advertises: the control-frame minimum up to the 64 KiB
