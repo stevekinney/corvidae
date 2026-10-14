@@ -37,7 +37,12 @@ import {
 } from './static-playground-cases.ts';
 import { serializeDigestManifest } from './static-playground-digest.ts';
 import { runPreflight } from './static-playground-preflight.ts';
-import { type OwnedChild, ProcessOwner, signalNumber } from './static-playground-processes.ts';
+import {
+  exitedWithin,
+  type OwnedChild,
+  ProcessOwner,
+  signalNumber,
+} from './static-playground-processes.ts';
 import { loadStaticHostConfiguration } from './static-playground-server.ts';
 
 const PLAYGROUND_ROOT = join(import.meta.dirname, '..');
@@ -303,7 +308,15 @@ async function runBrowserCases(
       PLAYGROUND_STATIC_SCREENSHOTS: join(state.options.output, 'screenshots'),
     }),
   });
-  await guarded(state, server, runner.subprocess.exited);
+  // Bounded like every other wait: no case can outlast Playwright's 30 s default test timeout, so
+  // twice that per case per worker, plus startup, is a ceiling a healthy run never reaches.
+  const ceiling = Math.ceil(cases.length / state.options.workers) * 60_000 + 120_000;
+  const exited = await guarded(state, server, exitedWithin(runner.subprocess, ceiling));
+  if (exited === undefined) {
+    throw new GateFailure(
+      `[static-playground] the test runner did not finish within its ${ceiling} ms ceiling`,
+    );
+  }
   const status = exitStatusOf(runner.subprocess);
   const summary = summarizeCaseResults(cases, await readCaseResults(resultsPath));
   Object.assign(state.report, {

@@ -276,20 +276,36 @@ export class ProcessOwner {
  *
  * @returns the processes still alive afterwards; empty when the stop succeeded.
  */
+export type InterruptRunnerOptions = {
+  readTable?: () => ProcessRow[];
+  /** The grace for each phase; the gate's own {@link TERMINATION_GRACE_MILLISECONDS} by default. */
+  graceMilliseconds?: number;
+};
+
+export type InterruptRunnerResult = {
+  /** Attributable processes still alive after the stop. */
+  survivors: ProcessRow[];
+  /** False when the runner's exit was never observed within the grace, even after SIGKILL. */
+  runnerExited: boolean;
+};
+
 export async function interruptRunner(
   runner: Bun.Subprocess,
   marker: string | undefined,
-  readTable: () => ProcessRow[] = readProcessTable,
-): Promise<ProcessRow[]> {
+  options: InterruptRunnerOptions = {},
+): Promise<InterruptRunnerResult> {
+  const readTable = options.readTable ?? readProcessTable;
+  const grace = options.graceMilliseconds ?? TERMINATION_GRACE_MILLISECONDS;
   const ownGroup = readTable().find((row) => row.pid === process.pid)?.pgid;
   const groups = new Set(
     descendantProcesses(runner.pid, readTable())
       .map((row) => row.pgid)
       .filter((group) => group !== ownGroup),
   );
-  if (runner.exitCode === null && runner.signalCode === null) {
+  const hasExited = () => runner.exitCode !== null || runner.signalCode !== null;
+  if (!hasExited()) {
     runner.kill('SIGINT');
-    await Promise.race([runner.exited, Bun.sleep(TERMINATION_GRACE_MILLISECONDS)]);
+    await exitedWithin(runner, grace);
   }
   const attributable = (): ProcessRow[] =>
     readTable().filter(
@@ -304,11 +320,46 @@ export async function interruptRunner(
     signalTarget(-group, 'SIGKILL');
   }
   for (const row of survivors) signalTarget(row.pid, 'SIGKILL');
-  if (runner.exitCode === null && runner.signalCode === null) runner.kill('SIGKILL');
-  await runner.exited;
-  const deadline = performance.now() + TERMINATION_GRACE_MILLISECONDS;
+  if (!hasExited()) runner.kill('SIGKILL');
+  const runnerExited = (await exitedWithin(runner, grace)) !== undefined;
+  const deadline = performance.now() + grace;
   while (attributable().length > 0 && performance.now() < deadline) {
     await Bun.sleep(SWEEP_INTERVAL_MILLISECONDS);
   }
-  return attributable();
+  return { survivors: attributable(), runnerExited };
+}
+
+/**
+ * The exit code of `subprocess` once it exits, or `undefined` if `milliseconds` pass first. Every
+ * wait on a child process in the gate goes through this, so none can wait forever on an exit that
+ * is never observed.
+ */
+export async function exitedWithin(
+  subprocess: Pick<Bun.Subprocess, 'exited'>,
+  milliseconds: number,
+): Promise<number | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), milliseconds);
+  });
+  try {
+    return await Promise.race([subprocess.exited, expiry]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Poll `condition` until it holds; throw `timed out waiting for <description>` after `milliseconds`. */
+export async function waitUntil(
+  condition: () => boolean,
+  milliseconds: number,
+  description: string,
+): Promise<void> {
+  const deadline = performance.now() + milliseconds;
+  while (!condition()) {
+    if (performance.now() >= deadline) {
+      throw new Error(`[static-playground] timed out waiting for ${description}`);
+    }
+    await Bun.sleep(20);
+  }
 }

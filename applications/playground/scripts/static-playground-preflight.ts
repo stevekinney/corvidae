@@ -39,6 +39,46 @@ export type PreflightResult = {
   buildDigest: string;
 };
 
+/** No request to the local static server may wait longer than this; a stuck server fails the run. */
+const FETCH_MILLISECONDS = 30_000;
+
+/**
+ * Fetch `url` and read its whole body, or reject once `milliseconds` pass. Races a timer rather
+ * than passing an `AbortSignal`: under the playground's test preload, happy-dom replaces the
+ * global `AbortSignal`, which Bun's `fetch` then rejects outright.
+ */
+export async function fetchWithin(
+  url: string,
+  init: RequestInit,
+  milliseconds: number,
+): Promise<Response> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(new Error(`[static-playground] ${url} did not answer within ${milliseconds} ms`)),
+      milliseconds,
+    );
+  });
+  const answer = (async () => {
+    const response = await fetch(url, init);
+    const body = await response.arrayBuffer();
+    return new Response(response.status === 204 || response.status === 304 ? null : body, {
+      status: response.status,
+      headers: response.headers,
+    });
+  })();
+  try {
+    return await Promise.race([answer, expiry]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function fetchStatic(url: string, init: RequestInit): Promise<Response> {
+  return fetchWithin(url, init, FETCH_MILLISECONDS);
+}
+
 /** The minimum length of a credential value the leak check looks for. */
 const MINIMUM_SECRET_LENGTH = 8;
 
@@ -166,7 +206,7 @@ type RouteContext = {
 /** Status, prerendered content, metadata, headings, and the inline examples payload. */
 async function checkRoute(route: string, html: string, context: RouteContext): Promise<string[]> {
   const failures: string[] = [];
-  const response = await fetch(`${context.origin}${route}`, { redirect: 'manual' });
+  const response = await fetchStatic(`${context.origin}${route}`, { redirect: 'manual' });
   await response.arrayBuffer();
   if (response.status !== 200) failures.push(`${route} answered ${response.status}, not 200`);
   if (html.includes('<div id="app"></div>') || (await visibleTextLength(html)) === 0) {
@@ -224,7 +264,7 @@ async function checkHosting(
       /:([A-Za-z_]\w*)/g,
       (_whole, name: string) => match.groups?.[name] ?? '',
     );
-    const response = await fetch(`${options.origin}${pathname}`, { redirect: 'manual' });
+    const response = await fetchStatic(`${options.origin}${pathname}`, { redirect: 'manual' });
     await response.arrayBuffer();
     const location = response.headers.get('Location');
     if (response.status !== redirect.statusCode || location !== expected) {
@@ -235,7 +275,7 @@ async function checkHosting(
     failures.push(...headerFailures(options.configuration, pathname, response));
   }
   const unknown = `/static-playground-unknown-${crypto.randomUUID()}`;
-  const missing = await fetch(`${options.origin}${unknown}`, { redirect: 'manual' });
+  const missing = await fetchStatic(`${options.origin}${unknown}`, { redirect: 'manual' });
   await missing.arrayBuffer();
   if (missing.status !== 404) failures.push(`unknown path answered ${missing.status}, not 404`);
   failures.push(...headerFailures(options.configuration, unknown, missing));
@@ -246,7 +286,7 @@ async function checkHosting(
   ].filter((path) => path !== undefined);
   for (const path of representative) {
     const pathname = path.startsWith('/') ? path : `/${path}`;
-    const response = await fetch(`${options.origin}${pathname}`, { redirect: 'manual' });
+    const response = await fetchStatic(`${options.origin}${pathname}`, { redirect: 'manual' });
     await response.arrayBuffer();
     failures.push(...headerFailures(options.configuration, pathname, response));
   }
@@ -256,7 +296,7 @@ async function checkHosting(
 async function checkAssets(origin: string, assets: ReadonlySet<string>): Promise<string[]> {
   const failures: string[] = [];
   for (const asset of [...assets].toSorted()) {
-    const response = await fetch(`${origin}${asset}`, { redirect: 'manual' });
+    const response = await fetchStatic(`${origin}${asset}`, { redirect: 'manual' });
     await response.arrayBuffer();
     if (response.status !== 200) {
       failures.push(`required asset ${asset} answered ${response.status}`);

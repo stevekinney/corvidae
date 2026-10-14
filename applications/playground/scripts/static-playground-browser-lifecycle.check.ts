@@ -15,12 +15,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
+import { fetchWithin } from './static-playground-preflight.ts';
 import {
   descendantProcesses,
+  exitedWithin,
   interruptRunner,
   isZombie,
   type ProcessRow,
   readProcessTable,
+  TERMINATION_GRACE_MILLISECONDS,
 } from './static-playground-processes.ts';
 
 const DRIVER = join(
@@ -31,6 +34,9 @@ const DRIVER = join(
   'lifecycle-driver.ts',
 );
 const requireReaped = readEnvironmentConfiguration().playgroundLifecycleRequireReaped === '1';
+
+/** Playwright's 30 s per-test timeout, plus browser launch and the runner's preflight. */
+const BROWSER_ACTIVE_MILLISECONDS = 120_000;
 
 function fail(message: string): never {
   throw new Error(`[browser-lifecycle] ${message}`);
@@ -56,9 +62,12 @@ async function main(): Promise<void> {
   })();
   let runDirectory: string | undefined;
   try {
+    const activeDeadline = performance.now() + BROWSER_ACTIVE_MILLISECONDS;
     while (runDirectory === undefined || !existsSync(join(runDirectory, 'browser-active'))) {
       if (driver.exitCode !== null)
         fail(`the runner exited ${driver.exitCode} before Chromium was active`);
+      if (performance.now() >= activeDeadline)
+        fail(`Chromium was not active within ${BROWSER_ACTIVE_MILLISECONDS} ms`);
       runDirectory ??= /run directory (\S+)/.exec(stdout)?.[1];
       await Bun.sleep(50);
     }
@@ -80,7 +89,9 @@ async function main(): Promise<void> {
     );
 
     driver.kill('SIGINT');
-    const status = await driver.exited;
+    const status =
+      (await exitedWithin(driver, TERMINATION_GRACE_MILLISECONDS * 2)) ??
+      fail('the runner did not exit within twice the termination grace after SIGINT');
     if (status !== 130) fail(`the runner exited ${status}, not 130`);
 
     const after = readProcessTable();
@@ -94,7 +105,7 @@ async function main(): Promise<void> {
     }
     if (isGone(after.find((row) => row.pid === sentinel.pid))) fail('the sentinel did not survive');
     if (existsSync(activeRunDirectory)) fail(`the run directory ${activeRunDirectory} survived`);
-    const port = await fetch(origin).then(
+    const port = await fetchWithin(origin, {}, 5_000).then(
       () => 'listening',
       () => 'closed',
     );
@@ -105,7 +116,11 @@ async function main(): Promise<void> {
   } finally {
     // An early failure must not orphan the runner's detached server, Playwright, and browser
     // groups: interrupt the runner so its own cleanup runs, then kill anything still attributable.
-    const survivors = await interruptRunner(driver, runDirectory);
+    const { survivors, runnerExited } = await interruptRunner(driver, runDirectory);
+    if (!runnerExited) {
+      process.stderr.write('[browser-lifecycle] the runner exit was never observed\n');
+      process.exitCode = 1;
+    }
     if (survivors.length > 0) {
       process.stderr.write(
         `[browser-lifecycle] processes survived the runner stop: ${survivors.map((row) => `${row.pid} ${row.args}`).join('; ')}\n`,
@@ -113,7 +128,7 @@ async function main(): Promise<void> {
       process.exitCode = 1;
     }
     sentinel.kill('SIGKILL');
-    await sentinel.exited;
+    await exitedWithin(sentinel, TERMINATION_GRACE_MILLISECONDS);
     await rm(output, { recursive: true, force: true });
   }
 }

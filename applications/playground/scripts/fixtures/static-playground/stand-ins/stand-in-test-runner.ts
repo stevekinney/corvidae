@@ -23,7 +23,12 @@ import {
   readEnvironmentConfiguration,
 } from '../../../../src/environment-configuration.ts';
 import type { StaticCase } from '../../../static-playground-cases.ts';
-import { argumentValue, startSleeper, waitForFile } from './stand-in-processes.ts';
+import {
+  argumentValue,
+  startSleeper,
+  waitForFile,
+  waitMilliseconds,
+} from './stand-in-processes.ts';
 
 const mode = argumentValue('--mode') ?? 'pass';
 const record = argumentValue('--record');
@@ -47,17 +52,34 @@ if (record !== undefined) {
   // group the owner retained while this runner was alive still identifies it.
   if (process.argv.includes('--unmarked-detached')) startSleeper(record, 'unmarked-detached', true);
   await Bun.write(join(record, 'ready'), '');
-  void waitForFile(join(record, 'spawn-late')).then(() => {
-    startSleeper(record, 'late-grandchild');
-    startSleeper(record, 'late-detached', true, join(tmpdir(), 'late-profile'));
-    return undefined;
-  });
+  // Optional: a case that never asks for late sleepers lets this wait expire quietly.
+  void waitForFile(join(record, 'spawn-late')).then(
+    () => {
+      startSleeper(record, 'late-grandchild');
+      startSleeper(record, 'late-detached', true, join(tmpdir(), 'late-profile'));
+      return undefined;
+    },
+    () => undefined,
+  );
 }
 
 if (mode === 'hang') {
+  // Hangs until the runner ends it, but never longer than the stand-in wait: an orphaned stand-in
+  // must not outlive the test that started it.
   setInterval(() => undefined, 1_000);
+  setTimeout(() => {
+    process.stderr.write('stand-in timed out waiting for the runner to end it\n');
+    process.exit(1);
+  }, waitMilliseconds());
 } else {
-  if (record !== undefined) await waitForFile(join(record, 'proceed'));
+  if (record !== undefined) {
+    try {
+      await waitForFile(join(record, 'proceed'));
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exit(1);
+    }
+  }
   const cases = (await Bun.file(environment.playgroundStaticCases ?? '').json()) as StaticCase[];
   for (const testCase of cases) {
     appendFileSync(

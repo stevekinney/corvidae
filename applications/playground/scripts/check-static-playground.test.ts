@@ -18,6 +18,7 @@ import {
 import { parseExportReport } from './export-report.ts';
 import { createCaseList, parseShard, selectShard } from './static-playground-cases.ts';
 import { runPreflight } from './static-playground-preflight.ts';
+import { exitedWithin } from './static-playground-processes.ts';
 import { loadStaticHostConfiguration, startStaticServer } from './static-playground-server.ts';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures', 'static-playground');
@@ -25,6 +26,9 @@ const DRIVER = join(FIXTURES, 'stand-ins', 'lifecycle-driver.ts');
 const CHECK = join(import.meta.dirname, 'check-static-playground.ts');
 
 type GateRun = { exitCode: number; report: GateReport; stderr: string };
+
+/** Below the test's 5 s timeout, so a stuck gate fails the case rather than leaking it. */
+const GATE_RUN_MILLISECONDS = 4_500;
 
 async function runGate(command: string[], environment: Record<string, string>): Promise<GateRun> {
   const output = await mkdtemp(join(tmpdir(), 'static-gate-test-'));
@@ -34,7 +38,12 @@ async function runGate(command: string[], environment: Record<string, string>): 
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const [exitCode, stderr] = await Promise.all([gate.exited, new Response(gate.stderr).text()]);
+    const exitCode = await exitedWithin(gate, GATE_RUN_MILLISECONDS);
+    if (exitCode === undefined) {
+      gate.kill('SIGKILL');
+      throw new Error(`the gate did not exit within ${GATE_RUN_MILLISECONDS} ms`);
+    }
+    const stderr = await new Response(gate.stderr).text();
     const report = (await Bun.file(join(output, 'report.json')).json()) as GateReport;
     return { exitCode, report, stderr };
   } finally {
@@ -215,7 +224,9 @@ describe('static production gate over fixtures', () => {
         ],
         { env: readScrubbedEnvironment(), stdout: 'pipe', stderr: 'pipe' },
       );
-      const [exitCode, stderr] = await Promise.all([gate.exited, new Response(gate.stderr).text()]);
+      const exitCode = await exitedWithin(gate, GATE_RUN_MILLISECONDS);
+      if (exitCode === undefined) gate.kill('SIGKILL');
+      const stderr = await new Response(gate.stderr).text();
 
       expect(exitCode).toBe(1);
       expect(stderr).toContain('must be outside the served directory');

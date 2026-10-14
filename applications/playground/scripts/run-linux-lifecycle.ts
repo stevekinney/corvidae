@@ -14,6 +14,8 @@
 import { constants } from 'node:os';
 import { join } from 'node:path';
 
+import { exitedWithin } from './static-playground-processes.ts';
+
 export const IMAGE = 'mcr.microsoft.com/playwright:v1.63.0-noble';
 export const BUN_VERSION = '1.4.2';
 
@@ -60,8 +62,17 @@ function git(args: string[]): string {
   return result.stdout.toString().trim();
 }
 
-async function run(command: string[]): Promise<number> {
-  return Bun.spawn(command, { stdio: ['ignore', 'inherit', 'inherit'] }).exited;
+/** Ceilings no healthy run reaches; a run that hits one is stopped and fails. */
+const PULL_MILLISECONDS = 15 * 60_000;
+const MODE_MILLISECONDS = 30 * 60_000;
+
+async function run(command: string[], milliseconds: number): Promise<number> {
+  const child = Bun.spawn(command, { stdio: ['ignore', 'inherit', 'inherit'] });
+  const status = await exitedWithin(child, milliseconds);
+  if (status !== undefined) return status;
+  child.kill('SIGKILL');
+  process.stderr.write(`[linux-lifecycle] ${command.join(' ')} exceeded ${milliseconds} ms\n`);
+  return 1;
 }
 
 async function runMode(mode: ContainerMode): Promise<number> {
@@ -81,7 +92,16 @@ async function runMode(mode: ContainerMode): Promise<number> {
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   try {
-    const [archiveStatus, status] = await Promise.all([archive.exited, container.exited]);
+    const [archiveStatus, status] = await Promise.all([
+      exitedWithin(archive, MODE_MILLISECONDS),
+      exitedWithin(container, MODE_MILLISECONDS),
+    ]);
+    if (archiveStatus === undefined || status === undefined) {
+      stop();
+      archive.kill('SIGKILL');
+      process.stderr.write(`[linux-lifecycle] ${mode} exceeded ${MODE_MILLISECONDS} ms\n`);
+      return 1;
+    }
     return archiveStatus === 0 ? status : 1;
   } finally {
     process.off('SIGINT', stop);
@@ -131,7 +151,7 @@ async function main(): Promise<void> {
   if (git(['status', '--porcelain']) !== '') {
     process.stderr.write('[linux-lifecycle] the tree is dirty; only HEAD is tested\n');
   }
-  if ((await run(['docker', 'pull', '--quiet', IMAGE])) !== 0)
+  if ((await run(['docker', 'pull', '--quiet', IMAGE], PULL_MILLISECONDS)) !== 0)
     throw new Error('docker pull failed');
   const digest = Bun.spawnSync(
     ['docker', 'image', 'inspect', '--format', '{{index .RepoDigests 0}}', IMAGE],

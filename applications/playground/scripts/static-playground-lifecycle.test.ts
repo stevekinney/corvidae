@@ -19,8 +19,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
+import { fetchWithin } from './static-playground-preflight.ts';
 import {
   descendantProcesses,
+  exitedWithin,
   interruptRunner,
   isZombie,
   ownedProcesses,
@@ -30,6 +32,7 @@ import {
   readProcessTable,
   SAMPLE_INTERVAL_MILLISECONDS,
   signalTarget,
+  waitUntil,
 } from './static-playground-processes.ts';
 
 const DRIVER = join(
@@ -56,13 +59,25 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-async function waitFor(condition: () => boolean): Promise<void> {
-  while (!condition()) await Bun.sleep(20);
+/**
+ * Every wait in these cases is bounded below the test's own 5 s timeout, so a stuck step fails the
+ * case with a named reason instead of polling on in the background after the test gives up.
+ */
+const WAIT_MILLISECONDS = 4_000;
+
+function waitFor(condition: () => boolean, description = 'a lifecycle condition'): Promise<void> {
+  return waitUntil(condition, WAIT_MILLISECONDS, description);
+}
+
+async function driverExit(running: RunningCase): Promise<number> {
+  const status = await exitedWithin(running.driver, WAIT_MILLISECONDS);
+  if (status === undefined) throw new Error('the gate runner did not exit within the bound');
+  return status;
 }
 
 async function readPid(record: string, label: string): Promise<number> {
   const path = join(record, `${label}.pid`);
-  await waitFor(() => existsSync(path));
+  await waitFor(() => existsSync(path), path);
   // The writer appends a newline last, so a complete line means a complete PID.
   await waitFor(() => readFileSync(path, 'utf8').endsWith('\n'));
   return Number(readFileSync(path, 'utf8').trim());
@@ -96,8 +111,13 @@ async function startCase(
     for await (const chunk of driver.stdout) stdout += new TextDecoder().decode(chunk);
   })();
   cleanups.push(async () => {
+    // A case that failed before its runner exited must not leave it, or what it owns, behind.
+    if (driver.exitCode === null && driver.signalCode === null) {
+      const runDirectory = /run directory (\S+)/.exec(stdout)?.[1];
+      await interruptRunner(driver, runDirectory, { graceMilliseconds: 1_000 });
+    }
     sentinel.kill('SIGKILL');
-    await sentinel.exited;
+    await exitedWithin(sentinel, WAIT_MILLISECONDS);
     await rm(record, { recursive: true, force: true });
     await rm(output, { recursive: true, force: true });
   });
@@ -150,7 +170,7 @@ async function expectEverythingGone(running: RunningCase, capture: Capture): Pro
   expect(livingGroupMembers).toEqual([]);
   expect(isGone(table.find((row) => row.pid === running.sentinel.pid))).toBe(false);
   expect(existsSync(capture.runDirectory)).toBe(false);
-  const port = await fetch(capture.origin).then(
+  const port = await fetchWithin(capture.origin, {}, 2_000).then(
     () => 'listening',
     () => 'closed',
   );
@@ -163,7 +183,7 @@ describe('static gate runner lifecycle with stand-in children', () => {
     const capture = await captureAndSpawnLate(running);
     await writeFile(join(running.record, 'proceed'), '');
 
-    expect(await running.driver.exited).toBe(0);
+    expect(await driverExit(running)).toBe(0);
     await expectEverythingGone(running, capture);
   });
 
@@ -172,7 +192,7 @@ describe('static gate runner lifecycle with stand-in children', () => {
     const capture = await captureAndSpawnLate(running);
     await writeFile(join(running.record, 'proceed'), '');
 
-    expect(await running.driver.exited).toBe(3);
+    expect(await driverExit(running)).toBe(3);
     await expectEverythingGone(running, capture);
   });
 
@@ -184,7 +204,7 @@ describe('static gate runner lifecycle with stand-in children', () => {
     const capture = await captureAndSpawnLate(running);
     running.driver.kill(signal);
 
-    expect(await running.driver.exited).toBe(status);
+    expect(await driverExit(running)).toBe(status);
     await expectEverythingGone(running, capture);
   });
 
@@ -200,7 +220,7 @@ describe('static gate runner lifecycle with stand-in children', () => {
     // Let cleanup finish promptly rather than wait out the grace and escalate.
     process.kill(stubborn, 'SIGKILL');
 
-    expect(await running.driver.exited).toBe(130);
+    expect(await driverExit(running)).toBe(130);
     await expectEverythingGone(running, capture);
   });
 
@@ -216,7 +236,7 @@ describe('static gate runner lifecycle with stand-in children', () => {
     await Bun.sleep(SAMPLE_INTERVAL_MILLISECONDS * 3);
     await writeFile(join(running.record, 'proceed'), '');
 
-    expect(await running.driver.exited).toBe(0);
+    expect(await driverExit(running)).toBe(0);
     await expectEverythingGone(running, capture);
   });
 
@@ -227,7 +247,10 @@ describe('static gate runner lifecycle with stand-in children', () => {
     const running = await startCase('hang');
     const capture = await captureAndSpawnLate(running);
 
-    expect(await interruptRunner(running.driver, capture.runDirectory)).toEqual([]);
+    expect(await interruptRunner(running.driver, capture.runDirectory)).toEqual({
+      survivors: [],
+      runnerExited: true,
+    });
     expect(running.driver.exitCode).toBe(130);
     await expectEverythingGone(running, capture);
   });
@@ -237,7 +260,7 @@ describe('static gate runner lifecycle with stand-in children', () => {
     const capture = await captureAndSpawnLate(running);
     process.kill(await readPid(running.record, 'server'), 'SIGKILL');
 
-    expect(await running.driver.exited).toBe(1);
+    expect(await driverExit(running)).toBe(1);
     expect(await running.stderr).toContain(
       '[static-playground] static server exited unexpectedly with signal SIGKILL',
     );

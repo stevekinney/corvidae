@@ -27,9 +27,24 @@ export function startSleeper(
   sleeper.unref();
 }
 
-/** Resolve once `path` exists. The caller's test bounds how long that may take. */
-export async function waitForFile(path: string): Promise<void> {
-  while (!existsSync(path)) await Bun.sleep(20);
+/**
+ * How long a stand-in waits for its test's next step before giving up. `--wait-milliseconds`
+ * overrides it, so a test can prove the bound without waiting it out.
+ */
+export const STAND_IN_WAIT_MILLISECONDS = 30_000;
+
+export function waitMilliseconds(): number {
+  const value = Number(argumentValue('--wait-milliseconds') ?? STAND_IN_WAIT_MILLISECONDS);
+  return Number.isFinite(value) && value > 0 ? value : STAND_IN_WAIT_MILLISECONDS;
+}
+
+/** Resolve once `path` exists; throw `timed out waiting for <path>` after `milliseconds`. */
+export async function waitForFile(path: string, milliseconds = waitMilliseconds()): Promise<void> {
+  const deadline = performance.now() + milliseconds;
+  while (!existsSync(path)) {
+    if (performance.now() >= deadline) throw new Error(`stand-in timed out waiting for ${path}`);
+    await Bun.sleep(20);
+  }
 }
 
 /** Read a flag value such as `--record <dir>` from `process.argv`. */
