@@ -94,7 +94,7 @@ Every resource below declares the started-work floor: stable identity, owner, op
 | Asset | Asset identifier and revision (COR-794) | Admitting principal | Monotonic revision | COR-794 lifecycle states | Resolved locator | Abort, delete, expire; cleanup acknowledgement | Asset events (COR-794) | A2A file parts reference assets; management asset inspection is not in v1 |
 | Interactive surface | Surface identifier (COR-962) | The task's owner; audience recorded per surface; parent task | `revision` and `baseRevision` on every update | COR-962's surface states, ending in closed or deleted | Final surface state | Close, owner abort, detachment; cleanup acknowledgement | Surface updates in the task's durable history | A2UI over AG-UI (Interborough) and over A2A through A2UI's A2A extension |
 | Approval grant | Grant identifier | Issuing principal | Revocation | `issued`, `consumed`, `revoked` | None | `revokeGrant` | Audit | Internal |
-| Audit record | Audit `sequence` | Deployment | Append-only | None | None | Retention pruning | Is itself the record | Management audit |
+| Audit record | Audit `sequence` | The owner of the run, session, or schedule the record is about, or its attributed `principal` where the record carries one (`packages/bureau/src/audit-trail.ts`); records about no owned resource belong to the deployment | Append-only | None | None | Retention pruning | Is itself the record | Management audit |
 
 ### Task states
 
@@ -144,7 +144,7 @@ Discovery has two levels. Each published agent has an Agent Card; the deployment
 
 The card's security declaration is generated from the authentication configuration the handler actually enforces, never written by hand, so the two cannot drift (COR-718). The extended card is not declared in v1: it has no consumer, and `capabilities.extendedAgentCard` stays false.
 
-Publication is the deployment's choice and description is the agent's. `createBureauHandler`'s `publish` allowlist is the only source of external visibility; an agent absent from it has no card, cannot start new tasks, and reads as not found. Withdrawing an agent that still has non-terminal tasks keeps a tombstone mount at its path: its owners can still `GetTask`, `SubscribeToTask`, and `CancelTask` those tasks, while `SendMessage` without a `taskId` returns not-found and no card is served. The tombstone ends when the agent's last task is terminal. The card's identity fields come from Bureau's immutable catalog, and its descriptive fields from the agent definition. A request cannot change either.
+Publication is the deployment's choice and description is the agent's. `createBureauHandler`'s `publish` allowlist is the only source of external visibility; an agent absent from it has no card, cannot start new tasks, and reads as not found. Withdrawing an agent that still has non-terminal tasks keeps a tombstone mount at its path: its owners can still `GetTask`, `SubscribeToTask`, and `CancelTask` those tasks, while `SendMessage` without a `taskId` returns not-found and no card is served. The tombstone ends only when the agent's last task has passed its terminal retention and is no longer addressable, so a client that disconnected before completion can still `GetTask` the final status and artifacts. The card's identity fields come from Bureau's immutable catalog, and its descriptive fields from the agent definition. A request cannot change either.
 
 ## Operation taxonomy
 
@@ -307,6 +307,7 @@ The tenant is the deployment, and authorization inside it is owner of record plu
 - **Identifiers are not credentials.** Knowing a task, context, review, or asset identifier grants nothing.
 - **Wildcard observation** of every present and future task is the separate `bureau.events:observe-all` scope; a read scope does not imply it.
 - **The only public paths** are each published agent's Agent Card and, when the card is signed, the JWKS its signature names. Every other path authenticates (COR-718's "no unauthenticated paths" criterion is amended to say so).
+- **Public discovery under mTLS.** When a deployment authenticates with mutual TLS, a client without a certificate is rejected during the TLS handshake, before any public route runs. Such a deployment serves the Agent Card and JWKS from a listener that does not request client certificates, and every other route stays on the mTLS listener; `createBureauHandler` exposes its discovery routes as a separately mountable handler for that purpose. Weft's `createAuthenticator` today treats an otherwise uncredentialed request as authenticated mTLS (`packages/weft/src/server/authentication/index.ts`), which is unsafe whenever client certificates are optional; COR-718 fixes that by requiring a verified peer certificate before reporting `mtls`.
 - **A2A's `tenant` field** carries the deployment identifier, the tenant; the interface URL, which is the mount, selects the published agent. It is not a security boundary.
 
 The predicate per action:
