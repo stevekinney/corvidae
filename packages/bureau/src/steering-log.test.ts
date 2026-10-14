@@ -136,6 +136,23 @@ describe('steering log', () => {
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
+    const refused = (failure: Record<string, unknown>) =>
+      JSON.stringify({
+        type: 'refused',
+        command: command(),
+        outcome: { outcome: 'rejected', failure },
+        now: '2026-09-02T00:00:01.000Z',
+      });
+    for (const failure of [
+      { failedAt: '2026-09-02T00:00:01.000Z', reason: 'superseded-by' },
+      { failedAt: '2026-09-02T00:00:01.000Z', reason: 'no-such-reason' },
+      { failedAt: '2026-09-02T00:00:01.000Z', reason: 'policy-denied', supersededBy: 'x' },
+    ]) {
+      await kv.set(entryKey, refused(failure));
+      await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+        SteeringLogCorruptError,
+      );
+    }
     await kv.set(entryKey, JSON.stringify({ ...admit(), now: 'not a timestamp' }));
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,

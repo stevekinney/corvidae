@@ -8,7 +8,6 @@ import type { OperativeEventEmitter } from '../events';
 import { makeErrorResult, startRunLifecycle } from '../run-lifecycle';
 import { type RunOptions, type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
-import { agentRunSessionTag } from './active-run-constants';
 import {
   classifyTimeoutMessage,
   emptyRunState,
@@ -55,6 +54,7 @@ export async function driveDurableRun(
   // literal `undefined` throw/rejection — can be mistaken for success.
   resolveDurablyStarted: () => void,
   rejectDurablyStarted: (error: unknown) => void,
+  tags?: readonly string[],
 ): Promise<RunResult> {
   const runStartTime = runtime.monotonic.now();
   const { hooks } = options;
@@ -238,7 +238,7 @@ export async function driveDurableRun(
       },
       {
         id: runId,
-        tags: [agentRunSessionTag(sessionId)],
+        ...(tags !== undefined && tags.length > 0 ? { tags: [...tags] } : {}),
         services,
       },
     );

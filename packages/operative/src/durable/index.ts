@@ -1,9 +1,5 @@
 export type { DurableActiveRunContext, DurableActiveRunOptions } from './active-run-adapter';
-export {
-  SCHEDULER_ORIGIN_TAG,
-  SCHEDULER_RUN_ID_PREFIX,
-  agentRunSessionTag,
-} from './active-run-constants';
+export { SCHEDULER_ORIGIN_TAG, SCHEDULER_RUN_ID_PREFIX } from './active-run-constants';
 export { createDurableActiveRun } from './active-run-create';
 export { createRecoveredRunEventSurface } from './active-run-event-surface';
 export type { RecoveredRunHandle } from './active-run-event-surface';

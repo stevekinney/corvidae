@@ -39,14 +39,3 @@ const TERMINAL_WORKFLOW_STATUSES = new Set<string>([
 export function isTerminalWorkflowStatus(status: string): boolean {
   return TERMINAL_WORKFLOW_STATUSES.has(status);
 }
-
-/**
- * The tag every durable `agentRun` workflow carries for the session it runs
- * in, so a host sharing the backend with other processes can find a
- * session's live runs from the engine (`engine.list({ tags: [...] })`) rather
- * than only from its own process's registry. Bureau's durable steering binds
- * `pause`/`resume` against that backend-wide view.
- */
-export function agentRunSessionTag(sessionId: string): string {
-  return `agent-run-session:${sessionId}`;
-}

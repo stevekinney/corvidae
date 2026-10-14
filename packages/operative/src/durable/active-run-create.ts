@@ -229,6 +229,7 @@ export function createDurableActiveRun(
       hookTracker,
       resolveDurablyStarted,
       rejectDurablyStarted,
+      durableRun.tags,
     );
   }
 

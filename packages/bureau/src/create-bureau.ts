@@ -10,7 +10,6 @@ import {
   type ActiveRun,
   type AgentInput,
   type AgentRun,
-  agentRunSessionTag,
   type AgentSession,
   type ChildSignalContract,
   // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
@@ -233,6 +232,7 @@ import {
   readSteeringLogEntries,
   readSteeringLogHead,
   SteeringLogCorruptError,
+  steeringSessionRunTag,
   type SteeringKeyBinding,
   type SteeringLogEvent,
   type SteeringLogHead,
@@ -3542,6 +3542,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               // correlate a recovered handle back to its session without a side
               // table (see recoverDurableRuns / resolveRunServices).
               sessionId,
+              // Lets durable steering in any process find this run as live
+              // for this session incarnation (`liveSessionRunIdsEverywhere`).
+              ...(steeringSession !== undefined
+                ? { tags: [steeringSessionRunTag(sessionId, steeringSession.incarnation)] }
+                : {}),
               ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
               ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
             }
@@ -7488,10 +7493,37 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // This computation touches only the internal run registry, never
     // anything derived from `request.principal`, so it leaks nothing to an
     // unauthorized caller ahead of the `not-found` check below.
-    const liveRunIds =
-      durableSteeringStore() === undefined
-        ? liveSessionRunIds(sessionId)
-        : await liveSessionRunIdsEverywhere(sessionId);
+    // A request naming its run is authorized before anything else runs: the
+    // backend-wide liveness query below must neither be triggered by, nor
+    // leak its failures to, a caller who may not see this session.
+    if (
+      request.runId !== undefined &&
+      !isSessionAuthorityAuthorized(session.metadata, request.principal, request.runId)
+    ) {
+      return { outcome: 'not-found' };
+    }
+    let liveRunIds: string[];
+    try {
+      liveRunIds =
+        durableSteeringStore() === undefined
+          ? liveSessionRunIds(sessionId)
+          : await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
+    } catch (error) {
+      // An unscoped request's authority depends on which run is live, so a
+      // failed query is masked until this caller is shown to be authorized
+      // against the run this process can see.
+      const localTarget = liveSessionRunIds(sessionId);
+      if (
+        !isSessionAuthorityAuthorized(
+          session.metadata,
+          request.principal,
+          localTarget.length === 1 ? localTarget[0] : undefined,
+        )
+      ) {
+        return { outcome: 'not-found' };
+      }
+      throw error;
+    }
     const targetRunId = request.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
     if (!isSessionAuthorityAuthorized(session.metadata, request.principal, targetRunId)) {
       return { outcome: 'not-found' };
@@ -7526,7 +7558,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           kv,
           session.incarnation,
           refused,
-          () => liveSessionRunIdsEverywhere(sessionId),
+          () => liveSessionRunIdsEverywhere(sessionId, session.incarnation),
           outcome,
         ),
       );
@@ -7735,7 +7767,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         kv,
         session.incarnation,
         command,
-        () => liveSessionRunIdsEverywhere(sessionId),
+        () => liveSessionRunIdsEverywhere(sessionId, session.incarnation),
         undefined,
         'policyRef' in request.requestedValue && request.requestedValue.policyRef !== undefined
           ? request.requestedValue
@@ -7763,14 +7795,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /**
    * The session's live runs in EVERY process sharing this backend: this
    * process's running runs, plus every non-terminal durable `agentRun`
-   * workflow tagged with the session (`agentRunSessionTag`), whichever
-   * process runs it. Durable steering binds `pause`/`resume` and judges a
+   * workflow tagged with the session incarnation (`steeringSessionRunTag`), whichever
+   * process runs it. Only runs of this session INCARNATION count: a deleted
+   * session's still-running workflows carry a different tag. Durable steering binds `pause`/`resume` and judges a
    * session terminal against this view, so a run owned by another process
    * is neither invisible (`run-terminal`) nor silently excluded from an
    * ambiguity check. Without a durable engine, this process's view is all
    * there is.
    */
-  async function liveSessionRunIdsEverywhere(sessionId: string): Promise<string[]> {
+  async function liveSessionRunIdsEverywhere(
+    sessionId: string,
+    incarnation: string,
+  ): Promise<string[]> {
     const live = new Set(liveSessionRunIds(sessionId));
     const engine = runtime.durable?.engine;
     if (engine === undefined) return [...live];
@@ -7778,7 +7814,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const page = await engine.list({
         type: 'agentRun',
         status: ['pending', 'running', 'suspended'],
-        tags: [agentRunSessionTag(sessionId)],
+        tags: [steeringSessionRunTag(sessionId, incarnation)],
         limit: LIVE_RUN_PAGE_SIZE,
         offset,
       });
@@ -7829,6 +7865,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<SteeringCommandAdmissionOutcome> {
     // A private copy: the event appended, the event applied, and what the
     // caller may later mutate must never differ.
+    // Unrepresentable in the log (JSON would write NaN or Infinity as null,
+    // which no process could fold). Such a revision can never equal a real
+    // configVersion, so this is the gate's own answer, given without logging.
+    if (
+      request.expectedRevision !== undefined &&
+      !(Number.isSafeInteger(request.expectedRevision) && request.expectedRevision >= 0)
+    ) {
+      return {
+        outcome: 'rejected',
+        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+      };
+    }
     const command = structuredClone(request);
     const submittedValue =
       submittedValueAsSent === undefined ? undefined : structuredClone(submittedValueAsSent);

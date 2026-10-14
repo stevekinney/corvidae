@@ -474,4 +474,59 @@ describe('durable steering across two Bureau processes', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it("counts only the current session incarnation's runs as live, and handles any session id", async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-incarnation-liveness-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureauA = await openBureau(path);
+    const bureauB = await openBureau(path);
+    try {
+      // A's run keeps going after B deletes its session and recreates the
+      // id with a run of its own; only B's run belongs to the new session.
+      const sessionId = await startRunningSession(bureauA);
+      await bureauB.deleteSession(sessionId);
+      await startRunningSession(bureauB, sessionId);
+      const recreated = await bureauB.getSession(sessionId);
+      const pause = await bureauB.submitSteeringCommand(sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(pause.outcome).toBe('accepted');
+      if (pause.outcome !== 'accepted') throw new Error('expected accepted');
+      const recreatedRunId = recreated?.metadata['lastRunId'];
+      if (typeof recreatedRunId !== 'string') throw new Error('expected a run id');
+      expect(pause.command.runId).toBe(recreatedRunId);
+
+      // A session id far beyond Weft's per-tag size still starts and steers.
+      const longId = `session-${'x'.repeat(300)}`;
+      await startRunningSession(bureauA, longId);
+      const steered = await bureauA.submitSteeringCommand(longId, {
+        principal: 'alice',
+        requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+      });
+      expect(steered.outcome).toBe('accepted');
+
+      // A revision JSON cannot represent is answered without being logged,
+      // so the session's log stays foldable everywhere.
+      const unrepresentable = await bureauA.submitSteeringCommand(longId, {
+        id: 'nan-revision',
+        principal: 'alice',
+        expectedRevision: Number.NaN,
+        requestedValue: { target: 'model', override: 'claude-opus-4-8' },
+      });
+      expect(unrepresentable.outcome).toBe('rejected');
+      expect(
+        versionOf(
+          await bureauB.submitSteeringCommand(longId, {
+            principal: 'alice',
+            requestedValue: { target: 'provider', override: 'anthropic' },
+          }),
+        ),
+      ).toBe(2);
+    } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

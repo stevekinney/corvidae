@@ -1,3 +1,4 @@
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type ConditionalTextValueStore,
   decodeStorageKeyComponent,
@@ -186,7 +187,7 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
     typeof value['sessionId'] === 'string' &&
     typeof value['principal'] === 'string' &&
     typeof value['requestedAt'] === 'string' &&
-    (value['expectedRevision'] === undefined || typeof value['expectedRevision'] === 'number') &&
+    (value['expectedRevision'] === undefined || isVersion(value['expectedRevision'])) &&
     isOptionalString(value['deadline']) &&
     isOptionalString(value['runId'])
   );
@@ -200,16 +201,30 @@ function isVersion(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+const FAILURE_REASONS = new Set([
+  'session-terminal',
+  'run-terminal',
+  'run-ambiguous',
+  'authorization-revoked',
+  'policy-denied',
+  'deadline-passed',
+]);
+
+/** The complete `SteeringCommandFailure` union, `superseded-by` included. */
+function isSteeringFailure(value: unknown): boolean {
+  if (!isRecord(value) || !isTimestamp(value['failedAt'])) return false;
+  if (value['reason'] === 'superseded-by') return typeof value['supersededBy'] === 'string';
+  return (
+    typeof value['reason'] === 'string' &&
+    FAILURE_REASONS.has(value['reason']) &&
+    value['supersededBy'] === undefined
+  );
+}
+
 function isRefusalOutcome(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value['outcome'] === 'unsupported-capability') return typeof value['reason'] === 'string';
-  const failure = value['failure'];
-  return (
-    value['outcome'] === 'rejected' &&
-    isRecord(failure) &&
-    typeof failure['reason'] === 'string' &&
-    isTimestamp(failure['failedAt'])
-  );
+  return value['outcome'] === 'rejected' && isSteeringFailure(value['failure']);
 }
 
 function parseEvent(raw: string, sequence: number): SteeringLogEvent {
@@ -423,4 +438,16 @@ export async function listSteeringLogIncarnations(
     });
   }
   return found;
+}
+
+/**
+ * The workflow tag a durable run of one session incarnation is launched
+ * with, so durable steering can find that incarnation's live runs in every
+ * process sharing the backend (`engine.list({ tags })`). Hashed, so any
+ * session id fits Weft's per-tag size limit, and scoped to the incarnation,
+ * so a deleted session's still-running workflows never count as live for a
+ * session recreated under the same id.
+ */
+export function steeringSessionRunTag(sessionId: string, incarnation: string): string {
+  return `bureau-steering-run:${sha256HexSync(`${sessionId}\n${incarnation}`).slice(0, 40)}`;
 }
