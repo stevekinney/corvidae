@@ -8,6 +8,7 @@ import {
   publishPageArtifacts,
 } from '../src/build-artifacts-shared.ts';
 import { pageEntryByName } from '../src/page-bundle.ts';
+import { sseClients } from '../src/sse-broadcast.ts';
 import { snapshotRetainedArtifacts } from './measure-playground-artifact-snapshot.ts';
 
 afterEach(() => {
@@ -48,5 +49,16 @@ describe('snapshotRetainedArtifacts', () => {
     publishPageArtifacts('button', new Map([['chunk-1.js', 'x']]));
     const first = snapshotRetainedArtifacts();
     expect(snapshotRetainedArtifacts()).toEqual(first);
+  });
+
+  it('counts the live-reload streams the server holds', () => {
+    const controller = {} as ReadableStreamDefaultController<string>;
+    sseClients.add(controller);
+    try {
+      expect(snapshotRetainedArtifacts().liveReloadSubscribers).toBe(1);
+    } finally {
+      sseClients.delete(controller);
+    }
+    expect(snapshotRetainedArtifacts().liveReloadSubscribers).toBe(0);
   });
 });

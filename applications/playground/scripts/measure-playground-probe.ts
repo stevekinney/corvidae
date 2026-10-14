@@ -260,6 +260,7 @@ async function runNavigationProbe(cycles: number, port: number): Promise<unknown
         jsHeapUsedBytes: recorded.map((item) => item.browser.jsHeapUsedBytes),
         serverArtifacts: recorded.map((item) => item.server.totalArtifacts),
         serverArtifactBytes: recorded.map((item) => item.server.totalArtifactBytes),
+        serverLiveReloadSubscribers: recorded.map((item) => item.server.liveReloadSubscribers),
         probeResidentBytes: recorded.map((item) => item.probeProcess.residentBytes),
       }),
     };

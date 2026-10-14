@@ -20,6 +20,7 @@ import { componentManifestCache } from '../src/manifest-cache.ts';
 import { pageEntryByName } from '../src/page-bundle.ts';
 import { bundleEntryByKey } from '../src/scenario-bundle.ts';
 import { shellEntryByName } from '../src/shell-bundle.ts';
+import { sseClients } from '../src/sse-broadcast.ts';
 import { artifactMapFootprint } from './measure-playground-inventory.ts';
 
 export type FamilySnapshot = { entryPointers: number; artifacts: number; artifactBytes: number };
@@ -33,6 +34,8 @@ export type RetainedArtifactSnapshot = {
   totalArtifactBytes: number;
   inFlightBuilds: number;
   cachedManifests: number;
+  /** Open `/events` streams the server still holds (`sse-broadcast.ts`'s `sseClients`). */
+  liveReloadSubscribers: number;
 };
 
 function family(
@@ -63,5 +66,6 @@ export function snapshotRetainedArtifacts(): RetainedArtifactSnapshot {
     inFlightBuilds:
       pageBuildPromiseByKey.size + scenarioBuildPromiseByKey.size + fixtureBuildPromiseByKey.size,
     cachedManifests: componentManifestCache.size,
+    liveReloadSubscribers: sseClients.size,
   };
 }
