@@ -2010,6 +2010,49 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return cursor;
   }
 
+  /** How often a paused durable run checks that its session still exists. */
+  const STEERING_DELETION_WATCH_MS = 2_000;
+
+  /**
+   * A durable run's view of its session gate. While the run waits on a
+   * pause, its process checks that the session incarnation still exists:
+   * another process can delete the session, and that deletion settles only
+   * its own gate, so this one releases its paused runs the same way when it
+   * sees the deletion. Nothing else could resume them: every later steering
+   * command for the deleted session is `not-found`.
+   */
+  function watchedRunSteeringGate(
+    sessionId: string,
+    incarnation: string,
+    gate: BureauSteeringGate,
+    runId: string,
+  ): ReturnType<BureauSteeringGate['forRun']> {
+    const view = gate.forRun(runId);
+    return {
+      ...view,
+      awaitResume(signal?: AbortSignal): Promise<void> {
+        const resumed = view.awaitResume(signal);
+        const releaseIfDeleted = async () => {
+          try {
+            const current = await runtime.sessionStore?.load(sessionId);
+            if (current?.incarnation === incarnation) return;
+          } catch {
+            // Unreadable this time: the next tick checks again.
+            return;
+          }
+          clearInterval(watch);
+          gate.settleForDeletion(runtimeServices.clock.nowISO());
+        };
+        const watch = setInterval(() => {
+          void releaseIfDeleted();
+        }, STEERING_DELETION_WATCH_MS);
+        watch.unref?.();
+        void resumed.finally(() => clearInterval(watch));
+        return resumed;
+      },
+    };
+  }
+
   /** Drops this process's folded view of a session. */
   function forgetSessionSteering(sessionId: string): void {
     const cursor = steeringCursors.get(sessionId);
@@ -2111,7 +2154,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const cursor = await enqueueSteering(sessionId, () =>
         catchUpSteering(kv, sessionId, session.incarnation),
       );
-      services.options = { ...services.options, runId, steering: cursor.gate.forRun(runId) };
+      services.options = {
+        ...services.options,
+        runId,
+        steering: watchedRunSteeringGate(sessionId, session.incarnation, cursor.gate, runId),
+      };
       return cursor.gate;
     } catch (error) {
       // Fails the recovered workflow rather than resuming it without its
@@ -3677,7 +3724,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
       // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
       // concurrent run on this same session must never block this one.
-      const runSteeringGate = steeringGate.forRun(runId);
+      const runSteeringGate =
+        steeringSession === undefined
+          ? steeringGate.forRun(runId)
+          : watchedRunSteeringGate(sessionId, steeringSession.incarnation, steeringGate, runId);
 
       // COR-690: the last admission check before the run and its toolbox are
       // registered. Everything from here to that registration is synchronous,
