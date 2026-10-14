@@ -42,6 +42,22 @@ export const PUBLIC_PATH_BY_FAMILY: Record<ArtifactFamily, string> = {
 };
 
 /**
+ * Source served at a family's bare, unhashed entry URL (`/page-bundle/<name>.js`,
+ * `/shell-bundle/shell.js`): a side-effect import of the hashed entry artifact.
+ *
+ * The bare URL must not serve the entry's own code. Bun's splitter can leave a
+ * module the entry shares with a lazy chunk inside the entry, and that chunk
+ * then imports it back from the entry's hashed URL. A browser evaluates one
+ * module per URL, so the same code served at both URLs ran twice: the page
+ * entry hydrated the server-rendered page, then a second copy hydrated the
+ * already-live tree, logged `hydration_mismatch`, and remounted it. Importing
+ * the hashed entry gives it one module identity under every URL.
+ */
+export function entryAliasSource(family: ArtifactFamily, entryPath: string): string {
+  return `import ${JSON.stringify(`${PUBLIC_PATH_BY_FAMILY[family]}${entryPath}`)};\n`;
+}
+
+/**
  * Shared Bun.build options used by every family.
  *
  * Each compile site supplies its own `publicPath` so that dynamic-import URLs

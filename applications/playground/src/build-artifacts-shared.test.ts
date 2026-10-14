@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import {
+  entryAliasSource,
   findArtifactForFamily,
   publishShellArtifacts,
   resetShellArtifacts,
@@ -162,5 +163,19 @@ describe('publishShellArtifacts', () => {
       // `a`, the build that first published it, has been dropped.
       expect(findArtifactForFamily('shell', oldShared)).toBeDefined();
     });
+  });
+});
+
+describe('entryAliasSource', () => {
+  // The document loads an entry by its bare URL while the entry's own chunks import it back by its
+  // hashed URL. Serving the entry's code at both URLs evaluated it twice, so the page hydrated twice
+  // and the second pass logged `hydration_mismatch`. The bare URL only imports the hashed entry.
+  it('imports the hashed entry through the family route without code of its own', () => {
+    expect(entryAliasSource('page', 'page-button-ab12cd34.js')).toBe(
+      'import "/page-bundle/page-button-ab12cd34.js";\n',
+    );
+    expect(entryAliasSource('shell', 'shell-shell-ab12cd34.js')).toBe(
+      'import "/shell-bundle/shell-shell-ab12cd34.js";\n',
+    );
   });
 });

@@ -5,9 +5,10 @@
  *   GET /              → shell HTML with README landing content
  *   GET /c/:name       → 301 redirect to /page/:name (legacy link compatibility)
  *   GET /page/:name    → standalone component documentation or preview-only iframe page
- *   GET /page-bundle/:name.js → page-bundle entry OR a hashed code-split chunk.
- *                              Entry URLs are bare component names (e.g. chat.js);
- *                              chunk URLs are hashed (e.g. core-abc123.js). Both
+ *   GET /page-bundle/:name.js → page-bundle entry alias OR a hashed artifact.
+ *                              Bare component names (e.g. chat.js) only import the
+ *                              hashed entry (see `entryAliasSource`); entries and
+ *                              chunks are hashed (e.g. chunk-abc123.js). Both
  *                              artifact types share a flat namespace under /page-bundle/
  *                              so all dynamic-import URLs from either bundle family
  *                              resolve through this single route.

@@ -49,8 +49,10 @@ test.beforeAll(async () => {
   expect(warmed.status).toBe(200);
 });
 
-test.afterAll(() => {
+test.afterAll(async () => {
   playgroundServer?.kill();
+  // Another spec in this worker inherits PLAYGROUND_PORT, so release it before that spec starts.
+  await playgroundServer?.exited;
 });
 
 const themes = ['light', 'dark'] as const;
