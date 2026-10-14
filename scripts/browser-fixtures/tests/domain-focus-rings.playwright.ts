@@ -10,6 +10,7 @@ import { expect, test, type Browser, type Locator, type Page } from '@playwright
 
 import { environmentConfiguration } from '../environment-configuration.ts';
 import { fixtureRoute } from './overlay-fixture.ts';
+import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 const HARNESS = '[data-testid="chat-private-harness"]';
 const FIXTURE_ROUTE = fixtureRoute('chat', { fixtureName: 'private-harness' });
@@ -150,6 +151,12 @@ async function assertSharedOuterRing(target: Locator, label: string): Promise<vo
     boxShadowLayerCount(paint.boxShadow),
     `${label} should use the shared two-stop ring`,
   ).toBeGreaterThanOrEqual(2);
+  // Updated for COR-1498: the offset stop is 0px, so exactly one hard band
+  // paints, the 2px ring (blurred elevation layers are not bands).
+  expect(
+    outerBands(parseBoxShadow(paint.boxShadow)).map((band) => band.spread),
+    `${label} should paint one tight 2px ring`,
+  ).toEqual([2]);
   expect(paint.boxShadow, `${label} should not use an inset ring`).not.toContain('inset');
 }
 
