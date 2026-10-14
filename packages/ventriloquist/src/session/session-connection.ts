@@ -30,6 +30,8 @@ export type SessionConnectionOptions = {
   readonly limits?: HostEndpointOptions;
 };
 
+const TRANSPORT_FAILURE_CLOSE_CODE = describeFailure('transport-failed').closeCode;
+
 /** The wire code an operation refused before queueing is reported under. */
 function failureCodeFor(reason: InputFailureReason): FailureCode {
   return reason === 'fifo-full' || reason === 'input-overflow' ? 'fifo-full' : 'read-only';
@@ -100,7 +102,11 @@ export class SessionConnection {
 
   #admit(hello: HelloMessage): void {
     const { session } = this.#options;
-    const admission = this.#options.authorize(hello);
+    const admission = this.#authorize(hello);
+    if (admission === undefined) {
+      this.#close(TRANSPORT_FAILURE_CLOSE_CODE);
+      return;
+    }
     if (!admission.allowed || hello.sessionId !== session.sessionId) {
       this.#close(1008);
       return;
@@ -122,6 +128,15 @@ export class SessionConnection {
     this.#sent(issued.ok ? { frame: issued.value, sequence: 0 } : undefined);
   }
 
+  /** A host callback that throws is a refusal, never an escape: no generation is issued and the transport closes. */
+  #authorize(hello: HelloMessage): Admission | undefined {
+    try {
+      return this.#options.authorize(hello);
+    } catch {
+      return undefined;
+    }
+  }
+
   #resolve(sequence: number, receipt: InputReceipt): void {
     this.#sent(
       receipt.disposition === 'accepted'
@@ -140,16 +155,33 @@ export class SessionConnection {
   #close(code: number): void {
     if (this.#closeCode !== undefined) return;
     this.#closeCode = code;
-    this.#options.close(code);
+    try {
+      this.#options.close(code);
+    } catch {
+      // The code is recorded and the transport is already unusable; a close that throws has nothing left to do.
+    }
   }
 
   #sent(sent: SentFrame | undefined): void {
-    if (sent !== undefined) this.#options.send(sent.frame);
+    if (sent !== undefined) this.#transmit(sent.frame);
+  }
+
+  /**
+   * Put a frame on the transport. A transport that throws is failed rather than left half-open:
+   * the attachment is revoked as a violation and the transport is closed with the transport-failure code.
+   */
+  #transmit(frame: Uint8Array | string): void {
+    try {
+      this.#options.send(frame);
+    } catch {
+      void this.#attachment?.protocolViolation();
+      this.#close(TRANSPORT_FAILURE_CLOSE_CODE);
+    }
   }
 
   /** Answer a frame the endpoint refused: send its reply, and end the attachment if the failure is fatal. */
   #reject(failure: ProtocolFailure): void {
-    if (failure.reply !== undefined) this.#options.send(failure.reply);
+    if (failure.reply !== undefined) this.#transmit(failure.reply);
     if (
       !describeFailure(failure.code).revokesGeneration &&
       failure.code !== 'protocol-version-unsupported'

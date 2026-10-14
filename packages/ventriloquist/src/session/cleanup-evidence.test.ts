@@ -107,7 +107,6 @@ async function observe(variant: Variant) {
   return {
     matched,
     releaseCalls: releaseCalls(),
-    elapsed: harness.clock.now,
     line: `${variant.label}: ${summary.cleanup}${summary.quarantined ? ', quarantined' : ''}`,
   };
 }
@@ -126,10 +125,6 @@ async function buildCell(id: (typeof EXPECTED_CELL_IDS)[number]): Promise<Eviden
       releaseCalls: {
         value: observed.reduce((sum, entry) => sum + entry.releaseCalls, 0),
         unit: 'calls',
-      },
-      fakeClockElapsed: {
-        value: Math.max(...observed.map((entry) => entry.elapsed)),
-        unit: 'milliseconds',
       },
     },
   };
@@ -180,6 +175,13 @@ describe('cleanup evidence report', () => {
       expect(cell.passed, `${cell.id}: ${cell.observations.join('; ')}`).toBe(true);
     }
     expect(written.passed).toBe(true);
+  });
+
+  test('reports only measured metrics, never a constant the test itself sets', async () => {
+    const report = await buildReport();
+    for (const cell of report.cells) {
+      expect(Object.keys(cell.metrics), cell.id).not.toContain('fakeClockElapsed');
+    }
   });
 
   test('fails when a required cell is missing, duplicated or unexpected', async () => {

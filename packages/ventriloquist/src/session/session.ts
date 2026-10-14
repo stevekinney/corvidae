@@ -22,6 +22,7 @@ import type {
   InputReceipt,
   OperationKind,
   OperationResultReason,
+  OutputSource,
   ProcessBackend,
   ProcessState,
   SessionAttachment,
@@ -136,12 +137,26 @@ export class Session {
     this.#budgets = resolveSessionBudgets(options.budgets);
     this.#backend = options.backend;
     this.#issueGeneration = options.issueGeneration ?? (() => 1);
-    this.#sources = options.sources.map(openSource);
+    this.#sources = this.#openSources(options.sources);
     let resolveClosed!: (summary: SessionClosedSummary) => void;
     this.closed = new Promise((resolve) => {
       resolveClosed = resolve;
     });
     this.#resolveClosed = resolveClosed;
+  }
+
+  /** Open every source; if one cannot be opened, release those already acquired before rethrowing. */
+  #openSources(definitions: readonly OutputSource[]): readonly OpenSource[] {
+    const opened: OpenSource[] = [];
+    try {
+      for (const definition of definitions) opened.push(openSource(definition));
+    } catch (error) {
+      for (const source of opened) {
+        void source.release(this.#clock, this.#budgets.cleanupDeadlineMilliseconds);
+      }
+      throw error;
+    }
+    return opened;
   }
 
   /** The three state axes, quarantine and ownership, as they are right now. */

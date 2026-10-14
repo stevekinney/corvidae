@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { ClientEndpoint } from '../protocol/client-endpoint.ts';
 import { encodeFrame } from '../protocol/frame-codec.ts';
 import type { ClientMessage } from '../protocol/messages.ts';
 import { createDeferred } from './fixtures/deferred.ts';
@@ -45,6 +46,33 @@ function forged(
   if (!encoded.ok) throw new Error('could not forge a frame');
   return encoded.value;
 }
+
+describe('a throwing authorization', () => {
+  test('fails closed: no capabilities, no attachment, and the transport closes with the internal-error code', async () => {
+    const harness = createHarness();
+    const sent: (Uint8Array | string)[] = [];
+    const closeCodes: number[] = [];
+    const connection = new SessionConnection({
+      session: harness.session,
+      authorize: () => {
+        throw new Error('token store unavailable');
+      },
+      send: (frame) => sent.push(frame),
+      close: (code) => closeCodes.push(code),
+    });
+    const client = new ClientEndpoint({
+      sessionId: harness.session.sessionId,
+      requestedMode: 'interactive',
+      token: 'fixture-token',
+    });
+    const hello = client.hello();
+    if (!hello.ok) throw new Error('could not build hello');
+    expect(() => connection.receive(hello.value)).not.toThrow();
+    expect(sent).toEqual([]);
+    expect(closeCodes).toEqual([1011]);
+    expect(harness.session.snapshot.connection).toEqual({ kind: 'detached' });
+  });
+});
 
 describe('the handshake', () => {
   test('issues the generation and the server-derived capabilities', async () => {
@@ -353,6 +381,58 @@ describe('exit, stop and the final result', () => {
     const summary = await harness.session.closed;
     expect(summary.cause).toBe('protocol-failure');
     expect(harness.backend?.calls.filter((call) => call.call === 'cleanup')).toHaveLength(1);
+  });
+
+  test('a send that throws while answering a frame revokes the generation and closes with the transport-failure code', async () => {
+    const harness = createHarness();
+    const closeCodes: number[] = [];
+    let armed = false;
+    const connection = new SessionConnection({
+      session: harness.session,
+      authorize: () => ({ allowed: true, grant: 'interactive' }),
+      send: () => {
+        if (armed) throw new Error('socket is gone');
+      },
+      close: (code) => closeCodes.push(code),
+    });
+    void harness.session.start();
+    await flush();
+    const client = new ClientEndpoint({
+      sessionId: harness.session.sessionId,
+      requestedMode: 'interactive',
+      token: 'fixture-token',
+    });
+    const hello = client.hello();
+    if (!hello.ok) throw new Error('could not build hello');
+    connection.receive(hello.value);
+    armed = true;
+    expect(() =>
+      connection.receive(forged({ kind: 'input', payload: utf8('rm -rf') }, 1, 99)),
+    ).not.toThrow();
+    await flush();
+    expect(closeCodes).toEqual([1011]);
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('protocol-failure');
+  });
+
+  test('a close that throws does not escape receive', async () => {
+    const harness = createHarness();
+    const connection = new SessionConnection({
+      session: harness.session,
+      authorize: () => ({ allowed: false }),
+      send: () => undefined,
+      close: () => {
+        throw new Error('already closed');
+      },
+    });
+    const client = new ClientEndpoint({
+      sessionId: harness.session.sessionId,
+      requestedMode: 'interactive',
+      token: 'fixture-token',
+    });
+    const hello = client.hello();
+    if (!hello.ok) throw new Error('could not build hello');
+    expect(() => connection.receive(hello.value)).not.toThrow();
   });
 
   test('a transport that closes underneath the session is a disconnect, and only once', async () => {

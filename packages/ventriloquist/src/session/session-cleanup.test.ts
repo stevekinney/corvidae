@@ -455,3 +455,24 @@ describe('cleanup of owned and borrowed sources', () => {
     expect(await harness.session.closed).toMatchObject({ cause: 'source-complete' });
   });
 });
+
+describe('construction failure', () => {
+  test('a source that cannot be opened releases the readers already acquired', async () => {
+    const first = createScriptedStream('pty');
+    const locked = {
+      kind: 'stream' as const,
+      channel: 'stderr' as const,
+      stream: {
+        getReader: (): never => {
+          throw new TypeError('stream is locked');
+        },
+      },
+    };
+    expect(() => createHarness({ backend: false, sources: [first.source, locked] })).toThrow(
+      'stream is locked',
+    );
+    await flush();
+    expect(first.cancelCount).toBe(1);
+    expect(first.lockReleased).toBe(true);
+  });
+});
