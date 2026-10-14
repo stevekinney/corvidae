@@ -866,3 +866,41 @@ describe('terminal events from the host', () => {
     }
   });
 });
+
+describe('cleanup while the client has unresolved operations', () => {
+  test('is rejected as malformed and closes the client', () => {
+    const { client, sequences } = (() => {
+      const client = attached();
+      return { client, sequences: [expectOk(client.input('a')).sequence] };
+    })();
+    expect(sequences).toHaveLength(1);
+    const cleanup = serverFrame({ kind: 'cleanup-result', outcome: 'complete' }, { sequence: 1 });
+    expect(failureOf(client.receive(cleanup))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unexpected-message',
+    });
+    expect(client.phase).toBe('closed');
+    expect(client.authorityRevoked).toBe(true);
+  });
+
+  test('is accepted once every operation has a result', () => {
+    const client = attached();
+    const sent = expectOk(client.input('a'));
+    expectOk(
+      client.receive(
+        serverFrame(
+          {
+            kind: 'operation-failure',
+            operationSequence: sent.sequence,
+            code: 'read-only',
+            message: 'cancelled',
+          },
+          { sequence: 1 },
+        ),
+      ),
+    );
+    expectOk(
+      client.receive(serverFrame({ kind: 'cleanup-result', outcome: 'complete' }, { sequence: 2 })),
+    );
+  });
+});

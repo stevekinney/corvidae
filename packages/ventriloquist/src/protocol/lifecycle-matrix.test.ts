@@ -160,9 +160,15 @@ const RULES: readonly Rule[] = [
     expects: () => 'refused',
   },
   {
-    group: 'after a hard close: the endpoint accepts and sends nothing from its closed side',
-    cite: '`malformed-frame` / `frame-too-large`: reject; current generation revoked.',
-    applies: (c) => c.phase === 'after-close' && c.column !== 'host-send',
+    group:
+      'after a hard close: nothing generation-scoped is accepted or sent; only explicit cancellations and cleanup remain',
+    cite: '`malformed-frame` / `frame-too-large`: reject; current generation revoked | drain bounded queue; kill owned process. / Stop ... cancels queued but unsubmitted operations with explicit results ... reports complete, incomplete, or unknown.',
+    applies: (c) =>
+      c.phase === 'after-close' &&
+      !(
+        c.column === 'host-send' &&
+        (c.kind === 'operation-failure' || c.kind === 'cleanup-result')
+      ),
     expects: () => 'refused',
   },
   {
@@ -236,23 +242,20 @@ const RULES: readonly Rule[] = [
       'process-exit is reported once, never after an attachment error, and never by an output-only source',
     cite: 'A failed connection is not a successful process exit. / Output-only sources ... report source completion rather than inventing exit code zero. / Exit: ... the distinct process-exit result when known, revokes the generation.',
     applies: (c) => c.kind === 'process-exit',
-    expects: (c) =>
-      verdict(
-        c.mode !== 'output-only' && is(c.phase, 'attached', 'after-terminate', 'after-close'),
-      ),
+    expects: (c) => verdict(c.mode !== 'output-only' && is(c.phase, 'attached', 'after-terminate')),
   },
   {
     group: 'an attachment error is the one terminal event, and not after a process exit',
     cite: 'A failed connection is not a successful process exit; PTY closure is not a subprocess exit code. / `spawn-failed` ... startup failure; generation revoked. / Exit: ... process-exit ..., revokes the generation, and emits cleanup-result.',
     applies: (c) => c.kind === 'attachment-error',
-    expects: (c) => verdict(is(c.phase, 'attached', 'after-terminate', 'after-close')),
+    expects: (c) => verdict(is(c.phase, 'attached', 'after-terminate')),
   },
   {
     group:
-      'cleanup follows cancellation: the host reports it only when no received operation is unresolved',
+      'cleanup follows cancellation: neither endpoint reports or accepts it while a received operation is unresolved',
     cite: 'Stop revokes authority first, cancels unsent operations, terminates owned descendants, closes handles, and reports complete, incomplete, or unknown.',
     applies: (c) => c.kind === 'cleanup-result',
-    expects: (c) => verdict(c.column === 'client-receive' || !c.pending),
+    expects: (c) => verdict(!c.pending),
   },
 ];
 

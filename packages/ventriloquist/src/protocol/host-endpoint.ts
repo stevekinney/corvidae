@@ -63,7 +63,8 @@ export class HostEndpoint {
   #cleanupReported = false;
   readonly #inbound: SequenceCursor;
   readonly #outbound: SequenceCursor;
-  readonly #operations = new OperationLedger();
+  readonly #operations: OperationLedger;
+  #hardClosed = false;
   readonly #output = new OutputLedger();
 
   /** `cursors` positions each direction's sequence; a fresh attachment starts both at 0. */
@@ -72,6 +73,7 @@ export class HostEndpoint {
     cursors: EndpointCursors = { inbound: new SequenceCursor(), outbound: new SequenceCursor() },
   ) {
     this.#limits = resolveLimits(options);
+    this.#operations = new OperationLedger(this.#limits.maxQueuedOperations);
     this.#inbound = cursors.inbound;
     this.#outbound = cursors.outbound;
   }
@@ -83,6 +85,11 @@ export class HostEndpoint {
   /** The accepted `hello`, once one has arrived. */
   get hello(): HelloMessage | undefined {
     return this.#hello;
+  }
+
+  /** How many operations a submitted-operation failure can still name: bounded by the FIFO window. */
+  get trackedOperations(): number {
+    return this.#operations.trackedCount;
   }
 
   /** The terms of the attachment, once capabilities have been issued. */
@@ -129,6 +136,7 @@ export class HostEndpoint {
     if (endsAttachment(rejection.failure)) {
       this.#inboundClosed = true;
       this.#authorityRevoked = true;
+      this.#hardClosed = true;
     }
     return rejection;
   }
@@ -298,6 +306,8 @@ export class HostEndpoint {
     if (terms !== undefined && !channelPermitted(terms.capabilities.mode, channel)) {
       return reject('malformed-frame', 'channel-not-permitted');
     }
+    // A hard close revoked the generation: only the explicit cancellations and cleanup remain.
+    if (this.#hardClosed) return reject('stale-generation', 'attachment-revoked');
     // The process-exit result follows the end of output ("PTY EOF or source completion, then the
     // distinct process-exit result"), so no output follows it.
     if (this.#processExitReported) return reject('malformed-frame', 'unexpected-message');
@@ -318,6 +328,7 @@ export class HostEndpoint {
   acknowledgeOperation(operationSequence: number): ProtocolResult<SentFrame> {
     // Once authority is revoked, "stop ... cancels queued but unsubmitted operations with explicit
     // results": a pending operation is failed, never accepted into the FIFO.
+    if (this.#hardClosed) return reject('stale-generation', 'attachment-revoked');
     if (this.#authorityRevoked) return reject('read-only', 'authority-revoked');
     const verified = this.#operations.verifyResolution(operationSequence);
     if (!verified.ok) return verified;
@@ -369,6 +380,7 @@ export class HostEndpoint {
 
   /** Report the process exit, once, separately from PTY end of file and from cleanup. */
   processExit(exitCode: number | null, signal: string | null): ProtocolResult<SentFrame> {
+    if (this.#hardClosed) return reject('stale-generation', 'attachment-revoked');
     if (this.#processExitReported) return reject('malformed-frame', 'already-reported');
     // "A failed connection is not a successful process exit": nothing follows an attachment error.
     if (this.#attachmentErrorReported) return reject('malformed-frame', 'unexpected-message');
@@ -402,6 +414,7 @@ export class HostEndpoint {
   ): ProtocolResult<SentFrame> {
     const hello = this.#hello;
     if (hello === undefined) return reject('stale-generation', 'handshake-incomplete');
+    if (this.#hardClosed) return reject('stale-generation', 'attachment-revoked');
     // An attachment error revokes the generation, and a reported process exit already ended it, so
     // only one terminal event is ever sent.
     if (this.#attachmentErrorReported || this.#processExitReported) {

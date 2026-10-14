@@ -49,7 +49,7 @@ export class ClientEndpoint {
   #hostRevoked = false;
   readonly #inbound: SequenceCursor;
   readonly #outbound: SequenceCursor;
-  readonly #operations = new OperationLedger();
+  #operations = new OperationLedger();
   readonly #output = new OutputLedger();
 
   /** `cursors` positions each direction's sequence; a fresh attachment starts both at 0. */
@@ -64,6 +64,11 @@ export class ClientEndpoint {
 
   get phase(): ClientPhase {
     return this.#phase;
+  }
+
+  /** How many operations a submitted-operation failure can still name: bounded by the FIFO window. */
+  get trackedOperations(): number {
+    return this.#operations.trackedCount;
   }
 
   /** The terms of the attachment, once the host's capabilities have been accepted. */
@@ -148,6 +153,7 @@ export class ClientEndpoint {
       maxFrameBytes: message.maxFrameBytes,
       maxQueuedOperations: message.maxQueuedOperations,
     };
+    this.#operations = new OperationLedger(message.maxQueuedOperations);
     this.#phase = 'attached';
     return accept(message);
   }
@@ -230,6 +236,10 @@ export class ClientEndpoint {
         this.#authorityRevoked = true;
         return undefined;
       case 'cleanup-result':
+        // The host cancels pending operations with explicit results before it reports cleanup.
+        if (this.#operations.unresolvedCount > 0) {
+          return reject('malformed-frame', 'unexpected-message');
+        }
         this.#authorityRevoked = true;
         this.#phase = 'closed';
         return undefined;

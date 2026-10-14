@@ -111,12 +111,14 @@ const ROWS: Record<FailureCode, DispositionRow> = {
 };
 
 /** Every failure code's complete row of the failure and cleanup table. */
-export const FAILURE_TABLE: Readonly<Record<FailureCode, FailureDisposition>> = Object.fromEntries(
-  (Object.keys(ROWS) as FailureCode[]).map((code) => [
-    code,
-    { code, ...ROWS[code], closeCode: FAILURE_CLOSE_CODES[code] },
-  ]),
-) as Record<FailureCode, FailureDisposition>;
+export const FAILURE_TABLE: Readonly<Record<FailureCode, FailureDisposition>> = Object.freeze(
+  Object.fromEntries(
+    (Object.keys(ROWS) as FailureCode[]).map((code) => [
+      code,
+      Object.freeze({ code, ...ROWS[code], closeCode: FAILURE_CLOSE_CODES[code] }),
+    ]),
+  ) as Record<FailureCode, FailureDisposition>,
+);
 
 /** The failure table row for `code`. */
 export function describeFailure(code: FailureCode): FailureDisposition {
@@ -124,18 +126,18 @@ export function describeFailure(code: FailureCode): FailureDisposition {
 }
 
 /** The codes an `operation-failure` message may carry: an input or resize that did not complete, including one addressed to a stale session or generation. */
-export const OPERATION_FAILURE_CODES = [
+export const OPERATION_FAILURE_CODES = Object.freeze([
   'stale-generation',
   'read-only',
   'fifo-full',
   'backend-failed',
   'transport-failed',
-] as const satisfies readonly FailureCode[];
+] as const) satisfies readonly FailureCode[];
 
 /** The codes an `attachment-error` message may carry: a startup or attachment failure. */
-export const ATTACHMENT_ERROR_CODES = [
+export const ATTACHMENT_ERROR_CODES = Object.freeze([
   'unsupported-runtime',
   'spawn-failed',
   'backend-failed',
   'transport-failed',
-] as const satisfies readonly FailureCode[];
+] as const) satisfies readonly FailureCode[];

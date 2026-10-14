@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { connect } from './endpoint-pair.test-support.ts';
 import { closeCodeForFailure, FAILURE_CLOSE_CODES, type FailureCode } from './failure-codes.ts';
 import {
   ATTACHMENT_ERROR_CODES,
@@ -153,5 +154,54 @@ describe('failure table', () => {
       'backend-failed',
       'transport-failed',
     ]);
+  });
+});
+
+describe('the exported failure data is immutable', () => {
+  test('is frozen, rows and code lists included', () => {
+    expect(Object.isFrozen(FAILURE_TABLE)).toBe(true);
+    for (const row of Object.values(FAILURE_TABLE)) expect(Object.isFrozen(row)).toBe(true);
+    expect(Object.isFrozen(OPERATION_FAILURE_CODES)).toBe(true);
+    expect(Object.isFrozen(ATTACHMENT_ERROR_CODES)).toBe(true);
+    expect(Object.isFrozen(FAILURE_CLOSE_CODES)).toBe(true);
+  });
+
+  test('cannot be mutated to change what an endpoint does with a malformed frame', () => {
+    const attempts: Array<() => void> = [
+      () => {
+        (FAILURE_TABLE['malformed-frame'] as { revokesGeneration: boolean }).revokesGeneration =
+          false;
+      },
+      () => {
+        (FAILURE_TABLE as Record<string, unknown>)['malformed-frame'] = {
+          ...FAILURE_TABLE['malformed-frame'],
+          revokesGeneration: false,
+        };
+      },
+      () => {
+        delete (FAILURE_TABLE as Record<string, unknown>)['malformed-frame'];
+      },
+      () => {
+        (OPERATION_FAILURE_CODES as unknown as string[]).push('malformed-frame');
+      },
+      () => {
+        (FAILURE_CLOSE_CODES as Record<string, number>)['malformed-frame'] = 1000;
+      },
+    ];
+    for (const attempt of attempts) {
+      try {
+        attempt();
+      } catch (error) {
+        expect(error).toBeInstanceOf(TypeError);
+      }
+    }
+    expect(describeFailure('malformed-frame').revokesGeneration).toBe(true);
+    const { host, client } = connect();
+    expect(host.receive('not json').ok).toBe(false);
+    expect(host.authorityRevoked).toBe(true);
+    expect(host.receive(JSON.stringify({})).ok).toBe(false);
+    expect(client.receive('not json').ok).toBe(false);
+    expect(client.phase).toBe('closed');
+    expect(client.authorityRevoked).toBe(true);
   });
 });

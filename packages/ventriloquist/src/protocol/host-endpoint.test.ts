@@ -818,7 +818,7 @@ describe('frames the host sends', () => {
     expectOk(host.issueCapabilities({ generation: 1, capabilities: PTY_CAPABILITIES }));
     expect(host.processExit(0, null).ok).toBe(false);
     expect(host.authorityRevoked).toBe(true);
-    expect(failureOf(host.processExit(0, null)).reason).toBe('sequence-overflow');
+    expect(failureOf(host.processExit(0, null)).reason).toBe('attachment-revoked');
   });
 
   test('issues no capabilities once the endpoint is closed', () => {
@@ -848,10 +848,10 @@ describe('frames the host sends', () => {
     expect(failed.terms).toBeUndefined();
   });
 
-  test('can still report exit and cleanup after the client was revoked for a bad frame', () => {
+  test('reports only cleanup after the client was revoked for a bad frame', () => {
     const { host } = connect();
     host.receive('not json');
-    expectOk(host.processExit(1, null));
+    expect(failureOf(host.processExit(1, null)).reason).toBe('attachment-revoked');
     expectOk(host.cleanupResult('complete'));
   });
 
@@ -1095,6 +1095,27 @@ describe('cleanup with unresolved operations', () => {
     expectOk(host.failOperation(1, 'read-only', 'cancelled'));
     expect(host.cleanupResult('complete').ok).toBe(false);
     expectOk(host.failOperation(2, 'read-only', 'cancelled'));
+    expectOk(host.cleanupResult('complete'));
+  });
+});
+
+describe('sends after a hard close', () => {
+  test('refuses every generation-scoped send, and keeps cancellation and cleanup', () => {
+    const { host } = connect();
+    expectOk(host.receive(inputFrame(1)));
+    expect(host.receive('not json').ok).toBe(false);
+    for (const attempt of [
+      host.output('pty', 'x'),
+      host.processExit(0, null),
+      host.acknowledgeOperation(1),
+      host.attachmentError('spawn-failed', 'late'),
+    ]) {
+      expect(failureOf(attempt)).toEqual({
+        code: 'stale-generation',
+        reason: 'attachment-revoked',
+      });
+    }
+    expectOk(host.failOperation(1, 'read-only', 'cancelled'));
     expectOk(host.cleanupResult('complete'));
   });
 });

@@ -1,3 +1,4 @@
+import { MAXIMUM_QUEUED_OPERATIONS } from './protocol-constants.ts';
 import { accept, reject, type ProtocolResult } from './protocol-failure.ts';
 
 /**
@@ -11,10 +12,27 @@ export class OperationLedger {
   #unresolved: number[];
   #lastResolved: number;
   #highestSubmitted: number;
-  /** Every sequence that was ever an operation: sequences of other messages are never in it. */
+  /**
+   * The operations a submitted-operation failure may still name: every unresolved one, and the
+   * acknowledged ones still inside the host FIFO window. Sequences of other messages are never in it.
+   *
+   * The window is the negotiated FIFO depth. The contract bounds the host FIFO ("the bounded host
+   * FIFO is 256 operations"), keeps input and resize in one order ("Input and resize share one
+   * ordered operation sequence and FIFO"), and says an acknowledgement is acceptance "into that
+   * bounded host FIFO, never backend consumption", while "a submitted operation can still fail
+   * later". An operation can only fail while it is in the FIFO or being processed, and processing
+   * follows FIFO order, so once `window` newer operations have been accepted behind it, it has left
+   * the FIFO and cannot fail. The ledger therefore holds at most `window` acknowledged operations
+   * plus the unresolved ones (also at most `window`), however long the attachment lives.
+   */
   readonly #submitted: Set<number>;
+  /** The acknowledged operations still inside the window, oldest first. */
+  readonly #acknowledged: number[];
+  readonly #window: number;
 
-  constructor() {
+  constructor(window = MAXIMUM_QUEUED_OPERATIONS) {
+    this.#window = window;
+    this.#acknowledged = [];
     this.#unresolved = [];
     this.#lastResolved = 0;
     this.#highestSubmitted = 0;
@@ -23,6 +41,11 @@ export class OperationLedger {
 
   get unresolvedCount(): number {
     return this.#unresolved.length;
+  }
+
+  /** How many operations a submitted-operation failure can still name: bounded by twice the window. */
+  get trackedCount(): number {
+    return this.#submitted.size;
   }
 
   submit(sequence: number): void {
@@ -56,7 +79,18 @@ export class OperationLedger {
     return accept(undefined);
   }
 
+  /** Resolve the oldest unresolved operation because the host accepted it into its FIFO. */
   resolve(): void {
+    const sequence = this.#unresolved[0];
+    this.#shift();
+    if (sequence === undefined) return;
+    this.#acknowledged.push(sequence);
+    if (this.#acknowledged.length > this.#window) {
+      this.#submitted.delete(this.#acknowledged.shift()!);
+    }
+  }
+
+  #shift(): void {
     this.#lastResolved = this.#unresolved.shift() ?? this.#lastResolved;
   }
 
@@ -68,8 +102,10 @@ export class OperationLedger {
   retire(sequence: number): void {
     this.#submitted.delete(sequence);
     const position = this.#unresolved.indexOf(sequence);
-    if (position === 0) this.resolve();
+    if (position === 0) this.#shift();
     else if (position > 0) this.#unresolved.splice(position, 1);
+    const acknowledged = this.#acknowledged.indexOf(sequence);
+    if (acknowledged >= 0) this.#acknowledged.splice(acknowledged, 1);
   }
 
   /**
@@ -79,7 +115,7 @@ export class OperationLedger {
    */
   refuse(): void {
     const sequence = this.#unresolved[0];
-    this.resolve();
+    this.#shift();
     if (sequence !== undefined) this.#submitted.delete(sequence);
   }
 }
