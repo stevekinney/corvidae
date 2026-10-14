@@ -164,13 +164,20 @@ export function comparabilityProblems(
     (sample) => sample.source.dirtyPaths.length > 0,
   );
   if (dirtyBaseline) problems.push('A baseline sample ran against a dirty working tree.');
+  // Only failures in the samples the selection rule reads make results incomparable. Playwright
+  // and probe failures are reported by `runFailures` but feed no primary metric.
   for (const [label, results] of [
     ['baseline', baseline],
     ['candidate', candidate],
   ] as const) {
-    for (const failure of runFailures(results)) problems.push(`${label}: ${failure}`);
+    for (const failure of primaryMetricFailures(results)) problems.push(`${label}: ${failure}`);
   }
   return problems;
+}
+
+/** Failures in the static-export and server-readiness samples, which feed the primary metrics. */
+export function primaryMetricFailures(results: MeasurementResults): string[] {
+  return runFailures({ ...results, playwright: [], probes: {} });
 }
 
 /** Samples that did not complete: a failed export or Playwright run, a readiness miss, a failed probe. */

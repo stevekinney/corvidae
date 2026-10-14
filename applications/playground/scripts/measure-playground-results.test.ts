@@ -226,3 +226,20 @@ describe('runFailures', () => {
     ]);
   });
 });
+
+describe('comparability scope', () => {
+  it('ignores Playwright and probe failures, which feed no primary metric', () => {
+    const playwrightFailure = {
+      ...exportSample('cold', 1, 1),
+      child: { ...child(1, 1), exitCode: 1 },
+      report: null,
+    };
+    const subject = results({
+      staticExport: [exportSample('cold', 1, 1)],
+      playwright: [playwrightFailure],
+      probes: { navigation: { loadWait, child: child(1, 1), result: null, error: 'See log.' } },
+    });
+    expect(runFailures(subject)).toHaveLength(2);
+    expect(comparabilityProblems(subject, results({}))).toEqual([]);
+  });
+});
