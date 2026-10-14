@@ -54,6 +54,18 @@ export type { EvaluatedProvenance, TokenEvaluation } from './evaluated-provenanc
 export type { PropertyMap } from './projection.ts';
 export { canonicalJson, computeSourceDigest, sha256Hex } from './source-digest.ts';
 export type { DigestableSource } from './source-digest.ts';
+export {
+  OVERRIDE_DOCUMENTS,
+  applyCssOnlyOverrides,
+  buildThemeSources,
+} from './theme-sources.ts';
+export type { OverrideScopeName, ThemeSourceEnvelope } from './theme-sources.ts';
+export { THEME_LAYER, StylesheetError, renderThemeStylesheet } from './theme-stylesheet.ts';
+export type {
+  ContextProperties,
+  StylesheetContext,
+  ThemeStylesheetOptions,
+} from './theme-stylesheet.ts';
 export { TOKEN_TYPES, TokenValidationError } from './types.ts';
 export type {
   DesignToken,

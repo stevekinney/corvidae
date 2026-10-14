@@ -1,3 +1,4 @@
+import { buildThemeSources } from '@lostgradient/cinder/tokens/runtime';
 import { describe, expect, it } from 'bun:test';
 
 import { cinderThemeBase } from './theme-builder-base.ts';
@@ -5,7 +6,7 @@ import { EvaluationGate } from './theme-draft-evaluation.ts';
 import type { ThemeContextId, ThemeEnvelope } from './theme-draft-types.ts';
 import { applyEdit, createDraft, type DraftEdit } from './theme-draft.ts';
 import { createEnvelope } from './theme-envelope.ts';
-import { buildThemeSources, createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
+import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
 
 const px = (value: number) => ({ $type: 'dimension', $value: { value, unit: 'px' } });
 const ms = (value: number) => ({ $type: 'duration', $value: { value, unit: 'ms' } });

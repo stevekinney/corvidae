@@ -6,7 +6,11 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import { AUTHORING_CATALOGUE, evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
+import {
+  AUTHORING_CATALOGUE,
+  buildThemeSources,
+  evaluateThemeProperties,
+} from '@lostgradient/cinder/tokens/runtime';
 
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { catalogueRows } from './theme-builder-catalogue.ts';
@@ -16,7 +20,6 @@ import { colorToJson, withChannel } from './theme-color-model.ts';
 import type { ThemeEnvelope } from './theme-draft-types.ts';
 import { applyEdit, createDraft } from './theme-draft.ts';
 import { createEnvelope } from './theme-envelope.ts';
-import { buildThemeSources } from './theme-runtime-evaluator.ts';
 import { buildEdit, defaultScope, overrideScopeFor } from './theme-token-edit.ts';
 import { editorForToken } from './theme-token-editors.ts';
 
