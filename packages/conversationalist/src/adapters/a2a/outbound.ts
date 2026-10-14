@@ -1,5 +1,5 @@
 import type { Message, MessageRole } from '../../types';
-import { toA2AParts } from './content';
+import { copyA2AStruct, toA2AParts } from './content';
 import { A2AMappingError, unsupportedA2AContent } from './errors';
 import type { A2AArtifact, A2AArtifactContent, A2AMessage, A2APart, A2ARole } from './types';
 
@@ -18,7 +18,9 @@ export function toA2AMessage(message: Message): A2AMessage {
     messageId: message.id,
     role: toA2ARole(message.role),
     parts: toRequiredParts(message.content, 'message'),
-    ...(Object.keys(message.metadata).length > 0 ? { metadata: { ...message.metadata } } : {}),
+    ...(Object.keys(message.metadata).length > 0
+      ? { metadata: copyA2AStruct(message.metadata) }
+      : {}),
   };
 }
 
@@ -32,7 +34,7 @@ export function toA2AArtifact(artifact: A2AArtifactContent): A2AArtifact {
     ...(artifact.name !== undefined ? { name: artifact.name } : {}),
     ...(artifact.description !== undefined ? { description: artifact.description } : {}),
     parts: toRequiredParts(artifact.content, 'artifact'),
-    ...(artifact.metadata !== undefined ? { metadata: { ...artifact.metadata } } : {}),
+    ...(artifact.metadata !== undefined ? { metadata: copyA2AStruct(artifact.metadata) } : {}),
     ...(artifact.extensions !== undefined ? { extensions: [...artifact.extensions] } : {}),
   };
 }

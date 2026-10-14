@@ -5,7 +5,7 @@ import type {
   TextContent,
 } from '../../multi-modal';
 import type { JSONValue } from '../../types';
-import { parseJSONValue } from '../shared';
+import { parseJSONValue, toJSONValue } from '../shared';
 import { A2AMappingError, unsupportedA2AContent } from './errors';
 import type { A2ADataPart, A2APart, A2ARawPart, A2AStruct, A2AUrlPart } from './proto-types';
 
@@ -75,6 +75,10 @@ export function toA2AParts(content: string | ReadonlyArray<MultiModalContent>): 
  * - `data` becomes an `application/json` document holding the base64 UTF-8
  *   encoding of the serialized value.
  *
+ * A file part without a media type becomes a document of type
+ * `application/octet-stream`. Part metadata other than `citations` (text) and
+ * `text` (image alternative text) has no place on content and is not carried.
+ *
  * An absent filename maps to the empty document name and back, matching the
  * proto3 default for `string filename`. A part that sets zero or several
  * `content` oneof members throws an `A2AMappingError` of kind `part`.
@@ -89,13 +93,19 @@ export function fromA2APart(part: A2APart): MultiModalContent {
 function toA2ATextPart(content: TextContent): A2APart {
   return {
     text: content.text,
-    ...(content.citations !== undefined ? { metadata: { citations: content.citations } } : {}),
+    ...(content.citations !== undefined
+      ? { metadata: { citations: toJSONValue(content.citations) } }
+      : {}),
   };
 }
 
 function fromA2ATextPart(text: string, metadata: A2AStruct | undefined): TextContent {
   const citations = metadata?.['citations'];
-  return { type: 'text', text, ...(citations !== undefined ? { citations } : {}) };
+  return {
+    type: 'text',
+    text,
+    ...(citations !== undefined ? { citations: toJSONValue(citations) } : {}),
+  };
 }
 
 function toA2AImagePart(content: ImageContent): A2APart {
@@ -197,4 +207,11 @@ function decodeJSON(base64: string): JSONValue | undefined {
 function unreachableContent(content: never): never {
   const kind = (content as { type?: unknown }).type;
   throw unsupportedA2AContent(String(kind), 'unknown content part kind.');
+}
+
+/** Deep-copies a `google.protobuf.Struct` value so mapped messages share no JSON. */
+export function copyA2AStruct(struct: A2AStruct): A2AStruct {
+  return Object.fromEntries(
+    Object.entries(struct).map(([key, value]) => [key, toJSONValue(value)]),
+  );
 }

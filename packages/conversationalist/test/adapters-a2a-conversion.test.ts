@@ -306,6 +306,31 @@ describe('A2A messages', () => {
     }
   });
 
+  it('copies metadata and citations so the mapped message shares no JSON with its source', () => {
+    const a2aMessage: A2AMessage = {
+      messageId: 'message-4',
+      role: 'ROLE_AGENT',
+      parts: [{ text: 'Cited', metadata: { citations: [{ title: 'Source' }] } }],
+      metadata: { trace: { step: 1 } },
+    };
+
+    const imported = fromA2AMessage(a2aMessage);
+    const exported = toA2AMessage(
+      createMessage({
+        role: imported.role,
+        content: imported.content,
+        metadata: imported.metadata ?? {},
+      }),
+    );
+
+    expect(imported.metadata?.['trace']).not.toBe(a2aMessage.metadata?.['trace']);
+    expect(imported.content[0]).toMatchObject({ citations: [{ title: 'Source' }] });
+    expect((imported.content[0] as { citations?: unknown }).citations).not.toBe(
+      a2aMessage.parts[0]?.metadata?.['citations'],
+    );
+    expect(exported.metadata?.['trace']).not.toBe(imported.metadata?.['trace']);
+  });
+
   it('rejects a message with no content parts', () => {
     const error = captureMappingError(() =>
       toA2AMessage(createMessage({ role: 'user', content: [] })),

@@ -1,4 +1,4 @@
-import { fromA2APart } from './content';
+import { copyA2AStruct, fromA2APart } from './content';
 import { unsupportedA2AContent } from './errors';
 import type {
   A2AArtifact,
@@ -22,7 +22,7 @@ export function fromA2AMessage(message: A2AMessage): A2AInboundMessage {
     id: message.messageId,
     role: fromA2ARole(message.role),
     content: message.parts.map(fromA2APart),
-    ...(message.metadata !== undefined ? { metadata: { ...message.metadata } } : {}),
+    ...(message.metadata !== undefined ? { metadata: copyA2AStruct(message.metadata) } : {}),
   };
 }
 
@@ -38,7 +38,7 @@ export function fromA2AArtifact(artifact: A2AArtifact): A2AArtifactContent & {
     ...(artifact.name !== undefined ? { name: artifact.name } : {}),
     ...(artifact.description !== undefined ? { description: artifact.description } : {}),
     content: artifact.parts.map(fromA2APart),
-    ...(artifact.metadata !== undefined ? { metadata: { ...artifact.metadata } } : {}),
+    ...(artifact.metadata !== undefined ? { metadata: copyA2AStruct(artifact.metadata) } : {}),
     ...(artifact.extensions !== undefined ? { extensions: [...artifact.extensions] } : {}),
   };
 }
