@@ -2,6 +2,7 @@ import { activity } from '@lostgradient/weft';
 import type { ConversationSnapshot } from 'conversationalist';
 
 import type { CheckpointStore } from './checkpoint-store';
+import { applyConversationSnapshotDelta, type ConversationSnapshotDelta } from './snapshot-delta';
 import type { RunCursor, StepRecord } from './types';
 
 /** Input for the cursor write activity. */
@@ -10,10 +11,17 @@ export interface SaveCursorInput {
   cursor: RunCursor;
 }
 
-/** Input for the conversation snapshot write activity. */
-export interface SaveConversationInput {
+/**
+ * Input for the conversation snapshot write activity: the snapshot whole, or
+ * (COR-1376) a delta from the transcript the run last saved.
+ */
+export type SaveConversationInput = SaveWholeConversationInput | SaveConversationDeltaInput;
+
+/** Saves the run's transcript whole. */
+export interface SaveWholeConversationInput {
   runId: string;
   snapshot: ConversationSnapshot;
+  delta?: never;
   /**
    * COR-104 — the steering `getAppliedFloor()` read at the run's first
    * execution. The activity echoes it back as its result, so Weft's positional
@@ -21,6 +29,18 @@ export interface SaveConversationInput {
    * field existed cached `undefined` there, which callers read as floor `0`.
    */
   steeringBoundary?: number | undefined;
+}
+
+/**
+ * Saves the run's transcript as a delta from the transcript the run saved
+ * last. Weft keeps every activity input in the run's timeline, so passing the
+ * whole snapshot on every step stored the whole conversation once per step.
+ */
+export interface SaveConversationDeltaInput {
+  runId: string;
+  delta: ConversationSnapshotDelta;
+  snapshot?: never;
+  steeringBoundary?: never;
 }
 
 /** Input for the step-record write activity. */
@@ -64,8 +84,23 @@ export function createStorageActivities(checkpointStore: CheckpointStore) {
       name: 'saveConversation',
       idempotent: true,
       execute: async (input: SaveConversationInput): Promise<number | undefined> => {
-        await checkpointStore.saveConversation(input.runId, input.snapshot);
-        return input.steeringBoundary;
+        if (input.delta === undefined) {
+          await checkpointStore.saveConversation(input.runId, input.snapshot);
+          return input.steeringBoundary;
+        }
+        const saved = await checkpointStore.loadConversation(input.runId, { strict: true });
+        // A retry after the write landed finds the delta already applied.
+        if (saved?.integrity.digest === input.delta.digest) return undefined;
+        if (saved === null) {
+          throw new Error(
+            `Durable run "${input.runId}" has no saved transcript to apply a conversation delta to.`,
+          );
+        }
+        await checkpointStore.saveConversation(
+          input.runId,
+          applyConversationSnapshotDelta(saved, input.delta),
+        );
+        return undefined;
       },
     }),
 
