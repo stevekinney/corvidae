@@ -127,6 +127,15 @@
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"]
     },
+    "@lostgradient/terminal#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"],
+      "env": ["CODEX_CI", "NODE_ENV"]
+    },
+    "@lostgradient/ventriloquist#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"]
+    },
     "@lostgradient/cinder#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
