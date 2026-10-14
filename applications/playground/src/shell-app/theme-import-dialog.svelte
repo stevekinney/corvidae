@@ -193,6 +193,21 @@
             </ul>
           </div>
         {/if}
+        <div class="import__actions" role="group" aria-label="Import actions">
+          <Button label="Download unchanged" variant="secondary" onclick={downloadUnchanged} />
+          <Button
+            label="Import as a copy"
+            variant="secondary"
+            disabled={busy || !canApply(result)}
+            onclick={() => void apply('copy')}
+          />
+          <Button
+            label="Apply to this theme"
+            variant="primary"
+            disabled={busy || !canApply(result)}
+            onclick={() => void apply('replace')}
+          />
+        </div>
         {#if failure !== ''}
           <p class="import__failure" role="alert" data-testid="import-failure">{failure}</p>
         {/if}
@@ -202,21 +217,6 @@
 
   {#snippet footer()}
     <Button label="Cancel" variant="secondary" onclick={onClose} />
-    {#if result !== null}
-      <Button label="Download unchanged" variant="secondary" onclick={downloadUnchanged} />
-      <Button
-        label="Import as a copy"
-        variant="secondary"
-        disabled={busy || !canApply(result)}
-        onclick={() => void apply('copy')}
-      />
-      <Button
-        label="Apply to this theme"
-        variant="primary"
-        disabled={busy || !canApply(result)}
-        onclick={() => void apply('replace')}
-      />
-    {/if}
   {/snippet}
 </Modal>
 
@@ -263,6 +263,11 @@
   }
   .import__facts dd {
     margin: 0;
+  }
+  .import__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .import__failure {
     font-weight: var(--cinder-font-semibold);

@@ -60,14 +60,25 @@ async function downloadSource(page: Page): Promise<string> {
   expect(file.suggestedFilename()).toMatch(/-[0-9a-f-]{8}\.cinder-theme\.json$/);
   const saved = await file.path();
   const text = await readFile(saved, 'utf8');
-  await dialog.getByRole('button', { name: 'Close' }).click();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   return text;
 }
 
+/** Small text is pasted; a whole exported theme (hundreds of KB) is chosen as a file. */
 async function pasteAndCheck(page: Page, text: string) {
   const dialog = await openImport(page);
-  await dialog.getByLabel('Or paste JSON').fill(text);
-  await dialog.getByRole('button', { name: 'Check pasted JSON' }).click();
+  if (text.length > 20_000) {
+    await dialog
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: 'theme.cinder-theme.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(text),
+      });
+  } else {
+    await dialog.getByLabel('Or paste JSON').fill(text);
+    await dialog.getByRole('button', { name: 'Check pasted JSON' }).click();
+  }
   await expect(dialog.getByTestId('import-result')).toBeVisible({ timeout: 30_000 });
   return dialog;
 }
@@ -113,6 +124,9 @@ test.describe('export and re-import', () => {
   }) => {
     await openReady(page);
     const dialog = await openExport(page);
+    // The shipped theme carries review and advisory items; CSS and DTCG wait for acknowledgement.
+    await expect(dialog.getByTestId('export-css-blocked')).toContainText('acknowledgement');
+    await dialog.getByLabel(/I have read the \d+ items/).check();
     await expect(dialog.getByTestId('export-source')).toContainText('Cinder Theme v1');
     await expect(dialog.getByTestId('export-source')).toContainText('not a standard DTCG');
     await expect(dialog.getByTestId('export-portable-blocked')).toContainText(
@@ -214,8 +228,10 @@ test.describe('keyboard and focus', () => {
   }) => {
     await openReady(page);
     await setRadius(page, 5);
-    const exported = await downloadSource(page);
     await setRadius(page, 9);
+    const small = JSON.stringify({
+      radius: { medium: { $type: 'dimension', $value: { value: 5, unit: 'px' } } },
+    });
 
     const trigger = page.getByRole('button', { name: 'Import', exact: true });
     await trigger.focus();
@@ -225,11 +241,11 @@ test.describe('keyboard and focus', () => {
     expect(await insideDialog(page)).toBe(true);
 
     await dialog.getByLabel('Or paste JSON').focus();
-    await page.keyboard.insertText(exported);
+    await page.keyboard.insertText(small);
     await page.getByRole('button', { name: 'Check pasted JSON' }).focus();
     await page.keyboard.press('Enter');
     await expect(dialog.getByTestId('import-result')).toBeVisible({ timeout: 30_000 });
-    await expect(dialog.getByTestId('import-announcer')).toContainText('Cinder Theme v1 envelope');
+    await expect(dialog.getByTestId('import-announcer')).toContainText('DTCG token document');
     await page.getByRole('button', { name: 'Apply to this theme' }).focus();
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
