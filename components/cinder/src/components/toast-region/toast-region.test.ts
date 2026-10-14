@@ -51,6 +51,7 @@ function renderServerRegion(): { exitCode: number; stderr: string; ssrHtml: stri
       }
     `;
   const result = Bun.spawnSync({
+    timeout: 120_000,
     cmd: ['bun', '-e', script],
     cwd: REPOSITORY_ROOT,
     stdout: 'pipe',

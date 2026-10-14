@@ -173,7 +173,7 @@ describe('checkCoverageRatchet', () => {
       `import { checkCoverageRatchet } from ${JSON.stringify(join(import.meta.dir, 'run-coverage-ratchet.ts'))};\n` +
         `await checkCoverageRatchet({ packageRoot: ${JSON.stringify(root)} });\n`,
     );
-    return Bun.spawnSync([process.execPath, caller]);
+    return Bun.spawnSync([process.execPath, caller], { timeout: 120_000 });
   }
 
   test('prints the summary and exits 0 when every threshold holds', () => {

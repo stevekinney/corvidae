@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
 
-import { findTestProcessSpawnViolations, resolveSpecifier } from './check-test-process-spawns';
+import {
+  findTestProcessSpawnViolations,
+  findUnboundedSpawns,
+  resolveSpecifier,
+} from './check-test-process-spawns';
 
 function inspectAt(fileName: string, source: string): string[] {
   const parsed = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
@@ -162,4 +166,27 @@ test('skips scripts/benchmarks directories when collecting test files', async ()
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+describe('spawn hang guards', () => {
+  const unbounded = (source: string): string[] =>
+    findUnboundedSpawns(
+      ts.createSourceFile('fixture.test.ts', source, ts.ScriptTarget.Latest, true),
+    ).map((violation) => violation.text);
+
+  test.each([
+    ['an array-and-options spawn without timeout', "Bun.spawn(['bun'], { cwd: '/' });"],
+    ['a single-object spawn without timeout', "Bun.spawnSync({ cmd: ['git'] });"],
+    ['a spawn with no options at all', "Bun.spawnSync(['git', 'status']);"],
+    ['a spawn whose options are a variable', "Bun.spawn(['bun'], options);"],
+  ])('reports %s', (_name, source) => {
+    expect(unbounded(source)).toHaveLength(1);
+  });
+
+  test.each([
+    ['a timeout in the options', "Bun.spawn(['bun'], { cwd: '/', timeout: 120_000 });"],
+    ['a timeout in a single-object spawn', "Bun.spawnSync({ cmd: ['git'], timeout: LIMIT });"],
+  ])('accepts %s', (_name, source) => {
+    expect(unbounded(source)).toEqual([]);
+  });
 });

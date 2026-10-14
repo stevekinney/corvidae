@@ -31,6 +31,13 @@
  * `// spawn-free: <reason>` comment directly above its `it(`/`test(` call, naming what stands in
  * for the process; the reason must be at least 20 characters. That is the only exemption.
  *
+ * Moving a process to module scope takes it off the per-test clock, so nothing bounds it there:
+ * a child that never exits would hold the whole run. Every direct `Bun.spawn` or `Bun.spawnSync`
+ * in a test file, wherever it runs, must therefore pass `timeout` in an object-literal options
+ * argument (the owner-approved 120-second hang guard, `SCENARIO_HANG_GUARD_MILLISECONDS` in the
+ * module-scope scenario helpers), so Bun kills a hung child. A spawn whose options are not an
+ * object literal is reported too, because the guard cannot see what they hold.
+ *
  * Blind spots, documented rather than claimed as covered:
  *
  *   - a spawning function reached through a value rather than a name: a method on an object
@@ -437,6 +444,34 @@ export function findTestProcessSpawnViolations(
   return violations;
 }
 
+function spawnOptionsHaveTimeout(call: ts.CallExpression): boolean {
+  const options = call.arguments.length === 1 ? call.arguments[0] : call.arguments[1];
+  return (
+    options !== undefined &&
+    ts.isObjectLiteralExpression(options) &&
+    options.properties.some(
+      (property) =>
+        property.name !== undefined &&
+        (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+        property.name.text === 'timeout',
+    )
+  );
+}
+
+/** Direct `Bun.spawn`/`Bun.spawnSync` calls that do not pass a `timeout` hang guard. */
+export function findUnboundedSpawns(sourceFile: ts.SourceFile): TestProcessSpawnViolation[] {
+  const violations: TestProcessSpawnViolation[] = [];
+  walk(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const name = calleeName(node.expression);
+    if (name !== 'Bun.spawn' && name !== 'Bun.spawnSync') return;
+    if (spawnOptionsHaveTimeout(node)) return;
+    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    violations.push({ line: line + 1, text: `${name} without a timeout hang guard` });
+  });
+  return violations;
+}
+
 export function collectTestFiles(directory: string, paths: string[]): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
@@ -461,7 +496,10 @@ function scan(): string[] {
       ts.ScriptTarget.Latest,
       true,
     );
-    for (const violation of findTestProcessSpawnViolations(sourceFile)) {
+    for (const violation of [
+      ...findTestProcessSpawnViolations(sourceFile),
+      ...findUnboundedSpawns(sourceFile),
+    ]) {
       findings.push(`${relative(root, path)}:${violation.line} — ${violation.text}`);
     }
   }
@@ -472,7 +510,7 @@ function main(): void {
   const findings = scan();
   if (findings.length === 0) {
     process.stdout.write(
-      'check-test-process-spawns — OK (no test body or hook starts a child process).\n',
+      'check-test-process-spawns — OK (no test body or hook starts a child process, and every test spawn has a timeout).\n',
     );
     return;
   }
@@ -481,7 +519,8 @@ function main(): void {
       "A spawn inside a test pays the child's boot on Bun's five-second per-test clock and times\n" +
       'out on a loaded host. Call the logic in process when the child only runs repository code;\n' +
       'when the real process is the behavior, run it at module scope with top-level await and\n' +
-      'assert on the recorded result. Never raise the timeout.\n\n',
+      'assert on the recorded result, and give every spawn in a test file a `timeout` hang guard.\n' +
+      'Never raise the per-test timeout.\n\n',
   );
   for (const finding of findings) process.stderr.write(`  ${finding}\n`);
   process.exitCode = 1;
