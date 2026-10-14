@@ -1,0 +1,163 @@
+<script lang="ts" module>
+  /**
+   * @cinder
+   * @category domain
+   * @status alpha
+   * @purpose Render a terminal session's screen, cursor, colors, and scrollback inside Cinder's TerminalFrame, with the selected engine mounted only in the browser.
+   * @tag terminal
+   * @tag pty
+   * @useWhen Showing the output of a real terminal session, with a measured grid the host sizes its process to.
+   * @avoidWhen Rendering a read-only log of finished text — use TerminalOutput.
+   * @related terminal-frame, terminal-output
+   */
+  export type {
+    TerminalGeometry,
+    TerminalOutputListener,
+    TerminalProps,
+    TerminalRendererController,
+    TerminalRendererFailure,
+    TerminalRendererFailurePhase,
+    TerminalState,
+  } from './terminal.types.ts';
+</script>
+
+<script lang="ts">
+  import { Button, TerminalFrame } from '@lostgradient/cinder';
+  import { untrack } from 'svelte';
+
+  import { createTerminalAttachment, type AttachmentSettings } from './terminal-attachment.ts';
+  import { loadRendererEngineFactory } from './terminal-engine-loader.ts';
+  import { acceptsInput, isErrorState, mountsEngine, ownsGrid } from './terminal-state.ts';
+  import {
+    TERMINAL_FRAME_STATUS,
+    TERMINAL_STATE_MESSAGE,
+    type TerminalProps,
+    type TerminalRendererFailure,
+    type TerminalState,
+  } from './terminal.types.ts';
+
+  let {
+    title,
+    state: sessionState = 'empty',
+    error,
+    onRecoveryRequest,
+    controller,
+    onGeometryChange,
+    ownerGeometry,
+    ariaLabel = 'Terminal',
+    announceOutput = false,
+    onLinkActivate,
+    onTitleChange,
+    class: customClassName,
+    ...rest
+  }: TerminalProps = $props();
+
+  // A failure the renderer found itself. It outranks the state the host passed in: the engine is
+  // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
+  let failure = $state<TerminalRendererFailure>();
+  let ready = $state(false);
+
+  const effectiveState: TerminalState = $derived(
+    failure === undefined ? sessionState : 'engine-load-failed',
+  );
+  const showEngine = $derived(mountsEngine(effectiveState));
+  // Until the engine is mounted the viewport is inert and says so; an error or the absence of a
+  // session says that instead, so a refusal never flashes as "loading".
+  const message = $derived(
+    !ready && showEngine && !isErrorState(effectiveState)
+      ? TERMINAL_STATE_MESSAGE.loading
+      : TERMINAL_STATE_MESSAGE[effectiveState],
+  );
+  const className = $derived(['cinder-terminal', customClassName].filter(Boolean).join(' '));
+
+  // The frame's own dimension estimate is deliberately not connected: the engine's measured cell
+  // geometry is the only resize authority, so `onDimensionsChange` is never passed.
+  const frameProps = $derived({
+    ...rest,
+    class: className,
+    title,
+    status: TERMINAL_FRAME_STATUS[effectiveState],
+    ...(error === undefined ? {} : { error }),
+    ...(onRecoveryRequest === undefined ? {} : { onReloadRequest: onRecoveryRequest }),
+  });
+
+  function readSettings(): AttachmentSettings {
+    return {
+      readOnly: !acceptsInput(effectiveState),
+      ownsGrid: ownsGrid(effectiveState),
+      ownerGeometry,
+      announceOutput,
+      ariaLabel,
+      activateLink: onLinkActivate,
+    };
+  }
+
+  // The live attachment, for pushing settings that change without remounting the engine. A plain
+  // variable: nothing renders from it.
+  let live: ReturnType<typeof createTerminalAttachment> | undefined;
+
+  $effect(() => {
+    // Track every setting the engine mirrors; the attachment re-reads them itself.
+    readSettings();
+    live?.refresh();
+  });
+
+  /**
+   * Mounts the engine into `host` on the client and releases everything on destroy and when the
+   * controller is replaced. Attachments never run on the server, so SSR emits no engine DOM,
+   * editable element, subscription, or process. Only the controller is tracked: every other prop
+   * reaches the live engine through `refresh`.
+   */
+  function attachEngine(host: HTMLElement): () => void {
+    const borrowed = controller;
+    const attachment = untrack(() =>
+      createTerminalAttachment({
+        host,
+        controller: borrowed,
+        loadEngine: loadRendererEngineFactory,
+        readSettings,
+        onReady: () => {
+          ready = true;
+        },
+        onGeometry: (geometry) => onGeometryChange?.(geometry),
+        onFailure: (next) => {
+          failure = next;
+        },
+        onTitle: (next) => onTitleChange?.(next),
+      }),
+    );
+    live = attachment;
+    return () => {
+      attachment.dispose();
+      if (live === attachment) live = undefined;
+      ready = false;
+    };
+  }
+
+  function retry(): void {
+    failure = undefined;
+  }
+</script>
+
+<TerminalFrame {...frameProps}>
+  <div class="cinder-terminal__body" data-state={effectiveState}>
+    <p class="cinder-terminal__message" role="status">{message}</p>
+    {#if showEngine}
+      <div
+        class="cinder-terminal__viewport"
+        data-grid={ownsGrid(effectiveState) ? 'fitted' : 'owner'}
+        inert={!ready}
+        {@attach attachEngine}
+      ></div>
+    {/if}
+    {#if effectiveState === 'engine-load-failed'}
+      <div class="cinder-terminal__actions">
+        <Button label="Retry" size="sm" onclick={retry} />
+      </div>
+    {:else if effectiveState === 'writable'}
+      <div class="cinder-terminal__actions">
+        <Button label="Capture terminal keys" size="sm" />
+      </div>
+    {/if}
+  </div>
+</TerminalFrame>
