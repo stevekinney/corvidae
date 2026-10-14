@@ -243,6 +243,37 @@ describe('changeset emission', () => {
     );
   });
 
+  test('a changeset retargeted to another mirror between syncs throws for both mirrors', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/note.md', weftChangeset);
+    const synced = await commit(root, 'Add a weft changeset');
+    await write(root, '.changeset/note.md', changeset('@lostgradient/cinder', 'Now for cinder.'));
+    await commit(root, 'Retarget the changeset');
+    const clone = await target(synced);
+    for (const mirror of ['cinder', 'weft'] as const) {
+      const error = await rejectionOf(emit(root, clone, synced, mirror));
+      expect(error).toBeInstanceOf(ChangesetEmissionError);
+      const message = (error as Error).message;
+      expect(message).toContain('.changeset/note.md');
+      expect(message).toContain('weft');
+      expect(message).toContain('cinder');
+      expect(message).toContain('write a new changeset file instead of retargeting');
+    }
+  });
+
+  test('a retarget between two other mirrors does not throw for this one', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/note.md', changeset('@lostgradient/cinder'));
+    const synced = await commit(root, 'Add a cinder changeset');
+    await write(
+      root,
+      '.changeset/note.md',
+      changeset('@lostgradient/operative', 'Now for agent-bureau.'),
+    );
+    await commit(root, 'Retarget the changeset');
+    expect(await emit(root, await target(synced), synced, 'weft')).toEqual({});
+  });
+
   test('(f) the same trailer gives identical output on a repeat run', async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);

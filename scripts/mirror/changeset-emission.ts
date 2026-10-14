@@ -168,10 +168,31 @@ async function targetOfBytes(bytes: Uint8Array): Promise<MirrorTarget | undefine
   }
 }
 
+/** Each path's target at a revision; `undefined` marks a file that cannot be read as a changeset. */
+async function targetsAt(
+  corvidaeRoot: string,
+  revision: string,
+  paths: readonly string[],
+): Promise<Map<string, MirrorTarget | undefined>> {
+  const targets = new Map<string, MirrorTarget | undefined>();
+  for (const path of paths) {
+    targets.set(path, await targetOfBytes(await blobBytes(corvidaeRoot, revision, path)));
+  }
+  return targets;
+}
+
+/** Whether a resolved target is the one being synced; an unreadable file fails closed as a yes. */
+const concerns = (owner: MirrorTarget | undefined, target: MirrorTarget): boolean =>
+  owner === undefined || owner === target;
+
 /**
  * The paths whose content, at the trailer or at HEAD, names this target or cannot be read.
  * A path counts when either end is relevant, so a name reused for a different mirror's
  * changeset is still caught for the mirror whose release it would swallow.
+ *
+ * Also refuses a retarget: a file present at both ends whose target changed, where either end
+ * is this target. Delivery cannot be inferred from a file that was never pending here, so the
+ * release would vanish silently.
  */
 async function relevantPaths(options: {
   corvidaeRoot: string;
@@ -181,15 +202,23 @@ async function relevantPaths(options: {
   headFiles: readonly string[];
 }): Promise<Set<string>> {
   const { corvidaeRoot, target, trailerSha, syncedFiles, headFiles } = options;
+  const [atTrailer, atHead] = await Promise.all([
+    targetsAt(corvidaeRoot, trailerSha, syncedFiles),
+    targetsAt(corvidaeRoot, 'HEAD', headFiles),
+  ]);
   const relevant = new Set<string>();
-  const consider = async (revision: string, paths: readonly string[]): Promise<void> => {
-    for (const path of paths) {
-      const owner = await targetOfBytes(await blobBytes(corvidaeRoot, revision, path));
-      if (owner === undefined || owner === target) relevant.add(path);
+  for (const [path, owner] of [...atTrailer, ...atHead]) {
+    if (concerns(owner, target)) relevant.add(path);
+  }
+  for (const [path, before] of atTrailer) {
+    if (!atHead.has(path)) continue;
+    const after = atHead.get(path);
+    if (before !== after && (concerns(before, target) || concerns(after, target))) {
+      throw new ChangesetEmissionError(
+        `${path} named ${before ?? 'an unreadable target'} when the target last synced and names ${after ?? 'an unreadable target'} now. Delivery of a retargeted changeset cannot be inferred, so its release would be lost: write a new changeset file instead of retargeting.`,
+      );
     }
-  };
-  await consider(trailerSha, syncedFiles);
-  await consider('HEAD', headFiles);
+  }
   return relevant;
 }
 
