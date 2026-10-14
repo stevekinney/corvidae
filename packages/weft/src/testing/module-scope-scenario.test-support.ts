@@ -22,6 +22,8 @@
  * it('compiles the fixture', () => rethrow(compiled));
  * ```
  */
+import { restoreRealTimers } from './fake-timers.test-support.ts';
+
 export const SCENARIO_HANG_GUARD_MILLISECONDS = 120_000;
 
 /** The outcome {@link outcomeOf} records when a scenario does not settle before its hang guard. */
@@ -38,10 +40,13 @@ export async function outcomeOf(
 ): Promise<unknown> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const hang = new Promise<Error>((resolve) => {
-    timer = setTimeout(
-      () => resolve(new ScenarioHangError(hangGuardMilliseconds)),
-      hangGuardMilliseconds,
-    );
+    timer = setTimeout(() => {
+      // The guard is armed before the scenario runs, so it fires even if the scenario installs
+      // fake timers. An abandoned scenario never reaches its own `finally`, so restore real
+      // timers here; otherwise every later scenario's guard would be created fake and never fire.
+      restoreRealTimers();
+      resolve(new ScenarioHangError(hangGuardMilliseconds));
+    }, hangGuardMilliseconds);
   });
   try {
     return await Promise.race([

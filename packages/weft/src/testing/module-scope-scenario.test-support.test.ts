@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, jest } from 'bun:test';
 
 import { outcomeOf, rethrow, ScenarioHangError } from './module-scope-scenario.test-support.ts';
 
@@ -26,5 +26,15 @@ describe('outcomeOf', () => {
     const outcome = await outcomeOf(() => new Promise<void>(() => {}), 5);
     expect(outcome).toBeInstanceOf(ScenarioHangError);
     expect(() => rethrow(outcome)).toThrow('scenario did not settle within 5 ms; it is hung');
+  });
+
+  it('reports a scenario that hangs under fake timers, and restores real timers for the next', async () => {
+    const outcome = await outcomeOf(() => {
+      jest.useFakeTimers();
+      return new Promise<void>(() => {});
+    }, 5);
+    expect(outcome).toBeInstanceOf(ScenarioHangError);
+    expect(jest.isFakeTimers()).toBe(false);
+    expect(await outcomeOf(() => new Promise<void>(() => {}), 5)).toBeInstanceOf(ScenarioHangError);
   });
 });
