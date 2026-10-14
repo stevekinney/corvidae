@@ -78,7 +78,7 @@ Every resource below declares the started-work floor: stable identity, owner, op
 
 | Kind | Identity | Owner and parent | Revision or fence | States | Result | Cancellation and cleanup | Durable events | External surface in v1 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Deployment | `BureauOptions.id` | Service principal | Catalog revision | `ready`, `draining`, `stopped`, derived from `ready` and `shutdown()` | None | `shutdown({ policy })` report | None | Management `bureau.deployment.get`; the A2A `tenant` value |
+| Deployment | `BureauOptions.id`, which must be set explicitly whenever `createBureauHandler` serves persistent storage (construction throws otherwise), because a generated identifier changes on every restart and would orphan persisted tasks | Service principal | Catalog revision | `ready`, `draining`, `stopped`, derived from `ready` and `shutdown()` | None | `shutdown({ policy })` report | None | Management `bureau.deployment.get`; the A2A `tenant` value |
 | Published agent | Agent name plus `definitionRevision` | Deployment | `definitionRevision` | `published`, `withdrawn` | None | Withdrawn by removing it from `publish` | None | Agent Card; management listing |
 | Task (agent run) | `agent-run-…` minted by Bureau; A2A `taskId` | Requesting principal; optional parent task or context | Liveness `revision` and `attempt` | A2A task states, mapped below | Artifacts and final status message | `CancelTask`; cleanup through the cleanup extension | `run` owner | A2A; management cross-owner tasks |
 | Context (session) | Caller-supplied or minted session identifier; A2A `contextId` | Creating principal | `incarnation` plus `revision` | `active`, `deleted` | None | Delete; live run cleanup only | `session` owner | A2A `contextId`; management delete |
@@ -120,6 +120,8 @@ A task is the external face of one agent run. Bureau maps its run and review sta
 
 The asset entries follow COR-794's specification. An asset is admitted from bounded inline bytes, an upload completion, an authorized URL, a provider file identifier, or an existing asset reference, and admission returns a handle or durable locator immediately when work continues asynchronously. Its `AssetDescriptor` carries identity, monotonic revision, digest, media type, byte length, owner, authorization, provenance, lifecycle state, creation time, expiry, retention, and a general-versus-privileged projection distinction, consistent with `ContentSource`, `Modality`, and `MediaLimits` in `packages/conversationalist/src/multi-modal.ts:214-270`.
 
+A peer's artifact enters as the `a2a-reference` content source, which must carry the peer's `taskId` as well as `agentCardUrl` and `artifactId`, because an artifact identifier is unique only within its task (A2A 1.0.1 §4.1.7); COR-1303 extends `ContentSource` (`packages/conversationalist/src/multi-modal.ts`) accordingly.
+
 Externally, an asset appears as an A2A file part whose `url` is Bureau's authenticated asset route, `/assets/<assetId>/<revision>` on `createBureauHandler`. Browser media elements cannot attach the `Authorization` header, so a browser client fetches the route with its token and renders the bytes through a `blob:` object URL that it revokes when the view unmounts; Interborough's renderer does this through a host-supplied asset resolver. Fetching it requires the same credentials as the A2A call and applies the same owner predicate, so the URL is an address, not a credential: it is never a reusable signed URL, and bytes are never inlined after admission. Resolving an asset reference applies the same owner predicate as the task that produced it; a caller who cannot see the task cannot resolve its assets. Asset admission, deletion, and cleanup are started work with targeted abort and a cleanup acknowledgement, exactly as COR-794 specifies. Asset events and audit records never carry raw bytes, secrets, or signed URLs. Inbound file parts, whether bytes or URLs, go through COR-794's admission pipeline, and a peer's artifact enters as the existing `a2a-reference` content source. The asset route is the only asset operation in v1; inspection and deletion through the management plane are not. COR-788 owns projecting multimodal content through the A2A, AG-UI, and MCP surfaces.
 
 ## Capability profile
@@ -128,7 +130,7 @@ Discovery has two levels. Each published agent has an Agent Card; the deployment
 
 | Profile element | Agent Card | Deployment profile (`bureau.deployment.get`) |
 | --- | --- | --- |
-| Stable identity | The catalog agent name and `definitionRevision`, carried by the interface URL (each published agent's mount path ends in its catalog name) and by `version`; `AgentCard.name` is never the identity | `BureauOptions.id` |
+| Stable identity | The catalog agent name and `definitionRevision`, carried by the interface URL (each published agent's mount path ends in its catalog name) and by `version`; `AgentCard.name` is never the identity. A published name must match `^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`, checked when `publish` is validated, so it is a path segment without encoding | `BureauOptions.id` |
 | Mutable human names | `AgentCard.name` is the agent definition's display name (COR-1301), falling back to the catalog name when none is set; `description` and skills come from the same definition | Deployment display name |
 | Default media modes | `defaultInputModes` and `defaultOutputModes`, both required, derived from the agent definition's accepted and produced modalities (COR-1301), never guessed | The same per agent |
 | Resources | Implicit: tasks and contexts | The served resource kinds from the taxonomy |
@@ -160,7 +162,7 @@ Operations are commands (mutate state and return a receipt), queries (read state
 | `ListTasks` | Query | The caller's own tasks with the mounted agent, filtered by `contextId`, `status`, and `statusTimestampAfter`, sorted by status timestamp descending with the task identifier as a stable tie-breaker (both carried in the opaque `pageToken`), paginated with `pageSize` (1–100) and `pageToken`, applying `historyLength` and omitting artifacts unless `includeArtifacts` is true (COR-1304) | Served |
 | `CancelTask` | Command | Requests cancellation of the run; returns the task in its current state | Served |
 | `SubscribeToTask` | Subscription and terminal-result wait | For a non-terminal task, sends the current task first, then follows it; the durable-history extension makes it resumable through `Last-Event-ID`. For a terminal task it returns `UnsupportedOperationError` before any snapshot (A2A 1.0.1 §3.1.6) | Served |
-| Push notification config `Create`, `Get`, `List`, `Delete` | Command and query | Registers webhook delivery for a task through the delivery outbox. `List` orders a task's configurations by creation time, then identifier; honors `pageSize` (1–100, default 50) and an opaque `pageToken` bound to the caller and task; and returns `nextPageToken` empty on the last page | Served (COR-841) |
+| Push notification config `Create`, `Get`, `List`, `Delete` | Command and query | Registers webhook delivery for a task through the delivery outbox. `List` orders a task's configurations by creation time, then identifier; honors `pageSize` (1–100, default 50) and an opaque `pageToken` bound to the caller and task; and returns `nextPageToken` empty on the last page. `Delete` first stops new enqueues for the configuration, then cancels every queued or retry-scheduled outbox delivery for it, and returns only after both, so no notification reaches the deleted webhook afterwards (A2A 1.0.1 §3.1.10) | Served (COR-841) |
 | `GetExtendedAgentCard` | Query | Not declared | Absent |
 
 A terminal-result wait is `SubscribeToTask` until the stream closes at a terminal state, or `GetTask` polling. There is no separate blocking wait operation.
@@ -181,7 +183,7 @@ Management operations are Weft catalog operations named under `bureau.*`, served
 | `bureau.reviews.resolve` | Command | Approve, deny, or reject a review as the reviewing principal |
 | `bureau.deliveries.list`, `bureau.deliveries.get`, `bureau.deliveries.tail` | Query and subscription | Outbound deliveries and attempts |
 | `bureau.deliveries.retry`, `bureau.deliveries.cancel` | Command | Operator retry and cancellation |
-| `bureau.audit.query` | Query | The audit trail, redacted to the caller's tier |
+| `bureau.audit.query` | Query | The audit trail, always redacted to metadata: no record returned through any v1 operation carries a secret, transcript, tool argument, or memory content |
 | `bureau.schedules.list`, `bureau.schedules.get` | Query | Durable schedules |
 | `bureau.schedules.create`, `bureau.schedules.pause`, `bureau.schedules.resume`, `bureau.schedules.cancel` | Command | Schedule lifecycle |
 | `bureau.goals.list`, `bureau.goals.get` | Query | Goals and attempts |
@@ -288,10 +290,10 @@ One model underlies every surface. Resource snapshots come from the resource's o
 | --- | --- |
 | Durable cursor | An opaque string. Clients compare cursors for equality only; today's decimal encoding is not part of the contract. |
 | Retention floor | A deployment-configured history retention. Bureau's maintenance calls the fleet feed's `retain()` so the floor advances; today nothing does. |
-| Gap response | A resume below the floor yields one explicit gap event carrying the requested cursor and the first retained cursor, then continues from the floor. `subscribeEventHistory`'s silent gap skipping is replaced, not projected. |
-| Snapshot plus tail | A subscriber with no cursor receives the current snapshot, then every durable event after the snapshot's cursor. A subscriber resuming with `Last-Event-ID` receives every durable event after that cursor, in order and with monotonic SSE ids, before live events; it receives a snapshot only after a gap event, when the cursor is below the retention floor. A2A's `SubscribeToTask` sends the task first; the durable-history extension adds the cursor. |
+| Gap response | A resume below the floor yields one gap event carrying the requested cursor and the first retained cursor, then the recovery sequence below. On an A2A stream the gap event is a `TaskStatusUpdateEvent` carrying the gap in the durable-history extension's `metadata`, never a new top-level object. `subscribeEventHistory`'s silent gap skipping is replaced, not projected. |
+| Snapshot plus tail | A subscriber with no cursor receives the current snapshot at cursor C, then every durable event after C. A subscriber resuming with `Last-Event-ID` above the floor receives every durable event after that cursor, in order and with monotonic SSE ids, before live events. A subscriber resuming below the floor receives the gap event, then the current snapshot at C, then only events after C, so ids stay monotonic and nothing is replayed from before C. A2A's `SubscribeToTask` sends the task first; the durable-history extension adds the cursor. |
 | Ephemeral frames | Step, delta, and tool frames from the in-memory run feed reach the A2A and AG-UI streams live. They carry no resumable cursor and are not replayed; reconnecting yields the snapshot and the durable tail. |
-| Slow consumers | Durable-history subscriptions are pull-driven and never buffer unboundedly. Ephemeral frames beyond a stream's buffer are dropped, and the stream emits one frames-dropped marker so the client knows to re-read the snapshot. |
+| Slow consumers | Durable-history subscriptions are pull-driven and never buffer unboundedly. On AG-UI and management streams, ephemeral frames beyond a stream's buffer are dropped and the stream emits one frames-dropped marker. On an A2A stream, which must deliver the same events in the same order as every other active stream for the task (A2A 1.0.1 §3.5.2), a subscriber that falls behind its buffer is closed instead, and reconnects with `Last-Event-ID`. |
 | A2A projection of live frames | A2A streams carry only the protocol's `StreamResponse` kinds: the initial `Task`, `TaskStatusUpdateEvent`, and `TaskArtifactUpdateEvent`. Step, delta, and tool frames and the frames-dropped marker travel as `TaskStatusUpdateEvent`s in the `working` state, with the frame in the durable-history extension's `metadata` namespace, and only when that extension is activated; otherwise they are omitted from A2A and remain available through AG-UI. |
 | Audit | A separate, allowlisted, append-only compliance record (`packages/bureau/src/audit-trail.ts`). Events are not audit records, and the audit trail is not an event stream. |
 | Telemetry | Traces and metrics follow `traceparent` and are not part of the contract. |
@@ -319,7 +321,7 @@ The predicate per action:
 | Events | Own resources | `bureau.tasks:read`; `bureau.events:observe-all` for wildcard |
 | Result | Own tasks | `bureau.tasks:read` |
 | Child traversal | Children of own tasks | `bureau.tasks:read` |
-| Transcript and memory | Own tasks, at the caller's data tier | Not granted by any v1 scope |
+| Transcript and memory | Not served through any v1 operation | Not granted by any v1 scope; a later data-tier model must define its vocabulary, its fail-closed default, and how each authentication method maps to it before any operation serves this content |
 | Audit | Own records | `bureau.audit:read` |
 | Abort and cleanup | Own tasks | `bureau.tasks:write` |
 | Delete | Own contexts | `bureau.contexts:write` |
@@ -404,7 +406,7 @@ The first consumer is Interborough, Corvidae's main application. It is served fr
 | Conflicting retry | A typed conflict carrying the original receipt; the original command is untouched |
 | Stale session target | The stale-revision fault; nothing changes |
 | Process crash after acceptance | The retry observes the pending ledger entry and returns its outcome; no second run starts |
-| Reconnect below the history floor | One gap event with the requested and first retained cursors, then the tail from the floor |
+| Reconnect below the history floor | One gap event with the requested and first retained cursors, then the current snapshot at C, then only events after C |
 | Slow subscriber | The durable tail is pulled at the subscriber's pace; dropped ephemeral frames produce one frames-dropped marker |
 | Resource-ownership denial | Not found, identical to a resource that does not exist |
 | Attached disconnect | Not applicable in v1: every task is detached |
