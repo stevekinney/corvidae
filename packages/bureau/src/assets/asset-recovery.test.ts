@@ -237,7 +237,7 @@ describe('tombstones', () => {
     const transfer = opened.assets.transferToProvider(admission.assetId, alice, {
       provider: 'openai',
     });
-    expect((await transfer.result()).outcome).toBe('completed');
+    expect(await transfer.result()).toMatchObject({ outcome: 'completed' });
 
     const deletion = await opened.assets.delete(admission.assetId, alice).result();
     expect(deletion.outcome === 'completed' && deletion.value.state).toBe('deleted');
@@ -345,7 +345,10 @@ describe('legal and audit holds', () => {
     for (const assetId of held) {
       await opened.assets.releaseHold(assetId, aliceAdministrator, 'legal-1');
     }
-    expect((await collect(opened)).purgedTombstones.toSorted()).toEqual(held.toSorted());
+    const report = await collect(opened);
+    expect(report.purgedTombstones.toSorted((left, right) => left.localeCompare(right))).toEqual(
+      held.toSorted((left, right) => left.localeCompare(right)),
+    );
     await opened.close();
   });
 
@@ -448,7 +451,9 @@ describe('blob reuse during collection', () => {
     };
     const opened = await open({ storage });
     const first = await admitted(opened);
-    expect((await opened.assets.delete(first.assetId, alice).result()).outcome).toBe('completed');
+    expect(await opened.assets.delete(first.assetId, alice).result()).toMatchObject({
+      outcome: 'completed',
+    });
 
     parking = true;
     const collection = opened.assets.collectGarbage();
@@ -457,8 +462,8 @@ describe('blob reuse during collection', () => {
     for (let turn = 0; turn < 5; turn++) await yieldToPortableEventLoop();
     release.resolve();
 
-    expect((await collection.result()).outcome).toBe('completed');
-    expect((await second.work.result()).outcome).toBe('completed');
+    expect(await collection.result()).toMatchObject({ outcome: 'completed' });
+    expect(await second.work.result()).toMatchObject({ outcome: 'completed' });
     const resolved = await opened.assets.resolve(second.source, alice);
     expect(resolved.content).toEqual({ kind: 'bytes', bytes: PNG });
     await opened.close();
@@ -558,7 +563,7 @@ describe('partial-upload cleanup', () => {
     );
     release.resolve();
 
-    expect((await admission.work.result()).outcome).toBe('completed');
+    expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
     expect(await racingAppend).toBeInstanceOf(AssetNotFoundError);
     expect(await opened.storage.list('asset:v1:upload')).toEqual([]);
     await opened.close();
@@ -679,7 +684,7 @@ describe('quiescence after shutdown', () => {
     const admission = await admitted(opened);
     const session = await opened.assets.beginUpload(alice, { declaredByteLength: 4 });
     await opened.assets.shutdown();
-    const audited = (await opened.assets.auditRecords()).length;
+    const audit = await opened.assets.auditRecords();
 
     const { assetId } = admission;
     const attempts: Array<Promise<unknown>> = [
@@ -695,7 +700,7 @@ describe('quiescence after shutdown', () => {
     for (const attempt of attempts) {
       expect(await rejectionOf(attempt)).toBeInstanceOf(AssetServiceClosedError);
     }
-    expect((await opened.assets.auditRecords()).length).toBe(audited);
+    expect(await opened.assets.auditRecords()).toHaveLength(audit.length);
     await opened.close();
   });
 

@@ -109,7 +109,7 @@ function untilDecidedOrAborted(decided: Promise<void>, signal: AbortSignal): Pro
     signal.addEventListener('abort', onAbort, { once: true });
     void decided.then(() => {
       signal.removeEventListener('abort', onAbort);
-      resolve();
+      return resolve();
     });
   });
 }

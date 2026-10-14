@@ -604,7 +604,8 @@ async function collectBlobs(
     const digest = key.slice(KEYS.blobPrefix.length);
     const outcome = await context.track(
       internals.withLock(key, async () => {
-        if ((await storage.list(KEYS.ownerPrefix(digest))).length > 0) return 'owned';
+        const owners = await storage.list(KEYS.ownerPrefix(digest));
+        if (owners.length > 0) return 'owned';
         if (internals.leases.isLeased(digest)) return 'leased';
         await storage.delete(key);
         return 'purged';

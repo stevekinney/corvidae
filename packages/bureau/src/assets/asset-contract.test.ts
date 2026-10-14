@@ -557,10 +557,14 @@ describe('admission validation', () => {
     expect(await admissions[1]!.work.closed()).toEqual({ status: 'completed' });
 
     releaseFirst.resolve();
-    expect((await admissions[0]!.work.result()).outcome).toBe('completed');
-    expect((await admissions[2]!.work.result()).outcome).toBe('completed');
-    expect(scanned.toSorted()).toEqual([parts[0]!.byteLength, parts[2]!.byteLength]);
-    const scansStarted = (await assets.auditRecords()).filter(
+    expect(await admissions[0]!.work.result()).toMatchObject({ outcome: 'completed' });
+    expect(await admissions[2]!.work.result()).toMatchObject({ outcome: 'completed' });
+    expect(scanned.toSorted((left, right) => left - right)).toEqual([
+      parts[0]!.byteLength,
+      parts[2]!.byteLength,
+    ]);
+    const audit = await assets.auditRecords();
+    const scansStarted = audit.filter(
       (record) =>
         record.type === 'asset.work.started' &&
         record.workKind === 'scan' &&
