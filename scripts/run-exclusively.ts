@@ -9,12 +9,14 @@
  * The lock is a directory inside the Git common directory, which every worktree of this
  * repository shares. It is renamed into place with its owner file already inside, and `rename`
  * refuses to replace a non-empty directory, so whoever's rename succeeds holds the lock. The owner
- * file records the holder's pid, so a waiter can reclaim a lock whose holder died holding it.
+ * file records the wrapper's pid and, once it starts, the command's. The lock stays held while
+ * either is alive, so a waiter reclaims it only once the work it guarded has stopped.
  *
- * Usage: `bun scripts/run-exclusively.ts '<shell command>'`.
+ * Usage: `bun scripts/run-exclusively.ts '<shell command>' [arguments...]`. Arguments reach the
+ * command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes them.
  */
 
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
@@ -22,12 +24,14 @@ export const ownerFileName = 'owner.json';
 
 export type HostLockHolder = {
   readonly pid: number;
+  /** The command's own pid, recorded once it starts; it can outlive a killed wrapper. */
+  readonly commandPid?: number;
   readonly command: string;
   readonly cwd: string;
   readonly acquiredAt: string;
 };
 
-type OwnerRecord = HostLockHolder & { readonly token: string };
+export type OwnerRecord = HostLockHolder & { readonly token: string };
 
 export type AcquireHostLockOptions = {
   readonly lockDirectory: string;
@@ -35,9 +39,9 @@ export type AcquireHostLockOptions = {
   /** How often a waiter checks the lock again. */
   readonly pollIntervalMs?: number;
   /**
-   * How long a lock directory may lack an owner file before it counts as abandoned. A holder
-   * writes the file right after creating the directory, so only a crash between the two leaves
-   * it missing.
+   * How long a lock directory without a readable owner file may stand before it counts as
+   * abandoned. This module never creates one, since it installs the owner and the directory in
+   * one rename, so such a directory was left by something else.
    */
   readonly ownerlessGraceMs?: number;
   /** Called whenever the holder a waiter is queued behind changes, including the first time. */
@@ -63,17 +67,18 @@ async function readOwner(lockDirectory: string): Promise<OwnerRecord | undefined
   }
 }
 
-/**
- * Whether the lock is still there and, if so, whether its holder is gone. A lock without a
- * readable owner file is never written by this module, which installs the owner and the directory
- * in one rename, so one is only abandoned once it has sat that way for the grace period.
- */
+/** Whether the lock is still there and, if so, whether everything it guarded has stopped. */
 async function lockState(
   lockDirectory: string,
   owner: OwnerRecord | undefined,
   ownerlessGraceMs: number,
 ): Promise<'released' | 'abandoned' | 'held'> {
-  if (owner) return isProcessAlive(owner.pid) ? 'held' : 'abandoned';
+  if (owner) {
+    const alive =
+      isProcessAlive(owner.pid) ||
+      (owner.commandPid !== undefined && isProcessAlive(owner.commandPid));
+    return alive ? 'held' : 'abandoned';
+  }
   try {
     const { mtimeMs } = await stat(lockDirectory);
     return Date.now() - mtimeMs >= ownerlessGraceMs ? 'abandoned' : 'held';
@@ -84,8 +89,9 @@ async function lockState(
 
 /**
  * Removes the lock if it is still the one `expected` describes. `rename` is atomic, so waiters see
- * the lock either whole or gone, and when two processes move it at once only one succeeds. If what
- * moved is not the expected lock (another holder took over in between), it is put back.
+ * the lock either whole or gone. If what moved is not the expected lock, it is put back; callers
+ * make that case unreachable, a holder by removing only its own lock and a reclaimer by holding
+ * the reclaim guard.
  */
 async function removeLock(lockDirectory: string, expected: OwnerRecord | undefined): Promise<void> {
   const aside = `${lockDirectory}.removed-${process.pid}-${crypto.randomUUID()}`;
@@ -123,6 +129,49 @@ async function tryInstall(lockDirectory: string, owner: OwnerRecord): Promise<bo
   }
 }
 
+/** How long a reclaim guard may stand before it counts as left by a reclaimer that died. */
+const reclaimGuardStaleMs = 30_000;
+
+/**
+ * Removes the lock if it is abandoned, judged while holding a reclaim guard. Reclaims are
+ * serialized behind the guard directory and the lock is read again under it. No holder can install
+ * a lock while an abandoned one stands, and no other reclaimer can move it, so the lock judged
+ * under the guard is the lock removed. Judging it before taking the guard would let a waiter acting
+ * on a stale reading move aside a live lock another waiter had just installed.
+ */
+export async function reclaimAbandoned(
+  lockDirectory: string,
+  ownerlessGraceMs: number,
+): Promise<void> {
+  const guard = `${lockDirectory}.reclaiming`;
+  try {
+    await mkdir(guard);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const { mtimeMs } = await stat(guard).catch(() => ({ mtimeMs: Date.now() }));
+    if (Date.now() - mtimeMs >= reclaimGuardStaleMs) await rmdir(guard).catch(() => undefined);
+    return;
+  }
+  try {
+    const current = await readOwner(lockDirectory);
+    if ((await lockState(lockDirectory, current, ownerlessGraceMs)) !== 'abandoned') return;
+    await removeLock(lockDirectory, current);
+  } finally {
+    await rmdir(guard).catch(() => undefined);
+  }
+}
+
+/** Records the command's pid in the held lock, replacing the owner file in one rename. */
+async function recordCommandPid(
+  lockDirectory: string,
+  owner: OwnerRecord,
+  commandPid: number,
+): Promise<void> {
+  const staged = join(lockDirectory, `${ownerFileName}.${owner.token}`);
+  await writeFile(staged, JSON.stringify({ ...owner, commandPid }));
+  await rename(staged, join(lockDirectory, ownerFileName));
+}
+
 function delay(milliseconds: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason);
@@ -138,23 +187,31 @@ function delay(milliseconds: number, signal: AbortSignal | undefined): Promise<v
   });
 }
 
-/** Waits until it holds the lock, then resolves to the function that releases it. */
-export async function acquireHostLock(
-  options: AcquireHostLockOptions,
-): Promise<() => Promise<void>> {
+export type HeldHostLock = {
+  /** Records the guarded command's pid, so the lock outlives a wrapper killed before it. */
+  readonly recordCommand: (commandPid: number) => Promise<void>;
+  readonly release: () => Promise<void>;
+};
+
+/** Waits until it holds the lock. */
+export async function acquireHostLock(options: AcquireHostLockOptions): Promise<HeldHostLock> {
   const { lockDirectory, holder, pollIntervalMs = 1000, ownerlessGraceMs = 10_000 } = options;
   const self: OwnerRecord = { ...holder, token: crypto.randomUUID() };
   let lastWaitedOn: string | undefined;
   for (;;) {
     options.signal?.throwIfAborted();
     if (await tryInstall(lockDirectory, self)) {
-      return () => removeLock(lockDirectory, self);
+      return {
+        recordCommand: (commandPid) => recordCommandPid(lockDirectory, self, commandPid),
+        release: () => removeLock(lockDirectory, self),
+      };
     }
     const owner = await readOwner(lockDirectory);
     const state = await lockState(lockDirectory, owner, ownerlessGraceMs);
     if (state === 'released') continue;
     if (state === 'abandoned') {
-      await removeLock(lockDirectory, owner);
+      await reclaimAbandoned(lockDirectory, ownerlessGraceMs);
+      await delay(Math.min(pollIntervalMs, 50), options.signal);
       continue;
     }
     const waitedOn = owner?.token ?? 'ownerless';
@@ -170,6 +227,8 @@ export type RunExclusivelyOptions = {
   /** Resolving it may fail; the command then runs without the lock rather than not at all. */
   readonly lockDirectory: string | Promise<string>;
   readonly script: string;
+  /** Passed to the command as `"$@"`. */
+  readonly args?: readonly string[];
   readonly pollIntervalMs?: number;
   readonly report?: (line: string) => void;
 };
@@ -182,9 +241,9 @@ function describeHolder(holder: HostLockHolder | undefined): string {
 /** Runs `script` through `sh -c` while holding the host lock and resolves to its exit code. */
 export async function runExclusively(options: RunExclusivelyOptions): Promise<number> {
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
-  let release: (() => Promise<void>) | undefined;
+  let lock: HeldHostLock | undefined;
   try {
-    release = await acquireHostLock({
+    lock = await acquireHostLock({
       lockDirectory: await options.lockDirectory,
       holder: {
         pid: process.pid,
@@ -200,8 +259,13 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
     report(`run-exclusively: running without the host lock: ${(error as Error).message}`);
   }
   try {
-    const child = Bun.spawn(['sh', '-c', options.script], {
+    const args = options.args ?? [];
+    const command = args.length === 0 ? options.script : `${options.script} "$@"`;
+    const child = Bun.spawn(['sh', '-c', command, 'sh', ...args], {
       stdio: ['inherit', 'inherit', 'inherit'],
+    });
+    await lock?.recordCommand(child.pid).catch((error: unknown) => {
+      report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
     });
     const forward = (signal: NodeJS.Signals): void => {
       child.kill(signal);
@@ -217,7 +281,7 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
       process.off('SIGTERM', forward);
     }
   } finally {
-    await release?.();
+    await lock?.release();
   }
 }
 
@@ -237,11 +301,13 @@ async function hostLockDirectory(): Promise<string> {
 }
 
 if (import.meta.main) {
-  const script = process.argv.slice(2).join(' ');
+  const [script = '', ...args] = process.argv.slice(2);
   if (script === '') {
-    process.stderr.write("usage: bun scripts/run-exclusively.ts '<shell command>'\n");
+    process.stderr.write(
+      "usage: bun scripts/run-exclusively.ts '<shell command>' [arguments...]\n",
+    );
     process.exitCode = 64;
   } else {
-    process.exitCode = await runExclusively({ lockDirectory: hostLockDirectory(), script });
+    process.exitCode = await runExclusively({ lockDirectory: hostLockDirectory(), script, args });
   }
 }
