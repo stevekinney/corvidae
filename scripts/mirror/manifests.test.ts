@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
@@ -1164,6 +1168,7 @@ describe('lockfile generation', async () => {
         expect(await Bun.file(join(directory, 'bun.lock')).exists()).toBe(true);
 
         const frozen = Bun.spawn(['bun', 'install', '--frozen-lockfile', '--ignore-scripts'], {
+          timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
           cwd: directory,
           stdout: 'pipe',
           stderr: 'pipe',

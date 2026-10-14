@@ -3,7 +3,11 @@ import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
@@ -28,6 +32,10 @@ import {
   type SyncResult,
 } from './sync.ts';
 import { loadTargetOwnedPolicy } from './target-owned.ts';
+
+// The end-to-end scenarios clone, install, build, pack and import a package, some twice. They
+// keep the 300-second budget they had as tests as their hang guard, not the 120-second default.
+const END_TO_END_BUDGET_MILLISECONDS = 300_000;
 
 describe('gitEnvironment', () => {
   test('excludes App signing credentials while preserving push authentication', () => {
@@ -188,6 +196,7 @@ describe('direct push credentials', async () => {
         });
       `;
       const process_ = Bun.spawn(['bun', '-e', script], {
+        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
         cwd: join(import.meta.dir, '../..'),
         env: {
           ...Bun.env,
@@ -588,7 +597,7 @@ describe('the mirror sync against a fake remote', async () => {
         `running build for ${privateWorkspaceName}`,
       );
     }, targetFiles);
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('a failing target-owned private build aborts verification', () => rethrow(outcome3));
 
   const outcome4 = await outcomeOf(async () => {
@@ -687,7 +696,7 @@ describe('the mirror sync against a fake remote', async () => {
       const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
       expect(commitCount.trim()).toBe('2');
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('transforms, verifies, pushes, and then reports skip on an identical second run', () =>
     rethrow(outcome4));
 
@@ -710,7 +719,7 @@ describe('the mirror sync against a fake remote', async () => {
         await readFile(join(second.directory, 'packages/cryptography/src/index.ts'), 'utf8'),
       ).toBe(changedSource);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('a real change is still detected, so the skip above is not vacuous', () =>
     rethrow(outcome5));
 
@@ -735,7 +744,7 @@ describe('the mirror sync against a fake remote', async () => {
       const committedPaths = await git(harness.remote, 'show', '--format=', '--name-only', 'HEAD');
       expect(committedPaths.trim()).toContain('packages/cryptography/tsdown.config.ts');
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('refuses a staged payload that verification restores from the working tree', () =>
     rethrow(outcome6));
 });
@@ -792,7 +801,7 @@ describe('runSync in pull-request mode', async () => {
       expect(result.pullRequest).toBeUndefined();
       expect(await git(harness.remote, 'show-ref')).toBe(before);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('prepares a verified commit without credentials or remote writes', () => rethrow(outcome7));
 
   const outcome8 = await outcomeOf(async () => {
@@ -881,7 +890,7 @@ describe('runSync in pull-request mode', async () => {
         'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
       );
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('commits on a new branch, leaves the default branch untouched, and opens a pull request', () =>
     rethrow(outcome8));
 
@@ -909,7 +918,7 @@ describe('runSync in pull-request mode', async () => {
       const branches = await git(harness.remote, 'branch', '--list', 'mirror-sync-noop');
       expect(branches.trim()).toBe('');
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('opens nothing when the transform produces no change', () => rethrow(outcome9));
 });
 
@@ -1424,7 +1433,7 @@ describe('the foreign-commit guard', async () => {
       );
       expect(published).toBeDefined();
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test("a hand commit confined to target-owned paths and manifest keys is the target's own, not foreign", () =>
     rethrow(outcome19));
 
@@ -1450,7 +1459,7 @@ describe('the foreign-commit guard', async () => {
       const result = await sync(harness, 'after-build-input');
       expect(['skip', 'pushed']).toContain(result.decision);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test("a hand commit to a declared build input is the target's own, since the transform never writes one", () =>
     rethrow(outcome20));
 
@@ -1489,7 +1498,7 @@ describe('the foreign-commit guard', async () => {
         '# @lostgradient/cryptography\n',
       );
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test("a hand commit to paths the transform neither writes nor prunes is the target's own", () =>
     rethrow(outcome21));
 
@@ -1519,7 +1528,7 @@ describe('the foreign-commit guard', async () => {
         foreignSha,
       ]);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('a hand commit moving an emitted file out of the sync’s reach is still foreign', () =>
     rethrow(outcome22));
 
@@ -1551,7 +1560,7 @@ describe('the foreign-commit guard', async () => {
         foreignSha,
       ]);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('a hand commit adding a file inside a source tree the transform prunes is still foreign', () =>
     rethrow(outcome23));
 
@@ -1583,7 +1592,7 @@ describe('the foreign-commit guard', async () => {
         foreignSha,
       ]);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('a hand commit that changes a transform-owned manifest key is still foreign', () =>
     rethrow(outcome24));
 
@@ -1648,7 +1657,7 @@ describe('the foreign-commit guard', async () => {
       expect(command.exitCode).not.toBe(0);
       expect(command.stderr).toContain(foreignSha);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('a commit the mirror did not author stops the sync and is named', () => rethrow(outcome25));
 
   const outcome26 = await outcomeOf(async () => {
@@ -1754,7 +1763,7 @@ describe('pruning what corvidae no longer carries', async () => {
       expect(tracked).toContain(unknownTargetFile);
       expect(tracked).not.toContain(dropped);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('a dropped source file is deleted, while a target-owned path and an unknown path survive', () =>
     rethrow(outcome29));
 });

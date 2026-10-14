@@ -3,7 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   createWorkflowVerifyEnvironment,
@@ -88,7 +92,9 @@ describe('shellWord', () => {
   /** What bash hands the command for each word, which is the only oracle that matters. */
   function throughBash(words: readonly string[]): string[] {
     const line = `printf '%s\\n' ${words.map(shellWord).join(' ')}`;
-    const result = Bun.spawnSync(['bash', '-c', line]);
+    const result = Bun.spawnSync(['bash', '-c', line], {
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    });
     expect(result.exitCode).toBe(0);
     return result.stdout.toString().replace(/\n$/, '').split('\n');
   }
@@ -288,6 +294,7 @@ describe('renderMirrorVerifyWorkflow', async () => {
         for (const step of writeSteps) {
           expect(step.run?.length).toBeLessThan(20_000);
           const result = Bun.spawnSync(['bash', '-euc', step.run ?? ''], {
+            timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
             cwd: consumerDirectory,
           });
           expect(result.exitCode, result.stderr.toString()).toBe(0);
@@ -459,6 +466,7 @@ describe('renderMirrorVerifyWorkflow', async () => {
         for (const step of relocations) {
           const script = (step.run ?? '').replaceAll('${{ runner.temp }}', runner);
           const shell = Bun.spawnSync(['bash', '-euc', script], {
+            timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
             cwd: join(runner, 'clone', step['working-directory'] ?? '.'),
           });
           expect({

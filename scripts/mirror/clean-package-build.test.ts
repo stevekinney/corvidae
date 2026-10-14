@@ -80,7 +80,7 @@ try {
   manifest.dependencies['@lostgradient/cryptography'] = '1.2.3';
   await Bun.write(join(stage, 'package.json'), JSON.stringify(manifest, null, 2) + '\\n');
   await Bun.write(join(stage, 'dist/index.js'), await Bun.file('dist/index.js').bytes());
-  const packed = Bun.spawn(['bun', 'pm', 'pack', '--ignore-scripts', '--quiet', '--destination', process.cwd()], {cwd:stage,stdout:'pipe',stderr:'pipe'});
+  const packed = Bun.spawn(['bun', 'pm', 'pack', '--ignore-scripts', '--quiet', '--destination', process.cwd()], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS,cwd:stage,stdout:'pipe',stderr:'pipe'});
   await Promise.all([new Response(packed.stdout).text(), new Response(packed.stderr).text()]);
   if (await packed.exited !== 0) throw new Error('Fixture pack failed');
 } finally { await rm(stage, {recursive:true,force:true}); }

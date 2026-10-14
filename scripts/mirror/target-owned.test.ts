@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans } from './committed-plans.ts';
 import { mirrorTargets } from './target-definitions.ts';
@@ -45,6 +49,7 @@ const transformOwned: Record<string, string> = {
 
 async function runGit(directory: string, ...arguments_: string[]): Promise<string> {
   const process_ = Bun.spawn(['git', ...arguments_], {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',

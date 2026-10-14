@@ -17,6 +17,10 @@ import {
 } from './mirror-sync-action.ts';
 import { git, runSync } from './sync.ts';
 
+// The end-to-end scenarios clone, install, build, pack and import a package, some twice. They
+// keep the 300-second budget they had as tests as their hang guard, not the 120-second default.
+const END_TO_END_BUDGET_MILLISECONDS = 300_000;
+
 describe('targetRepositoryFullName and targetRemoteUrl', () => {
   test('every mirror target resolves under the account every mirror lives on', () => {
     expect(targetRepositoryFullName('weft')).toBe('stevekinney/weft');
@@ -431,7 +435,7 @@ describe('reportDrift', async () => {
       const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
       expect(commitCount.trim()).toBe('1');
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('reports a target as behind when the transform would change it, and pushes nothing', () =>
     rethrow(outcome7));
 
@@ -455,7 +459,7 @@ describe('reportDrift', async () => {
       expect(report.behind).toBe(false);
       expect(report.changed).toEqual([]);
     });
-  });
+  }, END_TO_END_BUDGET_MILLISECONDS);
   test('reports a target as up to date once a real sync has caught it up', () => rethrow(outcome8));
 });
 

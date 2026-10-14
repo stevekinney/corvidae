@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create, Pax } from 'tar';
 
-import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { readPackagePayload } from './package-payload.ts';
 
@@ -221,6 +225,7 @@ const outcome1 = await outcomeOf(async () => {
       Buffer.from(archive).toString('base64'),
     ],
     {
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       env: { ...Bun.env, TESTING_TAR_FAKE_PLATFORM: 'win32' },
       stdout: 'pipe',
       stderr: 'pipe',
