@@ -4,7 +4,7 @@ import type { ToolExecutionResult } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
-import { accumulateRequestCost } from './cost-estimation';
+import { accumulateRequestCost, seedAccumulatedCost } from './cost-estimation';
 import { AgentRunError } from './errors';
 import {
   ElicitationRequestedEvent,
@@ -190,6 +190,14 @@ export function accumulateUsage(
   if (usage) {
     // Priced per request here, where the request's own usage is still separate from the sum.
     if (costEstimation) {
+      // The accumulator must always cover all of `totalUsage`. Usage that arrived with no cost
+      // (a checkpoint from before costs were accumulated) is seeded at the base tier first, or
+      // the terminal estimate would count only the requests made after the resume.
+      runState.cost ??= seedAccumulatedCost(
+        runState.totalUsage,
+        costEstimation.model,
+        costEstimation.pricing,
+      );
       runState.cost = accumulateRequestCost(
         runState.cost,
         usage,

@@ -16,7 +16,9 @@ import { createCheckpointStore } from './durable/checkpoint-store';
 import { createRunEngine } from './durable/create-run-engine';
 import { readDurableRunResult } from './durable/read-run-result';
 import { createRunWorkflow } from './durable/run-workflow';
-import { executeLoop } from './loop';
+import { createRunState, executeLoop } from './loop';
+import { computeCostEstimate } from './run-lifecycle';
+import { accumulateUsage } from './run-step-support';
 import type { GenerateResponse, RunOptions, TokenUsage } from './types';
 
 const nextTool = createTool({
@@ -132,5 +134,49 @@ describe('durable run costEstimate', () => {
     } finally {
       engine[Symbol.dispose]();
     }
+  });
+});
+
+describe('resuming from a checkpoint written before costs were accumulated', () => {
+  const model = 'claude-haiku-5-5';
+  const prior: TokenUsage = { prompt: 150_000, completion: 4_000, total: 154_000 };
+
+  it('keeps the spend that came before the resume', () => {
+    const runState = createRunState();
+    runState.totalUsage = { ...prior };
+
+    accumulateUsage(runState, undefined, 3, shortPrompt, { model });
+    const estimate = computeCostEstimate(runState.totalUsage, { model }, runState.cost);
+
+    // Prior usage has no per-request breakdown, so it is priced at the base tier.
+    const expected =
+      estimateCost(prior, model, undefined, 'aggregate').totalCost +
+      estimateCost(shortPrompt, model).totalCost;
+    expect(estimate?.totalCost).toBeCloseTo(expected, 10);
+    expect(estimate?.totalCost).toBeGreaterThan(estimateCost(shortPrompt, model).totalCost);
+  });
+
+  it('seeds once and then prices each later request on its own usage', () => {
+    const runState = createRunState();
+    runState.totalUsage = { ...prior };
+
+    accumulateUsage(runState, undefined, 3, shortPrompt, { model });
+    accumulateUsage(runState, undefined, 4, longPrompt, { model });
+    const estimate = computeCostEstimate(runState.totalUsage, { model }, runState.cost);
+
+    const expected =
+      estimateCost(prior, model, undefined, 'aggregate').totalCost +
+      estimateCost(shortPrompt, model).totalCost +
+      estimateCost(longPrompt, model).totalCost;
+    expect(estimate?.totalCost).toBeCloseTo(expected, 10);
+  });
+
+  it('seeds nothing for a fresh run', () => {
+    const runState = createRunState();
+    accumulateUsage(runState, undefined, 0, shortPrompt, { model });
+    expect(runState.cost?.promptCost).toBeCloseTo(estimateCost(shortPrompt, model).promptCost, 10);
+    expect(
+      computeCostEstimate(runState.totalUsage, { model }, runState.cost)?.totalCost,
+    ).toBeCloseTo(estimateCost(shortPrompt, model).totalCost, 10);
   });
 });

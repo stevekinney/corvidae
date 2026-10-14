@@ -290,6 +290,31 @@ export function estimateCost(
 }
 
 /**
+ * Price usage whose per-request breakdown is unknown — a checkpoint written before costs were
+ * accumulated — at the base tier, the best estimate available for it. Returns `undefined` for
+ * no usage or an unpriced model.
+ */
+export function seedAccumulatedCost(
+  prior: TokenUsage,
+  model: string,
+  options?: CostEstimationOptions,
+): AccumulatedCost | undefined {
+  const hasUsage =
+    prior.prompt > 0 ||
+    prior.completion > 0 ||
+    (prior.cacheCreationTokens ?? 0) > 0 ||
+    (prior.cacheReadTokens ?? 0) > 0;
+  if (!hasUsage || !getModelPricing(model, options)) return undefined;
+  const { promptCost, completionCost, cacheWriteCost, cacheReadCost } = estimateCost(
+    prior,
+    model,
+    options,
+    'aggregate',
+  );
+  return { promptCost, completionCost, cacheWriteCost, cacheReadCost };
+}
+
+/**
  * Add one request's cost to a run's {@link AccumulatedCost}. The request is priced on its own
  * usage, so a long-prompt tier applies to exactly the requests that crossed its threshold, never
  * to a sum of many short ones. Returns `current` unchanged when the model has no pricing.
