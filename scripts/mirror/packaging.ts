@@ -216,7 +216,7 @@ export interface TarballReport {
 }
 
 export type ReadmePublicityProblem =
-  { kind: 'missing' } | { kind: 'internal-marker'; marker: string };
+  { kind: 'missing' } | { kind: 'internal-marker'; marker: string; path: string };
 
 export interface ReadmePublicityResult {
   ok: boolean;
@@ -242,12 +242,32 @@ export function findInternalReadmeMarker(text: string): string | undefined {
   return internalReadmeMarkers.find((marker) => text.includes(marker));
 }
 
-/** The same executable artifact check runs locally and in the emitted mirror workflow. */
+/**
+ * The same executable artifact check runs locally and in the emitted mirror workflow.
+ *
+ * It reads every `README.md` in the archive, not only `package/README.md`. A component package's
+ * build copies each component's README into `dist/components/<name>/`, and
+ * `@lostgradient/editor@0.16.0` shipped five of those still carrying corvidae's `workspace:*`
+ * install instructions while its root README passed (COR-1446). The package-root README must
+ * exist; a nested one is optional, but every README present is held to the same markers, and the
+ * root is read first so a tarball with two problems reports the front page.
+ *
+ * The emitted workflow embeds this in a single-quoted shell argument, so it uses neither a single
+ * quote nor a backslash.
+ */
 export const readmePublicityScript = [
-  'const archive = Bun.spawn(["tar", "-xOf", process.argv.at(-1), "package/README.md"], {stdout: "pipe", stderr: "pipe"});',
-  'const [text, , status] = await Promise.all([new Response(archive.stdout).text(), new Response(archive.stderr).text(), archive.exited]);',
-  `const marker = ${JSON.stringify(internalReadmeMarkers)}.find(value => text.includes(value));`,
-  'const result = status !== 0 ? {ok: false, problem: {kind: "missing"}} : marker ? {ok: false, problem: {kind: "internal-marker", marker}} : {ok: true};',
+  'const tarball = process.argv.at(-1);',
+  'const run = async (command) => { const child = Bun.spawn(command, {stdout: "pipe", stderr: "pipe"}); const [text, , status] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]); return {text, status}; };',
+  'const listing = await run(["tar", "-tf", tarball]);',
+  'const entries = listing.status === 0 ? listing.text.split(String.fromCharCode(10)).map(entry => entry.trim()) : [];',
+  'const nested = entries.filter(entry => entry !== "package/README.md" && entry.toLowerCase().endsWith("/readme.md")).sort();',
+  'let result = entries.includes("package/README.md") ? {ok: true} : {ok: false, problem: {kind: "missing"}};',
+  'for (const path of result.ok ? ["package/README.md", ...nested] : []) {',
+  'const file = await run(["tar", "-xOf", tarball, path]);',
+  'if (file.status !== 0) { console.error("could not read " + path + " from " + tarball); process.exit(2); }',
+  `const marker = ${JSON.stringify(internalReadmeMarkers)}.find(value => file.text.includes(value));`,
+  'if (marker) { result = {ok: false, problem: {kind: "internal-marker", marker, path}}; break; }',
+  '}',
   'console.log(JSON.stringify(result)); process.exit(result.ok ? 0 : 1);',
 ].join(' ');
 
@@ -332,10 +352,11 @@ export function assertTarballsPublishable(reports: readonly TarballReport[]): vo
       lines.push(indent(report.publint.stdout || report.publint.stderr));
     }
     if (!report.readme.ok) {
+      const problem = report.readme.problem;
       lines.push(
-        report.readme.problem?.kind === 'missing'
-          ? `  ${report.publicName}: README.md is missing from the packed tarball`
-          : `  ${report.publicName}: README.md still reads as corvidae's internal documentation (contains "${report.readme.problem?.marker}")`,
+        problem?.kind === 'internal-marker'
+          ? `  ${report.publicName}: ${problem.path} still reads as corvidae's internal documentation (contains "${problem.marker}")`
+          : `  ${report.publicName}: README.md is missing from the packed tarball`,
       );
     }
     if (report.typeResolution.exitCode !== 0) {
