@@ -83,7 +83,7 @@ export function fieldsFromValue(kind: FoundationKind, value: JsonValue): Foundat
         return { kind, families: [value], shape: 'string' };
       }
       if (Array.isArray(value) && value.every((entry) => typeof entry === 'string')) {
-        return { kind, families: value as string[], shape: 'array' };
+        return { kind, families: value, shape: 'array' };
       }
       return null;
     }
@@ -179,7 +179,16 @@ export function valueFromFields(row: CatalogueRow, fields: FoundationFields): Bu
   }
 }
 
-const FAMILY_FORBIDDEN = /[\u0000-\u001f\u007f,;{}"\\]/;
+const FORBIDDEN_CHARACTERS = new Set([',', ';', '{', '}', '"', '\\']);
+
+/** A family name may hold no control character, comma, quote, brace, semicolon or backslash. */
+function hasForbiddenCharacter(name: string): boolean {
+  for (let index = 0; index < name.length; index += 1) {
+    const code = name.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f || FORBIDDEN_CHARACTERS.has(name.charAt(index))) return true;
+  }
+  return false;
+}
 
 function buildFamilies(fields: Extract<FoundationFields, { kind: 'fontFamily' }>): BuiltValue {
   const errors: FieldErrors = {};
@@ -188,7 +197,7 @@ function buildFamilies(fields: Extract<FoundationFields, { kind: 'fontFamily' }>
   if (names.length > MAX_FAMILIES) errors['families'] = `Use ${MAX_FAMILIES} families or fewer.`;
   names.forEach((name, index) => {
     if (name === '') errors[`family-${index}`] = 'Enter a family name or remove this row.';
-    else if (FAMILY_FORBIDDEN.test(name)) {
+    else if (hasForbiddenCharacter(name)) {
       errors[`family-${index}`] = 'A family name cannot contain commas, quotes, braces or ;.';
     }
   });

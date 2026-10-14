@@ -79,7 +79,7 @@ export function envelopeFromValue(value: unknown): ThemeEnvelope | null {
     base: { packageVersion, sourceDigest, resolver, documents },
     overrides: scopes,
     cssOverrides: cssOverrides as ThemeEnvelope['cssOverrides'],
-    ...(locked === undefined || locked.length === 0 ? {} : { locked: locked as string[] }),
+    ...(locked === undefined || locked.length === 0 ? {} : { locked }),
   };
 }
 

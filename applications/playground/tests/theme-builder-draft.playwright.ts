@@ -16,8 +16,10 @@ test.afterEach(() => {
   expect(problems, 'console errors and warnings are defects').toEqual([]);
 });
 
-const RADIUS = '#theme-builder-value-radius-medium';
-const dimension = (value: number) => `{"value": ${value}, "unit": "px"}`;
+const RADIUS = '#theme-builder-foundation-radius-medium-amount';
+const RADIUS_UNIT = '#theme-builder-foundation-radius-medium-unit';
+// The foundation editor's amount field holds the number; the unit select carries px.
+const dimension = (value: number) => String(value);
 
 async function openReady(page: Page, size = { width: 1440, height: 900 }): Promise<void> {
   await openBuilder(page, size);
@@ -31,6 +33,7 @@ async function selectRadius(page: Page): Promise<void> {
 }
 
 async function applyRadius(page: Page, value: number): Promise<void> {
+  await page.locator(RADIUS_UNIT).selectOption('px');
   await page.locator(RADIUS).fill(dimension(value));
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.getByTestId('draft-value')).toHaveText(`${value}px`);
@@ -62,7 +65,7 @@ test.describe('a draft survives a reload', () => {
   test('an unapplied, invalid entry is kept as draft input and restored', async ({ page }) => {
     await openReady(page);
     await selectRadius(page);
-    await page.locator(RADIUS).fill('{"value": 4');
+    await page.locator(RADIUS).fill('4x');
     await page.getByRole('button', { name: 'Apply', exact: true }).click();
     await expect(page.locator(RADIUS)).toHaveAttribute('aria-invalid', 'true');
     await expect(page.getByTestId('stale-preview')).toBeVisible();
@@ -70,7 +73,7 @@ test.describe('a draft survives a reload', () => {
     await page.reload();
     await expect(page.getByTestId('draft-ready')).toBeAttached({ timeout: 30_000 });
     await selectRadius(page);
-    await expect(page.locator(RADIUS)).toHaveValue('{"value": 4');
+    await expect(page.locator(RADIUS)).toHaveValue('4x');
     await expect(page.getByTestId('stale-preview')).toBeVisible();
   });
 });
@@ -133,19 +136,19 @@ test.describe('two tabs', () => {
     const other = await context.newPage();
     await openReady(other);
     await selectRadius(other);
-    await other.locator(RADIUS).fill('{"value": 9');
+    await other.locator(RADIUS).fill('9x');
     await selectRadius(page);
     await applyRadius(page, 7);
     const conflict = other.getByTestId('conflict-notice');
     await expect(conflict).toBeVisible();
-    await expect(other.locator(RADIUS)).toHaveValue('{"value": 9');
+    await expect(other.locator(RADIUS)).toHaveValue('9x');
 
     await conflict.getByRole('button', { name: 'Reload stored version' }).click();
     await other.getByRole('dialog').getByRole('button', { name: 'Discard and reload' }).click();
     await expect(conflict).toHaveCount(0);
     await expect(other.locator(RADIUS)).toHaveValue(dimension(7).replace(/ /g, ''));
 
-    await other.locator(RADIUS).fill('{"value": 11');
+    await other.locator(RADIUS).fill('11x');
     await applyRadius(page, 8);
     await expect(conflict).toBeVisible();
     await conflict.getByRole('button', { name: 'Save as copy' }).click();

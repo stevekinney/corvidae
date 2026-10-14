@@ -72,7 +72,7 @@
         ? `${workbench.context.colorMode} mode`
         : `${workbench.context.motion} motion`,
   );
-  const label = (part: string): string => `${row.name} ${part} (${row.path}, ${contextLabel})`;
+  const fieldLabel = (part: string): string => `${row.name} ${part} (${row.path}, ${contextLabel})`;
 
   const committedValue = $derived.by(() => {
     if (envelope === null) return undefined;
@@ -118,7 +118,7 @@
     else controller.setInputBuffer(key, { text, error: null });
   }
 
-  async function commitFields(next: FoundationFields, label: string): Promise<boolean> {
+  async function commitFields(next: FoundationFields, transaction: string): Promise<boolean> {
     if (envelope === null || !editable) return false;
     const value = valueFromFields(row, next);
     if (!value.ok) {
@@ -136,7 +136,7 @@
     }
     const outcome = await controller.commit({
       kind: 'edit',
-      label,
+      label: transaction,
       edit: edit.edit,
       inputKey: key,
     });
@@ -256,7 +256,7 @@
               : {}),
           }}
           {idBase}
-          {label}
+          label={fieldLabel}
           disabled={locked}
           onchange={edited}
           onslide={slide}
@@ -268,7 +268,7 @@
           {fields}
           errors={fieldErrors}
           {idBase}
-          {label}
+          label={fieldLabel}
           disabled={locked}
           onchange={edited}
           announce={(message) => (controller.announcement = message)}
@@ -279,7 +279,7 @@
           {fields}
           errors={fieldErrors}
           {idBase}
-          {label}
+          label={fieldLabel}
           disabled={locked}
           committed={committedBezier}
           onchange={edited}
