@@ -75,6 +75,13 @@ const bureau = await createBureau({
   toolbox: createToolbox([]),
   storage: { type: 'sqlite', path: storagePath },
   durableExecution: true,
+  // A short workflow claim, so a later process can recover this one's run
+  // soon after it is killed (the parent waits out the TTL first).
+  durableOwnership: {
+    ownership: 'workflow-lease',
+    workflowClaimTtlMs: 200,
+    workflowClaimRenewIntervalMs: 50,
+  },
 });
 
 let sessionId: string;

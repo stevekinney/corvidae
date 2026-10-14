@@ -50,7 +50,13 @@ A refused admission (`rejected` or `unsupported-capability`) is logged like any 
 
 ## Recovery and growth
 
-Recovery is a fold from the first entry. It happens on first use in a process, and the gate catches up again before every admission and run start. There is no checkpoint: a checkpoint of desired state alone would not restore the ledger that idempotency answers from, so checkpoints wait until a session's steering history is long enough to matter. A log grows with its session's steering activity and is deleted with the session.
+Recovery is a fold from the first entry. It happens on first use in a process, and the gate catches up again before every admission and run start.
+
+A durable run recovered after a crash steers like a fresh one. The awaited recovery hook folds the session's log before replay resumes, and hands the run its view of the gate. It also registers the same boundary and end listeners a fresh run gets, so the run picks up steering logged before the crash and logs what it applies. Before this design, a recovered run had no gate at all.
+
+There is no checkpoint: a checkpoint of desired state alone would not restore the ledger that idempotency answers from, so checkpoints wait until a session's steering history is long enough to matter. A log grows with its session's steering activity and is deleted with the session.
+
+A process can die after a session's deletion commits but before its log is deleted. A boot-time sweep removes any log whose session incarnation no longer exists. It is safe across processes because logs are keyed by incarnation, so a live session's log (in any process) is never touched.
 
 ## What changes outside the gate
 
@@ -60,7 +66,7 @@ Recovery is a fold from the first entry. It happens on first use in a process, a
 
 ## Known limits
 
-- **A run that dies with its process logs no `run-ended`.** A `pause` bound to it stays `accepted` in the log, so an exact retry of that pause replays `accepted` after a restart. No live run reads it, so nothing stays paused. The log cannot tell a dead process's run from a live run in another process, so this design does not synthesize the event.
+- **A run that dies with its process and is never recovered logs no `run-ended`.** A recovered run logs it when it ends, but one that recovery cancels or never claims leaves its `pause` `accepted` in the log, so an exact retry of that pause replays `accepted`. No live run reads it, so nothing stays paused. The log cannot tell a dead process's run from a live run in another process, so this design does not synthesize the event.
 - **A boundary event that cannot be logged is still applied locally.** If logging `applied` or `run-ended` fails after its retries, this process applies it anyway, so a finished run releases its pause and waiters. Other processes and a restart miss it, and a `steering` diagnostic says so.
 - **A corrupt key binding is left in place.** Session deletion skips a binding it cannot parse rather than aborting its cleanup. Every later admission of that `(principal, id)` then fails closed on it until an operator removes it.
 

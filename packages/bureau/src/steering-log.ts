@@ -1,4 +1,8 @@
-import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/weft';
+import {
+  type ConditionalTextValueStore,
+  decodeStorageKeyComponent,
+  encodeStorageKeyComponent,
+} from '@lostgradient/weft';
 
 import type { ImplementedSteeringCommand, SteeringCommandAdmissionOutcome } from './steering';
 
@@ -369,4 +373,27 @@ export async function deleteSteeringLog(
     }
   }
   await kv.deletePrefix(prefix);
+}
+
+/**
+ * Every `(sessionId, incarnation)` with a steering log, read from the logs'
+ * head keys. For the boot sweep that removes logs a crash left behind after
+ * their session's deletion had already committed.
+ */
+export async function listSteeringLogIncarnations(
+  kv: ConditionalTextValueStore,
+): Promise<{ sessionId: string; incarnation: string }[]> {
+  const found: { sessionId: string; incarnation: string }[] = [];
+  for (const key of await kv.list(`${LOG_PREFIX}:`)) {
+    if (!key.endsWith(':head')) continue;
+    const [sessionPart, incarnationPart] = key
+      .slice(LOG_PREFIX.length + 1, -':head'.length)
+      .split(':');
+    if (sessionPart === undefined || incarnationPart === undefined) continue;
+    found.push({
+      sessionId: decodeStorageKeyComponent(sessionPart),
+      incarnation: decodeStorageKeyComponent(incarnationPart),
+    });
+  }
+  return found;
 }

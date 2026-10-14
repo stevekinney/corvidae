@@ -15,13 +15,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveStorage, textValueStore } from '@lostgradient/weft';
+import { stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
-import { readSteeringLogEntries, readSteeringLogHead } from './steering-log';
+import {
+  appendSteeringLogEvent,
+  readSteeringLogEntries,
+  readSteeringLogHead,
+} from './steering-log';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
+
+/** Matches the child's short workflow claim, so recovery can follow a kill quickly. */
+const CLAIM_TTL_MS = 200;
+const CLAIM_OPTIONS = {
+  ownership: 'workflow-lease',
+  workflowClaimTtlMs: CLAIM_TTL_MS,
+  workflowClaimRenewIntervalMs: 50,
+} as const;
 
 interface Marker {
   readonly sessionId: string;
@@ -60,6 +73,7 @@ async function openBureau(directory: string) {
     toolbox: createToolbox([]),
     storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
     durableExecution: true,
+    durableOwnership: CLAIM_OPTIONS,
   });
 }
 
@@ -201,6 +215,96 @@ describe('durable steering survives SIGKILL', () => {
         expect(superseded.command.state).toBe('superseded');
       } finally {
         await bureau.dispose();
+      }
+    }),
+    60_000,
+  );
+
+  it(
+    'hands a run recovered after a crash its steering, and logs what it applies',
+    withDirectory('corvidae-steering-recovered-run-', async (directory) => {
+      // The child's run is mid-step when the model is steered and the
+      // process dies. Once the child's workflow claim lapses, the recovering
+      // process resumes that run; with the steering folded in, the run's
+      // next boundary marks the command applied in the log.
+      const { sessionId } = await runCrashingChild(directory, 'admitted', ['admit', 'model']);
+      await Bun.sleep(CLAIM_TTL_MS * 10);
+
+      let generateCalls = 0;
+      const recovering = await createBureau({
+        agents: {},
+        generate: async () => {
+          generateCalls += 1;
+          return { content: 'done', toolCalls: [] };
+        },
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+        durableExecution: true,
+        durableOwnership: CLAIM_OPTIONS,
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      try {
+        await recovering.waitForRecovery?.();
+        for (let attempt = 0; attempt < 500; attempt += 1) {
+          const session = await recovering.getSession(sessionId);
+          if (session?.metadata['lastRunStatus'] === 'completed') break;
+          await Bun.sleep(10);
+        }
+        expect(generateCalls).toBeGreaterThan(0);
+      } finally {
+        await recovering.dispose();
+      }
+
+      // A process that only folds the log sees the command applied.
+      const reader = await openBureau(directory);
+      try {
+        await reader.waitForRecovery?.();
+        await reader.createRun({ message: 'again', principal: 'alice', sessionId });
+        const outcome = await reader.submitSteeringCommand(sessionId, {
+          id: 'crash-cmd-2',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        });
+        expect(outcome.outcome).toBe('replayed');
+        if (outcome.outcome !== 'replayed') throw new Error('expected replayed');
+        expect(outcome.command.state).toBe('applied');
+      } finally {
+        await reader.dispose();
+      }
+    }),
+    60_000,
+  );
+
+  it(
+    'sweeps a steering log whose session no longer exists at boot',
+    withDirectory('corvidae-steering-orphan-', async (directory) => {
+      const path = join(directory, 'bureau.sqlite');
+      // An orphan: a log for a session the store never had, as a crash after
+      // a deletion committed (but before its log was removed) leaves behind.
+      const storage = await resolveStorage({ type: 'sqlite', path });
+      const kv = textValueStore(storage);
+      await appendSteeringLogEvent(
+        kv,
+        'ghost-session',
+        'ghost-incarnation',
+        await readSteeringLogHead(kv, 'ghost-session', 'ghost-incarnation'),
+        { type: 'run-ended', runId: 'ghost-run', now: '2026-09-02T00:00:00.000Z' },
+      );
+      await kv.close();
+
+      const bureau = await openBureau(directory);
+      await bureau.waitForRecovery?.();
+      await bureau.dispose();
+
+      const after = await resolveStorage({ type: 'sqlite', path });
+      const afterKv = textValueStore(after);
+      try {
+        expect(await readSteeringLogHead(afterKv, 'ghost-session', 'ghost-incarnation')).toEqual({
+          raw: null,
+          sequence: 0,
+        });
+      } finally {
+        await afterKv.close();
       }
     }),
     60_000,

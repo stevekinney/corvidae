@@ -226,6 +226,7 @@ import {
 import {
   appendSteeringLogEvent,
   deleteSteeringLog,
+  listSteeringLogIncarnations,
   readSteeringKeyBinding,
   readSteeringLogEntries,
   readSteeringLogHead,
@@ -1894,6 +1895,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
     });
   }
+
+  /**
+   * Folds a recovered durable run's session log and hands the run its view of
+   * the gate, before replay resumes. A failure leaves the run to resume
+   * without steering, as recovery always did, and is diagnosed.
+   */
+  async function recoverRunSteering(
+    sessionId: string,
+    session: AgentSession | undefined,
+    runId: string,
+    services: DurableRunDeps,
+  ): Promise<BureauSteeringGate | undefined> {
+    const kv = durableSteeringStore();
+    if (kv === undefined || session === undefined) return undefined;
+    try {
+      const cursor = await enqueueSteering(sessionId, () =>
+        catchUpSteering(kv, sessionId, session.incarnation),
+      );
+      services.options = { ...services.options, runId, steering: cursor.gate.forRun(runId) };
+      return cursor.gate;
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Recovered run "${runId}" resumes without steering; its session's steering log could not be folded: ${serializeUnknownError(error)}`,
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * Removes steering logs whose session incarnation no longer exists — left
+   * behind when a process died after a session's deletion committed but
+   * before its log was deleted. Safe across processes: a log is keyed by
+   * incarnation, so a live session's log (any process's) is never touched,
+   * and a session recreated under the same id has a different incarnation.
+   */
+  async function sweepOrphanedSteeringLogs(): Promise<void> {
+    const kv = durableSteeringStore();
+    const sessionStore = runtime.sessionStore;
+    if (kv === undefined || sessionStore === undefined) return;
+    for (const { sessionId, incarnation } of await listSteeringLogIncarnations(kv)) {
+      const session = await sessionStore.load(sessionId);
+      if (session?.incarnation === incarnation) continue;
+      await enqueueSteering(sessionId, () => deleteSteeringLog(kv, sessionId, incarnation));
+    }
+  }
+  let steeringSweep: Promise<void> = Promise.resolve();
 
   function steeringContention(sessionId: string): BureauError {
     return new BureauError(
@@ -3902,6 +3951,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     eventSurface?: ReturnType<typeof createRecoveredRunEventSurface>,
     recoveredServices?: DurableRunDeps,
     sessionMetadata?: unknown,
+    steeringGate?: BureauSteeringGate,
   ): void {
     // At-most-once registration per runId (guards double-recover / a runId already
     // started live on this process — neither should reach here, but a silent
@@ -4023,6 +4073,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the engine itself, so a run left non-terminal by the failure is
     // recorded as unresolved rather than being pruned.
     detachBestEffortPromise(recoveredRun.result.catch(() => runTerminalCheckpointCleanup(runId)));
+
+    if (steeringGate !== undefined) {
+      recoveredRun.addEventListener(SteeringAppliedEvent.type, (event) => {
+        logRunBoundarySteering(sessionId, steeringGate, {
+          type: 'applied',
+          runId: event.effective.appliedAtRunId,
+          configVersion: event.effective.configVersion,
+          now: event.effective.appliedAt,
+        });
+      });
+      const endSteering = (): void => {
+        logRunBoundarySteering(sessionId, steeringGate, {
+          type: 'run-ended',
+          runId,
+          now: runtimeServices.clock.nowISO(),
+        });
+      };
+      recoveredRun.once('run.completed', endSteering);
+      recoveredRun.once('run.aborted', endSteering);
+    }
 
     recoveredRun.once('run.completed', (event) => {
       activeRuns.delete(recoveredRun);
@@ -4354,8 +4424,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     let sessionLoad: SessionLoadOutcome;
+    let loadedSession: AgentSession | undefined;
     try {
       const session = await runtime.sessionStore.load(info.input.sessionId);
+      loadedSession = session;
       sessionLoad = { ok: true, session: session ? { ...session.metadata } : null };
     } catch (error) {
       diagnose({
@@ -4395,6 +4467,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     const services = info.services as DurableRunDeps;
+    // A recovered run steers exactly like a fresh one: this awaited hook runs
+    // before replay resumes, so the run's gate is folded from the session's
+    // log and handed to the run here, and its boundary and end events are
+    // logged by `reattachRecoveredRun`.
+    const recoveredSteeringGate = await recoverRunSteering(
+      info.input.sessionId,
+      loadedSession,
+      info.workflowId,
+      services,
+    );
     const eventSurface = createRecoveredRunEventSurface(
       services,
       info.workflowId,
@@ -4413,6 +4495,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       eventSurface,
       info.services as DurableRunDeps,
       sessionLoad.session,
+      recoveredSteeringGate,
     );
     // AB-336 — see this function's own doc comment: a run recovered still
     // genuinely parked on `requestHumanInput` has no live action log to
@@ -4516,6 +4599,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     const durable = runtime.durable;
+
+    // Orphaned steering logs are independent of run recovery; swept in the
+    // background, and awaited by shutdown before the backend closes.
+    steeringSweep = sweepOrphanedSteeringLogs().catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Could not sweep orphaned steering logs: ${serializeUnknownError(error)}`,
+      });
+    });
 
     // Sweep suspended scheduler-origin residue FIRST and UNCONDITIONALLY (not
     // gated on a session store): a hard crash with a preempted scheduler task in
@@ -9120,6 +9213,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // Pending steering log appends (run-boundary events are logged
             // in the background) finish before the backend closes under
             // them. Each one reports its own failure as a diagnostic.
+            await steeringSweep;
             await Promise.allSettled(steeringQueues.values());
             steeringQueues.clear();
             steeringCursors.clear();
