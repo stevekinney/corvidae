@@ -18,6 +18,7 @@ import {
   readCoveragePathIgnorePatterns,
   readTestScriptPathIgnorePatterns,
   runCoverageShard,
+  workflowEventFeedUncoveredLines,
 } from './check-coverage.ts';
 
 /** An already-closed byte stream, standing in for a spawned child's empty stdout/stderr. */
@@ -1151,5 +1152,15 @@ describe('requireUncoveredLines on corvidae-authored allowances', () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+});
+
+describe('workflowEventFeedUncoveredLines', () => {
+  // COR-1379: in the linux/arm64 Dev Container Bun covers line 398, and the allowance that
+  // required it to stay uncovered failed the coverage gate.
+  it('excuses line 398 only where Bun leaves it uncovered', () => {
+    expect(workflowEventFeedUncoveredLines('linux', 'x64')).toEqual([398]);
+    expect(workflowEventFeedUncoveredLines('linux', 'arm64')).toEqual([]);
+    expect(workflowEventFeedUncoveredLines('darwin', 'arm64')).toEqual([]);
   });
 });

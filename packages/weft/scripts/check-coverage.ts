@@ -27,6 +27,16 @@ type CoverageAllowance = {
   requireUncoveredLines?: boolean;
 };
 
+/**
+ * The `workflow-event-feed.ts` lines Bun leaves uncovered on a given host. Linux on x64 misses
+ * line 398 (the returned `subscribe` reference); macOS and linux/arm64 (the Dev Container on
+ * Apple silicon, COR-1379) cover it, and the allowance's `requireUncoveredLines` would fail
+ * them if it still named the line.
+ */
+export function workflowEventFeedUncoveredLines(platform: string, architecture: string): number[] {
+  return platform === 'darwin' || architecture === 'arm64' ? [] : [398];
+}
+
 type DocumentedCoverageAllowance = CoverageAllowance & { reason: string };
 
 type CoverageAllowanceEntry = readonly [path: string, allowance: DocumentedCoverageAllowance];
@@ -670,7 +680,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Bun maps the returned subscribe reference and no-op dispose body inconsistently across platforms even though both are exercised by the feed tests.',
-        lines: new Set(process.platform === 'darwin' ? [] : [398]),
+        lines: new Set(workflowEventFeedUncoveredLines(process.platform, process.arch)),
         requireUncoveredLines: true,
       },
     ],
