@@ -15,15 +15,17 @@
  *     imported from `bun`, or a call to `spawn`, `spawnSync`, `exec`, `execSync`, `execFile`,
  *     `execFileSync` or `fork` imported from `node:child_process` (named or as a namespace).
  *   - A spawning function is a function declaration, or a `const` bound to a function
- *     expression, whose body contains a spawn or calls a spawning function. A spawning class is
- *     one with a method or constructor that does; `new` on it counts as a call.
+ *     expression, declared anywhere in the file, whose body contains a spawn or calls a spawning
+ *     function. A spawning class is one with a method or constructor that does; `new` on it, or
+ *     a call to any of its static members, counts as a call.
  *   - Spawning functions are found across files: a named, default or namespace import from a
  *     relative path, or from a `@lostgradient/*` workspace package through its `exports` map, is
  *     followed into that module, through `export … from` re-exports, and analyzed the same way.
  *
  * The guard reports a spawn, or a call to a spawning function, lexically inside a function
  * passed to `it`, `test` (with any modifier: `.only`, `.skip`, `.each(…)`, `.skipIf(…)` and
- * the rest) or a hook, and a spawning function passed to one of them by name. A `describe`
+ * the rest) or a hook, under its own name, an alias imported from `bun:test`, or a `bun:test`
+ * namespace, and a spawning function passed to one of them by name. A `describe`
  * callback runs at registration, outside any clock, and is not a test body.
  *
  * A spawning function that takes its spawner as a dependency is still reported when a test calls
@@ -102,6 +104,10 @@ type ImportedNames = {
   childProcessNamespaces: Set<string>;
   /** Local names bound to `$` from `bun`. */
   bunShell: Set<string>;
+  /** Local names for `it`, `test` and the hooks, including aliases imported from `bun:test`. */
+  registrations: Set<string>;
+  /** Namespace bindings of `bun:test`, so `bt.test(…)` registers a test. */
+  testNamespaces: Set<string>;
 };
 
 function walk(node: ts.Node, visit: (node: ts.Node) => boolean | void): void {
@@ -184,6 +190,8 @@ function importedNames(sourceFile: ts.SourceFile, fileName: string): ImportedNam
   const names: ImportedNames = {
     spawning: new Set(),
     moduleNamespaces: new Map(),
+    registrations: new Set([...TEST_FUNCTIONS, ...HOOK_FUNCTIONS]),
+    testNamespaces: new Set(),
     childProcessFunctions: new Set(),
     childProcessNamespaces: new Set(),
     bunShell: new Set(),
@@ -209,6 +217,18 @@ function importedNames(sourceFile: ts.SourceFile, fileName: string): ImportedNam
         names.childProcessNamespaces.add(bindings.name.text);
       }
       if (clause.name !== undefined) names.childProcessNamespaces.add(clause.name.text);
+      continue;
+    }
+    if (specifier === 'bun:test') {
+      for (const element of named) {
+        const imported = (element.propertyName ?? element.name).text;
+        if (TEST_FUNCTIONS.has(imported) || HOOK_FUNCTIONS.has(imported)) {
+          names.registrations.add(element.name.text);
+        }
+      }
+      if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+        names.testNamespaces.add(bindings.name.text);
+      }
       continue;
     }
     if (specifier === 'bun') {
@@ -277,10 +297,11 @@ function isDirectSpawn(node: ts.Node, imports: ImportedNames): boolean {
 /** Whether `name` (an identifier, or `namespace.member`) names a spawning function or class. */
 function isSpawningName(name: string, imports: ImportedNames, local: Set<string>): boolean {
   if (local.has(name) || imports.spawning.has(name)) return true;
-  const [namespace, member] = name.split('.');
-  return (
-    member !== undefined && imports.moduleNamespaces.get(namespace!)?.exports.get(member) === true
-  );
+  const [owner, member] = name.split('.');
+  if (member === undefined) return false;
+  // A static member of a spawning class, such as `Tools.run()`, counts as the class does.
+  if (local.has(owner!) || imports.spawning.has(owner!)) return true;
+  return imports.moduleNamespaces.get(owner!)?.exports.get(member) === true;
 }
 
 /** Whether `node` calls or constructs something known to start a process. */
@@ -314,10 +335,26 @@ function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
   );
 }
 
+/**
+ * Functions and classes declared by name anywhere in the file, not only at module scope, so a
+ * helper declared inside a `describe` and passed to a test by name is still analyzed. Only a
+ * module-scope declaration can be exported.
+ */
 function namedBodies(sourceFile: ts.SourceFile): NamedBody[] {
   const bodies: NamedBody[] = [];
-  for (const statement of sourceFile.statements) {
-    const exported = hasModifier(statement, ts.SyntaxKind.ExportKeyword);
+  const statements: ts.Statement[] = [];
+  walk(sourceFile, (node) => {
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isVariableStatement(node)
+    ) {
+      statements.push(node);
+    }
+  });
+  for (const statement of statements) {
+    const exported =
+      statement.parent === sourceFile && hasModifier(statement, ts.SyntaxKind.ExportKeyword);
     const isDefault = exported && hasModifier(statement, ts.SyntaxKind.DefaultKeyword);
     if (ts.isFunctionDeclaration(statement) && statement.body) {
       // An anonymous `export default function` is analyzed under the name `default`.
@@ -425,27 +462,40 @@ function analyzeModule(fileName: string): ModuleAnalysis {
   return analysis;
 }
 
-/** The base name of a test registration callee: `it` for `it.only`, `test.each(rows)` and so on. */
-function registrationBase(expression: ts.Expression): string | null {
-  let current = expression;
+/**
+ * Whether `call` registers a test or hook: `it`, `test`, a hook, or an alias of one imported from
+ * `bun:test`, with any modifier (`it.only`, `test.each(rows)`), or one reached through a
+ * `bun:test` namespace (`bt.test.skip`).
+ */
+function isTestOrHookRegistration(call: ts.CallExpression, imports: ImportedNames): boolean {
+  let current: ts.Expression = call.expression;
+  let member: string | null = null;
   while (true) {
-    if (ts.isIdentifier(current)) return current.text;
-    if (ts.isPropertyAccessExpression(current)) current = current.expression;
-    else if (ts.isCallExpression(current)) current = current.expression;
-    else return null;
+    if (ts.isIdentifier(current)) {
+      if (imports.registrations.has(current.text)) return true;
+      return (
+        imports.testNamespaces.has(current.text) &&
+        member !== null &&
+        (TEST_FUNCTIONS.has(member) || HOOK_FUNCTIONS.has(member))
+      );
+    }
+    if (ts.isPropertyAccessExpression(current)) {
+      member = current.name.text;
+      current = current.expression;
+    } else if (ts.isCallExpression(current)) {
+      member = null;
+      current = current.expression;
+    } else return false;
   }
 }
 
-function isTestOrHookRegistration(call: ts.CallExpression): boolean {
-  const base = registrationBase(call.expression);
-  return base !== null && (TEST_FUNCTIONS.has(base) || HOOK_FUNCTIONS.has(base));
-}
-
-function isTestOrHookCallback(node: ts.Node): boolean {
+function isTestOrHookCallback(node: ts.Node, imports: ImportedNames): boolean {
   if (!ts.isArrowFunction(node) && !ts.isFunctionExpression(node)) return false;
   const call = node.parent;
   return (
-    ts.isCallExpression(call) && call.arguments.includes(node) && isTestOrHookRegistration(call)
+    ts.isCallExpression(call) &&
+    call.arguments.includes(node) &&
+    isTestOrHookRegistration(call, imports)
   );
 }
 
@@ -467,9 +517,9 @@ function spawnFreeReason(call: ts.CallExpression, sourceFile: ts.SourceFile): st
 }
 
 /** The test or hook registration call whose callback lexically contains `node`, if any. */
-function enclosingTestOrHook(node: ts.Node): ts.CallExpression | null {
+function enclosingTestOrHook(node: ts.Node, imports: ImportedNames): ts.CallExpression | null {
   for (let current = node.parent; current !== undefined; current = current.parent) {
-    if (isTestOrHookCallback(current)) return current.parent as ts.CallExpression;
+    if (isTestOrHookCallback(current, imports)) return current.parent as ts.CallExpression;
   }
   return null;
 }
@@ -512,14 +562,14 @@ export function findTestProcessSpawnViolations(
   };
   walk(sourceFile, (node) => {
     // A test or hook body passed by name, as in `test('x', body)`, runs on the clock too.
-    if (ts.isCallExpression(node) && isTestOrHookRegistration(node)) {
+    if (ts.isCallExpression(node) && isTestOrHookRegistration(node, imports)) {
       for (const argument of node.arguments) {
         const name = calleeName(argument);
         if (name !== null && isSpawningName(name, imports, local)) reportInferred(argument, node);
       }
     }
     if (!isSpawningNode(node, imports, local)) return;
-    const registration = enclosingTestOrHook(node);
+    const registration = enclosingTestOrHook(node, imports);
     if (registration === null) return;
     // A `spawn-free` marker vouches for the helper calls the guard can only infer about. A
     // process API written in the test body itself is unambiguous, so no marker exempts it.
@@ -527,6 +577,19 @@ export function findTestProcessSpawnViolations(
     else reportInferred(node, registration);
   });
   return violations;
+}
+
+/**
+ * Whether a `timeout` value can bound the child. Node and Bun treat `0` as no timeout, so a
+ * literal must be positive; a name or expression is trusted, since only its runtime value is known.
+ */
+function isBoundingTimeout(property: ts.ObjectLiteralElementLike): boolean {
+  if (!ts.isPropertyAssignment(property)) return true;
+  const value = property.initializer;
+  if (ts.isNumericLiteral(value)) return Number(value.text.replaceAll('_', '')) > 0;
+  if (ts.isPrefixUnaryExpression(value) && value.operator === ts.SyntaxKind.MinusToken)
+    return false;
+  return true;
 }
 
 function hasTimeoutProperty(options: ts.Expression | undefined): boolean {
@@ -537,7 +600,8 @@ function hasTimeoutProperty(options: ts.Expression | undefined): boolean {
       (property) =>
         property.name !== undefined &&
         (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
-        property.name.text === 'timeout',
+        property.name.text === 'timeout' &&
+        isBoundingTimeout(property),
     )
   );
 }

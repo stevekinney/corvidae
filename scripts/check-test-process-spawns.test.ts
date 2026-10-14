@@ -46,6 +46,14 @@ describe('spawns inside a test body or hook', () => {
       "it('x', async () => { await Promise.all([1].map(async () => Bun.spawn(['ls']).exited)); });",
     ],
     [
+      'a test imported from bun:test under an alias',
+      "import { test as spec } from 'bun:test';\nspec('x', () => { Bun.spawnSync(['ls'], { timeout: 1 }); });",
+    ],
+    [
+      'a test reached through a bun:test namespace',
+      "import * as bt from 'bun:test';\nbt.test.only('x', () => { Bun.spawnSync(['ls'], { timeout: 1 }); });",
+    ],
+    [
       'a test inside a describe',
       "describe('d', () => { it('x', () => { Bun.spawnSync(['ls']); }); });",
     ],
@@ -92,6 +100,22 @@ describe('spawning functions', () => {
     expect(
       inspect("function body() { Bun.spawnSync(['ls']); }\ntest('x', body);\nbeforeEach(body);"),
     ).toEqual(['body', 'body']);
+  });
+
+  test('reports a spawning helper declared inside a describe and passed by name', () => {
+    expect(
+      inspect(
+        "describe('d', () => { function body() { Bun.spawnSync(['x'], { timeout: 1 }); }\ntest('x', body); });",
+      ),
+    ).toEqual(['body']);
+  });
+
+  test('reports a static method of a spawning class', () => {
+    expect(
+      inspect(
+        "class Tools { static run() { Bun.spawnSync(['x'], { timeout: 1 }); } }\nit('x', () => { Tools.run(); });",
+      ),
+    ).toEqual(['Tools.run()']);
   });
 
   test('accepts a spawn-free function passed to a test by name', () => {
@@ -228,6 +252,12 @@ describe('spawn hang guards', () => {
     ],
     ['a Bun shell template, which takes no timeout', 'await Bun.$`git init`;'],
     ['a $ shell template imported from bun', "import { $ } from 'bun';\nawait $`git init`;"],
+    ['a zero timeout, which Bun treats as none', "Bun.spawnSync(['git'], { timeout: 0 });"],
+    [
+      'a zero child_process timeout',
+      "import { execFileSync } from 'node:child_process';\nexecFileSync('sleep', ['30'], { timeout: 0 });",
+    ],
+    ['a negative timeout', "Bun.spawn(['git'], { timeout: -1 });"],
   ])('reports %s', (_name, source) => {
     expect(unbounded(source)).toHaveLength(1);
   });
@@ -240,6 +270,7 @@ describe('spawn hang guards', () => {
       "import { execFile } from 'node:child_process';\nexecFile('git', ['init'], { timeout: LIMIT }, () => {});",
     ],
     ['an unrelated spawn function', "spawn('x');"],
+    ['a timeout named by a variable', "Bun.spawn(['git'], { timeout });"],
   ])('accepts %s', (_name, source) => {
     expect(unbounded(source)).toEqual([]);
   });
