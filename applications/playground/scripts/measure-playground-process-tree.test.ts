@@ -101,3 +101,23 @@ describe('startTreeSampler', () => {
     expect(series.sampleCount).toBe(1);
   });
 });
+
+describe('startTreeSampler failures (4273630265)', () => {
+  it('retains failed reads and their messages instead of discarding them', async () => {
+    let reads = 0;
+    const sampler = startTreeSampler({
+      rootPids: () => [10],
+      readProcessTable: () => {
+        reads += 1;
+        return Promise.reject(new Error(`ps failed ${reads}`));
+      },
+      intervalMilliseconds: 1,
+    });
+    while (reads < 3) await Bun.sleep(2);
+    const series = await sampler.stop();
+    expect(series.sampleCount).toBe(0);
+    expect(series.failedReads).toBeGreaterThanOrEqual(3);
+    expect(series.failureMessages[0]).toBe('ps failed 1');
+    expect(series.failureMessages.length).toBeLessThanOrEqual(5);
+  });
+});

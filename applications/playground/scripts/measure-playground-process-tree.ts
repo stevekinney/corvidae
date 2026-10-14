@@ -81,6 +81,10 @@ export type TreeSampleSeries = {
   sampleCount: number;
   /** Ticks skipped because the previous `ps` read had not finished. */
   skippedTicks: number;
+  /** Reads of the process table that failed; a sample with none successful has no peak at all. */
+  failedReads: number;
+  /** The first few failure messages, kept so a failed observer is diagnosable. */
+  failureMessages: string[];
   peakResidentBytes: number;
   peakProcessCount: number;
   /** Every pid the observer attributed to the tree at any sample. */
@@ -95,9 +99,12 @@ export type TreeSamplerOptions = {
   now?: () => number;
 };
 
+const MAXIMUM_RETAINED_FAILURE_MESSAGES = 5;
+
 export async function readSystemProcessTable(): Promise<string> {
   const child = Bun.spawn(['ps', '-axo', 'pid=,ppid=,rss='], { stdout: 'pipe', stderr: 'ignore' });
-  const [output] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+  const [output, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+  if (exitCode !== 0) throw new Error(`ps exited ${exitCode}`);
   return output;
 }
 
@@ -117,6 +124,8 @@ export function startTreeSampler(options: TreeSamplerOptions): {
   const samples: TreeSample[] = [];
   const observedPids = new Set<number>();
   let skippedTicks = 0;
+  let failedReads = 0;
+  const failureMessages: string[] = [];
   let inFlight: Promise<void> | null = null;
 
   const sampleOnce = async (): Promise<void> => {
@@ -138,7 +147,12 @@ export function startTreeSampler(options: TreeSamplerOptions): {
       return;
     }
     inFlight = sampleOnce()
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        failedReads += 1;
+        if (failureMessages.length < MAXIMUM_RETAINED_FAILURE_MESSAGES) {
+          failureMessages.push(error instanceof Error ? error.message : String(error));
+        }
+      })
       .finally(() => {
         inFlight = null;
       });
@@ -155,6 +169,8 @@ export function startTreeSampler(options: TreeSamplerOptions): {
         intervalMilliseconds,
         sampleCount: samples.length,
         skippedTicks,
+        failedReads,
+        failureMessages,
         peakResidentBytes: Math.max(0, ...samples.map((sample) => sample.residentBytes)),
         peakProcessCount: Math.max(0, ...samples.map((sample) => sample.processCount)),
         observedPids: [...observedPids].toSorted((left, right) => left - right),
