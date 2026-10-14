@@ -34,6 +34,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import type { RealmReadyOutcome } from '../worker-realm-readiness.ts';
 import type { RealmLifecycle, RealmRestartOutcome } from './realm-lifecycle.ts';
@@ -109,18 +110,26 @@ async function readyAndActive(
   return activation;
 }
 
-/** Run the shared realm-protocol conformance suite against one realm kind. */
-export function describeRealmConformance(harness: RealmConformanceHarness): void {
-  describe(`realm protocol conformance: ${harness.label}`, () => {
-    it('completes the ready handshake and reaches Active on activate()', async () => {
+type RealmConformanceCase = readonly [
+  name: string,
+  run: (harness: RealmConformanceHarness) => Promise<void>,
+];
+
+/** The shared realm-protocol conformance cases, each run against one realm kind. */
+const REALM_CONFORMANCE_CASES: readonly RealmConformanceCase[] = [
+  [
+    'completes the ready handshake and reaches Active on activate()',
+    async (harness) => {
       const realm = harness.create();
       await readyAndActive(realm);
       expect(realm.lifecycle.state).toBe('active');
       realm.discard();
       await realm.dispose();
-    });
-
-    it('crashes instead of becoming ready when the expected artifact digest disagrees', async () => {
+    },
+  ],
+  [
+    'crashes instead of becoming ready when the expected artifact digest disagrees',
+    async (harness) => {
       const realm = harness.create({
         expectedArtifactDigest: 'digest-expected',
         advertisedArtifactDigest: 'digest-actual',
@@ -130,9 +139,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(realm.lifecycle.state).toBe('crashed');
       realm.discard();
       await realm.dispose();
-    });
-
-    it('a matching artifact digest reaches Ready', async () => {
+    },
+  ],
+  [
+    'a matching artifact digest reaches Ready',
+    async (harness) => {
       const realm = harness.create({
         expectedArtifactDigest: 'digest-shared',
         advertisedArtifactDigest: 'digest-shared',
@@ -141,9 +152,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(outcome.ok).toBe(true);
       realm.discard();
       await realm.dispose();
-    });
-
-    it('dispatches a turn and resolves it once the realm delivers a matching result', async () => {
+    },
+  ],
+  [
+    'dispatches a turn and resolves it once the realm delivers a matching result',
+    async (harness) => {
       const realm = harness.create();
       const activation = await readyAndActive(realm);
       const envelope = { ...activation, turnId: 1 };
@@ -154,9 +167,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(await pending).toEqual({ echoed: true });
       realm.discard();
       await realm.dispose();
-    });
-
-    it('rejects a turn dispatched with a wrong envelope field before the realm ever sees it, leaving no pending turn', async () => {
+    },
+  ],
+  [
+    'rejects a turn dispatched with a wrong envelope field before the realm ever sees it, leaving no pending turn',
+    async (harness) => {
       const realm = harness.create();
       const activation = await readyAndActive(realm);
 
@@ -168,9 +183,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(realm.pendingTurnCount).toBe(0);
       realm.discard();
       await realm.dispose();
-    });
-
-    it('rejects a turn dispatched with the wrong next turnId', async () => {
+    },
+  ],
+  [
+    'rejects a turn dispatched with the wrong next turnId',
+    async (harness) => {
       const realm = harness.create();
       const activation = await readyAndActive(realm);
 
@@ -180,9 +197,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(realm.pendingTurnCount).toBe(0);
       realm.discard();
       await realm.dispose();
-    });
-
-    it('a result carrying a mismatched envelope does not settle the real, still-pending turn', async () => {
+    },
+  ],
+  [
+    'a result carrying a mismatched envelope does not settle the real, still-pending turn',
+    async (harness) => {
       const realm = harness.create();
       const activation = await readyAndActive(realm);
       const envelope = { ...activation, turnId: 1 };
@@ -198,9 +217,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(await pending).toBe('the-real-result');
       realm.discard();
       await realm.dispose();
-    });
-
-    it('crash settles every pending turn with a rejection and ends in Crashed', async () => {
+    },
+  ],
+  [
+    'crash settles every pending turn with a rejection and ends in Crashed',
+    async (harness) => {
       const realm = harness.create();
       const activation = await readyAndActive(realm);
 
@@ -221,9 +242,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(firstRejection).toThrow();
       expect(secondRejection).toThrow();
       await realm.dispose();
-    });
-
-    it('terminate settles a turn still pending and ends in Terminated; a late result afterward cannot resurrect it', async () => {
+    },
+  ],
+  [
+    'terminate settles a turn still pending and ends in Terminated; a late result afterward cannot resurrect it',
+    async (harness) => {
       const realm = harness.create();
       const activation = await readyAndActive(realm);
       const envelope = { ...activation, turnId: 1 };
@@ -241,9 +264,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(() => realm.deliverResult(envelope, 'too-late')).not.toThrow();
       realm.discard();
       await realm.dispose();
-    });
-
-    it('discard() ends an idle, never-activated Ready realm in Crashed (no Terminated exit exists from Ready)', async () => {
+    },
+  ],
+  [
+    'discard() ends an idle, never-activated Ready realm in Crashed (no Terminated exit exists from Ready)',
+    async (harness) => {
       const realm = harness.create();
       await realm.waitUntilReady();
       expect(realm.lifecycle.state).toBe('ready');
@@ -251,9 +276,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       realm.discard();
       expect(realm.lifecycle.state).toBe('crashed');
       await realm.dispose();
-    });
-
-    it('restart() is refused once nothing references this realm, without throwing', async () => {
+    },
+  ],
+  [
+    'restart() is refused once nothing references this realm, without throwing',
+    async (harness) => {
       const realm = harness.create({ isReferenced: () => false });
       await readyAndActive(realm);
       realm.crash();
@@ -261,9 +288,11 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(realm.restart()).toEqual({ ok: false, reason: 'unreferenced' });
       expect(realm.lifecycle.state).toBe('crashed');
       await realm.dispose();
-    });
-
-    it('restart() is bounded by maxRestarts and yields a fresh realmGeneration on each successful restart', async () => {
+    },
+  ],
+  [
+    'restart() is bounded by maxRestarts and yields a fresh realmGeneration on each successful restart',
+    async (harness) => {
       const realm = harness.create({ maxRestarts: 1 });
       const first = await readyAndActive(realm);
       realm.crash();
@@ -280,6 +309,38 @@ export function describeRealmConformance(harness: RealmConformanceHarness): void
       expect(realm.restart()).toEqual({ ok: false, reason: 'restart-budget-exceeded' });
       realm.discard();
       await realm.dispose();
-    });
+    },
+  ],
+];
+
+/**
+ * Run the shared realm-protocol conformance suite against one realm kind.
+ *
+ * With `outcomes` from {@link runRealmConformanceAtModuleScope}, each test only rethrows the
+ * outcome its case recorded, for a realm kind whose cases spawn real processes.
+ */
+export function describeRealmConformance(
+  harness: RealmConformanceHarness,
+  outcomes?: ReadonlyMap<string, unknown>,
+): void {
+  describe(`realm protocol conformance: ${harness.label}`, () => {
+    for (const [name, run] of REALM_CONFORMANCE_CASES) {
+      it(name, outcomes === undefined ? () => run(harness) : () => rethrow(outcomes.get(name)));
+    }
   });
+}
+
+/**
+ * Run every conformance case for a realm kind whose cases spawn real processes, recording each
+ * outcome. Awaited at module scope, the cases run off Bun's five-second per-test clock; pass the
+ * result to {@link describeRealmConformance}.
+ */
+export async function runRealmConformanceAtModuleScope(
+  harness: RealmConformanceHarness,
+): Promise<ReadonlyMap<string, unknown>> {
+  const outcomes = new Map<string, unknown>();
+  for (const [name, run] of REALM_CONFORMANCE_CASES) {
+    outcomes.set(name, await outcomeOf(() => run(harness)));
+  }
+  return outcomes;
 }
