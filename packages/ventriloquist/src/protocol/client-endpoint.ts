@@ -117,7 +117,10 @@ export class ClientEndpoint {
   }
 
   #close(rejection: Rejection): Rejection {
-    if (endsAttachment(rejection.failure)) this.#phase = 'closed';
+    if (endsAttachment(rejection.failure)) {
+      this.#phase = 'closed';
+      this.#authorityRevoked = true;
+    }
     return rejection;
   }
 
@@ -126,6 +129,7 @@ export class ClientEndpoint {
       return reject('stale-generation', 'stale-session');
     }
     this.#phase = 'closed';
+    this.#authorityRevoked = true;
     return accept(message);
   }
 
@@ -188,7 +192,7 @@ export class ClientEndpoint {
           : this.#operations.verifyResolution(message.operationSequence);
         if (!verified.ok) return verified;
         if (submitted) this.#authorityRevoked = true;
-        else this.#operations.resolve();
+        else this.#operations.refuse();
         return undefined;
       }
       case 'process-exit':

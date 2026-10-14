@@ -58,12 +58,22 @@ function failureOf(result: {
 }
 
 describe('constructing a host endpoint', () => {
-  test.each([0, 262_145, 1.5])('rejects a frame limit of %j', (maxFrameBytes) => {
+  test.each([0, 65_537, 262_144, 1.5])('rejects a frame limit of %j', (maxFrameBytes) => {
     expect(() => new HostEndpoint({ maxFrameBytes })).toThrow(RangeError);
   });
 
-  test.each([0, 4097, 1.5])('rejects a queue depth of %j', (maxQueuedOperations) => {
+  test.each([0, 257, 4096, 1.5])('rejects a queue depth of %j', (maxQueuedOperations) => {
     expect(() => new HostEndpoint({ maxQueuedOperations })).toThrow(RangeError);
+  });
+
+  test('accepts the contractual maxima and nothing above them', () => {
+    const host = new HostEndpoint({ maxFrameBytes: 65_536, maxQueuedOperations: 256 });
+    expectOk(host.receive(helloFrame()));
+    expect(
+      JSON.parse(
+        expectOk(host.issueCapabilities({ generation: 1, capabilities: PTY_CAPABILITIES })),
+      ),
+    ).toMatchObject({ maxFrameBytes: 65_536, maxQueuedOperations: 256 });
   });
 
   test('advertises the limits it was given', () => {
@@ -800,7 +810,7 @@ describe('frames the host sends', () => {
     expectOk(host.cleanupResult('complete'));
   });
 
-  test('does not revoke authority when the process exit could not be sent', () => {
+  test('revokes authority when the process exit could not be sent, but does not report it', () => {
     const host = new HostEndpoint(
       {},
       { inbound: new SequenceCursor(), outbound: new SequenceCursor(MAXIMUM_SEQUENCE) },
@@ -808,7 +818,8 @@ describe('frames the host sends', () => {
     expectOk(host.receive(helloFrame()));
     expectOk(host.issueCapabilities({ generation: 1, capabilities: PTY_CAPABILITIES }));
     expect(host.processExit(0, null).ok).toBe(false);
-    expect(host.authorityRevoked).toBe(false);
+    expect(host.authorityRevoked).toBe(true);
+    expect(failureOf(host.processExit(0, null)).reason).toBe('sequence-overflow');
   });
 
   test('issues no capabilities once the endpoint is closed', () => {
@@ -868,4 +879,86 @@ test('the client endpoint type is the other half of the pair', () => {
       token: TOKEN,
     }).phase,
   ).toBe('idle');
+});
+
+describe('the host revokes authority whenever it closes', () => {
+  test.each([
+    ['a malformed frame', 'not json'],
+    ['an unsupported version', helloFrame({ version: 2 })],
+  ])('revokes authority on %s', (_name, frame) => {
+    const { host } = connect();
+    expect(host.authorityRevoked).toBe(false);
+    expect(host.receive(frame).ok).toBe(false);
+    expect(host.authorityRevoked).toBe(true);
+    expect(failureOf(host.receive(inputFrame(1))).reason).toBe('attachment-revoked');
+  });
+
+  test('revokes authority on a startup failure that sends no attachment', () => {
+    const host = new HostEndpoint();
+    expectOk(host.receive(helloFrame()));
+    expectOk(host.attachmentError('unsupported-runtime', 'windows'));
+    expect(host.authorityRevoked).toBe(true);
+  });
+});
+
+describe('an ordinary send the host cannot number', () => {
+  function accepted(): HostEndpoint {
+    const host = new HostEndpoint(
+      {},
+      { inbound: new SequenceCursor(), outbound: new SequenceCursor(MAXIMUM_SEQUENCE) },
+    );
+    expectOk(host.receive(helloFrame()));
+    expectOk(host.issueCapabilities({ generation: 1, capabilities: PTY_CAPABILITIES }));
+    expectOk(host.receive(inputFrame(1)));
+    return host;
+  }
+
+  const overflow = { code: 'transport-failed', reason: 'sequence-overflow' };
+  const sends: Array<[string, (host: HostEndpoint) => ReturnType<HostEndpoint['output']>]> = [
+    ['output', (host) => host.output('pty', 'x')],
+    ['acknowledgeOperation', (host) => host.acknowledgeOperation(1)],
+    ['processExit', (host) => host.processExit(0, null)],
+  ];
+
+  test.each(sends)('%s revokes authority and closes the inbound side', (_name, send) => {
+    const host = accepted();
+    expect(host.authorityRevoked).toBe(false);
+    expect(failureOf(send(host))).toEqual(overflow);
+    expect(host.authorityRevoked).toBe(true);
+    expect(failureOf(host.receive(inputFrame(2)))).toEqual({
+      code: 'stale-generation',
+      reason: 'attachment-revoked',
+    });
+  });
+});
+
+describe('a startup failure after capabilities were issued', () => {
+  test('refuses unsupported-runtime with a typed failure and leaves the attachment live', () => {
+    const { host } = connect();
+    expect(failureOf(host.attachmentError('unsupported-runtime', 'windows'))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unexpected-message',
+    });
+    expect(host.authorityRevoked).toBe(false);
+    expect(host.receive(inputFrame(1)).ok).toBe(true);
+    expect(expectOk(host.attachmentError('spawn-failed', 'no shell')).sequence).toBe(1);
+  });
+});
+
+describe('an operation refused before it was queued', () => {
+  test.each(['read-only', 'fifo-full'] as const)(
+    'cannot later be failed as submitted after %s',
+    (refusal) => {
+      for (const later of ['backend-failed', 'transport-failed'] as const) {
+        const { host } = connect();
+        expectOk(host.receive(inputFrame(1)));
+        expectOk(host.failOperation(1, refusal, 'refused'));
+        expect(failureOf(host.failOperation(1, later, 'late'))).toEqual({
+          code: 'malformed-frame',
+          reason: 'unknown-operation',
+        });
+        expect(host.authorityRevoked).toBe(false);
+      }
+    },
+  );
 });

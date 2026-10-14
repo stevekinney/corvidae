@@ -334,6 +334,35 @@ describe('receiving after the handshake', () => {
   });
 });
 
+describe('a closed endpoint holds no authority', () => {
+  test.each([
+    ['a malformed frame', 'not json'],
+    ['an unsupported version', JSON.stringify({ version: 2, kind: 'output' })],
+    ['an out-of-order sequence', output(5)],
+  ])('revokes authority on %s', (_name, frame) => {
+    const client = attached();
+    expect(client.authorityRevoked).toBe(false);
+    const rejected = client.receive(frame);
+    expect(rejected.ok).toBe(false);
+    expect(client.phase).toBe('closed');
+    expect(client.authorityRevoked).toBe(true);
+  });
+
+  test('revokes authority when a startup failure closes the attachment', () => {
+    const client = newClient();
+    expectOk(client.hello());
+    expectOk(
+      client.receive(
+        serverFrame(
+          { kind: 'attachment-error', code: 'unsupported-runtime', message: 'windows' },
+          { sequence: 0, generation: 0 },
+        ),
+      ),
+    );
+    expect(client.authorityRevoked).toBe(true);
+  });
+});
+
 describe('acknowledgements from the host', () => {
   function withOperations(count: number) {
     const client = attached();
@@ -415,7 +444,7 @@ describe('acknowledgements from the host', () => {
     const backend = serverFrame(
       {
         kind: 'operation-failure',
-        operationSequence: sequences[0],
+        operationSequence: sequences[1],
         code: 'backend-failed',
         message: 'm',
       },
@@ -428,6 +457,26 @@ describe('acknowledgements from the host', () => {
       reason: 'authority-revoked',
     });
   });
+
+  test.each(['read-only', 'fifo-full'])(
+    'rejects a later submitted-operation failure naming an operation refused with %s',
+    (refusal) => {
+      for (const later of ['backend-failed', 'transport-failed']) {
+        const { client, sequences } = withOperations(2);
+        const failure = (code: string, sequence: number) =>
+          serverFrame(
+            { kind: 'operation-failure', operationSequence: sequences[0], code, message: 'm' },
+            { sequence },
+          );
+        expectOk(client.receive(failure(refusal, 1)));
+        expect(failureOf(client.receive(failure(later, 2)))).toEqual({
+          code: 'malformed-frame',
+          reason: 'unknown-operation',
+        });
+        expect(client.phase).toBe('closed');
+      }
+    },
+  );
 
   test('surfaces a stale-generation failure without touching the operation ledger or authority', () => {
     const { client, sequences } = withOperations(1);
@@ -461,7 +510,8 @@ describe('acknowledgements from the host', () => {
       code: 'malformed-frame',
       reason: 'unknown-operation',
     });
-    expect(client.authorityRevoked).toBe(false);
+    expect(client.phase).toBe('closed');
+    expect(client.authorityRevoked).toBe(true);
   });
 
   test('closes on a failure after acceptance that names an operation never submitted', () => {

@@ -120,7 +120,10 @@ export class HostEndpoint {
   }
 
   #close(rejection: Rejection): Rejection {
-    if (endsAttachment(rejection.failure)) this.#inboundClosed = true;
+    if (endsAttachment(rejection.failure)) {
+      this.#inboundClosed = true;
+      this.#authorityRevoked = true;
+    }
     return rejection;
   }
 
@@ -266,7 +269,9 @@ export class HostEndpoint {
   #send(build: (sequence: number) => ProtocolMessage): ProtocolResult<SentFrame> {
     if (this.#cleanupReported) return reject('stale-generation', 'attachment-revoked');
     const next = this.#outbound.peekNext();
-    if (!next.ok) return next;
+    // An outbound sequence that cannot advance leaves delivery unknown: apply the table's
+    // `transport-failed` revocation here, so every send path does, not only the refusal path.
+    if (!next.ok) return this.#close(next);
     const encoded = encodeFrame(build(next.value), { maxFrameBytes: this.#limits.maxFrameBytes });
     if (!encoded.ok) return encoded;
     this.#outbound.commit(next.value);
@@ -343,7 +348,7 @@ export class HostEndpoint {
     }));
     if (sent.ok) {
       if (submitted) this.#authorityRevoked = true;
-      else this.#operations.resolve();
+      else this.#operations.refuse();
     }
     return sent;
   }
@@ -391,8 +396,11 @@ export class HostEndpoint {
       );
       if (!encoded.ok) return encoded;
       this.#inboundClosed = true;
+      this.#authorityRevoked = true;
       return accept({ frame: encoded.value, sequence: 0 });
     }
+    // `unsupported-runtime` is a startup failure with no attachment, so it has no generation to name.
+    if (code === 'unsupported-runtime') return reject('malformed-frame', 'unexpected-message');
     const sent = this.#sendAttached((terms, sequence) => ({
       kind: 'attachment-error',
       sessionId: hello.sessionId,

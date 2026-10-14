@@ -40,11 +40,21 @@ export function isValidSequence(value: number): boolean {
 export const MINIMUM_TERMINAL_DIMENSION = 1;
 export const MAXIMUM_TERMINAL_DIMENSION = 65_535;
 
-/** The permitted range for the frame payload budget a host advertises: 1 byte to 256 KiB. */
-export const FRAME_PAYLOAD_BYTES_RANGE = { minimum: 1, maximum: 256 * 1024 } as const;
+/**
+ * The permitted range for the frame payload budget a host advertises: 1 byte up to the 64 KiB
+ * the frozen wire schema names as the maximum frame payload ("Versioned wire schema" in
+ * `documentation/terminal/contract.md`). A host may advertise less, never more.
+ */
+export const FRAME_PAYLOAD_BYTES_RANGE = {
+  minimum: 1,
+  maximum: MAXIMUM_FRAME_PAYLOAD_BYTES,
+} as const;
 
-/** The permitted range for the host operation FIFO a host advertises: 1 to 4,096 operations. */
-export const QUEUED_OPERATIONS_RANGE = { minimum: 1, maximum: 4096 } as const;
+/**
+ * The permitted range for the host operation FIFO a host advertises: 1 operation up to the 256
+ * the frozen wire schema names as the bounded host FIFO. A host may advertise less, never more.
+ */
+export const QUEUED_OPERATIONS_RANGE = { minimum: 1, maximum: MAXIMUM_QUEUED_OPERATIONS } as const;
 
 /**
  * The fixed header of a binary frame: version (1), kind (1), direction (1), channel (1), session

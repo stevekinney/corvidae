@@ -49,7 +49,9 @@ export function resolveLimits(options: {
     maxFrameBytes < FRAME_PAYLOAD_BYTES_RANGE.minimum ||
     maxFrameBytes > FRAME_PAYLOAD_BYTES_RANGE.maximum
   ) {
-    throw new RangeError(`maxFrameBytes must be an integer from 1 to 262144, got ${maxFrameBytes}`);
+    throw new RangeError(
+      `maxFrameBytes must be an integer from 1 to ${FRAME_PAYLOAD_BYTES_RANGE.maximum}, got ${maxFrameBytes}`,
+    );
   }
   if (
     !Number.isInteger(maxQueuedOperations) ||
@@ -57,7 +59,7 @@ export function resolveLimits(options: {
     maxQueuedOperations > QUEUED_OPERATIONS_RANGE.maximum
   ) {
     throw new RangeError(
-      `maxQueuedOperations must be an integer from 1 to 4096, got ${maxQueuedOperations}`,
+      `maxQueuedOperations must be an integer from 1 to ${QUEUED_OPERATIONS_RANGE.maximum}, got ${maxQueuedOperations}`,
     );
   }
   return { maxFrameBytes, maxQueuedOperations };

@@ -59,6 +59,17 @@ export class OperationLedger {
   resolve(): void {
     this.#lastResolved = this.#unresolved.shift() ?? this.#lastResolved;
   }
+
+  /**
+   * Resolve the oldest unresolved operation because it was refused before it was queued. It never
+   * entered the host FIFO, so it is no longer an operation a later `backend-failed` or
+   * `transport-failed` may name.
+   */
+  refuse(): void {
+    const sequence = this.#unresolved[0];
+    this.resolve();
+    if (sequence !== undefined) this.#submitted.delete(sequence);
+  }
 }
 
 /**
