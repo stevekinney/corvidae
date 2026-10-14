@@ -15,7 +15,7 @@ import {
 import { decodeFrame, encodeFrame } from './frame-codec.ts';
 import { HostEndpoint } from './host-endpoint.ts';
 import type { ClientMessage } from './messages.ts';
-import { MAXIMUM_SEQUENCE } from './protocol-constants.ts';
+import { MAXIMUM_SEQUENCE, MINIMUM_FRAME_PAYLOAD_BYTES } from './protocol-constants.ts';
 import { SequenceCursor } from './sequence-cursor.ts';
 
 function helloFrame(overrides: Record<string, unknown> = {}): string {
@@ -58,7 +58,7 @@ function failureOf(result: {
 }
 
 describe('constructing a host endpoint', () => {
-  test.each([0, 65_537, 262_144, 1.5])('rejects a frame limit of %j', (maxFrameBytes) => {
+  test.each([0, 1, 265, 65_537, 262_144, 1.5])('rejects a frame limit of %j', (maxFrameBytes) => {
     expect(() => new HostEndpoint({ maxFrameBytes })).toThrow(RangeError);
   });
 
@@ -990,17 +990,57 @@ describe('final cleanup', () => {
 
 describe('a small advertised frame limit', () => {
   test('still completes the handshake, then binds the attachment', () => {
-    const { host, client } = connect({ host: { maxFrameBytes: 128 } });
-    expect(host.terms?.maxFrameBytes).toBe(128);
-    expect(client.terms?.maxFrameBytes).toBe(128);
-    expect(failureOf(host.receive(`{"padding":"${'x'.repeat(200)}"}`)).code).toBe(
+    const { host, client } = connect({ host: { maxFrameBytes: 266 } });
+    expect(host.terms?.maxFrameBytes).toBe(266);
+    expect(client.terms?.maxFrameBytes).toBe(266);
+    expect(failureOf(host.receive(`{"padding":"${'x'.repeat(300)}"}`)).code).toBe(
       'frame-too-large',
     );
   });
 
   test('still reports a startup failure before capabilities', () => {
-    const host = new HostEndpoint({ maxFrameBytes: 16 });
+    const host = new HostEndpoint({ maxFrameBytes: 266 });
     expectOk(host.receive(helloFrame()));
     expectOk(host.attachmentError('unsupported-runtime', 'windows'));
+  });
+});
+
+describe('terminal failures leave the unresolved queue', () => {
+  test('refuses an acknowledgement after the operation failed terminally, and unblocks the next', () => {
+    const { host } = connect();
+    expectOk(host.receive(inputFrame(1)));
+    expectOk(host.receive(inputFrame(2)));
+    expectOk(host.failOperation(1, 'backend-failed', 'x'));
+    expect(host.acknowledgeOperation(1).ok).toBe(false);
+    expect(expectOk(host.acknowledgeOperation(2)).sequence).toBeGreaterThan(0);
+  });
+});
+
+describe('an output-only source', () => {
+  test('never reports a process exit', () => {
+    const { host } = connect({
+      capabilities: OUTPUT_ONLY_CAPABILITIES,
+      requestedMode: 'read-only',
+    });
+    expect(failureOf(host.processExit(0, null))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unexpected-message',
+    });
+    expect(host.authorityRevoked).toBe(false);
+  });
+});
+
+describe('the smallest frame budget', () => {
+  test('carries every control frame the host sends and the client sends back', () => {
+    const { host, client } = connect({ host: { maxFrameBytes: MINIMUM_FRAME_PAYLOAD_BYTES } });
+    expectOk(host.receive(expectOk(client.input('a')).frame));
+    expectOk(host.receive(expectOk(client.resize(80, 24)).frame));
+    expectOk(client.receive(expectOk(host.acknowledgeOperation(1)).frame));
+    expectOk(client.receive(expectOk(host.output('pty', 'ab')).frame));
+    expectOk(host.receive(expectOk(client.consumeOutput(2)).frame));
+    expectOk(client.receive(expectOk(host.failOperation(2, 'backend-failed', '')).frame));
+    expectOk(client.receive(expectOk(host.processExit(null, null)).frame));
+    expectOk(host.receive(expectOk(client.terminate()).frame));
+    expectOk(client.receive(expectOk(host.cleanupResult('incomplete')).frame));
   });
 });

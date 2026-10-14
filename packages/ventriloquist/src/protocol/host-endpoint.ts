@@ -11,13 +11,13 @@ import {
   type EndpointLimits,
   type SentFrame,
 } from './endpoint-support.ts';
-import type { FailureCode } from './failure-codes.ts';
 import { decodeFrame, encodeFrame } from './frame-codec.ts';
 import type {
   Capabilities,
   CleanupOutcome,
   ClientMessage,
   HelloMessage,
+  OperationFailureMessage,
   OutputChannel,
   ProtocolMessage,
 } from './messages.ts';
@@ -332,7 +332,7 @@ export class HostEndpoint {
    */
   failOperation(
     operationSequence: number,
-    code: FailureCode,
+    code: OperationFailureMessage['code'],
     message: string,
   ): ProtocolResult<SentFrame> {
     // A stale-generation failure answers a foreign message in `receive`; it never names a queued operation.
@@ -363,6 +363,10 @@ export class HostEndpoint {
   /** Report the process exit, once, separately from PTY end of file and from cleanup. */
   processExit(exitCode: number | null, signal: string | null): ProtocolResult<SentFrame> {
     if (this.#processExitReported) return reject('malformed-frame', 'already-reported');
+    // An output-only source reports source completion and never invents an exit code.
+    if (this.#terms?.capabilities.mode === 'output-only') {
+      return reject('malformed-frame', 'unexpected-message');
+    }
     const sent = this.#sendAttached((terms, sequence) => ({
       kind: 'process-exit',
       sessionId: this.#hello!.sessionId,

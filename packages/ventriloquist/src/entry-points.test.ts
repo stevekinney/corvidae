@@ -42,6 +42,7 @@ describe('package entry points', () => {
         'MAXIMUM_SEQUENCE',
         'MAXIMUM_TERMINAL_DIMENSION',
         'MESSAGE_KIND_DIRECTIONS',
+        'MINIMUM_FRAME_PAYLOAD_BYTES',
         'MINIMUM_TERMINAL_DIMENSION',
         'OPERATION_FAILURE_CODES',
         'PARTITION_SEED',

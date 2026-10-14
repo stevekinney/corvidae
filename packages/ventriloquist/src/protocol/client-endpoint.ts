@@ -198,6 +198,9 @@ export class ClientEndpoint {
         return undefined;
       }
       case 'process-exit':
+        if (terms.capabilities.mode === 'output-only') {
+          return reject('malformed-frame', 'unexpected-message');
+        }
         if (this.#processExitReceived) return reject('malformed-frame', 'already-reported');
         this.#processExitReceived = true;
         // The process is gone, so there is nothing left to receive input or a resize.

@@ -61,11 +61,15 @@ export class OperationLedger {
   }
 
   /**
-   * Retire an operation that has received its terminal failure. A second terminal failure naming
-   * it is then `unknown-operation`: one operation never reports two terminal results.
+   * Retire an operation that has received its terminal failure, from every ledger and queue. A
+   * second terminal failure naming it is then `unknown-operation`, and an acknowledgement naming
+   * it is refused: one operation never reports two terminal results, or a result after its failure.
    */
   retire(sequence: number): void {
     this.#submitted.delete(sequence);
+    const position = this.#unresolved.indexOf(sequence);
+    if (position === 0) this.resolve();
+    else if (position > 0) this.#unresolved.splice(position, 1);
   }
 
   /**

@@ -196,8 +196,8 @@ describe('the handshake', () => {
   });
 
   test('applies the limits the host advertised to what it will accept', () => {
-    const client = attached({ maxFrameBytes: 4 });
-    expect(failureOf(client.receive(output(1, 1, 5)))).toEqual({
+    const client = attached({ maxFrameBytes: 266 });
+    expect(failureOf(client.receive(output(1, 1, 267)))).toEqual({
       code: 'frame-too-large',
       reason: 'oversized',
     });
@@ -499,8 +499,54 @@ describe('acknowledgements from the host', () => {
   test('accepts capabilities larger than the limit they advertise', () => {
     const client = newClient();
     expectOk(client.hello());
-    expectOk(client.receive(capabilitiesFrame({ maxFrameBytes: 8 })));
-    expect(client.terms?.maxFrameBytes).toBe(8);
+    expectOk(client.receive(capabilitiesFrame({ maxFrameBytes: 266 })));
+    expect(client.terms?.maxFrameBytes).toBe(266);
+  });
+
+  test('refuses an acknowledgement after the operation failed terminally, and unblocks the next', () => {
+    const { client, sequences } = withOperations(2);
+    expectOk(
+      client.receive(
+        serverFrame(
+          {
+            kind: 'operation-failure',
+            operationSequence: sequences[0],
+            code: 'backend-failed',
+            message: 'm',
+          },
+          { sequence: 1 },
+        ),
+      ),
+    );
+    expect(client.receive(ack(sequences[0]!, 2)).ok).toBe(false);
+  });
+
+  test('accepts the acknowledgement of the next operation after a terminal failure', () => {
+    const { client, sequences } = withOperations(2);
+    expectOk(
+      client.receive(
+        serverFrame(
+          {
+            kind: 'operation-failure',
+            operationSequence: sequences[0],
+            code: 'transport-failed',
+            message: 'm',
+          },
+          { sequence: 1 },
+        ),
+      ),
+    );
+    expectOk(client.receive(ack(sequences[1]!, 2)));
+  });
+
+  test('rejects a process exit from an output-only source and closes', () => {
+    const client = attached({ capabilities: OUTPUT_ONLY_CAPABILITIES });
+    const exit = serverFrame({ kind: 'process-exit', exitCode: 0, signal: null }, { sequence: 1 });
+    expect(failureOf(client.receive(exit))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unexpected-message',
+    });
+    expect(client.phase).toBe('closed');
   });
 
   test('surfaces a stale-generation failure without touching the operation ledger or authority', () => {

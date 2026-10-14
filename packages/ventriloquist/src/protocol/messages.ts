@@ -1,4 +1,4 @@
-import type { FailureCode } from './failure-codes.ts';
+import type { ATTACHMENT_ERROR_CODES, OPERATION_FAILURE_CODES } from './failure-table.ts';
 import type { MessageKind, PROTOCOL_VERSION } from './protocol-constants.ts';
 
 /** The one wire version this package speaks. */
@@ -72,7 +72,7 @@ export type OperationAcknowledgementMessage = FrameHeader<'operation-ack'> & {
 /** Server to client: an operation was rejected or failed after submission. */
 export type OperationFailureMessage = FrameHeader<'operation-failure'> & {
   readonly operationSequence: number;
-  readonly code: FailureCode;
+  readonly code: (typeof OPERATION_FAILURE_CODES)[number];
   readonly message: string;
 };
 
@@ -89,7 +89,7 @@ export type ProcessExitMessage = FrameHeader<'process-exit'> & {
 
 /** Server to client: a startup or attachment failure. It is never a successful process exit. */
 export type AttachmentErrorMessage = FrameHeader<'attachment-error'> & {
-  readonly code: FailureCode;
+  readonly code: (typeof ATTACHMENT_ERROR_CODES)[number];
   readonly message: string;
 };
 

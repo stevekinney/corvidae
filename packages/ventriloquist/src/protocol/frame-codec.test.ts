@@ -488,24 +488,27 @@ describe('rejecting message fields', () => {
     });
   });
 
-  test.each([0, 65_537, 262_144, 1.5, '65536', null])('rejects the frame limit %j', (value) => {
-    const message = {
-      kind: 'capabilities',
-      version: 1,
-      sessionId: SESSION_IDENTIFIER,
-      attachmentGeneration: 1,
-      capabilities: PTY_CAPABILITIES,
-      maxFrameBytes: value,
-      maxQueuedOperations: 256,
-    };
-    expect(decodeServer(message)).toEqual({ code: 'malformed-frame', reason: 'invalid-limits' });
-    expect(decodeServer({ ...message, maxFrameBytes: 65_536, maxQueuedOperations: value })).toEqual(
-      {
+  test.each([0, 265, 65_537, 262_144, 1.5, '65536', null])(
+    'rejects the frame limit %j',
+    (value) => {
+      const message = {
+        kind: 'capabilities',
+        version: 1,
+        sessionId: SESSION_IDENTIFIER,
+        attachmentGeneration: 1,
+        capabilities: PTY_CAPABILITIES,
+        maxFrameBytes: value,
+        maxQueuedOperations: 256,
+      };
+      expect(decodeServer(message)).toEqual({ code: 'malformed-frame', reason: 'invalid-limits' });
+      expect(
+        decodeServer({ ...message, maxFrameBytes: 65_536, maxQueuedOperations: value }),
+      ).toEqual({
         code: 'malformed-frame',
         reason: 'invalid-limits',
-      },
-    );
-  });
+      });
+    },
+  );
 
   test.each([257, 4096])('rejects the queue limit %j', (value) => {
     const message = {
