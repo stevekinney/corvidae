@@ -9,12 +9,13 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import * as root from '../index.ts';
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
 } from '../server/operation-fault.ts';
 import { FAULT_CODE_TO_FAILURE_CATEGORY } from './fault-code.ts';
-import { isWeftErrorCode } from './weft-error.ts';
+import { WeftError, isWeftErrorCode } from './weft-error.ts';
 
 const sourceDirectory = join(import.meta.dir, '..');
 const documentation = readFileSync(
@@ -22,11 +23,19 @@ const documentation = readFileSync(
   'utf8',
 );
 
-/** Body rows (header excluded) of the Markdown table under the named `##` heading. */
-function tableRows(heading: string): string[][] {
-  const start = documentation.indexOf(`\n## ${heading}\n`);
+/**
+ * Body rows (header excluded) of the Markdown table directly under the named
+ * `##` heading, or under the named `###` subheading within it. A section ends
+ * at the next heading of any level.
+ */
+function tableRows(heading: string, subheading?: string): string[][] {
+  let start = documentation.indexOf(`\n## ${heading}\n`);
   if (start === -1) throw new Error(`api-errors.md has no "## ${heading}" section`);
-  const next = documentation.indexOf('\n## ', start + 1);
+  if (subheading !== undefined) {
+    start = documentation.indexOf(`\n### ${subheading}\n`, start);
+    if (start === -1) throw new Error(`api-errors.md has no "### ${subheading}" section`);
+  }
+  const next = documentation.indexOf('\n#', start + 1);
   const lines = documentation.slice(start, next === -1 ? undefined : next).split('\n');
   const isSeparator = (line: string): boolean => /^\|[\s|:-]+\|$/.test(line);
   return lines
@@ -84,6 +93,26 @@ describe('documentation/reference/api-errors.md', () => {
       const path = join(sourceDirectory, file);
       expect(existsSync(path)).toBe(true);
       expect(readFileSync(path, 'utf8')).toMatch(new RegExp(`class ${code}\\b`));
+    }
+  });
+
+  it('lists exactly the root-exported WeftError classes whose codes are unregistered', () => {
+    const rows = tableRows('WeftErrorCode', 'Root-exported errors without a registered code');
+    const unregistered = Object.entries(root)
+      .filter(
+        ([name, value]) =>
+          typeof value === 'function' &&
+          value.prototype instanceof WeftError &&
+          !isWeftErrorCode(name),
+      )
+      .map(([name]) => name);
+    const byName = (left: string, right: string): number => left.localeCompare(right);
+
+    expect(rows.map(([name = '']) => name).toSorted(byName)).toEqual(unregistered.toSorted(byName));
+    for (const [name = '', file = ''] of rows) {
+      expect(readFileSync(join(sourceDirectory, file), 'utf8')).toMatch(
+        new RegExp(`class ${name}\\b`),
+      );
     }
   });
 });

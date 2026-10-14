@@ -125,8 +125,10 @@ export interface SteeringCommandConflict {
  *   no `override` reaching the gate directly (`reason:
  *   'selector-unavailable'`); for a durably-configured Bureau with no
  *   resolved storage backend (`reason: 'durable-steering-unavailable'`); and
- *   for a durable command the session's steering mailbox refuses to persist
- *   (the mailbox's own rejection reason). See `Bureau.submitSteeringCommand`.
+ *   for a durable command the session's steering mailbox rejects at
+ *   admission, such as an exhausted backlog (the mailbox's own rejection
+ *   reason). A reused `id` with a different persisted identity returns
+ *   `conflict`, not this. See `Bureau.submitSteeringCommand`.
  */
 export type SteeringCommandAdmissionOutcome =
   | { readonly outcome: 'accepted'; readonly command: SteeringCommandSnapshot }

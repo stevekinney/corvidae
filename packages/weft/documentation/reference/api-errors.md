@@ -53,14 +53,14 @@ Because the envelope's `weftCode` is written last, a fine-grained `WeftErrorCode
 
 ### What the client sees
 
-`HttpClient` normalizes both envelopes onto `HttpClientError`:
+`HttpClient` normalizes both envelopes onto `HttpClientError`, with one exception: a REST `GET` that answers 404 resolves to `null` before its body is read, so no `HttpClientError` is thrown and none of these fields exist. A missing resource on a read surfaces as a `null` result, not a catchable fault.
 
 | Transport | `status` | `faultCode` | `category` | `weftCode` | `data` |
 | --- | --- | --- | --- | --- | --- |
 | REST | Response status | `undefined` | `undefined` | Body `weftCode`, if any | Body `data`, if any |
 | JSON-RPC over HTTP | `data.httpStatus` | `data.weftCode` | Derived from `faultCode` | `undefined` | The whole envelope `data`, verbatim |
 
-So `isWeftFault(error, 'WorkflowNotFoundError')` matches an `HttpClientError` from a REST response that carried that code, but not one from a JSON-RPC response. Branch on `faultCode` or `category` for transport-independent coarse handling.
+So `isWeftFault(error, 'WorkflowNotFoundError')` matches an `HttpClientError` from a REST response that carried that code, but not one from a JSON-RPC response. `faultCode` and `category` have the opposite gap: they are populated only for JSON-RPC. The one field both transports normalize is `status`, so branch on it for coarse handling that must work whichever transport an operation uses.
 
 ## Error helpers
 
@@ -71,7 +71,7 @@ Every public Weft error extends `WeftError`, whose `code` equals the class name.
 | `isWeftError(value)` | A live `WeftError` instance | The error came from the same module instance and you want the class. |
 | `isWeftErrorLike(value)` | `{ code: WeftErrorCode; message: string }` | The error may have crossed a realm or a duplicate copy of `@lostgradient/weft`, where `instanceof` fails. |
 | `isWeftErrorCode(value)` | A bare `WeftErrorCode` string | You hold a code string, such as a REST body's `weftCode`, rather than an error. |
-| `isWeftFault(error, code)` | Whether `error` is that code | One branch must work for both `LocalClient` and `HttpClient`. |
+| `isWeftFault(error, code)` | Whether `error` is that code | One branch must work for both `LocalClient` and REST-backed `HttpClient` operations. It never matches a JSON-RPC-backed one, which carries no fine-grained code. |
 
 `isFaultCode(value)` is the coarse counterpart of `isWeftErrorCode`: it narrows a wire string to a `FaultCode`.
 
@@ -80,7 +80,7 @@ import { HttpClientError, isWeftErrorLike, isWeftFault } from '@lostgradient/wef
 
 function describeFailure(error: unknown): string {
   if (isWeftFault(error, 'WorkflowNotFoundError')) return 'missing workflow';
-  if (error instanceof HttpClientError && error.category === 'timeout') return 'timed out';
+  if (error instanceof HttpClientError && error.status === 408) return 'timed out';
   if (isWeftErrorLike(error)) return `${error.code}: ${error.message}`;
   return 'unknown failure';
 }
@@ -88,7 +88,7 @@ function describeFailure(error: unknown): string {
 
 ## WeftErrorCode
 
-The complete public vocabulary, with the file under `src/` that defines each class. Errors that are not exported from `@lostgradient/weft` carry internal codes that are deliberately absent from this list and may change between releases.
+The registered public vocabulary—every code `isWeftErrorCode` accepts—with the file under `src/` that defines each class. A code outside this list is not stable and may change between releases. That includes every error not exported from `@lostgradient/weft`, and also the root-exported classes listed below.
 
 | `WeftErrorCode`                             | Defined in                                     |
 | ------------------------------------------- | ---------------------------------------------- |
@@ -147,3 +147,16 @@ The complete public vocabulary, with the file under `src/` that defines each cla
 | `EagerRecoveryRevisionRefusedError`         | `core/engine/revision-errors.ts`               |
 | `ForkSourceReplacedError`                   | `core/engine/fork-source-replaced-error.ts`    |
 | `WorkflowCheckpointConflictError`           | `core/engine/checkpoint-conflict-error.ts`     |
+
+### Root-exported errors without a registered code
+
+These classes are exported from the package root and extend `WeftError`, but their codes are not in `WeftErrorCode`. `isWeftErrorCode` rejects them, and `isWeftErrorLike` and `isWeftFault` do not match them; use `instanceof` or `isWeftError` instead. The lease and claim errors are internal-only by design under ADR 0002; `src/core/engine/lease-errors.test.ts` asserts `WorkflowClaimUnavailableError` stays unregistered, following the `EngineLease*` precedent.
+
+| Class                                | Defined in                             |
+| ------------------------------------ | -------------------------------------- |
+| `CodegenEmitError`                   | `json-schema/codegen-emit-keywords.ts` |
+| `EngineLeaseAcquisitionTimeoutError` | `core/engine/lease-errors.ts`          |
+| `EngineLeaseCorruptedError`          | `core/engine/lease-errors.ts`          |
+| `EngineLeaseNotHeldError`            | `core/engine/lease-errors.ts`          |
+| `WorkflowClaimUnavailableError`      | `core/engine/lease-errors.ts`          |
+| `WorkflowContractConversionError`    | `core/contract/build.ts`               |
