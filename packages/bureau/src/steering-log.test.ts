@@ -170,6 +170,23 @@ describe('steering log', () => {
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
+    // An entry deciding a command for another session is not this log's.
+    await kv.set(entryKey, JSON.stringify(admit({ sessionId: 'session-2' })));
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
+    await kv.set(
+      entryKey,
+      JSON.stringify({
+        type: 'refused',
+        command: command({ sessionId: 'session-2' }),
+        outcome: { outcome: 'unsupported-capability', reason: 'selector-unavailable' },
+        now: '2026-09-02T00:00:01.000Z',
+      }),
+    );
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
     await kv.set(entryKey, JSON.stringify({ ...admit(), now: 'not a timestamp' }));
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,

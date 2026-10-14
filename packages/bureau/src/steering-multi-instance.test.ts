@@ -11,13 +11,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { GenerateFunction } from '@lostgradient/operative';
+import { createSessionStore, type GenerateFunction, type JSONValue } from '@lostgradient/operative';
 import { encodeStorageKeyComponent } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
+import { appendSteeringLogEvent, readSteeringLogHead } from './steering-log';
 
 async function openBureau(path: string) {
   return createBureau({
@@ -475,6 +476,70 @@ describe('durable steering across two Bureau processes', () => {
         if (ambiguous.outcome !== 'rejected') throw new Error('expected rejected');
         expect(ambiguous.failure.reason).toBe('run-ambiguous');
       }
+    } finally {
+      await bureauA.dispose();
+      await bureauB.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('counts every run promoted in the log as starting until its workflow exists', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-starting-runs-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureauA = await openBureau(path);
+    const bureauB = await openBureau(path);
+    try {
+      const sessionId = await startRunningSession(bureauA);
+      const session = await bureauA.getSession(sessionId);
+      const kv = bureauA.kv;
+      if (session === undefined || kv === undefined) throw new Error('expected a durable session');
+
+      // Two runs promoted concurrently by other processes, neither of whose
+      // workflows exists yet. Each start records its owner, but the session's
+      // single `lastRunId` names neither.
+      await createSessionStore(kv).update(sessionId, (current) => {
+        if (current === undefined) return undefined;
+        const authorities = current.metadata['lastRequestAuthorities'] as Record<string, JSONValue>;
+        const alice = authorities[current.metadata['lastRunId'] as string];
+        if (alice === undefined) throw new Error("expected the running run's authority");
+        return {
+          ...current,
+          metadata: {
+            ...current.metadata,
+            lastRequestAuthorities: {
+              ...authorities,
+              'starting-early': alice,
+              'starting-late': alice,
+            },
+          },
+        };
+      });
+      for (const runId of ['starting-early', 'starting-late']) {
+        const head = await readSteeringLogHead(kv, sessionId, session.incarnation);
+        const appended = await appendSteeringLogEvent(kv, sessionId, session.incarnation, head, {
+          type: 'promoted',
+          runId,
+          now: new Date().toISOString(),
+        });
+        expect(appended.status).toBe('appended');
+      }
+
+      // The earlier starting run is still live, not `run-terminal`.
+      const explicit = await bureauB.submitSteeringCommand(sessionId, {
+        principal: 'alice',
+        runId: 'starting-early',
+        requestedValue: { target: 'pause' },
+      });
+      expect(explicit.outcome).toBe('accepted');
+
+      // With three live runs, an unscoped pause binds to none of them.
+      const unscoped = await bureauB.submitSteeringCommand(sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(unscoped.outcome).toBe('rejected');
+      if (unscoped.outcome !== 'rejected') throw new Error('expected rejected');
+      expect(unscoped.failure.reason).toBe('run-ambiguous');
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();

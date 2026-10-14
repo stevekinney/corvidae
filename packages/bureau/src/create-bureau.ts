@@ -1764,6 +1764,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     readonly refusals: Map<string, Map<string, SteeringRefusal>>;
     /** Each accepted command's value as the caller submitted it, where Bureau resolved it. */
     readonly submitted: Map<string, Map<string, SteeringRequestedValue>>;
+    /**
+     * Runs promoted in the log with no `run-ended` yet, by promotion time.
+     * Each is a durable launch marker: a run counts as starting from its
+     * `promoted` entry until its workflow is queryable, however many runs
+     * start concurrently on the session.
+     */
+    readonly starting: Map<string, string>;
     /** The last head read or written. Appends are conditioned on it. */
     head: SteeringLogHead;
     /** How many entries have been applied to `gate`. */
@@ -1868,6 +1875,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /** Applies a logged event to a cursor's gate and its launch markers. */
+  function applyToCursor(
+    cursor: SteeringCursor,
+    event: SteeringLogEvent,
+  ): SteeringCommandAdmissionOutcome | undefined {
+    if (event.type === 'promoted') cursor.starting.set(event.runId, event.now);
+    if (event.type === 'run-ended') cursor.starting.delete(event.runId);
+    return applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
+  }
+
   function nestedSet<T>(
     map: Map<string, Map<string, T>>,
     outer: string,
@@ -1945,6 +1962,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ledger,
         refusals: new Map(),
         submitted: new Map(),
+        starting: new Map(),
         head: { raw: null, sequence: 0 },
         applied: 0,
       };
@@ -1968,7 +1986,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       head.sequence,
     );
     for (const event of events) {
-      applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
+      applyToCursor(cursor, event);
       cursor.applied += 1;
     }
     cursor.head = head;
@@ -2002,7 +2020,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
       const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, cursor.head, event);
       if (appended.status === 'appended') {
-        applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
+        applyToCursor(cursor, event);
         cursor.applied += 1;
         cursor.head = appended.head;
         return;
@@ -3414,9 +3432,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         {
           lastRunId: runId,
           lastRunStatus: 'running',
-          // Bounds how long durable steering treats this run as starting
-          // before its workflow exists (`liveSessionRunIdsEverywhere`).
-          lastRunStartedAt: runtimeServices.clock.nowISO(),
           lastUserMessage: request.message,
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
@@ -3834,6 +3849,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               },
               request.agentName,
               baseConversationHistory,
+              steeringSession?.incarnation,
             ),
           {
             runId,
@@ -3904,6 +3920,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               },
               request.agentName,
               baseConversationHistory,
+              steeringSession?.incarnation,
             ),
           {
             runId,
@@ -4189,6 +4206,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     recoveredServices?: DurableRunDeps,
     sessionMetadata?: unknown,
     steeringGate?: BureauSteeringGate,
+    // The incarnation `steeringGate` was folded for; fences the run's
+    // terminal session save against a deletion in another process.
+    steeringIncarnation?: string,
   ): void {
     // At-most-once registration per runId (guards double-recover / a runId already
     // started live on this process — neither should reach here, but a silent
@@ -4357,14 +4377,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
       persistSessionUpdate(
         () =>
-          saveSession(sessionId, completedConversation, {
-            lastRunId: runId,
-            lastRunStatus,
-            lastFinishReason: finishReason,
-            ...(isRunFailureFinishReason(finishReason)
-              ? { lastError: serializeUnknownError(lastError) }
-              : {}),
-          }),
+          saveSession(
+            sessionId,
+            completedConversation,
+            {
+              lastRunId: runId,
+              lastRunStatus,
+              lastFinishReason: finishReason,
+              ...(isRunFailureFinishReason(finishReason)
+                ? { lastError: serializeUnknownError(lastError) }
+                : {}),
+            },
+            undefined,
+            undefined,
+            steeringIncarnation,
+          ),
         { runId, sessionId, status: lastRunStatus },
       );
     });
@@ -4401,12 +4428,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // final checkpoint and threads it into RunAbortedEvent.conversation, so
         // use that directly instead of re-fetching the checkpoint snapshot.
         () =>
-          saveSession(sessionId, abortedConversation, {
-            lastRunId: runId,
-            lastRunStatus: 'aborted',
-            lastFinishReason: 'aborted',
-            lastError: serializeUnknownError(event.error),
-          }),
+          saveSession(
+            sessionId,
+            abortedConversation,
+            {
+              lastRunId: runId,
+              lastRunStatus: 'aborted',
+              lastFinishReason: 'aborted',
+              lastError: serializeUnknownError(event.error),
+            },
+            undefined,
+            undefined,
+            steeringIncarnation,
+          ),
         { runId, sessionId, status: 'aborted' },
       );
     });
@@ -4734,6 +4768,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       info.services as DurableRunDeps,
       sessionLoad.session,
       recoveredSteeringGate,
+      recoveredSteeringGate === undefined ? undefined : loadedSession?.incarnation,
     );
     // AB-336 — see this function's own doc comment: a run recovered still
     // genuinely parked on `requestHumanInput` has no live action log to
@@ -8015,24 +8050,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       limit: 2,
     });
     for (const workflow of others.items) live.add(workflow.id);
-    // A run being started is saved as the session's running run before its
-    // tagged workflow exists. Until the engine has any record of it, it is
-    // counted from the session itself — but only within the launch window
-    // its own start time bounds: a missing workflow long after that is a
-    // finished one since purged, not one still starting.
-    const session = await runtime.sessionStore?.load(sessionId);
-    const startingRunId = session?.metadata['lastRunId'];
-    const startedAt = session?.metadata['lastRunStartedAt'];
-    if (
-      session?.incarnation === incarnation &&
-      session.metadata['lastRunStatus'] === 'running' &&
-      typeof startingRunId === 'string' &&
-      typeof startedAt === 'string' &&
-      runtimeServices.clock.now() - Date.parse(startedAt) <= STEERING_RUN_START_WINDOW_MS &&
-      !live.has(startingRunId) &&
-      (await engine.get(startingRunId)) === null
-    ) {
-      live.add(startingRunId);
+    // A run is promoted in the log before its tagged workflow exists. Until
+    // the engine has any record of it, it counts as starting from its own
+    // `promoted` entry, folded into this session's cursor before admission —
+    // but only within the launch window its promotion time bounds: a missing
+    // workflow long after that is a finished one since purged, not one still
+    // starting. Each run has its own marker, so concurrent starts all count.
+    const cursor = steeringCursors.get(sessionId);
+    if (cursor?.incarnation === incarnation) {
+      for (const [runId, promotedAt] of cursor.starting) {
+        if (runtimeServices.clock.now() - Date.parse(promotedAt) > STEERING_RUN_START_WINDOW_MS) {
+          cursor.starting.delete(runId);
+        } else if (!live.has(runId)) {
+          if ((await engine.get(runId)) === null) live.add(runId);
+          else cursor.starting.delete(runId);
+        }
+      }
     }
     return [...live].toSorted((left, right) => left.localeCompare(right));
   }
@@ -8205,7 +8238,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         expectedBinding,
       );
       if (appended.status === 'appended') {
-        const outcome = applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
+        const outcome = applyToCursor(cursor, event);
         cursor.applied += 1;
         cursor.head = appended.head;
         if (outcome === undefined) throw new Error('an admit event always yields an outcome');

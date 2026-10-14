@@ -228,7 +228,12 @@ function isRefusalOutcome(value: unknown): boolean {
   return value['outcome'] === 'rejected' && isSteeringFailure(value['failure']);
 }
 
-function parseEvent(raw: string, sequence: number): SteeringLogEvent {
+/**
+ * Parses one entry of `sessionId`'s log. An admission or refusal whose
+ * command names another session is corrupt: folding it would decide a
+ * command against a session it was never submitted to.
+ */
+function parseEvent(raw: string, sequence: number, sessionId: string): SteeringLogEvent {
   const what = `Steering log entry ${String(sequence)}`;
   const parsed = parseJson(raw, what);
   if (isRecord(parsed) && isTimestamp(parsed['now'])) {
@@ -238,6 +243,7 @@ function parseEvent(raw: string, sequence: number): SteeringLogEvent {
         const submitted = parsed['submittedValue'];
         if (
           isSteeringCommand(parsed['command']) &&
+          parsed['command'].sessionId === sessionId &&
           (submitted === undefined ||
             (isSteeringCommand({ ...(parsed['command'] as object), requestedValue: submitted }) &&
               isRecord(submitted) &&
@@ -252,7 +258,11 @@ function parseEvent(raw: string, sequence: number): SteeringLogEvent {
         break;
       }
       case 'refused':
-        if (isSteeringCommand(parsed['command']) && isRefusalOutcome(parsed['outcome'])) {
+        if (
+          isSteeringCommand(parsed['command']) &&
+          parsed['command'].sessionId === sessionId &&
+          isRefusalOutcome(parsed['outcome'])
+        ) {
           return parsed as SteeringLogEvent;
         }
         break;
@@ -305,7 +315,7 @@ export async function readSteeringLogEntries(
         `Steering log entry ${String(sequence)} for session "${sessionId}" is missing.`,
       );
     }
-    events.push(parseEvent(raw, sequence));
+    events.push(parseEvent(raw, sequence, sessionId));
   }
   return events;
 }

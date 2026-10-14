@@ -197,12 +197,23 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
     metadata: Record<string, JSONValue>,
     agentName?: string,
     baseConversationHistory: ConversationHistory = conversation.current,
+    // The session incarnation the run was started (or recovered) against.
+    // When given, the save applies only to that incarnation: another
+    // process may have deleted the session without knowing this run exists,
+    // and an upsert here would silently undo that deletion.
+    expectedIncarnation?: string,
   ): Promise<void> {
     if (!sessionStore) return;
     const candidateRunId = metadata['lastRunId'];
     if (typeof candidateRunId === 'string' && orphanedRunIds.delete(candidateRunId)) return;
 
     await sessionStore.update(sessionId, (existingSession: AgentSession | undefined) => {
+      if (
+        expectedIncarnation !== undefined &&
+        existingSession?.incarnation !== expectedIncarnation
+      ) {
+        return undefined;
+      }
       const nextSession =
         existingSession ??
         createAgentSession({
