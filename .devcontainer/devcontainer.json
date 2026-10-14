@@ -1,0 +1,24 @@
+{
+  "name": "corvidae",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "containerUser": "bun",
+  "remoteUser": "bun",
+  "initializeCommand": "ln -sfn \"$(git rev-parse --path-format=absolute --git-common-dir)\" .devcontainer/.git-common-dir",
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "mounts": [
+    "source=${localWorkspaceFolder}/.devcontainer/.git-common-dir,target=/corvidae-git,type=bind",
+    "source=corvidae-node-modules-${devcontainerId},target=${localWorkspaceFolder}/node_modules,type=volume",
+    "source=corvidae-turbo-cache-${devcontainerId},target=/home/bun/.cache/turbo,type=volume"
+  ],
+  "onCreateCommand": "sudo chown bun:bun node_modules && bun scripts/dev-container.ts",
+  "postCreateCommand": "bun install --frozen-lockfile",
+  "customizations": {
+    "vscode": {
+      "extensions": ["oven.bun-vscode", "svelte.svelte-vscode"]
+    }
+  }
+}
