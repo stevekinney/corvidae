@@ -32,6 +32,12 @@ import { isTerminalWorkflowStatus } from './validation.ts';
 export type ChildOutcomeWatch = {
   readonly parentWorkflowId: string;
   readonly childWorkflowId: string;
+  /**
+   * The execution token of the child generation this engine lost, which the winner's resume keeps
+   * (resume reuses the persisted token; only a new run, such as `onTerminalConflict: 'start-new'`,
+   * mints one). A durable state carrying another token is a replacement, not the awaited child.
+   */
+  readonly childWorkflowExecutionToken: string | undefined;
   /** The attempt the parent held when it began awaiting, captured before any await. */
   readonly parentAttempt: ExecutionAttempt | undefined;
   /** Aborted when a `ctx.race` branch awaiting the child loses. */
@@ -83,9 +89,10 @@ function outcomeFromRead(
 ): { readonly settle: () => void } | undefined {
   if (read.kind === 'unreadable') return undefined;
   const { state } = read;
-  if (state === null) {
-    // A child this engine started and that is gone now (purged or swept after it finished) reads
-    // like any result() for a workflow not in storage, and waiting for it can never end.
+  if (state === null || state.workflowExecutionToken !== watch.childWorkflowExecutionToken) {
+    // A child this engine started and that is gone now (purged, swept, or replaced by a new run
+    // under the same id) reads like any result() for a workflow not in storage, and waiting for the
+    // awaited generation can never end. The replacement's outcome is not this parent's to observe.
     return { settle: () => watch.reject(workflowNotFoundInStorageError(watch.childWorkflowId)) };
   }
   if (!isTerminalWorkflowStatus(state.status)) return undefined;

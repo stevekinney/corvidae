@@ -90,6 +90,7 @@ function fenceResultOnParentGeneration(
         watchChildDurableOutcome(internals, {
           parentWorkflowId,
           childWorkflowId,
+          childWorkflowExecutionToken: error.workflowExecutionToken,
           parentAttempt,
           signal,
           confirmParentStillOwned: () => parentStillOwnsGeneration(internals, parentWorkflowId),

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { KEYS } from '../../storage/interface.ts';
+import { KEYS, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
@@ -17,7 +17,8 @@ import {
   yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { workflow, type WorkflowContext } from '../types.ts';
+import { decode } from '../codec/api.ts';
+import { workflow, type WorkflowContext, type WorkflowState } from '../types.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import {
   collectConflictWarnings,
@@ -107,6 +108,7 @@ async function lostChildScenario(options: ScenarioOptions = {}) {
   await waitForCondition(() => loserInternals.parkedInlineWorkflows.has(CHILD_ID), {
     label: 'the child parked on the loser',
   });
+  const lostToken = tokenOf(loserInternals, CHILD_ID);
   const warning = collectConflictWarnings();
   loseGeneration(loserInternals, CHILD_ID);
   await warning.received;
@@ -126,6 +128,7 @@ async function lostChildScenario(options: ScenarioOptions = {}) {
   };
   return {
     shared,
+    lostToken,
     loser,
     winner,
     loserInternals,
@@ -147,6 +150,12 @@ describe('a parent awaiting a child its engine lost', () => {
       const parentOutcome = scenario.parentHandle.result();
       expect(await scenario.finishChildOnWinner()).toBe('done');
 
+      // The winner's resume kept the generation token, so the fence does not reject its outcome.
+      expect(scenario.lostToken).toBeDefined();
+      const durable = decode(
+        (await scenario.shared.get(KEYS.workflow(CHILD_ID)))!,
+      ) as WorkflowState;
+      expect(durable.workflowExecutionToken).toBe(scenario.lostToken);
       expect(await parentOutcome).toBe('parent saw done');
       expect(abandonedExecutionAttemptCount(scenario.loserInternals)).toBe(1);
       expect(scenario.writtenKeys.filter((key) => key.includes(CHILD_ID))).toEqual([]);
@@ -236,7 +245,59 @@ describe('a parent awaiting a child its engine lost', () => {
   });
 });
 
+/** The conflict the loser reports for a child, carrying the generation token stored for it. */
+async function lostWith(
+  storage: Storage,
+  childId: string,
+): Promise<WorkflowCheckpointConflictError> {
+  const bytes = await storage.get(KEYS.workflow(childId));
+  const state = bytes === null ? undefined : (decode(bytes) as WorkflowState);
+  return new WorkflowCheckpointConflictError(childId, {
+    workflowExecutionToken: state?.workflowExecutionToken,
+  });
+}
+
 describe('how a parent view ends', () => {
+  it('does not observe a replacement run under the same id, and stops', async () => {
+    const storage = new MemoryStorage();
+    const loser = await Engine.create({
+      storage,
+      recover: false,
+      backgroundTasks: 'manual',
+      startScheduler: false,
+    });
+    loser.register(
+      workflow({ name: 'replaced-child' }).execute(async function* () {
+        return 'replacement result';
+      }),
+    );
+    try {
+      const internals = getInternals(loser);
+      const parent = await startParked(loser, 'replaced-parent', 'replaced-parent-id');
+      // A new run now owns the id; the generation this engine lost carried another token.
+      const replacement = await loser.start('replaced-child', null, { id: 'replaced-child-id' });
+      await replacement.result();
+      const waiter = createWorkflowResultWaiter(internals, 'replaced-child-id');
+      const view = rejectionOf(
+        getGeneratorOwnedWorkflowResultPromise(internals, 'replaced-child-id', parent.id),
+      );
+      waiter.reject(
+        new WorkflowCheckpointConflictError('replaced-child-id', {
+          workflowExecutionToken: 'the-generation-this-engine-lost',
+        }),
+      );
+      await yieldToEventLoop();
+      await loser.runMaintenance();
+
+      expect(((await view) as Error).message).toBe(
+        'Workflow "replaced-child-id" not found in storage',
+      );
+      expect(pendingChildOutcomePollCount(internals)).toBe(0);
+    } finally {
+      await loser[Symbol.asyncDispose]();
+    }
+  });
+
   it('rejects like result() for a workflow not in storage when the child is gone, and stops', async () => {
     const loser = await Engine.create({
       storage: new MemoryStorage(),
@@ -304,7 +365,7 @@ describe('how a parent view ends', () => {
         parent.id,
       );
       failures = 1;
-      waiter.reject(new WorkflowCheckpointConflictError('flaky-read-child-id'));
+      waiter.reject(await lostWith(storage, 'flaky-read-child-id'));
       await yieldToEventLoop();
 
       // The first read failed: not a verdict on the child, so the view is still waiting.
@@ -375,7 +436,7 @@ describe('how a parent view ends', () => {
       const waiter = createWorkflowResultWaiter(internals, 'slow-child-id');
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'slow-child-id', parent.id);
       gating = true;
-      waiter.reject(new WorkflowCheckpointConflictError('slow-child-id'));
+      waiter.reject(await lostWith(storage, 'slow-child-id'));
       await yieldToEventLoop();
 
       // `runMaintenance()` awaits exactly this. It must wait for the read already in flight.
@@ -433,7 +494,7 @@ describe('a parent that no longer awaits the lost child', () => {
         branch.signal,
       );
       branch.abort();
-      waiter.reject(new WorkflowCheckpointConflictError('done-child-id'));
+      waiter.reject(await lostWith(internals.storage, 'done-child-id'));
       await yieldToEventLoop();
 
       await loser.runMaintenance();
@@ -484,7 +545,7 @@ describe('a parent that no longer awaits the lost child', () => {
         },
       ]);
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
-      waiter.reject(new WorkflowCheckpointConflictError('done-child-id'));
+      waiter.reject(await lostWith(internals.storage, 'done-child-id'));
       await new Promise<void>((resolve) => setTimeout(resolve, 80));
 
       await expectPromisePending(view);
@@ -500,7 +561,7 @@ describe('a parent that no longer awaits the lost child', () => {
     try {
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
       await loser.suspend(parent.id);
-      waiter.reject(new WorkflowCheckpointConflictError('done-child-id'));
+      waiter.reject(await lostWith(internals.storage, 'done-child-id'));
       await yieldToEventLoop();
 
       await loser.runMaintenance();
@@ -517,7 +578,7 @@ describe('a parent that no longer awaits the lost child', () => {
     try {
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
       beginExecutionAttempt(internals, parent.id, tokenOf(internals, parent.id));
-      waiter.reject(new WorkflowCheckpointConflictError('done-child-id'));
+      waiter.reject(await lostWith(internals.storage, 'done-child-id'));
       await yieldToEventLoop();
 
       await loser.runMaintenance();
@@ -534,7 +595,7 @@ describe('a parent that no longer awaits the lost child', () => {
     try {
       const view = getGeneratorOwnedWorkflowResultPromise(internals, 'done-child-id', parent.id);
       internals.terminalizingWorkflows.add(parent.id);
-      waiter.reject(new WorkflowCheckpointConflictError('done-child-id'));
+      waiter.reject(await lostWith(internals.storage, 'done-child-id'));
       await yieldToEventLoop();
 
       await loser.runMaintenance();
