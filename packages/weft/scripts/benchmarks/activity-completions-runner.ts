@@ -5,10 +5,16 @@ import {
 } from '../../src/core/runtime-workflow-engine.ts';
 import { activity, workflow, type WorkflowContext } from '../../src/core/types.ts';
 import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
+import { startMainThreadCpuClock } from './main-thread-cpu.ts';
 
 export type ActivityCompletionMeasurement = {
+  /** Completions per second of main-thread CPU time; see `main-thread-cpu.ts`. The gated figure. */
   completionsPerSecond: number;
+  /** Completions per wall-clock second, which host load moves; logged, never asserted. */
+  wallClockCompletionsPerSecond: number;
 };
+
+type RoundTimes = { wallMilliseconds: number; cpuMilliseconds: number };
 
 const WARMUP_WORKFLOWS = 100;
 
@@ -22,7 +28,7 @@ async function measureActivityCompletionRound(
   totalWorkflows: number,
   activitiesPerWorkflow: number,
   startBatchSize: number,
-): Promise<number> {
+): Promise<RoundTimes> {
   const storage = new BunSQLiteStorage(':memory:');
   const engine = runtimeWorkflowEngine(new Engine({ storage }));
 
@@ -47,6 +53,7 @@ async function measureActivityCompletionRound(
 
     const handles: Array<{ result: () => Promise<unknown> }> = [];
     const start = performance.now();
+    const readCpuMilliseconds = startMainThreadCpuClock();
 
     for (let index = 0; index < totalWorkflows; index += startBatchSize) {
       const starters: Promise<{ result: () => Promise<unknown> }>[] = [];
@@ -62,7 +69,10 @@ async function measureActivityCompletionRound(
 
     await Promise.all(handles.map((handle) => handle.result()));
 
-    return performance.now() - start;
+    return {
+      wallMilliseconds: performance.now() - start,
+      cpuMilliseconds: readCpuMilliseconds(),
+    };
   } finally {
     engine[Symbol.dispose]();
     storage[Symbol.dispose]();
@@ -75,20 +85,23 @@ export async function measureActivityCompletions(
   startBatchSize: number,
   measurementRounds = 1,
 ): Promise<ActivityCompletionMeasurement> {
-  let totalElapsed = 0;
+  let totalWallMilliseconds = 0;
+  let totalCpuMilliseconds = 0;
 
   for (let round = 0; round < measurementRounds; round += 1) {
-    totalElapsed += await measureActivityCompletionRound(
+    const times = await measureActivityCompletionRound(
       totalWorkflows,
       activitiesPerWorkflow,
       startBatchSize,
     );
+    totalWallMilliseconds += times.wallMilliseconds;
+    totalCpuMilliseconds += times.cpuMilliseconds;
   }
 
+  const completions = totalWorkflows * activitiesPerWorkflow * measurementRounds;
   return {
-    completionsPerSecond: Math.round(
-      ((totalWorkflows * activitiesPerWorkflow * measurementRounds) / totalElapsed) * 1000,
-    ),
+    completionsPerSecond: Math.round((completions / totalCpuMilliseconds) * 1000),
+    wallClockCompletionsPerSecond: Math.round((completions / totalWallMilliseconds) * 1000),
   };
 }
 

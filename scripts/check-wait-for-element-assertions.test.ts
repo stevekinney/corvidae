@@ -114,7 +114,7 @@ describe('test file discovery', () => {
         'components/chat/src/helper.ts',
         'components/chat/node_modules/dependency/index.test.ts',
         'components/chat/.svelte-kit/generated.test.ts',
-        'applications/desktop/build/bundled.test.ts',
+        'applications/playground/build/bundled.test.ts',
         'packages/weft/coverage/report.test.ts',
       ]) {
         mkdirSync(dirname(join(directory, path)), { recursive: true });
