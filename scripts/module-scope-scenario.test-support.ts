@@ -9,8 +9,9 @@
  *
  * Module scope has no per-test timeout, so a scenario whose child never exits would otherwise
  * hold the whole run. `SCENARIO_HANG_GUARD_MILLISECONDS` turns that hang into a failure of the
- * scenario's test. It is the largest per-test budget these suites used before hoisting, set far
- * above any healthy run on a loaded host: it detects hangs and is never a performance bound.
+ * scenario's test. It is a uniform hang detector, set far above any healthy run on a loaded host
+ * and never a performance bound. A scenario that had a larger budget as a test passes it
+ * explicitly: the mirror end-to-end syncs keep their 300 seconds.
  */
 
 export const SCENARIO_HANG_GUARD_MILLISECONDS = 120_000;
