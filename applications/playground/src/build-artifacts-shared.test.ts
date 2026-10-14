@@ -5,6 +5,7 @@ import {
   publishShellArtifacts,
   resetShellArtifacts,
   shellArtifactByPath,
+  stableEntryModule,
 } from './build-artifacts-shared.ts';
 
 /** What one shell build publishes: its entry and the content-hashed chunks it imports. */
@@ -162,5 +163,19 @@ describe('publishShellArtifacts', () => {
       // `a`, the build that first published it, has been dropped.
       expect(findArtifactForFamily('shell', oldShared)).toBeDefined();
     });
+  });
+});
+
+describe('stableEntryModule', () => {
+  it.each([
+    ['page', 'page-button-abcd1234.js', 'import "/page-bundle/page-button-abcd1234.js";\n'],
+    ['shell', 'shell-shell-abcd1234.js', 'import "/shell-bundle/shell-shell-abcd1234.js";\n'],
+    [
+      'scenario',
+      'bundle-button-primary-abcd1234.js',
+      'import "/page-bundle/bundle-button-primary-abcd1234.js";\n',
+    ],
+  ] as const)('serves the %s family entry as one import of %s', (family, entryPath, expected) => {
+    expect(stableEntryModule(family, entryPath)).toBe(expected);
   });
 });
