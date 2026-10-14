@@ -18,6 +18,10 @@ import {
   currentAttemptFromLedgerRecord,
   type TaskResultAuthorizationFailure,
 } from './task-result-authorization.ts';
+import {
+  recordTaskResultDelivery,
+  type TaskResultDeliveryAnswer,
+} from './task-result-delivery-recorder.ts';
 import { taskResultPayloadSizeError } from './task-result-resolution.ts';
 
 const TASK_RESULT_RE = /^\/v1\/tasks\/([\w-]+)\/result$/;
@@ -301,6 +305,28 @@ function payloadSizeExceededResponse(error: {
   );
 }
 
+/**
+ * Record how a long-poll `taskResult` was answered in the operation's
+ * delivery history (COR-1366), before the response is returned.
+ */
+function recordLongPollDelivery(
+  options: ServeOptions,
+  result: ValidatedTaskResult,
+  answer: TaskResultDeliveryAnswer,
+): Promise<void> {
+  return recordTaskResultDelivery(
+    options,
+    {
+      operationId: result.operationId,
+      attemptToken: result.attemptToken,
+      transport: 'longPoll',
+      workerId: result.workerId,
+      submittedStatus: result.status,
+    },
+    answer,
+  );
+}
+
 async function applyOversizedTaskResult(
   context: ServerContext,
   options: ServeOptions,
@@ -317,6 +343,17 @@ async function applyOversizedTaskResult(
       error: payloadError.message,
     },
     result.workerId,
+  );
+  await recordLongPollDelivery(
+    options,
+    result,
+    rejected.ok
+      ? { outcome: 'acknowledged', disposition: rejected.disposition, oversizedPayload: true }
+      : {
+          outcome: 'rejected',
+          rejectionCode: rejected.reasonCode ?? 'commit-rejected',
+          reason: `${payloadError.message} — ${rejected.reason}`,
+        },
   );
   if (rejected.ok) {
     context.deadlineTracker.remove(result.operationId);
@@ -347,6 +384,11 @@ async function submitValidatedTaskResult(
   );
   const authorization = isLongPollCompletionAuthorized(record, result, queue);
   if (!authorization.ok) {
+    await recordLongPollDelivery(options, result, {
+      outcome: 'rejected',
+      rejectionCode: authorization.reason,
+      reason: `taskResult for operation "${result.operationId}" rejected — ${authorization.reason}`,
+    });
     return taskResultForbiddenResponse(
       result.operationId,
       result.attemptToken,
@@ -367,6 +409,17 @@ async function submitValidatedTaskResult(
   }
 
   const applied = await applyTaskResult(context, options, result);
+  await recordLongPollDelivery(
+    options,
+    result,
+    applied.ok
+      ? { outcome: 'acknowledged', disposition: applied.disposition }
+      : {
+          outcome: 'rejected',
+          rejectionCode: applied.reasonCode ?? 'commit-rejected',
+          reason: `taskResult for operation "${result.operationId}" rejected — ${applied.reason}`,
+        },
+  );
   if (applied.ok) {
     return Response.json({ ok: true, disposition: applied.disposition });
   }

@@ -4,6 +4,7 @@ import {
   buildCurrentAttemptDispositionWrites,
 } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
+import { taskResultDeliveryKey } from '../../core/task-ledger/task-result-delivery.ts';
 import {
   commitTaskLedgerDelete,
   commitTaskLedgerTransition,
@@ -282,7 +283,8 @@ async function reapRetainedTerminalRecord(
         expectedRetentionGeneration: decoded.retentionGeneration,
       }),
     1,
-    attemptKeys,
+    // COR-1366: the operation's delivery history is purged with it.
+    [...attemptKeys, taskResultDeliveryKey(decoded.operationId)],
   );
   if (!deleted.ok) {
     console.error(
