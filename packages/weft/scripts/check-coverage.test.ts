@@ -25,17 +25,45 @@ function closedByteStream(): ReadableStream<Uint8Array> {
   });
 }
 
-describe('listCoverageTestFiles', () => {
-  it('discovers only repository-owned test files without depending on ripgrep', async () => {
-    const files = await listCoverageTestFiles();
+// `listCoverageTestFiles()` runs `git ls-files` and the pattern scenario runs `bun test --coverage`,
+// so both run here at module scope, off Bun's five-second per-test clock; each test rethrows its
+// outcome.
 
-    expect(files).toContain('scripts/check-coverage.test.ts');
-    expect(files).toContain('scripts/check-implementation-file-sizes.test.ts');
-    expect(files).not.toContain('scripts/check-coverage.ts');
-    expect(files.some((file) => file.includes('node_modules/'))).toBe(false);
-    expect(files.some((file) => file.startsWith('coverage/'))).toBe(false);
-    expect(files).toEqual(files.toSorted());
-  });
+const listedTestFiles = await outcomeOf(async () => {
+  const files = await listCoverageTestFiles();
+
+  expect(files).toContain('scripts/check-coverage.test.ts');
+  expect(files).toContain('scripts/check-implementation-file-sizes.test.ts');
+  expect(files).not.toContain('scripts/check-coverage.ts');
+  expect(files.some((file) => file.includes('node_modules/'))).toBe(false);
+  expect(files.some((file) => file.startsWith('coverage/'))).toBe(false);
+  expect(files).toEqual(files.toSorted());
+});
+
+const benchmarkExclusions = await outcomeOf(async () => {
+  const excluded = readTestScriptPathIgnorePatterns();
+  expect(excluded).toEqual([
+    'scripts/benchmarks/activity-completions.test.ts',
+    'scripts/benchmarks/bun-sql.test.ts',
+    'scripts/benchmarks/cold-start.test.ts',
+    'scripts/benchmarks/load-growth-memory.test.ts',
+    'scripts/benchmarks/memory-footprint-growth.test.ts',
+    'scripts/benchmarks/memory-per-workflow.test.ts',
+    'scripts/benchmarks/recovery.test.ts',
+    'scripts/benchmarks/token-stream-latency.test.ts',
+    'scripts/benchmarks/worker-spawn.test.ts',
+    'scripts/benchmarks/workflow-starts.test.ts',
+  ]);
+  const files = await listCoverageTestFiles();
+  for (const path of excluded) expect(files).not.toContain(path);
+  // The benchmark directory's unit tests are not measurement runs and stay in the shard.
+  expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
+  expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
+});
+
+describe('listCoverageTestFiles', () => {
+  it('discovers only repository-owned test files without depending on ripgrep', () =>
+    rethrow(listedTestFiles));
 
   /**
    * The measurement benchmarks that `bun run test` excludes are excluded from the coverage shard
@@ -43,26 +71,8 @@ describe('listCoverageTestFiles', () => {
    * the two cannot drift. Pinned against the concrete list so a script edit that drops one is a
    * visible change here rather than a silently widened shard.
    */
-  it('excludes exactly the measurement benchmarks the test script excludes', async () => {
-    const excluded = readTestScriptPathIgnorePatterns();
-    expect(excluded).toEqual([
-      'scripts/benchmarks/activity-completions.test.ts',
-      'scripts/benchmarks/bun-sql.test.ts',
-      'scripts/benchmarks/cold-start.test.ts',
-      'scripts/benchmarks/load-growth-memory.test.ts',
-      'scripts/benchmarks/memory-footprint-growth.test.ts',
-      'scripts/benchmarks/memory-per-workflow.test.ts',
-      'scripts/benchmarks/recovery.test.ts',
-      'scripts/benchmarks/token-stream-latency.test.ts',
-      'scripts/benchmarks/worker-spawn.test.ts',
-      'scripts/benchmarks/workflow-starts.test.ts',
-    ]);
-    const files = await listCoverageTestFiles();
-    for (const path of excluded) expect(files).not.toContain(path);
-    // The benchmark directory's unit tests are not measurement runs and stay in the shard.
-    expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
-    expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
-  });
+  it('excludes exactly the measurement benchmarks the test script excludes', () =>
+    rethrow(benchmarkExclusions));
 });
 
 // The pipe scenario below runs the coverage CLI in a real child process, which takes seconds on a
@@ -294,6 +304,7 @@ describe('parseLcov', () => {
     );
   });
 
+  // spawn-free: stubbed listCoverageTestFiles and runCoverageShard replace the git listing and the coverage child.
   it('returns false immediately when a coverage shard exits non-zero', async () => {
     const listCoverageTestFilesStub = mock(async () => ['src/example.test.ts']);
     const runCoverageShardStub = mock(async () => ({
@@ -318,6 +329,7 @@ describe('parseLcov', () => {
     expect(stderrWriteSpy).toHaveBeenCalledWith('Coverage execution failed.\n');
   });
 
+  // spawn-free: a mocked spawnCoverageProcess stands in for the coverage child process.
   it('propagates a non-zero child exit through the real coverage shard runner', async () => {
     const spawnCoverageProcess = mock(() => ({
       exited: Promise.resolve(7),
@@ -392,6 +404,7 @@ describe('formatCoverageFailureReason', () => {
 });
 
 describe('runCoverageShard failure diagnostics', () => {
+  // spawn-free: a mocked spawnCoverageProcess stands in for the coverage child process.
   it('reports the spawn stage, without crashing, when starting the child throws', async () => {
     const spawnCoverageProcess = mock(() => {
       throw new Error('spawn ENOENT');
@@ -417,6 +430,7 @@ describe('runCoverageShard failure diagnostics', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('spawn ENOENT'));
   });
 
+  // spawn-free: a mocked spawnCoverageProcess stands in for the coverage child process.
   it('reports the child-signal stage and signal name when the child was terminated by a signal', async () => {
     const spawnCoverageProcess = mock(() => ({
       exited: Promise.resolve(143),
@@ -445,6 +459,7 @@ describe('runCoverageShard failure diagnostics', () => {
     expect(stderrWriteSpy).toHaveBeenCalledWith(expect.stringContaining('SIGTERM'));
   });
 
+  // spawn-free: a mocked spawnCoverageProcess stands in for the coverage child process.
   it('reports the child-exit stage, not child-signal, when the child exits with no signal', async () => {
     const spawnCoverageProcess = mock(() => ({
       exited: Promise.resolve(7),
@@ -476,6 +491,7 @@ describe('runCoverageShard failure diagnostics', () => {
    * this asserts each is independently exercised without duplicating the whole scenario.
    */
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    // spawn-free: a mocked spawnCoverageProcess stands in for the coverage child process.
     it(`forwards ${signal} to the running child, exits non-zero via the injected hook, and names the stage and pid`, async () => {
       let resolveExited: (code: number) => void = () => {};
       const exited = new Promise<number>((resolve) => {
@@ -563,6 +579,7 @@ async function withTempLcovFixture<T>(
 describe('checkCoverage failure diagnostics', () => {
   const listOneTestFile = async () => ['src/example.test.ts'];
 
+  // spawn-free: stubbed listCoverageTestFiles and runCoverageShard replace the git listing and the coverage child.
   it('reports the missing-report stage when the lcov report does not exist', async () => {
     const runCoverageShardStub = mock(async () => ({
       exitCode: 0,
@@ -582,6 +599,7 @@ describe('checkCoverage failure diagnostics', () => {
     );
   });
 
+  // spawn-free: stubbed listCoverageTestFiles and runCoverageShard replace the git listing and the coverage child.
   it('reports the empty-report stage when the lcov report instruments zero lines', async () => {
     await withTempLcovFixture(
       'SF:src/synthetic-empty-fixture.ts\nFNF:0\nFNH:0\nend_of_record\n',
@@ -603,6 +621,7 @@ describe('checkCoverage failure diagnostics', () => {
     );
   });
 
+  // spawn-free: stubbed listCoverageTestFiles and runCoverageShard replace the git listing and the coverage child.
   it('reports the parse-failure stage when the lcov report fails to parse', async () => {
     // The same allowance-violation fixture `parseLcov` is proven to throw on above:
     // a hit on a line `COVERAGE_ALLOWANCES` only excuses while uncovered.
@@ -635,6 +654,7 @@ describe('checkCoverage failure diagnostics', () => {
     );
   });
 
+  // spawn-free: stubbed listCoverageTestFiles and runCoverageShard replace the git listing and the coverage child.
   it('reports the coverage-gap stage alongside the existing gaps list when lines are uncovered', async () => {
     await withTempLcovFixture(
       [
@@ -664,6 +684,7 @@ describe('checkCoverage failure diagnostics', () => {
     );
   });
 
+  // spawn-free: stubbed listCoverageTestFiles and runCoverageShard replace the git listing and the coverage child.
   it('prints only the existing summary lines on a fully covered run — no new diagnostic noise', async () => {
     await withTempLcovFixture(
       ['SF:src/synthetic-passing-fixture.ts', 'FNF:1', 'FNH:1', 'DA:1,1', 'end_of_record'].join(
@@ -955,92 +976,92 @@ describe('assertNoAllowanceKeyIsCoverageIgnored', () => {
   });
 });
 
+const ignorePatternParity = await outcomeOf(async () => {
+  const { mkdtemp, writeFile, mkdir, rm } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+
+  const root = await mkdtemp(join(tmpdir(), 'weft-cov-char-'));
+  try {
+    await mkdir(join(root, 'sub'), { recursive: true });
+    const files = [
+      'exact-match.ts',
+      'sub/nested-file.ts',
+      'question.ts',
+      'bracket-x.ts',
+      'plain-substr.ts',
+    ];
+    for (const [index, file] of files.entries()) {
+      await writeFile(
+        join(root, file),
+        `export const v${String(index)} = () => ${String(index)};\n`,
+      );
+    }
+    const imports = files
+      .map((file, index) => `import { v${String(index)} } from './${file}';`)
+      .join('\n');
+    await writeFile(
+      join(root, 'all.test.ts'),
+      `import { test, expect } from 'bun:test';\n${imports}\n` +
+        `test('t', () => { expect([${files.map((_f, i) => `v${String(i)}`).join(',')}].length).toBe(${String(files.length)}); });\n`,
+    );
+
+    // Representative patterns spanning every matcher class Bun supports.
+    const patterns = [
+      'exact-match.ts',
+      '*.ts',
+      'qu?stion.ts',
+      'bracket-[xy].ts',
+      'sub/**',
+      'nested', // bare substring — Bun does NOT exclude on this
+    ];
+
+    for (const pattern of patterns) {
+      await writeFile(
+        join(root, 'bunfig.toml'),
+        `[test]\ncoveragePathIgnorePatterns = ["${pattern}"]\n`,
+      );
+      await rm(join(root, 'coverage'), { recursive: true, force: true });
+      const coverageRun =
+        await Bun.$`bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage`
+          .cwd(root)
+          .quiet()
+          .nothrow();
+      // Assert the coverage run itself succeeded. A non-zero exit can still leave a
+      // partial or empty lcov, which would silently skew the exclusion set below — so
+      // fail here, at the real cause, rather than later on an opaque file read.
+      expect(
+        coverageRun.exitCode,
+        `bun test --coverage failed for pattern "${pattern}": ${coverageRun.stderr.toString()}`,
+      ).toBe(0);
+      const lcov = await Bun.file(join(root, 'coverage', 'lcov.info')).text();
+      const bunExcluded = new Set(
+        files.filter((file) => !lcov.split('\n').some((line) => line === `SF:${file}`)),
+      );
+
+      // The guard must throw for exactly the files Bun excluded, and not for the kept.
+      for (const file of files) {
+        const run = () => assertNoAllowanceKeyIsCoverageIgnored(new Map([[file, {}]]), [pattern]);
+        if (bunExcluded.has(file)) {
+          expect(run, `guard should flag "${file}" excluded by Bun for "${pattern}"`).toThrow();
+        } else {
+          expect(run, `guard should NOT flag "${file}" kept by Bun for "${pattern}"`).not.toThrow();
+        }
+      }
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 describe('allowanceKeyMatchesIgnorePattern agrees with Bun coverage-ignore semantics', () => {
   // Characterization test: the guard's correctness depends ENTIRELY on matching how Bun
   // actually applies coveragePathIgnorePatterns. Rather than trust a hand-modeled matcher,
   // run real `bun test --coverage` against temp fixtures with representative patterns,
   // observe which files Bun excludes from LCOV, and assert assertNoAllowanceKeyIsCoverageIgnored
   // throws for exactly the excluded files (and not the kept ones).
-  it('matches Bun for exact, *, ?, [], **, and bare-substring patterns', async () => {
-    const { mkdtemp, writeFile, mkdir, rm } = await import('node:fs/promises');
-    const { join } = await import('node:path');
-    const { tmpdir } = await import('node:os');
-
-    const root = await mkdtemp(join(tmpdir(), 'weft-cov-char-'));
-    try {
-      await mkdir(join(root, 'sub'), { recursive: true });
-      const files = [
-        'exact-match.ts',
-        'sub/nested-file.ts',
-        'question.ts',
-        'bracket-x.ts',
-        'plain-substr.ts',
-      ];
-      for (const [index, file] of files.entries()) {
-        await writeFile(
-          join(root, file),
-          `export const v${String(index)} = () => ${String(index)};\n`,
-        );
-      }
-      const imports = files
-        .map((file, index) => `import { v${String(index)} } from './${file}';`)
-        .join('\n');
-      await writeFile(
-        join(root, 'all.test.ts'),
-        `import { test, expect } from 'bun:test';\n${imports}\n` +
-          `test('t', () => { expect([${files.map((_f, i) => `v${String(i)}`).join(',')}].length).toBe(${String(files.length)}); });\n`,
-      );
-
-      // Representative patterns spanning every matcher class Bun supports.
-      const patterns = [
-        'exact-match.ts',
-        '*.ts',
-        'qu?stion.ts',
-        'bracket-[xy].ts',
-        'sub/**',
-        'nested', // bare substring — Bun does NOT exclude on this
-      ];
-
-      for (const pattern of patterns) {
-        await writeFile(
-          join(root, 'bunfig.toml'),
-          `[test]\ncoveragePathIgnorePatterns = ["${pattern}"]\n`,
-        );
-        await rm(join(root, 'coverage'), { recursive: true, force: true });
-        const coverageRun =
-          await Bun.$`bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage`
-            .cwd(root)
-            .quiet()
-            .nothrow();
-        // Assert the coverage run itself succeeded. A non-zero exit can still leave a
-        // partial or empty lcov, which would silently skew the exclusion set below — so
-        // fail here, at the real cause, rather than later on an opaque file read.
-        expect(
-          coverageRun.exitCode,
-          `bun test --coverage failed for pattern "${pattern}": ${coverageRun.stderr.toString()}`,
-        ).toBe(0);
-        const lcov = await Bun.file(join(root, 'coverage', 'lcov.info')).text();
-        const bunExcluded = new Set(
-          files.filter((file) => !lcov.split('\n').some((line) => line === `SF:${file}`)),
-        );
-
-        // The guard must throw for exactly the files Bun excluded, and not for the kept.
-        for (const file of files) {
-          const run = () => assertNoAllowanceKeyIsCoverageIgnored(new Map([[file, {}]]), [pattern]);
-          if (bunExcluded.has(file)) {
-            expect(run, `guard should flag "${file}" excluded by Bun for "${pattern}"`).toThrow();
-          } else {
-            expect(
-              run,
-              `guard should NOT flag "${file}" kept by Bun for "${pattern}"`,
-            ).not.toThrow();
-          }
-        }
-      }
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  }, 60_000);
+  it('matches Bun for exact, *, ?, [], **, and bare-substring patterns', () =>
+    rethrow(ignorePatternParity));
 });
 
 describe('requireUncoveredLines on corvidae-authored allowances', () => {
