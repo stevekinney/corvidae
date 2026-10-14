@@ -17,6 +17,7 @@
     "components/cinder :: scripts/stylelint/z-index-scale.test.ts :: cinder/z-index-scale :: reduces wide min, max, and hypot fallbacks without argument-limit bypasses",
     "components/weft-ui :: src/routes/schedules/schedule-detail.test.ts :: ScheduleDetail :: queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp",
     "components/weft-ui :: src/routes/system/dynamic-source-panel.additional.test.ts :: additional coverage :: never renders a preload outcome under a different key\u2019s identity badges",
+    "packages/bureau :: src/create-bureau.test.ts :: createBureau :: evicts the oldest boot frames at overflow so the newest history survives (COR-1421)",
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a recurring schedule into a fixed session and accumulates conversation across fires",
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a stateless interval schedule and runs the agent with a fresh session per fire",
     "packages/evaluation :: scripts/memory-lifecycle.test.ts :: memory-lifecycle run :: runs the stochastic lane with a fixed, recorded seed",
