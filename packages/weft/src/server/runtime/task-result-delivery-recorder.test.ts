@@ -1,6 +1,8 @@
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { encode } from '../../core/codec.ts';
 import { TaskResultDeliveryEvent } from '../../core/events.ts';
+import { taskLedgerKey } from '../../core/task-ledger/task-ledger.ts';
 import {
   decodeTaskResultDeliveryHistory,
   taskResultDeliveryKey,
@@ -93,6 +95,19 @@ describe('recordTaskResultDelivery', () => {
     expect(event.disposition).toBe('dead-lettered');
     expect(event.rejectionCode).toBeUndefined();
     expect(event.queue).toBe('default');
+  });
+
+  it('records history but dispatches no event when the ledger bytes do not decode', async () => {
+    const storage = new MemoryStorage();
+    const events: Event[] = [];
+    await storage.put(taskLedgerKey('op-leased'), encode({ invalid: true }));
+    await recordTaskResultDelivery(optionsFor(storage, events), submission, {
+      outcome: 'acknowledged',
+      disposition: 'duplicate',
+    });
+    const history = await readHistory(storage);
+    expect(history?.entries).toHaveLength(1);
+    expect(events).toHaveLength(0);
   });
 
   it('omits a workerId that is not a bounded identifier', async () => {

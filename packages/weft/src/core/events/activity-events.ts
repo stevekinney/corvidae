@@ -210,7 +210,10 @@ export class TaskResultDeadLetteredEvent extends Event {
  * A first-time `applied` acknowledgement is recorded in that history but does
  * not fire this event: every remote activity produces one, and the
  * activity's own completion already announces it, so firing here too would
- * add one persisted workflow event per activity for no new information.
+ * add one persisted workflow event per activity for no new information. A
+ * result that dead-letters on its first delivery fires both
+ * {@link TaskResultDeadLetteredEvent} (the ledger's decision) and this event
+ * (the acknowledgement the worker received).
  *
  * Carries `attemptTokenDigest`, never the raw attempt token, and never the
  * result payload.
