@@ -1,6 +1,7 @@
 import {
   CORPUS,
   REQUIRED_CORPUS_FIXTURE_IDS,
+  SUPPLEMENTARY_CORPUS_FIXTURE_IDS,
   byteByByteChunks,
   seededPartitions,
   twoChunkSplits,
@@ -70,11 +71,10 @@ function seededQuarter(bytes: Uint8Array, quarter: number): Uint8Array[][] {
 }
 
 describe('corpus coverage', () => {
-  test('declares an oracle for every required corpus fixture, and no other', () => {
-    expect(Object.keys(CORPUS_ORACLES).toSorted()).toEqual(
-      [...REQUIRED_CORPUS_FIXTURE_IDS].toSorted(),
-    );
-    expect(CORPUS.map((fixture) => fixture.id)).toEqual([...REQUIRED_CORPUS_FIXTURE_IDS]);
+  test('declares an oracle for every corpus fixture, required and supplementary, and no other', () => {
+    const corpusIds = [...REQUIRED_CORPUS_FIXTURE_IDS, ...SUPPLEMENTARY_CORPUS_FIXTURE_IDS];
+    expect(Object.keys(CORPUS_ORACLES).toSorted()).toEqual(corpusIds.toSorted());
+    expect(CORPUS.map((fixture) => fixture.id).toSorted()).toEqual(corpusIds.toSorted());
   });
 
   test('the seeded quarters together are exactly the fixed-seed partitions', () => {
