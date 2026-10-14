@@ -20,6 +20,7 @@ import {
 import type { ContrastPairing } from './pairings.ts';
 
 const toSrgb = converter('rgb');
+const toLinear = converter('lrgb');
 
 export type NeedsReviewCode =
   CssColorFailureCode | 'unknown-background' | 'invalid-opacity' | 'unknown-opacity';
@@ -43,6 +44,9 @@ export type PairingMeasurement =
       stack: StackLayer[];
       /** True when any layer was clamped into sRGB to be measured. */
       clamped: boolean;
+      /** The foreground as painted over the ground, and the opaque ground, in gamma sRGB. */
+      ink: StackLayer['rgb'];
+      ground: StackLayer['rgb'];
     }
   | {
       status: 'needs-review';
@@ -79,7 +83,9 @@ function toLayer(
   color: CssColor,
 ): StackLayer {
   const { r, g, b } = toSrgb({ mode: 'oklch', l: color.l, c: color.c, h: color.h });
-  const inGamut = [r, g, b].every(
+  // The gamut test is on linear channels, with the same tolerance the Cinder gamut suite uses.
+  const linear = toLinear({ mode: 'oklch', l: color.l, c: color.c, h: color.h });
+  const inGamut = [linear.r, linear.g, linear.b].every(
     (channel) => channel >= -GAMUT_EPSILON && channel <= 1 + GAMUT_EPSILON,
   );
   const clamp = (channel: number) => Math.min(1, Math.max(0, channel));
@@ -165,5 +171,7 @@ export function measurePairing(
     ratio: contrastRatio(luminanceOf(painted), luminanceOf(ground)),
     stack,
     clamped: stack.some((layer) => layer.clamped),
+    ink: painted,
+    ground,
   };
 }
