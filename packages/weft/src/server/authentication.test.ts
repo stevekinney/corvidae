@@ -893,6 +893,14 @@ describe('createAuthenticator — no admission without positive evidence', () =>
       expect(result.authenticated).toBe(false);
     });
   }
+
+  it('does not report jwt when no bearer token is presented', async () => {
+    const authenticate = await createAuthenticator({ jwt: { secret: TEST_SECRET } });
+
+    const result = await authenticate(makeRequest('http://localhost/v1/workflows'));
+
+    expect(result).toEqual({ authenticated: false, error: 'No valid credentials provided' });
+  });
 });
 
 // ---------------------------------------------------------------------------
