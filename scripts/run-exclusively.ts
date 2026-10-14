@@ -8,14 +8,20 @@
  *
  * The lock is a directory inside the Git common directory, which every worktree of this
  * repository shares. It is renamed into place with its owner file already inside, and `rename`
- * refuses to replace a non-empty directory, so whoever's rename succeeds holds the lock. The owner
- * file records the wrapper's pid and, once it starts, the command's. The lock stays held while
- * either is alive, so a waiter reclaims it only once the work it guarded has stopped.
+ * refuses to replace a non-empty directory, so whoever's rename succeeds holds the lock.
+ *
+ * The command runs in its own process group, and the lock guards that whole group, not one pid. A
+ * chained stage such as `lint` is `sh` running Bun and Turbo, which run more processes; signalling
+ * or watching only `sh` would let its descendants outlive it while the lock was released. So
+ * signals are forwarded to the group, the lock stays held while the wrapper or any member of the
+ * group is alive, and stragglers are terminated before release. Start times recorded beside each
+ * pid keep a recycled pid from passing for the holder.
  *
  * Usage: `bun scripts/run-exclusively.ts '<shell command>' [arguments...]`. Arguments reach the
  * command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes them.
  */
 
+import { spawn } from 'node:child_process';
 import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:os';
 import { isAbsolute, join } from 'node:path';
@@ -24,8 +30,12 @@ export const ownerFileName = 'owner.json';
 
 export type HostLockHolder = {
   readonly pid: number;
-  /** The command's own pid, recorded once it starts; it can outlive a killed wrapper. */
-  readonly commandPid?: number;
+  /** `ps -o lstart` for `pid`, so a recycled pid is not mistaken for the holder. */
+  readonly pidStartedAt?: string;
+  /** The command's process group, recorded once it starts; it can outlive a killed wrapper. */
+  readonly processGroup?: number;
+  /** `ps -o lstart` for the group's leader when the group started. */
+  readonly processGroupStartedAt?: string;
   readonly command: string;
   readonly cwd: string;
   readonly acquiredAt: string;
@@ -59,6 +69,37 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+/** The process's start time as `ps` reports it, or undefined when there is no such process. */
+export function processStartTime(pid: number): string | undefined {
+  const result = Bun.spawnSync(['ps', '-o', 'lstart=', '-p', String(pid)], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  const startedAt = result.stdout.toString().trim();
+  return result.exitCode === 0 && startedAt !== '' ? startedAt : undefined;
+}
+
+/** Whether `pid` is alive and, when a start time was recorded, still the same process. */
+function isSameProcess(pid: number, startedAt: string | undefined): boolean {
+  if (!isProcessAlive(pid)) return false;
+  return startedAt === undefined || processStartTime(pid) === startedAt;
+}
+
+/**
+ * Whether any member of the process group is alive. A process group's id is not reused while the
+ * group has members, so a live group under that id is the recorded one, unless a new process now
+ * leads a group with the same id, which the leader's start time exposes.
+ */
+function isProcessGroupAlive(processGroup: number, leaderStartedAt: string | undefined): boolean {
+  try {
+    process.kill(-processGroup, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+  }
+  if (leaderStartedAt === undefined || !isProcessAlive(processGroup)) return true;
+  return processStartTime(processGroup) === leaderStartedAt;
+}
+
 async function readOwner(lockDirectory: string): Promise<OwnerRecord | undefined> {
   try {
     return JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8')) as OwnerRecord;
@@ -75,8 +116,9 @@ async function lockState(
 ): Promise<'released' | 'abandoned' | 'held'> {
   if (owner) {
     const alive =
-      isProcessAlive(owner.pid) ||
-      (owner.commandPid !== undefined && isProcessAlive(owner.commandPid));
+      isSameProcess(owner.pid, owner.pidStartedAt) ||
+      (owner.processGroup !== undefined &&
+        isProcessGroupAlive(owner.processGroup, owner.processGroupStartedAt));
     return alive ? 'held' : 'abandoned';
   }
   try {
@@ -161,14 +203,22 @@ export async function reclaimAbandoned(
   }
 }
 
-/** Records the command's pid in the held lock, replacing the owner file in one rename. */
-async function recordCommandPid(
+/** Records the command's process group in the held lock, replacing the owner file in one rename. */
+async function recordProcessGroup(
   lockDirectory: string,
   owner: OwnerRecord,
-  commandPid: number,
+  processGroup: number,
 ): Promise<void> {
   const staged = join(lockDirectory, `${ownerFileName}.${owner.token}`);
-  await writeFile(staged, JSON.stringify({ ...owner, commandPid }));
+  const processGroupStartedAt = processStartTime(processGroup);
+  await writeFile(
+    staged,
+    JSON.stringify({
+      ...owner,
+      processGroup,
+      ...(processGroupStartedAt === undefined ? {} : { processGroupStartedAt }),
+    }),
+  );
   await rename(staged, join(lockDirectory, ownerFileName));
 }
 
@@ -188,8 +238,8 @@ function delay(milliseconds: number, signal: AbortSignal | undefined): Promise<v
 }
 
 export type HeldHostLock = {
-  /** Records the guarded command's pid, so the lock outlives a wrapper killed before it. */
-  readonly recordCommand: (commandPid: number) => Promise<void>;
+  /** Records the command's process group, so the lock outlives a wrapper killed before it. */
+  readonly recordProcessGroup: (processGroup: number) => Promise<void>;
   readonly release: () => Promise<void>;
 };
 
@@ -202,7 +252,7 @@ export async function acquireHostLock(options: AcquireHostLockOptions): Promise<
     options.signal?.throwIfAborted();
     if (await tryInstall(lockDirectory, self)) {
       return {
-        recordCommand: (commandPid) => recordCommandPid(lockDirectory, self, commandPid),
+        recordProcessGroup: (processGroup) => recordProcessGroup(lockDirectory, self, processGroup),
         release: () => removeLock(lockDirectory, self),
       };
     }
@@ -238,6 +288,30 @@ function describeHolder(holder: HostLockHolder | undefined): string {
   return `pid ${holder.pid} running \`${holder.command}\` in ${holder.cwd} since ${holder.acquiredAt}`;
 }
 
+/** How long stragglers get to exit after SIGTERM before they are killed outright. */
+const stragglerGraceMs = 2000;
+
+/**
+ * Terminates whatever is left in the command's process group once `sh` has exited, so a leaked
+ * background process neither keeps loading the machine nor holds the lock after release.
+ */
+async function terminateProcessGroup(processGroup: number): Promise<void> {
+  const signalGroup = (signal: NodeJS.Signals): boolean => {
+    try {
+      process.kill(-processGroup, signal);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!signalGroup('SIGTERM')) return;
+  for (let waited = 0; waited < stragglerGraceMs; waited += 50) {
+    if (!isProcessGroupAlive(processGroup, undefined)) return;
+    await delay(50, undefined);
+  }
+  signalGroup('SIGKILL');
+}
+
 /** Runs `script` through `sh -c` while holding the host lock and resolves to its exit code. */
 export async function runExclusively(options: RunExclusivelyOptions): Promise<number> {
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
@@ -247,6 +321,7 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
       lockDirectory: await options.lockDirectory,
       holder: {
         pid: process.pid,
+        ...pidStartedAtField(),
         command: options.script,
         cwd: process.cwd(),
         acquiredAt: new Date().toISOString(),
@@ -259,29 +334,62 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
     report(`run-exclusively: running without the host lock: ${(error as Error).message}`);
   }
   try {
-    const args = options.args ?? [];
-    const command = args.length === 0 ? options.script : `${options.script} "$@"`;
-    const child = Bun.spawn(['sh', '-c', command, 'sh', ...args], {
-      stdio: ['inherit', 'inherit', 'inherit'],
-    });
-    await lock?.recordCommand(child.pid).catch((error: unknown) => {
-      report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
-    });
-    const forward = (signal: NodeJS.Signals): void => {
-      child.kill(signal);
-    };
-    process.on('SIGINT', forward);
-    process.on('SIGTERM', forward);
-    try {
-      const exitCode = await child.exited;
-      if (child.signalCode) return 128 + (constants.signals[child.signalCode] ?? 0);
-      return exitCode;
-    } finally {
-      process.off('SIGINT', forward);
-      process.off('SIGTERM', forward);
-    }
+    return await runInProcessGroup(options, lock, report);
   } finally {
     await lock?.release();
+  }
+}
+
+function pidStartedAtField(): { pidStartedAt?: string } {
+  const pidStartedAt = processStartTime(process.pid);
+  return pidStartedAt === undefined ? {} : { pidStartedAt };
+}
+
+/**
+ * Runs the command as the leader of a new process group. `detached` makes it a new session, so
+ * the terminal no longer delivers Ctrl-C to it directly; the wrapper forwards SIGINT, SIGTERM, and
+ * SIGHUP to the whole group instead. Stdin is closed because a process outside the terminal's
+ * foreground group cannot read it, and none of the wrapped stages needs input.
+ */
+async function runInProcessGroup(
+  options: RunExclusivelyOptions,
+  lock: HeldHostLock | undefined,
+  report: (line: string) => void,
+): Promise<number> {
+  const args = options.args ?? [];
+  const command = args.length === 0 ? options.script : `${options.script} "$@"`;
+  const child = spawn('sh', ['-c', command, 'sh', ...args], {
+    detached: true,
+    stdio: ['ignore', 'inherit', 'inherit'],
+  });
+  const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
+    child.once('exit', (code, signal) => resolve([code, signal]));
+    child.once('error', reject);
+  });
+  const processGroup = child.pid;
+  if (processGroup === undefined) {
+    await exited;
+    return 127;
+  }
+  await lock?.recordProcessGroup(processGroup).catch((error: unknown) => {
+    report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
+  });
+  const forward = (signal: NodeJS.Signals): void => {
+    try {
+      process.kill(-processGroup, signal);
+    } catch {
+      // The group is already gone.
+    }
+  };
+  const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  for (const signal of forwarded) process.on(signal, forward);
+  try {
+    const [code, signal] = await exited;
+    if (signal) return 128 + (constants.signals[signal] ?? 0);
+    return code ?? 1;
+  } finally {
+    for (const signal of forwarded) process.off(signal, forward);
+    await terminateProcessGroup(processGroup);
   }
 }
 

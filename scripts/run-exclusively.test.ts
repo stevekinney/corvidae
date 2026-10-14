@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type { Subprocess } from 'bun';
+import { afterEach, beforeEach, describe, expect, onTestFinished, test } from 'bun:test';
+import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,6 +31,24 @@ function holder(pid = process.pid): HostLockHolder {
   return { pid, command: 'test', cwd: directory, acquiredAt: new Date(0).toISOString() };
 }
 
+function isGroupAlive(processGroup: number): boolean {
+  try {
+    process.kill(-processGroup, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function killGroup(processGroup: number | undefined): void {
+  if (processGroup === undefined) return;
+  try {
+    process.kill(-processGroup, 'SIGKILL');
+  } catch {
+    // Already gone.
+  }
+}
+
 /** The pid of a process that has already exited, so nothing can be holding a lock under it. */
 async function exitedPid(): Promise<number> {
   const child = Bun.spawn(['true']);
@@ -47,9 +67,9 @@ describe('acquireHostLock', () => {
     const recorded = JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8'));
     expect(recorded.pid).toBe(process.pid);
     expect(recorded.command).toBe('test');
-    await lock.recordCommand(4242);
+    await lock.recordProcessGroup(4242);
     const updated = JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8'));
-    expect(updated.commandPid).toBe(4242);
+    expect(updated.processGroup).toBe(4242);
     await lock.release();
     expect(await Bun.file(join(lockDirectory, ownerFileName)).exists()).toBe(false);
   });
@@ -120,8 +140,14 @@ describe('acquireHostLock', () => {
     await lock.release();
   });
 
-  test('stays held while the command runs, even after the wrapper that took it has exited', async () => {
-    await writeLock({ ...holder(await exitedPid()), commandPid: process.pid, token: 'orphaned' });
+  test('stays held while the process group runs, even after the wrapper that took it has exited', async () => {
+    const group = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' });
+    onTestFinished(() => killGroup(group.pid));
+    await writeLock({
+      ...holder(await exitedPid()),
+      processGroup: group.pid!,
+      token: 'orphaned',
+    });
     const controller = new AbortController();
     const reason = rejectionOf(
       acquireHostLock({
@@ -135,6 +161,19 @@ describe('acquireHostLock', () => {
     expect(await reason).toBeInstanceOf(Error);
     const recorded = JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8'));
     expect(recorded.token).toBe('orphaned');
+  });
+
+  test('does not mistake a recycled pid for the holder', async () => {
+    // This test's own pid is alive, but not the process that started at the recorded time.
+    await writeLock({
+      ...holder(),
+      pidStartedAt: 'Thu Jan  1 00:00:00 1970',
+      token: 'recycled',
+    });
+    const lock = await acquireHostLock({ lockDirectory, holder: holder(), pollIntervalMs: 1 });
+    const recorded = JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8'));
+    expect(recorded.token).not.toBe('recycled');
+    await lock.release();
   });
 
   test('releasing never removes a lock someone else now holds', async () => {
@@ -176,6 +215,67 @@ describe('reclaimAbandoned', () => {
   });
 });
 
+/** Runs the real wrapper in its own process, so the test can signal it like an outside caller. */
+async function startWrapper(
+  script: string,
+): Promise<{ wrapper: Subprocess; processGroup: number }> {
+  const fixture = join(directory, 'wrapper.ts');
+  await writeFile(
+    fixture,
+    `import { runExclusively } from ${JSON.stringify(join(import.meta.dir, 'run-exclusively.ts'))};
+process.exitCode = await runExclusively({
+  lockDirectory: process.argv[2],
+  script: process.argv[3],
+  pollIntervalMs: 5,
+  report: () => {},
+});
+`,
+  );
+  const wrapper = Bun.spawn([process.execPath, fixture, lockDirectory, script], {
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+  onTestFinished(() => wrapper.kill('SIGKILL'));
+  for (;;) {
+    const contents = await readFile(join(lockDirectory, ownerFileName), 'utf8').catch(() => '');
+    const processGroup = contents === '' ? undefined : JSON.parse(contents).processGroup;
+    if (processGroup !== undefined) {
+      onTestFinished(() => killGroup(processGroup));
+      return { wrapper, processGroup };
+    }
+    await Bun.sleep(5);
+  }
+}
+
+describe('the wrapper as a process', () => {
+  test('a signal to the wrapper reaches the whole chained command before the lock is released', async () => {
+    const { wrapper, processGroup } = await startWrapper('sleep 30 && true');
+    wrapper.kill('SIGTERM');
+    await wrapper.exited;
+    expect(isGroupAlive(processGroup)).toBe(false);
+    expect(await Bun.file(join(lockDirectory, ownerFileName)).exists()).toBe(false);
+  });
+
+  test('a killed wrapper leaves the lock held until its process group is gone', async () => {
+    const { wrapper, processGroup } = await startWrapper('sleep 30 && true');
+    wrapper.kill('SIGKILL');
+    await wrapper.exited;
+    const controller = new AbortController();
+    const waited = rejectionOf(
+      acquireHostLock({
+        lockDirectory,
+        holder: holder(),
+        pollIntervalMs: 1,
+        signal: controller.signal,
+        onWait: () => controller.abort(),
+      }),
+    );
+    expect(await waited).toBeInstanceOf(Error);
+    killGroup(processGroup);
+    const lock = await acquireHostLock({ lockDirectory, holder: holder(), pollIntervalMs: 1 });
+    await lock.release();
+  });
+});
+
 describe('runExclusively', () => {
   test('two concurrent runs never overlap', async () => {
     const log = join(directory, 'log');
@@ -205,6 +305,19 @@ describe('runExclusively', () => {
     expect(code).toBe(0);
     const written = await readFile(output, 'utf8');
     expect(written.split('\n')).toEqual(['two words', '--flag', '']);
+  });
+
+  test('terminates processes the command left behind before releasing', async () => {
+    const groupFile = join(directory, 'group');
+    // `$$` in `sh -c` is the shell's pid, which leads the command's process group.
+    const code = await runExclusively({
+      lockDirectory,
+      script: `sleep 30 & echo $$ > '${groupFile}'`,
+      report: () => {},
+    });
+    expect(code).toBe(0);
+    const processGroup = Number(await readFile(groupFile, 'utf8'));
+    expect(isGroupAlive(processGroup)).toBe(false);
   });
 
   test('runs unlocked with a warning when the lock cannot be created', async () => {
