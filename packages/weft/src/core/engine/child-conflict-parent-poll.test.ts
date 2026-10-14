@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
+  createDeferred,
   expectPromisePending,
   waitForCondition,
   yieldToEventLoop,
@@ -27,7 +28,12 @@ import {
   WRITE_METHODS,
   writeOperations,
 } from './checkpoint-conflict.test-support.ts';
-import { abandonedExecutionAttemptCount, beginExecutionAttempt } from './execution-attempts.ts';
+import { pendingChildOutcomePollCount, pollChildOutcomes } from './child-outcome-poll.ts';
+import {
+  abandonedExecutionAttemptCount,
+  abandonExecutionAttempt,
+  beginExecutionAttempt,
+} from './execution-attempts.ts';
 import { getGeneratorOwnedWorkflowResultPromise } from './generator-owned-result.ts';
 import { createWorkflowResultWaiter } from './handle-result.ts';
 import { Engine } from './index.ts';
@@ -187,9 +193,13 @@ describe('a parent awaiting a child its engine lost', () => {
       label: 'the poll timer armed',
     });
 
+    expect(pendingChildOutcomePollCount(scenario.loserInternals)).toBe(1);
+
     await scenario.loser[Symbol.asyncDispose]();
 
     expect(scenario.loserInternals.pendingResultPollTimers.size).toBe(0);
+    // Torn down explicitly at disposal, not left to a cancelled timer.
+    expect(pendingChildOutcomePollCount(scenario.loserInternals)).toBe(0);
     await scenario.winner[Symbol.asyncDispose]();
   });
 
@@ -222,6 +232,108 @@ describe('a parent awaiting a child its engine lost', () => {
       expect(await resumedOutcome).toBe('parent saw done');
     } finally {
       await scenario.dispose();
+    }
+  });
+});
+
+describe('how a parent view ends', () => {
+  it('rejects like result() for a workflow not in storage when the child is gone, and stops', async () => {
+    const loser = await Engine.create({
+      storage: new MemoryStorage(),
+      recover: false,
+      backgroundTasks: 'manual',
+      startScheduler: false,
+    });
+    try {
+      const internals = getInternals(loser);
+      const parent = await startParked(loser, 'orphan-parent', 'orphan-parent-id');
+      const waiter = createWorkflowResultWaiter(internals, 'purged-child');
+      const view = rejectionOf(
+        getGeneratorOwnedWorkflowResultPromise(internals, 'purged-child', parent.id),
+      );
+      waiter.reject(new WorkflowCheckpointConflictError('purged-child'));
+      await yieldToEventLoop();
+      await loser.runMaintenance();
+
+      expect(((await view) as Error).message).toBe('Workflow "purged-child" not found in storage');
+      expect(pendingChildOutcomePollCount(internals)).toBe(0);
+    } finally {
+      await loser[Symbol.asyncDispose]();
+    }
+  });
+
+  it('retires the poll when the parent attempt was itself abandoned', async () => {
+    const scenario = await lostChildScenario({ manual: true });
+    try {
+      void scenario.parentHandle.result().catch(() => {});
+      await yieldToEventLoop();
+      expect(pendingChildOutcomePollCount(scenario.loserInternals)).toBe(1);
+
+      abandonExecutionAttempt(
+        scenario.loserInternals,
+        PARENT_ID,
+        tokenOf(scenario.loserInternals, PARENT_ID),
+      );
+      await scenario.loser.runMaintenance();
+
+      expect(pendingChildOutcomePollCount(scenario.loserInternals)).toBe(0);
+    } finally {
+      await scenario.dispose();
+    }
+  });
+
+  it('makes runMaintenance await a read already in flight', async () => {
+    const storage = new MemoryStorage();
+    const gate = createDeferred();
+    let gating = false;
+    const gated = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (gating && key === KEYS.workflow('slow-child-id')) await gate.promise;
+            return (original as (k: string) => Promise<unknown>).call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+    const loser = await Engine.create({
+      storage: gated,
+      recover: false,
+      backgroundTasks: 'manual',
+      startScheduler: false,
+    });
+    loser.register(
+      workflow({ name: 'slow-child' }).execute(async function* () {
+        return 'slow result';
+      }),
+    );
+    try {
+      const internals = getInternals(loser);
+      const slow = await loser.start('slow-child', null, { id: 'slow-child-id' });
+      await slow.result();
+      const parent = await startParked(loser, 'slow-parent', 'slow-parent-id');
+      const waiter = createWorkflowResultWaiter(internals, 'slow-child-id');
+      const view = getGeneratorOwnedWorkflowResultPromise(internals, 'slow-child-id', parent.id);
+      gating = true;
+      waiter.reject(new WorkflowCheckpointConflictError('slow-child-id'));
+      await yieldToEventLoop();
+
+      // `runMaintenance()` awaits exactly this. It must wait for the read already in flight.
+      let polled = false;
+      const polling = pollChildOutcomes(internals).then(() => {
+        polled = true;
+      });
+      await yieldToEventLoop();
+      expect(polled).toBe(false);
+      gate.resolve();
+      await polling;
+
+      expect(await Promise.race([view, Promise.resolve('pending')])).toBe('slow result');
+    } finally {
+      await loser[Symbol.asyncDispose]();
     }
   });
 });

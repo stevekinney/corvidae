@@ -5,6 +5,11 @@ import { WorkflowHandle } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
 
+/** What a result waiter rejects with for a workflow that is not (or no longer) in storage. */
+export function workflowNotFoundInStorageError(workflowId: string): Error {
+  return new Error(`Workflow "${workflowId}" not found in storage`);
+}
+
 export function createWorkflowHandleWithResultPromise(
   internals: EngineInternals,
   workflowId: string,
@@ -316,7 +321,7 @@ export async function bootstrapWorkflowResultResolver(
     const outcome = await prepareToSettleTerminalWaiter(internals, workflowId, waiter);
     if (outcome !== 'proceed') return outcome;
     internals.resultResolvers.delete(workflowId);
-    waiter.reject(new Error(`Workflow "${workflowId}" not found in storage`));
+    waiter.reject(workflowNotFoundInStorageError(workflowId));
     return 'settled';
   }
 

@@ -1,6 +1,7 @@
 import type { WorkflowState } from '../types.ts';
 import type { ExecutionAttempt } from './execution-attempts.ts';
 import { currentExecutionAttempt } from './execution-attempts.ts';
+import { workflowNotFoundInStorageError } from './handle-result.ts';
 import type { EngineInternals } from './internals.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
@@ -41,45 +42,68 @@ export type ChildOutcomeWatch = {
   readonly reject: (error: unknown) => void;
 };
 
-type Poller = { tick(): Promise<void> };
+type Poller = {
+  tick(): Promise<void>;
+  /** Tear down at engine disposal: stop, cancel the timer, and drop the parent's resolvers. */
+  dispose(): void;
+};
 
 const pollersByEngine = new WeakMap<EngineInternals, Set<Poller>>();
 
+/** The parent no longer awaits the child, so this view has nothing left to settle. */
 function parentNoLongerAwaits(internals: EngineInternals, watch: ChildOutcomeWatch): boolean {
   const { parentWorkflowId, parentAttempt } = watch;
+  const current = currentExecutionAttempt(internals, parentWorkflowId);
   return (
     watch.signal?.aborted === true ||
     parentAttempt === undefined ||
-    currentExecutionAttempt(internals, parentWorkflowId) !== parentAttempt ||
+    current !== parentAttempt ||
+    current.abandoned ||
     !internals.checkpoints.has(parentWorkflowId) ||
     internals.terminalizingWorkflows.has(parentWorkflowId)
   );
 }
 
-async function readChildState(
-  internals: EngineInternals,
-  childWorkflowId: string,
-): Promise<WorkflowState | null> {
+type ChildRead =
+  { readonly kind: 'unreadable' } | { readonly kind: 'read'; state: WorkflowState | null };
+
+async function readChild(internals: EngineInternals, childWorkflowId: string): Promise<ChildRead> {
   try {
-    return await loadWorkflowState(internals, childWorkflowId);
+    return { kind: 'read', state: await loadWorkflowState(internals, childWorkflowId) };
   } catch {
     // An unreadable child is not a verdict on it: keep waiting and read again.
-    return null;
+    return { kind: 'unreadable' };
   }
 }
 
-function settleFromState(watch: ChildOutcomeWatch, state: WorkflowState): void {
-  try {
-    watch.resolve(deriveWorkflowResultFromState(state));
-  } catch (outcome) {
-    // The persisted failure, cancellation, or timeout of the child is the parent's outcome too.
-    watch.reject(outcome);
+/** The parent's outcome for what the child's durable state says, or `undefined` to keep waiting. */
+function outcomeFromRead(
+  watch: ChildOutcomeWatch,
+  read: ChildRead,
+): { readonly settle: () => void } | undefined {
+  if (read.kind === 'unreadable') return undefined;
+  const { state } = read;
+  if (state === null) {
+    // A child this engine started and that is gone now (purged or swept after it finished) reads
+    // like any result() for a workflow not in storage, and waiting for it can never end.
+    return { settle: () => watch.reject(workflowNotFoundInStorageError(watch.childWorkflowId)) };
   }
+  if (!isTerminalWorkflowStatus(state.status)) return undefined;
+  return {
+    settle: () => {
+      try {
+        watch.resolve(deriveWorkflowResultFromState(state));
+      } catch (outcome) {
+        // The persisted failure, cancellation, or timeout of the child is the parent's outcome too.
+        watch.reject(outcome);
+      }
+    },
+  };
 }
 
 export function watchChildDurableOutcome(
   internals: EngineInternals,
-  watch: ChildOutcomeWatch,
+  initialWatch: ChildOutcomeWatch,
 ): void {
   let pollers = pollersByEngine.get(internals);
   if (pollers === undefined) {
@@ -87,45 +111,45 @@ export function watchChildDurableOutcome(
     pollersByEngine.set(internals, pollers);
   }
   const registry = pollers;
-  let finished = false;
-  let reading = false;
+  // Dropped at `finish`, so a finished or disposed poll holds nothing of the parent's.
+  let live: ChildOutcomeWatch | undefined = initialWatch;
+  let inFlight: Promise<void> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const finish = (): void => {
-    finished = true;
+    live = undefined;
     registry.delete(poller);
     if (timer !== undefined) {
       clearTimeout(timer);
       internals.pendingResultPollTimers.delete(timer);
+      timer = undefined;
     }
   };
 
   const observe = async (): Promise<void> => {
-    if (parentNoLongerAwaits(internals, watch)) return finish();
-    const state = await readChildState(internals, watch.childWorkflowId);
-    if (finished || parentNoLongerAwaits(internals, watch)) return finish();
-    if (state === null || !isTerminalWorkflowStatus(state.status)) return;
-    if (!(await watch.confirmParentStillOwned()) || parentNoLongerAwaits(internals, watch)) {
-      return finish();
-    }
+    if (live === undefined || parentNoLongerAwaits(internals, live)) return finish();
+    const read = await readChild(internals, live.childWorkflowId);
+    if (live === undefined || parentNoLongerAwaits(internals, live)) return finish();
+    const outcome = outcomeFromRead(live, read);
+    if (outcome === undefined) return;
+    const owned = await live.confirmParentStillOwned();
+    if (live === undefined || !owned || parentNoLongerAwaits(internals, live)) return finish();
     finish();
-    settleFromState(watch, state);
+    outcome.settle();
   };
 
-  const tick = async (): Promise<void> => {
-    if (finished || reading) return;
-    reading = true;
-    try {
-      await observe();
-    } finally {
-      reading = false;
-    }
+  // One read at a time; a caller that arrives during it awaits that read.
+  const tick = (): Promise<void> => {
+    inFlight ??= observe().finally(() => {
+      inFlight = undefined;
+    });
+    return inFlight;
   };
-  const poller: Poller = { tick };
+  const poller: Poller = { tick, dispose: finish };
   registry.add(poller);
 
   const scheduleNext = (): void => {
-    if (finished || internals.options.backgroundTaskMode !== 'automatic') return;
+    if (live === undefined || internals.options.backgroundTaskMode !== 'automatic') return;
     const handle = setTimeout(() => {
       internals.pendingResultPollTimers.delete(handle);
       void tick().then(scheduleNext);
@@ -143,4 +167,17 @@ export async function pollChildOutcomes(internals: EngineInternals): Promise<voi
   const pollers = pollersByEngine.get(internals);
   if (pollers === undefined) return;
   for (const poller of Array.from(pollers)) await poller.tick();
+}
+
+/** Engine disposal: tear down every pending parent view rather than rely on cancelled timers. */
+export function disposeChildOutcomePolls(internals: EngineInternals): void {
+  const pollers = pollersByEngine.get(internals);
+  if (pollers === undefined) return;
+  for (const poller of Array.from(pollers)) poller.dispose();
+  pollersByEngine.delete(internals);
+}
+
+/** How many parent views are being polled (diagnostics and tests). */
+export function pendingChildOutcomePollCount(internals: EngineInternals): number {
+  return pollersByEngine.get(internals)?.size ?? 0;
 }
