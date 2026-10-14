@@ -49,6 +49,7 @@ describe('listCoverageTestFiles', () => {
       'scripts/benchmarks/bun-sql.test.ts',
       'scripts/benchmarks/cold-start.test.ts',
       'scripts/benchmarks/load-growth-memory.test.ts',
+      'scripts/benchmarks/memory-footprint-growth.test.ts',
       'scripts/benchmarks/memory-per-workflow.test.ts',
       'scripts/benchmarks/recovery.test.ts',
       'scripts/benchmarks/token-stream-latency.test.ts',
@@ -232,15 +233,15 @@ describe('parseLcov', () => {
     expect(() =>
       parseLcov(
         [
-          'SF:scripts/generate-operation-client.ts',
+          'SF:scripts/check-implementation-file-sizes.ts',
           'FNF:0',
           'FNH:0',
-          'DA:325,1',
+          'DA:470,1',
           'end_of_record',
         ].join('\n'),
       ),
     ).toThrow(
-      'Coverage allowance for scripts/generate-operation-client.ts:325 points at a covered line',
+      'Coverage allowance for scripts/check-implementation-file-sizes.ts:470 points at a covered line',
     );
   });
 
@@ -1058,7 +1059,6 @@ describe('requireUncoveredLines on corvidae-authored allowances', () => {
     'scripts/benchmarks/workflow-starts-runner.ts',
     'scripts/check-implementation-file-sizes.ts',
     'scripts/generate-operation-client.ts',
-    'scripts/lib/workflow-visibility-backfill.ts',
     'src/cli/api-arguments.ts',
     'src/cli/codegen.ts',
     'src/cli/conformance.ts',

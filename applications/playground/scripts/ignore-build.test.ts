@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -17,9 +17,12 @@ import {
 const scriptsDirectory = dirname(fileURLToPath(import.meta.url));
 const wrapperPath = join(scriptsDirectory, 'ignore-build.sh');
 const vercelConfigPath = join(scriptsDirectory, '..', 'vercel.json');
+const absentCommit = 'deadbeef'.repeat(5);
 
-let repository: string;
-let base: string;
+const repository = await mkdtemp(join(tmpdir(), 'playground-ignore-build-'));
+afterAll(async () => {
+  await rm(repository, { recursive: true, force: true });
+});
 
 function git(...arguments_: string[]): string {
   const result = Bun.spawnSync(['git', ...arguments_], { cwd: repository });
@@ -40,17 +43,19 @@ function packageMap(versions: Record<string, string>): string {
   });
 }
 
+const ROOT_MANIFEST = {
+  name: 'fixture-root',
+  workspaces: ['applications/*', 'packages/*', 'internal/*'],
+};
+
 /**
  * A miniature of the repository's workspace graph. The playground depends on `@fixture/direct`,
  * which depends on `@fixture/transitive`, and has `@fixture/typescript`, which itself depends on
- * `@fixture/build-tool`, as a development dependency. `@fixture/unrelated` and the desktop
+ * `@fixture/build-tool`, as a development dependency. `@fixture/unrelated` and the example
  * application are outside the closure.
  */
 const FIXTURE_FILES: Record<string, string> = {
-  'package.json': json({
-    name: 'fixture-root',
-    workspaces: ['applications/*', 'packages/*', 'internal/*'],
-  }),
+  'package.json': json(ROOT_MANIFEST),
   'bun.lock': 'lock\n',
   'tsconfig.json': '{}\n',
   'turbo.json': '{}\n',
@@ -60,8 +65,8 @@ const FIXTURE_FILES: Record<string, string> = {
     devDependencies: { '@fixture/typescript': 'workspace:*' },
   }),
   'applications/playground/src/page.ts': 'export {};\n',
-  'applications/desktop/package.json': json({ name: '@fixture/desktop' }),
-  'applications/desktop/src/main.ts': 'export {};\n',
+  'applications/example/package.json': json({ name: '@fixture/example' }),
+  'applications/example/src/main.ts': 'export {};\n',
   'packages/direct/package.json': json({
     name: '@fixture/direct',
     dependencies: { '@fixture/transitive': 'workspace:*' },
@@ -86,12 +91,26 @@ const FIXTURE_FILES: Record<string, string> = {
   'scripts/mirror/sync.ts': 'export {};\n',
 };
 
-async function commitWriting(files: Record<string, string>): Promise<string> {
-  git('checkout', '--quiet', '--detach', base);
+async function writeFiles(files: Record<string, string>): Promise<void> {
   for (const [path, content] of Object.entries(files)) {
     await mkdir(dirname(join(repository, path)), { recursive: true });
     await writeFile(join(repository, path), content);
   }
+}
+
+async function commitBase(): Promise<string> {
+  git('init', '--quiet');
+  git('config', 'user.email', 'test@example.invalid');
+  git('config', 'user.name', 'test');
+  await writeFiles(FIXTURE_FILES);
+  git('add', '--all');
+  git('commit', '--quiet', '-m', 'base');
+  return git('rev-parse', 'HEAD');
+}
+
+async function commitWriting(files: Record<string, string>): Promise<string> {
+  git('checkout', '--quiet', '--detach', base);
+  await writeFiles(files);
   git('add', '--all');
   git('commit', '--quiet', '--allow-empty', '-m', `write ${Object.keys(files).join(', ')}`);
   return git('rev-parse', 'HEAD');
@@ -111,31 +130,117 @@ function wrapperExit(environment: Record<string, string | undefined>, path?: str
   return result.exitCode;
 }
 
-function productionExit(previous: string | undefined, current: string): number {
+function productionExit(previous: string | undefined, current: string, path?: string): number {
+  return wrapperExit(
+    { VERCEL_ENV: 'production', VERCEL_GIT_PREVIOUS_SHA: previous, VERCEL_GIT_COMMIT_SHA: current },
+    path,
+  );
+}
+
+function previewExit(current: string, commitMessage: string): number {
   return wrapperExit({
-    VERCEL_ENV: 'production',
-    VERCEL_GIT_PREVIOUS_SHA: previous,
+    VERCEL_ENV: 'preview',
+    VERCEL_GIT_PREVIOUS_SHA: base,
     VERCEL_GIT_COMMIT_SHA: current,
+    VERCEL_GIT_COMMIT_MESSAGE: commitMessage,
   });
 }
 
-beforeAll(async () => {
-  repository = await mkdtemp(join(tmpdir(), 'playground-ignore-build-'));
-  git('init', '--quiet');
-  git('config', 'user.email', 'test@example.invalid');
-  git('config', 'user.name', 'test');
-  for (const [path, content] of Object.entries(FIXTURE_FILES)) {
-    await mkdir(dirname(join(repository, path)), { recursive: true });
-    await writeFile(join(repository, path), content);
-  }
-  git('add', '--all');
-  git('commit', '--quiet', '-m', 'base');
-  base = git('rev-parse', 'HEAD');
-});
+/*
+ * Every git commit and every run of the ignore step happens here, at module scope: each is a real
+ * process, and running them inside the tests put each one on Bun's five-second per-test clock.
+ * The tests below assert on the exit codes recorded here.
+ */
+const base = await commitBase();
 
+const touchedPathCases = [
+  ['applications/playground/src/page.ts', 1],
+  ['packages/direct/src/index.ts', 1],
+  ['packages/transitive/src/index.ts', 1],
+  ['internal/typescript/base.json', 1],
+  ['packages/build-tool/src/index.ts', 1],
+  ['packages/direct/src/test-helpers.ts', 1],
+  ['bun.lock', 1],
+  ['tsconfig.json', 1],
+  ['packages/direct/src/index.test.ts', 0],
+  ['packages/direct/src/harness.test.svelte', 0],
+  ['packages/direct/src/load.bench.ts', 0],
+  ['applications/playground/src/page.spec.ts', 0],
+  ['applications/playground/tests/shell.playwright.ts', 0],
+  ['applications/playground/playwright.config.ts', 0],
+  ['packages/unrelated/src/index.ts', 0],
+  ['applications/example/src/main.ts', 0],
+  ['scripts/mirror/sync.ts', 0],
+  ['turbo.json', 0],
+] as const;
+const touchedPathExits = new Map<string, number>();
+for (const [path] of touchedPathCases) {
+  touchedPathExits.set(
+    path,
+    productionExit(base, await commitWriting({ [path]: `changed ${path}\n` })),
+  );
+}
+
+const rootManifestExit = productionExit(
+  base,
+  await commitWriting({ 'package.json': json({ ...ROOT_MANIFEST, private: true }) }),
+);
+const displayedVersionExit = productionExit(
+  base,
+  await commitWriting({
+    'scripts/mirror/package-map.json': packageMap({
+      '@lostgradient/cinder': '1.1.0',
+      '@fixture/direct': '1.0.0',
+      '@fixture/unrelated': '1.0.0',
+    }),
+  }),
+);
+const undisplayedVersionsExit = productionExit(
+  base,
+  await commitWriting({
+    'scripts/mirror/package-map.json': packageMap({
+      '@lostgradient/cinder': '1.0.0',
+      '@fixture/direct': '1.1.0',
+      '@fixture/unrelated': '2.0.0',
+    }),
+  }),
+);
+const unparsablePackageMapExit = productionExit(
+  base,
+  await commitWriting({ 'scripts/mirror/package-map.json': '{ not json' }),
+);
+const unparsableRootManifestExit = productionExit(
+  base,
+  await commitWriting({ 'package.json': '{ not json' }),
+);
+const exitWithoutPreviousDeployment = productionExit(undefined, base);
+const exitWithAbsentPreviousDeployment = productionExit(absentCommit, base);
+const exitWithAbsentCurrentCommit = productionExit(base, absentCommit);
+
+const pageChange = await commitWriting({ 'applications/playground/src/page.ts': 'changed\n' });
+const unrelatedChange = await commitWriting({ 'scripts/mirror/sync.ts': 'changed\n' });
+const previewWithoutOptInExit = previewExit(pageChange, 'Change a page');
+const previewSubjectOptInExit = previewExit(
+  unrelatedChange,
+  `Check the new layout ${PREVIEW_OPT_IN}\n\nDetails.`,
+);
+const previewBodyOnlyOptInExit = previewExit(
+  pageChange,
+  `Describe previews\n\nThey build only with ${PREVIEW_OPT_IN}.`,
+);
+
+// A bare build image: the system directories, which hold no Bun.
+const systemPath = '/usr/bin:/bin';
+const bunInSystemPath = Bun.which('bun', { PATH: systemPath });
+const missingBunExit = productionExit(base, unrelatedChange, systemPath);
+
+const stubBin = await mkdtemp(join(tmpdir(), 'ignore-build-stub-bin-'));
 afterAll(async () => {
-  await rm(repository, { recursive: true, force: true });
+  await rm(stubBin, { recursive: true, force: true });
 });
+await writeFile(join(stubBin, 'bun'), '#!/bin/sh\nexit 3\n');
+await chmod(join(stubBin, 'bun'), 0o755);
+const failingScriptExit = productionExit(base, unrelatedChange, `${stubBin}:${systemPath}`);
 
 describe('dependencyClosure', () => {
   test('reaches every workspace the playground depends on, through development dependencies too', () => {
@@ -168,59 +273,20 @@ describe('dependencyClosure', () => {
 });
 
 describe('production deployments', () => {
-  test.each([
-    ['applications/playground/src/page.ts', 1],
-    ['packages/direct/src/index.ts', 1],
-    ['packages/transitive/src/index.ts', 1],
-    ['internal/typescript/base.json', 1],
-    ['bun.lock', 1],
-    ['package.json', 1],
-    ['tsconfig.json', 1],
-    ['packages/unrelated/src/index.ts', 0],
-    ['packages/build-tool/src/index.ts', 1],
-    ['packages/direct/src/test-helpers.ts', 1],
-    ['packages/direct/src/index.test.ts', 0],
-    ['packages/direct/src/harness.test.svelte', 0],
-    ['packages/direct/src/load.bench.ts', 0],
-    ['applications/playground/src/page.spec.ts', 0],
-    ['applications/playground/tests/shell.playwright.ts', 0],
-    ['applications/playground/playwright.config.ts', 0],
-    ['applications/desktop/src/main.ts', 0],
-    ['scripts/mirror/sync.ts', 0],
-    ['turbo.json', 0],
-  ])('a commit changing only %s exits %i', async (path, expected) => {
-    const changed =
-      path === 'package.json'
-        ? json({
-            name: 'fixture-root',
-            workspaces: ['applications/*', 'packages/*', 'internal/*'],
-            private: true,
-          })
-        : `changed ${path}\n`;
-    const head = await commitWriting({ [path]: changed });
-    expect(productionExit(base, head)).toBe(expected);
+  test.each(touchedPathCases)('a commit changing only %s exits %i', (path, expected) => {
+    expect(touchedPathExits.get(path)).toBe(expected);
   });
 
-  test('builds when the package map records a new published version the documentation displays', async () => {
-    const head = await commitWriting({
-      'scripts/mirror/package-map.json': packageMap({
-        '@lostgradient/cinder': '1.1.0',
-        '@fixture/direct': '1.0.0',
-        '@fixture/unrelated': '1.0.0',
-      }),
-    });
-    expect(productionExit(base, head)).toBe(1);
+  test('builds when the root manifest changes', () => {
+    expect(rootManifestExit).toBe(1);
   });
 
-  test('skips when the package map changes only versions the documentation does not display', async () => {
-    const head = await commitWriting({
-      'scripts/mirror/package-map.json': packageMap({
-        '@lostgradient/cinder': '1.0.0',
-        '@fixture/direct': '1.1.0',
-        '@fixture/unrelated': '2.0.0',
-      }),
-    });
-    expect(productionExit(base, head)).toBe(0);
+  test('builds when the package map records a new published version the documentation displays', () => {
+    expect(displayedVersionExit).toBe(1);
+  });
+
+  test('skips when the package map changes only versions the documentation does not display', () => {
+    expect(undisplayedVersionsExit).toBe(0);
   });
 
   test('watches the published versions of exactly the packages the playground documents', () => {
@@ -230,15 +296,12 @@ describe('production deployments', () => {
     );
   });
 
-  test('builds when the package map cannot be parsed', async () => {
-    const head = await commitWriting({ 'scripts/mirror/package-map.json': '{ not json' });
-    expect(productionExit(base, head)).toBe(1);
+  test('builds when the package map cannot be parsed', () => {
+    expect(unparsablePackageMapExit).toBe(1);
   });
 
-  test('builds when the workspace graph cannot be read', async () => {
-    const head = await commitWriting({ 'package.json': '{ not json' });
-    // The root manifest is itself a root input, so read the graph failure through the API too.
-    expect(productionExit(base, head)).toBe(1);
+  test('builds when the workspace graph cannot be read', () => {
+    expect(unparsableRootManifestExit).toBe(1);
     expect(
       decide('production', undefined, () => {
         throw new Error('unreadable workspace graph');
@@ -247,56 +310,32 @@ describe('production deployments', () => {
   });
 
   test('builds when there is no previous deployment to compare against', () => {
-    expect(productionExit(undefined, base)).toBe(1);
+    expect(exitWithoutPreviousDeployment).toBe(1);
   });
 
   // Vercel sets the previous SHA to the branch's last successful deployment. A force-push after
   // an amend or rebase orphans that commit, and a branch can also fall further behind than the
   // shallow clone reaches; either way the object is absent from the clone.
   test('builds when the previous deployment commit is not in the clone', () => {
-    expect(productionExit('deadbeef'.repeat(5), base)).toBe(1);
+    expect(exitWithAbsentPreviousDeployment).toBe(1);
   });
 
   test('builds whenever the comparison itself fails', () => {
-    expect(productionExit(base, 'deadbeef'.repeat(5))).toBe(1);
+    expect(exitWithAbsentCurrentCommit).toBe(1);
   });
 });
 
 describe('preview deployments', () => {
-  test('skip even when the export would change', async () => {
-    const head = await commitWriting({ 'applications/playground/src/page.ts': 'changed\n' });
-    expect(
-      wrapperExit({
-        VERCEL_ENV: 'preview',
-        VERCEL_GIT_PREVIOUS_SHA: base,
-        VERCEL_GIT_COMMIT_SHA: head,
-        VERCEL_GIT_COMMIT_MESSAGE: 'Change a page',
-      }),
-    ).toBe(0);
+  test('skip even when the export would change', () => {
+    expect(previewWithoutOptInExit).toBe(0);
   });
 
-  test(`build when the commit subject contains ${PREVIEW_OPT_IN}`, async () => {
-    const head = await commitWriting({ 'scripts/mirror/sync.ts': 'changed\n' });
-    expect(
-      wrapperExit({
-        VERCEL_ENV: 'preview',
-        VERCEL_GIT_PREVIOUS_SHA: base,
-        VERCEL_GIT_COMMIT_SHA: head,
-        VERCEL_GIT_COMMIT_MESSAGE: `Check the new layout ${PREVIEW_OPT_IN}\n\nDetails.`,
-      }),
-    ).toBe(1);
+  test(`build when the commit subject contains ${PREVIEW_OPT_IN}`, () => {
+    expect(previewSubjectOptInExit).toBe(1);
   });
 
-  test('skip when only the commit body mentions the opt-in', async () => {
-    const head = await commitWriting({ 'applications/playground/src/page.ts': 'changed\n' });
-    expect(
-      wrapperExit({
-        VERCEL_ENV: 'preview',
-        VERCEL_GIT_PREVIOUS_SHA: base,
-        VERCEL_GIT_COMMIT_SHA: head,
-        VERCEL_GIT_COMMIT_MESSAGE: `Describe previews\n\nThey build only with ${PREVIEW_OPT_IN}.`,
-      }),
-    ).toBe(0);
+  test('skip when only the commit body mentions the opt-in', () => {
+    expect(previewBodyOnlyOptInExit).toBe(0);
   });
 });
 
@@ -322,34 +361,14 @@ describe('decideFromChanges', () => {
 });
 
 describe('ignore-build.sh', () => {
-  test('builds when Bun is not on the PATH', async () => {
-    const head = await commitWriting({ 'scripts/mirror/sync.ts': 'changed again\n' });
-    const systemPath = '/usr/bin:/bin';
+  test('builds when Bun is not on the PATH', () => {
     // The premise: Bun is not installed in the system directories, as on a bare build image.
-    expect(Bun.which('bun', { PATH: systemPath })).toBeNull();
-    expect(
-      wrapperExit(
-        { VERCEL_ENV: 'production', VERCEL_GIT_PREVIOUS_SHA: base, VERCEL_GIT_COMMIT_SHA: head },
-        systemPath,
-      ),
-    ).toBe(1);
+    expect(bunInSystemPath).toBeNull();
+    expect(missingBunExit).toBe(1);
   });
 
-  test('builds when the decision script fails with any exit code other than 0', async () => {
-    const head = await commitWriting({ 'scripts/mirror/sync.ts': 'changed once more\n' });
-    const stubBin = await mkdtemp(join(tmpdir(), 'ignore-build-stub-bin-'));
-    try {
-      await writeFile(join(stubBin, 'bun'), '#!/bin/sh\nexit 3\n');
-      await chmod(join(stubBin, 'bun'), 0o755);
-      expect(
-        wrapperExit(
-          { VERCEL_ENV: 'production', VERCEL_GIT_PREVIOUS_SHA: base, VERCEL_GIT_COMMIT_SHA: head },
-          `${stubBin}:/usr/bin:/bin`,
-        ),
-      ).toBe(1);
-    } finally {
-      await rm(stubBin, { recursive: true, force: true });
-    }
+  test('builds when the decision script fails with any exit code other than 0', () => {
+    expect(failingScriptExit).toBe(1);
   });
 
   test('is what vercel.json runs, within the 256-character limit Vercel enforces', async () => {

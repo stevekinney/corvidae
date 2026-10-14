@@ -9,16 +9,31 @@ import {
   formatCoverageSummary,
   formatLineRanges,
   parseCoverageThresholds,
-  parseLcovRecords,
-  parseSvelteLcovRecords,
+  parseLcovRecords as parseLcovRecordsIn,
+  parseSvelteLcovRecords as parseSvelteLcovRecordsIn,
   parseSvelteMeasurementPlatform,
   runtimeImportsOfTestSupport,
   svelteCoveragePlatformNotice,
-  uncoveredLineReport,
+  uncoveredLineReport as uncoveredLineReportIn,
   UNREACHABLE_LINE_MARKER,
-} from './check-coverage-ratchet.ts';
+  type CoverageScope,
+} from '@lostgradient/testing/coverage-ratchet';
 
 const packageRoot = join(import.meta.dir, '..');
+
+// The shared ratchet takes the package root explicitly. These fixtures all describe this package,
+// so the calls below that omit a root measure against it, as they did before the logic moved.
+function parseLcovRecords(source: string, scope: CoverageScope = 'runtime', root = packageRoot) {
+  return parseLcovRecordsIn(source, scope, root);
+}
+
+function parseSvelteLcovRecords(source: string) {
+  return parseSvelteLcovRecordsIn(source, packageRoot);
+}
+
+function uncoveredLineReport(source: string, scope: CoverageScope, root = packageRoot) {
+  return uncoveredLineReportIn(source, scope, root);
+}
 
 const lcovFixture = `TN:
 SF:covered.ts
