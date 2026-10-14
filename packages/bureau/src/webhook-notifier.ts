@@ -84,8 +84,9 @@ export interface WebhookTarget {
   /** Destination URL a delivery is POSTed to. */
   url: string;
   /**
-   * Restrict this target to a subset of trigger types. Omit to receive all
-   * three ({@link WebhookTriggerType}).
+   * Restrict this target to a subset of trigger types. Omit to receive
+   * every {@link WebhookTriggerType}: `elicitation.requested`,
+   * `approval-pending`, `human-wait.parked`, and `eval.threshold-breached`.
    */
   events?: WebhookTriggerType[];
 }
