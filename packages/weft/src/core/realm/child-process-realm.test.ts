@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 
 import {
   advanceTimersByTime,
@@ -20,6 +20,22 @@ const throwingScriptPath = new URL(
   import.meta.url,
 );
 
+/**
+ * Every realm this file creates. A scenario its hang guard abandons still owns its realm and child
+ * process, so any realm left unreclaimed is crashed once the file's tests finish; `crash()` is
+ * idempotent for the realms scenarios already settled.
+ */
+const createdRealms: ChildProcessRealm[] = [];
+
+function tracked(realm: ChildProcessRealm): ChildProcessRealm {
+  createdRealms.push(realm);
+  return realm;
+}
+
+afterAll(() => {
+  for (const realm of createdRealms) realm.crash();
+});
+
 function makeRealm(
   overrides: Partial<{
     expectedArtifactDigest: string;
@@ -29,19 +45,21 @@ function makeRealm(
     realmReadyTimeoutMs: number;
   }> = {},
 ): ChildProcessRealm {
-  return new ChildProcessRealm({
-    scriptPath,
-    expectedWorkflowTypes: ['order-workflow'],
-    isReferenced: overrides.isReferenced ?? (() => true),
-    maxRestarts: overrides.maxRestarts ?? 3,
-    ...(overrides.expectedArtifactDigest === undefined
-      ? {}
-      : { expectedArtifactDigest: overrides.expectedArtifactDigest }),
-    ...(overrides.workerName === undefined ? {} : { workerName: overrides.workerName }),
-    ...(overrides.realmReadyTimeoutMs === undefined
-      ? {}
-      : { realmReadyTimeoutMs: overrides.realmReadyTimeoutMs }),
-  });
+  return tracked(
+    new ChildProcessRealm({
+      scriptPath,
+      expectedWorkflowTypes: ['order-workflow'],
+      isReferenced: overrides.isReferenced ?? (() => true),
+      maxRestarts: overrides.maxRestarts ?? 3,
+      ...(overrides.expectedArtifactDigest === undefined
+        ? {}
+        : { expectedArtifactDigest: overrides.expectedArtifactDigest }),
+      ...(overrides.workerName === undefined ? {} : { workerName: overrides.workerName }),
+      ...(overrides.realmReadyTimeoutMs === undefined
+        ? {}
+        : { realmReadyTimeoutMs: overrides.realmReadyTimeoutMs }),
+    }),
+  );
 }
 
 function activationFor(outcome: { realmGeneration: string }): RevisionRealmActivation {
@@ -225,13 +243,15 @@ const scenario9 = await outcomeOf(async () => {
 const scenario10 = await outcomeOf(async () => {
   try {
     useFakeTimers();
-    const realm = new ChildProcessRealm({
-      scriptPath: unresponsiveScriptPath,
-      expectedWorkflowTypes: ['order-workflow'],
-      isReferenced: () => true,
-      maxRestarts: 0,
-      realmReadyTimeoutMs: 5,
-    });
+    const realm = tracked(
+      new ChildProcessRealm({
+        scriptPath: unresponsiveScriptPath,
+        expectedWorkflowTypes: ['order-workflow'],
+        isReferenced: () => true,
+        maxRestarts: 0,
+        realmReadyTimeoutMs: 5,
+      }),
+    );
 
     const pending = realm.waitUntilReady();
     await advanceTimersByTime(5);
@@ -250,12 +270,14 @@ const scenario10 = await outcomeOf(async () => {
 
 const scenario11 = await outcomeOf(async () => {
   try {
-    const realm = new ChildProcessRealm({
-      scriptPath: throwingScriptPath,
-      expectedWorkflowTypes: ['order-workflow'],
-      isReferenced: () => true,
-      maxRestarts: 0,
-    });
+    const realm = tracked(
+      new ChildProcessRealm({
+        scriptPath: throwingScriptPath,
+        expectedWorkflowTypes: ['order-workflow'],
+        isReferenced: () => true,
+        maxRestarts: 0,
+      }),
+    );
 
     const outcome = await realm.waitUntilReady();
     expect(outcome.ok).toBe(false);
