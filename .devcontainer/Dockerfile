@@ -1,8 +1,15 @@
 # The local development container described in AGENTS.md under "Dev Container".
 #
+# Node.js 24 is the active LTS line and the major the workspace's `@types/node` catalog
+# entry targets. Weft's native SQLite suite (`packages/weft/src/storage/node-sqlite.test.ts`)
+# runs its integration cases under a real Node, not Bun's `node` shim, and fails without one.
+FROM node:24.21.0-trixie-slim AS node
+
 # The tag is the workspace's `packageManager` Bun version; `scripts/dev-container.test.ts`
 # fails when the two drift apart.
 FROM oven/bun:1.4.2
+
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
 
 # PostgreSQL 17 is Debian 13's server major and the release the host-side fix for COR-1379
 # installed. Only `initdb` and `pg_ctl` are needed: the live PostgreSQL and Neon suites in

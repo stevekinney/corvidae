@@ -37,6 +37,11 @@ describe('the Dev Container', () => {
     expect(dockerfile).toContain(`ENV PATH=/usr/lib/postgresql/${major}/bin:$PATH`);
   });
 
+  test('provides a real Node.js for the native SQLite suite', () => {
+    expect(dockerfile).toMatch(/^FROM node:\d+\.\d+\.\d+-trixie-slim AS node$/mu);
+    expect(dockerfile).toContain('COPY --from=node /usr/local/bin/node /usr/local/bin/node');
+  });
+
   test('works as a non-root user, because initdb refuses to run as root', () => {
     expect(dockerfile).toMatch(/^USER bun$/mu);
     expect(configuration.remoteUser).toBe('bun');
@@ -48,8 +53,9 @@ describe('the Dev Container', () => {
       'source=corvidae-node-modules-${devcontainerId},target=${localWorkspaceFolder}/node_modules,type=volume',
     );
     expect(dockerfile).toContain('ENV TURBO_CACHE_DIR=/home/bun/.cache/turbo');
-    // The image copies nothing from the checkout, so `.env` and credentials never enter it.
-    expect(dockerfile).not.toMatch(/^(COPY|ADD) /mu);
+    // The image copies nothing from the checkout, so `.env` and credentials never enter it;
+    // its only copy is from another image's build stage.
+    expect(dockerfile).not.toMatch(/^(COPY|ADD) (?!--from=)/mu);
   });
 
   test('mounts the checkout and its Git common directory where worktree pointers expect them', () => {
