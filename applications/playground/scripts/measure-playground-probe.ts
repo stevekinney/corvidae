@@ -33,6 +33,12 @@ import {
   snapshotRetainedArtifacts,
   type RetainedArtifactSnapshot,
 } from './measure-playground-artifact-snapshot.ts';
+import {
+  captureFootprint,
+  footprintCategorySeries,
+  type Footprint,
+} from './measure-playground-memory.ts';
+import { createNetworkLedger, type NetworkLedger } from './measure-playground-network-ledger.ts';
 import { growthReport } from './measure-playground-statistics.ts';
 
 export const NAVIGATION_ROUTES = [
@@ -48,46 +54,24 @@ export const NAVIGATION_ROUTES = [
 const OBSERVATION_DEADLINE_MILLISECONDS = 120_000;
 const QUIET_WINDOW_MILLISECONDS = 500;
 
-type NetworkTracker = {
-  requests: number;
-  encodedBytes: number;
-  inFlight: Set<string>;
-  openEventSources: Set<string>;
-  reset: () => void;
-};
+type NetworkTracker = NetworkLedger;
 
+/** Feed CDP network and main-frame navigation events, in their one ordered stream, to a ledger. */
 async function trackNetwork(session: CDPSession): Promise<NetworkTracker> {
-  const eventSourceIds = new Set<string>();
-  const tracker: NetworkTracker = {
-    requests: 0,
-    encodedBytes: 0,
-    inFlight: new Set(),
-    openEventSources: new Set(),
-    reset() {
-      tracker.requests = 0;
-      tracker.encodedBytes = 0;
-    },
-  };
+  const ledger = createNetworkLedger();
   session.on('Network.requestWillBeSent', (event) => {
-    tracker.requests += 1;
-    if (event.type === 'EventSource') {
-      eventSourceIds.add(event.requestId);
-      tracker.openEventSources.add(event.requestId);
-    } else {
-      tracker.inFlight.add(event.requestId);
-    }
+    ledger.requestWillBeSent(event.requestId, event.type);
   });
-  const finish = (requestId: string): void => {
-    tracker.inFlight.delete(requestId);
-    tracker.openEventSources.delete(requestId);
-  };
   session.on('Network.loadingFinished', (event) => {
-    tracker.encodedBytes += event.encodedDataLength;
-    finish(event.requestId);
+    ledger.loadingFinished(event.requestId, event.encodedDataLength);
   });
-  session.on('Network.loadingFailed', (event) => finish(event.requestId));
+  session.on('Network.loadingFailed', (event) => ledger.loadingFailed(event.requestId));
+  session.on('Page.frameNavigated', (event) => {
+    if (event.frame.parentId === undefined) ledger.mainFrameNavigated();
+  });
+  await session.send('Page.enable');
   await session.send('Network.enable');
-  return tracker;
+  return ledger;
 }
 
 /** Wait until no non-EventSource request has been in flight for the quiet window, then two frames. */
@@ -111,13 +95,22 @@ async function settle(page: Page, tracker: NetworkTracker): Promise<void> {
 
 type RouteTiming = {
   route: string;
-  interactionReadyMilliseconds: number;
+  /** Navigation start to a visible prerendered hero heading: first paint of the content, not interactivity. */
+  heroVisibleMilliseconds: number;
+  /**
+   * Navigation start to `#app[data-playground-controls-hydrated]`, which `page-bundle.ts` sets when
+   * the page's controls are hydrated. Null on home, whose shell sets no hydration signal.
+   */
+  controlsHydratedMilliseconds: number | null;
   playgroundOpenMilliseconds: number | null;
   playgroundCloseMilliseconds: number | null;
+  /** Taken on the component page after the Playground view closed, before navigating away. */
+  checkpoint: BrowserCheckpoint | null;
 };
 
 async function visitRoute(
   page: Page,
+  session: CDPSession,
   origin: string,
   route: string,
   tracker: NetworkTracker,
@@ -125,26 +118,37 @@ async function visitRoute(
   const startedAt = performance.now();
   await page.goto(`${origin}${route}`, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-component-page] .dx-hero h1').first().waitFor();
-  const interactionReadyMilliseconds = performance.now() - startedAt;
-  let playgroundOpenMilliseconds: number | null = null;
-  let playgroundCloseMilliseconds: number | null = null;
-  if (route !== '/') {
-    const openedAt = performance.now();
-    await page.locator('#view-tab-playground').click();
-    await page.locator('#view-panel-playground').waitFor();
-    playgroundOpenMilliseconds = performance.now() - openedAt;
+  const heroVisibleMilliseconds = performance.now() - startedAt;
+  if (route === '/') {
     await settle(page, tracker);
-    const closedAt = performance.now();
-    await page.locator('#view-tab-documentation').click();
-    await page.locator('#view-panel-playground').waitFor({ state: 'detached' });
-    playgroundCloseMilliseconds = performance.now() - closedAt;
+    return {
+      route,
+      heroVisibleMilliseconds,
+      controlsHydratedMilliseconds: null,
+      playgroundOpenMilliseconds: null,
+      playgroundCloseMilliseconds: null,
+      checkpoint: null,
+    };
   }
+  await page.locator('#app[data-playground-controls-hydrated]').waitFor({ state: 'attached' });
+  const controlsHydratedMilliseconds = performance.now() - startedAt;
+  const openedAt = performance.now();
+  await page.locator('#view-tab-playground').click();
+  await page.locator('#view-panel-playground').waitFor();
+  const playgroundOpenMilliseconds = performance.now() - openedAt;
+  await settle(page, tracker);
+  const closedAt = performance.now();
+  await page.locator('#view-tab-documentation').click();
+  await page.locator('#view-panel-playground').waitFor({ state: 'detached' });
+  const playgroundCloseMilliseconds = performance.now() - closedAt;
   await settle(page, tracker);
   return {
     route,
-    interactionReadyMilliseconds,
+    heroVisibleMilliseconds,
+    controlsHydratedMilliseconds,
     playgroundOpenMilliseconds,
     playgroundCloseMilliseconds,
+    checkpoint: await browserCheckpoint(page, session, tracker),
   };
 }
 
@@ -197,6 +201,12 @@ function probeProcessMemory(): ProbeProcessMemory {
   return { residentBytes: usage.rss, heapUsedBytes: usage.heapUsed };
 }
 
+/** `footprint` of this process (which hosts the server), after the same forced collection. */
+function serverFootprint(): Footprint | null {
+  Bun.gc(true);
+  return captureFootprint(process.pid);
+}
+
 type NavigationCycle = {
   cycle: number;
   requests: number;
@@ -214,12 +224,13 @@ async function navigationCycle(
   tracker: NetworkTracker,
   origin: string,
 ): Promise<NavigationCycle> {
-  tracker.reset();
+  tracker.resetTotals();
   const routes: RouteTiming[] = [];
-  for (const route of NAVIGATION_ROUTES)
-    routes.push(await visitRoute(page, origin, route, tracker));
-  // Return home last so every checkpoint is taken on the same document.
-  routes.push(await visitRoute(page, origin, '/', tracker));
+  for (const route of NAVIGATION_ROUTES) {
+    routes.push(await visitRoute(page, session, origin, route, tracker));
+  }
+  // Return home last so the cycle-level checkpoint is always taken on the same document.
+  routes.push(await visitRoute(page, session, origin, '/', tracker));
   return {
     cycle,
     requests: tracker.requests,
@@ -229,6 +240,25 @@ async function navigationCycle(
     server: snapshotRetainedArtifacts(),
     probeProcess: probeProcessMemory(),
   };
+}
+
+/** Per component page, the in-page counters taken after the Playground view closed, across cycles. */
+function componentPageSeries(recorded: readonly NavigationCycle[]): Record<string, number[]> {
+  const series: Record<string, number[]> = {};
+  for (const route of NAVIGATION_ROUTES.filter((item) => item !== '/')) {
+    const checkpoints = recorded.map(
+      (cycle) => cycle.routes.find((timing) => timing.route === route)?.checkpoint ?? null,
+    );
+    if (checkpoints.some((checkpoint) => checkpoint === null)) continue;
+    const read = (pick: (checkpoint: BrowserCheckpoint) => number): number[] =>
+      checkpoints.map((checkpoint) => pick(checkpoint!));
+    series[`${route} populatedExampleMountHosts`] = read((item) => item.populatedExampleMountHosts);
+    series[`${route} openEventSources`] = read((item) => item.openEventSources);
+    series[`${route} domNodes`] = read((item) => item.domCounters.nodes);
+    series[`${route} jsEventListeners`] = read((item) => item.domCounters.jsEventListeners);
+    series[`${route} jsHeapUsedBytes`] = read((item) => item.jsHeapUsedBytes);
+  }
+  return series;
 }
 
 async function runNavigationProbe(cycles: number, port: number): Promise<unknown> {
@@ -262,6 +292,7 @@ async function runNavigationProbe(cycles: number, port: number): Promise<unknown
         serverArtifactBytes: recorded.map((item) => item.server.totalArtifactBytes),
         serverLiveReloadSubscribers: recorded.map((item) => item.server.liveReloadSubscribers),
         probeResidentBytes: recorded.map((item) => item.probeProcess.residentBytes),
+        ...componentPageSeries(recorded),
       }),
     };
   } finally {
@@ -327,7 +358,11 @@ async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
     await writeFile(fixturePath, rebuildFixtureSource(0));
     generation = await waitForGenerationAfter(generation);
     await requestPageGraph(origin, component);
-    const before = { server: snapshotRetainedArtifacts(), probeProcess: probeProcessMemory() };
+    const before = {
+      server: snapshotRetainedArtifacts(),
+      probeProcess: probeProcessMemory(),
+      footprint: serverFootprint(),
+    };
     const recorded = [];
     for (let cycle = 1; cycle <= cycles; cycle += 1) {
       const startedAt = performance.now();
@@ -346,12 +381,17 @@ async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
         rebuiltAndServedMilliseconds: performance.now() - startedAt,
         server: snapshotRetainedArtifacts(),
         probeProcess: probeProcessMemory(),
+        footprint: serverFootprint(),
       });
     }
     await rm(fixturePath, { force: true });
     await waitForGenerationAfter(generation);
     await requestPageGraph(origin, component);
-    const after = { server: snapshotRetainedArtifacts(), probeProcess: probeProcessMemory() };
+    const after = {
+      server: snapshotRetainedArtifacts(),
+      probeProcess: probeProcessMemory(),
+      footprint: serverFootprint(),
+    };
     return {
       probe: 'rebuild',
       component,
@@ -367,6 +407,7 @@ async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
         inFlightBuilds: recorded.map((item) => item.server.inFlightBuilds),
         probeResidentBytes: recorded.map((item) => item.probeProcess.residentBytes),
         probeHeapUsedBytes: recorded.map((item) => item.probeProcess.heapUsedBytes),
+        ...footprintCategorySeries(recorded.map((item) => item.footprint)),
       }),
     };
   } finally {

@@ -280,7 +280,13 @@ function childEnvironment(
   cacheDirectory: string,
   extra: Record<string, string>,
 ): Record<string, string> {
-  return { BUN_RUNTIME_TRANSPILER_CACHE_PATH: cacheDirectory, ...extra };
+  // An inherited CINDER_TEST_COMPONENTS would narrow the server's eager prebuild; an empty value
+  // is the server's own "every component" default.
+  return {
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH: cacheDirectory,
+    CINDER_TEST_COMPONENTS: '',
+    ...extra,
+  };
 }
 
 function sampleHeader(context: SampleContext): {
@@ -457,6 +463,7 @@ async function measureProbe(
     ],
     {
       cwd: PLAYGROUND_ROOT,
+      environment: { CINDER_TEST_COMPONENTS: '' },
       logPath: join(options.workDirectory, `probe-${probe}.log`),
     },
   ).finish();

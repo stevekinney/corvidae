@@ -10,6 +10,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { arch, availableParallelism, cpus, loadavg, platform, release, totalmem } from 'node:os';
 import { join } from 'node:path';
 
+import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
+import { captureMemoryPressure, type MemoryPressure } from './measure-playground-memory.ts';
+
 export type LoadAverages = { oneMinute: number; fiveMinutes: number; fifteenMinutes: number };
 
 /** Parse the load averages from macOS (`load averages: a b c`) or Linux (`load average: a, b, c`) `uptime`. */
@@ -44,6 +47,8 @@ export type HostLoad = {
   uptime: string;
   loadAverages: LoadAverages;
   logicalProcessors: number;
+  /** Host memory pressure at the same moment; absent from results recorded before it existed. */
+  memory?: MemoryPressure;
 };
 
 /** Run `uptime` and record its load averages next to the logical processor count. */
@@ -61,6 +66,7 @@ export function captureHostLoad(): HostLoad {
       fifteenMinutes: fifteenMinutes ?? 0,
     },
     logicalProcessors: availableParallelism(),
+    memory: captureMemoryPressure(),
   };
 }
 
@@ -175,6 +181,12 @@ export type PinnedEnvironment = SourceState & {
   logicalProcessors: number;
   totalMemoryBytes: number;
   containerMemoryLimit: string;
+  /**
+   * The Playground's own configuration as its registered reader sees it in the measuring process
+   * (`CINDER_TEST_COMPONENTS`, `PLAYGROUND_*`, `PORT`, `NODE_ENV`). Children override the base URL,
+   * port, port file, and component scope explicitly, so none of these can change a measured child.
+   */
+  playgroundEnvironment: Record<string, string | undefined>;
 };
 
 export function capturePinnedEnvironment(
@@ -200,5 +212,6 @@ export function capturePinnedEnvironment(
     logicalProcessors: availableParallelism(),
     totalMemoryBytes: totalmem(),
     containerMemoryLimit: containerMemoryLimit(),
+    playgroundEnvironment: { ...readEnvironmentConfiguration() },
   };
 }

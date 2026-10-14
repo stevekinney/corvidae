@@ -137,6 +137,7 @@ function results(overrides: Partial<MeasurementResults>): MeasurementResults {
       logicalProcessors: 1,
       totalMemoryBytes: 1,
       containerMemoryLimit: 'none',
+      playgroundEnvironment: {},
     },
     routeInventory: ['/', '/page/button'],
     definitions: {},
