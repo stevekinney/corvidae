@@ -22,6 +22,9 @@ export const mirrorAppId = 4_997_180;
 /** The installation of that App on the `stevekinney` account. */
 export const mirrorInstallationId = 162_905_409;
 
+/** The login GitHub gives the App's bot account, which authors every sync pull request. */
+export const mirrorBotLogin = 'lost-gradient-mirror-sync[bot]';
+
 export const githubApiRoot = 'https://api.github.com';
 
 /** Where the owner manages which repositories the installation can reach. */

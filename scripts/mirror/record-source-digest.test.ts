@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { runCommand, type CommandResult, type CommandRunner } from './packaging.ts';
 import {
@@ -100,8 +101,9 @@ describe('fetchGitHead', () => {
   });
 });
 
-describe('git-history readers, against a real fixture repository', () => {
-  test('commitExists is true for a real commit and false for a made-up one', async () => {
+describe('git-history readers, against a real fixture repository', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         { files: { 'a.txt': 'one\n' }, message: 'first' },
@@ -110,9 +112,11 @@ describe('git-history readers, against a real fixture repository', () => {
       expect(await commitExists(scratch, '0'.repeat(40))).toBe(false);
     });
   });
+  test('commitExists is true for a real commit and false for a made-up one', () =>
+    rethrow(outcome1));
 });
 
-describe('compareAgainstCommit', () => {
+describe('compareAgainstCommit', async () => {
   test('historical byte planning does not require the full dependency snapshot gate', async () => {
     await withScratch(async (scratch) => {
       const mirror = join(scratch, 'scripts/mirror');
@@ -162,7 +166,8 @@ describe('compareAgainstCommit', () => {
     });
   });
 
-  test('compares emitted TypeScript configuration bytes and rejects a changed target', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome2 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const path = 'src/cli/__fixtures__/codegen/typecheck/tsconfig.json';
       const source = '{"extends":"@lostgradient/typescript/library.json"}\n';
@@ -194,8 +199,10 @@ describe('compareAgainstCommit', () => {
       expect(changedComparison.differing).toEqual([path]);
     });
   });
+  test('compares emitted TypeScript configuration bytes and rejects a changed target', () =>
+    rethrow(outcome2));
 
-  test('reports removed published additional roots without counting target-owned files', async () => {
+  const outcome3 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         {
@@ -221,8 +228,10 @@ describe('compareAgainstCommit', () => {
       expect(sourceComparisonIsClean(comparison)).toBe(false);
     });
   });
+  test('reports removed published additional roots without counting target-owned files', () =>
+    rethrow(outcome3));
 
-  test('is clean when corvidae’s files match the commit exactly', async () => {
+  const outcome4 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         { files: { 'packages/example/src/index.ts': 'export const x = 1;\n' }, message: 'first' },
@@ -239,8 +248,9 @@ describe('compareAgainstCommit', () => {
       expect(sourceComparisonIsClean(comparison)).toBe(true);
     });
   });
+  test('is clean when corvidae’s files match the commit exactly', () => rethrow(outcome4));
 
-  test('reports a file corvidae carries that the commit does not', async () => {
+  const outcome5 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         { files: { 'packages/example/src/index.ts': 'export const x = 1;\n' }, message: 'first' },
@@ -261,8 +271,9 @@ describe('compareAgainstCommit', () => {
       expect(sourceComparisonIsClean(comparison)).toBe(false);
     });
   });
+  test('reports a file corvidae carries that the commit does not', () => rethrow(outcome5));
 
-  test('reports a file the commit carries that corvidae does not, under src/', async () => {
+  const outcome6 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         {
@@ -286,8 +297,10 @@ describe('compareAgainstCommit', () => {
       expect(sourceComparisonIsClean(comparison)).toBe(false);
     });
   });
+  test('reports a file the commit carries that corvidae does not, under src/', () =>
+    rethrow(outcome6));
 
-  test('a test file the commit carries under src/ is not reported as extra', async () => {
+  const outcome7 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         {
@@ -310,6 +323,8 @@ describe('compareAgainstCommit', () => {
       expect(comparison.extraInCommit).toEqual([]);
     });
   });
+  test('a test file the commit carries under src/ is not reported as extra', () =>
+    rethrow(outcome7));
 
   /**
    * `recordSourceDigest` passes `versionConstants[workspace]` here so that a file
@@ -318,7 +333,7 @@ describe('compareAgainstCommit', () => {
    * `excludedFromExtra`, this is exactly what made `@lostgradient/weft`'s own `src/version.ts`
    * refuse a digest that should have recorded cleanly.
    */
-  test('excludedFromExtra keeps a version-rewritten file out of extraInCommit', async () => {
+  const outcome8 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         {
@@ -354,8 +369,10 @@ describe('compareAgainstCommit', () => {
       expect(sourceComparisonIsClean(withExclusion)).toBe(true);
     });
   });
+  test('excludedFromExtra keeps a version-rewritten file out of extraInCommit', () =>
+    rethrow(outcome8));
 
-  test('reports differing content by path', async () => {
+  const outcome9 = await outcomeOf(async () => {
     await withScratch(async (scratch) => {
       const [sha] = await buildFixtureRepository(scratch, [
         { files: { 'packages/example/src/index.ts': 'export const x = 1;\n' }, message: 'first' },
@@ -372,4 +389,5 @@ describe('compareAgainstCommit', () => {
       expect(comparison.differing).toEqual(['src/index.ts']);
     });
   });
+  test('reports differing content by path', () => rethrow(outcome9));
 });
