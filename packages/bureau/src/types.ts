@@ -734,6 +734,18 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   onDiagnostic?: DiagnosticSink;
   /**
+   * A listener on the Bureau's own event emitter that is registered before any
+   * recovery pass can dispatch, so it hears every boot-time event (recovery
+   * decisions, `run.registered` and `action` events of recovered runs) that a
+   * listener added through `addEventListener` after `createBureau()` returns
+   * would miss. It receives every event the emitter dispatches for the life of
+   * the Bureau, in dispatch order. A throwing listener, or an async one that rejects, is
+   * reported through {@link onDiagnostic} and does not affect the Bureau. Live frames have no
+   * such option: `subscribeLiveFrames` replays the frames emitted during
+   * recovery to its first subscriber.
+   */
+  onEvent?: (event: BureauEventMap[BureauEventType]) => void | Promise<void>;
+  /**
    * AB-42/AB-194 — per-session and per-principal backlog caps for pending
    * `SessionInputRecord`s admitted through {@link Bureau.submitSessionInput}.
    * Both are validated as positive integers at `createBureau()` construction
@@ -1669,6 +1681,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   getConfiguration(): ConfigurationResponse;
   getTools(): ToolSummary[];
+  /**
+   * Subscribe to every live frame. The FIRST subscriber is also replayed, in
+   * emission order, the frames emitted during boot recovery and by the runs it recovered (at
+   * most the newest 1024), so a recovered run that emitted while `createBureau()` was
+   * still awaiting is not lost to a caller that can only subscribe after it
+   * returns. The replay runs in a microtask, after this call has returned its unsubscribe
+   * handle, so a listener may unsubscribe itself from inside it. Later
+   * subscribers receive only new frames. Emitter listeners get
+   * no such replay; register them through {@link BureauOptions.onEvent}.
+   */
   subscribeLiveFrames(listener: (frame: ServerFrame) => void): () => void;
 
   addEventListener<K extends keyof BureauEventMap & string>(

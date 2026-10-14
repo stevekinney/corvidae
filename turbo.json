@@ -24,7 +24,13 @@
     "test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV"]
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ]
     },
     "test:slow": {
       "outputs": [],
@@ -89,6 +95,12 @@
     },
     "@lostgradient/weft#test": {
       "outputs": ["test-output/junit/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ],
       "dependsOn": ["transit"],
       "env": [
         "CODEX_CI",
@@ -162,7 +174,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
       ]
     }
   },

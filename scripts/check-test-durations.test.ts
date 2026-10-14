@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
 
-import { parseWrapperArguments } from './bun-test-junit.ts';
+import { finishRun, parseWrapperArguments } from './bun-test-junit.ts';
 import {
   BUDGET_MILLISECONDS,
   STALE_FLOOR_MILLISECONDS,
+  budgetFailures,
   judgeDurations,
   laneProblems,
   parseJunit,
@@ -63,18 +65,20 @@ describe('judgeDurations', () => {
 
 describe('laneProblems', () => {
   test('requires slow files to be ignored by test and run by test:slow', () => {
-    expect(laneProblems('w', { test: 'bun test' }, true)).toHaveLength(2);
+    expect(laneProblems('w', { test: 'bun ../../scripts/bun-test-junit.ts' }, true)).toHaveLength(
+      2,
+    );
     expect(
       laneProblems(
         'w',
         {
-          test: "bun x.ts --path-ignore-patterns='**/*.slow.test.ts'",
+          test: "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts'",
           'test:slow': 'bun test .slow.test.ts',
         },
         true,
       ),
     ).toEqual([]);
-    expect(laneProblems('w', { test: 'bun test' }, false)).toEqual([]);
+    expect(laneProblems('w', { test: 'bun ../../scripts/bun-test-junit.ts' }, false)).toEqual([]);
   });
 
   test('accepts the playground runner, which splits lanes by file name itself', () => {
@@ -98,5 +102,105 @@ describe('bun-test-junit wrapper arguments', () => {
       reportName: 'self',
       bunTestArguments: ['./a.test.ts'],
     });
+  });
+});
+
+describe('laneProblems for wrapping and coverage', () => {
+  const wrapped = 'bun ../../scripts/bun-test-junit.ts';
+
+  test('requires a fast test script to run through the JUnit wrapper or the playground runner', () => {
+    expect(laneProblems('w', { test: 'bun test' }, false)).toEqual([
+      expect.stringContaining('does not run through scripts/bun-test-junit.ts'),
+    ]);
+    expect(laneProblems('w', { test: wrapped }, false)).toEqual([]);
+    expect(
+      laneProblems('applications/playground', { test: 'bun scripts/run-tests.ts' }, false),
+    ).toEqual([]);
+    // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`.
+    expect(laneProblems('.', { test: 'turbo run test:self test' }, false)).toEqual([]);
+  });
+
+  test('requires the coverage run to ignore slow files too, so they run only in test:slow', () => {
+    const scripts = {
+      test: `${wrapped} --path-ignore-patterns='**/*.slow.test.ts'`,
+      'test:slow': 'bun test .slow.test.ts',
+    };
+    expect(laneProblems('w', { ...scripts, 'test:coverage': 'bun test --coverage' }, true)).toEqual(
+      [expect.stringContaining('test:coverage')],
+    );
+    expect(
+      laneProblems(
+        'w',
+        {
+          ...scripts,
+          'test:coverage': "bun test --coverage --path-ignore-patterns='**/*.slow.test.ts'",
+        },
+        true,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('budgetFailures', () => {
+  const report = (seconds: number) =>
+    `<testsuite><testcase name="t" classname="c" time="${seconds}" file="f.test.ts" /></testsuite>`;
+
+  test('names a test over budget that the allowlist does not list', () => {
+    expect(budgetFailures('w', [report(2.5)], [])).toEqual([
+      expect.stringContaining('w :: f.test.ts :: c :: t'),
+    ]);
+  });
+
+  test('passes a test at budget and one the allowlist lists', () => {
+    expect(budgetFailures('w', [report(2)], [])).toEqual([]);
+    expect(budgetFailures('w', [report(9)], ['w :: f.test.ts :: c :: t'])).toEqual([]);
+  });
+});
+
+describe('finishRun', () => {
+  const slowReport =
+    '<testsuite><testcase name="t" classname="c" time="3" file="f.test.ts" /></testsuite>';
+
+  test('fails a passing run whose report has an over-budget test, so turbo never caches it', () => {
+    const messages: string[] = [];
+    expect(finishRun('w', 0, [slowReport], [], (message) => messages.push(message))).toBe(1);
+    expect(messages.join('')).toContain('w :: f.test.ts :: c :: t');
+  });
+
+  test('keeps the exit code of a run that already failed, and passes a clean report', () => {
+    expect(finishRun('w', 7, [slowReport], [], () => {})).toBe(7);
+    expect(finishRun('w', 0, [], [], () => {})).toBe(0);
+    expect(finishRun('w', 0, [slowReport], ['w :: f.test.ts :: c :: t'], () => {})).toBe(0);
+  });
+});
+
+describe('turbo cache inputs for the wrapped test tasks', () => {
+  const root = join(import.meta.dir, '..');
+  const REQUIRED_INPUTS = [
+    '$TURBO_ROOT$/scripts/bun-test-junit.ts',
+    '$TURBO_ROOT$/scripts/check-test-durations.ts',
+    '$TURBO_ROOT$/scripts/test-duration-allowlist.json',
+  ];
+
+  test('each workspace whose test script runs the wrapper hashes it, the budget module and the allowlist', async () => {
+    const configuration = (await Bun.file(join(root, 'turbo.json')).json()) as {
+      tasks: Record<string, { inputs?: string[] }>;
+    };
+    const unhashed: string[] = [];
+    for await (const manifestPath of new Bun.Glob(
+      '{applications,components,packages}/*/package.json',
+    ).scan(root)) {
+      const manifest = (await Bun.file(join(root, manifestPath)).json()) as {
+        name: string;
+        scripts?: Record<string, string>;
+      };
+      if (!manifest.scripts?.['test']?.includes('bun-test-junit.ts')) continue;
+      const task = configuration.tasks[`${manifest.name}#test`] ?? configuration.tasks['test'];
+      const inputs = task?.inputs ?? [];
+      for (const required of REQUIRED_INPUTS) {
+        if (!inputs.includes(required)) unhashed.push(`${manifest.name}: ${required}`);
+      }
+    }
+    expect(unhashed).toEqual([]);
   });
 });

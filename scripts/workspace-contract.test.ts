@@ -182,8 +182,15 @@ describe('internal workspace architecture', () => {
       'bun run format:check',
       'bun run audit',
     ]);
+    // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
+    // agent sessions stop oversubscribing it and timing out unrelated tests.
+    for (const stage of ['lint', 'typecheck', 'test', 'coverage', 'build']) {
+      expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
+    }
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
-    expect(scripts['test']).toBe('turbo run test:self test test:browser-fixtures --concurrency=1');
+    expect(scripts['test']).toBe(
+      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures --concurrency=1'",
+    );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
@@ -258,8 +265,9 @@ describe('internal workspace architecture', () => {
           directory,
         ).toContain("['bun', 'test',");
       } else {
-        // Fast-lane tests run through the JUnit wrapper, which spawns `bun test` (COR-1499).
-        expect(scripts['test'], directory).toMatch(/\bbun test\b|\bbun-test-junit\.ts\b/);
+        // Fast-lane tests run through the JUnit wrapper, which spawns `bun test`, so the duration
+        // ratchet sees every workspace (COR-1499). A direct `bun test` would drop one silently.
+        expect(scripts['test'], directory).toMatch(/\bbun-test-junit\.ts\b/);
       }
       expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
 

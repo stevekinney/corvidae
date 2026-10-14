@@ -30,10 +30,13 @@
  * join the shared process and recreate this failure mode.
  */
 
-import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import ts from 'typescript';
+
+import { finishRun } from '../../../scripts/bun-test-junit.ts';
+import { readAllowlist } from '../../../scripts/check-test-durations.ts';
 
 const TEST_ENV = {
   ...process.env,
@@ -224,7 +227,17 @@ async function main(): Promise<void> {
     failed = (await runBunTest(testPaths, reportPath)) !== 0 || failed;
   }
 
-  process.exit(failed ? 1 : 0);
+  let exitCode = failed ? 1 : 0;
+  if (lane === 'fast') {
+    // A passing fast lane with an over-budget test fails here, uncached, so a rerun remeasures.
+    const reports = readdirSync(JUNIT_DIRECTORY)
+      .filter((name) => name.startsWith('fast-') && name.endsWith('.xml'))
+      .map((name) => readFileSync(join(JUNIT_DIRECTORY, name), 'utf8'));
+    exitCode = finishRun('applications/playground', exitCode, reports, readAllowlist(), (message) =>
+      process.stderr.write(message),
+    );
+  }
+  process.exit(exitCode);
 }
 
 if (import.meta.main) {

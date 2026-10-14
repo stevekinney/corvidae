@@ -180,14 +180,20 @@ export function laneProblems(
   scripts: Readonly<Record<string, string>>,
   hasSlowFiles: boolean,
 ): string[] {
-  if (!hasSlowFiles) return [];
   const problems: string[] = [];
   const test = scripts['test'] ?? '';
+  // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`.
+  if (workspace !== '.' && test !== '' && !WRAPPER_NAMES.some((name) => test.includes(name))) {
+    problems.push(
+      `${workspace}: its test script does not run through scripts/bun-test-junit.ts (or the playground runner), so the duration ratchet cannot see its tests`,
+    );
+  }
+  if (!hasSlowFiles) return problems;
   // `run-tests.ts` is the playground runner, which splits the lanes by file name itself.
-  const ignoresSlowFiles =
-    test.includes(RUNNER_NAME) ||
-    (test.includes('--path-ignore-patterns') && test.includes(SLOW_LANE_SUFFIX));
-  if (!ignoresSlowFiles) {
+  const ignoresSlowFiles = (script: string): boolean =>
+    script.includes(RUNNER_NAME) ||
+    (script.includes('--path-ignore-patterns') && script.includes(SLOW_LANE_SUFFIX));
+  if (!ignoresSlowFiles(test)) {
     problems.push(
       `${workspace}: has ${SLOW_LANE_SUFFIX} files but its test script does not ignore them with --path-ignore-patterns`,
     );
@@ -195,7 +201,25 @@ export function laneProblems(
   if (scripts['test:slow'] === undefined) {
     problems.push(`${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no test:slow script`);
   }
+  const coverage = scripts['test:coverage'] ?? '';
+  if (coverage.includes('bun test') && !ignoresSlowFiles(coverage)) {
+    problems.push(
+      `${workspace}: test:coverage runs ${SLOW_LANE_SUFFIX} files under Bun's default timeout; ignore them there too with --path-ignore-patterns`,
+    );
+  }
   return problems;
+}
+
+/** The tests of one workspace's fast-lane reports that are over budget and not allowlisted. */
+export function budgetFailures(
+  workspace: string,
+  reportXmls: readonly string[],
+  allowlist: readonly string[],
+): string[] {
+  const measured = reportXmls.flatMap((xml) => parseJunit(workspace, xml));
+  return judgeDurations(measured, allowlist, new Set()).overBudget.map(
+    (test) => `over budget: ${Math.round(test.milliseconds)} ms — ${test.key}`,
+  );
 }
 
 interface Collected {
@@ -241,7 +265,7 @@ function collect(): Collected {
   return collected;
 }
 
-function readAllowlist(): string[] {
+export function readAllowlist(): string[] {
   if (!existsSync(ALLOWLIST_PATH)) return [];
   const parsed = JSON.parse(readFileSync(ALLOWLIST_PATH, 'utf8')) as { entries: string[] };
   return parsed.entries;

@@ -3,8 +3,8 @@
  * `process.platform` and `process.arch` name them. Windows is unsupported because
  * `Bun.spawn({ terminal })` is POSIX-only.
  */
-export const SUPPORTED_HOST_PLATFORMS = ['darwin', 'linux'] as const;
-export const SUPPORTED_HOST_ARCHITECTURES = ['x64', 'arm64'] as const;
+export const SUPPORTED_HOST_PLATFORMS = Object.freeze(['darwin', 'linux'] as const);
+export const SUPPORTED_HOST_ARCHITECTURES = Object.freeze(['x64', 'arm64'] as const);
 
 export type HostPlatform = {
   platform: string;

@@ -13,8 +13,10 @@
  * removed first, so a run that dies early cannot leave a stale file behind.
  */
 
-import { mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { join, relative } from 'node:path';
+
+import { budgetFailures, readAllowlist } from './check-test-durations.ts';
 
 export const JUNIT_DIRECTORY = join('test-output', 'junit');
 
@@ -31,6 +33,29 @@ export function parseWrapperArguments(argumentsList: readonly string[]): {
   return { reportName: 'fast', bunTestArguments: [...argumentsList] };
 }
 
+/**
+ * Turn a finished run into an exit code. A run that passed but left a fast-lane test over budget
+ * and off the allowlist fails here, in the test task itself, so turbo never caches the report and
+ * rerunning `bun run test` measures again instead of replaying an inflated duration.
+ */
+export function finishRun(
+  workspace: string,
+  exitCode: number,
+  reportXmls: readonly string[],
+  allowlist: readonly string[],
+  write: (message: string) => void,
+): number {
+  if (exitCode !== 0) return exitCode;
+  const failures = budgetFailures(workspace, reportXmls, allowlist);
+  if (failures.length === 0) return 0;
+  write(
+    'bun-test-junit — a fast-lane test is over the per-test budget and not on the allowlist.\n' +
+      'Make it fast or move it to a .slow.test.ts file; rerun if the host was busy. See AGENTS.md.\n' +
+      failures.map((failure) => `  ${failure}\n`).join(''),
+  );
+  return 1;
+}
+
 async function main(): Promise<number> {
   const { reportName, bunTestArguments } = parseWrapperArguments(Bun.argv.slice(2));
   mkdirSync(JUNIT_DIRECTORY, { recursive: true });
@@ -40,7 +65,12 @@ async function main(): Promise<number> {
     ['bun', 'test', ...bunTestArguments, '--reporter=junit', `--reporter-outfile=${reportPath}`],
     { stdout: 'inherit', stderr: 'inherit', stdin: 'inherit' },
   );
-  return child.exited;
+  const exitCode = await child.exited;
+  const workspace = relative(join(import.meta.dir, '..'), process.cwd()) || '.';
+  const reports = existsSync(reportPath) ? [readFileSync(reportPath, 'utf8')] : [];
+  return finishRun(workspace, exitCode, reports, readAllowlist(), (message) =>
+    process.stderr.write(message),
+  );
 }
 
 if (import.meta.main) process.exitCode = await main();
