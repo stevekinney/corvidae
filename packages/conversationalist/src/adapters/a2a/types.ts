@@ -1,5 +1,5 @@
 import type { ContentSource, MultiModalContent } from '../../multi-modal';
-import type { JSONValue } from '../../types';
+import type { JSONValue, MessageInput } from '../../types';
 import type { A2AArtifact, A2AStruct } from './proto-types';
 
 export type * from './proto-types';
@@ -17,18 +17,27 @@ export interface A2AArtifactReference {
   artifactId: A2AArtifact['artifactId'];
 }
 
-/** The artifacts one A2A agent has produced, used to resolve references to them. */
+/**
+ * Artifacts one A2A agent produced for a single task, used to resolve
+ * references to them. The proto makes an `artifactId` unique only within a
+ * task, so a catalog must not mix tasks; a catalog holding the same
+ * `artifactId` twice cannot resolve that id.
+ */
 export interface A2AArtifactCatalog {
   agentCardUrl: string;
   artifacts: ReadonlyArray<A2AArtifact>;
 }
 
 /**
- * A Conversationalist message imported from an A2A `Message`. It satisfies
- * `MessageInput`; `id` carries the A2A `messageId`.
+ * A Conversationalist message input imported from an A2A `Message`.
+ *
+ * It carries no `id`: `appendMessages` treats an input with an `id` as an
+ * already-built message and skips conversation plugins, and the local message
+ * id is not the remote agent's to choose. The A2A `messageId` travels
+ * alongside as `messageId`, which building a message ignores.
  */
-export interface A2AInboundMessage {
-  id: string;
+export interface A2AInboundMessage extends MessageInput {
+  messageId: string;
   role: 'user' | 'assistant';
   content: MultiModalContent[];
   metadata?: Record<string, JSONValue>;

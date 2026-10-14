@@ -40,24 +40,36 @@ export function referenceA2AArtifact(
 
 /**
  * Resolves an `a2a-reference` content source to the artifact it names in the
- * catalog of one agent's artifacts. A reference to another agent, or to an
- * artifact the catalog does not hold, throws an `error:not-found`
- * `A2AMappingError`.
+ * catalog of one agent's artifacts for one task. A reference to another agent,
+ * or to an artifact the catalog does not hold, throws an `error:not-found`
+ * `A2AMappingError`. A catalog holding the referenced `artifactId` more than
+ * once (for example, artifacts gathered from several tasks) throws an
+ * `error:validation` `A2AMappingError` rather than guessing.
  */
 export function resolveA2AArtifactReference(
   source: ContentSource,
   catalog: A2AArtifactCatalog,
 ): A2AArtifact {
   const reference = toA2AArtifactReference(source);
-  const artifact =
+  const context = { agentCardUrl: reference.agentCardUrl, artifactId: reference.artifactId };
+  const matches =
     reference.agentCardUrl === catalog.agentCardUrl
-      ? catalog.artifacts.find((candidate) => candidate.artifactId === reference.artifactId)
-      : undefined;
+      ? catalog.artifacts.filter((candidate) => candidate.artifactId === reference.artifactId)
+      : [];
+  const [artifact] = matches;
+  if (matches.length > 1) {
+    throw new A2AMappingError(
+      'error:validation',
+      'a2a-reference',
+      `A2A artifact ${reference.artifactId} from ${reference.agentCardUrl} appears ${matches.length} times in the catalog; an artifactId is unique only within one task.`,
+      { ...context, matches: matches.length },
+    );
+  }
   if (artifact !== undefined) return artifact;
   throw new A2AMappingError(
     'error:not-found',
     'a2a-reference',
     `A2A artifact ${reference.artifactId} from ${reference.agentCardUrl} was not found.`,
-    { agentCardUrl: reference.agentCardUrl, artifactId: reference.artifactId },
+    context,
   );
 }

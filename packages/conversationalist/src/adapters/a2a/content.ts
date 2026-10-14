@@ -22,9 +22,12 @@ const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/;
  * - `text` becomes a `text` part; citations travel in `metadata.citations`.
  * - `image` becomes a `raw` part when its URL is a base64 data URL, otherwise
  *   a `url` part; alternative text travels in `metadata.text`.
- * - `document` with a JSON media type (`application/json` or `*+json`) and
- *   base64 bytes that parse as JSON becomes a `data` part. Any other base64
- *   document becomes a `raw` part and a referenced document a `url` part.
+ * - A base64 `document` whose bytes are UTF-8 JSON in the exact compact form
+ *   `JSON.stringify` produces becomes a `data` part, whatever its media type,
+ *   because re-serializing the value reproduces those bytes exactly. Every
+ *   other base64 document becomes a `raw` part with its bytes untouched, so
+ *   pretty-printed JSON or JSON whose numbers exceed double precision is never
+ *   rewritten. A referenced document becomes a `url` part.
  * - Reasoning, server-tool, and container content has no A2A representation
  *   and throws an `A2AMappingError` naming the part kind.
  */
@@ -72,12 +75,26 @@ export function toA2AParts(content: string | ReadonlyArray<MultiModalContent>): 
  *   `image` content (a `raw` image as a base64 data URL), restoring
  *   `metadata.text`. Every other `raw` or `url` part becomes `document`
  *   content, so its filename survives.
- * - `data` becomes an `application/json` document holding the base64 UTF-8
- *   encoding of the serialized value.
+ * - `data` becomes a document holding the base64 UTF-8 encoding of
+ *   `JSON.stringify(data)`, typed with the part's media type or
+ *   `application/json` when it declares none.
  *
- * A file part without a media type becomes a document of type
- * `application/octet-stream`. Part metadata other than `citations` (text) and
- * `text` (image alternative text) has no place on content and is not carried.
+ * Conversationalist content has fewer fields than an A2A part, so some
+ * mappings normalize rather than round-trip exactly:
+ *
+ * - A file part without a media type becomes a document of type
+ *   `application/octet-stream`; an image with no `mimeType` and a non-data URL
+ *   therefore comes back as such a document.
+ * - An unnamed document with an `image/*` media type comes back as `image`
+ *   content.
+ * - A data part whose media type is exactly `application/json` comes back
+ *   without it, because `DocumentContent.mimeType` is required and that is the
+ *   default the data part implies.
+ * - A `raw` file whose bytes are already compact JSON comes back as a `data`
+ *   part holding the same bytes.
+ * - A text part's media type, and part metadata other than `citations` (text)
+ *   and `text` (image alternative text), have no place on content and are not
+ *   carried.
  *
  * An absent filename maps to the empty document name and back, matching the
  * proto3 default for `string filename`. A part that sets zero or several
@@ -126,10 +143,10 @@ function toA2ADocumentPart(content: DocumentContent): A2APart {
   if (content.source.kind === 'reference') {
     return { url: content.source.uri, ...filename, mediaType: content.mimeType };
   }
-  const data = isJSONMediaType(content.mimeType) ? decodeJSON(content.source.data) : undefined;
+  const data = decodeCanonicalJSON(content.source.data);
   if (data !== undefined) {
     return {
-      data,
+      data: data.value,
       ...filename,
       ...(content.mimeType === JSON_MEDIA_TYPE ? {} : { mediaType: content.mimeType }),
     };
@@ -181,10 +198,6 @@ function assertSingleContentMember(part: A2APart): void {
   );
 }
 
-function isJSONMediaType(mediaType: string): boolean {
-  return mediaType === JSON_MEDIA_TYPE || mediaType.endsWith('+json');
-}
-
 function nonEmpty(value: string | undefined): string | undefined {
   return value === undefined || value === '' ? undefined : value;
 }
@@ -195,13 +208,21 @@ function encodeUtf8Base64(text: string): string {
   return btoa(binary);
 }
 
-function decodeJSON(base64: string): JSONValue | undefined {
+/**
+ * Decodes base64 bytes as a JSON value only when `JSON.stringify` of that value
+ * reproduces the decoded text exactly, so mapping the value to a `data` part
+ * loses no byte of the original file.
+ */
+function decodeCanonicalJSON(base64: string): { value: JSONValue } | undefined {
+  let text: string;
   try {
     const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
-    return parseJSONValue(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
     return undefined;
   }
+  const value = parseJSONValue(text);
+  return value !== undefined && JSON.stringify(value) === text ? { value } : undefined;
 }
 
 function unreachableContent(content: never): never {
