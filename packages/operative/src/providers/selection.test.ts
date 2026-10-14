@@ -462,11 +462,11 @@ describe('select: unsupported effort — reject versus degrade', () => {
 
   it('honors a requested effort from user.exactOverride.effort when requestedValue is absent', () => {
     const options = baseOptions(catalogOf([opus45]), {
-      user: { exactOverride: { effort: 'max' } },
+      user: { exactOverride: { effort: 'high' } },
     });
     const plan = select(baseRequest(), options);
     expect(plan.outcome).toBe('selected');
-    expect(plan.selected?.effort).toBe('max');
+    expect(plan.selected?.effort).toBe('high');
   });
 
   it('honors user.defaultEffort when nothing more specific is set', () => {
