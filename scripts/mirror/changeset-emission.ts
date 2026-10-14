@@ -158,6 +158,41 @@ async function addingCommit(
   return commit;
 }
 
+/** The target a changeset's bytes name, or `undefined` when they cannot be read as a changeset. */
+async function targetOfBytes(bytes: Uint8Array): Promise<MirrorTarget | undefined> {
+  try {
+    return await targetOfChangeset(parseChangeset(new TextDecoder().decode(bytes)));
+  } catch (error) {
+    if (error instanceof ChangesetError) return undefined;
+    throw error;
+  }
+}
+
+/**
+ * The paths whose content, at the trailer or at HEAD, names this target or cannot be read.
+ * A path counts when either end is relevant, so a name reused for a different mirror's
+ * changeset is still caught for the mirror whose release it would swallow.
+ */
+async function relevantPaths(options: {
+  corvidaeRoot: string;
+  target: MirrorTarget;
+  trailerSha: string;
+  syncedFiles: readonly string[];
+  headFiles: readonly string[];
+}): Promise<Set<string>> {
+  const { corvidaeRoot, target, trailerSha, syncedFiles, headFiles } = options;
+  const relevant = new Set<string>();
+  const consider = async (revision: string, paths: readonly string[]): Promise<void> => {
+    for (const path of paths) {
+      const owner = await targetOfBytes(await blobBytes(corvidaeRoot, revision, path));
+      if (owner === undefined || owner === target) relevant.add(path);
+    }
+  };
+  await consider(trailerSha, syncedFiles);
+  await consider('HEAD', headFiles);
+  return relevant;
+}
+
 /**
  * A name that existed at the trailer and was added again in `(trailer, HEAD]` was deleted in
  * between and rewritten. It is not pending (it exists at both ends), so emitting nothing would
@@ -285,9 +320,20 @@ export async function planChangesetEmission({
     changesetsAt(corvidaeRoot, trailerSha),
   ]);
   const synced = new Set(syncedFiles);
-  await assertNoReusedNames(corvidaeRoot, trailerSha, synced);
   const pending = headFiles.filter((path) => !synced.has(path));
-  await assertNoRenamedSyncedNames(corvidaeRoot, trailerSha, synced, new Set(pending));
+  // Only changesets that belong to this target can have been delivered to it, or be released
+  // twice into it. A file that cannot be read fails closed: it counts as this target's.
+  const relevant = await relevantPaths({
+    corvidaeRoot,
+    target,
+    trailerSha,
+    syncedFiles,
+    headFiles,
+  });
+  const relevantSynced = new Set(syncedFiles.filter((path) => relevant.has(path)));
+  const relevantPending = new Set(pending.filter((path) => relevant.has(path)));
+  await assertNoReusedNames(corvidaeRoot, trailerSha, relevantSynced);
+  await assertNoRenamedSyncedNames(corvidaeRoot, trailerSha, relevantSynced, relevantPending);
 
   const mine: { path: string; bytes: Uint8Array }[] = [];
   for (const path of pending) {

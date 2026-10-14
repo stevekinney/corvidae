@@ -208,6 +208,41 @@ describe('changeset emission', () => {
     ]);
   });
 
+  test("a rename of another mirror's synced changeset only throws for that mirror", async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/weft-note.md', weftChangeset);
+    const synced = await commit(root, 'Add a weft changeset');
+    await git(root, 'mv', '.changeset/weft-note.md', '.changeset/weft-renamed.md');
+    await commit(root, 'Rename the weft changeset');
+    await git(root, 'rm', '--quiet', '.changeset/weft-renamed.md');
+    await write(root, '.changeset/weft-again.md', changeset('@lostgradient/weft', 'Entirely new.'));
+    await commit(root, 'Delete and add in one commit');
+    await write(root, '.changeset/cinder-note.md', changeset('@lostgradient/cinder'));
+    const cinderAdding = await commit(root, 'Add a cinder changeset');
+    const clone = await target(synced);
+
+    const files = await emit(root, clone, synced, 'cinder');
+    expect(Object.keys(files)).toEqual([emittedPath(cinderAdding, 'cinder-note')]);
+    expect(await rejectionOf(emit(root, clone, synced, 'weft'))).toBeInstanceOf(
+      ChangesetEmissionError,
+    );
+  });
+
+  test("another mirror's synced name deleted and re-added does not throw for this mirror", async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/note.md', weftChangeset);
+    const synced = await commit(root, 'Add a weft changeset');
+    await git(root, 'rm', '--quiet', '.changeset/note.md');
+    await commit(root, 'Consume it');
+    await write(root, '.changeset/note.md', changeset('@lostgradient/weft', 'Reused.'));
+    await commit(root, 'Reuse the name');
+    const clone = await target(synced);
+    expect(await emit(root, clone, synced, 'cinder')).toEqual({});
+    expect(await rejectionOf(emit(root, clone, synced, 'weft'))).toBeInstanceOf(
+      ChangesetEmissionError,
+    );
+  });
+
   test('(f) the same trailer gives identical output on a repeat run', async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
