@@ -13,6 +13,16 @@ import type { ArtifactInventory } from './measure-playground-inventory.ts';
 import type { TreeSampleSeries } from './measure-playground-process-tree.ts';
 import type { MetricObservation, Temperature } from './measure-playground-statistics.ts';
 
+/**
+ * A tree series as a result file records it, without per-sample detail. The failure fields are
+ * optional because results recorded before the observer kept its failures do not carry them.
+ */
+export type RecordedTreeSeries = Omit<
+  TreeSampleSeries,
+  'samples' | 'failedReads' | 'failureMessages'
+> &
+  Partial<Pick<TreeSampleSeries, 'failedReads' | 'failureMessages'>>;
+
 export const RESULT_SCHEMA = 'cin-585-playground-measurements/1';
 
 export type ChildMeasurement = {
@@ -26,7 +36,7 @@ export type ChildMeasurement = {
   userCpuMicroseconds: number | null;
   systemCpuMicroseconds: number | null;
   /** The 100 ms owned-tree observer's series, without per-sample detail. */
-  tree: Omit<TreeSampleSeries, 'samples'>;
+  tree: RecordedTreeSeries;
   /** Pids the observer saw that were still alive after the child exited. */
   survivingPids: number[];
   logPath: string;
@@ -59,7 +69,7 @@ export type ServerReadySample = SampleBase & {
   /** The existing `playwright.config.ts` web-server limit, reused unchanged. */
   readyDeadlineMilliseconds: number;
   /** The owned tree observed from spawn until the first positive `/ready`. */
-  treeUntilReady: Omit<TreeSampleSeries, 'samples'>;
+  treeUntilReady: RecordedTreeSeries;
   prebuildSummary: {
     succeeded: number;
     total: number;
@@ -148,7 +158,20 @@ export function comparabilityProblems(
   baseline: MeasurementResults,
   candidate: MeasurementResults,
 ): string[] {
-  const problems: string[] = [];
+  // Validate both files' schema first: no other rule may read a file this script did not write.
+  const schemaProblems = (
+    [
+      ['baseline', baseline],
+      ['candidate', candidate],
+    ] as const
+  )
+    .filter(([, results]) => results.schema !== RESULT_SCHEMA)
+    .map(
+      ([label, results]) =>
+        `${label} schema is ${JSON.stringify(results.schema)}; expected ${JSON.stringify(RESULT_SCHEMA)}.`,
+    );
+  if (schemaProblems.length > 0) return schemaProblems;
+  const problems: string[] = [...environmentProblems(baseline, candidate)];
   if (baseline.environment.sourceSha !== candidate.environment.sourceSha) {
     problems.push(
       `Source SHA differs: baseline ${baseline.environment.sourceSha}, candidate ${candidate.environment.sourceSha}.`,
@@ -172,7 +195,154 @@ export function comparabilityProblems(
   ] as const) {
     for (const failure of primaryMetricFailures(results)) problems.push(`${label}: ${failure}`);
   }
+  problems.push(...coverageProblems(baseline, candidate));
   return problems;
+}
+
+/** The fields that must match for two runs to be the same environment. */
+function environmentFields(results: MeasurementResults): [string, unknown][] {
+  const environment = results.environment;
+  return [
+    ['Bun version', environment.versions.bun],
+    ['platform', environment.operatingSystem.platform],
+    ['OS release', environment.operatingSystem.release],
+    ['architecture', environment.operatingSystem.architecture],
+    ['CPU model', environment.operatingSystem.cpuModel],
+    ['logical processors', environment.logicalProcessors],
+    ['total memory', environment.totalMemoryBytes],
+    ['container memory limit', environment.containerMemoryLimit],
+  ];
+}
+
+/** Results from different hosts or runtimes are not comparable. */
+export function environmentProblems(
+  baseline: MeasurementResults,
+  candidate: MeasurementResults,
+): string[] {
+  const candidateFields = new Map(environmentFields(candidate));
+  return environmentFields(baseline)
+    .filter(([field, value]) => candidateFields.get(field) !== value)
+    .map(
+      ([field, value]) =>
+        `Environment differs in ${field}: baseline ${JSON.stringify(value)}, candidate ${JSON.stringify(candidateFields.get(field))}.`,
+    );
+}
+
+/** The protocol's three cold/warm pairs: fewer samples, as in a smoke run, can never select. */
+export const MINIMUM_SAMPLES_PER_OBSERVATION = 3;
+
+/** Every primary subject needs both temperatures, with equal counts of at least the minimum. */
+export function coverageProblems(
+  baseline: MeasurementResults,
+  candidate: MeasurementResults,
+): string[] {
+  const problems: string[] = [];
+  const subjects: [
+    string,
+    (results: MeasurementResults) => readonly { temperature: Temperature }[],
+  ][] = [
+    ['staticExportMilliseconds', (results) => results.staticExport],
+    ['serverSpawnToReadyMilliseconds', (results) => results.serverReady],
+  ];
+  for (const [subject, samplesOf] of subjects) {
+    for (const temperature of ['cold', 'warm'] as const) {
+      const count = (results: MeasurementResults): number =>
+        samplesOf(results).filter((sample) => sample.temperature === temperature).length;
+      const baselineCount = count(baseline);
+      const candidateCount = count(candidate);
+      if (baselineCount !== candidateCount || baselineCount < MINIMUM_SAMPLES_PER_OBSERVATION) {
+        problems.push(
+          `${subject}/${temperature}: baseline has ${baselineCount} samples and candidate ${candidateCount}; each side needs the same count, at least ${MINIMUM_SAMPLES_PER_OBSERVATION}.`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+type LabelledSample = { label: string; source: SourceState };
+
+function primarySamples(results: MeasurementResults): LabelledSample[] {
+  return [
+    ...results.staticExport.map((sample) => ({
+      label: `Static export pair ${sample.pair} ${sample.temperature}`,
+      source: sample.source,
+    })),
+    ...results.serverReady.map((sample) => ({
+      label: `Server readiness pair ${sample.pair} ${sample.temperature}`,
+      source: sample.source,
+    })),
+  ];
+}
+
+/** Primary samples whose source or working-tree diff differs from what the result captured. */
+function sourceDriftFailures(results: MeasurementResults): string[] {
+  const expectedSha = results.environment.sourceSha;
+  const expectedDiff = results.environment.workingTreeDiffSha256;
+  return primarySamples(results)
+    .filter(
+      ({ source }) =>
+        source.sourceSha !== expectedSha || source.workingTreeDiffSha256 !== expectedDiff,
+    )
+    .map(
+      ({ label, source }) =>
+        `${label} ran on source ${source.sourceSha} with diff ${source.workingTreeDiffSha256 ?? 'none'}; the result captured ${expectedSha} with diff ${expectedDiff ?? 'none'}.`,
+    );
+}
+
+function measuredChildren(
+  results: MeasurementResults,
+): { label: string; child: ChildMeasurement }[] {
+  return [
+    ...results.prerequisites.map((sample) => ({ label: 'Prerequisite', child: sample.child })),
+    ...results.staticExport.map((sample) => ({
+      label: `Static export pair ${sample.pair} ${sample.temperature}`,
+      child: sample.child,
+    })),
+    ...results.serverReady.map((sample) => ({
+      label: `Server readiness pair ${sample.pair} ${sample.temperature}`,
+      child: sample.child,
+    })),
+    ...results.playwright.map((sample) => ({
+      label: `Playwright pair ${sample.pair} ${sample.temperature}`,
+      child: sample.child,
+    })),
+    ...Object.entries(results.probes).map(([name, probe]) => ({
+      label: `The ${name} probe`,
+      child: probe.child,
+    })),
+  ];
+}
+
+/** Measured children with no successful process-tree reading: their peak is unknown, not zero. */
+function blindTreeFailures(results: MeasurementResults): string[] {
+  const blind = measuredChildren(results)
+    .filter(({ child }) => child.tree.sampleCount === 0)
+    .map(({ label }) => label);
+  for (const sample of results.serverReady) {
+    const label = `Server readiness pair ${sample.pair} ${sample.temperature} until ready`;
+    if (sample.treeUntilReady.sampleCount === 0) blind.push(label);
+  }
+  return blind.map(
+    (label) => `${label} has no successful process-tree reading; its peak is unknown, not 0 bytes.`,
+  );
+}
+
+/** Failed process-table reads, reported for every measured child that had any. */
+export function treeReadWarnings(results: MeasurementResults): string[] {
+  return measuredChildren(results)
+    .filter(({ child }) => (child.tree.failedReads ?? 0) > 0)
+    .map(({ label, child }) => {
+      const first = child.tree.failureMessages?.[0];
+      return `${label}: ${child.tree.failedReads} process-tree reads failed${first === undefined ? '' : ` (first: ${first})`}.`;
+    });
+}
+
+/** Every measured child, probes included, whose observed processes outlived it. */
+export function survivingPidFailures(results: MeasurementResults): string[] {
+  return measuredChildren(results)
+    .filter(({ child }) => child.survivingPids.length > 0)
+    .map(({ label, child }) => `${label} left pids ${child.survivingPids.join(', ')} running.`);
 }
 
 /** Failures in the static-export and server-readiness samples, which feed the primary metrics. */
@@ -183,6 +353,13 @@ export function primaryMetricFailures(results: MeasurementResults): string[] {
 /** Samples that did not complete: a failed export or Playwright run, a readiness miss, a failed probe. */
 export function runFailures(results: MeasurementResults): string[] {
   const failures: string[] = [];
+  for (const sample of results.prerequisites) {
+    if (sample.child.exitCode !== 0) {
+      failures.push(
+        `Prerequisite ${sample.child.command.join(' ')} exited ${sample.child.exitCode}.`,
+      );
+    }
+  }
   for (const sample of results.staticExport) {
     if (sample.child.exitCode !== 0) {
       failures.push(
@@ -207,6 +384,7 @@ export function runFailures(results: MeasurementResults): string[] {
   for (const [name, probe] of Object.entries(results.probes)) {
     if (probe.error !== undefined) failures.push(`The ${name} probe failed. ${probe.error}`);
   }
+  failures.push(...sourceDriftFailures(results), ...blindTreeFailures(results));
   return failures;
 }
 

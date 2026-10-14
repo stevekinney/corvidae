@@ -55,6 +55,8 @@ import {
   RESULT_SCHEMA,
   runFailures,
   summarizePlaywrightReport,
+  survivingPidFailures,
+  treeReadWarnings,
   type ChildMeasurement,
   type MeasurementResults,
   type PlaywrightSample,
@@ -637,15 +639,14 @@ async function main(): Promise<boolean> {
   if (options.command === 'compare') return compare(options);
   const results = await run(options);
   await writeJson(options.output, results);
-  const survivors = [
-    ...results.prerequisites,
-    ...results.staticExport,
-    ...results.serverReady,
-    ...results.playwright,
-  ].flatMap((sample) => sample.child.survivingPids);
-  const failures = runFailures(results);
-  if (survivors.length > 0)
-    failures.push(`Processes outlived their measured child: ${survivors.join(', ')}`);
+  // Probe children are measured children too, so their survivors count (survivingPidFailures).
+  const failures = [...runFailures(results), ...survivingPidFailures(results)];
+  const warnings = treeReadWarnings(results);
+  if (warnings.length > 0) {
+    process.stderr.write(
+      `[measure-playground] process-tree read failures:\n${warnings.map((warning) => `  - ${warning}`).join('\n')}\n`,
+    );
+  }
   if (failures.length > 0) {
     process.stderr.write(
       `[measure-playground] wrote ${options.output} with failures:\n${failures.map((failure) => `  - ${failure}`).join('\n')}\n`,
