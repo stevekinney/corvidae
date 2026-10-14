@@ -10,8 +10,8 @@
  *
  * Module scope has no per-test timeout, so a scenario whose child never exits would otherwise
  * hold the whole run. {@link SCENARIO_HANG_GUARD_MILLISECONDS} turns that hang into a failure of
- * the scenario's test. It is the largest per-test budget these suites used before hoisting, set
- * far above any healthy run on a loaded host: it detects hangs and is never a performance bound.
+ * the scenario's test. It is a uniform hang detector, set far above any healthy run on a loaded
+ * host and never a performance bound; a scenario that needs a larger budget passes it explicitly.
  *
  * @example
  * ```ts
