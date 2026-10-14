@@ -21,12 +21,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveStorage } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+
+import { createBureau } from './create-bureau';
 
 import type { PersistedSteeringCommand } from './steering-durability';
 import { createSteeringMailbox, recoverSteeringCommands } from './steering-durability';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
+
+/** Runs the crash child to its own SIGKILL and returns the marker it wrote. */
+async function runCrashingChild(args: readonly string[], markerPath: string): Promise<unknown> {
+  const child = Bun.spawn(['bun', CHILD, ...args], { stdout: 'pipe', stderr: 'pipe' });
+  await child.exited;
+  const stderr = await new Response(child.stderr).text();
+  expect(child.signalCode ?? stderr).toBe('SIGKILL');
+  expect(existsSync(markerPath)).toBe(true);
+  return JSON.parse(readFileSync(markerPath, 'utf8'));
+}
 
 describe('durable steering survives SIGKILL', () => {
   it('recovers a command admitted by a process that was killed without disposing', async () => {
@@ -66,6 +79,68 @@ describe('durable steering survives SIGKILL', () => {
 
       mailbox.dispose();
       storage[Symbol.dispose]();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('still reports a reused id with a different value as a conflict after the mailbox was drained by an earlier restart', async () => {
+    // Repeated crashes. The first leaves `crash-cmd-2` (a model override) in the
+    // mailbox. The second process retries it exactly, which replays and
+    // acknowledges it, then dies too. A session-scoped target is used
+    // because it needs no live run to replay into. This third process therefore starts with a drained
+    // mailbox and an empty in-memory ledger, while the mailbox's idempotency
+    // binding for `crash-cmd-1` survives. Reusing the id with a different
+    // target must still be a typed conflict, never a fresh acceptance.
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-crash-twice-'));
+    const storagePath = join(directory, 'bureau.sqlite');
+
+    try {
+      const admitted = join(directory, 'admitted.json');
+      const { sessionId } = (await runCrashingChild(
+        [storagePath, admitted, 'admit', 'model'],
+        admitted,
+      )) as { sessionId: string };
+      const retried = join(directory, 'retried.json');
+      const retry = (await runCrashingChild(
+        [storagePath, retried, 'retry', 'model', sessionId],
+        retried,
+      )) as { outcome: { outcome: string } };
+      expect(retry.outcome.outcome).toBe('replayed');
+      // A third crash, this time starting from an already-drained mailbox:
+      // the exact retry must still replay rather than be admitted afresh.
+      const retriedAgain = join(directory, 'retried-again.json');
+      const retryAgain = (await runCrashingChild(
+        [storagePath, retriedAgain, 'retry', 'model', sessionId],
+        retriedAgain,
+      )) as { outcome: { outcome: string } };
+      expect(retryAgain.outcome.outcome).toBe('replayed');
+
+      const bureau = await createBureau({
+        agents: {},
+        generate: () => new Promise<never>(() => {}),
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+      });
+      try {
+        await bureau.waitForRecovery?.();
+        const outcome = await bureau.submitSteeringCommand(sessionId, {
+          id: 'crash-cmd-2',
+          principal: 'alice',
+          requestedValue: { target: 'provider', override: 'anthropic' },
+        });
+
+        expect(outcome.outcome).toBe('conflict');
+        if (outcome.outcome !== 'conflict') throw new Error('expected conflict');
+        expect(outcome.conflict.reason).toBe('target-mismatch');
+        expect(outcome.conflict.original.requestedValue).toEqual({
+          target: 'model',
+          override: 'claude-sonnet-5',
+        });
+      } finally {
+        await bureau.dispose();
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

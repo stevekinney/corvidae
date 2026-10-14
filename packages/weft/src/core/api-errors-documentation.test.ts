@@ -115,4 +115,25 @@ describe('documentation/reference/api-errors.md', () => {
       );
     }
   });
+
+  it('lists exactly the root-exported Error classes outside the WeftError family', () => {
+    const rows = tableRows('WeftErrorCode', 'Root-exported errors outside the WeftError family');
+    const plainErrors = Object.entries(root)
+      .filter(
+        ([, value]) =>
+          typeof value === 'function' &&
+          value !== WeftError &&
+          value.prototype instanceof Error &&
+          !(value.prototype instanceof WeftError),
+      )
+      .map(([name]) => name);
+    const byName = (left: string, right: string): number => left.localeCompare(right);
+
+    expect(rows.map(([name = '']) => name).toSorted(byName)).toEqual(plainErrors.toSorted(byName));
+    for (const [name = '', file = ''] of rows) {
+      expect(readFileSync(join(sourceDirectory, file), 'utf8')).toMatch(
+        new RegExp(`class ${name} extends Error\\b`),
+      );
+    }
+  });
 });

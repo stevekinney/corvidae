@@ -215,6 +215,8 @@ import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
   createSteeringGate,
+  getSteeringLedgerEntry,
+  resolveSteeringRetry,
   type ImplementedSteeringCommand,
   isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
@@ -222,7 +224,10 @@ import {
 } from './steering';
 import {
   createSteeringMailbox,
+  deleteSteeringCommandRecords,
+  loadSteeringCommandRecord,
   persistSteeringCommand,
+  persistSteeringCommandRecord,
   recoverSteeringCommands,
 } from './steering-durability';
 import type {
@@ -1717,6 +1722,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     liveRunIds: readonly string[],
   ): Promise<void> {
     const now = runtimeServices.clock.nowISO();
+    const replayedKeys: { principal: string; id: string }[] = [];
     // The replay is handed to `recoverSteeringCommands` as a callback so
     // each command reaches the gate BEFORE its mailbox acknowledgement.
     // Collecting the batch first and admitting afterwards would leave a
@@ -1727,7 +1733,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // back door, so a recovered command is subject to every invariant
       // a live one is. A pause bound to a run this process no longer has
       // is correctly rejected `run-terminal` — the run genuinely ended.
-      gate.admit(
+      const replayed = gate.admit(
         {
           id: recovered.id,
           idOrigin: 'caller',
@@ -1743,7 +1749,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         },
         { liveRunIds, now },
       );
+      if (replayed.outcome === 'accepted') {
+        replayedKeys.push({ principal: recovered.principal, id: recovered.id });
+      }
     });
+    // Records are written after the drain because `apply` must stay
+    // synchronous. A command admitted live already has one; this covers a
+    // process that crashed after the mailbox write but before its own
+    // record write, and refreshes the rest with their replayed state.
+    for (const { principal, id } of replayedKeys) {
+      await recordSteeringCommand(principal, id);
+    }
   }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
@@ -6887,6 +6903,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringMailboxes.get(id)?.dispose();
       steeringMailboxes.delete(id);
       steeringRecoveries.delete(id);
+      if (runtime.durable && runtime.kv !== undefined) {
+        await deleteSteeringCommandRecords(runtime.kv, id);
+      }
 
       await Promise.allSettled(runTerminals);
 
@@ -7362,10 +7381,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // gate rather than returning here. The gate's ledger is the
       // authority on conflict *shape* — only it holds the original
       // command's snapshot, which `SteeringCommandConflict` requires — and
-      // after a restart that ledger is rebuilt by the recovery replay
-      // above, so it can still describe the original. The mailbox
-      // conflict and the gate conflict are the same fact seen twice; the
+      // the mailbox and gate conflicts are the same fact seen twice; the
       // gate reports it in the contract's own terms.
+      //
+      // Except when the ledger no longer holds the original. Recovery
+      // replays the mailbox and acknowledges what it replays, so after a
+      // SECOND restart the mailbox is drained and the ledger starts empty
+      // while the mailbox's binding for this id survives. Falling through
+      // then would admit the reused id as a brand-new command, so the
+      // durable steering command record answers instead, through the same
+      // classification the gate itself uses.
+      if (
+        !persistence.persisted &&
+        runtime.kv !== undefined &&
+        getSteeringLedgerEntry(steeringCommandLedger, command.principal, command.id) === undefined
+      ) {
+        const original = await loadSteeringCommandRecord(
+          runtime.kv,
+          sessionId,
+          command.principal,
+          command.id,
+        );
+        if (original !== undefined) return resolveSteeringRetry(original, command);
+      }
     }
 
     const outcome = gate.admit(command, { liveRunIds, now });
@@ -7380,8 +7418,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       emitter.dispatch(
         new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
       );
+      if (steeringMailbox !== undefined) {
+        await recordSteeringCommand(command.principal, command.id);
+      }
     }
     return outcome;
+  }
+
+  /**
+   * Persists the ledger's entry for `(principal, id)` as its durable steering
+   * command record (see `steering-durability.ts`). The command is already
+   * admitted and durable in the mailbox by now, so a failed write is
+   * reported as a diagnostic rather than failing an admission that
+   * succeeded; the only cost is that a reused id after two restarts falls
+   * back to being treated as new.
+   */
+  async function recordSteeringCommand(principal: string, id: string): Promise<void> {
+    const entry = getSteeringLedgerEntry(steeringCommandLedger, principal, id);
+    if (runtime.kv === undefined || entry === undefined) return;
+    try {
+      await persistSteeringCommandRecord(runtime.kv, entry);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Could not persist steering command record "${id}": ${serializeUnknownError(error)}`,
+      });
+    }
   }
 
   function listPendingReviews(): PendingReview[] {

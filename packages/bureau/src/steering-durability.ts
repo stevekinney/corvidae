@@ -1,7 +1,7 @@
-import type { Storage } from '@lostgradient/weft';
-import { Mailbox } from '@lostgradient/weft';
+import type { ConditionalTextValueStore, Storage } from '@lostgradient/weft';
+import { encodeStorageKeyComponent, Mailbox } from '@lostgradient/weft';
 
-import type { ImplementedSteeringCommand } from './steering';
+import type { ImplementedSteeringCommand, StoredSteeringCommand } from './steering';
 
 /**
  * AB-200 — durable steering: the mailbox a durably-configured Bureau
@@ -200,4 +200,85 @@ function readInlinePayload(payload: {
     return undefined;
   }
   return candidate as PersistedSteeringCommand;
+}
+
+/**
+ * Steering command records: the durable memory of what each admitted
+ * `(principal, id)` meant, kept in `runtime.kv` beside the mailbox.
+ *
+ * The mailbox alone cannot answer "what did this id originally ask for?"
+ * once recovery has replayed and acknowledged a command: a receipt carries
+ * no payload, and the payload is delivered only on `claim()`. Its
+ * idempotency binding, however, outlives the drain. Without these records a
+ * restart whose mailbox an earlier recovery already drained starts with an
+ * empty in-memory ledger, so a reused id — exact retry or not — would be
+ * admitted again as a brand-new command instead of `replayed` or a typed
+ * `conflict`.
+ *
+ * Each record is the gate's own ledger entry, as of the admission (live or
+ * replayed) that wrote it. It answers idempotency questions only: it never
+ * enters the gate's ledger or desired state, so a stale `state` cannot be
+ * re-applied. Records are keyed per session and deleted with the session
+ * (`deleteSteeringCommandRecords`), the same lifetime as the session's
+ * mailbox and its bindings.
+ */
+const STEERING_RECORD_KEY_PREFIX = 'steering-command:v1';
+
+function steeringRecordSessionPrefix(sessionId: string): string {
+  return `${STEERING_RECORD_KEY_PREFIX}:${encodeStorageKeyComponent(sessionId)}:`;
+}
+
+function steeringRecordKey(sessionId: string, principal: string, id: string): string {
+  return `${steeringRecordSessionPrefix(sessionId)}${encodeStorageKeyComponent(principal)}:${encodeStorageKeyComponent(id)}`;
+}
+
+/** Writes (or refreshes) the record for one admitted command. */
+export async function persistSteeringCommandRecord(
+  kv: ConditionalTextValueStore,
+  record: StoredSteeringCommand,
+): Promise<void> {
+  await kv.set(
+    steeringRecordKey(record.sessionId, record.principal, record.id),
+    JSON.stringify(record),
+  );
+}
+
+/**
+ * Reads the record for `(principal, id)` in `sessionId`. A missing or
+ * malformed record reads as `undefined`, which leaves admission exactly
+ * where it was before records existed.
+ */
+export async function loadSteeringCommandRecord(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  principal: string,
+  id: string,
+): Promise<StoredSteeringCommand | undefined> {
+  const raw = await kv.get(steeringRecordKey(sessionId, principal, id));
+  if (raw === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as { id?: unknown }).id === id &&
+      (parsed as { principal?: unknown }).principal === principal &&
+      typeof (parsed as { sessionId?: unknown }).sessionId === 'string' &&
+      typeof (parsed as { requestedValue?: { target?: unknown } }).requestedValue?.target ===
+        'string'
+    ) {
+      return parsed as StoredSteeringCommand;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Deletes every steering command record for `sessionId`. */
+export async function deleteSteeringCommandRecords(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+): Promise<void> {
+  await kv.deletePrefix(steeringRecordSessionPrefix(sessionId));
 }

@@ -37,7 +37,7 @@ The two transports use the same key, `weftCode`, for different vocabularies. Rea
 A REST fault response carries the status from the table above and a JSON body shaped `{ error, weftCode?, data? }`:
 
 - `error`: the human-readable message.
-- `weftCode`: the fine-grained `WeftErrorCode` of the error class behind the fault, present only when the fault carried one. It is never a `FaultCode`, and the body carries no coarse code at all; the HTTP status is the coarse signal.
+- `weftCode`: the fine-grained `WeftErrorCode` of the error class behind the fault, present only when the fault carried one. It is never a `FaultCode`, and the body carries no coarse code at all. The HTTP status is derived from the `FaultCode` but does not identify it: several codes share a status (`NotFound` and `MethodNotFound` are both 404, `NotImplemented` and `UnsupportedTransport` both 501, `SubscriptionOverflow` and `EngineFailure` both 500).
 - `data`: an audited, deny-by-default subset of the fault's payload, omitted when no field is safe to expose. `REST_FAULT_DATA_EXTRACTORS` in `operation-fault.ts` lists the exposed fields per fault code.
 
 `EngineFailure` is masked: its body is exactly `{ "error": "Internal server error" }` with status 500, regardless of any route override.
@@ -64,7 +64,7 @@ So `isWeftFault(error, 'WorkflowNotFoundError')` matches an `HttpClientError` fr
 
 ## Error helpers
 
-Every public Weft error extends `WeftError`, whose `code` equals the class name. Four guards narrow a caught value:
+Most public Weft errors extend `WeftError`, whose `code` equals the class name. A few root exports extend plain `Error` instead and are invisible to every guard below; [they are listed at the end of this page](#root-exported-errors-outside-the-wefterror-family). For the `WeftError` family, four guards narrow a caught value:
 
 | Guard | Narrows | Use it when |
 | --- | --- | --- |
@@ -160,3 +160,19 @@ These classes are exported from the package root and extend `WeftError`, but the
 | `EngineLeaseNotHeldError`            | `core/engine/lease-errors.ts`          |
 | `WorkflowClaimUnavailableError`      | `core/engine/lease-errors.ts`          |
 | `WorkflowContractConversionError`    | `core/contract/build.ts`               |
+
+### Root-exported errors outside the WeftError family
+
+These classes are exported from the package root but extend plain `Error`, so `isWeftError`, `isWeftErrorLike`, `isWeftErrorCode`, and `isWeftFault` all reject them, even where the class carries its own `code` property (`StorageBatchOperationLimitExceededError` does). Catch them with `instanceof`. The three `Weft…Warning` classes are reported as process warnings rather than thrown, and the three `Chaos…Error` classes are produced only by the `withChaos` testing combinator.
+
+| Class                                     | Defined in                                 |
+| ----------------------------------------- | ------------------------------------------ |
+| `CatalogClientError`                      | `client/operation-client-runtime.ts`       |
+| `ChaosNonRetryableError`                  | `testing/chaos.ts`                         |
+| `ChaosTimeoutError`                       | `testing/chaos.ts`                         |
+| `ChaosTransientError`                     | `testing/chaos.ts`                         |
+| `ConnectionConfigurationError`            | `connection.ts`                            |
+| `StorageBatchOperationLimitExceededError` | `storage/interface.ts`                     |
+| `WeftWorkflowCheckpointConflictWarning`   | `core/engine/checkpoint-conflict-error.ts` |
+| `WeftWorkflowClaimLostWarning`            | `core/engine/lease-deposition.ts`          |
+| `WeftWorkflowWakeDiscardedWarning`        | `core/engine/lease-deposition.ts`          |

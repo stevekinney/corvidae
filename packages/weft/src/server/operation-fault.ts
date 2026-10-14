@@ -172,7 +172,10 @@ export type RestFaultResponseOptions = {
 /**
  * The REST fault body. `weftCode` is the fine-grained {@link WeftErrorCode} of
  * the originating error class, present only when the fault carried one; the
- * coarse {@link FaultCode} is conveyed by the HTTP status alone. JSON-RPC uses
+ * coarse {@link FaultCode} is not in the body at all. The HTTP status is
+ * derived from it, but that mapping is not injective (`NotFound` and
+ * `MethodNotFound` are both 404, for example), so a REST consumer cannot
+ * recover the exact `FaultCode` from the status. JSON-RPC uses
  * the same `weftCode` key for the coarse `FaultCode` instead (see
  * `fault-to-json-rpc.ts`).
  */
