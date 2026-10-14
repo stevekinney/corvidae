@@ -3091,6 +3091,16 @@
     width: 100%;
     border-collapse: collapse;
   }
+  /* The table's own scroll region (see `readme-tables.ts`): a wide table scrolls here instead of
+   * widening the page, and the region takes focus so keyboard users can scroll it. */
+  .readme-content :global(.readme-table-scroll) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .readme-content :global(.readme-table-scroll:focus-visible) {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
   .readme-content :global(blockquote) {
     padding-inline-start: var(--cinder-space-4);
     border-inline-start: 2px solid var(--cinder-border);

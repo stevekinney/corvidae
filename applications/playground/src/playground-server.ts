@@ -88,6 +88,7 @@ import {
 import { buildPageBundle } from './page-bundle.ts';
 import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
 import { createHttpServerOnAvailablePort, resolvePreferredPort } from './port-scanner.ts';
+import { wrapReadmeTables } from './readme-tables.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 import {
   DEPICT_THEME_VARIABLES,
@@ -718,7 +719,9 @@ async function renderLandingReadmeHtml(): Promise<string> {
       'Landing README rendering stripped unsafe content. Update src/landing.md to remove raw HTML, unsafe URLs, or other sanitizer-blocked content.',
     );
   }
-  return omitLandingReadmeTitle(rewriteRepositoryRelativeReadmeLinks(rendered.html));
+  return wrapReadmeTables(
+    omitLandingReadmeTitle(rewriteRepositoryRelativeReadmeLinks(rendered.html)),
+  );
 }
 
 /**
