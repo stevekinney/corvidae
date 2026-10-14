@@ -72,6 +72,13 @@ export async function collectKeys(storage: Storage, prefix: string): Promise<str
  * `expectedValue` no longer matches, so the conditional batch fails —
  * exactly the racing-runtime case the conditional pre-image guards.
  */
+function publishesWatermark(operations: BatchOperation[]): boolean {
+  return operations.some(
+    (operation) =>
+      operation.type === 'put' && operation.key === KEYS.workflowVisibilityMetaVersion(),
+  );
+}
+
 export class RacingStorage implements Storage {
   readonly #inner: MemoryStorage;
   readonly #raceTargets: Set<string>;
@@ -106,6 +113,9 @@ export class RacingStorage implements Storage {
       if (this.#inner.conditionalBatch === undefined) {
         throw new Error('inner MemoryStorage should expose conditionalBatch');
       }
+      if (publishesWatermark(operations)) {
+        await this.beforeWatermark?.();
+      }
       return this.#inner.conditionalBatch(conditions, operations);
     };
   }
@@ -126,9 +136,6 @@ export class RacingStorage implements Storage {
     return this.#inner.scan(prefix, options);
   }
   async batch(operations: BatchOperation[]): Promise<void> {
-    if (operations.some((operation) => operation.key === KEYS.workflowVisibilityMetaVersion())) {
-      await this.beforeWatermark?.();
-    }
     return this.#inner.batch(operations);
   }
   [Symbol.dispose](): void {
