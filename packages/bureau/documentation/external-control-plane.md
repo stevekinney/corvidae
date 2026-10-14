@@ -332,7 +332,7 @@ The predicate per action:
 
 ## Error contract
 
-Errors are versioned with the surface that returns them, machine-readable, and, when produced after the request is parsed, carry the request's correlation identifier and, for commands, the command identifier; authentication (401) and rate-limit (429) rejections happen before parsing and carry only the `traceparent` the request sent, when present. Weft's `FaultCode` gains the categories marked new.
+Errors are versioned with the surface that returns them, machine-readable, and, when produced after the request is parsed, carry the request's correlation identifier and, for commands, the command identifier; authentication (401) and rate-limit (429) rejections happen before parsing and carry no correlation identifier. Weft's `FaultCode` gains the categories marked new.
 
 | Category | A2A surface | Weft fault | HTTP (management plane) |
 | --- | --- | --- | --- |
