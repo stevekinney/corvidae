@@ -10,8 +10,15 @@ Status: decided. The recorded runs, their raw results, and the comparison are co
 
   The rule permits no trade between a faster build and a higher peak, so the baseline stands.
 
-- **CIN-588 mechanism: a shared multi-entry page graph with a memory gate.** Name the mechanism this experiment measured, not the measured form of it. The single unbounded multi-entry `Bun.build` is rejected. CIN-588 should implement the shared page graph so that its peak resident memory stays inside the baseline bands recorded here, and accept it only when `measure-playground.ts compare` selects it against a fresh baseline under this same rule. The evidence for pursuing it is load-robust: exporter CPU time halves (1,044.8 to 1,074.8 s down to 504.1 to 517.7 s), emitted output shrinks from 4,220 files and 291.3 MB to 2,895 files and 63.7 MB, and server readiness drops by more than an order of magnitude. The memory excess it must remove is small: 0.23 GB on the warm export and 0.31 GB on the cold server. Cross-shard artifact reuse is not part of it (see the matrix).
-- **CIN-589 contract: navigate between prerendered documents.** Fetch the target route's prerendered HTML (`/page/<name>`), which already carries the server-rendered `#app` markup, the `__CINDER_EXAMPLES__` and `__CINDER_SIDEBAR__` data islands, and the fingerprinted page entry URL. Swap `#app` and the islands, then `import()` that entry. Since #188 the entry is one `import` of its content-hashed module, so it evaluates once and its chunks stay cached as immutable. Keep CSS static: every component page links the same fingerprinted `playground-styles/documentation.css` (the landing page links `landing.css`), so component-to-component navigation swaps no stylesheet, and the first move from the landing page adds `documentation.css` once. Keep a plain `<a href>` as the fallback for every link, and own focus and an announcement on each swap. The static `/api/documentation/<name>` and `/api/manifest/<name>` JSON routes remain available for data a document swap does not cover; CIN-589 should confirm the islands it needs before adding a new route-data format.
+- **CIN-588 mechanism: a shared multi-entry page graph, built in garbage-collected batches, with a memory gate.** The single unbounded multi-entry `Bun.build` measured here is rejected. CIN-588 should keep its shared graph, which emits each shared module once, but build it in batches with a forced collection between them, and accept it only when `measure-playground.ts compare` selects it against a fresh baseline under this same rule. Restoring that batched collection is the first lever, because the experiment confounds two changes: it replaced the six-way per-page sweep with one build, and it dropped the sweep's forced collection every 24 completed builds (`releaseIncrementalPrebuildMemory`). The measured memory excess is therefore not yet attributable to sharing itself. The firm target is the server: its cold tree peak until ready had a candidate median of 3.975 GB against a baseline maximum of 3.672 GB, a 0.30 GB gap with bands that do not overlap (3.63 to 3.67 GB against 3.90 to 4.03 GB). The warm-export excess (5.42 against 5.19 GB) sits inside overlapping bands (4.80 to 5.19 against 5.02 to 5.61 GB), so it is a check, not a target. The reasons to pursue the graph are load-robust: exporter CPU time halves (1,044.8 to 1,074.8 s down to 504.1 to 517.7 s), emitted output shrinks from 4,220 files and 291.3 MB to 2,895 files and 63.7 MB, and server readiness drops by more than an order of magnitude. Cross-shard artifact reuse is not part of it (see the matrix).
+- **CIN-589 contract: swap between prerendered documents, reconciling the head and unmounting the old page.** Fetch the target route's prerendered HTML (`/page/<name>`). It carries the server-rendered `#app` markup, the `__CINDER_EXAMPLES__` and `__CINDER_SIDEBAR__` data islands, the fingerprinted page entry URL, and a per-page `<head>`: the shared `documentation.css`, the component's own stylesheet links (`componentStylesheetLinks`, `src/playground-server.ts` around line 369, twelve links on the Chat page and none on Button), and the page's Svelte server `<head>` output (`ssrHead`, around lines 476 and 493, seven Svelte-scoped `<style>` blocks on the Chat page). Each swap must do four things, in order:
+  - reconcile `<head>`: add the target's stylesheet links that are missing, remove the previous page's component links and rendered head, and wait for new stylesheets to load before revealing the new markup;
+  - unmount the previous page's hydrated Svelte app and release what it owns (example mounts, live-reload stream, listeners) before importing the next entry;
+  - replace `#app` and the islands, then `import()` the target's entry, which since #188 is one `import` of its content-hashed module, so it evaluates once and its chunks stay cached;
+  - move focus to the new page and announce it.
+
+  Keep a plain `<a href>` as the fallback for every link. The static `/api/documentation/<name>` and `/api/manifest/<name>` JSON routes remain available for data a document swap does not cover; CIN-589 should confirm the islands it needs before adding a new route-data format.
+
 - **Leaks: none reproduced.** Two series grew monotonically. Owner-level evidence shows one is a measurement artifact and the other levels off; see Leaks. No issue is filed.
 
 ## Context
@@ -94,9 +101,9 @@ The navigation and 20-cycle rebuild diagnostics ran at `591bf0e0`, which adds on
 
 This host is shared with many agent sessions, and its load swung from about 10 to over 340 on 10 logical processors during this work. The smoke runs at load 90 to 290 took two to three times longer than the recorded runs and missed the server's existing 300 s readiness limit, so no sample was recorded above the load gate.
 
-- **Gate waits**: the baseline started at 1-minute load 16.8 to 30.0 and ended at 14.2 to 45.3, and the gate held four of its samples for 60, 60, 30, and 420 s (630 s in all). The candidate started at 9.0 to 24.9 and was never held. The Phase 1 gate rerun waited a further 6,996 s for load to settle before recording began.
+- **Gate waits**: baseline samples started at 1-minute load 10.5 to 30.0 (static exports and server readiness 16.8 to 30.0, Playwright 12.9 and 14.2, the probes 10.5 and 12.8) and the timed samples ended at 14.2 to 45.3. The gate held four baseline samples for 60, 60, 30, and 420 s (630 s in all). Candidate samples started at 9.0 to 24.9 and were never held. Before any of this, the Phase 1 gate rerun waited 6,996 s for load to settle; `cin-585-results/phase-1-gate-wait.json` records that wait with its log.
 - **Effect on the bands**: the baseline ran under somewhat higher load than the candidate. That widens the baseline's timing bands and favours the candidate's wall times, so wall time alone is not trusted for the CIN-588 evidence. Exporter CPU time, which load inflates far less, tells the same story: 1,044.8 to 1,074.8 s for the baseline against 504.1 to 517.7 s for the candidate. Resident-memory peaks depend on the work, not the load, and the two observations that decided against the candidate are memory observations.
-- **Spread**: within each configuration the timing spread is at most 10 percent (baseline cold export 545.3 to 604.2 s), and the memory spread at most 0.8 GB.
+- **Spread**: within one configuration, timing spread reached 20.4 percent (baseline cold server readiness, 102.6 to 123.5 s; baseline cold export 10.8 percent, 545.3 to 604.2 s), and resident-memory spread reached 14.5 percent (candidate cold export tree, 4.79 to 5.48 GB). Bands that wide are why the rule compares a candidate's extremes with the baseline's band rather than medians alone.
 
 ## Results
 
@@ -117,14 +124,14 @@ The raw results are `cin-585-results/baseline.json`, `candidate.json`, and `comp
 
 ### Server readiness and Playwright
 
-| Configuration | Temperature | Spawn to ready (s): samples / median | Tree peak until ready (GB): samples / median |
-| --- | --- | --- | --- |
-| Baseline | cold | 123.5, 102.6, 107.1 / 107.1 | 3.63, 3.63, 3.67 / 3.63 |
-| Baseline | warm | 103.8, 103.2, 101.7 / 103.2 | 3.62, 3.56, 4.03 / 3.62 |
-| Candidate | cold | 9.1, 8.9, 9.1 / 9.1 | 3.90, 3.98, 4.03 / 3.98 |
-| Candidate | warm | 8.8, 9.1, 8.8 / 8.8 | 3.79, 4.05, 3.99 / 3.99 |
+| Configuration | Temperature | Spawn to ready (s): samples / median | Tree peak until ready (GB): samples / median | Server process own peak (GB): samples |
+| --- | --- | --- | --- | --- |
+| Baseline | cold | 123.5, 102.6, 107.1 / 107.1 | 3.63, 3.63, 3.67 / 3.63 | 3.63, 3.63, 3.67 |
+| Baseline | warm | 103.8, 103.2, 101.7 / 103.2 | 3.62, 3.56, 4.03 / 3.62 | 3.62, 3.56, 4.03 |
+| Candidate | cold | 9.1, 8.9, 9.1 / 9.1 | 3.90, 3.98, 4.03 / 3.98 | 3.90, 3.98, 4.03 |
+| Candidate | warm | 8.8, 9.1, 8.8 / 8.8 | 3.79, 4.05, 3.99 / 3.99 | 3.79, 4.05, 3.99 |
 
-Every recorded server reached ready inside the existing 300 s limit, and every page bundle prebuilt (181 of 181). The baseline `test:browser` run on `tests/playground-shell-layout.playwright.ts` passed 17 of 17, cold and warm, in 108.7 s and 108.3 s. Of that, 9.97 s and 9.85 s was test execution; the rest is the web server's own startup, which the readiness phase measures. The tree peak, including Chromium, was 5.20 GB and 5.12 GB.
+Every recorded server reached ready inside the existing 300 s limit, and every page bundle prebuilt (181 of 181). The server is one process, so its own `resourceUsage().maxRSS` matches its sampled tree peak to two decimals. The baseline `test:browser` run on `tests/playground-shell-layout.playwright.ts` passed 17 of 17, cold and warm, in 108.7 s and 108.3 s. Of that, 9.97 s and 9.85 s was test execution; the rest is the web server's own startup, which the readiness phase measures. The tree peak, including Chromium, was 5.20 GB and 5.12 GB.
 
 ### Navigation cycles
 
@@ -132,13 +139,13 @@ After one warm-up cycle, five recorded cycles through home, Button, Action Row, 
 
 ### Edit/rebuild cycles
 
-Five rewrites of the disposable Button example each reached the watcher's invalidation in 121 to 122 ms and were rebuilt and served in 1.71 to 1.76 s. Retained artifacts held at 2,648 entries and 369,995,056 bytes throughout, with no build left in flight, and fell by one page artifact when the fixture was removed. The server holds about 366 MB of page JavaScript for 181 pages in memory. That is the in-process cost CIN-588's shared graph would also reduce.
+Five rewrites of the disposable Button example each reached the watcher's invalidation in 121 to 122 ms and were rebuilt and served in 1.71 to 1.76 s. Retained artifacts held at 2,648 entries and 369,995,056 bytes throughout, with no build left in flight, and fell by one page artifact when the fixture was removed. The server holds about 366 MB of page JavaScript for 181 pages in its artifact maps. A hypothesis for CIN-588 to test, not a measured result: a shared graph that emits each shared module once should shrink that in-memory figure much as it shrank the exported bytes (291.3 MB to 63.7 MB). No candidate run here measured the server's retained artifact bytes.
 
 ## Comparison matrix
 
 | Candidate | Verdict | Evidence and reason |
 | --- | --- | --- |
-| Shared multi-entry page build | Reject as measured; carry to CIN-588 with a memory gate | Every timing observation improved beyond the baseline band, but two resident-memory medians exceeded the baseline maximum, so the rule retains the baseline. |
+| Shared multi-entry page build | Reject as measured; carry to CIN-588 with batched collection and a memory gate | Every timing observation improved beyond the baseline band, but two resident-memory medians exceeded the baseline maximum, so the rule retains the baseline. The experiment also dropped the sweep's periodic forced collection, which confounds the memory result. |
 | Server-side rendering of documentation | Retain | Every exported page is server-rendered and asserted pre-rendered by the exporter; warmed component pages reach a visible hero in 49 to 234 ms. |
 | Strict prerendering | Retain | The static export already prerenders all 212 routes and fails the build if any page is blank. |
 | Lazy route code | Retain | Scenarios and the bare component already load on demand; opening the Playground view takes 50 to 165 ms warmed, with no growth across cycles. |
