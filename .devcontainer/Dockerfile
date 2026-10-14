@@ -3,6 +3,8 @@
 # Node.js 24 is the active LTS line and the major the workspace's `@types/node` catalog
 # entry targets. Weft's native SQLite suite (`packages/weft/src/storage/node-sqlite.test.ts`)
 # runs its integration cases under a real Node, not Bun's `node` shim, and fails without one.
+# The mirror tooling's packing tests (`scripts/mirror/clean-package-build.test.ts`) run
+# Node's bundled `npm`, so it comes along.
 FROM node:24.21.0-trixie-slim AS node
 
 # The tag is the workspace's `packageManager` Bun version; `scripts/dev-container.test.ts`
@@ -10,6 +12,9 @@ FROM node:24.21.0-trixie-slim AS node
 FROM oven/bun:1.4.2
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+  && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # PostgreSQL 17 is Debian 13's server major and the release the host-side fix for COR-1379
 # installed. Only `initdb` and `pg_ctl` are needed: the live PostgreSQL and Neon suites in
