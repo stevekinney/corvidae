@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+
 const root = join(import.meta.dir, '..');
 
 /**
@@ -120,25 +122,8 @@ async function lintImport(
   }
 }
 
-/**
- * These scenarios run the real `oxlint` and `tsc` binaries against synthetic files, which takes seconds on a loaded host.
- * Each scenario runs here, at module scope, off Bun's five-second per-test clock, and its test
- * re-throws whatever the scenario threw, so a failed assertion still fails under the test that
- * names it.
- */
-async function outcomeOf(scenario: () => Promise<void>): Promise<unknown> {
-  try {
-    await scenario();
-    return undefined;
-  } catch (error) {
-    return error ?? new Error('scenario failed');
-  }
-}
-
-function rethrow(outcome: unknown): void {
-  if (outcome !== undefined) throw outcome;
-}
-
+// These scenarios run the real `oxlint` and `tsc` binaries against synthetic files, which takes
+// seconds on a loaded host, so each runs at module scope off the per-test clock.
 for (const [path, maximum] of [
   ['packages/example/src/consumer.ts', 100],
   ['components/example/src/consumer.svelte', 100],
