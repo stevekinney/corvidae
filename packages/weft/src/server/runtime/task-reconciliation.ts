@@ -4,7 +4,6 @@ import {
   buildCurrentAttemptDispositionWrites,
 } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { taskAttemptPrefix } from '../../core/task-ledger/task-attempt.ts';
-import { taskResultDeliveryKey } from '../../core/task-ledger/task-result-delivery.ts';
 import {
   commitTaskLedgerDelete,
   commitTaskLedgerTransition,
@@ -22,6 +21,7 @@ import {
   type RemoteTaskQueued,
   type RemoteTaskTerminal,
 } from '../../core/task-ledger/task-ledger.ts';
+import { taskResultDeliveryKey } from '../../core/task-ledger/task-result-delivery.ts';
 import { storageKeys } from '../../storage/interface.ts';
 import type { ServeOptions, TaskDispatch } from '../index.ts';
 import { restoreExtendedDeadlineIfStillActive } from '../runtime-helpers.ts';
