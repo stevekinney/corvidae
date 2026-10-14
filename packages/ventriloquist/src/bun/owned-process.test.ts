@@ -1,0 +1,175 @@
+import { describe, expect, test } from 'bun:test';
+
+import { createDeferred } from '../session/fixtures/deferred.ts';
+import { ManualClock } from '../session/fixtures/manual-clock.ts';
+import { flush } from '../session/session.test-support.ts';
+import { OwnedProcess } from './owned-process.ts';
+import type { ProcessGroupOperations, ProcessRecord } from './process-group.ts';
+import type { SpawnedProcess } from './process-types.ts';
+
+const LEADER = 4242;
+
+type Harness = {
+  readonly owned: OwnedProcess;
+  readonly clock: ManualClock;
+  readonly signals: string[];
+  readonly tableReads: () => number;
+  /** The leader ends; `groupEmpty` says whether any member outlived it. */
+  endLeader(code: number, options?: { signal?: string; groupEmpty: boolean }): Promise<void>;
+  child: SpawnedProcess;
+};
+
+function harness(options: {
+  /** What the process table holds when it is read, or `'unreadable'`. */
+  table?: ProcessRecord[] | 'unreadable';
+  /** The signal that empties the group and ends the leader; `never` leaves it standing. */
+  endsOn?: 'SIGTERM' | 'SIGKILL' | 'never';
+}): Harness {
+  const exited = createDeferred<number>();
+  const signals: string[] = [];
+  let tableReads = 0;
+  let empty = false;
+  let signalCode: string | null = null;
+  const endsOn = options.endsOn ?? 'SIGTERM';
+  const operations: ProcessGroupOperations = {
+    signal: (_group, signal) => {
+      signals.push(signal);
+      if (signal === endsOn) {
+        empty = true;
+        signalCode = signal;
+        exited.resolve(128);
+      }
+    },
+    exists: () => !empty,
+  };
+  const clock = new ManualClock();
+  const owned = new OwnedProcess({
+    operations,
+    clock,
+    graceMilliseconds: 100,
+    observationMilliseconds: 300,
+    readProcessTable: async () => {
+      tableReads += 1;
+      if (options.table === 'unreadable') throw new Error('no ps');
+      return options.table ?? [];
+    },
+  });
+  const child: SpawnedProcess = {
+    pid: LEADER,
+    exited: exited.promise,
+    get signalCode() {
+      return signalCode;
+    },
+    kill: () => undefined,
+  };
+  return {
+    owned,
+    clock,
+    signals,
+    tableReads: () => tableReads,
+    child,
+    endLeader: async (code, ended) => {
+      empty = ended?.groupEmpty ?? true;
+      signalCode = ended?.signal ?? null;
+      exited.resolve(code);
+      await flush();
+    },
+  };
+}
+
+const escapee: ProcessRecord = { pid: 5000, parentPid: LEADER, group: 5000 };
+
+describe('OwnedProcess', () => {
+  test('owns nothing until a process is adopted, and then has nothing to clean up', async () => {
+    const { owned, signals, tableReads } = harness({});
+    expect(owned.exit).toBeUndefined();
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual([]);
+    expect(tableReads()).toBe(0);
+  });
+
+  test('records an exit code, and a terminating signal as a signal with no code', async () => {
+    const coded = harness({});
+    coded.owned.adopt(coded.child);
+    await coded.endLeader(3);
+    expect(await coded.owned.exit).toEqual({ exitCode: 3, signal: null });
+
+    const signaled = harness({});
+    signaled.owned.adopt(signaled.child);
+    await signaled.endLeader(143, { signal: 'SIGTERM', groupEmpty: true });
+    expect(await signaled.owned.exit).toEqual({ exitCode: null, signal: 'SIGTERM' });
+  });
+
+  test('does not signal a group that was already empty when its leader exited', async () => {
+    const { owned, child, endLeader, signals, tableReads } = harness({});
+    owned.adopt(child);
+    await endLeader(0);
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual([]);
+    expect(tableReads()).toBe(0);
+  });
+
+  test('ends a live group with TERM, reaps the leader and reports complete', async () => {
+    const { owned, child, signals, tableReads } = harness({});
+    owned.adopt(child);
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual(['SIGTERM']);
+    expect(tableReads()).toBe(1);
+    expect(await owned.exit).toEqual({ exitCode: null, signal: 'SIGTERM' });
+  });
+
+  test('ends the members that outlived their leader', async () => {
+    const { owned, child, endLeader, signals } = harness({ endsOn: 'SIGTERM' });
+    owned.adopt(child);
+    await endLeader(0, { groupEmpty: false });
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual(['SIGTERM']);
+  });
+
+  test('escalates to KILL for a group that ignores TERM', async () => {
+    const { owned, child, clock, signals } = harness({ endsOn: 'SIGKILL' });
+    owned.adopt(child);
+    const outcome = owned.terminate();
+    await flush();
+    clock.advance(100);
+    expect(await outcome).toBe('complete');
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+
+  test('a group that survives KILL is incomplete', async () => {
+    const { owned, child, clock, signals } = harness({ endsOn: 'never' });
+    owned.adopt(child);
+    const outcome = owned.terminate();
+    await flush();
+    clock.advance(100);
+    await flush();
+    clock.advance(300);
+    expect(await outcome).toBe('incomplete');
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+  });
+
+  test('a descendant that left the group is unknown, though the group itself ended', async () => {
+    const { owned, child, signals } = harness({ table: [escapee] });
+    owned.adopt(child);
+    expect(await owned.terminate()).toBe('unknown');
+    expect(signals).toEqual(['SIGTERM']);
+  });
+
+  test('a process table that cannot be read is unknown, though the group itself ended', async () => {
+    const { owned, child, signals } = harness({ table: 'unreadable' });
+    owned.adopt(child);
+    expect(await owned.terminate()).toBe('unknown');
+    expect(signals).toEqual(['SIGTERM']);
+  });
+
+  test('an escaped descendant outranks a group that did not empty', async () => {
+    const { owned, child, clock } = harness({ table: [escapee], endsOn: 'never' });
+    owned.adopt(child);
+    const outcome = owned.terminate();
+    await flush();
+    clock.advance(100);
+    await flush();
+    clock.advance(300);
+    expect(await outcome).toBe('unknown');
+  });
+});

@@ -38,6 +38,8 @@ An input acknowledgement means the operation entered the host FIFO. Consumed-out
 - `SessionSlot`: the host-side ownership slot. A replacement needs a new session identity and is refused until the old session has closed with a `complete` cleanup. `incomplete` and `unknown` leave the slot quarantined, and nothing in this package can clear it, because only a host-authorized attestation can.
 - `SessionConnection`: joins a transport to a session through `HostEndpoint`, so a stale or unauthorized frame never reaches the process, the view or cleanup.
 
+A backend that is known to have no input channel, such as a pipe opened without stdin, sets `acceptsInput: false`, and its attachments then advertise no input and refuse it as `unsupported`.
+
 Budgets default to the values in [`documentation/terminal/security-and-budgets.md`](../../documentation/terminal/security-and-budgets.md) and are range-checked by `resolveSessionBudgets`. Input and resize share one FIFO of 256 operations with 8 more slots reserved for stop, revoke and cleanup, which a full FIFO cannot consume. Input is limited to 64 KiB of unsettled bytes and output to 1 MiB of bytes the consumer has not reported parsed. Output capacity returns only when the consumer reports that chunk's own parse completion (`outputParsed`, or the cumulative count in an `output-consumed` frame), never at a paint. A chunk that does not fit fails the session visibly and quarantines the slot, because a source that cannot be paused must not outrun its consumer.
 
 An accepted operation means only that it entered the host FIFO. The backend then has `inputAcknowledgementDeadlineMilliseconds` to settle it: a rejection is `failed`, a missed deadline is `unknown`, and neither is retried. Operations still queued when authority is revoked are `canceled` with an explicit event.
@@ -48,10 +50,29 @@ Owned streams are canceled and their reader released, owned async iterators rece
 
 `src/session/fixtures/` is exported from the root entry for the conformance suite: `ManualClock`, `createDeferred`, scripted backends and sources, and `createFixtureTransport`, which pairs a real `ClientEndpoint` with a session in memory.
 
+## The Bun helpers
+
+`@lostgradient/ventriloquist/bun` turns a process into the two things a `Session` consumes: a `ProcessBackend` and its `OutputSource` values. The host passes both to `new Session(...)`, then calls `hosted.reportExitTo(session)` so the exit reaches the session after the output it follows. Nothing is spawned until the session starts the backend, and the helpers are Bun-only, so they run on macOS and Linux (x64 and arm64) and nowhere else.
+
+- `createPipeProcess({ profile, acceptsInput? })`: `Bun.spawn` with piped stdio, run as its own process group. Standard output and standard error are two separate owned sources tagged `stdout` and `stderr`, so a partial escape sequence on one channel is never spliced into the other. Standard input exists only when `acceptsInput` is set. A pipe has no terminal, so it offers no resize and is never a PTY.
+- `createPtyProcess({ profile, dimensions })`: `Bun.spawn({ terminal })`, which makes the child the leader of its own session and process group. All output is one combined stream tagged `pty`. The helper decodes, splits and echoes nothing; the kernel's line discipline is all that sits between the process and the consumer, so echo and `\n` to `\r\n` translation are the terminal's, not the host's. When the leader exits the terminal hangs up its session, so a descendant cannot write after it; a pipe has no such hangup, and its sources end only when every holder of the pipe has closed it.
+- `createByteOutputSource(output)`: ingests an already-created `ReadableStream<Uint8Array>` or async byte iterable, such as a Bun Shell result, as an owned `stdout` source. Pair it with a session that has no backend: that session is output-only, advertises no input, resize or kill, and reports source completion instead of an exit code. The package exports no shell template, evaluation or command-construction helper, and a Bun Shell pipe is never presented as a terminal.
+
+A `ProcessProfile` is the host's decision: an executable, its arguments, an absolute working directory and the complete environment. Nothing is inherited from the host process and nothing is passed through a shell. A malformed profile or dimensions throw synchronously. A host outside the supported matrix, or a Bun that returns no terminal, fails the start as `unsupported-runtime` and never falls back to a pipe; a spawn the operating system refuses fails it as `spawn-failed`. Both are `ProcessStartFailure`, available as `hosted.startFailure`, and neither is a process exit or a transport failure.
+
+Process exit and end of file are separate events: the exit comes from the process, end of file from the stream, and neither is derived from the other. A terminal's data callback cannot be paused and a write Bun has accepted says nothing about the output, so output the session has not yet read is bounded (`maximumBufferedOutputBytes`, 1 MiB by default) and exceeding the bound fails the source visibly instead of dropping bytes.
+
+Cleanup ends the owned process group with TERM, then KILL once `terminationGraceMilliseconds` has passed, and reports `complete` only after a probe finds the group empty. The scope of that claim is the process group:
+
+- A descendant that started a session or group of its own, such as one that called `setsid`, is beyond it. While the leader is alive cleanup reads the process table first and reports `unknown` if it finds one; once the leader has exited, or if the table cannot be read, that observation is unavailable.
+- Anything left running by a crashed host is also beyond it, and no helper can report it. Replacement waits on a host-authorized clearance, as the security budgets document describes.
+- A group that is still occupied after the KILL window is `incomplete`.
+
 ## Commands
 
 - `bun run typecheck`: both TypeScript programs.
 - `bun run test`: the package tests.
 - `bun run test:protocol`: the protocol tests only, including the corpus matrix. An empty selection or a missing matrix cell fails.
 - `bun run test:session`: the session tests only. It also writes `test-results/cleanup.json`, a `runtime` evidence report under `scripts/terminal/evidence.schema.json` with one cell for each outcome (`complete`, `incomplete`, `unknown`) of an owned and a borrowed source, and fails if the report is invalid or a cell is missing. The report is regenerated, not committed.
+- `bun run test:bun`: the Bun helper tests only, against real pipe and PTY children on the current host. They cover prompt and input, no-newline output, progress rewrites, alternate screen, resize, Unicode chunks, nonzero exit, signals, stubborn descendants and the byte corpus in both modes, and the matrix test fails if a cell did not run.
 - `bun run test:coverage`: the tests with LCOV output, then the ratchet in `coverage-ratchet.json` through `@lostgradient/testing/coverage-ratchet`. TypeScript lines and functions are held at 100 percent.

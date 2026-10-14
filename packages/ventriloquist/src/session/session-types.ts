@@ -290,6 +290,12 @@ export type OutputSource =
  */
 export type ProcessBackend = {
   readonly mode: 'pty' | 'pipe';
+  /**
+   * Whether the process has an input channel. Absent means it does: only a backend that is
+   * known to have none (a pipe opened without stdin) sets `false`, and its attachments then
+   * advertise no input.
+   */
+  readonly acceptsInput?: boolean;
   start(): Promise<void>;
   write(bytes: Uint8Array): Promise<void>;
   resize?(columns: number, rows: number): Promise<void>;

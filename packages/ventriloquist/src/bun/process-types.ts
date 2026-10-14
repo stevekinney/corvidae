@@ -1,0 +1,131 @@
+import type { SessionClock } from '../session/session-clock.ts';
+import {
+  DEFAULT_SESSION_BUDGETS,
+  type OutputSource,
+  type ProcessBackend,
+  type TerminalDimensions,
+} from '../session/session-types.ts';
+import type { HostPlatform } from './host-platform.ts';
+import type { ProcessStartFailure } from './process-start-failure.ts';
+
+/**
+ * The server-owned shapes a Bun host uses to describe a process before it spawns one. A profile is
+ * chosen by the host, never by a client: the executable, arguments, working directory, and
+ * environment are all explicit, and nothing is resolved from a shell string.
+ */
+export type ProcessProfile = {
+  /** Absolute path or bare name of the executable; never a shell command line. */
+  executable: string;
+  /** Arguments passed after the executable, without shell interpretation. */
+  argumentList: readonly string[];
+  /** Absolute working directory the process starts in. */
+  workingDirectory: string;
+  /** The complete environment; nothing is inherited from the host process. */
+  environment: Readonly<Record<string, string>>;
+};
+
+/** How a process ended, reported separately from output end-of-file. */
+export type ProcessExit = {
+  /** The exit code, or `null` when a signal ended the process. */
+  exitCode: number | null;
+  /** The terminating signal name, or `null` when the process exited on its own. */
+  signal: string | null;
+};
+
+/** The slice of `Bun.Subprocess` the helpers use, so a test can describe a process that cannot be spawned for real. */
+export type SpawnedProcess = {
+  readonly pid: number;
+  readonly exited: Promise<number>;
+  readonly signalCode: string | null;
+  readonly stdin?: unknown;
+  readonly stdout?: unknown;
+  readonly stderr?: unknown;
+  readonly terminal?: unknown;
+  kill(signal?: number | string): void;
+};
+
+/** `Bun.spawn`, narrowed to what the helpers call. */
+export type SpawnProcess = (command: string[], options: Record<string, unknown>) => SpawnedProcess;
+
+/**
+ * What every helper accepts besides the process itself. All of it defaults to the running host, so
+ * a production caller passes none of it; each exists so a test can reach a branch the host cannot
+ * produce, such as an unsupported platform.
+ */
+export type ProcessHostOptions = {
+  /** The platform and architecture checked against the supported matrix. Defaults to the running host. */
+  host?: HostPlatform;
+  /** Defaults to `Bun.spawn`. */
+  spawn?: SpawnProcess;
+  /** Times the termination grace and observation window. Defaults to the system clock. */
+  clock?: SessionClock;
+  /**
+   * How long a TERM-signaled process group may take to empty before it is KILL-signaled.
+   * Whole milliseconds within `PROCESS_BUDGETS`; defaults to 1,000.
+   */
+  terminationGraceMilliseconds?: number;
+  /**
+   * How long a KILL-signaled process group may take to empty before cleanup reports it
+   * `incomplete`. The descendant observation window from the security budgets; defaults to 2,000.
+   */
+  observationWindowMilliseconds?: number;
+  /**
+   * Output the host has received but the session has not yet read. Output cannot be paused, so
+   * the source fails visibly when more than this arrives unread. Defaults to the session's
+   * output queue budget.
+   */
+  maximumBufferedOutputBytes?: number;
+};
+
+/** A pipe process: stdout and stderr keep their identity, and stdin is optional. */
+export type PipeProcessOptions = ProcessHostOptions & {
+  profile: ProcessProfile;
+  /** Whether the host opens stdin for input; omitted means the process has no input channel. */
+  acceptsInput?: boolean;
+};
+
+/** A PTY process: one combined terminal stream, started at validated dimensions. */
+export type PtyProcessOptions = ProcessHostOptions & {
+  profile: ProcessProfile;
+  dimensions: TerminalDimensions;
+};
+
+/**
+ * How long cleanup waits and how much unread output a process may hold, each with its permitted
+ * range. The observation window is the descendant observation window from the security budgets;
+ * a TERM grace and an observation window together stay inside the session's cleanup deadline at
+ * their defaults. Values outside a range are refused, never clamped.
+ */
+export const PROCESS_BUDGETS = {
+  terminationGraceMilliseconds: { default: 1_000, minimum: 1, maximum: 30_000 },
+  observationWindowMilliseconds: { default: 2_000, minimum: 250, maximum: 30_000 },
+  maximumBufferedOutputBytes: {
+    default: DEFAULT_SESSION_BUDGETS.outputQueueBytes,
+    minimum: 1,
+    maximum: 16 * 1024 * 1024,
+  },
+} as const;
+
+/** The part of a `Session` a hosted process needs in order to report its exit. */
+export type ProcessExitReceiver = {
+  start(): Promise<void>;
+  reportProcessExit(exitCode: number | null, signal: string | null): boolean;
+};
+
+/**
+ * A process the helpers own, described the way a `Session` consumes it. The host passes `backend`
+ * and `sources` to the session, then calls `reportExitTo` so the exit reaches it after output.
+ */
+export type HostedProcess = {
+  readonly mode: 'pipe' | 'pty';
+  readonly backend: ProcessBackend;
+  readonly sources: readonly OutputSource[];
+  /** Why the process did not start, once `backend.start()` has rejected; otherwise `undefined`. */
+  readonly startFailure: ProcessStartFailure | undefined;
+  /**
+   * Start the session if it has not started, wait for the process to end, and report the exit.
+   * The exit is reported only once the session is running, so it can never overtake the output it
+   * follows. Resolves without reporting when the process never started.
+   */
+  reportExitTo(receiver: ProcessExitReceiver): Promise<void>;
+};
