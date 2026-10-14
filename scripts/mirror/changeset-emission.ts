@@ -158,159 +158,98 @@ async function addingCommit(
   return commit;
 }
 
-/** The target a changeset's bytes name, or `undefined` when they cannot be read as a changeset. */
-async function targetOfBytes(bytes: Uint8Array): Promise<MirrorTarget | undefined> {
-  try {
-    return await targetOfChangeset(parseChangeset(new TextDecoder().decode(bytes)));
-  } catch (error) {
-    if (error instanceof ChangesetError) return undefined;
-    throw error;
+const immutableRemedy =
+  'delete it and add a new file under a new name; after sync, fix it in the target instead';
+
+/**
+ * Check 1, global for every target: a changeset on `main` is immutable until it is deleted.
+ *
+ * Delivery state is not inferred from content, name or mapping. Instead the history of each
+ * changeset at HEAD must be a single commit, which `git log --follow -M` over the full history
+ * answers directly. One rule therefore covers an edit after the add, a retarget (which is an
+ * edit), a rename git detects (50% similarity or more) and a delete followed by a re-add of the
+ * same name. A squash-merged pull request contributes one commit, so edits within it pass.
+ *
+ * Accepted residual: a synced changeset renamed and rewritten by more than half in one commit
+ * looks like a fresh changeset to git. The consequence is one extra bump in the target, never a
+ * lost release.
+ */
+async function assertImmutable(corvidaeRoot: string, headFiles: readonly string[]): Promise<void> {
+  for (const path of headFiles) {
+    const output = await requireGit(corvidaeRoot, [
+      'log',
+      '--follow',
+      '-M',
+      '--format=%H',
+      '--',
+      path,
+    ]);
+    const commits = output.split('\n').filter((line) => line.length > 0);
+    if (commits.length > 1) {
+      throw new ChangesetEmissionError(
+        `${path} has ${commits.length} commits in its history (a rename, an edit, a retarget or a re-added name). A changeset merged to main is immutable until deleted: ${immutableRemedy}.`,
+      );
+    }
   }
 }
 
-/** Each path's target at a revision; `undefined` marks a file that cannot be read as a changeset. */
-async function targetsAt(
+/** The mapping inputs: `targetFor` reads the first file and the validator's resolution the second. */
+const mappingFiles = ['scripts/mirror/target-definitions.ts', 'scripts/mirror/package-map.json'];
+
+/** A file at a revision, or `undefined` when it does not exist there. */
+async function textAt(
   corvidaeRoot: string,
   revision: string,
-  paths: readonly string[],
-): Promise<Map<string, MirrorTarget | undefined>> {
-  const targets = new Map<string, MirrorTarget | undefined>();
-  for (const path of paths) {
-    targets.set(path, await targetOfBytes(await blobBytes(corvidaeRoot, revision, path)));
-  }
-  return targets;
-}
-
-/** Whether a resolved target is the one being synced; an unreadable file fails closed as a yes. */
-const concerns = (owner: MirrorTarget | undefined, target: MirrorTarget): boolean =>
-  owner === undefined || owner === target;
-
-/**
- * The paths whose content, at the trailer or at HEAD, names this target or cannot be read.
- * A path counts when either end is relevant, so a name reused for a different mirror's
- * changeset is still caught for the mirror whose release it would swallow.
- *
- * Also refuses a retarget: a file present at both ends whose target changed, where either end
- * is this target. Delivery cannot be inferred from a file that was never pending here, so the
- * release would vanish silently.
- */
-async function relevantPaths(options: {
-  corvidaeRoot: string;
-  target: MirrorTarget;
-  trailerSha: string;
-  syncedFiles: readonly string[];
-  headFiles: readonly string[];
-}): Promise<Set<string>> {
-  const { corvidaeRoot, target, trailerSha, syncedFiles, headFiles } = options;
-  const [atTrailer, atHead] = await Promise.all([
-    targetsAt(corvidaeRoot, trailerSha, syncedFiles),
-    targetsAt(corvidaeRoot, 'HEAD', headFiles),
-  ]);
-  const relevant = new Set<string>();
-  for (const [path, owner] of [...atTrailer, ...atHead]) {
-    if (concerns(owner, target)) relevant.add(path);
-  }
-  for (const [path, before] of atTrailer) {
-    if (!atHead.has(path)) continue;
-    const after = atHead.get(path);
-    if (before !== after && (concerns(before, target) || concerns(after, target))) {
-      throw new ChangesetEmissionError(
-        `${path} named ${before ?? 'an unreadable target'} when the target last synced and names ${after ?? 'an unreadable target'} now. Delivery of a retargeted changeset cannot be inferred, so its release would be lost: write a new changeset file instead of retargeting.`,
-      );
-    }
-  }
-  return relevant;
+  path: string,
+): Promise<string | undefined> {
+  const result = await readGit(corvidaeRoot, ['show', `${revision}:${path}`]);
+  return result.exitCode === 0 ? result.stdout : undefined;
 }
 
 /**
- * A name that existed at the trailer and was added again in `(trailer, HEAD]` was deleted in
- * between and rewritten. It is not pending (it exists at both ends), so emitting nothing would
- * lose that release silently. Refuse, and make the author pick a new name.
+ * What the changeset validator resolves from a mapping file. The member lists in
+ * `target-definitions.ts` are compared as text. `package-map.json` is compared as the map from
+ * each publish-as name to its workspace, because recording a publication rewrites that file's
+ * snapshots without moving anything; an unreadable file compares as its raw text.
  */
-async function assertNoReusedNames(
-  corvidaeRoot: string,
-  trailerSha: string,
-  synced: ReadonlySet<string>,
-): Promise<void> {
-  const output = await requireGit(corvidaeRoot, [
-    'log',
-    '--no-renames',
-    '--diff-filter=A',
-    '--name-only',
-    '-z',
-    '--format=',
-    `${trailerSha}..HEAD`,
-    '--',
-    `${changesetDirectory}/`,
-  ]);
-  const reused = [...new Set(output.split('\0').filter((path) => synced.has(path)))].toSorted();
-  if (reused.length > 0) {
-    throw new ChangesetEmissionError(
-      `${reused.join(', ')} existed when the target last synced and was added again since, so its release cannot be told apart from the synced one. Never reuse a changeset file name; give the new changeset a new name.`,
+function mappingFingerprint(path: string, text: string | undefined): string {
+  if (text === undefined || !path.endsWith('.json')) return text ?? '\0absent';
+  try {
+    const parsed = JSON.parse(text) as {
+      workspaces?: Record<string, { disposition?: string; name?: string }>;
+    };
+    return JSON.stringify(
+      Object.entries(parsed.workspaces ?? {})
+        .map(([workspace, entry]) => [
+          workspace,
+          entry.disposition === 'publish-as' ? entry.name : (entry.disposition ?? null),
+        ])
+        .toSorted(([left], [right]) => String(left).localeCompare(String(right))),
     );
+  } catch {
+    return text;
   }
 }
 
 /**
- * A rename whose source existed at the trailer is a rename of something already synced, whether
- * or not the file was edited with it. Emitting the destination would release it twice; skipping
- * it would guess. Git's own rename detection is the judge, so an edit cannot hide one.
+ * Check 2, global: a changeset that spans the trailer was resolved to a target by a mapping that
+ * must still be the mapping. Targets are resolved from the current mapping only, which is safe
+ * because this guarantees it did not change under any changeset already synced.
  */
-async function assertNoRenamedSyncedNames(
+async function assertMappingStable(
   corvidaeRoot: string,
   trailerSha: string,
-  synced: ReadonlySet<string>,
-  pending: ReadonlySet<string>,
+  syncedFiles: readonly string[],
 ): Promise<void> {
-  const output = await requireGit(corvidaeRoot, [
-    'log',
-    '--find-renames',
-    '--diff-filter=R',
-    '--name-status',
-    '-z',
-    '--format=',
-    `${trailerSha}..HEAD`,
-    '--',
-    `${changesetDirectory}/`,
-  ]);
-  const fields = output.split('\0').map((field) => field.replace(/^\n+/, ''));
-  for (let index = 0; index + 2 < fields.length; index += 3) {
-    const [status, from, to] = [fields[index]!, fields[index + 1]!, fields[index + 2]!];
-    if (/^R\d*$/.test(status) && synced.has(from)) {
+  if (syncedFiles.length === 0) return;
+  for (const path of mappingFiles) {
+    const [before, after] = await Promise.all([
+      textAt(corvidaeRoot, trailerSha, path),
+      textAt(corvidaeRoot, 'HEAD', path),
+    ]);
+    if (mappingFingerprint(path, before) !== mappingFingerprint(path, after)) {
       throw new ChangesetEmissionError(
-        `${to} is a rename of ${from}, which was already synced: emitting it would release it twice. Revert the rename; fix a synced changeset in the target's .changeset/ instead.`,
-      );
-    }
-  }
-
-  // Rename detection needs 50% similarity, and a changeset is a few lines long: rename one and
-  // rewrite it and git reports a deletion and an addition. A commit that deletes a synced
-  // changeset and adds a pending one is treated as the rename it most likely is.
-  const history = await requireGit(corvidaeRoot, [
-    'log',
-    '--no-renames',
-    '--name-status',
-    '-z',
-    '--format=%x01',
-    `${trailerSha}..HEAD`,
-    '--',
-    `${changesetDirectory}/`,
-  ]);
-  for (const record of history.split('\u0001')) {
-    const tokens = record
-      .split('\0')
-      .map((token) => token.replace(/^\n+/, ''))
-      .filter((token) => token.length > 0);
-    const deleted: string[] = [];
-    const added: string[] = [];
-    for (let index = 0; index + 1 < tokens.length; index += 2) {
-      const [status, path] = [tokens[index]!, tokens[index + 1]!];
-      if (status === 'D' && synced.has(path)) deleted.push(path);
-      if (status === 'A' && pending.has(path)) added.push(path);
-    }
-    if (deleted.length > 0 && added.length > 0) {
-      throw new ChangesetEmissionError(
-        `${added.join(', ')} was added in the same commit that deleted ${deleted.join(', ')}, which was already synced: it looks like a rename, and emitting it would release it twice. Delete the synced changeset in a separate commit, or revert; fix a synced changeset in the target's .changeset/ instead.`,
+        `${path} changed since the target last synced while ${syncedFiles.join(', ')} spans that sync, so which mirror owns those changesets may have changed; deliver or delete changesets that span the trailer before moving a package between mirrors.`,
       );
     }
   }
@@ -348,21 +287,10 @@ export async function planChangesetEmission({
     changesetsAt(corvidaeRoot, 'HEAD'),
     changesetsAt(corvidaeRoot, trailerSha),
   ]);
+  await assertImmutable(corvidaeRoot, headFiles);
+  await assertMappingStable(corvidaeRoot, trailerSha, syncedFiles);
   const synced = new Set(syncedFiles);
   const pending = headFiles.filter((path) => !synced.has(path));
-  // Only changesets that belong to this target can have been delivered to it, or be released
-  // twice into it. A file that cannot be read fails closed: it counts as this target's.
-  const relevant = await relevantPaths({
-    corvidaeRoot,
-    target,
-    trailerSha,
-    syncedFiles,
-    headFiles,
-  });
-  const relevantSynced = new Set(syncedFiles.filter((path) => relevant.has(path)));
-  const relevantPending = new Set(pending.filter((path) => relevant.has(path)));
-  await assertNoReusedNames(corvidaeRoot, trailerSha, relevantSynced);
-  await assertNoRenamedSyncedNames(corvidaeRoot, trailerSha, relevantSynced, relevantPending);
 
   const mine: { path: string; bytes: Uint8Array }[] = [];
   for (const path of pending) {

@@ -136,6 +136,7 @@ describe('the corvidae .changeset directory', () => {
     expect(await readdir(root)).toContain('README.md');
     const readme = await Bun.file(join(root, 'README.md')).text();
     expect(readme).toMatch(/one target/i);
-    expect(readme).toMatch(/fix mistakes in the target/i);
+    expect(readme).toMatch(/immutable/i);
+    expect(readme).toMatch(/fix it in the target/i);
   });
 });

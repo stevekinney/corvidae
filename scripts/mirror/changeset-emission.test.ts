@@ -112,15 +112,6 @@ describe('changeset emission', () => {
     expect(await emit(root, await target(synced), synced)).toEqual({});
   });
 
-  test('(c) does not emit a file modified after it synced', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/fix-a.md', weftChangeset);
-    const synced = await commit(root, 'Add a changeset');
-    await write(root, '.changeset/fix-a.md', changeset('@lostgradient/weft', 'A better sentence.'));
-    await commit(root, 'Edit the changeset');
-    expect(await emit(root, await target(synced), synced)).toEqual({});
-  });
-
   test('(d) does not emit a file added and deleted inside the range', async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
@@ -128,71 +119,6 @@ describe('changeset emission', () => {
     await git(root, 'rm', '--quiet', '.changeset/fix-a.md');
     await commit(root, 'Delete the changeset');
     expect(await emit(root, await target(start), start)).toEqual({});
-  });
-
-  test('(e) a rename before the sync emits the file once, under its new name', async () => {
-    const { root, start } = await corvidae();
-    await write(root, '.changeset/old-name.md', weftChangeset);
-    await commit(root, 'Add a changeset');
-    await git(root, 'mv', '.changeset/old-name.md', '.changeset/new-name.md');
-    const renamed = await commit(root, 'Rename the changeset');
-    const files = await emit(root, await target(start), start);
-    expect(Object.keys(files)).toEqual([emittedPath(renamed, 'new-name')]);
-  });
-
-  test('(e2) a rename after the sync throws and names both files', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/old-name.md', weftChangeset);
-    const synced = await commit(root, 'Add a changeset');
-    await git(root, 'mv', '.changeset/old-name.md', '.changeset/new-name.md');
-    await commit(root, 'Rename the changeset');
-    const error = await rejectionOf(emit(root, await target(synced), synced));
-    expect(error).toBeInstanceOf(ChangesetEmissionError);
-    expect((error as Error).message).toContain('.changeset/old-name.md');
-    expect((error as Error).message).toContain('.changeset/new-name.md');
-  });
-
-  test('(e2) a rename that also edits the file after the sync throws and names both files', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/old-name.md', weftChangeset);
-    const synced = await commit(root, 'Add a changeset');
-    await git(root, 'mv', '.changeset/old-name.md', '.changeset/new-name.md');
-    await write(
-      root,
-      '.changeset/new-name.md',
-      changeset('@lostgradient/weft', 'Fix the thing.\n\nAnd one more sentence.'),
-    );
-    await commit(root, 'Rename and edit the changeset');
-    const error = await rejectionOf(emit(root, await target(synced), synced));
-    expect(error).toBeInstanceOf(ChangesetEmissionError);
-    expect((error as Error).message).toContain('.changeset/old-name.md');
-    expect((error as Error).message).toContain('.changeset/new-name.md');
-  });
-
-  test('(e2) a rename that git cannot see because the whole file was rewritten still throws', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/old-name.md', weftChangeset);
-    const synced = await commit(root, 'Add a changeset');
-    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
-    await write(
-      root,
-      '.changeset/new-name.md',
-      '---\n"@lostgradient/weft": minor\n---\n\nEntirely different words about another subject.\n',
-    );
-    await commit(root, 'Delete one changeset and add another in one commit');
-    const detected = await git(
-      root,
-      'log',
-      '--find-renames',
-      '--diff-filter=R',
-      '--format=%H',
-      '-1',
-    );
-    expect(detected.trim()).toBe('');
-    const error = await rejectionOf(emit(root, await target(synced), synced));
-    expect(error).toBeInstanceOf(ChangesetEmissionError);
-    expect((error as Error).message).toContain('.changeset/old-name.md');
-    expect((error as Error).message).toContain('.changeset/new-name.md');
   });
 
   test('deleting a synced changeset in a commit that adds nothing is allowed', async () => {
@@ -206,72 +132,6 @@ describe('changeset emission', () => {
     expect(Object.keys(await emit(root, await target(synced), synced))).toEqual([
       emittedPath(later, 'later'),
     ]);
-  });
-
-  test("a rename of another mirror's synced changeset only throws for that mirror", async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/weft-note.md', weftChangeset);
-    const synced = await commit(root, 'Add a weft changeset');
-    await git(root, 'mv', '.changeset/weft-note.md', '.changeset/weft-renamed.md');
-    await commit(root, 'Rename the weft changeset');
-    await git(root, 'rm', '--quiet', '.changeset/weft-renamed.md');
-    await write(root, '.changeset/weft-again.md', changeset('@lostgradient/weft', 'Entirely new.'));
-    await commit(root, 'Delete and add in one commit');
-    await write(root, '.changeset/cinder-note.md', changeset('@lostgradient/cinder'));
-    const cinderAdding = await commit(root, 'Add a cinder changeset');
-    const clone = await target(synced);
-
-    const files = await emit(root, clone, synced, 'cinder');
-    expect(Object.keys(files)).toEqual([emittedPath(cinderAdding, 'cinder-note')]);
-    expect(await rejectionOf(emit(root, clone, synced, 'weft'))).toBeInstanceOf(
-      ChangesetEmissionError,
-    );
-  });
-
-  test("another mirror's synced name deleted and re-added does not throw for this mirror", async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/note.md', weftChangeset);
-    const synced = await commit(root, 'Add a weft changeset');
-    await git(root, 'rm', '--quiet', '.changeset/note.md');
-    await commit(root, 'Consume it');
-    await write(root, '.changeset/note.md', changeset('@lostgradient/weft', 'Reused.'));
-    await commit(root, 'Reuse the name');
-    const clone = await target(synced);
-    expect(await emit(root, clone, synced, 'cinder')).toEqual({});
-    expect(await rejectionOf(emit(root, clone, synced, 'weft'))).toBeInstanceOf(
-      ChangesetEmissionError,
-    );
-  });
-
-  test('a changeset retargeted to another mirror between syncs throws for both mirrors', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/note.md', weftChangeset);
-    const synced = await commit(root, 'Add a weft changeset');
-    await write(root, '.changeset/note.md', changeset('@lostgradient/cinder', 'Now for cinder.'));
-    await commit(root, 'Retarget the changeset');
-    const clone = await target(synced);
-    for (const mirror of ['cinder', 'weft'] as const) {
-      const error = await rejectionOf(emit(root, clone, synced, mirror));
-      expect(error).toBeInstanceOf(ChangesetEmissionError);
-      const message = (error as Error).message;
-      expect(message).toContain('.changeset/note.md');
-      expect(message).toContain('weft');
-      expect(message).toContain('cinder');
-      expect(message).toContain('write a new changeset file instead of retargeting');
-    }
-  });
-
-  test('a retarget between two other mirrors does not throw for this one', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/note.md', changeset('@lostgradient/cinder'));
-    const synced = await commit(root, 'Add a cinder changeset');
-    await write(
-      root,
-      '.changeset/note.md',
-      changeset('@lostgradient/operative', 'Now for agent-bureau.'),
-    );
-    await commit(root, 'Retarget the changeset');
-    expect(await emit(root, await target(synced), synced, 'weft')).toEqual({});
   });
 
   test('(f) the same trailer gives identical output on a repeat run', async () => {
@@ -312,27 +172,6 @@ describe('changeset emission', () => {
     expect(Object.keys(await emit(root, clone, start))).toEqual([path]);
   });
 
-  test('(g2) a later changeset reusing a consumed name is emitted under a new path', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/fix-a.md', weftChangeset);
-    const first = await commit(root, 'Add a changeset');
-    await git(root, 'rm', '--quiet', '.changeset/fix-a.md');
-    const removed = await commit(root, 'Consume the changeset');
-    await write(
-      root,
-      '.changeset/fix-a.md',
-      changeset('@lostgradient/weft', 'Same name, new text.'),
-    );
-    const reused = await commit(root, 'Reuse the name');
-    const clone = await target(removed);
-    await write(clone, emittedPath(first, 'fix-a'), weftChangeset);
-    await commit(clone, 'The first copy synced');
-    await git(clone, 'rm', '--quiet', emittedPath(first, 'fix-a'));
-    await commit(clone, 'Version Packages');
-
-    expect(Object.keys(await emit(root, clone, removed))).toEqual([emittedPath(reused, 'fix-a')]);
-  });
-
   test('(g2) two pending files with identical text are both emitted', async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/one.md', weftChangeset);
@@ -343,23 +182,6 @@ describe('changeset emission', () => {
       emittedPath(adding, 'one'),
       emittedPath(adding, 'two'),
     ]);
-  });
-
-  test('a name that existed at the trailer and was deleted and re-added in the range throws', async () => {
-    const { root } = await corvidae();
-    await write(root, '.changeset/fix-a.md', weftChangeset);
-    const synced = await commit(root, 'Add a changeset');
-    await git(root, 'rm', '--quiet', '.changeset/fix-a.md');
-    await commit(root, 'Consume the changeset');
-    await write(
-      root,
-      '.changeset/fix-a.md',
-      changeset('@lostgradient/weft', 'Same name, new text.'),
-    );
-    await commit(root, 'Reuse the name');
-    const error = await rejectionOf(emit(root, await target(synced), synced));
-    expect(error).toBeInstanceOf(ChangesetEmissionError);
-    expect((error as Error).message).toContain('.changeset/fix-a.md');
   });
 
   test('(g) a merge that brought in a side branch adding and deleting the path still skips it', async () => {
@@ -488,5 +310,155 @@ describe('changeset emission', () => {
     await write(root, '.changeset/README.md', '# Release intent\n');
     const clone = await target('unused');
     expect(await emit(root, clone, 'corvidae-label')).toEqual({});
+  });
+
+  test('(c) an edit after the add throws for every target', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/fix-a.md', weftChangeset);
+    const synced = await commit(root, 'Add a changeset');
+    await write(root, '.changeset/fix-a.md', changeset('@lostgradient/weft', 'A better sentence.'));
+    await commit(root, 'Edit the changeset');
+    for (const mirror of ['weft', 'cinder', 'agent-bureau'] as const) {
+      const error = await rejectionOf(emit(root, await target(synced), synced, mirror));
+      expect(error).toBeInstanceOf(ChangesetEmissionError);
+      expect((error as Error).message).toContain('.changeset/fix-a.md');
+      expect((error as Error).message).toContain('delete it and add a new file under a new name');
+    }
+  });
+
+  test('a retarget is an edit and throws', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/note.md', weftChangeset);
+    const synced = await commit(root, 'Add a weft changeset');
+    await write(root, '.changeset/note.md', changeset('@lostgradient/cinder', 'Now for cinder.'));
+    await commit(root, 'Retarget the changeset');
+    for (const mirror of ['weft', 'cinder'] as const) {
+      expect(await rejectionOf(emit(root, await target(synced), synced, mirror))).toBeInstanceOf(
+        ChangesetEmissionError,
+      );
+    }
+  });
+
+  test('(e) a rename git detects throws, whether or not the file had synced', async () => {
+    for (const synchronized of [true, false]) {
+      const { root, start } = await corvidae();
+      await write(root, '.changeset/old-name.md', weftChangeset);
+      const added = await commit(root, 'Add a changeset');
+      await git(root, 'mv', '.changeset/old-name.md', '.changeset/new-name.md');
+      await commit(root, 'Rename the changeset');
+      const trailer = synchronized ? added : start;
+      const error = await rejectionOf(emit(root, await target(trailer), trailer));
+      expect(error).toBeInstanceOf(ChangesetEmissionError);
+      expect((error as Error).message).toContain('.changeset/new-name.md');
+    }
+  });
+
+  test('a delete and re-add of the same name throws', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/fix-a.md', weftChangeset);
+    const first = await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/fix-a.md');
+    const removed = await commit(root, 'Consume the changeset');
+    await write(
+      root,
+      '.changeset/fix-a.md',
+      changeset('@lostgradient/weft', 'Same name, new text.'),
+    );
+    await commit(root, 'Reuse the name');
+    for (const trailer of [first, removed]) {
+      const error = await rejectionOf(emit(root, await target(trailer), trailer));
+      expect(error).toBeInstanceOf(ChangesetEmissionError);
+      expect((error as Error).message).toContain('.changeset/fix-a.md');
+    }
+  });
+
+  test('a squash that folds several edits into one commit passes and emits once', async () => {
+    const { root, start } = await corvidae();
+    await git(root, 'checkout', '--quiet', '-b', 'feature');
+    await write(root, '.changeset/fix-a.md', weftChangeset);
+    await commit(root, 'First draft');
+    await write(root, '.changeset/fix-a.md', changeset('@lostgradient/cinder', 'Retargeted.'));
+    await commit(root, 'Retarget');
+    await write(root, '.changeset/fix-a.md', changeset('@lostgradient/weft', 'Final words.'));
+    await commit(root, 'Final edit');
+    await git(root, 'checkout', '--quiet', 'main');
+    await git(root, 'merge', '--squash', '--quiet', 'feature');
+    const squashed = await commit(root, 'Squashed pull request');
+    const files = await emit(root, await target(start), start);
+    expect(Object.keys(files)).toEqual([emittedPath(squashed, 'fix-a')]);
+  });
+
+  describe('the package-to-mirror mapping', () => {
+    const definitions = 'scripts/mirror/target-definitions.ts';
+    const packageMap = 'scripts/mirror/package-map.json';
+
+    async function mapped(contents: string, map: string): Promise<{ root: string; start: string }> {
+      const { root } = await corvidae();
+      await write(root, definitions, contents);
+      await write(root, packageMap, map);
+      return { root, start: await commit(root, 'Mapping') };
+    }
+
+    const map = (extra = ''): string =>
+      `${JSON.stringify({
+        workspaces: {
+          '@lostgradient/weft': {
+            disposition: 'publish-as',
+            name: '@lostgradient/weft',
+            lastPublishedVersion: '1.0.0',
+            ...(extra === '' ? {} : { publishedSnapshot: { version: extra } }),
+          },
+        },
+      })}\n`;
+
+    test('a mapping change while a changeset spans the trailer throws for every target', async () => {
+      const { root } = await mapped("export const members = ['weft'];\n", map());
+      await write(root, '.changeset/fix-a.md', weftChangeset);
+      const synced = await commit(root, 'Add a changeset');
+      await write(root, definitions, "export const members = ['cinder'];\n");
+      await commit(root, 'Move the package');
+      for (const mirror of ['weft', 'cinder', 'agent-bureau'] as const) {
+        const error = await rejectionOf(emit(root, await target(synced), synced, mirror));
+        expect(error).toBeInstanceOf(ChangesetEmissionError);
+        expect((error as Error).message).toContain(definitions);
+        expect((error as Error).message).toContain(
+          'deliver or delete changesets that span the trailer before moving a package between mirrors',
+        );
+      }
+    });
+
+    test('a package name change in package-map.json also throws', async () => {
+      const { root } = await mapped("export const members = ['weft'];\n", map());
+      await write(root, '.changeset/fix-a.md', weftChangeset);
+      const synced = await commit(root, 'Add a changeset');
+      await write(
+        root,
+        packageMap,
+        map().replace('"name":"@lostgradient/weft"', '"name":"@lostgradient/weft-core"'),
+      );
+      await commit(root, 'Rename the package');
+      expect(await rejectionOf(emit(root, await target(synced), synced))).toBeInstanceOf(
+        ChangesetEmissionError,
+      );
+    });
+
+    test('a mapping change with no changeset spanning the trailer passes', async () => {
+      const { root, start } = await mapped("export const members = ['weft'];\n", map());
+      await write(root, definitions, "export const members = ['cinder'];\n");
+      await commit(root, 'Move the package');
+      await write(root, '.changeset/fix-a.md', weftChangeset);
+      const adding = await commit(root, 'Add a changeset');
+      const files = await emit(root, await target(start), start);
+      expect(Object.keys(files)).toEqual([emittedPath(adding, 'fix-a')]);
+    });
+
+    test('recording a publication snapshot is not a mapping change', async () => {
+      const { root } = await mapped("export const members = ['weft'];\n", map());
+      await write(root, '.changeset/fix-a.md', weftChangeset);
+      const synced = await commit(root, 'Add a changeset');
+      await write(root, packageMap, map('1.0.1'));
+      await commit(root, 'Record a publication');
+      expect(await emit(root, await target(synced), synced)).toEqual({});
+    });
   });
 });
