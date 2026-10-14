@@ -181,7 +181,9 @@ async function clientCertificateVerified(
   const verify = mtlsConfig.verifyClientCertificate;
   if (verify === undefined) return transportVerifiesClientCertificates;
   try {
-    return await verify(request);
+    // Untyped hosts can return any value; only a literal `true` is evidence.
+    const verified: unknown = await verify(request);
+    return verified === true;
   } catch (error) {
     console.warn(
       'Client certificate verification failed:',

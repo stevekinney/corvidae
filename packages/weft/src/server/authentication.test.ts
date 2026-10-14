@@ -821,6 +821,24 @@ describe('createAuthenticator — mTLS', () => {
     expect(result).toEqual({ authenticated: false, error: 'No valid credentials provided' });
   });
 
+  it('admits mTLS only when the verifier returns a literal true', async () => {
+    for (const truthy of ['false', 'FAILURE', 1, {}]) {
+      const authenticate = await createAuthenticator({
+        mtls: {
+          ca: 'ca-pem',
+          cert: 'cert-pem',
+          key: 'key-pem',
+          // An untyped host can hand back a non-boolean truthy value.
+          verifyClientCertificate: () => truthy as unknown as boolean,
+        },
+      });
+
+      const result = await authenticate(makeRequest('https://localhost/v1/workflows'));
+
+      expect(result).toEqual({ authenticated: false, error: 'No valid credentials provided' });
+    }
+  });
+
   it('treats a throwing verifier as unverified instead of rejecting the authenticate call', async () => {
     const authenticate = await createAuthenticator({
       mtls: {
