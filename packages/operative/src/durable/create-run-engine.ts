@@ -8,6 +8,7 @@ import {
   type MetricsCollector,
   type ObservabilityOptions,
   type PayloadSizePolicy,
+  type RecoverAllOptions,
   type RegistryAgnosticEngine,
   type Storage,
   type WorkflowLogRecord,
@@ -150,6 +151,14 @@ export interface CreateRunEngineOptions {
    * behavior. An explicit value always wins.
    */
   startScheduler?: boolean | undefined;
+
+  /**
+   * The hook the host's own `engine.recoverAll({ onRecoveredWorkflow })` would receive, installed
+   * at engine creation so that a run resumed by the engine's own claim reclaim before that first
+   * `recoverAll()` call is handed to it as well, ahead of the run's first step. See Weft's
+   * `EngineCreateOptions.onRecoveredWorkflow`.
+   */
+  onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'] | undefined;
 
   /**
    * Re-provide a recovered run's non-serializable {@link DurableRunDeps} on a
@@ -411,6 +420,9 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
     ...(startScheduler !== undefined ? { startScheduler } : {}),
     ...(options.schedulerPollIntervalMs !== undefined
       ? { schedulerPollIntervalMs: options.schedulerPollIntervalMs }
+      : {}),
+    ...(options.onRecoveredWorkflow !== undefined
+      ? { onRecoveredWorkflow: options.onRecoveredWorkflow }
       : {}),
     resolveWorkflowServices,
     onLog: createHumanWaitMarkerSink(options.onLog),

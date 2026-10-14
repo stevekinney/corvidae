@@ -3,6 +3,11 @@ import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { loadPackageSurface } from './package-surface.ts';
@@ -27,6 +32,10 @@ import {
   type SyncResult,
 } from './sync.ts';
 import { loadTargetOwnedPolicy } from './target-owned.ts';
+
+// The end-to-end scenarios clone, install, build, pack and import a package, some twice. They
+// keep the 300-second budget they had as tests as their hang guard, not the 120-second default.
+const END_TO_END_BUDGET_MILLISECONDS = 300_000;
 
 describe('gitEnvironment', () => {
   test('excludes App signing credentials while preserving push authentication', () => {
@@ -111,7 +120,7 @@ describe('credentialedGitEnvironment', () => {
   });
 });
 
-describe('direct push credentials', () => {
+describe('direct push credentials', async () => {
   test('keeps local pushes credential-free, lazily authenticates GitHub, and rejects other hosts', async () => {
     let requests = 0;
     const provider = async () => {
@@ -151,7 +160,8 @@ describe('direct push credentials', () => {
     expect(requests).toBe(1);
   });
 
-  test('runSync resolves the trusted provider through the verified push callback', async () => {
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withHarness(async (harness) => {
       const report = join(harness.scratch, 'direct-push-environment.json');
       const rewrite = join(harness.scratch, 'git-rewrite.config');
@@ -186,6 +196,7 @@ describe('direct push credentials', () => {
         });
       `;
       const process_ = Bun.spawn(['bun', '-e', script], {
+        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
         cwd: join(import.meta.dir, '../..'),
         env: {
           ...Bun.env,
@@ -205,7 +216,9 @@ describe('direct push credentials', () => {
         GIT_CONFIG_VALUE_0: 'Authorization: Basic trusted-subprocess-token',
       });
     });
-  }, 30_000);
+  });
+  test('runSync resolves the trusted provider through the verified push callback', () =>
+    rethrow(outcome1));
 });
 
 /**
@@ -546,7 +559,8 @@ async function withHarness(
   }
 }
 
-test('cloneTarget does not copy a transient local Git maintenance lock', async () => {
+// Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+const outcome2 = await outcomeOf(async () => {
   await withHarness(async (harness) => {
     await Bun.write(join(harness.remote, 'objects/maintenance.lock'), 'transient\n');
     const clone = await cloneTarget({
@@ -556,6 +570,7 @@ test('cloneTarget does not copy a transient local Git maintenance lock', async (
     expect(await Bun.file(join(clone, '.git/objects/maintenance.lock')).exists()).toBe(false);
   });
 });
+test('cloneTarget does not copy a transient local Git maintenance lock', () => rethrow(outcome2));
 
 async function sync(harness: Harness, label: string): Promise<SyncResult> {
   return runSync({
@@ -568,198 +583,170 @@ async function sync(harness: Harness, label: string): Promise<SyncResult> {
   });
 }
 
-/**
- * One budget for the whole end-to-end pass, declared rather than discovered: a run clones,
- * installs twice, builds and type-checks two packages, packs them, runs `publint` and `attw` over
- * each tarball, and then installs and imports both from a scratch consumer — and this test does
- * that twice, to prove the second run is a skip.
- */
-const endToEndTimeout = 300_000;
+describe('the mirror sync against a fake remote', async () => {
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcome3 = await outcomeOf(async () => {
+    const targetFiles = targetFixture();
+    targetFiles[`${privateWorkspaceDirectory}/package.json`] = {
+      name: privateWorkspaceName,
+      private: true,
+      scripts: { build: 'bun -e "process.exit(23)"', typecheck: 'tsc --noEmit' },
+    };
+    await withHarness(async (harness) => {
+      expect(await throwingRejectionOf(sync(harness, 'private-build-failure'))).toThrow(
+        `running build for ${privateWorkspaceName}`,
+      );
+    }, targetFiles);
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('a failing target-owned private build aborts verification', () => rethrow(outcome3));
 
-describe('the mirror sync against a fake remote', () => {
-  test(
-    'a failing target-owned private build aborts verification',
-    async () => {
-      const targetFiles = targetFixture();
-      targetFiles[`${privateWorkspaceDirectory}/package.json`] = {
-        name: privateWorkspaceName,
-        private: true,
-        scripts: { build: 'bun -e "process.exit(23)"', typecheck: 'tsc --noEmit' },
-      };
-      await withHarness(async (harness) => {
-        expect(await throwingRejectionOf(sync(harness, 'private-build-failure'))).toThrow(
-          `running build for ${privateWorkspaceName}`,
-        );
-      }, targetFiles);
-    },
-    endToEndTimeout,
-  );
+  const outcome4 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      const first = await sync(harness, 'first');
 
-  test(
-    'transforms, verifies, pushes, and then reports skip on an identical second run',
-    async () => {
-      await withHarness(async (harness) => {
-        const first = await sync(harness, 'first');
+      expect(first.decision).toBe('pushed');
+      expect(first.changed.length).toBeGreaterThan(0);
+      // `firstPublish` is every manifest emitted at 0.0.0: the private workspace always
+      // qualifies (nothing publishes `@lostgradient/skills`, so its name reads wider than what
+      // it reports), and a `publish-as` fixture workspace qualifies only while the real,
+      // committed `package-map.json` still records no `lastPublishedVersion` for it. Derived
+      // from that map rather than pinned as a literal, so a fixture workspace's own first
+      // publish (COR-1198 published both `@lostgradient/cryptography` and
+      // `@lostgradient/lifecycle`) does not silently go stale here. `@lostgradient/typescript`
+      // was in this list until COR-1287 and is not a regression by its absence: it ships from
+      // the cinder target, so the agent-bureau plan vendors its configuration rather than
+      // emitting a manifest for it, exactly as the weft plan always has.
+      const map = await loadPackageMap();
+      const expectedFirstPublish: string[] = Object.values(fixturePackages)
+        .filter((entry) => {
+          const disposition = map.workspaces[entry.workspace];
+          return (
+            disposition?.disposition === 'publish-as' && disposition.lastPublishedVersion === null
+          );
+        })
+        .map((entry) => entry.publicName);
+      expectedFirstPublish.push(privateWorkspaceName);
+      expect(first.firstPublish.toSorted()).toEqual(expectedFirstPublish.toSorted());
+      // The private workspace is type-checked in the target even though nothing packs it: its
+      // source ships now, and `typecheck` is the only check that reads it.
+      expect(first.verification.privateTypechecks).toEqual([privateWorkspaceName]);
+      expect(
+        await readFile(join(first.directory, privateWorkspaceDirectory, 'src/index.ts'), 'utf8'),
+      ).toContain('harness:');
+      expect(first.verification.reports.map((report) => report.publicName).toSorted()).toEqual([
+        '@lostgradient/cryptography',
+        '@lostgradient/lifecycle',
+      ]);
+      for (const report of first.verification.reports) {
+        expect(report.publint.exitCode, `publint for ${report.publicName}`).toBe(0);
+        expect(report.typeResolution.exitCode, `attw for ${report.publicName}`).toBe(0);
+      }
+      expect(first.verification.smokeTest.specifiers).toEqual([
+        '@lostgradient/cryptography',
+        '@lostgradient/lifecycle',
+      ]);
 
-        expect(first.decision).toBe('pushed');
-        expect(first.changed.length).toBeGreaterThan(0);
-        // `firstPublish` is every manifest emitted at 0.0.0: the private workspace always
-        // qualifies (nothing publishes `@lostgradient/skills`, so its name reads wider than what
-        // it reports), and a `publish-as` fixture workspace qualifies only while the real,
-        // committed `package-map.json` still records no `lastPublishedVersion` for it. Derived
-        // from that map rather than pinned as a literal, so a fixture workspace's own first
-        // publish (COR-1198 published both `@lostgradient/cryptography` and
-        // `@lostgradient/lifecycle`) does not silently go stale here. `@lostgradient/typescript`
-        // was in this list until COR-1287 and is not a regression by its absence: it ships from
-        // the cinder target, so the agent-bureau plan vendors its configuration rather than
-        // emitting a manifest for it, exactly as the weft plan always has.
-        const map = await loadPackageMap();
-        const expectedFirstPublish: string[] = Object.values(fixturePackages)
-          .filter((entry) => {
-            const disposition = map.workspaces[entry.workspace];
-            return (
-              disposition?.disposition === 'publish-as' && disposition.lastPublishedVersion === null
-            );
-          })
-          .map((entry) => entry.publicName);
-        expectedFirstPublish.push(privateWorkspaceName);
-        expect(first.firstPublish.toSorted()).toEqual(expectedFirstPublish.toSorted());
-        // The private workspace is type-checked in the target even though nothing packs it: its
-        // source ships now, and `typecheck` is the only check that reads it.
-        expect(first.verification.privateTypechecks).toEqual([privateWorkspaceName]);
-        expect(
-          await readFile(join(first.directory, privateWorkspaceDirectory, 'src/index.ts'), 'utf8'),
-        ).toContain('harness:');
-        expect(first.verification.reports.map((report) => report.publicName).toSorted()).toEqual([
-          '@lostgradient/cryptography',
-          '@lostgradient/lifecycle',
-        ]);
-        for (const report of first.verification.reports) {
-          expect(report.publint.exitCode, `publint for ${report.publicName}`).toBe(0);
-          expect(report.typeResolution.exitCode, `attw for ${report.publicName}`).toBe(0);
-        }
-        expect(first.verification.smokeTest.specifiers).toEqual([
-          '@lostgradient/cryptography',
-          '@lostgradient/lifecycle',
-        ]);
+      // Corvidae's source reached the target, read off the clone rather than out of the plan:
+      // a plan key proves what the transform intended, and a file on disk proves what landed.
+      // The fixture's target seeded different bytes at each of these paths, so an assertion
+      // that passes here cannot be passing because the two happened to agree.
+      for (const [directory, entry] of Object.entries(fixturePackages)) {
+        const emitted = await readFile(join(first.directory, directory, 'src/index.ts'), 'utf8');
+        expect(emitted, `${entry.publicName} source`).toBe(entry.source);
+        expect(emitted).not.toBe(entry.staleSource);
+      }
 
-        // Corvidae's source reached the target, read off the clone rather than out of the plan:
-        // a plan key proves what the transform intended, and a file on disk proves what landed.
-        // The fixture's target seeded different bytes at each of these paths, so an assertion
-        // that passes here cannot be passing because the two happened to agree.
-        for (const [directory, entry] of Object.entries(fixturePackages)) {
-          const emitted = await readFile(join(first.directory, directory, 'src/index.ts'), 'utf8');
-          expect(emitted, `${entry.publicName} source`).toBe(entry.source);
-          expect(emitted).not.toBe(entry.staleSource);
-        }
+      // The commit holds transform output only. Build output exists in the clone by now and is
+      // not ignored, so anything swept in would show up here.
+      const committed = await git(harness.remote, 'show', '--format=', '--name-only', 'HEAD');
+      expect(committed).toContain('packages/cryptography/package.json');
+      expect(committed.split('\n').filter((path) => path.includes('dist/'))).toEqual([]);
+      expect(committed.split('\n').filter((path) => path.includes('tsbuildinfo'))).toEqual([]);
 
-        // The commit holds transform output only. Build output exists in the clone by now and is
-        // not ignored, so anything swept in would show up here.
-        const committed = await git(harness.remote, 'show', '--format=', '--name-only', 'HEAD');
-        expect(committed).toContain('packages/cryptography/package.json');
-        expect(committed.split('\n').filter((path) => path.includes('dist/'))).toEqual([]);
-        expect(committed.split('\n').filter((path) => path.includes('tsbuildinfo'))).toEqual([]);
+      // The push carried the provenance trailer, and it names the corvidae commit rather than
+      // being used as the change-detection record.
+      const pushed = await git(harness.remote, 'log', '-1', '--format=%B');
+      expect(pushed).toContain(`${provenanceTrailer}: corvidae-first`);
+      // Authored as the mirror App's bot account, in the form GitHub attributes to it. The first
+      // real sync was refused a merge as an "unattributed change" under the target's ruleset
+      // because its author was a placeholder no account could be linked to.
+      const author = await git(harness.remote, 'log', '-1', '--format=%an <%ae>');
+      expect(author.trim()).toBe(
+        'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
+      );
 
-        // The push carried the provenance trailer, and it names the corvidae commit rather than
-        // being used as the change-detection record.
-        const pushed = await git(harness.remote, 'log', '-1', '--format=%B');
-        expect(pushed).toContain(`${provenanceTrailer}: corvidae-first`);
-        // Authored as the mirror App's bot account, in the form GitHub attributes to it. The first
-        // real sync was refused a merge as an "unattributed change" under the target's ruleset
-        // because its author was a placeholder no account could be linked to.
-        const author = await git(harness.remote, 'log', '-1', '--format=%an <%ae>');
-        expect(author.trim()).toBe(
-          'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
-        );
+      // The divergence the first run consumed is why this one is a skip: the target now holds
+      // corvidae's bytes, so the second run re-emits what is already there. The skip is a
+      // statement about the run after the source landed, not about a target that never moved.
+      const second = await sync(harness, 'second');
+      expect(second.decision).toBe('skip');
+      // `changed` is `git status --porcelain` read at the moment the decision is made, which is
+      // after the transform and the lockfile install and before anything is built. Empty here
+      // is the skip.
+      expect(second.changed).toEqual([]);
 
-        // The divergence the first run consumed is why this one is a skip: the target now holds
-        // corvidae's bytes, so the second run re-emits what is already there. The skip is a
-        // statement about the run after the source landed, not about a target that never moved.
-        const second = await sync(harness, 'second');
-        expect(second.decision).toBe('skip');
-        // `changed` is `git status --porcelain` read at the moment the decision is made, which is
-        // after the transform and the lockfile install and before anything is built. Empty here
-        // is the skip.
-        expect(second.changed).toEqual([]);
+      // Reading status again at the end shows build output, because this fixture deliberately
+      // does not ignore `dist/`. That the two readings differ is the point: nothing the build
+      // produces can reach the decision, and nothing but build output appeared.
+      const afterVerification = await git(second.directory, 'status', '--porcelain');
+      expect(
+        afterVerification.split('\n').filter((line) => line.length > 0 && !line.includes('dist/')),
+      ).toEqual([]);
+      // Nothing new landed on the remote, so the skip really skipped.
+      const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+      expect(commitCount.trim()).toBe('2');
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('transforms, verifies, pushes, and then reports skip on an identical second run', () =>
+    rethrow(outcome4));
 
-        // Reading status again at the end shows build output, because this fixture deliberately
-        // does not ignore `dist/`. That the two readings differ is the point: nothing the build
-        // produces can reach the decision, and nothing but build output appeared.
-        const afterVerification = await git(second.directory, 'status', '--porcelain');
-        expect(
-          afterVerification
-            .split('\n')
-            .filter((line) => line.length > 0 && !line.includes('dist/')),
-        ).toEqual([]);
-        // Nothing new landed on the remote, so the skip really skipped.
-        const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
-        expect(commitCount.trim()).toBe('2');
-      });
-    },
-    endToEndTimeout,
-  );
+  const outcome5 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
+      // The mutation has to be something the transform owns, and since COR-1223 that is a much
+      // shorter list than corvidae's whole manifest. A new `description` used to serve here and
+      // no longer can: package metadata is target-owned now, so adding one to corvidae is
+      // correctly a no-op downstream, and this test would have gone on passing for the wrong
+      // reason once the first sync had given the target a manifest to own. Source is the thing
+      // the mirror exists to carry and is transform-owned outright, so it is what this mutates.
+      const changedSource = 'export const digest = (value: string): string => `sha512:${value}`;\n';
+      await Bun.write(join(harness.corvidae, 'packages/cryptography/src/index.ts'), changedSource);
 
-  test(
-    'a real change is still detected, so the skip above is not vacuous',
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
-        // The mutation has to be something the transform owns, and since COR-1223 that is a much
-        // shorter list than corvidae's whole manifest. A new `description` used to serve here and
-        // no longer can: package metadata is target-owned now, so adding one to corvidae is
-        // correctly a no-op downstream, and this test would have gone on passing for the wrong
-        // reason once the first sync had given the target a manifest to own. Source is the thing
-        // the mirror exists to carry and is transform-owned outright, so it is what this mutates.
-        const changedSource =
-          'export const digest = (value: string): string => `sha512:${value}`;\n';
-        await Bun.write(
-          join(harness.corvidae, 'packages/cryptography/src/index.ts'),
-          changedSource,
-        );
+      const second = await sync(harness, 'second');
+      expect(second.decision).toBe('pushed');
+      expect(second.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
+      expect(
+        await readFile(join(second.directory, 'packages/cryptography/src/index.ts'), 'utf8'),
+      ).toBe(changedSource);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('a real change is still detected, so the skip above is not vacuous', () =>
+    rethrow(outcome5));
 
-        const second = await sync(harness, 'second');
-        expect(second.decision).toBe('pushed');
-        expect(second.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
-        expect(
-          await readFile(join(second.directory, 'packages/cryptography/src/index.ts'), 'utf8'),
-        ).toBe(changedSource);
-      });
-    },
-    endToEndTimeout,
-  );
+  const outcome6 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      const attacker = join(harness.scratch, 'attacker');
+      await mkdir(harness.scratch, { recursive: true });
+      await git(harness.scratch, 'clone', '--no-local', '--quiet', harness.remote, attacker);
+      await Bun.write(
+        join(attacker, 'packages/cryptography/tsdown.config.ts'),
+        stagedIndexTamperingTsdownConfiguration,
+      );
+      await git(attacker, 'add', '--all');
+      await git(attacker, 'commit', '--quiet', '--message', 'Target changes its build input');
+      await git(attacker, 'push', '--quiet', 'origin', 'HEAD:main');
 
-  test(
-    'refuses a staged payload that verification restores from the working tree',
-    async () => {
-      await withHarness(async (harness) => {
-        const attacker = join(harness.scratch, 'attacker');
-        await mkdir(harness.scratch, { recursive: true });
-        await git(harness.scratch, 'clone', '--no-local', '--quiet', harness.remote, attacker);
-        await Bun.write(
-          join(attacker, 'packages/cryptography/tsdown.config.ts'),
-          stagedIndexTamperingTsdownConfiguration,
-        );
-        await git(attacker, 'add', '--all');
-        await git(attacker, 'commit', '--quiet', '--message', 'Target changes its build input');
-        await git(attacker, 'push', '--quiet', 'origin', 'HEAD:main');
-
-        expect(await throwingRejectionOf(sync(harness, 'staged-tamper'))).toThrow(
-          /staged tree changed during verification/,
-        );
-        const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
-        expect(commitCount.trim()).toBe('2');
-        const committedPaths = await git(
-          harness.remote,
-          'show',
-          '--format=',
-          '--name-only',
-          'HEAD',
-        );
-        expect(committedPaths.trim()).toContain('packages/cryptography/tsdown.config.ts');
-      });
-    },
-    endToEndTimeout,
-  );
+      expect(await throwingRejectionOf(sync(harness, 'staged-tamper'))).toThrow(
+        /staged tree changed during verification/,
+      );
+      const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+      expect(commitCount.trim()).toBe('2');
+      const committedPaths = await git(harness.remote, 'show', '--format=', '--name-only', 'HEAD');
+      expect(committedPaths.trim()).toContain('packages/cryptography/tsdown.config.ts');
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('refuses a staged payload that verification restores from the working tree', () =>
+    rethrow(outcome6));
 });
 
 /**
@@ -790,160 +777,154 @@ function fakePullRequest(branch: string): {
   };
 }
 
-describe('runSync in pull-request mode', () => {
-  test(
-    'prepares a verified commit without credentials or remote writes',
-    async () => {
-      await withHarness(async (harness) => {
-        const before = await git(harness.remote, 'show-ref');
-        const result = await runSync({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: harness.runDirectory('prepared'),
-          scratchDirectory: join(harness.scratch, 'prepared'),
-          corvidaeCommit: 'a'.repeat(40),
-          prepareBranch: 'mirror-prepared',
-          pushEnvironment: async () => {
-            throw new Error('Preparation requested credentials');
-          },
-        });
-        expect(result.decision).toBe('prepared');
-        expect(result.baseBranch).toBe('main');
-        expect(result.commit).toMatch(/^[a-f0-9]{40}$/);
-        expect(result.verification.reports.length).toBeGreaterThan(0);
-        expect(result.pullRequest).toBeUndefined();
-        expect(await git(harness.remote, 'show-ref')).toBe(before);
+describe('runSync in pull-request mode', async () => {
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcome7 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      const before = await git(harness.remote, 'show-ref');
+      const result = await runSync({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: harness.runDirectory('prepared'),
+        scratchDirectory: join(harness.scratch, 'prepared'),
+        corvidaeCommit: 'a'.repeat(40),
+        prepareBranch: 'mirror-prepared',
+        pushEnvironment: async () => {
+          throw new Error('Preparation requested credentials');
+        },
       });
-    },
-    endToEndTimeout,
-  );
+      expect(result.decision).toBe('prepared');
+      expect(result.baseBranch).toBe('main');
+      expect(result.commit).toMatch(/^[a-f0-9]{40}$/);
+      expect(result.verification.reports.length).toBeGreaterThan(0);
+      expect(result.pullRequest).toBeUndefined();
+      expect(await git(harness.remote, 'show-ref')).toBe(before);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('prepares a verified commit without credentials or remote writes', () => rethrow(outcome7));
 
-  test(
-    'commits on a new branch, leaves the default branch untouched, and opens a pull request',
-    async () => {
-      await withHarness(async (harness) => {
-        const { options, opened } = fakePullRequest('mirror-sync-abc123');
-        const poisoned = await cloneTarget({
-          remote: harness.remote,
-          directory: harness.runDirectory('poisoned-build'),
-        });
-        const marker = join(harness.scratch, 'credential-helper-ran');
-        const helper = join(harness.scratch, 'untrusted-helper');
-        await Bun.write(helper, `#!/bin/sh\nprintf invoked > '${marker}'\nexit 1\n`);
-        await chmod(helper, 0o700);
-        const maliciousConfiguration = `\n[remote "origin"]\n pushurl = ext::${helper}\n[protocol "ext"]\n allow = always\n`;
-        await Bun.write(
-          join(poisoned, 'packages/cryptography/tsdown.config.ts'),
-          `import { appendFileSync } from 'node:fs';\nappendFileSync('../../.git/config', ${JSON.stringify(maliciousConfiguration)});\n${tsdownConfiguration}`,
-        );
-        await git(poisoned, 'add', '--all');
-        await git(poisoned, 'commit', '-m', 'Target build changes local Git configuration');
-        await git(poisoned, 'push', 'origin', 'HEAD');
-        options.pushEnvironment = async () => {
-          expect(
-            await Bun.file(join(harness.runDirectory('pull-request'), '.git/config')).text(),
-          ).toContain('pushurl = ext::');
-          return {
-            GIT_CONFIG_COUNT: '1',
-            GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
-            GIT_CONFIG_VALUE_0: 'Authorization: Bearer harmless-test-sentinel',
-          };
+  const outcome8 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      const { options, opened } = fakePullRequest('mirror-sync-abc123');
+      const poisoned = await cloneTarget({
+        remote: harness.remote,
+        directory: harness.runDirectory('poisoned-build'),
+      });
+      const marker = join(harness.scratch, 'credential-helper-ran');
+      const helper = join(harness.scratch, 'untrusted-helper');
+      await Bun.write(helper, `#!/bin/sh\nprintf invoked > '${marker}'\nexit 1\n`);
+      await chmod(helper, 0o700);
+      const maliciousConfiguration = `\n[remote "origin"]\n pushurl = ext::${helper}\n[protocol "ext"]\n allow = always\n`;
+      await Bun.write(
+        join(poisoned, 'packages/cryptography/tsdown.config.ts'),
+        `import { appendFileSync } from 'node:fs';\nappendFileSync('../../.git/config', ${JSON.stringify(maliciousConfiguration)});\n${tsdownConfiguration}`,
+      );
+      await git(poisoned, 'add', '--all');
+      await git(poisoned, 'commit', '-m', 'Target build changes local Git configuration');
+      await git(poisoned, 'push', 'origin', 'HEAD');
+      options.pushEnvironment = async () => {
+        expect(
+          await Bun.file(join(harness.runDirectory('pull-request'), '.git/config')).text(),
+        ).toContain('pushurl = ext::');
+        return {
+          GIT_CONFIG_COUNT: '1',
+          GIT_CONFIG_KEY_0: 'http.https://github.com/.extraHeader',
+          GIT_CONFIG_VALUE_0: 'Authorization: Bearer harmless-test-sentinel',
         };
-        const result = await runSync({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: harness.runDirectory('pull-request'),
-          scratchDirectory: join(harness.scratch, 'pull-request'),
-          corvidaeCommit: 'corvidae-pull-request',
-          pullRequest: options,
-        });
-
-        expect(result.decision).toBe('pushed');
-        expect(await Bun.file(marker).exists()).toBe(false);
-        // `commit` is only ever absent on a skip, and the assertion just above ruled that out;
-        // narrowed explicitly so the comparisons below type-check against a plain `string`
-        // rather than `string | undefined`.
-        if (!result.commit) throw new Error('expected runSync to report a commit');
-        const commit = result.commit;
-        expect(result.pullRequest).toEqual({
-          number: 7,
-          htmlUrl: 'https://github.com/stevekinney/agent-bureau/pull/7',
-        });
-        expect(opened).toHaveLength(1);
-        expect(opened[0]?.branch).toBe('mirror-sync-abc123');
-        expect(opened[0]?.base).toBe('main');
-        expect(opened[0]?.commit).toBe(commit);
-        expect(opened[0]?.changed.length).toBeGreaterThan(0);
-
-        // `main` never moved: it still contains only the seed and target build commits.
-        const mainCommitCount = await git(harness.remote, 'rev-list', '--count', 'main');
-        expect(mainCommitCount.trim()).toBe('2');
-        const mainHead = await git(harness.remote, 'rev-parse', 'main');
-
-        // The sync branch exists on the remote, its tip is the commit `openPullRequest` was
-        // told about, and it carries the provenance trailer and the mirror's own identity —
-        // exactly as the direct-push path's commit does.
-        const branchHead = await git(harness.remote, 'rev-parse', 'refs/heads/mirror-sync-abc123');
-        expect(branchHead.trim()).toBe(commit);
-        expect(branchHead.trim()).not.toBe(mainHead.trim());
-        const message = await git(
-          harness.remote,
-          'log',
-          '-1',
-          '--format=%B',
-          'refs/heads/mirror-sync-abc123',
-        );
-        expect(message).toContain(`${provenanceTrailer}: corvidae-pull-request`);
-        const author = await git(
-          harness.remote,
-          'log',
-          '-1',
-          '--format=%an <%ae>',
-          'refs/heads/mirror-sync-abc123',
-        );
-        expect(author.trim()).toBe(
-          'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
-        );
+      };
+      const result = await runSync({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: harness.runDirectory('pull-request'),
+        scratchDirectory: join(harness.scratch, 'pull-request'),
+        corvidaeCommit: 'corvidae-pull-request',
+        pullRequest: options,
       });
-    },
-    endToEndTimeout,
-  );
 
-  test(
-    'opens nothing when the transform produces no change',
-    async () => {
-      await withHarness(async (harness) => {
-        // Sync once directly so the target already carries corvidae's bytes, leaving the second,
-        // pull-request-mode run with nothing to change.
-        await sync(harness, 'seed-first');
-
-        const { options, opened } = fakePullRequest('mirror-sync-noop');
-        const result = await runSync({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: harness.runDirectory('pull-request-noop'),
-          scratchDirectory: join(harness.scratch, 'pull-request-noop'),
-          corvidaeCommit: 'corvidae-pull-request-noop',
-          pullRequest: options,
-        });
-
-        expect(result.decision).toBe('skip');
-        expect(result.pullRequest).toBeUndefined();
-        expect(opened).toEqual([]);
-        // No sync branch was ever pushed.
-        const branches = await git(harness.remote, 'branch', '--list', 'mirror-sync-noop');
-        expect(branches.trim()).toBe('');
+      expect(result.decision).toBe('pushed');
+      expect(await Bun.file(marker).exists()).toBe(false);
+      // `commit` is only ever absent on a skip, and the assertion just above ruled that out;
+      // narrowed explicitly so the comparisons below type-check against a plain `string`
+      // rather than `string | undefined`.
+      if (!result.commit) throw new Error('expected runSync to report a commit');
+      const commit = result.commit;
+      expect(result.pullRequest).toEqual({
+        number: 7,
+        htmlUrl: 'https://github.com/stevekinney/agent-bureau/pull/7',
       });
-    },
-    endToEndTimeout,
-  );
+      expect(opened).toHaveLength(1);
+      expect(opened[0]?.branch).toBe('mirror-sync-abc123');
+      expect(opened[0]?.base).toBe('main');
+      expect(opened[0]?.commit).toBe(commit);
+      expect(opened[0]?.changed.length).toBeGreaterThan(0);
+
+      // `main` never moved: it still contains only the seed and target build commits.
+      const mainCommitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+      expect(mainCommitCount.trim()).toBe('2');
+      const mainHead = await git(harness.remote, 'rev-parse', 'main');
+
+      // The sync branch exists on the remote, its tip is the commit `openPullRequest` was
+      // told about, and it carries the provenance trailer and the mirror's own identity —
+      // exactly as the direct-push path's commit does.
+      const branchHead = await git(harness.remote, 'rev-parse', 'refs/heads/mirror-sync-abc123');
+      expect(branchHead.trim()).toBe(commit);
+      expect(branchHead.trim()).not.toBe(mainHead.trim());
+      const message = await git(
+        harness.remote,
+        'log',
+        '-1',
+        '--format=%B',
+        'refs/heads/mirror-sync-abc123',
+      );
+      expect(message).toContain(`${provenanceTrailer}: corvidae-pull-request`);
+      const author = await git(
+        harness.remote,
+        'log',
+        '-1',
+        '--format=%an <%ae>',
+        'refs/heads/mirror-sync-abc123',
+      );
+      expect(author.trim()).toBe(
+        'lost-gradient-mirror-sync[bot] <331123939+lost-gradient-mirror-sync[bot]@users.noreply.github.com>',
+      );
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('commits on a new branch, leaves the default branch untouched, and opens a pull request', () =>
+    rethrow(outcome8));
+
+  const outcome9 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      // Sync once directly so the target already carries corvidae's bytes, leaving the second,
+      // pull-request-mode run with nothing to change.
+      await sync(harness, 'seed-first');
+
+      const { options, opened } = fakePullRequest('mirror-sync-noop');
+      const result = await runSync({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: harness.runDirectory('pull-request-noop'),
+        scratchDirectory: join(harness.scratch, 'pull-request-noop'),
+        corvidaeCommit: 'corvidae-pull-request-noop',
+        pullRequest: options,
+      });
+
+      expect(result.decision).toBe('skip');
+      expect(result.pullRequest).toBeUndefined();
+      expect(opened).toEqual([]);
+      // No sync branch was ever pushed.
+      const branches = await git(harness.remote, 'branch', '--list', 'mirror-sync-noop');
+      expect(branches.trim()).toBe('');
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('opens nothing when the transform produces no change', () => rethrow(outcome9));
 });
 
-describe('the foreign-commit guard', () => {
-  test('accepts a mixed target commit only when its generated manifest keys match the trusted plan', async () => {
+describe('the foreign-commit guard', async () => {
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcome10 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-mixed-manifest-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -990,8 +971,10 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('accepts a mixed target commit only when its generated manifest keys match the trusted plan', () =>
+    rethrow(outcome10));
 
-  test('accepts a hand edit to an emitted file only when its bytes and mode match the trusted plan', async () => {
+  const outcome11 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-emitted-match-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1071,8 +1054,10 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('accepts a hand edit to an emitted file only when its bytes and mode match the trusted plan', () =>
+    rethrow(outcome11));
 
-  test('recognizes a squash that dropped provenance only when its pull-request head has the same tree', async () => {
+  const outcome12 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-'));
     const remote = await mkdtemp(join(tmpdir(), 'mirror-squash-tree-remote-'));
     try {
@@ -1145,8 +1130,10 @@ describe('the foreign-commit guard', () => {
       await rm(remote, { recursive: true, force: true });
     }
   });
+  test('recognizes a squash that dropped provenance only when its pull-request head has the same tree', () =>
+    rethrow(outcome12));
 
-  test('recognizes a GitHub squash merge with co-author metadata after mirror provenance', async () => {
+  const outcome13 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-squash-provenance-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1192,8 +1179,10 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('recognizes a GitHub squash merge with co-author metadata after mirror provenance', () =>
+    rethrow(outcome13));
 
-  test('accepts only a declared source version constant that follows the release manifest', async () => {
+  const outcome14 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-version-release-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1243,8 +1232,10 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('accepts only a declared source version constant that follows the release manifest', () =>
+    rethrow(outcome14));
 
-  test('rejects a version release that changes file mode or embeds source through its manifest', async () => {
+  const outcome15 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-unsafe-version-release-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1291,8 +1282,10 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('rejects a version release that changes file mode or embeds source through its manifest', () =>
+    rethrow(outcome15));
 
-  test('rejects a source edit while HEAD still differs from the mirror, and accepts it once a revert restores the mirror bytes', async () => {
+  const outcome16 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-transient-source-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1325,8 +1318,10 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('rejects a source edit while HEAD still differs from the mirror, and accepts it once a revert restores the mirror bytes', () =>
+    rethrow(outcome16));
 
-  test('rejects source imported by a merge from an older side branch', async () => {
+  const outcome17 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-foreign-merge-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1369,8 +1364,9 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('rejects source imported by a merge from an older side branch', () => rethrow(outcome17));
 
-  test('accepts target metadata when a verified mirror is the second merge parent', async () => {
+  const outcome18 = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-owned-merge-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1404,6 +1400,8 @@ describe('the foreign-commit guard', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('accepts target metadata when a verified mirror is the second merge parent', () =>
+    rethrow(outcome18));
 
   /**
    * COR-1192. After the first sync every release bump is a hand commit above a mirror-authored
@@ -1412,65 +1410,58 @@ describe('the foreign-commit guard', () => {
    * target's own when everything it changes is something the transform preserves — a
    * target-owned path, or a target-owned key inside a manifest the transform composes.
    */
-  test(
-    "a hand commit confined to target-owned paths and manifest keys is the target's own, not foreign",
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
+  const outcome19 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
 
-        const bumper = harness.runDirectory('bumper');
-        await mkdir(bumper, { recursive: true });
-        await git(bumper, 'clone', '--no-local', '--quiet', harness.remote, bumper);
-        const manifestPath = join(bumper, 'packages/cryptography/package.json');
-        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
-          string,
-          unknown
-        >;
-        manifest['version'] = '9.9.9';
-        await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-        await Bun.write(join(bumper, 'README.md'), '# agent-bureau\n\nRelease 9.9.9 notes.\n');
-        await git(bumper, 'add', '--all');
-        await git(bumper, 'commit', '--quiet', '--message', 'Release 9.9.9');
-        await git(bumper, 'push', '--quiet', 'origin', 'HEAD:main');
+      const bumper = harness.runDirectory('bumper');
+      await mkdir(bumper, { recursive: true });
+      await git(bumper, 'clone', '--no-local', '--quiet', harness.remote, bumper);
+      const manifestPath = join(bumper, 'packages/cryptography/package.json');
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+      manifest['version'] = '9.9.9';
+      await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      await Bun.write(join(bumper, 'README.md'), '# agent-bureau\n\nRelease 9.9.9 notes.\n');
+      await git(bumper, 'add', '--all');
+      await git(bumper, 'commit', '--quiet', '--message', 'Release 9.9.9');
+      await git(bumper, 'push', '--quiet', 'origin', 'HEAD:main');
 
-        const result = await sync(harness, 'after-bump');
-        expect(['skip', 'pushed']).toContain(result.decision);
-        const published = result.verification.reports.find(
-          (report) => report.publicName === '@lostgradient/cryptography',
-        );
-        expect(published).toBeDefined();
-      });
-    },
-    endToEndTimeout,
-  );
+      const result = await sync(harness, 'after-bump');
+      expect(['skip', 'pushed']).toContain(result.decision);
+      const published = result.verification.reports.find(
+        (report) => report.publicName === '@lostgradient/cryptography',
+      );
+      expect(published).toBeDefined();
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test("a hand commit confined to target-owned paths and manifest keys is the target's own, not foreign", () =>
+    rethrow(outcome19));
 
-  test(
-    "a hand commit to a declared build input is the target's own, since the transform never writes one",
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
+  const outcome20 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
 
-        const editor = harness.runDirectory('build-input-editor');
-        await mkdir(editor, { recursive: true });
-        await git(editor, 'clone', '--no-local', '--quiet', harness.remote, editor);
-        // The fixture package's first declared build input, read from the surface rather than
-        // hardcoded, so the test follows the declaration if it changes.
-        const surface = await loadPackageSurface();
-        const entry = surface.packages['@lostgradient/cryptography'];
-        const input = entry?.build.requiredInputs[0];
-        expect(input).toBeDefined();
-        const path = join(editor, 'packages/cryptography', input ?? '');
-        await Bun.write(path, `${await readFile(path, 'utf8')}\n// tuned by the target\n`);
-        await git(editor, 'add', '--all');
-        await git(editor, 'commit', '--quiet', '--message', 'Tune the build input');
-        await git(editor, 'push', '--quiet', 'origin', 'HEAD:main');
+      const editor = harness.runDirectory('build-input-editor');
+      await mkdir(editor, { recursive: true });
+      await git(editor, 'clone', '--no-local', '--quiet', harness.remote, editor);
+      // The fixture package's first declared build input, read from the surface rather than
+      // hardcoded, so the test follows the declaration if it changes.
+      const surface = await loadPackageSurface();
+      const entry = surface.packages['@lostgradient/cryptography'];
+      const input = entry?.build.requiredInputs[0];
+      expect(input).toBeDefined();
+      const path = join(editor, 'packages/cryptography', input ?? '');
+      await Bun.write(path, `${await readFile(path, 'utf8')}\n// tuned by the target\n`);
+      await git(editor, 'add', '--all');
+      await git(editor, 'commit', '--quiet', '--message', 'Tune the build input');
+      await git(editor, 'push', '--quiet', 'origin', 'HEAD:main');
 
-        const result = await sync(harness, 'after-build-input');
-        expect(['skip', 'pushed']).toContain(result.decision);
-      });
-    },
-    endToEndTimeout,
-  );
+      const result = await sync(harness, 'after-build-input');
+      expect(['skip', 'pushed']).toContain(result.decision);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test("a hand commit to a declared build input is the target's own, since the transform never writes one", () =>
+    rethrow(outcome20));
 
   /**
    * COR-1198. agent-bureau#639 (`d750218`) changed the target's release tooling, its root
@@ -1479,213 +1470,197 @@ describe('the foreign-commit guard', () => {
    * never touches is the target's, so a sync cannot clobber the commit and the guard must not
    * refuse it.
    */
-  test(
-    "a hand commit to paths the transform neither writes nor prunes is the target's own",
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
+  const outcome21 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
 
-        const releaser = harness.runDirectory('release-tooling');
-        await mkdir(releaser, { recursive: true });
-        await git(releaser, 'clone', '--no-local', '--quiet', harness.remote, releaser);
-        await Bun.write(join(releaser, 'scripts/release.ts'), 'export const release = true;\n');
-        await Bun.write(join(releaser, 'bunfig.toml'), '[install]\nexact = true\n');
-        await Bun.write(
-          join(releaser, 'packages/cryptography/README.md'),
-          '# @lostgradient/cryptography\n',
-        );
-        await git(releaser, 'add', '--all');
-        await git(releaser, 'commit', '--quiet', '--message', 'Tune the release tooling');
-        await git(releaser, 'push', '--quiet', 'origin', 'HEAD:main');
+      const releaser = harness.runDirectory('release-tooling');
+      await mkdir(releaser, { recursive: true });
+      await git(releaser, 'clone', '--no-local', '--quiet', harness.remote, releaser);
+      await Bun.write(join(releaser, 'scripts/release.ts'), 'export const release = true;\n');
+      await Bun.write(join(releaser, 'bunfig.toml'), '[install]\nexact = true\n');
+      await Bun.write(
+        join(releaser, 'packages/cryptography/README.md'),
+        '# @lostgradient/cryptography\n',
+      );
+      await git(releaser, 'add', '--all');
+      await git(releaser, 'commit', '--quiet', '--message', 'Tune the release tooling');
+      await git(releaser, 'push', '--quiet', 'origin', 'HEAD:main');
 
-        const result = await sync(harness, 'after-release-tooling');
-        expect(['skip', 'pushed']).toContain(result.decision);
-        const synced = harness.runDirectory('after-release-tooling');
-        expect(await readFile(join(synced, 'scripts/release.ts'), 'utf8')).toBe(
-          'export const release = true;\n',
-        );
-        expect(await readFile(join(synced, 'bunfig.toml'), 'utf8')).toBe(
-          '[install]\nexact = true\n',
-        );
-        expect(await readFile(join(synced, 'packages/cryptography/README.md'), 'utf8')).toBe(
-          '# @lostgradient/cryptography\n',
-        );
-      });
-    },
-    endToEndTimeout,
-  );
+      const result = await sync(harness, 'after-release-tooling');
+      expect(['skip', 'pushed']).toContain(result.decision);
+      const synced = harness.runDirectory('after-release-tooling');
+      expect(await readFile(join(synced, 'scripts/release.ts'), 'utf8')).toBe(
+        'export const release = true;\n',
+      );
+      expect(await readFile(join(synced, 'bunfig.toml'), 'utf8')).toBe('[install]\nexact = true\n');
+      expect(await readFile(join(synced, 'packages/cryptography/README.md'), 'utf8')).toBe(
+        '# @lostgradient/cryptography\n',
+      );
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test("a hand commit to paths the transform neither writes nor prunes is the target's own", () =>
+    rethrow(outcome21));
 
-  test(
-    'a hand commit moving an emitted file out of the sync’s reach is still foreign',
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
+  const outcome22 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
 
-        const mover = harness.runDirectory('rename-out-of-reach');
-        await mkdir(mover, { recursive: true });
-        await git(mover, 'clone', '--no-local', '--quiet', harness.remote, mover);
-        // Git reports this as a rename whose new path the sync never touches; judged by that path
-        // alone it would pass, and the sync would then restore the old path beside it.
-        await git(mover, 'mv', 'packages/lifecycle/src/index.ts', 'packages/lifecycle/moved.ts');
-        await git(mover, 'commit', '--quiet', '--message', 'Move an emitted file out of src');
-        await git(mover, 'push', '--quiet', 'origin', 'HEAD:main');
-        const moverHead = await git(mover, 'rev-parse', 'HEAD');
-        const foreignSha = moverHead.trim();
+      const mover = harness.runDirectory('rename-out-of-reach');
+      await mkdir(mover, { recursive: true });
+      await git(mover, 'clone', '--no-local', '--quiet', harness.remote, mover);
+      // Git reports this as a rename whose new path the sync never touches; judged by that path
+      // alone it would pass, and the sync would then restore the old path beside it.
+      await git(mover, 'mv', 'packages/lifecycle/src/index.ts', 'packages/lifecycle/moved.ts');
+      await git(mover, 'commit', '--quiet', '--message', 'Move an emitted file out of src');
+      await git(mover, 'push', '--quiet', 'origin', 'HEAD:main');
+      const moverHead = await git(mover, 'rev-parse', 'HEAD');
+      const foreignSha = moverHead.trim();
 
-        let thrown: unknown;
-        try {
-          await sync(harness, 'after-rename-out-of-reach');
-        } catch (error) {
-          thrown = error;
-        }
-        expect(thrown).toBeInstanceOf(ForeignCommitError);
-        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
-          foreignSha,
-        ]);
-      });
-    },
-    endToEndTimeout,
-  );
+      let thrown: unknown;
+      try {
+        await sync(harness, 'after-rename-out-of-reach');
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(ForeignCommitError);
+      expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+        foreignSha,
+      ]);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('a hand commit moving an emitted file out of the sync’s reach is still foreign', () =>
+    rethrow(outcome22));
 
-  test(
-    'a hand commit adding a file inside a source tree the transform prunes is still foreign',
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
+  const outcome23 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
 
-        const intruder = harness.runDirectory('prunable-intruder');
-        await mkdir(intruder, { recursive: true });
-        await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
-        await Bun.write(
-          join(intruder, 'packages/lifecycle/src/hand-added.ts'),
-          'export const handAdded = true;\n',
-        );
-        await git(intruder, 'add', '--all');
-        await git(intruder, 'commit', '--quiet', '--message', 'Add a file the sync would prune');
-        await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
-        const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
-        const foreignSha = intruderHead.trim();
+      const intruder = harness.runDirectory('prunable-intruder');
+      await mkdir(intruder, { recursive: true });
+      await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
+      await Bun.write(
+        join(intruder, 'packages/lifecycle/src/hand-added.ts'),
+        'export const handAdded = true;\n',
+      );
+      await git(intruder, 'add', '--all');
+      await git(intruder, 'commit', '--quiet', '--message', 'Add a file the sync would prune');
+      await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
+      const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
+      const foreignSha = intruderHead.trim();
 
-        let thrown: unknown;
-        try {
-          await sync(harness, 'after-prunable-intrusion');
-        } catch (error) {
-          thrown = error;
-        }
-        expect(thrown).toBeInstanceOf(ForeignCommitError);
-        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
-          foreignSha,
-        ]);
-      });
-    },
-    endToEndTimeout,
-  );
+      let thrown: unknown;
+      try {
+        await sync(harness, 'after-prunable-intrusion');
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(ForeignCommitError);
+      expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+        foreignSha,
+      ]);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('a hand commit adding a file inside a source tree the transform prunes is still foreign', () =>
+    rethrow(outcome23));
 
-  test(
-    'a hand commit that changes a transform-owned manifest key is still foreign',
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
+  const outcome24 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
 
-        const intruder = harness.runDirectory('exports-intruder');
-        await mkdir(intruder, { recursive: true });
-        await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
-        const manifestPath = join(intruder, 'packages/cryptography/package.json');
-        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
-          string,
-          unknown
-        >;
-        manifest['sideEffects'] = true;
-        await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-        await git(intruder, 'add', '--all');
-        await git(intruder, 'commit', '--quiet', '--message', 'Flip a key the transform owns');
-        await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
-        const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
-        const foreignSha = intruderHead.trim();
+      const intruder = harness.runDirectory('exports-intruder');
+      await mkdir(intruder, { recursive: true });
+      await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
+      const manifestPath = join(intruder, 'packages/cryptography/package.json');
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+      manifest['sideEffects'] = true;
+      await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      await git(intruder, 'add', '--all');
+      await git(intruder, 'commit', '--quiet', '--message', 'Flip a key the transform owns');
+      await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
+      const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
+      const foreignSha = intruderHead.trim();
 
-        let thrown: unknown;
-        try {
-          await sync(harness, 'after-key-intrusion');
-        } catch (error) {
-          thrown = error;
-        }
-        expect(thrown).toBeInstanceOf(ForeignCommitError);
-        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
-          foreignSha,
-        ]);
-      });
-    },
-    endToEndTimeout,
-  );
+      let thrown: unknown;
+      try {
+        await sync(harness, 'after-key-intrusion');
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(ForeignCommitError);
+      expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+        foreignSha,
+      ]);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('a hand commit that changes a transform-owned manifest key is still foreign', () =>
+    rethrow(outcome24));
 
-  test(
-    'a commit the mirror did not author stops the sync and is named',
-    async () => {
-      await withHarness(async (harness) => {
-        await sync(harness, 'first');
+  const outcome25 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await sync(harness, 'first');
 
-        const intruder = harness.runDirectory('intruder');
-        await mkdir(intruder, { recursive: true });
-        await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
-        await Bun.write(
-          join(intruder, 'packages/lifecycle/src/index.ts'),
-          'export const phases = [];\n',
-        );
-        await git(intruder, 'add', '--all');
-        await git(
-          intruder,
-          'commit',
-          '--quiet',
-          '--message',
-          'Hand edit made straight on the mirror',
-        );
-        await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
-        const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
-        const foreignSha = intruderHead.trim();
+      const intruder = harness.runDirectory('intruder');
+      await mkdir(intruder, { recursive: true });
+      await git(intruder, 'clone', '--no-local', '--quiet', harness.remote, intruder);
+      await Bun.write(
+        join(intruder, 'packages/lifecycle/src/index.ts'),
+        'export const phases = [];\n',
+      );
+      await git(intruder, 'add', '--all');
+      await git(
+        intruder,
+        'commit',
+        '--quiet',
+        '--message',
+        'Hand edit made straight on the mirror',
+      );
+      await git(intruder, 'push', '--quiet', 'origin', 'HEAD:main');
+      const intruderHead = await git(intruder, 'rev-parse', 'HEAD');
+      const foreignSha = intruderHead.trim();
 
-        let thrown: unknown;
-        try {
-          await sync(harness, 'after-intrusion');
-        } catch (error) {
-          thrown = error;
-        }
-        expect(thrown).toBeInstanceOf(ForeignCommitError);
-        expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
-          foreignSha,
-        ]);
-        expect((thrown as Error).message).toContain(foreignSha);
-        expect((thrown as Error).message).toContain('Hand edit made straight on the mirror');
+      let thrown: unknown;
+      try {
+        await sync(harness, 'after-intrusion');
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(ForeignCommitError);
+      expect((thrown as ForeignCommitError).commits.map((commit) => commit.sha)).toEqual([
+        foreignSha,
+      ]);
+      expect((thrown as Error).message).toContain(foreignSha);
+      expect((thrown as Error).message).toContain('Hand edit made straight on the mirror');
 
-        // The same refusal through the command line, judged by exit code rather than by reading
-        // the output for an error string: the output carries ANSI escapes, so a grep would
-        // report a false green against text that plainly says it failed.
-        const command = await runCommand(
-          [
-            'bun',
-            new URL('./sync.ts', import.meta.url).pathname,
-            '--target',
-            'agent-bureau',
-            '--corvidae-root',
-            harness.corvidae,
-            '--remote',
-            harness.remote,
-            '--directory',
-            harness.runDirectory('cli'),
-            '--scratch',
-            join(harness.scratch, 'cli'),
-            '--corvidae-commit',
-            'corvidae-cli',
-          ],
-          { cwd: harness.corvidae },
-        );
-        expect(command.exitCode).not.toBe(0);
-        expect(command.stderr).toContain(foreignSha);
-      });
-    },
-    endToEndTimeout,
-  );
+      // The same refusal through the command line, judged by exit code rather than by reading
+      // the output for an error string: the output carries ANSI escapes, so a grep would
+      // report a false green against text that plainly says it failed.
+      const command = await runCommand(
+        [
+          'bun',
+          new URL('./sync.ts', import.meta.url).pathname,
+          '--target',
+          'agent-bureau',
+          '--corvidae-root',
+          harness.corvidae,
+          '--remote',
+          harness.remote,
+          '--directory',
+          harness.runDirectory('cli'),
+          '--scratch',
+          join(harness.scratch, 'cli'),
+          '--corvidae-commit',
+          'corvidae-cli',
+        ],
+        { cwd: harness.corvidae },
+      );
+      expect(command.exitCode).not.toBe(0);
+      expect(command.stderr).toContain(foreignSha);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('a commit the mirror did not author stops the sync and is named', () => rethrow(outcome25));
 
-  test('a target the mirror has never written is a first sync, not a wall of foreign commits', async () => {
+  const outcome26 = await outcomeOf(async () => {
     await withHarness(async (harness) => {
       const clone = await cloneTarget({
         remote: harness.remote,
@@ -1694,11 +1669,14 @@ describe('the foreign-commit guard', () => {
       // The seed commit predates every sync, so it must not read as somebody else's edit.
       expect(await findForeignCommits(clone)).toEqual([]);
     });
-  }, 60_000);
+  });
+  test('a target the mirror has never written is a first sync, not a wall of foreign commits', () =>
+    rethrow(outcome26));
 });
 
-describe('the build-input check', () => {
-  test('a clone missing a required build input fails the sync and names the file', async () => {
+describe('the build-input check', async () => {
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcome27 = await outcomeOf(async () => {
     await withHarness(async (harness) => {
       const clone = await cloneTarget({
         remote: harness.remote,
@@ -1716,9 +1694,11 @@ describe('the build-input check', () => {
       ]);
       expect(() => assertBuildInputsPresent(clone, plan.published)).toThrow(BuildInputError);
     });
-  }, 60_000);
+  });
+  test('a clone missing a required build input fails the sync and names the file', () =>
+    rethrow(outcome27));
 
-  test('the transform emits source, and the build inputs it does not emit stay target-owned', async () => {
+  const outcome28 = await outcomeOf(async () => {
     // The replacement for COR-1188's pin that the transform emitted no source at all. What the
     // build reads is now two classes rather than one: corvidae's `src/`, which the transform
     // writes, and the target's `requiredInputs`, which it never writes and never prunes.
@@ -1737,54 +1717,55 @@ describe('the build-input check', () => {
         [],
       );
     });
-  }, 60_000);
+  });
+  test('the transform emits source, and the build inputs it does not emit stay target-owned', () =>
+    rethrow(outcome28));
 });
 
-describe('pruning what corvidae no longer carries', () => {
-  test(
-    'a dropped source file is deleted, while a target-owned path and an unknown path survive',
-    async () => {
-      await withHarness(async (harness) => {
-        const dropped = 'packages/lifecycle/src/deprecated.ts';
-        await Bun.write(
-          join(harness.corvidae, dropped),
-          'export const retired = ["drain"] as const;\n',
-        );
-        const first = await sync(harness, 'first');
-        expect(first.decision).toBe('pushed');
-        expect(await Bun.file(join(first.directory, dropped)).exists()).toBe(true);
+describe('pruning what corvidae no longer carries', async () => {
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcome29 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      const dropped = 'packages/lifecycle/src/deprecated.ts';
+      await Bun.write(
+        join(harness.corvidae, dropped),
+        'export const retired = ["drain"] as const;\n',
+      );
+      const first = await sync(harness, 'first');
+      expect(first.decision).toBe('pushed');
+      expect(await Bun.file(join(first.directory, dropped)).exists()).toBe(true);
 
-        await rm(join(harness.corvidae, dropped));
-        const second = await sync(harness, 'second');
+      await rm(join(harness.corvidae, dropped));
+      const second = await sync(harness, 'second');
 
-        expect(second.decision).toBe('pushed');
-        // Read off the clone: the file corvidae dropped is gone from the target's working tree.
-        expect(await Bun.file(join(second.directory, dropped)).exists()).toBe(false);
-        // A target-owned path inside a source tree the transform owns, and a path nobody
-        // enumerated outside it. Neither is the transform's to remove, whatever corvidae holds.
-        expect(await Bun.file(join(second.directory, targetOwnedInsideSource)).exists()).toBe(true);
-        expect(await Bun.file(join(second.directory, unknownTargetFile)).exists()).toBe(true);
+      expect(second.decision).toBe('pushed');
+      // Read off the clone: the file corvidae dropped is gone from the target's working tree.
+      expect(await Bun.file(join(second.directory, dropped)).exists()).toBe(false);
+      // A target-owned path inside a source tree the transform owns, and a path nobody
+      // enumerated outside it. Neither is the transform's to remove, whatever corvidae holds.
+      expect(await Bun.file(join(second.directory, targetOwnedInsideSource)).exists()).toBe(true);
+      expect(await Bun.file(join(second.directory, unknownTargetFile)).exists()).toBe(true);
 
-        // The deletion is staged and committed rather than left in the working tree: `runSync`
-        // stages with `git add --all` after reading the porcelain, which is the only form that
-        // carries a removal. The pushed commit is what proves it did.
-        const removed = await git(
-          harness.remote,
-          'show',
-          '--format=',
-          '--name-only',
-          '--diff-filter=D',
-          'HEAD',
-        );
-        expect(removed.split('\n').filter((path) => path.length > 0)).toEqual([dropped]);
-        const tracked = await git(harness.remote, 'ls-tree', '-r', '--name-only', 'HEAD');
-        expect(tracked).toContain(targetOwnedInsideSource);
-        expect(tracked).toContain(unknownTargetFile);
-        expect(tracked).not.toContain(dropped);
-      });
-    },
-    endToEndTimeout,
-  );
+      // The deletion is staged and committed rather than left in the working tree: `runSync`
+      // stages with `git add --all` after reading the porcelain, which is the only form that
+      // carries a removal. The pushed commit is what proves it did.
+      const removed = await git(
+        harness.remote,
+        'show',
+        '--format=',
+        '--name-only',
+        '--diff-filter=D',
+        'HEAD',
+      );
+      expect(removed.split('\n').filter((path) => path.length > 0)).toEqual([dropped]);
+      const tracked = await git(harness.remote, 'ls-tree', '-r', '--name-only', 'HEAD');
+      expect(tracked).toContain(targetOwnedInsideSource);
+      expect(tracked).toContain(unknownTargetFile);
+      expect(tracked).not.toContain(dropped);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('a dropped source file is deleted, while a target-owned path and an unknown path survive', () =>
+    rethrow(outcome29));
 });
 
 describe('the private-workspace check', () => {
@@ -1826,7 +1807,7 @@ describe('the private-workspace check', () => {
  * path it changed ends, at the target's HEAD, exactly where the mirror commit left it or exactly
  * where this sync would write it: the sync then clobbers nothing the target holds.
  */
-describe('the foreign-commit guard net-effect rule', () => {
+describe('the foreign-commit guard net-effect rule', async () => {
   const sourcePath = 'packages/weft/src/index.ts';
   const otherPath = 'packages/weft/src/other.ts';
   const manifestPath = 'packages/weft/package.json';
@@ -1905,7 +1886,8 @@ describe('the foreign-commit guard net-effect rule', () => {
     });
   });
 
-  test('accepts a deleted path that a later commit restores to the mirror bytes', async () => {
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcome30 = await outcomeOf(async () => {
     await withRepository(async (root, ownership) => {
       await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
       await commitMirror(root);
@@ -1917,8 +1899,10 @@ describe('the foreign-commit guard net-effect rule', () => {
       expect(await subjects(root, ownership)).toEqual([]);
     });
   });
+  test('accepts a deleted path that a later commit restores to the mirror bytes', () =>
+    rethrow(outcome30));
 
-  test('accepts an added path that a later commit removes again', async () => {
+  const outcome31 = await outcomeOf(async () => {
     await withRepository(async (root, ownership) => {
       await Bun.write(join(root, otherPath), 'export {};\n');
       await commitMirror(root);
@@ -1930,6 +1914,7 @@ describe('the foreign-commit guard net-effect rule', () => {
       expect(await subjects(root, ownership)).toEqual([]);
     });
   });
+  test('accepts an added path that a later commit removes again', () => rethrow(outcome31));
 
   /**
    * A deletion the sync would make itself (COR-1201). A path under a prefix the sync retires or
@@ -1938,12 +1923,13 @@ describe('the foreign-commit guard net-effect rule', () => {
    * copy is the case. An emitted path, or a deleted path restored to anything, still differs from
    * what the sync leaves.
    */
-  describe('a deletion the sync would make itself', () => {
+  describe('a deletion the sync would make itself', async () => {
     const retiredPath = 'packages/playground/package.json';
     const prunedPath = 'packages/weft/src/stale.ts';
     const reach = { prefixes: ['packages/weft/src', 'packages/playground'] };
 
-    test('accepts deleting a retired path', async () => {
+    // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+    const outcome32 = await outcomeOf(async () => {
       await withRepository(async (root, ownership) => {
         await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
         await Bun.write(join(root, retiredPath), '{"name":"@cinder/playground"}\n');
@@ -1953,8 +1939,9 @@ describe('the foreign-commit guard net-effect rule', () => {
         expect(await subjects(root, ownership)).toEqual([]);
       }, reach);
     });
+    test('accepts deleting a retired path', () => rethrow(outcome32));
 
-    test('accepts deleting a file the sync prunes', async () => {
+    const outcome33 = await outcomeOf(async () => {
       await withRepository(async (root, ownership) => {
         await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
         await Bun.write(join(root, prunedPath), 'export {};\n');
@@ -1964,8 +1951,9 @@ describe('the foreign-commit guard net-effect rule', () => {
         expect(await subjects(root, ownership)).toEqual([]);
       }, reach);
     });
+    test('accepts deleting a file the sync prunes', () => rethrow(outcome33));
 
-    test('accepts a retired manifest edited and then deleted', async () => {
+    const outcome34 = await outcomeOf(async () => {
       const retiredManifest = 'packages/playground/package.json';
       await withRepository(async (root, ownership) => {
         await Bun.write(
@@ -1984,8 +1972,9 @@ describe('the foreign-commit guard net-effect rule', () => {
         expect(await subjects(root, ownership)).toEqual([]);
       }, reach);
     });
+    test('accepts a retired manifest edited and then deleted', () => rethrow(outcome34));
 
-    test('keeps deleting an emitted file foreign', async () => {
+    const outcome35 = await outcomeOf(async () => {
       await withRepository(async (root, ownership) => {
         await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
         await commitMirror(root);
@@ -1994,8 +1983,9 @@ describe('the foreign-commit guard net-effect rule', () => {
         expect(await subjects(root, ownership)).toEqual(['Delete emitted source']);
       }, reach);
     });
+    test('keeps deleting an emitted file foreign', () => rethrow(outcome35));
 
-    test('keeps deleting an emitted manifest foreign', async () => {
+    const outcome36 = await outcomeOf(async () => {
       await withRepository(async (root, ownership) => {
         await Bun.write(join(root, manifestPath), '{"name":"@lostgradient/weft"}\n');
         await commitMirror(root);
@@ -2004,8 +1994,9 @@ describe('the foreign-commit guard net-effect rule', () => {
         expect(await subjects(root, ownership)).toEqual(['Delete emitted manifest']);
       }, reach);
     });
+    test('keeps deleting an emitted manifest foreign', () => rethrow(outcome36));
 
-    test('keeps a deleted retired path foreign once a later commit restores different bytes', async () => {
+    const outcome37 = await outcomeOf(async () => {
       await withRepository(async (root, ownership) => {
         await Bun.write(join(root, retiredPath), '{"name":"@cinder/playground"}\n');
         await commitMirror(root);
@@ -2019,6 +2010,8 @@ describe('the foreign-commit guard net-effect rule', () => {
         ]);
       }, reach);
     });
+    test('keeps a deleted retired path foreign once a later commit restores different bytes', () =>
+      rethrow(outcome37));
   });
 
   test('accepts a mode-only change that a later commit reverts', async () => {
