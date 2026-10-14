@@ -21,6 +21,7 @@ describe('revoke versus input', () => {
     const harness = createHarness({ backend: { write: () => new Promise(() => undefined) } });
     const attachment = await startAndAttach(harness);
     attachment.write(utf8('in flight'));
+    await flush();
     attachment.write(utf8('queued'));
     attachment.stop();
     // Revocation is synchronous: input is already frozen when stop returns.
@@ -79,6 +80,7 @@ describe('queued resize versus stop', () => {
     const harness = createHarness({ backend: { write: () => new Promise(() => undefined) } });
     const attachment = await startAndAttach(harness);
     attachment.write(utf8('hold the FIFO'));
+    await flush();
     attachment.resize(120, 50);
     const receipt = attachment.stop();
     expect(receipt.accepted).toBe(true);
@@ -474,5 +476,75 @@ describe('construction failure', () => {
     await flush();
     expect(first.cancelCount).toBe(1);
     expect(first.lockReleased).toBe(true);
+  });
+});
+
+describe('a source that fails part-way', () => {
+  test('an iterator whose next() rejects is still asked to return()', async () => {
+    const iterable = createScriptedIterable('stdout');
+    const harness = createHarness({ backend: false, sources: [iterable.source] });
+    await startAndAttach(harness, 'read-only');
+    iterable.fail(new Error('read failed'));
+    await flush();
+    expect(await harness.session.closed).toMatchObject({
+      cause: 'source-failed',
+      cleanup: 'complete',
+    });
+    expect(iterable.returnCount).toBe(1);
+  });
+
+  test('a return() that rejects after a failed next() reports the real cleanup outcome', async () => {
+    const iterable = createScriptedIterable('stdout', { return: 'reject' });
+    const harness = createHarness({ backend: false, sources: [iterable.source] });
+    await startAndAttach(harness, 'read-only');
+    iterable.fail(new Error('read failed'));
+    await flush();
+    expect(await harness.session.closed).toMatchObject({
+      cause: 'source-failed',
+      cleanup: 'incomplete',
+      quarantined: true,
+    });
+  });
+
+  test('an iterator that finished normally is not asked to return()', async () => {
+    const iterable = createScriptedIterable('stdout');
+    const harness = createHarness({ backend: false, sources: [iterable.source] });
+    await startAndAttach(harness, 'read-only');
+    iterable.end();
+    await flush();
+    await harness.session.closed;
+    expect(iterable.returnCount).toBe(0);
+  });
+
+  test('a subscribe() that throws without returning an unsubscribe handle quarantines the session', async () => {
+    let registered = 0;
+    const harness = createHarness({
+      backend: false,
+      sources: [
+        {
+          kind: 'subscription',
+          channel: 'stdout',
+          subscribe: () => {
+            registered += 1;
+            throw new Error('registered, then failed');
+          },
+        },
+      ],
+    });
+    await startAndAttach(harness, 'read-only');
+    expect(registered).toBe(1);
+    expect(await harness.session.closed).toMatchObject({
+      cause: 'source-failed',
+      cleanup: 'incomplete',
+      quarantined: true,
+    });
+  });
+
+  test('a subscription that was never started releases completely', async () => {
+    const harness = createHarness({
+      backend: false,
+      sources: [{ kind: 'subscription', channel: 'stdout', subscribe: () => () => undefined }],
+    });
+    expect(await harness.session.dispose()).toMatchObject({ cleanup: 'complete' });
   });
 });

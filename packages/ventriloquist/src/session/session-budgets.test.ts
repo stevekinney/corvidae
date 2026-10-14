@@ -123,7 +123,9 @@ describe('overflow', () => {
     const harness = createHarness({ backend: { write: () => barrier.promise } });
     const attachment = await startAndAttach(harness);
     // One operation is in flight with the backend; the FIFO then holds 256 more.
-    for (let index = 0; index < 257; index += 1) {
+    expect(attachment.write(Uint8Array.of(1))).toMatchObject({ disposition: 'accepted' });
+    await flush();
+    for (let index = 0; index < 256; index += 1) {
       expect(attachment.write(Uint8Array.of(1))).toMatchObject({ disposition: 'accepted' });
     }
     expect(attachment.write(Uint8Array.of(1))).toMatchObject({
@@ -318,6 +320,7 @@ describe('no replay and no respawn', () => {
     const harness = createHarness({ backend: { write: () => barrier.promise } });
     const attachment = await startAndAttach(harness);
     attachment.write(utf8('in flight'));
+    await flush();
     attachment.write(utf8('queued'));
     await attachment.detach();
     barrier.resolve();

@@ -73,6 +73,7 @@ describe('process exit', () => {
     const harness = createHarness({ backend: { write: () => barrier.promise } });
     const attachment = await startAndAttach(harness);
     attachment.write(utf8('a'));
+    await flush();
     attachment.write(utf8('b'));
     attachment.resize(100, 40);
     harness.session.reportProcessExit(0, null);
@@ -328,13 +329,18 @@ describe('attach versus exit', () => {
     await flush();
   });
 
-  test('an exit during startup is recorded and no source ever starts', async () => {
+  test('an exit during startup is recorded, and the sources still start and drain', async () => {
     const launch = createDeferred<void>();
     const harness = createHarness({ backend: { start: () => launch.promise } });
-    await startAndAttach(harness);
+    const attachment = await startAndAttach(harness);
     harness.session.reportProcessExit(1, null);
     launch.resolve();
     await flush();
+    harness.stream.push(utf8('tail'));
+    harness.stream.end();
+    await flush();
+    expect(harness.recorder.ofType('output')).toHaveLength(1);
+    attachment.outputParsedThrough(4);
     expect(await harness.session.closed).toMatchObject({
       cause: 'process-exit',
       process: { kind: 'exited', exitCode: 1, signal: null },

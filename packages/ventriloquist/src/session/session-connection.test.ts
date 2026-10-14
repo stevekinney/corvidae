@@ -18,6 +18,7 @@ import {
   type Harness,
   type HarnessOptions,
 } from './session.test-support.ts';
+import type { Session } from './session.ts';
 
 async function wire(
   harnessOptions: HarnessOptions = {},
@@ -271,6 +272,8 @@ describe('input, resize and acknowledgement', () => {
     });
     transport.send(transport.client.input(utf8('hang')));
     transport.pump();
+    // The write is submitted after the acknowledgement, so its deadline starts a turn later.
+    await flush();
     harness.clock.advance(2_000);
     await flush();
     const failure = transport.pump().find((message) => message.kind === 'operation-failure');
@@ -585,5 +588,87 @@ describe('liveness', () => {
     transport.connection.receive('not a frame');
     harness.clock.advance(20_000);
     expect(harness.session.snapshot.connection.kind).toBe('revoked');
+  });
+});
+
+describe('a source that emits while the attachment is being admitted', () => {
+  test('its output is held until the capabilities are issued, then delivered in order', async () => {
+    const { transport } = await wire({
+      sources: [
+        {
+          kind: 'subscription',
+          channel: 'pty',
+          subscribe: (deliver) => {
+            deliver(utf8('early'));
+            deliver(utf8('second'));
+            return () => undefined;
+          },
+        },
+      ],
+    });
+    expect(transport.closeCodes).toEqual([]);
+    expect(transport.failures).toEqual([]);
+    expect(transport.received.map((message) => message.kind)).toEqual([
+      'capabilities',
+      'output',
+      'output',
+    ]);
+    expect(
+      transport.received
+        .filter((message) => message.kind === 'output')
+        .map((message) => new TextDecoder().decode(message.payload)),
+    ).toEqual(['early', 'second']);
+  });
+});
+
+describe('a startup failure that precedes the attachment', () => {
+  test('is reported to an authorized client as spawn-failed, then the transport closes', async () => {
+    const harness = createHarness({
+      backend: { start: () => Promise.reject(new Error('no shell')) },
+    });
+    void harness.session.start();
+    await flush();
+    const transport = createFixtureTransport({ session: harness.session });
+    transport.connect();
+    expect(transport.received).toMatchObject([{ kind: 'attachment-error', code: 'spawn-failed' }]);
+    expect(transport.failures).toEqual([]);
+    expect(transport.closeCodes).toEqual([1011]);
+  });
+
+  test('is not revealed to a client the host refused', async () => {
+    const harness = createHarness({
+      backend: { start: () => Promise.reject(new Error('no shell')) },
+    });
+    void harness.session.start();
+    await flush();
+    const transport = createFixtureTransport({ session: harness.session, grant: false });
+    transport.connect();
+    expect(transport.received).toEqual([]);
+    expect(transport.closeCodes).toEqual([1008]);
+  });
+});
+
+describe('a synchronous process exit from the backend', () => {
+  test('is sent after the operation that caused it has been acknowledged', async () => {
+    const holder: { session?: Session } = {};
+    const { harness, transport } = await wire({
+      sources: [],
+      backend: {
+        write: () => {
+          holder.session?.reportProcessExit(1, null);
+          return Promise.resolve();
+        },
+      },
+    });
+    holder.session = harness.session;
+    transport.send(transport.client.input(utf8('x')));
+    await flush();
+    expect(transport.pump().map((message) => message.kind)).toEqual([
+      'operation-ack',
+      'process-exit',
+      'cleanup-result',
+    ]);
+    expect(transport.failures).toEqual([]);
+    expect(transport.closeCodes).toEqual([1000]);
   });
 });

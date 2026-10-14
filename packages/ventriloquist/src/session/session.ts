@@ -118,6 +118,14 @@ export class Session {
   #attachment: AttachmentRuntime | undefined;
   #started: Promise<void> | undefined;
   #startSettled: Promise<unknown> | undefined;
+  /** True from the moment `backend.start()` is invoked until its promise settles. */
+  #startPending = false;
+  /** The backend reported its exit before `start()` settled, so its sources still have to be read and drained. */
+  #exitedDuringStartup = false;
+  /** Listener deliveries that returned a promise and have not settled yet. */
+  readonly #deliveries = new Set<Promise<void>>();
+  /** A listener threw or rejected at some point before finalization. */
+  #callbackFailed = false;
   #sourcesStarted = false;
   #sourcesEnded = 0;
   #droppedBytes = 0;
@@ -204,10 +212,18 @@ export class Session {
       this.#markRunning();
       return;
     }
+    // Set before `start()` runs: a backend can report its exit from inside it, and that close must wait.
+    this.#startPending = true;
     const launched = attempt(() => backend.start());
     this.#startSettled = launched;
     const succeeded = await launched;
-    if (this.#closeCause !== undefined) return;
+    this.#startPending = false;
+    if (this.#closeCause !== undefined) {
+      // A natural close that began during startup is waiting for output that has not been read yet.
+      if (succeeded && this.#exitedDuringStartup) this.#startSources();
+      this.#checkDrain();
+      return;
+    }
     if (!succeeded) {
       this.#process = { kind: 'failed', reason: 'start-rejected' };
       this.#beginClose('start-failed');
@@ -277,6 +293,7 @@ export class Session {
     if (this.#finalized || this.#process.kind === 'exited' || this.#process.kind === 'failed') {
       return false;
     }
+    if (this.#process.kind === 'starting') this.#exitedDuringStartup = true;
     this.#process = { kind: 'exited', exitCode, signal };
     this.#emit({ type: 'processExit', exitCode, signal });
     this.#cancelQueued('process-exited');
@@ -384,16 +401,27 @@ export class Session {
       operation.kind === 'input'
         ? { sequence, kind: 'input', bytes: operation.bytes.slice() }
         : { sequence, ...operation };
+    // The queue holds the user-limit of waiting operations and the one being submitted is counted on
+    // top of it, so unsettled operations never exceed depth plus the active one: the window the
+    // endpoint keeps failable ("a submitted operation can still fail later").
     if (!attachment.queue.offerUser(queued)) return refuse('fifo-full');
     attachment.inputBytes += byteLength;
-    void this.#pump(attachment);
+    this.#schedulePump(attachment);
     return { disposition: 'accepted', sequence };
+  }
+
+  /**
+   * Start submitting after the caller has been handed the accepted receipt. The backend can exit
+   * or fail synchronously, and the caller must be able to acknowledge acceptance on the wire first.
+   */
+  #schedulePump(attachment: AttachmentRuntime): void {
+    if (attachment.pumping) return;
+    attachment.pumping = true;
+    void Promise.resolve().then(() => this.#pump(attachment));
   }
 
   /** Submit queued operations to the backend one at a time, each bounded by the acknowledgement deadline. */
   async #pump(attachment: AttachmentRuntime): Promise<void> {
-    if (attachment.pumping) return;
-    attachment.pumping = true;
     // Only an attachment whose capabilities allow input or resize can queue anything, and only a backend grants those.
     const backend = this.#backend as ProcessBackend;
     for (;;) {
@@ -456,7 +484,7 @@ export class Session {
       attachment === undefined ||
       attachment.revoked ||
       this.#sourcesStarted ||
-      this.#process.kind !== 'running'
+      !(this.#process.kind === 'running' || this.#exitedDuringStartup)
     ) {
       return;
     }
@@ -521,10 +549,16 @@ export class Session {
     if (attachment === undefined || attachment.listenerFailed || this.#finalized) return;
     const fail = (): void => {
       attachment.listenerFailed = true;
+      this.#callbackFailed = true;
       this.#beginClose('callback-failed');
     };
     try {
-      attachment.listener(event)?.then(undefined, fail);
+      const delivery = attachment.listener(event);
+      if (delivery !== undefined) {
+        const tracked: Promise<void> = delivery.then(() => undefined, fail);
+        this.#deliveries.add(tracked);
+        void tracked.finally(() => this.#deliveries.delete(tracked));
+      }
     } catch {
       fail();
     }
@@ -567,7 +601,8 @@ export class Session {
     const attachment = this.#attachment;
     return (
       attachment === undefined ||
-      (attachment.output.pendingBytes === 0 &&
+      (!this.#startPending &&
+        attachment.output.pendingBytes === 0 &&
         (!this.#sourcesStarted || this.#sourcesEnded === this.#sources.length))
     );
   }
@@ -605,13 +640,25 @@ export class Session {
     this.#revoke(cause);
     this.#cleanup = { kind: 'running' };
     const released = await this.#runCleanup();
+    await this.#settleDeliveries();
+    // A listener that failed during a natural close means the close was not the clean end it claims.
+    const finalCause =
+      this.#callbackFailed && NATURAL_CAUSES.has(cause) ? 'callback-failed' : cause;
     // An output overflow dropped bytes the session had no way to pause, so the owned scope was not
     // drained cleanly however the release itself went: it quarantines the slot.
     const outcome =
       cause === 'output-overflow' ? combineOutcomes([released, 'incomplete']) : released;
     this.#cleanup = { kind: 'finished', outcome };
     this.#quarantined = outcome !== 'complete';
-    this.#finalize(cause, outcome);
+    this.#finalize(finalCause, outcome);
+  }
+
+  /** Give listener promises still pending a bounded chance to settle, so a late rejection reaches the summary. */
+  async #settleDeliveries(): Promise<void> {
+    if (this.#deliveries.size === 0) return;
+    await settleWithin(this.#clock, this.#budgets.cleanupDeadlineMilliseconds, () =>
+      Promise.all(this.#deliveries),
+    ).outcome;
   }
 
   /** The owner's cleanup policy: release every source and the backend, each bounded by the cleanup deadline. */

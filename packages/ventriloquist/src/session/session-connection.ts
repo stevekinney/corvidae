@@ -29,6 +29,10 @@ export type SessionConnectionOptions = {
   readonly limits?: HostEndpointOptions;
 };
 
+/** The `failed` reason a session records when its backend's `start()` rejected. */
+const START_REJECTED_REASON = 'start-rejected';
+const SPAWN_FAILED_MESSAGE = 'the backend failed to start';
+
 const TRANSPORT_FAILURE_CLOSE_CODE = describeFailure('transport-failed').closeCode;
 
 /** The wire code an operation refused before queueing is reported under. */
@@ -53,6 +57,8 @@ export class SessionConnection {
   /** How many of the session's sources have reported completion on this attachment. */
   #sourcesCompleted = 0;
   /** A process exit held back until output has ended, so no trailing byte follows it. */
+  /** Session events that arrived before the capabilities were issued, delivered in order once they are. */
+  #admissionBuffer: SessionEvent[] | undefined;
   #pendingExit: { readonly exitCode: number | null; readonly signal: string | null } | undefined;
 
   constructor(options: SessionConnectionOptions) {
@@ -118,12 +124,24 @@ export class SessionConnection {
       this.#close(1008);
       return;
     }
+    // A session that failed to start before this client arrived can no longer be attached to. The
+    // client is authorized, so it is told why: a startup failure is never just a refused upgrade.
+    const { process } = session.snapshot;
+    if (process.kind === 'failed' && process.reason === START_REJECTED_REASON) {
+      this.#deliver(this.#host.attachmentError('spawn-failed', SPAWN_FAILED_MESSAGE));
+      this.#close(describeFailure('spawn-failed').closeCode);
+      return;
+    }
+    // Attaching can start sources, and a source may emit before `attach` returns. Nothing can be
+    // sent until the capabilities exist, so those events wait for them.
+    this.#admissionBuffer = [];
     const result = session.attach({
       requestedMode: hello.requestedMode,
       grant: admission.grant,
       listener: (event) => this.#onEvent(event),
     });
     if (!result.accepted) {
+      this.#admissionBuffer = undefined;
       this.#close(1008);
       return;
     }
@@ -132,7 +150,20 @@ export class SessionConnection {
       generation: result.authority.generation,
       capabilities: result.authority.capabilities,
     });
-    this.#deliver(issued.ok ? accept({ frame: issued.value, sequence: 0 }) : issued);
+    const delivered = this.#deliver(
+      issued.ok ? accept({ frame: issued.value, sequence: 0 }) : issued,
+    );
+    this.#releaseAdmissionBuffer(delivered);
+  }
+
+  /** Deliver, in order, what arrived during admission. Events that arrive meanwhile queue behind them. */
+  #releaseAdmissionBuffer(delivered: boolean): void {
+    const buffer = this.#admissionBuffer;
+    if (buffer === undefined) return;
+    // Capabilities that could not be sent already failed the attachment closed; nothing follows them.
+    if (!delivered) buffer.length = 0;
+    while (buffer.length > 0) this.#handleEvent(buffer.shift() as SessionEvent);
+    this.#admissionBuffer = undefined;
   }
 
   /** A host callback that throws is a refusal, never an escape: no generation is issued and the transport closes. */
@@ -210,6 +241,14 @@ export class SessionConnection {
   }
 
   #onEvent(event: SessionEvent): void {
+    if (this.#admissionBuffer !== undefined) {
+      this.#admissionBuffer.push(event);
+      return;
+    }
+    this.#handleEvent(event);
+  }
+
+  #handleEvent(event: SessionEvent): void {
     switch (event.type) {
       case 'output':
         this.#sendOutput(event);
@@ -239,7 +278,7 @@ export class SessionConnection {
         this.#flushExit();
         if (event.cause === 'start-failed') {
           // The backend never started: report the failure, never a process exit, and close with its code.
-          this.#deliver(this.#host.attachmentError('spawn-failed', 'the backend failed to start'));
+          this.#deliver(this.#host.attachmentError('spawn-failed', SPAWN_FAILED_MESSAGE));
           this.#closeCodeAfterCleanup ??= describeFailure('spawn-failed').closeCode;
         }
         // Otherwise revocation has no wire message of its own: the cleanup result that follows announces it.

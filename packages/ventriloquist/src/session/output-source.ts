@@ -75,6 +75,7 @@ function openStream(channel: OutputChannel, source: Extract<OutputSource, { kind
 
 function openIterable(channel: OutputChannel, source: Extract<OutputSource, { kind: 'iterable' }>) {
   const iterator = source.iterable[Symbol.asyncIterator]();
+  // Set only when the iterator reports `done`; a failed iteration is not finished and still needs `return()`.
   let finished = false;
   let released = false;
   const pump = async (handlers: SourceHandlers): Promise<void> => {
@@ -90,7 +91,6 @@ function openIterable(channel: OutputChannel, source: Extract<OutputSource, { ki
       }
     } catch (error) {
       if (released) return;
-      finished = true;
       handlers.failed(error);
     }
   };
@@ -117,23 +117,34 @@ function openSubscription(
   source: Extract<OutputSource, { kind: 'subscription' }>,
 ) {
   let unsubscribe: (() => void | Promise<void>) | undefined;
+  let subscribeFailed = false;
   let released = false;
   const open: OpenSource = {
     channel,
     ownership: 'borrowed',
     start: (handlers) => {
-      unsubscribe = source.subscribe(
-        (bytes) => {
-          if (!released) handlers.chunk(copy(bytes));
-        },
-        () => {
-          if (!released) handlers.end();
-        },
-      );
+      try {
+        unsubscribe = source.subscribe(
+          (bytes) => {
+            if (!released) handlers.chunk(copy(bytes));
+          },
+          () => {
+            if (!released) handlers.end();
+          },
+        );
+      } catch (error) {
+        // The producer may have registered the listener before it threw, and there is no handle to remove it with.
+        subscribeFailed = true;
+        throw error;
+      }
     },
     release: (clock, deadlineMilliseconds) => {
       released = true;
-      return settleToOutcome(clock, deadlineMilliseconds, () => unsubscribe?.());
+      return settleToOutcome(clock, deadlineMilliseconds, () => {
+        if (subscribeFailed)
+          throw new Error('subscribe() failed without returning an unsubscribe handle');
+        return unsubscribe?.();
+      });
     },
   };
   return open;
