@@ -1,4 +1,5 @@
 import type { ApprovalResolution } from '@lostgradient/cinder';
+import type { JSONValue } from 'conversationalist';
 import type { ChatAdapter, ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
 import { removeMessage } from '../components/chat/builders.ts';
 import type { ConversationHistory, ToolResult } from '../components/chat/conversation-model.ts';
@@ -82,9 +83,73 @@ export type ChatSessionTransport = (
  */
 export type ChatExecutionOwner = 'browser' | 'server';
 
+/**
+ * What a `tool.*` activity frame reported about one call.
+ *
+ * Reduced per `toolCallId`, independent of transcript rows: the frames reach
+ * the wire while the tool is still executing, ahead of the `tool_call` that
+ * gives the call a row. Absent optional fields are omitted, never `undefined`.
+ */
+export type ChatToolActivity = { toolCallId: string; toolName: string } & (
+  | { status: 'started' }
+  | { status: 'progress'; percent?: number; message?: string }
+  | { status: 'error'; error: JSONValue }
+  | { status: 'policy-denied'; reason?: string }
+);
+
+/**
+ * What an `elicitation.*` frame reported about one question.
+ *
+ * Each record carries exactly the fields of its own wire frame; `requestId`
+ * is the sole correlation key between a request and its resolution.
+ */
+export type ChatElicitationActivity =
+  | {
+      status: 'requested';
+      requestId: string;
+      message: string;
+      toolCallId?: string;
+      action?: ChatToolResult['action'];
+    }
+  | { status: 'resolved'; requestId: string; accepted: boolean; toolCallId?: string };
+
+/** What a `run.aborted` terminal reported. */
+export type ChatRunAbortedNotice = { reason?: string };
+
+/**
+ * Calls an observer and routes its failure to `reportError`, whether it
+ * throws or hands back a promise that rejects.
+ *
+ * The hooks are typed `=> void`, which TypeScript still lets an `async`
+ * function satisfy; its rejection would otherwise surface after the
+ * surrounding `try` has finished, as an unhandled rejection no one reports.
+ * A failing observer never fails the run.
+ */
+export function notifyObserver(invoke: () => unknown, reportError: (error: unknown) => void): void {
+  try {
+    const result = invoke();
+    if (
+      typeof result === 'object' &&
+      result !== null &&
+      'then' in result &&
+      typeof result.then === 'function'
+    ) {
+      Promise.resolve(result).then(undefined, reportError);
+    }
+  } catch (observerError) {
+    reportError(observerError);
+  }
+}
+
 /** Optional observers and approval handlers for controller lifecycle events. */
 export type ChatSessionHooks = {
   onToolResult?: (result: ChatToolResult) => void;
+  /** Called with the new record each time a `tool.*` activity frame is reduced. */
+  onToolActivity?: (activity: ChatToolActivity) => void;
+  /** Called with the new record each time an `elicitation.*` frame is reduced. */
+  onElicitation?: (activity: ChatElicitationActivity) => void;
+  /** Called once when a run ends on a `run.aborted` terminal. */
+  onRunAborted?: (aborted: ChatRunAbortedNotice) => void;
   resolveToolApproval?: (
     toolCallId: string,
     resolution: ApprovalResolution,
