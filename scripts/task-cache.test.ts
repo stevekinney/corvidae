@@ -3,7 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './module-scope-scenario.test-support.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -157,6 +161,7 @@ async function run(
     }
   }
   const child = Bun.spawn(fixtureCommand, {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',

@@ -4,8 +4,8 @@
  * Bun gives every test and hook a five-second clock, and a process started inside one pays its
  * boot on that clock, which a loaded host cannot meet (COR-1392, COR-1503). Such a scenario runs
  * once at module scope, where no per-test timeout applies, through `outcomeOf`. Its test is then
- * `rethrow(outcome)`, so a failed assertion still fails under the test that names it.
- * `scripts/check-test-process-spawns.ts` fails a test body or hook that starts a process.
+ * `rethrow(outcome)`, so a failed assertion still fails under the test that names it. COR-1507
+ * adds the guard that fails a test body or hook that starts a process.
  *
  * Module scope has no per-test timeout, so a scenario whose child never exits would otherwise
  * hold the whole run. `SCENARIO_HANG_GUARD_MILLISECONDS` turns that hang into a failure of the

@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './module-scope-scenario.test-support.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -109,7 +113,7 @@ async function lintImport(
         ...(typeAware ? ['--type-aware', '--tsconfig', configurationPath] : []),
         directory,
       ],
-      { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+      { timeout: SCENARIO_HANG_GUARD_MILLISECONDS, cwd: root, stdout: 'pipe', stderr: 'pipe' },
     );
     const [exitCode, stdout, stderr] = await Promise.all([
       process.exited,
@@ -412,6 +416,7 @@ async function compileContract(
       }),
     );
     const process = Bun.spawn([join(root, 'node_modules/.bin/tsc'), '--project', configuration], {
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
