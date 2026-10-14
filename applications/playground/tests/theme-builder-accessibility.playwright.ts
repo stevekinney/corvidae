@@ -43,6 +43,9 @@ const DESKTOP = { width: 1440, height: 1000 };
 
 async function showScene(page: Page, sceneId: string): Promise<Frame> {
   const scene = THEME_PREVIEW_SCENES.find((candidate) => candidate.id === sceneId)!;
+  // Below 768px the preview is a tab panel; open it before reaching for its controls.
+  const previewTab = page.getByRole('tab', { name: 'Preview' });
+  if (await previewTab.isVisible()) await previewTab.click();
   await page.getByLabel('Preview category').selectOption(scene.category);
   await page.getByLabel('Example').selectOption(sceneId);
   await waitForPreviewApplied(page);
@@ -52,8 +55,22 @@ async function showScene(page: Page, sceneId: string): Promise<Frame> {
   return frame;
 }
 
-async function axeViolations(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags([...WCAG_22_AA_TAGS]).analyze();
+const FRAME = 'iframe[title="Theme preview"]';
+
+/**
+ * Axe over the builder chrome (the preview frame excluded) or over the frame's document alone.
+ * Axe re-fetches the playground's `@import`ed stylesheets relative to the page, which answers
+ * 404 and logs a console error that is Axe's own request, not the page's, so those are removed
+ * from the console tracker for the duration of the analysis and nothing else is.
+ */
+async function axeViolations(page: Page, scope: 'builder' | 'frame'): Promise<string[]> {
+  const before = problems.length;
+  const builder = new AxeBuilder({ page }).withTags([...WCAG_22_AA_TAGS]);
+  const results = await (scope === 'builder'
+    ? builder.exclude(FRAME).analyze()
+    : builder.include([FRAME, 'html']).analyze());
+  const fresh = problems.splice(before);
+  problems.push(...fresh.filter((problem) => !/Failed to load resource.*404/.test(problem)));
   return results.violations.map(
     (violation) =>
       `${violation.id} (${violation.impact ?? 'no impact'}): ${violation.nodes
@@ -76,12 +93,17 @@ test.describe('axe, WCAG 2.2 AA tags, every impact level', () => {
       await openBuilder(page, DESKTOP);
       await selectContext(page, context);
       await waitForPreviewApplied(page);
-      // The checks panel is part of the builder chrome that Axe sees.
+      // The checks panel is part of the builder chrome that Axe sees, with its long list open.
       await expect(page.getByTestId('checks-panel')).toBeVisible();
-      expect(await axeViolations(page), `builder chrome ${label}`).toEqual([]);
+      await expect(page.getByTestId('checks-panel')).toHaveAttribute('data-readiness', 'ready', {
+        timeout: 60_000,
+      });
+      expect(await axeViolations(page, 'builder'), `builder chrome ${label}`).toEqual([]);
+      await page.getByTestId('group-advisory').locator('summary').click();
+      expect(await axeViolations(page, 'builder'), `advisory findings ${label}`).toEqual([]);
       for (const sceneId of scenes) {
         await showScene(page, sceneId);
-        expect(await axeViolations(page), `${sceneId} in ${label}`).toEqual([]);
+        expect(await axeViolations(page, 'frame'), `${sceneId} in ${label}`).toEqual([]);
       }
     });
   }
@@ -94,19 +116,34 @@ test.describe('rendered checks on the reference scene', () => {
     await frame.evaluate(() => {
       document.documentElement.style.fontSize = '200%';
     });
-    const result = await frame.evaluate(() => ({
-      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      controls: [...document.querySelectorAll('button, a[href], input, select')].map((element) => {
-        const box = element.getBoundingClientRect();
-        return {
-          visible: box.width > 0 && box.height > 0,
-          inside: box.right <= window.innerWidth + 1,
-        };
-      }),
-    }));
-    expect(result.overflow, 'no sideways scrolling at 200% text').toBeLessThanOrEqual(1);
+    const result = await frame.evaluate(() => {
+      // Content inside its own horizontal scroll region (a table, a chart, an example's
+      // scroller) keeps working; only content that pushes the page sideways is lost (1.4.10).
+      const insideScrollRegion = (element: Element): boolean => {
+        for (
+          let node: Element | null = element;
+          node !== null && node !== document.body;
+          node = node.parentElement
+        ) {
+          if (['auto', 'scroll'].includes(getComputedStyle(node).overflowX)) return true;
+        }
+        return element.closest('svg, figure') !== null;
+      };
+      const overflowing = [...document.querySelectorAll('body *')]
+        .filter((element) => !insideScrollRegion(element))
+        .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 1)
+        .map((element) => element.outerHTML.slice(0, 100));
+      const controls = [...document.querySelectorAll('button, a[href], input, select')].map(
+        (element) => {
+          const box = element.getBoundingClientRect();
+          return { visible: box.width > 0 && box.height > 0 };
+        },
+      );
+      return { overflowing, controls };
+    });
+    expect(result.overflowing, 'content pushed past the frame at 200% text').toEqual([]);
     expect(result.controls.length).toBeGreaterThan(0);
-    expect(result.controls.every((control) => control.visible && control.inside)).toBe(true);
+    expect(result.controls.every((control) => control.visible)).toBe(true);
   });
 
   test('1.4.10: the builder and the scene reflow at 320 CSS px', async ({ page }) => {
@@ -157,24 +194,39 @@ test.describe('rendered checks on the reference scene', () => {
     const failures: string[] = [];
     for (let step = 0; step < 14; step += 1) {
       await page.keyboard.press('Tab');
+      // Let the component react to the focus (a chart draws its own ring on the next frame).
+      await frame.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      );
       const state = await frame.evaluate(() => {
         const element = document.activeElement;
         if (element === null || element === document.body) return null;
         const style = getComputedStyle(element);
         const box = element.getBoundingClientRect();
         const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        // A chart point is an invisible SVG hit target; the chart draws its own ring layer.
+        const inSvg = element.closest('svg') !== null;
+        const ring =
+          inSvg && element.closest('svg')!.querySelector('[class*="focus-ring-layer"] *') !== null;
         return {
           name: element.tagName.toLowerCase() + (element.getAttribute('aria-label') ?? ''),
           matches: element.matches(':focus-visible'),
+          svg: inSvg,
           indicator:
+            ring ||
             (style.outlineStyle !== 'none' && Number.parseFloat(style.outlineWidth) > 0) ||
             style.boxShadow !== 'none',
           covered:
-            top !== null && top !== element && !element.contains(top) && !top.contains(element),
+            !inSvg &&
+            top !== null &&
+            top !== element &&
+            !element.contains(top) &&
+            !top.contains(element),
         };
       });
       if (state === null) continue;
-      if (!state.matches || !state.indicator) failures.push(`${state.name}: no visible indicator`);
+      if (!state.indicator || (!state.matches && !state.svg))
+        failures.push(`${state.name}: no visible indicator`);
       if (state.covered) failures.push(`${state.name}: focus is covered`);
     }
     expect(failures).toEqual([]);
@@ -183,20 +235,43 @@ test.describe('rendered checks on the reference scene', () => {
   test('2.5.8: interactive targets are at least 24 by 24 CSS px', async ({ page }) => {
     await openBuilder(page, DESKTOP);
     const frame = await showScene(page, REFERENCE_SCENE);
-    const small = await frame.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>('button, input, select, [role="tab"], a[href]')]
-        .filter((element) => {
-          const box = element.getBoundingClientRect();
-          if (box.width === 0 || box.height === 0) return false;
-          // Documented exception: an inline link inside a sentence is sized by its text.
-          const inline = element.tagName === 'A' && getComputedStyle(element).display === 'inline';
-          return !inline && (box.width < 24 || box.height < 24);
+    const small = await frame.evaluate(() => {
+      type Target = { element: HTMLElement; box: DOMRect };
+      const targets: Target[] = [
+        ...document.querySelectorAll<HTMLElement>('button, input, select, [role="tab"], a[href]'),
+      ]
+        .map((element) => {
+          // Documented exception (equivalent control): a checkbox or radio is also operated by
+          // its label, so the label's box is the target that is measured.
+          const isToggle =
+            element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type);
+          const label = isToggle ? element.labels?.[0] : undefined;
+          return { element, box: (label ?? element).getBoundingClientRect() };
+        })
+        .filter(({ box }) => box.width > 0 && box.height > 0);
+      // Documented exception (spacing): a 24 CSS px circle centred on an undersized target must
+      // not touch any other target.
+      const distanceToBox = (x: number, y: number, box: DOMRect) =>
+        Math.hypot(
+          Math.max(box.left - x, 0, x - box.right),
+          Math.max(box.top - y, 0, y - box.bottom),
+        );
+      return targets
+        .filter(({ element, box }) => {
+          // Documented exception (inline): a link within a sentence is sized by its text.
+          if (element.tagName === 'A' && getComputedStyle(element).display === 'inline') {
+            return false;
+          }
+          if (box.width >= 24 && box.height >= 24) return false;
+          const x = box.left + box.width / 2;
+          const y = box.top + box.height / 2;
+          return targets.some((other) => other.box !== box && distanceToBox(x, y, other.box) < 12);
         })
         .map(
-          (element) =>
-            `${element.tagName.toLowerCase()} ${element.textContent?.trim().slice(0, 30)}`,
-        ),
-    );
+          ({ element, box }) =>
+            `${element.outerHTML.slice(0, 80)} => ${Math.round(box.width)}x${Math.round(box.height)}`,
+        );
+    });
     expect(small, 'targets under 24x24 CSS px').toEqual([]);
   });
 

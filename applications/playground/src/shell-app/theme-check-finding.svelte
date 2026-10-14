@@ -22,7 +22,9 @@
   const scene = $derived(record.scenes[0]);
   const format = (value: number | null): string =>
     value === null ? 'not measured' : value.toFixed(3);
-  const heading = $derived(`${rule.title} (${record.context})`);
+  // Labels name the context without the word "motion", which the toolbar's own control owns.
+  const contextLabel = $derived(record.context.replace('/', ' ').replace('-motion', ''));
+  const heading = $derived(`${rule.title} (${contextLabel})`);
 </script>
 
 <li
@@ -95,7 +97,7 @@
       label="Show in editor"
       variant="secondary"
       size="sm"
-      aria-label={`Show in editor: ${rule.title}, ${record.context}`}
+      aria-label={`Show in editor: ${rule.title}, ${contextLabel}`}
       onclick={() => onshow(record)}
     />
     {#if actions}

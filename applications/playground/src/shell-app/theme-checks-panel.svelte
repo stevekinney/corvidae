@@ -58,6 +58,14 @@
       'Cinder guardrails, APCA and gamut notes. They stay visible, can be acknowledged, and never change the result.',
   };
 
+  /** Only an open group renders its findings, so a long advisory list costs nothing until read. */
+  let opened = $state<Record<Severity, boolean>>({
+    'invalid-source': true,
+    'accessibility-error': true,
+    'needs-review': true,
+    advisory: false,
+  });
+
   const draft = $derived(controller?.draft ?? null);
   const report = $derived(session.report);
   const current = $derived(
@@ -155,18 +163,21 @@
     {#each grouped as group (group.severity)}
       <details
         class="group"
-        open={group.severity !== 'advisory'}
+        open={opened[group.severity]}
+        ontoggle={(event) => (opened[group.severity] = event.currentTarget.open)}
         data-testid={`group-${group.severity}`}
       >
         <summary>
           <h3>{SEVERITY_TITLES[group.severity]} ({group.items.length})</h3>
         </summary>
         <p class="note">{SEVERITY_NOTES[group.severity]}</p>
-        <ul class="list">
-          {#each group.items as record (record.id)}
-            <ThemeCheckFinding {record} onshow={show} {actions} />
-          {/each}
-        </ul>
+        {#if opened[group.severity]}
+          <ul class="list">
+            {#each group.items as record (record.id)}
+              <ThemeCheckFinding {record} onshow={show} {actions} />
+            {/each}
+          </ul>
+        {/if}
       </details>
     {/each}
 

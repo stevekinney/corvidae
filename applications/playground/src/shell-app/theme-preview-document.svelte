@@ -91,9 +91,14 @@
     min-width: 0;
     overflow-x: auto;
   }
+  .application,
+  .application__overlays {
+    min-width: 0;
+  }
   .application {
     display: grid;
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), not 1fr: a bare 1fr track will not shrink below its widest example. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--cinder-space-4);
   }
   .application__group {
