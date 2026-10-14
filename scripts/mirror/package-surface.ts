@@ -343,10 +343,10 @@ export function checkTargetCoverage({
  */
 function binEntries(bin: string | Record<string, string> | undefined): SurfaceExportsMap {
   if (bin === undefined) return {};
-  const normalize = (target: string): string => (target.startsWith('./') ? target : `./${target}`);
-  if (typeof bin === 'string') return { 'bin:.': normalize(bin) };
+  const asRelative = (target: string): string => (target.startsWith('./') ? target : `./${target}`);
+  if (typeof bin === 'string') return { 'bin:.': asRelative(bin) };
   return Object.fromEntries(
-    Object.entries(bin).map(([name, target]) => [`bin:${name}`, normalize(target)]),
+    Object.entries(bin).map(([name, target]) => [`bin:${name}`, asRelative(target)]),
   );
 }
 
