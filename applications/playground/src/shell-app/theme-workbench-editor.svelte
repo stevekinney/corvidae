@@ -10,6 +10,9 @@
   import { catalogueRowByPath } from './theme-builder-catalogue.ts';
   import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
   import ThemePalettePanel from './theme-palette-panel.svelte';
+  import ThemeReferencePanel from './theme-reference-panel.svelte';
+  import ThemeSourceDisclosure from './theme-source-disclosure.svelte';
+  import { tick } from 'svelte';
   import { editorForToken } from './theme-token-editors.ts';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
@@ -22,6 +25,18 @@
 
   const row = $derived(catalogueRowByPath(workbench.selectedTokenPath));
   let paletteOpen = $state(false);
+
+  /** Back to originating token: reselect it, then return focus to its disclosure trigger. */
+  async function backToOrigin(): Promise<void> {
+    const origin = workbench.returnToOrigin();
+    if (origin === null) return;
+    if (controller !== undefined) {
+      controller.announcement = `Showing ${origin}, where you started.`;
+    }
+    await tick();
+    const base = `theme-source-${origin.replaceAll('.', '-')}`;
+    document.getElementById(`${base}-header`)?.focus();
+  }
 </script>
 
 <section class="editor" aria-labelledby="editor-heading" data-testid="editor-slot">
@@ -38,6 +53,16 @@
     {#if paletteOpen}
       <ThemePalettePanel {controller} {workbench} onClose={() => (paletteOpen = false)} />
     {/if}
+  {/if}
+  {#if workbench.originTokenPath !== null && workbench.originTokenPath !== workbench.selectedTokenPath}
+    <div>
+      <Button
+        label="Back to originating token"
+        aria-label={`Back to originating token ${workbench.originTokenPath}`}
+        variant="secondary"
+        onclick={() => void backToOrigin()}
+      />
+    </div>
   {/if}
   {#if row === undefined}
     <p class="muted">Select a token in the catalogue to edit it.</p>
@@ -71,6 +96,8 @@
     {#key row.path}
       {@const Editor = editorForToken(row)}
       <Editor {controller} {workbench} {row} />
+      <ThemeReferencePanel {controller} {workbench} {row} />
+      <ThemeSourceDisclosure {controller} {workbench} {row} />
     {/key}
   {:else}
     <p class="muted">Value editors arrive with the token editors.</p>

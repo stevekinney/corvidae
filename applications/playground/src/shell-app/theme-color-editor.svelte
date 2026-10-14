@@ -236,7 +236,7 @@
         {envelope}
         {context}
         color={shown}
-        onFollow={(path) => workbench.selectToken(path)}
+        onFollow={(path) => workbench.followToken(path, row.path)}
       />
     {/if}
 

@@ -67,7 +67,7 @@ describe('the field model round-trips every fixture exactly', () => {
     const swapped = { ...fields, layers: moved(fields.layers, 0, 1) };
     const result = compositeToValue(swapped);
     const original = valueOf('shadow') as JsonValue[];
-    expect(result).toEqual({ ok: true, value: [original[1], original[0]] });
+    expect(result).toEqual({ ok: true, value: [original[1]!, original[0]!] });
   });
 
   test('a reference member is kept verbatim, and an unreadable member is preserved', () => {
@@ -145,7 +145,7 @@ describe('malformed members are named by path', () => {
 });
 
 describe('the registry', () => {
-  test.each(COMPOSITE_TYPES)('%s resolves to the composite editor', (type) => {
+  test.each([...COMPOSITE_TYPES])('%s resolves to the composite editor', (type) => {
     expect(editorForToken(sourceTokenRow(`fx.${type}`, type))).toBe(CompositeEditor);
   });
 });
@@ -266,7 +266,7 @@ describe('shadow layers', () => {
     expect(document.activeElement?.id).toMatch(/layer-up-1$/);
     await click('Apply');
     const original = valueOf('shadow') as JsonObject[];
-    expect(lightNode(controller, 'fx.shadow')!['$value']).toEqual([original[1], original[0]]);
+    expect(lightNode(controller, 'fx.shadow')!['$value']).toEqual([original[1]!, original[0]!]);
   });
 
   test('a reference member is shown as one and only an explicit action makes it a literal', async () => {
@@ -385,9 +385,9 @@ describe('the other composites', () => {
     await click('Apply');
     const original = valueOf('gradient') as JsonObject[];
     expect(lightNode(controller, 'fx.gradient')!['$value']).toEqual([
-      original[0],
-      { ...original[2], position: 0.5 },
-      { ...original[1], position: 1 },
+      original[0]!,
+      { ...original[2]!, position: 0.5 },
+      { ...original[1]!, position: 1 },
     ]);
     await click('Remove Gradient stop 1');
     expect(target.querySelectorAll('[data-testid="composite-layer"]')).toHaveLength(2);

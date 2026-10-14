@@ -11,6 +11,7 @@
  */
 
 import {
+  catalogueRowByPath,
   firstFoundationPath,
   NO_FILTERS,
   type CatalogueFilters,
@@ -73,8 +74,38 @@ export class ThemeWorkbenchState {
   /** Scroll offsets of the bounded scroll regions inside the panes, by `data-scroll-region`. */
   readonly scrollByRegion: Record<string, number> = {};
 
+  /** Whether the Source and dependencies disclosure is open; it stays open as the selection moves. */
+  sourceDisclosureOpen = $state(false);
+  /** The token a followed dependent or recipe input was reached from (COR-488), or `null`. */
+  originTokenPath = $state<string | null>(null);
+
   selectToken(path: string | null): void {
     this.selectedTokenPath = path;
+    this.originTokenPath = null;
+  }
+
+  /**
+   * Select a dependent or recipe input through the catalogue, remembering where the author
+   * came from. A chain of follows returns to the first token, the originating one. The
+   * concrete context is not touched.
+   */
+  followToken(path: string, from: string): void {
+    const row = catalogueRowByPath(path);
+    if (row === undefined) return;
+    this.originTokenPath ??= from;
+    this.selectedTokenPath = path;
+    this.groupId = row.group;
+  }
+
+  /** Back to originating token: select it again and forget the trail. */
+  returnToOrigin(): string | null {
+    const origin = this.originTokenPath;
+    if (origin === null) return null;
+    this.originTokenPath = null;
+    this.selectedTokenPath = origin;
+    const row = catalogueRowByPath(origin);
+    if (row !== undefined) this.groupId = row.group;
+    return origin;
   }
 
   /** A scene change asks the preview for a new revision and leaves the selected token alone. */
