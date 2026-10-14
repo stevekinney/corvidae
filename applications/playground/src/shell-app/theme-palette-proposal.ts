@@ -24,11 +24,12 @@ import {
   type DtcgColor,
   type OklchValue,
 } from './theme-color-model.ts';
-import type {
-  EditableState,
-  JsonObject,
-  OverrideScope,
-  ThemeEnvelope,
+import {
+  editableState,
+  type EditableState,
+  type JsonObject,
+  type OverrideScope,
+  type ThemeEnvelope,
 } from './theme-draft-types.ts';
 import { createEnvelope } from './theme-envelope.ts';
 import { getNode, setNode } from './theme-override-tree.ts';
@@ -175,7 +176,7 @@ export function buildPaletteProposal(input: {
       const aliased = row !== undefined && editorMode(row, input.envelope, scope) === 'alias';
       const alpha = current?.alpha ?? role.baseline.alpha;
       const proposed = oklchColor({ ...role.proposed, alpha });
-      const skipped: SkipReason | null = input.locked.has(key)
+      const skipped: SkipReason | null = input.locked.has(role.path)
         ? 'locked'
         : aliased
           ? 'alias'
@@ -260,5 +261,6 @@ export function applyPaletteState(
     };
     overrides[scope] = setNode(overrides[scope], sourcePath, node);
   }
-  return { overrides, cssOverrides: envelope.cssOverrides };
+  // The lock set rides along: applying a palette must never silently drop an author's locks.
+  return { ...editableState(envelope), overrides };
 }

@@ -147,10 +147,15 @@ describe('the Create palette panel', () => {
     const { controller } = await open();
     await type('palette-seed', '#0ea5e9');
     await toggle('palette-lock-light:accent.solid');
+    // The lock is a committed, undoable transaction; the proposal rebuilds from its revision.
+    await settle();
+    expect(controller.lockedPaths.has('accent.solid')).toBe(true);
     await press('Apply palette');
+    expect(controller.draft!.envelope.locked).toEqual(['accent.solid']);
     const light = controller.draft!.envelope.overrides.light as { accent: Record<string, unknown> };
     expect(Object.keys(light.accent)).toEqual(['text']);
-    expect(Object.keys(controller.draft!.envelope.overrides.dark)).toEqual(['accent']);
+    const dark = controller.draft!.envelope.overrides.dark as { accent: Record<string, unknown> };
+    expect(Object.keys(dark.accent)).toEqual(['text']);
   });
 
   test('an existing override is listed and replaced only when explicitly included', async () => {

@@ -274,8 +274,8 @@ describe('palette proposals over the shipped baseline', () => {
     expect(role.originalText).toContain('color(display-p3');
   });
 
-  test('locked roles and linked aliases are kept and never selected', () => {
-    const locked = new Set(['light:accent.solid']);
+  test('a locked token is kept in both modes, and linked aliases are kept and never selected', () => {
+    const locked = new Set(['accent.solid']);
     const proposal = proposalFor(fresh(), 'accent', '#0ea5e9', locked);
     const solid = proposal.modes.light.find((role) => role.path === 'accent.solid')!;
     expect(solid.skipped).toBe('locked');
@@ -283,7 +283,6 @@ describe('palette proposals over the shipped baseline', () => {
     expect(selectedRoles(proposal, all).map((role) => role.key)).toEqual([
       'light:accent.text',
       'dark:accent.text',
-      'dark:accent.solid',
     ]);
     const aliased = proposalFor(fresh(), 'neutral', '#6b7280');
     expect(aliased.modes.light.every((role) => role.skipped === null)).toBe(true);

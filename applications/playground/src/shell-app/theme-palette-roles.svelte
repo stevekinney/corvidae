@@ -13,7 +13,7 @@
     mode: PaletteColorMode;
     locked: ReadonlySet<string>;
     included: ReadonlySet<string>;
-    onLock: (key: string, on: boolean) => void;
+    onLock: (path: string, on: boolean) => void;
     onInclude: (key: string, on: boolean) => void;
   };
   let { roles, mode, locked, included, onLock, onInclude }: Props = $props();
@@ -64,8 +64,8 @@
           <Checkbox
             id={`palette-lock-${role.key}`}
             label={`Lock ${role.path} in ${mode} mode`}
-            checked={locked.has(role.key)}
-            onValueChange={(on) => onLock(role.key, on)}
+            checked={locked.has(role.path)}
+            onValueChange={(on) => onLock(role.path, on)}
           />
         {/if}
         {#if role.override !== null && role.skipped === null}

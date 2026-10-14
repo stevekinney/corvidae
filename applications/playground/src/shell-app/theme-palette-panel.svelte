@@ -37,7 +37,6 @@
   let gamut = $state<OutputGamut>('srgb');
   let selectedModes = $state<ReadonlySet<PaletteColorMode>>(new Set(PALETTE_COLOR_MODES));
   let included = $state<ReadonlySet<string>>(new Set());
-  let locked = $state<ReadonlySet<string>>(new Set());
   let previewing = false;
   let applying = $state(false);
   let message = $state<string | null>(null);
@@ -46,7 +45,7 @@
   const result = $derived(
     envelope === null || seed.trim() === ''
       ? null
-      : buildPaletteProposal({ seed, family, gamut, envelope, locked }),
+      : buildPaletteProposal({ seed, family, gamut, envelope, locked: controller.lockedPaths }),
   );
   const proposal = $derived(result?.ok ? result.proposal : null);
   const seedError = $derived(result !== null && !result.ok ? result.message : undefined);
@@ -180,9 +179,9 @@
         <ThemePaletteRoles
           roles={proposal.modes[mode]}
           {mode}
-          {locked}
+          locked={controller.lockedPaths}
           {included}
-          onLock={(key, on) => (locked = toggle(locked, key, on))}
+          onLock={(path, on) => void controller.setLocked(path, on)}
           onInclude={(key, on) => (included = toggle(included, key, on))}
         />
       </section>
