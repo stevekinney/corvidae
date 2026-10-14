@@ -9,7 +9,7 @@ This document defines how an authenticated outside process discovers, addresses,
 | Question | Ruling |
 | --- | --- |
 | External contract | A2A-native. The agent-facing surface is [A2A 1.0.1](https://a2a-protocol.org/latest/specification/) plus optional, versioned Bureau extensions. A native management plane, served as Weft catalog operations, covers operator work A2A cannot express. |
-| First consumer | A new Bureau UI application. Its live chat surface speaks AG-UI; discovery, task lifecycle, and peer agents use A2A; operator screens use the management plane. It reuses the shared layers `@lostgradient/weft/ui` exports and is tracked in its own Linear project. |
+| First consumer | A new Interborough application. Its live chat surface speaks AG-UI; discovery, task lifecycle, and peer agents use A2A; operator screens use the management plane. It reuses the shared layers `@lostgradient/weft/ui` exports and is tracked in its own Linear project. |
 | Agent coordination | Parent-owned work keeps the typed in-process child API. Peer agents communicate over A2A, addressing each other by Agent Card whether the peer is in this Bureau or another. |
 | Tenancy | Tenant is the deployment. One Bureau instance serves one tenant; isolation comes from separate stores and feed registries. |
 | Authorization | Owner of record plus operator scopes, with not-found-shaped denial. |
@@ -47,8 +47,8 @@ Bureau has no external surface. `createBureauHandler` (COR-1300) and Weft's engi
 
 | Use case | v1 consumer | Surface | Operations it needs |
 | --- | --- | --- | --- |
-| Application control | Bureau UI | AG-UI for the live chat surface; A2A for discovery and task lifecycle | Agent Card discovery, `SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`; the AG-UI run stream (COR-855) |
-| Operator administration | Bureau UI operator screens | Management plane | Reviews, deliveries, cross-owner tasks, audit, schedules and goals |
+| Application control | Interborough | AG-UI for the live chat surface; A2A for discovery and task lifecycle | Agent Card discovery, `SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`; the AG-UI run stream (COR-855) |
+| Operator administration | Interborough operator screens | Management plane | Reviews, deliveries, cross-owner tasks, audit, schedules and goals |
 | Remote-agent interoperability | Any A2A client, including another Bureau | A2A | Every core A2A operation; streaming and push when declared |
 | Agent-to-agent coordination | Operatives calling peers | A2A client (COR-905) | Card discovery, `SendMessage`, `GetTask`, `SubscribeToTask`, `CancelTask` against the peer |
 | AI-host integration | None in v1 | Bureau MCP adapter (COR-839) when a consumer is named | A projection of the same tasks and management operations, generated from catalog operations marked `mcpExposable` through Weft's SDK-based MCP path (COR-1311); absent from v1 discovery |
@@ -64,9 +64,9 @@ Three surfaces sit over one set of native Bureau resources. Each is a projection
 
 | Surface | Mounted as | Audience | Wire |
 | --- | --- | --- | --- |
-| A2A | A `mounts` entry claiming one path prefix per published agent, plus the public Agent Card path | External agents, peer Bureaus, the Bureau UI's task views | A2A 1.0.1 JSON-RPC binding; streaming over Server-Sent Events |
-| AG-UI | A `mounts` entry (COR-855) | The Bureau UI's chat surface | AG-UI 1.0 event stream |
-| Management plane | Catalog operations in the shared Weft registry | Operators, through the Bureau UI | JSON-RPC over HTTP; subscriptions over the generic Server-Sent Events route |
+| A2A | A `mounts` entry claiming one path prefix per published agent, plus the public Agent Card path | External agents, peer Bureaus, the Interborough's task views | A2A 1.0.1 JSON-RPC binding; streaming over Server-Sent Events |
+| AG-UI | A `mounts` entry (COR-855) | The Interborough's chat surface | AG-UI 1.0 event stream |
+| Management plane | Catalog operations in the shared Weft registry | Operators, through the Interborough | JSON-RPC over HTTP; subscriptions over the generic Server-Sent Events route |
 
 Adapters reach Bureau only through the mount context's `dispatch` and `subscribe`, never by calling the `bureau` object directly, so every request passes the catalog's access policy and `authorize` hook ([COR-1298, decision 4](https://github.com/stevekinney/corvidae/pull/183)). An adapter that bypasses `dispatch` is a defect.
 
@@ -92,7 +92,7 @@ Every resource below declares the started-work floor: stable identity, owner, op
 | Long-running tool execution | `executionId` | The run's `ownerId` | `revision` | `queued`, `active`, `waiting`, `streaming`, `abort-requested`, `cleanup-pending`, `terminal`, `unknown-effect` | Tool result | `abort`; `whenSettled` | Tool events | Internal; visible as task status detail |
 | Delivery | `<subjectId>:<targetIndex>` today; an outbox delivery identifier after COR-841 | The subscriber's principal | Outbox attempt | Outbox states, including `unknown-outcome` and `dead-lettered` | Acknowledgement evidence | Cancel; operator retry; `drain` | `outbox:delivery-*` | Management deliveries; A2A push configs |
 | Asset | Asset identifier and revision (COR-794) | Admitting principal | Monotonic revision | COR-794 lifecycle states | Resolved locator | Abort, delete, expire; cleanup acknowledgement | Asset events (COR-794) | A2A file parts reference assets; management asset inspection is not in v1 |
-| Interactive surface | Surface identifier (COR-962) | The task's owner; audience recorded per surface; parent task | `revision` and `baseRevision` on every update | COR-962's surface states, ending in closed or deleted | Final surface state | Close, owner abort, detachment; cleanup acknowledgement | Surface updates in the task's durable history | A2UI over AG-UI (Bureau UI) and over A2A through A2UI's A2A extension |
+| Interactive surface | Surface identifier (COR-962) | The task's owner; audience recorded per surface; parent task | `revision` and `baseRevision` on every update | COR-962's surface states, ending in closed or deleted | Final surface state | Close, owner abort, detachment; cleanup acknowledgement | Surface updates in the task's durable history | A2UI over AG-UI (Interborough) and over A2A through A2UI's A2A extension |
 | Approval grant | Grant identifier | Issuing principal | Revocation | `issued`, `consumed`, `revoked` | None | `revokeGrant` | Audit | Internal |
 | Audit record | Audit `sequence` | Deployment | Append-only | None | None | Retention pruning | Is itself the record | Management audit |
 
@@ -391,9 +391,9 @@ An Agent Card's `version` is the agent's version, `definitionRevision` for Burea
 
 The Conversationalist-to-A2A part mapping (COR-1303) stays in Conversationalist with its own hand-written types for the pinned proto, as that issue specifies, so Conversationalist gains no dependency on Weft. A Bureau test, where both packages are available, proves that the mapping's output is accepted by `@a2a-js/sdk`'s types and request handler, so the two definitions cannot drift.
 
-## The Bureau UI
+## Interborough
 
-The first consumer is a new Bureau UI application. It is served from the same origin as the Bureau host it runs, so its calls need no CORS, and it does not share an origin with the Weft dashboard, which owns the root page routes and does not support base-path mounting. A deployment that serves a UI from any other origin opts in through `createBureauHandler`'s CORS option, which must allow that origin, `GET`, `POST`, and `OPTIONS`, the request headers `Authorization`, `Content-Type`, `A2A-Version`, `A2A-Extensions`, `Last-Event-ID`, and `traceparent`, and expose `A2A-Extensions`. The Bureau UI uses AG-UI for its live chat surface, the A2A surface for agent discovery and task lifecycle, and the management plane for operator screens. It reuses the Cinder components and the client provider, query helpers, router, and live-source plumbing that `@lostgradient/weft/ui` exports, and it supplies its own code highlighter. It is scoped in its own Linear project; External Control Plane's Definition of Done names it as the consumer that completes discover, command, reconnect, result, abort, and cleanup without private APIs.
+The first consumer is Interborough, Corvidae's main application. It is served from the same origin as the Bureau host it runs, so its calls need no CORS, and it does not share an origin with the Weft dashboard, which owns the root page routes and does not support base-path mounting. A deployment that serves a UI from any other origin opts in through `createBureauHandler`'s CORS option, which must allow that origin, `GET`, `POST`, and `OPTIONS`, the request headers `Authorization`, `Content-Type`, `A2A-Version`, `A2A-Extensions`, `Last-Event-ID`, and `traceparent`, and expose `A2A-Extensions`. The Interborough uses AG-UI for its live chat surface, the A2A surface for agent discovery and task lifecycle, and the management plane for operator screens. It reuses the Cinder components and the client provider, query helpers, router, and live-source plumbing that `@lostgradient/weft/ui` exports, and it supplies its own code highlighter. It is scoped in its own Linear project; External Control Plane's Definition of Done names it as the consumer that completes discover, command, reconnect, result, abort, and cleanup without private APIs.
 
 ## Scenarios
 
@@ -455,7 +455,7 @@ COR-1300's operations (`bureau.run`, `getRun`, `abortRun`, `listPendingReviews`,
 - **COR-1298** treats the A2A adapter as the primary mount and gets its third question answered: `bureau.events` and `operative.runs.events` turn on `transports.http` with live-only semantics.
 - **COR-1447** exports the shared UI layers from `@lostgradient/weft/ui`.
 - **COR-794** conforms to the asset section; COR-901 is no longer blocked by it. COR-788 adds the authenticated asset route.
-- **COR-962** defines the interactive surface named in the taxonomy. A2UI travels to the Bureau UI over AG-UI and to external clients and peers over A2UI's A2A extension, which the A2A surface advertises as optional. An action from any renderer, Bureau's or a foreign host's, arrives as a command and is reauthorized like any other; the renderer is never trusted. Bureau agents emit A2UI's standard v0.9.1 basic catalog, which official renderers understand, and offer Cinder's catalog (COR-1310) only to clients that list it in `supportedCatalogIds`. The Bureau UI renders the basic catalog with Cinder through a renderer in `@lostgradient/chat`; Cinder gains `text`, `video-player`, and `audio-player` components and an `image` fit and size for it. Structured input requests travel as A2UI forms in the `INPUT_REQUIRED` status message, with a text fallback. The A2UI pin moves from `v0.9` to the current `v0.9.1`.
+- **COR-962** defines the interactive surface named in the taxonomy. A2UI travels to the Interborough over AG-UI and to external clients and peers over A2UI's A2A extension, which the A2A surface advertises as optional. An action from any renderer, Bureau's or a foreign host's, arrives as a command and is reauthorized like any other; the renderer is never trusted. Bureau agents emit A2UI's standard v0.9.1 basic catalog, which official renderers understand, and offer Cinder's catalog (COR-1310) only to clients that list it in `supportedCatalogIds`. The Interborough renders the basic catalog with Cinder through a renderer in `@lostgradient/chat`; Cinder gains `text`, `video-player`, and `audio-player` components and an `image` fit and size for it. Structured input requests travel as A2UI forms in the `INPUT_REQUIRED` status message, with a text fallback. The A2UI pin moves from `v0.9` to the current `v0.9.1`.
 - **The Weft A2A kit and its workflow reference backend** are tracked as new issues in the A2A Interoperability project, upstream of COR-903.
 - **The External Control Plane and A2A Interoperability projects** drop their non-goals that kept A2A a projection, and this project's two-tenant criterion becomes two principals plus two deployments.
 - **Existing issues the A2A surface depends on.** COR-1302 is a hard dependency: Bureau must mint a stable `taskId` at admission, and today `bureau.run`'s handle reports a placeholder identifier until durable dispatch resolves. `SendMessage` returns that task early only when `configuration.returnImmediately` is true; otherwise it waits, as A2A 1.0.1 §3.2.2 requires, until the task is terminal or interrupted. COR-1301 (descriptions and skills), COR-1303 (message-to-part mapping, in Conversationalist), COR-1304 (caller-scoped task listing), and COR-855 (the AG-UI projection) supply the rest.
@@ -464,4 +464,4 @@ COR-1300's operations (`bureau.run`, `getRun`, `abortRun`, `listPendingReviews`,
   - delivering `SendMessage` with a `taskId` to a live task, which needs session-input admission (today `unsupported-capability`, and outside COR-424's scope);
   - durable-history maintenance: advancing the retention floor, replacing the silent gap skip with the explicit gap event, and the frames-dropped marker;
   - the management operations COR-1300 and COR-841 do not cover: `bureau.deployment.get`, `bureau.agents.list`, `bureau.tasks.*`, `bureau.contexts.delete`, `bureau.audit.query`, `bureau.schedules.*`, and `bureau.goals.*`;
-  - the Bureau UI project.
+  - the Interborough project.
