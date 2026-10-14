@@ -5,6 +5,7 @@ dist/
 artifacts/
 .hutch/
 .cottontail-tmp/
+.main-bundle/
 .svelte-kit/
 coverage/
 .turbo/
