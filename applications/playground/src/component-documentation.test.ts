@@ -50,7 +50,8 @@ function chunkManifests(
 const bulkValidationManifests = await analyzeAll(COMPONENTS_ROOT);
 const bulkValidationPackageManifest = await loadPackageManifestForDocumentation();
 
-const chatDefinitions = (await discoverComponentDefinitions()).filter(
+const allDefinitions = await discoverComponentDefinitions();
+const chatDefinitions = allDefinitions.filter(
   (definition) => definition.source.id === CHAT_COMPONENT_SOURCE.id,
 );
 const chatManifests = new Map<string, ComponentManifest>();
