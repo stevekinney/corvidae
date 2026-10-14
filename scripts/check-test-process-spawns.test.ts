@@ -38,6 +38,10 @@ describe('spawns inside a test body or hook', () => {
       'a child_process namespace',
       "import * as processes from 'node:child_process';\nit('x', () => { processes.execSync('ls'); });",
     ],
+    [
+      'a spawn imported from bun',
+      "import { spawn } from 'bun';\nit('x', () => { spawn(['ls'], { timeout: 1 }); });",
+    ],
     ['a test modifier', "it.only('x', () => { Bun.spawnSync(['ls']); });"],
     ['a parameterized test', "test.each([1])('x %i', () => { Bun.spawnSync(['ls']); });"],
     ['a conditional test', "it.skipIf(false)('x', () => { Bun.spawnSync(['ls']); });"],
@@ -258,6 +262,7 @@ describe('spawn hang guards', () => {
       "import { execFileSync } from 'node:child_process';\nexecFileSync('sleep', ['30'], { timeout: 0 });",
     ],
     ['a negative timeout', "Bun.spawn(['git'], { timeout: -1 });"],
+    ['a spawnSync imported from bun', "import { spawnSync } from 'bun';\nspawnSync(['git']);"],
   ])('reports %s', (_name, source) => {
     expect(unbounded(source)).toHaveLength(1);
   });

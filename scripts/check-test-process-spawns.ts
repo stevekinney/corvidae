@@ -104,6 +104,8 @@ type ImportedNames = {
   childProcessNamespaces: Set<string>;
   /** Local names bound to `$` from `bun`. */
   bunShell: Set<string>;
+  /** Local names bound to `spawn` or `spawnSync` imported from `bun`. */
+  bunSpawnFunctions: Set<string>;
   /** Local names for `it`, `test` and the hooks, including aliases imported from `bun:test`. */
   registrations: Set<string>;
   /** Namespace bindings of `bun:test`, so `bt.test(…)` registers a test. */
@@ -195,6 +197,7 @@ function importedNames(sourceFile: ts.SourceFile, fileName: string): ImportedNam
     childProcessFunctions: new Set(),
     childProcessNamespaces: new Set(),
     bunShell: new Set(),
+    bunSpawnFunctions: new Set(),
   };
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
@@ -233,8 +236,11 @@ function importedNames(sourceFile: ts.SourceFile, fileName: string): ImportedNam
     }
     if (specifier === 'bun') {
       for (const element of named) {
-        if ((element.propertyName ?? element.name).text === '$')
-          names.bunShell.add(element.name.text);
+        const imported = (element.propertyName ?? element.name).text;
+        if (imported === '$') names.bunShell.add(element.name.text);
+        if (imported === 'spawn' || imported === 'spawnSync') {
+          names.bunSpawnFunctions.add(element.name.text);
+        }
       }
       continue;
     }
@@ -283,15 +289,21 @@ function isChildProcessCall(node: ts.Node, imports: ImportedNames): node is ts.C
   );
 }
 
-function isBunSpawn(node: ts.Node): node is ts.CallExpression {
+function isBunSpawn(node: ts.Node, imports: ImportedNames): node is ts.CallExpression {
   if (!ts.isCallExpression(node)) return false;
   const name = calleeName(node.expression);
-  return name === 'Bun.spawn' || name === 'Bun.spawnSync';
+  return (
+    name === 'Bun.spawn' ||
+    name === 'Bun.spawnSync' ||
+    (name !== null && imports.bunSpawnFunctions.has(name))
+  );
 }
 
 /** Whether `node` is itself a process API call, as opposed to a call inferred to reach one. */
 function isDirectSpawn(node: ts.Node, imports: ImportedNames): boolean {
-  return isBunSpawn(node) || isChildProcessCall(node, imports) || isBunShell(node, imports);
+  return (
+    isBunSpawn(node, imports) || isChildProcessCall(node, imports) || isBunShell(node, imports)
+  );
 }
 
 /** Whether `name` (an identifier, or `namespace.member`) names a spawning function or class. */
@@ -632,7 +644,7 @@ export function findUnboundedSpawns(sourceFile: ts.SourceFile): TestProcessSpawn
     violations.push({ line: line + 1, text });
   };
   walk(sourceFile, (node) => {
-    if (isBunSpawn(node)) {
+    if (isBunSpawn(node, imports)) {
       if (!bunSpawnHasTimeout(node)) {
         report(node, `${calleeName(node.expression)} without a timeout hang guard`);
       }
