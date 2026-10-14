@@ -174,9 +174,10 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
     target !== 'effort' ||
     requested['override'] === undefined ||
     (typeof requested['override'] === 'string' && EFFORTS.has(requested['override']));
+  // `pause`/`resume` carry no value at all; every other target exactly one.
   const valueShapeIsValid =
     target === 'pause' || target === 'resume'
-      ? true
+      ? requested['override'] === undefined && requested['policyRef'] === undefined
       : (target === 'agent-identity' || CONFIGURATION_TARGETS.has(target)) &&
         hasOneValue &&
         effortIsValid;

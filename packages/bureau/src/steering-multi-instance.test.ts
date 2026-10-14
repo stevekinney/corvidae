@@ -392,6 +392,13 @@ describe('durable steering across two Bureau processes', () => {
       const rejected = await withPolicy.submitSteeringCommand(sessionId, late);
       expect(rejected.outcome).toBe('rejected');
       expect(await withoutPolicy.submitSteeringCommand(sessionId, late)).toEqual(rejected);
+
+      // The other direction: refused where the profile was missing, an exact
+      // retry stays that refusal in a process that could now resolve it.
+      const unresolvable = { ...viaPolicy, id: 'p3' } as const;
+      const refusedHere = await withoutPolicy.submitSteeringCommand(sessionId, unresolvable);
+      expect(refusedHere.outcome).toBe('rejected');
+      expect(await withPolicy.submitSteeringCommand(sessionId, unresolvable)).toEqual(refusedHere);
     } finally {
       await withPolicy.dispose();
       await withoutPolicy.dispose();

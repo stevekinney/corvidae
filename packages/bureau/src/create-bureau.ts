@@ -1749,13 +1749,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
         return outcome;
       }
-      case 'refused':
-        nestedSet(refusals, event.command.principal, event.command.id, {
+      case 'refused': {
+        const { principal, id, requestedValue } = event.command;
+        nestedSet(refusals, principal, id, {
           command: event.command,
           outcome: structuredClone(event.outcome),
           refusedAt: event.now,
         });
+        // A refused command was logged exactly as submitted; a `policyRef`
+        // in it is what an exact retry must match, even in a process that
+        // could now resolve that selector.
+        if (
+          submitted !== undefined &&
+          'policyRef' in requestedValue &&
+          requestedValue.policyRef !== undefined
+        ) {
+          nestedSet(submitted, principal, id, structuredClone(requestedValue));
+        }
         return structuredClone(event.outcome);
+      }
       case 'applied':
         gate.recordApplied(event.runId, event.configVersion, event.now);
         return undefined;
@@ -4682,16 +4694,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     const durable = runtime.durable;
 
-    // Orphaned steering logs are independent of run recovery; swept in the
-    // background, and awaited by shutdown before the backend closes.
-    steeringSweep = sweepOrphanedSteeringLogs().catch((error: unknown) => {
-      diagnose({
-        level: 'error',
-        scope: 'steering',
-        message: `[bureau] Could not sweep orphaned steering logs: ${serializeUnknownError(error)}`,
-      });
-    });
-
     // Sweep suspended scheduler-origin residue FIRST and UNCONDITIONALLY (not
     // gated on a session store): a hard crash with a preempted scheduler task in
     // `suspended` leaves a workflow that recoverAll() never surfaces (suspended ≠
@@ -7507,7 +7509,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       liveRunIds =
         durableSteeringStore() === undefined
           ? liveSessionRunIds(sessionId)
-          : await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
+          : await liveSessionRunIdsEverywhere(sessionId, session.incarnation, request.runId);
     } catch (error) {
       // An unscoped request's authority depends on which run is live, so a
       // failed query is masked until this caller is shown to be authorized
@@ -7558,7 +7560,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           kv,
           session.incarnation,
           refused,
-          () => liveSessionRunIdsEverywhere(sessionId, session.incarnation),
+          () => liveSessionRunIdsEverywhere(sessionId, session.incarnation, request.runId),
           outcome,
         ),
       );
@@ -7767,7 +7769,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         kv,
         session.incarnation,
         command,
-        () => liveSessionRunIdsEverywhere(sessionId, session.incarnation),
+        () => liveSessionRunIdsEverywhere(sessionId, session.incarnation, request.runId),
         undefined,
         'policyRef' in request.requestedValue && request.requestedValue.policyRef !== undefined
           ? request.requestedValue
@@ -7789,38 +7791,47 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return liveRunIds;
   }
 
-  /** How many workflows one page of the backend-wide liveness query reads. */
-  const LIVE_RUN_PAGE_SIZE = 100;
-
   /**
-   * The session's live runs in EVERY process sharing this backend: this
-   * process's running runs, plus every non-terminal durable `agentRun`
-   * workflow tagged with the session incarnation (`steeringSessionRunTag`), whichever
-   * process runs it. Only runs of this session INCARNATION count: a deleted
-   * session's still-running workflows carry a different tag. Durable steering binds `pause`/`resume` and judges a
-   * session terminal against this view, so a run owned by another process
-   * is neither invisible (`run-terminal`) nor silently excluded from an
-   * ambiguity check. Without a durable engine, this process's view is all
-   * there is.
+   * The session incarnation's live runs, as far as steering admission needs
+   * to know them, in EVERY process sharing this backend: this process's own
+   * running runs, plus non-terminal durable `agentRun` workflows tagged
+   * with the session incarnation (`steeringSessionRunTag`), whichever
+   * process runs them. A deleted incarnation's still-running workflows carry
+   * a different tag and never count.
+   *
+   * Admission only ever asks three things of this set: is a named run in it,
+   * is it empty, and does it hold exactly one run. So it is bounded rather
+   * than enumerated: the named run is checked directly, and the tagged query
+   * reads at most two other workflows — enough to tell none, one, and
+   * ambiguous apart without paging over a result that can change between
+   * pages. Without a durable engine, this process's view is all there is.
    */
   async function liveSessionRunIdsEverywhere(
     sessionId: string,
     incarnation: string,
+    namedRunId?: string,
   ): Promise<string[]> {
     const live = new Set(liveSessionRunIds(sessionId));
     const engine = runtime.durable?.engine;
-    if (engine === undefined) return [...live];
-    for (let offset = 0; ; offset += LIVE_RUN_PAGE_SIZE) {
-      const page = await engine.list({
-        type: 'agentRun',
-        status: ['pending', 'running', 'suspended'],
-        tags: [steeringSessionRunTag(sessionId, incarnation)],
-        limit: LIVE_RUN_PAGE_SIZE,
-        offset,
-      });
-      for (const workflow of page.items) live.add(workflow.id);
-      if (page.items.length < LIVE_RUN_PAGE_SIZE) break;
+    if (engine === undefined) return [...live].toSorted((left, right) => left.localeCompare(right));
+    const tag = steeringSessionRunTag(sessionId, incarnation);
+    if (namedRunId !== undefined && !live.has(namedRunId)) {
+      const named = await engine.get(namedRunId);
+      if (
+        named !== null &&
+        ['pending', 'running', 'suspended'].includes(named.status) &&
+        named.tags?.includes(tag) === true
+      ) {
+        live.add(namedRunId);
+      }
     }
+    const others = await engine.list({
+      type: 'agentRun',
+      status: ['pending', 'running', 'suspended'],
+      tags: [tag],
+      limit: 2,
+    });
+    for (const workflow of others.items) live.add(workflow.id);
     return [...live].toSorted((left, right) => left.localeCompare(right));
   }
 
@@ -7886,7 +7897,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // session since the caller loaded it.
       const current = await runtime.sessionStore?.load(sessionId);
       if (current?.incarnation !== incarnation) return { outcome: 'not-found' };
-      const cursor = await catchUpSteering(kv, sessionId, incarnation);
+      let cursor: SteeringCursor;
+      try {
+        cursor = await catchUpSteering(kv, sessionId, incarnation);
+      } catch (error) {
+        // Deleted by another process while its log was being read: a missing
+        // entry or a shrunken head is that deletion, not corruption.
+        const afterFailure = await runtime.sessionStore?.load(sessionId);
+        if (afterFailure?.incarnation !== incarnation) return { outcome: 'not-found' };
+        throw error;
+      }
       const answered = answerSteeringRetry(
         cursor.ledger,
         cursor.refusals,
@@ -7942,6 +7962,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // The session's last run may have finished while this waited: the same
       // terminal check `submitSteeringCommand` made up front, made again.
       const liveRunIds = await liveRunIdsNow();
+      // The run this command binds to may have changed while it waited (its
+      // run ended, another became the sole live one), so authority is
+      // checked again against the run it will actually be decided for.
+      const boundTarget = command.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
+      if (!isSessionAuthorityAuthorized(stillLive.metadata, principal, boundTarget)) {
+        return { outcome: 'not-found' };
+      }
       if (isSessionRunTerminal(stillLive.metadata) && liveRunIds.length === 0) {
         return { outcome: 'session-terminal', sessionId };
       }
@@ -10412,6 +10439,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       scope: 'recovery',
       message: `[bureau] Session outbox drain failed during boot recovery; continuing: ${serializeUnknownError(error)}`,
       cause: error,
+    });
+  }
+  // Orphaned steering logs are independent of run recovery, so they are
+  // swept at boot even when that recovery is deferred; in the background,
+  // and awaited by shutdown before the backend closes.
+  if (runtime.durable) {
+    steeringSweep = sweepOrphanedSteeringLogs().catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Could not sweep orphaned steering logs: ${serializeUnknownError(error)}`,
+      });
     });
   }
   if (hasDeferredGatewayAuthority) {
