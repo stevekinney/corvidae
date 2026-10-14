@@ -432,7 +432,8 @@ describe('durable steering across two Bureau processes', () => {
     const bureauB = await openBureau(path);
     try {
       const sessionId = await startRunningSession(bureauA);
-      const runInA = (await bureauA.getSession(sessionId))?.metadata['lastRunId'];
+      const sessionInA = await bureauA.getSession(sessionId);
+      const runInA = sessionInA?.metadata['lastRunId'];
       if (typeof runInA !== 'string') throw new Error('expected a run id');
 
       // The session's only live run is in A. B sees it, so an unscoped pause
