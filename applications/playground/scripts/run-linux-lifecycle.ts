@@ -87,7 +87,10 @@ export async function runInterruptibly(
 ): Promise<number> {
   if (signals.received() !== undefined) return 1;
   const child = Bun.spawn(command, { stdio: ['ignore', 'inherit', 'inherit'] });
+  let stopping = false;
   const unsubscribe = signals.subscribe(() => {
+    if (stopping) return;
+    stopping = true;
     child.kill('SIGTERM');
     void (async () => {
       if ((await exitedWithin(child, STOP_GRACE_MILLISECONDS)) === undefined) child.kill('SIGKILL');

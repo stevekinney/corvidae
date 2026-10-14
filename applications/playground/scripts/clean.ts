@@ -2,7 +2,7 @@ import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** Every generated path `clean` removes, relative to the playground root. */
-export const GENERATED_PATHS = ['.tmp', 'build', 'build-report'] as const;
+export const GENERATED_PATHS = ['.tmp', 'build', 'build-report', 'production-gate-results'] as const;
 
 /** Remove the playground's generated output and stray `src/.tmp-*` build directories. */
 export async function cleanPlayground(playgroundRoot: string): Promise<void> {
