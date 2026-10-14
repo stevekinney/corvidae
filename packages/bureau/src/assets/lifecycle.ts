@@ -13,8 +13,10 @@
  * - `available`/`expired`/`rejected`/`quarantined` → `deleted` (a tombstone)
  *   by `delete()`, unless a hold is present; a second deletion is a no-op
  *   that returns the same tombstone;
- * - any terminal record with no hold → purged once its `tombstoneUntil`
- *   passes; a hold keeps the record (a quarantined asset under legal hold,
+ * - a deletion's provider copies → deleted after the tombstone commits,
+ *   best-effort; collection retries any a provider did not confirm;
+ * - any terminal record with no hold and no provider copy left to delete →
+ *   purged once its `tombstoneUntil` passes; a hold keeps the record (a quarantined asset under legal hold,
  *   say) until the hold is released;
  * - `pending` with no live admission in this process → `rejected`
  *   (`interrupted`) — the recovery path for an admission a failed process
@@ -320,17 +322,66 @@ export function startDeletion(
         state: 'deleted',
         principal: principal.id,
       });
-      // Provider copies are deleted after the tombstone commits; a provider that never answers leaves the copy listed on the privileged projection.
-      for (const copy of record.providerCopies) {
-        const transport = internals.ports.providers?.[copy.provider];
-        if (transport?.delete)
-          await context.track(
-            transport.delete({ providerFileId: copy.providerFileId, signal: context.signal }),
-          );
-      }
-      return projectFor(record, principal);
+      // The deletion is done once the tombstone commits; provider copies are cleanup that collection retries.
+      const latest = await deleteProviderCopies(internals, context, record);
+      return projectFor(latest, principal);
     },
   );
+}
+
+function deletableCopies(internals: AssetInternals, record: AssetRecord): AssetProviderCopy[] {
+  return record.providerCopies.filter(
+    (copy) => internals.ports.providers?.[copy.provider]?.delete !== undefined,
+  );
+}
+
+/**
+ * Deletion of a tombstone's provider copies. Each copy a provider confirms
+ * deleting is removed from the record (one revision per copy). A copy whose
+ * deletion fails stays listed on the privileged projection and the work
+ * still completes — the asset is deleted — while garbage collection retries
+ * the copy before it will purge the tombstone. A targeted abort settles the
+ * work as aborted (the tombstone stands; collection retries what is left).
+ * Returns the latest record.
+ */
+async function deleteProviderCopies(
+  internals: AssetInternals,
+  context: AssetWorkContext,
+  record: AssetRecord,
+): Promise<AssetRecord> {
+  let latest = record;
+  for (const copy of record.providerCopies) {
+    const transport = internals.ports.providers?.[copy.provider];
+    if (!transport?.delete) continue;
+    try {
+      await context.track(
+        transport.delete({ providerFileId: copy.providerFileId, signal: context.signal }),
+      );
+    } catch (error) {
+      if (context.signal.aborted) throw error;
+      continue;
+    }
+    latest = await internals.withLock(record.assetId, async () => {
+      const loaded = await loadRecord(internals.storage, record.assetId);
+      if (!loaded) return latest;
+      const next = bump(internals, loaded.record, {
+        providerCopies: loaded.record.providerCopies.filter(
+          (entry) =>
+            entry.provider !== copy.provider || entry.providerFileId !== copy.providerFileId,
+        ),
+      });
+      await replaceRecord(internals.storage, loaded, next);
+      return next;
+    });
+    await internals.emit({
+      type: 'asset.provider-copy.deleted',
+      assetId: record.assetId,
+      revision: latest.revision,
+      state: latest.state,
+      provider: copy.provider,
+    });
+  }
+  return latest;
 }
 
 export function startProviderTransfer(
@@ -403,6 +454,18 @@ function isExpired(record: AssetRecord, now: number): boolean {
   );
 }
 
+/** Retries the provider-copy deletions a tombstone still lists. */
+async function retryProviderCopies(
+  internals: AssetInternals,
+  context: AssetWorkContext,
+  assetId: string,
+): Promise<void> {
+  const loaded = await context.track(loadRecord(internals.storage, assetId));
+  if (loaded?.record.state !== 'deleted') return;
+  if (deletableCopies(internals, loaded.record).length === 0) return;
+  await deleteProviderCopies(internals, context, loaded.record);
+}
+
 async function collectRecord(
   internals: AssetInternals,
   context: AssetWorkContext,
@@ -450,6 +513,7 @@ async function collectRecord(
     if (
       terminal &&
       record.holds.length === 0 &&
+      deletableCopies(internals, record).length === 0 &&
       record.tombstoneUntil !== undefined &&
       Date.parse(record.tombstoneUntil) <= state.now
     ) {
@@ -571,7 +635,9 @@ export function startGarbageCollection(
         },
       };
       for (const key of await context.track(internals.storage.list(KEYS.recordPrefix))) {
-        await collectRecord(internals, context, key.slice(KEYS.recordPrefix.length), state);
+        const assetId = key.slice(KEYS.recordPrefix.length);
+        await retryProviderCopies(internals, context, assetId);
+        await collectRecord(internals, context, assetId, state);
       }
       await collectUploads(internals, context, state);
       // Blobs last, so ownership released by expiry above is collected in the same pass.

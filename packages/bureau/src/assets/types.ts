@@ -446,6 +446,7 @@ export type AssetEventType =
   | 'asset.deleted'
   | 'asset.purged'
   | 'asset.provider-copy.created'
+  | 'asset.provider-copy.deleted'
   | 'asset.upload.started'
   | 'asset.upload.aborted'
   | 'asset.upload.purged'

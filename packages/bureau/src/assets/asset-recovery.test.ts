@@ -215,6 +215,50 @@ describe('tombstones', () => {
     await opened.close();
   });
 
+  it('completes a deletion whose provider copy outlives a failure, retrying the copy before purging', async () => {
+    let failuresLeft = 2;
+    const deletedCopies: string[] = [];
+    const opened = await open({
+      policy: { tombstoneRetentionMilliseconds: 1_000 },
+      ports: {
+        providers: {
+          openai: {
+            download: async () => ({ bytes: new Uint8Array() }),
+            upload: async () => ({ providerFileId: 'file-1' }),
+            delete: async ({ providerFileId }) => {
+              if (failuresLeft-- > 0) throw new Error('provider unavailable');
+              deletedCopies.push(providerFileId);
+            },
+          },
+        },
+      },
+    });
+    const admission = await admitted(opened);
+    const transfer = opened.assets.transferToProvider(admission.assetId, alice, {
+      provider: 'openai',
+    });
+    expect((await transfer.result()).outcome).toBe('completed');
+
+    const deletion = await opened.assets.delete(admission.assetId, alice).result();
+    expect(deletion.outcome === 'completed' && deletion.value.state).toBe('deleted');
+    const copiesOf = async () => {
+      const descriptor = await opened.assets.inspect(admission.assetId, aliceAdministrator, {
+        projection: 'privileged',
+      });
+      return descriptor.projection === 'privileged' ? descriptor.providerCopies : undefined;
+    };
+    expect(await copiesOf()).toEqual([{ provider: 'openai', providerFileId: 'file-1' }]);
+
+    // Past the tombstone's retention, a copy the provider still refuses keeps the tombstone.
+    await opened.runtime.advance(5_000);
+    expect(await collect(opened)).toMatchObject({ purgedTombstones: [] });
+    expect(await copiesOf()).toHaveLength(1);
+    // Once the provider confirms the copy is gone, the tombstone purges in the same pass.
+    expect(await collect(opened)).toMatchObject({ purgedTombstones: [admission.assetId] });
+    expect(deletedCopies).toEqual(['file-1']);
+    await opened.close();
+  });
+
   it('treats a second, concurrent deletion as the same tombstone', async () => {
     const opened = await open();
     const admission = await admitted(opened);
