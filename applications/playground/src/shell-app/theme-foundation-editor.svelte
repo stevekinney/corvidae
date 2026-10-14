@@ -39,6 +39,7 @@
     sourcePathOf,
     type EditScope,
   } from './theme-token-edit.ts';
+  import ThemeDetachControl from './theme-detach-control.svelte';
   import GenericTokenEditor from './theme-token-editor-generic.svelte';
   import type { TokenEditorProps } from './theme-token-editors.ts';
 
@@ -47,7 +48,6 @@
   const kind = $derived(foundationKindOf(row.type) as FoundationKind);
 
   let scopeChoice = $state<EditScope>(untrack(() => defaultScope(row)));
-  let replacing = $state(false);
   let fields = $state.raw<FoundationFields>(untrack(() => blankFields(kind)));
   let gesture = false;
 
@@ -60,7 +60,7 @@
   );
   const idBase = $derived(`theme-builder-foundation-${row.path.replaceAll('.', '-')}`);
   const locked = $derived(controller.lockedPaths.has(row.path));
-  const editable = $derived((mode === 'literal' || replacing) && !locked);
+  const editable = $derived(mode === 'literal' && !locked);
   const buffered = $derived(draft?.inputBuffer[key]);
   const options = $derived(scopeOptions(workbench.context));
   const overridden = $derived(controller.changedPaths.has(row.path));
@@ -146,10 +146,7 @@
       edit: edit.edit,
       inputKey: key,
     });
-    if (outcome.ok) {
-      replacing = false;
-      return true;
-    }
+    if (outcome.ok) return true;
     const message = `${outcome.path ?? row.path}: ${outcome.message}`;
     controller.setInputBuffer(key, { text: serializeFields(next), error: message });
     controller.announcement = message;
@@ -190,20 +187,10 @@
   };
   onDestroy(() => ongesture.end());
 
-  function replaceWithLiteral(): void {
-    if (envelope === null) return;
-    const literal = literalValueOf(envelope, workbench.context, row.path);
-    const next = literal === undefined ? null : fieldsFromValue(kind, literal);
-    replacing = true;
-    fields = next ?? blankFields(kind);
-    controller.setInputBuffer(key, { text: serializeFields(fields), error: null });
-  }
-
   async function resetField(): Promise<void> {
     const path = envelope === null ? row.path : sourcePathOf(envelope, row.path);
     await controller.reset({ kind: 'field', path }, `Reset ${row.path}`);
     controller.clearInputBuffer(key);
-    replacing = false;
   }
 
   function discard(event: KeyboardEvent): void {
@@ -246,19 +233,19 @@
       onchange={(event) => (scopeChoice = event.currentTarget.value as EditScope)}
     />
 
-    {#if mode === 'alias' && !replacing}
+    {#if mode === 'alias'}
       <p class="note" data-testid="alias-note">
         This token is an alias{row.aliases.length > 0 ? ` of ${row.aliases.join(', ')}` : ''}.
-        Editing the literal replaces the alias; it is never severed silently.
+        Replacing it with a literal shows every change first; it is never severed silently.
       </p>
-      <Button label="Replace with literal" variant="secondary" onclick={replaceWithLiteral} />
-    {:else if mode === 'recipe' && !replacing}
+      <ThemeDetachControl {controller} {workbench} {row} {scope} disabled={locked} />
+    {:else if mode === 'recipe'}
       <p class="note" data-testid="recipe-note">
         This token's CSS comes from a trusted recipe{row.recipeInputs.length > 0
           ? ` that reads ${row.recipeInputs.join(', ')}`
-          : ''}. Replacing it with a literal drops the recipe for this theme.
+          : ''}. Replacing it with a literal shows every change first and can be undone.
       </p>
-      <Button label="Replace with literal" variant="secondary" onclick={replaceWithLiteral} />
+      <ThemeDetachControl {controller} {workbench} {row} {scope} disabled={locked} />
     {:else}
       {#if fields.kind === 'dimension' || fields.kind === 'duration' || fields.kind === 'number' || fields.kind === 'fontWeight'}
         <ThemeFoundationScalarField

@@ -15,6 +15,7 @@
   import { Button, Select } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
+  import ThemeDetachControl from './theme-detach-control.svelte';
   import ThemeCompositeLayer from './theme-composite-layer.svelte';
   import ThemeCompositeStroke from './theme-composite-stroke.svelte';
   import {
@@ -228,13 +229,16 @@
   {#if mode === 'alias'}
     <p class="note" data-testid="alias-note">
       This token is an alias{row.aliases.length > 0 ? ` of ${row.aliases.join(', ')}` : ''}. Rebind
-      it or replace it with a literal under References; it is never severed silently.
+      it under References, or replace it with a literal after seeing every change; it is never
+      severed silently.
     </p>
+    <ThemeDetachControl {controller} {workbench} {row} {scope} disabled={locked} />
   {:else if mode === 'recipe'}
     <p class="note" data-testid="recipe-note">
-      This token's CSS comes from a trusted recipe. Change its inputs or replace its value under
-      References.
+      This token's CSS comes from a trusted recipe. Change its inputs or give it a CSS value under
+      References, or replace it with a literal after seeing every change.
     </p>
+    <ThemeDetachControl {controller} {workbench} {row} {scope} disabled={locked} />
   {:else if unreadable}
     <p class="note" data-testid="unreadable-note">
       This token's value is not shaped like a {type}, so it is preserved as written and cannot be

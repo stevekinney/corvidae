@@ -22,7 +22,11 @@ test.afterEach(() => {
 const apply = (page: Page) => page.getByRole('button', { name: 'Apply', exact: true });
 const undo = (page: Page) => page.getByRole('button', { name: 'Undo', exact: true });
 
-async function select(page: Page, group: 'Foundations' | 'Semantic', path: string): Promise<void> {
+async function select(
+  page: Page,
+  group: 'Foundations' | 'Semantic' | 'Components',
+  path: string,
+): Promise<void> {
   await page.locator('nav[aria-label="Token categories"] button', { hasText: group }).click();
   await page.locator('#theme-builder-token-filter').fill(path);
   await page.locator(`[data-token-path="${path}"]`).click();
@@ -113,8 +117,7 @@ test.describe('alias rebinding', () => {
     page,
   }) => {
     await select(page, 'Foundations', 'radius.surface');
-    const panel = page.getByTestId('reference-panel');
-    await panel.getByRole('button', { name: 'Preview replacing with literal' }).click();
+    await page.getByRole('button', { name: 'Replace with literal', exact: true }).click();
     await expect(page.getByTestId('impact-list')).toBeVisible();
     await page.getByTestId('impact-list').getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByTestId('impact-list')).toBeHidden();
@@ -141,12 +144,37 @@ test.describe('recipe override', () => {
     await field.fill('oklch(55% 0.2 270)');
     await panel.getByRole('button', { name: 'Preview CSS override' }).click();
     await expect(page.getByTestId('impact-list')).toBeVisible();
+    // The findings this change would introduce or resolve are available before Apply.
+    await page.getByRole('button', { name: 'Check this change' }).click();
+    await expect(page.getByTestId('checks-summary')).toContainText('introduced');
+    await expect(page.locator('[data-testid="impact-checks"] li[data-severity]')).toHaveCount(4);
     await page.getByTestId('impact-list').getByRole('button', { name: 'Apply' }).click();
     await expect.poll(() => frameVar(page, '--cinder-surface-hover')).toBe('oklch(55% 0.2 270)');
     await undo(page).click();
     await expect
       .poll(() => frameVar(page, '--cinder-surface-hover'))
       .not.toBe('oklch(55% 0.2 270)');
+  });
+});
+
+test.describe('CSS-only tokens', () => {
+  test('show the property before and after, per context, before Apply', async ({ page }) => {
+    await select(page, 'Components', 'code-block.height');
+    const field = page.getByLabel('CSS value');
+    await field.fill('url(https://example.com/x.png)');
+    await apply(page).click();
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByTestId('impact-list')).toBeHidden();
+    await field.fill('12rem');
+    await apply(page).click();
+    const impact = page.getByTestId('impact-list');
+    await expect(impact).toBeVisible();
+    await expect(impact.locator('tbody th code').first()).toHaveText('code-block.height');
+    await expect(undo(page)).toBeDisabled();
+    await impact.getByRole('button', { name: 'Apply' }).click();
+    await expect(page.getByTestId('draft-value')).toHaveText('12rem');
+    await undo(page).click();
+    await expect(page.getByTestId('draft-value')).not.toHaveText('12rem');
   });
 });
 

@@ -11,6 +11,7 @@
   import { Button, ColorPicker, Input, Select } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
+  import ThemeDetachControl from './theme-detach-control.svelte';
   import ThemeColorChannels from './theme-color-channels.svelte';
   import ThemeColorSummary from './theme-color-summary.svelte';
   import {
@@ -50,7 +51,6 @@
 
   let scopeChoice = $state<EditScope>(untrack(() => defaultScope(row)));
   let working = $state<DtcgColor | null>(null);
-  let detaching = $state(false);
   let pickerEngaged = $state(false);
   let textError = $state<string | null>(null);
   let notice = $state<string | null>(null);
@@ -65,7 +65,7 @@
     envelope === null ? null : committedColor(row, envelope, context, scope),
   );
   const shown = $derived(working ?? committed);
-  const dirty = $derived(detaching || (working !== null && !sameColor(working, committed)));
+  const dirty = $derived(working !== null && !sameColor(working, committed));
   const shipped = $derived.by(() => {
     if (envelope === null) return null;
     const base = createEnvelope('shipped', 'Cinder default', envelope.base);
@@ -77,7 +77,7 @@
   const buffered = $derived(draft?.inputBuffer[key]);
   const options = $derived(scopeOptions(context));
   const subject = $derived(`${row.path} (${context.colorMode})`);
-  const linked = $derived(mode === 'alias' || mode === 'recipe' ? !detaching : false);
+  const linked = $derived(mode === 'alias' || mode === 'recipe');
   const aliasOf = $derived(
     envelope === null || scope === null
       ? []
@@ -100,7 +100,6 @@
     textError = null;
     notice = null;
     pickerEngaged = false;
-    detaching = false;
     const pending = untrack(() => controller.draft?.inputBuffer[key]);
     if (pending !== undefined) {
       const parsed = parseColorText(pending.text);
@@ -154,17 +153,6 @@
     if (converted === null) return;
     setWorking(converted);
     notice = `Converted from ${spaceDefinition(shown.colorSpace)?.label ?? shown.colorSpace} to ${spaceDefinition(space)?.label ?? space}. The source changes only when you apply.`;
-  }
-
-  function detach(): void {
-    if (envelope === null) return;
-    const literal = readDtcgColor(literalValueOf(envelope, context, row.path));
-    detaching = true;
-    if (literal !== null) setWorking(literal);
-    notice =
-      mode === 'alias'
-        ? `Detached from ${aliasOf.join(', ') || 'its alias'}. The alias is replaced only when you apply; undo restores the link.`
-        : 'The recipe is replaced only when you apply; undo restores it.';
   }
 
   async function apply(): Promise<void> {
@@ -244,17 +232,19 @@
       <p class="note" data-testid={mode === 'alias' ? 'alias-note' : 'recipe-note'}>
         {#if mode === 'alias'}
           This token is linked to {aliasOf.length > 0 ? aliasOf.join(', ') : 'another token'} and shows
-          its resolved color. It stays linked until you detach it.
+          its resolved color. It stays linked until you detach it; detaching shows every change first.
         {:else}
           A trusted CSS recipe derives this color{row.recipeInputs.length > 0
             ? ` from ${row.recipeInputs.join(', ')}`
             : ''}. It stays derived until you replace it with a literal color.
         {/if}
       </p>
-      <Button
+      <ThemeDetachControl
+        {controller}
+        {workbench}
+        {row}
+        {scope}
         label={mode === 'alias' ? 'Detach alias' : 'Replace recipe with literal color'}
-        variant="secondary"
-        onclick={detach}
       />
     {:else}
       <div class="editing" onkeydown={keydown} role="presentation">

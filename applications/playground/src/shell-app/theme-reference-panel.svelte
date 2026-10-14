@@ -10,12 +10,10 @@
   import { Button, Input, Select } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
-  import ThemeImpactList from './theme-impact-list.svelte';
-  import { impactIsCurrent } from './theme-impact.ts';
+  import ThemeProposalFlow from './theme-proposal-flow.svelte';
   import {
     aliasCandidates,
     proposeCssOverride,
-    proposeDetach,
     proposeRebind,
     type Proposal,
   } from './theme-reference-edits.ts';
@@ -46,16 +44,12 @@
   const mode = $derived(envelope === null ? 'literal' : editorMode(row, envelope, scope));
   const options = $derived(scopeOptions(workbench.context));
   const idBase = $derived(`theme-builder-references-${row.path.replaceAll('.', '-')}`);
-  const sourceOnly = $derived(row.cssProperty === '');
   const locked = $derived(controller.lockedPaths.has(row.path));
   const recipe = $derived(row.edit === 'recipe');
   const untrusted = $derived(
     envelope === null ? [] : untrustedRecipes(envelope).filter((site) => site.path === row.path),
   );
   const relevant = $derived(mode === 'alias' || recipe || untrusted.length > 0);
-  const stale = $derived(
-    proposal !== null && proposal.ok && !impactIsCurrent(proposal.impact, draft),
-  );
   // The candidate list needs the full provenance, so it is only computed once the picker opens.
   const candidates = $derived(
     picking && draft !== null ? aliasCandidates(draft, row, search) : { items: [], total: 0 },
@@ -77,11 +71,6 @@
       proposeRebind(draft!, row, workbench.context, scope, target),
     );
 
-  const detach = (): void =>
-    propose(`Replace ${row.path} with a literal`, () =>
-      proposeDetach(draft!, row, workbench.context, scope),
-    );
-
   const override = (): void =>
     propose(`Override the CSS value of ${row.path}`, () =>
       proposeCssOverride(
@@ -91,26 +80,6 @@
         overrideText,
       ),
     );
-
-  async function apply(): Promise<void> {
-    if (proposal === null || !proposal.ok || stale) return;
-    const { impact } = proposal;
-    const outcome = await controller.commit({ kind: 'edit', label: title, state: impact.state });
-    if (outcome.ok) {
-      const count = new Set(impact.changed.map((entry) => entry.path)).size;
-      controller.announcement = `${title}. ${count} ${count === 1 ? 'token' : 'tokens'} changed.`;
-      proposal = null;
-      picking = false;
-      search = '';
-    } else {
-      proposal = {
-        ok: false,
-        message: `${outcome.path ?? row.path}: ${outcome.message}`,
-        path: outcome.path,
-      };
-      controller.announcement = proposal.message;
-    }
-  }
 
   const cancel = (): void => {
     proposal = null;
@@ -149,7 +118,7 @@
     {#if mode === 'alias'}
       <p class="references__note" data-testid="reference-alias">
         This token is an alias{row.aliases.length > 0 ? ` of ${row.aliases.join(', ')}` : ''}. It
-        stays linked until you rebind it or replace it with a literal here.
+        stays linked until you rebind it here or replace it with a literal in the editor above.
       </p>
       <div class="references__actions">
         <Button
@@ -161,12 +130,6 @@
             picking = !picking;
             proposal = null;
           }}
-        />
-        <Button
-          label="Preview replacing with literal"
-          variant="secondary"
-          disabled={locked}
-          onclick={detach}
         />
       </div>
       {#if picking}
@@ -263,30 +226,23 @@
             disabled={locked}
             onclick={override}
           />
-          {#if !sourceOnly}
-            <Button
-              label="Preview replacing recipe with literal"
-              variant="secondary"
-              disabled={locked}
-              onclick={detach}
-            />
-          {/if}
         </div>
       </div>
     {/if}
 
-    {#if proposal !== null && proposal.ok}
-      <ThemeImpactList
-        impact={proposal.impact}
-        {title}
-        {stale}
-        {idBase}
-        onapply={() => void apply()}
-        oncancel={cancel}
-      />
-    {:else if proposal !== null && !(title.startsWith('Override') && recipe)}
-      <p class="references__error" role="alert" data-testid="reference-error">{proposal.message}</p>
-    {/if}
+    <ThemeProposalFlow
+      {controller}
+      {proposal}
+      {title}
+      {idBase}
+      showError={!(title.startsWith('Override') && recipe)}
+      onapplied={() => {
+        proposal = null;
+        picking = false;
+        search = '';
+      }}
+      oncancel={cancel}
+    />
   </section>
 {/if}
 
@@ -309,11 +265,6 @@
     margin: 0;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
-  }
-  .references__error {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    color: var(--cinder-status-danger-text, var(--cinder-text-default));
   }
   .references__actions {
     display: flex;

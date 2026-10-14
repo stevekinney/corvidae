@@ -81,6 +81,17 @@ async function typeInto(element: HTMLInputElement, text: string): Promise<void> 
   await settle();
 }
 
+/** The Apply inside the revision-bound impact list, not the editor's own Apply. */
+const impactApply = () =>
+  [...target.querySelectorAll('[data-testid="impact-list"] button')].find(
+    (candidate) => candidate.textContent?.trim() === 'Apply',
+  ) as HTMLButtonElement | undefined;
+
+async function applyImpact(): Promise<void> {
+  impactApply()!.click();
+  await settle();
+}
+
 async function click(label: string): Promise<void> {
   button(label).click();
   await settle();
@@ -403,12 +414,31 @@ describe('the mounted editors', () => {
     expect(target.querySelector('input[id$="-amount"]')).toBeNull();
     await click('Replace with literal');
     expect(entries(controller)).toBe(0);
-    expect(input('-amount').value).not.toBe('');
-    await typeInto(input('-amount'), '1');
-    await click('Apply');
+    expect(target.querySelector('[data-testid="impact-list"]')).not.toBeNull();
+    await applyImpact();
     expect(entries(controller)).toBe(1);
+    expect(input('-amount').value).not.toBe('');
     await click('Reset field');
     expect(shared(controller)).toEqual({});
+  });
+
+  test('a stale detach proposal cannot be applied', async () => {
+    const { controller } = await open('gap.stack');
+    await click('Replace with literal');
+    expect(impactApply()!.disabled).toBe(false);
+    await controller.commit({
+      kind: 'edit',
+      label: 'Elsewhere',
+      edit: {
+        kind: 'set-override',
+        scope: 'shared',
+        path: 'space.2',
+        node: { $type: 'dimension', $value: { value: 9, unit: 'px' } },
+      },
+    });
+    await settle();
+    expect(target.querySelector('[data-testid="impact-stale"]')).not.toBeNull();
+    expect(impactApply()!.disabled).toBe(true);
   });
 
   test('reset at field, category and theme works for each family, and is undoable', async () => {

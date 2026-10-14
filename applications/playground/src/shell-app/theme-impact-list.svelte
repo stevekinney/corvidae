@@ -6,6 +6,7 @@
    * was computed for; once the draft moves on, the list says so and Apply is withheld.
    */
   import { Button } from '@lostgradient/cinder';
+  import type { Snippet } from 'svelte';
 
   import type { Impact } from './theme-impact.ts';
 
@@ -17,8 +18,10 @@
     idBase: string;
     onapply: () => void;
     oncancel: () => void;
+    /** Extra content before the actions, for example the checks this change would move. */
+    children?: Snippet;
   };
-  let { impact, title, stale, idBase, onapply, oncancel }: Props = $props();
+  let { impact, title, stale, idBase, onapply, oncancel, children }: Props = $props();
 
   const PAGE = 40;
   let shown = $state(PAGE);
@@ -86,6 +89,7 @@
       />
     {/if}
   {/if}
+  {@render children?.()}
   <div class="impact__actions">
     <Button label="Apply" variant="primary" disabled={stale} onclick={onapply} />
     <Button label="Cancel" variant="secondary" onclick={oncancel} />
