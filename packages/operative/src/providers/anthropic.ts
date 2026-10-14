@@ -4,6 +4,7 @@ import { toAnthropicMessages } from 'conversationalist';
 import { createAnthropicSdkClient, isAnthropicClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,
+  assertSamplingParametersSupported,
   assertThinkingBudgetBelowMaximum,
   assertThinkingBudgetMeetsMinimum,
   assertThinkingParametersCompatible,
@@ -53,6 +54,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
     ? resolveAnthropicEffort(options.effort, resolvedModel)
     : undefined;
   const common = resolveCommonParameters(options);
+  assertSamplingParametersSupported(resolvedModel, common);
   assertThinkingBudgetMeetsMinimum(options.thinking);
   assertThinkingParametersCompatible(options.thinking, options.toolChoice, common);
   let clientPromise: Promise<AnthropicClient> | undefined;
@@ -130,8 +132,9 @@ const SAMPLING_PARAMETER_DESCRIPTIONS: Record<SamplingParameterField, string> = 
  * accepts into an error naming the rejected fields, the model, and the remedy.
  * Returns `undefined` for any other failure, which keeps its plain wrapping.
  *
- * Recognized after the response rather than checked against a model list,
- * which would go stale with every release. The construction-time thinking
+ * Recognized after the response for any model `shared/sampling.ts` does not
+ * list: a model list goes stale with every release, so only the models the
+ * documentation settles are refused up front (`assertSamplingParametersSupported`). The construction-time thinking
  * guard (`assertThinkingParametersCompatible`) throws before any request is
  * sent, so the two never fire for the same request.
  */

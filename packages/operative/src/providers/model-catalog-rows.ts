@@ -13,6 +13,7 @@ import {
   GEMINI_MODEL_ALIASES,
   OPENAI_MODEL_ALIASES,
 } from './shared/model-registry.ts';
+import { anthropicSamplingSupport } from './shared/sampling.ts';
 import type { BaseProviderOptions, Effort } from './types.ts';
 
 // ── Effort degradation, derived from effort.ts — never a second table ──────
@@ -98,6 +99,21 @@ const FULL_PARAMETER_COMPATIBILITY: readonly (keyof BaseProviderOptions)[] = [
   'requestMetadata',
 ];
 
+/**
+ * Anthropic rows advertise `temperature` and `topP` only for a model that
+ * `shared/sampling.ts` records as accepting them — current Claude models
+ * reject non-default sampling with a 400. A model the documentation does not
+ * settle is treated the same way, conservatively. Everything else, including
+ * `toolChoice` (`auto` and `none` stay valid where forced choice is not), is
+ * unchanged.
+ */
+function anthropicParameterCompatibility(model: string): readonly (keyof BaseProviderOptions)[] {
+  if (anthropicSamplingSupport(model) === 'accepted') return FULL_PARAMETER_COMPATIBILITY;
+  return FULL_PARAMETER_COMPATIBILITY.filter(
+    (field) => field !== 'temperature' && field !== 'topP',
+  );
+}
+
 const GEMINI_PARAMETER_COMPATIBILITY: readonly (keyof BaseProviderOptions)[] =
   FULL_PARAMETER_COMPATIBILITY.filter((field) => field !== 'requestMetadata');
 
@@ -157,7 +173,7 @@ export function buildAnthropicRow(model: string, freshness: string): BackendDesc
     tools: true,
     parallelTools: true,
     structuredOutput: true,
-    parameterCompatibility: FULL_PARAMETER_COMPATIBILITY,
+    parameterCompatibility: anthropicParameterCompatibility(model),
     caching: true,
     batchInference: true,
     explicitThinkingRequest: true,

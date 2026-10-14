@@ -2,6 +2,7 @@ import type { ToolChoice } from '../structured-output/types.ts';
 import { ProviderError } from './errors.ts';
 import { createModelCatalog } from './model-catalog.ts';
 import type { ResolvedCommonParameters } from './shared/resolve-common-parameters.ts';
+import { anthropicSamplingSupport } from './shared/sampling.ts';
 import { toAnthropicToolChoice } from './structured-output/tool-choice-adapters.ts';
 import type {
   AnthropicMessageCreateRequest,
@@ -119,6 +120,36 @@ function describeForcedToolChoice(choice: ToolChoice | undefined): string | unde
   if (choice === 'required') return `'required'`;
   if (typeof choice === 'object') return `the named tool '${choice.tool}'`;
   return undefined;
+}
+
+/**
+ * Rejects `temperature` and `topP` before any request when the resolved model
+ * is recorded as rejecting non-default sampling (`shared/sampling.ts`, the
+ * same table the model catalog reads, so a row never advertises what this
+ * throws on). A model the table does not settle is left alone: the request is
+ * sent and a 400 is classified afterwards (COR-989). Like the thinking guard
+ * below, it runs at construction, since both fields are construction-time options.
+ */
+export function assertSamplingParametersSupported(
+  resolvedModel: string,
+  common: ResolvedCommonParameters,
+): void {
+  if (anthropicSamplingSupport(resolvedModel) !== 'rejected') return;
+
+  const rejected: string[] = [];
+  if (common.temperature !== undefined) rejected.push('temperature');
+  if (common.topP !== undefined) rejected.push('topP');
+  if (rejected.length === 0) return;
+
+  throw new ProviderError({
+    provider: 'anthropic',
+    cause: undefined,
+    message:
+      `[provider:anthropic] Model ${resolvedModel} rejects ${rejected.join(' and ')}: Anthropic ` +
+      `returns a 400 for any non-default sampling value on this model. Omit ` +
+      `${rejected.length === 1 ? 'it' : 'them'} from the provider options and guide the model ` +
+      `with prompting instead.`,
+  });
 }
 
 /**

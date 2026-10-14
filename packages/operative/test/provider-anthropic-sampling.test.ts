@@ -3,8 +3,11 @@
  *
  * Models released after Claude Opus 4.6 reject a non-default `temperature`,
  * any `top_p` below 0.99, and any `top_k`. The non-streaming provider
- * recognizes that 400 after the fact, rather than checking against a model
- * list that would go stale, and throws a `ProviderError` naming the rejected
+ * recognizes that 400 after the fact. A model the per-model table
+ * (`src/providers/shared/sampling.ts`) records as rejecting sampling never gets
+ * that far: the provider refuses the option at construction, and the last
+ * describe block covers that guard. Everything the table does not list still
+ * reaches the API, and its 400 becomes a `ProviderError` naming the rejected
  * fields, the resolved model, and the remedy.
  *
  * Capture record, 2026-10-02 (raw `POST /v1/messages`, `max_tokens: 1`, one
@@ -28,10 +31,17 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
-import { createAnthropicProvider } from '../src/providers/anthropic.ts';
+import {
+  createAnthropicProvider,
+  createAnthropicProviderStream,
+} from '../src/providers/anthropic.ts';
 import { ProviderError } from '../src/providers/errors.ts';
 import { classifyProviderError } from '../src/providers/fallover/classify-error.ts';
-import { createMockAnthropicClient } from '../src/providers/test/mock-clients.ts';
+import { anthropicTextResponse } from '../src/providers/test/fixtures.ts';
+import {
+  createMockAnthropicClient,
+  createMockAnthropicStreamingClient,
+} from '../src/providers/test/mock-clients.ts';
 import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import type { GenerateContext } from '../src/types.ts';
 
@@ -39,6 +49,14 @@ import type { GenerateContext } from '../src/types.ts';
 const TEMPERATURE_DEPRECATED = '`temperature` is deprecated for this model.';
 // Verbatim, request #2.
 const TOP_P_DEPRECATED = '`top_p` is deprecated for this model.';
+
+/**
+ * A model ID `shared/sampling.ts` does not list. The provider refuses a model the
+ * table records as rejecting sampling before sending anything, so the
+ * after-the-fact classification below is exercised through an ID the table has
+ * no entry for — the case it still exists for (a model newer than the table).
+ */
+const UNLISTED_MODEL = 'claude-opus-6';
 
 function makeContext(): GenerateContext {
   return { conversation: new Conversation(), step: 0, toolbox: createToolbox([]) };
@@ -60,7 +78,11 @@ async function rejectionFrom(
 ): Promise<ProviderError> {
   // The mock throws whatever it is handed, including a non-Error object.
   const client = createMockAnthropicClient([], [error as Error]);
-  const generate = createAnthropicProvider({ model: options.model ?? 'opus', client, ...options });
+  const generate = createAnthropicProvider({
+    model: options.model ?? UNLISTED_MODEL,
+    client,
+    ...options,
+  });
   const reason = await rejectionOf(generate(makeContext()));
   if (!(reason instanceof ProviderError)) throw new Error('expected a ProviderError');
   return reason;
@@ -72,7 +94,7 @@ describe('Anthropic sampling-parameter rejection', () => {
       [],
       [badRequest(TEMPERATURE_DEPRECATED, 'req_011CfdsPMwH14uBNi4UpGWt9')],
     );
-    const generate = createAnthropicProvider({ model: 'opus', client, temperature: 0.5 });
+    const generate = createAnthropicProvider({ model: UNLISTED_MODEL, client, temperature: 0.5 });
 
     expect(await throwingRejectionOf(generate(makeContext()))).toThrow(ProviderError);
   });
@@ -81,11 +103,15 @@ describe('Anthropic sampling-parameter rejection', () => {
     const original = badRequest(TEMPERATURE_DEPRECATED, 'req_011CfdsPMwH14uBNi4UpGWt9');
 
     // The request also carries topP, but the rejection names only temperature.
-    const error = await rejectionFrom(original, { model: 'opus', temperature: 0.5, topP: 0.9 });
+    const error = await rejectionFrom(original, {
+      model: UNLISTED_MODEL,
+      temperature: 0.5,
+      topP: 0.9,
+    });
 
     expect(error.message.startsWith('[provider:anthropic] ')).toBe(true);
     expect(error.message).toContain('temperature');
-    expect(error.message).toContain('claude-opus-4-8');
+    expect(error.message).toContain(UNLISTED_MODEL);
     expect(error.message).toContain('drop');
     expect(error.message.endsWith(original.message)).toBe(true);
     expect(error.message).not.toContain('top_p');
@@ -109,12 +135,12 @@ describe('Anthropic sampling-parameter rejection', () => {
   });
 
   it('names the resolved model for another alias', async () => {
-    // Verbatim, request #5.
+    // synthetic model ID, same message as request #5.
     const original = badRequest(TEMPERATURE_DEPRECATED, 'req_011CfdsPSGEWiyerUhedNqBJ');
 
-    const error = await rejectionFrom(original, { model: 'sonnet', temperature: 0.5 });
+    const error = await rejectionFrom(original, { model: 'claude-sonnet-6', temperature: 0.5 });
 
-    expect(error.message).toContain('claude-sonnet-5');
+    expect(error.message).toContain('claude-sonnet-6');
   });
 
   it('keeps the enriched error classified as sampling-parameter-unsupported', async () => {
@@ -134,7 +160,7 @@ describe('Anthropic sampling-parameter rejection', () => {
     const error = await rejectionFrom(original, { temperature: 0.5 });
 
     expect(error.message).toContain('temperature');
-    expect(error.message).toContain('claude-opus-4-8');
+    expect(error.message).toContain(UNLISTED_MODEL);
     expect(error.message).toContain('drop');
     expect(error.cause).toBe(original);
   });
@@ -148,5 +174,77 @@ describe('Anthropic sampling-parameter rejection', () => {
     expect(error.message).toBe(`[provider:anthropic] ${original.message}`);
     expect(error.cause).toBe(original);
     expect(classifyProviderError(error)).toBe('unknown');
+  });
+});
+
+describe('Anthropic provider sampling guard from the per-model table', () => {
+  it.each(['claude-opus-5-5', 'claude-haiku-5-5', 'claude-sonnet-5', 'opus'])(
+    'refuses temperature on %s before sending a request',
+    (model) => {
+      const client = createMockAnthropicClient([anthropicTextResponse]);
+
+      expect(() => createAnthropicProvider({ model, client, temperature: 0.5 })).toThrow(
+        ProviderError,
+      );
+      expect(client._calls).toHaveLength(0);
+    },
+  );
+
+  it('names the rejected fields, the model, and the remedy', () => {
+    const client = createMockAnthropicClient([anthropicTextResponse]);
+
+    const error = (() => {
+      try {
+        createAnthropicProvider({ model: 'claude-opus-5-5', client, temperature: 0.5, topP: 0.9 });
+      } catch (caught) {
+        return caught;
+      }
+      return undefined;
+    })();
+
+    expect(error).toBeInstanceOf(ProviderError);
+    const message = (error as ProviderError).message;
+    expect(message).toContain('claude-opus-5-5');
+    expect(message).toContain('temperature and topP');
+    expect(message).toContain('Omit');
+  });
+
+  it('applies the same guard to the streaming factory', () => {
+    expect(() =>
+      createAnthropicProviderStream({
+        model: 'claude-opus-5-5',
+        client: createMockAnthropicStreamingClient([]),
+        topP: 0.9,
+      }),
+    ).toThrow(ProviderError);
+  });
+
+  it('sends no temperature or top_p when a rejecting model is configured without them', async () => {
+    const client = createMockAnthropicClient([anthropicTextResponse]);
+    await createAnthropicProvider({ model: 'claude-opus-5-5', client })(makeContext());
+
+    const body = client._calls[0] ?? {};
+    expect(Object.hasOwn(body, 'temperature')).toBe(false);
+    expect(Object.hasOwn(body, 'top_p')).toBe(false);
+  });
+
+  it.each(['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'])(
+    'still forwards temperature and top_p on %s, which accepts them',
+    async (model) => {
+      const client = createMockAnthropicClient([anthropicTextResponse]);
+      await createAnthropicProvider({ model, client, temperature: 0.4, topP: 0.8 })(makeContext());
+
+      expect(client._calls[0]?.['temperature']).toBe(0.4);
+      expect(client._calls[0]?.['top_p']).toBe(0.8);
+    },
+  );
+
+  it('forwards sampling for a model the table does not list and leaves a 400 to the classifier', async () => {
+    const client = createMockAnthropicClient([anthropicTextResponse]);
+    await createAnthropicProvider({ model: UNLISTED_MODEL, client, temperature: 0.4 })(
+      makeContext(),
+    );
+
+    expect(client._calls[0]?.['temperature']).toBe(0.4);
   });
 });
