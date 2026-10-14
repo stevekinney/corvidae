@@ -118,6 +118,15 @@ function mergeMetadata(
           },
         }
       : {}),
+    // One entry per starting run, so concurrent starts each keep theirs.
+    ...(metadata['steeringStartingRuns'] !== undefined
+      ? {
+          steeringStartingRuns: {
+            ...enumerableRecord(current['steeringStartingRuns'], false),
+            ...enumerableRecord(metadata['steeringStartingRuns'], true),
+          },
+        }
+      : {}),
   };
 }
 
@@ -161,6 +170,14 @@ function clearCompletedRunMetadata(
       ),
     );
   clearTerminalApprovalMetadata(metadata, runId, hasPendingApproval ?? false);
+  // An ended run is no longer starting. Copied, never edited in place: the
+  // map may still be the stored session's own object.
+  const starting = metadata['steeringStartingRuns'];
+  if (typeof starting === 'object' && starting !== null && !Array.isArray(starting)) {
+    metadata['steeringStartingRuns'] = Object.fromEntries(
+      Object.entries(starting).filter(([startingRunId]) => startingRunId !== runId),
+    );
+  }
 }
 
 export function createSessionPersistence(dependencies: SessionPersistenceDependencies) {

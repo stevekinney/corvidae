@@ -240,6 +240,12 @@ export interface BureauSteeringGate extends SteeringGate {
    */
   getRunVisibleVersion(runId: string): number;
   /**
+   * The version `runId` started at (its promotion baseline). Every version
+   * the run reports at a boundary is at least this, so a logged `applied`
+   * below it is corrupt.
+   */
+  getRunBaseline(runId: string): number;
+  /**
    * A per-run VIEW of this session's gate, scoped to `runId`: its
    * `getDesiredState().paused` and `awaitResume()` reflect only a pause
    * bound to THIS run, never a pause a concurrent run on the same session
@@ -1053,6 +1059,10 @@ export function createSteeringGate(
 
     getRunVisibleVersion(runId: string): number {
       return runVisibleVersion(runId);
+    },
+
+    getRunBaseline(runId: string): number {
+      return runBaseline.get(runId) ?? 0;
     },
 
     forRun(runId: string): SteeringGate {

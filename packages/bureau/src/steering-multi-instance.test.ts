@@ -1568,7 +1568,7 @@ describe('durable steering across two Bureau processes', () => {
           metadata: {
             lastRunId: 'saved-run',
             lastRunStatus: 'running',
-            lastRunStartedAt: new Date().toISOString(),
+            steeringStartingRuns: { 'saved-run': new Date().toISOString() },
           },
         }),
       );
@@ -1592,7 +1592,7 @@ describe('durable steering across two Bureau processes', () => {
           metadata: {
             lastRunId: 'visible-run',
             lastRunStatus: 'running',
-            lastRunStartedAt: new Date().toISOString(),
+            steeringStartingRuns: { 'visible-run': new Date().toISOString() },
           },
         }),
       );
@@ -1627,7 +1627,7 @@ describe('durable steering across two Bureau processes', () => {
           metadata: {
             lastRunId: 'saved-named',
             lastRunStatus: 'running',
-            lastRunStartedAt: new Date().toISOString(),
+            steeringStartingRuns: { 'saved-named': new Date().toISOString() },
           },
         }),
       );
@@ -1700,6 +1700,115 @@ describe('durable steering across two Bureau processes', () => {
         changingGet.mockRestore();
         changingList.mockRestore();
       }
+
+      // Two runs saved as starting at once, before either is promoted: the
+      // session's single latest-run field names only the second, but each
+      // keeps its own starting entry, so both count.
+      const twoStarts = 'session-two-saved-starts';
+      const startedAt = new Date().toISOString();
+      await store.save(
+        createAgentSession({
+          id: twoStarts,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: twoStarts }),
+          metadata: {
+            lastRunId: 'start-two',
+            lastRunStatus: 'running',
+            steeringStartingRuns: { 'start-one': startedAt, 'start-two': startedAt },
+          },
+        }),
+      );
+      const ambiguous = await gapReader.submitSteeringCommand(twoStarts, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(ambiguous.outcome).toBe('rejected');
+      if (ambiguous.outcome !== 'rejected') throw new Error('expected rejected');
+      expect(ambiguous.failure.reason).toBe('run-ambiguous');
+      const namedFirst = await gapReader.submitSteeringCommand(twoStarts, {
+        principal: 'alice',
+        runId: 'start-one',
+        requestedValue: { target: 'pause' },
+      });
+      expect(namedFirst.outcome).toBe('accepted');
+
+      // A run the log has ended stays ended while the engine still reports
+      // it running: its terminal state lags the event.
+      const lagging = 'session-ended-run-lags';
+      await store.save(
+        createAgentSession({
+          id: lagging,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: lagging }),
+          metadata: { lastRunId: 'ended-run', lastRunStatus: 'running' },
+        }),
+      );
+      const laggingSession = await store.load(lagging);
+      if (laggingSession === undefined) throw new Error('expected the session');
+      for (const event of [
+        { type: 'promoted', runId: 'ended-run', now: new Date().toISOString() },
+        { type: 'run-ended', runId: 'ended-run', now: new Date().toISOString() },
+      ] as const) {
+        await appendSteeringLogEvent(
+          kv,
+          lagging,
+          laggingSession.incarnation,
+          await readSteeringLogHead(kv, lagging, laggingSession.incarnation),
+          event,
+        );
+      }
+      const laggingTag = steeringSessionRunTag(lagging, laggingSession.incarnation);
+      const stillRunning = {
+        id: 'ended-run',
+        type: 'agentRun',
+        status: 'running',
+        tags: [laggingTag],
+      };
+      const laggingPrototype = await durableEnginePrototype();
+      const laggingGet = spyOn(laggingPrototype, 'get').mockImplementation((id) =>
+        Promise.resolve(id === 'ended-run' ? stillRunning : null),
+      );
+      const laggingList = spyOn(laggingPrototype, 'list').mockImplementation(() =>
+        Promise.resolve({ items: [stillRunning] }),
+      );
+      try {
+        const endedPause = await gapReader.submitSteeringCommand(lagging, {
+          principal: 'alice',
+          runId: 'ended-run',
+          requestedValue: { target: 'pause' },
+        });
+        expect(endedPause.outcome).toBe('rejected');
+        if (endedPause.outcome !== 'rejected') throw new Error('expected rejected');
+        expect(endedPause.failure.reason).toBe('run-terminal');
+      } finally {
+        laggingGet.mockRestore();
+        laggingList.mockRestore();
+      }
+
+      // An applied version below anything the run can report is corrupt.
+      const belowFloor = await startRunningSession(writer);
+      const belowSession = await writer.getSession(belowFloor);
+      if (belowSession === undefined) throw new Error('expected the session');
+      await appendSteeringLogEvent(
+        kv,
+        belowFloor,
+        belowSession.incarnation,
+        await readSteeringLogHead(kv, belowFloor, belowSession.incarnation),
+        {
+          type: 'applied',
+          runId: belowSession.metadata['lastRunId'] as string,
+          configVersion: 0,
+          now: new Date().toISOString(),
+        },
+      );
+      const belowReader = await openBureau(path);
+      readers.push(belowReader);
+      await expect(
+        belowReader.submitSteeringCommand(belowFloor, {
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        }),
+      ).rejects.toThrow(/which no admission before it issued to that run/);
     } finally {
       await writer.dispose();
       for (const reader of readers) await reader.dispose();
@@ -1822,6 +1931,24 @@ describe('durable steering across two Bureau processes', () => {
       await expect(
         bureau.submitSteeringCommand(first, model('k1', 'claude-sonnet-5')),
       ).rejects.toThrow(/does not name that decision/);
+      // ...but only to a caller still authorized there.
+      const firstSession = await bureau.getSession(first);
+      const firstRun = firstSession?.metadata['lastRunId'];
+      if (typeof firstRun !== 'string') throw new Error('expected a run');
+      await createSessionStore(kv).update(first, (current) =>
+        current === undefined
+          ? undefined
+          : {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                lastRequestAuthorities: { [firstRun]: { principalId: 'bob' } },
+              },
+            },
+      );
+      expect(await bureau.submitSteeringCommand(first, model('k1', 'claude-sonnet-5'))).toEqual({
+        outcome: 'not-found',
+      });
 
       const other = await startRunningSession(bureau);
       await expect(

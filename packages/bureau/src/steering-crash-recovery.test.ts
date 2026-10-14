@@ -326,6 +326,49 @@ const outcomes = {
       }
     },
   ),
+  recoveredMissingLog: await scenario(
+    'corvidae-steering-recovered-missing-log-',
+    async (scope, directory) => {
+      const { runId } = await runCrashingChild(scope, directory, 'admitted', ['admit', 'model']);
+      if (runId === undefined) throw new Error('the child recorded no run');
+      // The session and its unfinished workflow survive; its whole steering
+      // log does not.
+      const storage = await resolveStorage({
+        type: 'sqlite',
+        path: join(directory, 'bureau.sqlite'),
+      });
+      const kv = textValueStore(storage);
+      const logKeys = await kv.list('steering-log:v1:');
+      expect(logKeys.length).toBeGreaterThan(0);
+      for (const key of logKeys) await kv.delete(key);
+      await kv.close();
+      // The killed child's workflow claim must lapse first (see above).
+      await Bun.sleep(CLAIM_TTL_MS * 10);
+
+      let generateCalls = 0;
+      const recovering = await createBureau({
+        agents: {},
+        generate: async () => {
+          generateCalls += 1;
+          return { content: 'done', toolCalls: [] };
+        },
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+        durableExecution: true,
+        durableOwnership: CLAIM_OPTIONS,
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      try {
+        await recovering.waitForRecovery?.();
+        await recovering.waitForDurableRun(runId).catch(() => {});
+        const recovered = await recovering.getDurableRun(runId);
+        expect(recovered?.status).toBe('failed');
+        expect(generateCalls).toBe(0);
+      } finally {
+        await recovering.dispose();
+      }
+    },
+  ),
   orphanSweep: await scenario('corvidae-steering-orphan-', async (_scope, directory) => {
     const path = join(directory, 'bureau.sqlite');
     // An orphan: a log for a session the store never had, as a crash after
@@ -377,6 +420,10 @@ describe('durable steering survives SIGKILL', () => {
 
   it('fails a recovered run whose steering log is corrupt instead of resuming it on defaults', () => {
     expectScenarioPassed(outcomes.recoveredCorrupt);
+  });
+
+  it('fails a recovered run its steering log never promoted instead of resuming it on defaults', () => {
+    expectScenarioPassed(outcomes.recoveredMissingLog);
   });
 
   it('sweeps a steering log whose session no longer exists at boot', () => {

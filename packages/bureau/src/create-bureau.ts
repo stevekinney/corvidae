@@ -1890,7 +1890,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // A run observes only versions the fold so far made visible to it:
         // not later ones, and not another run's run-scoped ones. Anything
         // above that is corruption, never a floor.
-        if (event.configVersion > gate.getRunVisibleVersion(event.runId)) {
+        if (
+          event.configVersion > gate.getRunVisibleVersion(event.runId) ||
+          // Nor below what it can report at all: a boundary reports a
+          // version only once there is one, and never below the version
+          // the run started at.
+          event.configVersion < Math.max(1, gate.getRunBaseline(event.runId))
+        ) {
           throw new SteeringLogCorruptError(
             `Steering log for session "${gate.sessionId}" records run "${event.runId}" applying version ${String(event.configVersion)}, which no admission before it issued to that run.`,
           );
@@ -2210,7 +2216,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       if (
         event.type === 'applied' &&
-        event.configVersion > cursor.gate.getRunVisibleVersion(event.runId)
+        (event.configVersion > cursor.gate.getRunVisibleVersion(event.runId) ||
+          event.configVersion < Math.max(1, cursor.gate.getRunBaseline(event.runId)))
       ) {
         throw new BureauError(
           `Run "${event.runId}" cannot have applied steering version ${String(event.configVersion)}: session "${sessionId}" has made only ${String(cursor.gate.getRunVisibleVersion(event.runId))} visible to it.`,
@@ -2288,6 +2295,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const cursor = await enqueueSteering(sessionId, () =>
         catchUpSteering(kv, sessionId, session.incarnation),
       );
+      // Every durable run is promoted in its session's log before its
+      // workflow starts, so a recovered run the log never promoted (the log
+      // missing, emptied, or ended for it) means the log no longer describes
+      // it: resuming on a default gate would silently drop its steering.
+      if (cursor.history.runs.get(runId) !== 'promoted') {
+        throw new SteeringLogCorruptError(
+          `Steering log for session "${sessionId}" has no live promotion of recovered run "${runId}".`,
+        );
+      }
       services.options = {
         ...services.options,
         runId,
@@ -3639,9 +3655,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         {
           lastRunId: runId,
           lastRunStatus: 'running',
-          // Bounds how long durable steering counts this run as starting while
-          // the log has no `promoted` entry for it yet.
-          lastRunStartedAt: runtimeServices.clock.nowISO(),
+          // This run's own starting entry: durable steering counts it as
+          // starting, until its `promoted` entry is logged and for a bounded
+          // time, even when another run's save replaces `lastRunId`.
+          steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() },
           lastUserMessage: request.message,
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
@@ -8463,6 +8480,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const workflow = await engine.get(runId);
       return workflow !== null && !isLiveSessionWorkflow(workflow);
     };
+    // A run whose `run-ended` this process has folded is over, whatever the
+    // engine still reports: its terminal state can lag the event, and a
+    // command bound to it now could never be applied or released.
+    const liveAndNotEnded = () => {
+      const folded = steeringCursors.get(sessionId);
+      return [...live]
+        .filter(
+          (runId) =>
+            folded?.incarnation !== incarnation || folded.history.runs.get(runId) !== 'ended',
+        )
+        .toSorted((left, right) => left.localeCompare(right));
+    };
     const isLiveSessionWorkflow = (workflow: {
       type: string;
       status: string;
@@ -8478,7 +8507,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // Already conclusive without the listing: the named run is live, or
     // unscoped, two runs already make it ambiguous.
     if (namedRunId === undefined ? live.size >= 2 : live.has(namedRunId)) {
-      return [...live].toSorted((left, right) => left.localeCompare(right));
+      return liveAndNotEnded();
     }
     const others = await engine.list({
       type: 'agentRun',
@@ -8510,22 +8539,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // The session is saved as running a run a moment before that run's
       // `promoted` entry is appended. In that gap the session's latest run
       // is starting too, bounded by its own start time like any marker.
+      // Each run is saved as starting, in its own entry, a moment before its
+      // `promoted` entry is appended; concurrent starts each keep theirs. In
+      // that gap the run is starting too, bounded by its own start time like
+      // any marker. The named run, if any, is read first.
       const countSavedStart = async () => {
         const saved = await runtime.sessionStore?.load(sessionId);
-        const savedRunId = saved?.metadata['lastRunId'];
-        const savedStartedAt = saved?.metadata['lastRunStartedAt'];
-        if (
-          saved?.incarnation === incarnation &&
-          saved.metadata['lastRunStatus'] === 'running' &&
-          typeof savedRunId === 'string' &&
-          typeof savedStartedAt === 'string' &&
-          !live.has(savedRunId) &&
-          !cursor.history.runs.has(savedRunId) &&
-          runtimeServices.clock.now() - Date.parse(savedStartedAt) <=
-            STEERING_RUN_START_WINDOW_MS &&
-          !(await savedWorkflowHasEnded(savedRunId))
-        ) {
-          live.add(savedRunId);
+        if (saved?.incarnation !== incarnation) return;
+        const starting = saved.metadata['steeringStartingRuns'];
+        if (typeof starting !== 'object' || starting === null || Array.isArray(starting)) return;
+        const entries = Object.entries(starting).toSorted(([left], [right]) =>
+          left === namedRunId ? -1 : right === namedRunId ? 1 : 0,
+        );
+        for (const [savedRunId, savedStartedAt] of entries) {
+          if (namedRunId === undefined ? live.size >= 2 : live.has(namedRunId)) return;
+          if (
+            typeof savedStartedAt === 'string' &&
+            !live.has(savedRunId) &&
+            !cursor.history.runs.has(savedRunId) &&
+            runtimeServices.clock.now() - Date.parse(savedStartedAt) <=
+              STEERING_RUN_START_WINDOW_MS &&
+            !(await savedWorkflowHasEnded(savedRunId))
+          ) {
+            live.add(savedRunId);
+          }
         }
       };
       // A named run not yet live can still be the saved start or one of
@@ -8552,7 +8589,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       if (namedRunId === undefined && !known()) await countSavedStart();
     }
-    return [...live].toSorted((left, right) => left.localeCompare(right));
+    return liveAndNotEnded();
   }
 
   // AB-68: give `steering.accepted` its first production dispatch site.
@@ -8672,6 +8709,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           )
             ? answered
             : { outcome: 'not-found' };
+        }
+        // A mismatched binding is reported only to a caller still authorized
+        // here; anyone else learns nothing beyond `not-found`.
+        const localTarget = liveSessionRunIdsOfIncarnation(sessionId, incarnation);
+        const target = command.runId ?? (localTarget.length === 1 ? localTarget[0] : undefined);
+        if (!isSessionAuthorityAuthorized(afterRead.metadata, principal, target)) {
+          return { outcome: 'not-found' };
         }
         throw new SteeringLogCorruptError(
           `Steering key "${principal}"/"${id}" was decided in session "${sessionId}", but its binding does not name that decision.`,
