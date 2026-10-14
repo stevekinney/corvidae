@@ -9,7 +9,7 @@ import {
   compositeOver,
   contrastRatio,
   oklchToLinearSrgb,
-} from './color-contrast-utilities.ts';
+} from '../tokens/runtime/contrast/index.ts';
 
 const TOKENS_DIRECTORY = join(dirname(fileURLToPath(import.meta.url)), '..', 'tokens');
 
