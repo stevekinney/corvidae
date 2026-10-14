@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
+import { recordedChildEnvironment } from './measure-playground-environment.ts';
+
 import {
   comparabilityProblems,
+  memoryPressureFlags,
   observationsFromResults,
   RESULT_SCHEMA,
   runFailures,
@@ -44,6 +47,8 @@ const tree = {
   peakResidentBytes: 0,
   peakProcessCount: 1,
   observedPids: [],
+  pressureReadings: 1,
+  maximumPressureLevel: 1,
 };
 
 function child(wallMilliseconds: number, peakResidentBytes: number) {
@@ -140,6 +145,7 @@ function results(overrides: Partial<MeasurementResults>): MeasurementResults {
       totalMemoryBytes: 1,
       containerMemoryLimit: 'none',
       playgroundEnvironment: {},
+      childEnvironment: recordedChildEnvironment(),
     },
     routeInventory: ['/', '/page/button'],
     definitions: {},
@@ -392,17 +398,19 @@ describe('harness integrity (PR #222)', () => {
 });
 
 describe('harness integrity, second review (PR #222)', () => {
-  it('refuses results whose measured children ran with different normalized environments (4274040392)', () => {
-    const baseline = complete();
-    baseline.environment = { ...baseline.environment, childEnvironment: { NODE_ENV: null } };
+  it('refuses results whose measured children ran with a different environment (4274040392)', () => {
     const candidate = complete({ label: 'candidate' }, true);
     candidate.environment = {
       ...candidate.environment,
-      childEnvironment: { NODE_ENV: 'production' },
+      childEnvironment: { ...recordedChildEnvironment(), NODE_ENV: 'production' },
     };
-    expect(comparabilityProblems(baseline, candidate)).toContain(
-      'Measured children ran with different environments: baseline {"NODE_ENV":null}, candidate {"NODE_ENV":"production"}.',
-    );
+    expect(
+      comparabilityProblems(complete(), candidate).some((problem) =>
+        problem.startsWith(
+          'candidate: measured children did not run with the normalized environment',
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("refuses a candidate with no working-tree change, or the baseline's own (4274040412)", () => {
@@ -510,6 +518,90 @@ describe('harness integrity, third review (PR #222)', () => {
     };
     expect(comparabilityProblems(complete(), candidate)).toContain(
       'Environment differs in Svelte version: baseline "5", candidate "6".',
+    );
+  });
+});
+
+describe('schema /2 and the normalized child environment (CIN-588 harness fix 2)', () => {
+  it('names schema version 2', () => {
+    expect(RESULT_SCHEMA).toBe('cin-585-playground-measurements/2');
+  });
+
+  it('refuses a version 1 result', () => {
+    const old = {
+      ...complete(),
+      schema: 'cin-585-playground-measurements/1',
+    } as unknown as MeasurementResults;
+    expect(comparabilityProblems(old, complete({ label: 'candidate' }, true))).toEqual([
+      `baseline schema is "cin-585-playground-measurements/1"; expected "${RESULT_SCHEMA}".`,
+    ]);
+  });
+
+  it('refuses a result that records no child environment', () => {
+    const baseline = complete();
+    const { childEnvironment: _omitted, ...withoutChildEnvironment } = baseline.environment;
+    baseline.environment = withoutChildEnvironment as typeof baseline.environment;
+    expect(
+      comparabilityProblems(baseline, complete({ label: 'candidate' }, true)).some((problem) =>
+        problem.startsWith(
+          'baseline: measured children did not run with the normalized environment',
+        ),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('survivor-aware comparison (CIN-588 harness fix 3)', () => {
+  it('refuses results whose primary samples left processes running', () => {
+    const baseline = complete();
+    baseline.staticExport[0] = {
+      ...baseline.staticExport[0]!,
+      child: { ...baseline.staticExport[0]!.child, survivingPids: [4242] },
+    };
+    const candidate = complete({ label: 'candidate' }, true);
+    candidate.serverReady[3] = {
+      ...candidate.serverReady[3]!,
+      child: { ...candidate.serverReady[3]!.child, survivingPids: [5151] },
+    };
+    const problems = comparabilityProblems(baseline, candidate);
+    expect(problems).toContain('baseline: Static export pair 1 cold left pids 4242 running.');
+    expect(problems).toContain('candidate: Server readiness pair 1 warm left pids 5151 running.');
+  });
+
+  it('does not refuse for a survivor outside the primary samples', () => {
+    const baseline = complete({
+      probes: { rebuild: { loadWait, child: { ...child(1, 1), survivingPids: [7] }, result: {} } },
+    });
+    expect(comparabilityProblems(baseline, complete({ label: 'candidate' }, true))).toEqual([]);
+  });
+});
+
+describe('memory-pressure validity (CIN-588 harness fix 5)', () => {
+  it('flags a primary memory observation taken above normal pressure and refuses the comparison', () => {
+    const baseline = complete();
+    baseline.staticExport[4] = {
+      ...baseline.staticExport[4]!,
+      child: {
+        ...baseline.staticExport[4]!.child,
+        tree: { ...baseline.staticExport[4]!.child.tree, maximumPressureLevel: 2 },
+      },
+    };
+    expect(memoryPressureFlags(baseline)).toEqual([
+      'Static export pair 2 warm ran under memory pressure level 2 (normal is 1).',
+    ]);
+    expect(comparabilityProblems(baseline, complete({ label: 'candidate' }, true))).toContain(
+      'baseline: Static export pair 2 warm ran under memory pressure level 2 (normal is 1).',
+    );
+  });
+
+  it('flags a server observation with no pressure reading until ready', () => {
+    const candidate = complete({ label: 'candidate' }, true);
+    candidate.serverReady[0] = {
+      ...candidate.serverReady[0]!,
+      treeUntilReady: { ...candidate.serverReady[0]!.treeUntilReady, maximumPressureLevel: null },
+    };
+    expect(comparabilityProblems(complete(), candidate)).toContain(
+      'candidate: Server readiness pair 1 cold until ready has no memory-pressure reading.',
     );
   });
 });

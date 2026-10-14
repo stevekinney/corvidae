@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   captureSourceState,
   loadExceedsLimit,
+  NORMALIZED_CHILD_ENVIRONMENT,
   parseContainerMemoryLimit,
   parseLoadAverages,
   partitionPorcelainStatus,
+  recordedChildEnvironment,
   waitForSettledLoad,
   type HostLoad,
 } from './measure-playground-environment.ts';
@@ -153,5 +155,80 @@ describe('captureSourceState untracked content (4274040383)', () => {
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     await writeFile(join(repository, 'added.ts'), 'export const value = 2;\n');
     expect(captureSourceState(repository).untrackedSha256).not.toBe(first);
+  });
+});
+
+describe('captureSourceState output exclusion (CIN-588 harness fix 1)', () => {
+  let repository: string | undefined;
+  afterEach(async () => {
+    if (repository !== undefined) await rm(repository, { recursive: true, force: true });
+  });
+
+  async function git(...args: string[]): Promise<void> {
+    const child = Bun.spawn(['git', '-C', repository!, ...args], {
+      stdout: 'ignore',
+      stderr: 'pipe',
+    });
+    if ((await child.exited) !== 0) throw new Error(await new Response(child.stderr).text());
+  }
+
+  it('leaves files under an excluded results directory out of every part of the fingerprint', async () => {
+    repository = await mkdtemp(join(tmpdir(), 'measure-playground-exclusion-'));
+    await git('init', '-q');
+    await mkdir(join(repository, 'results'));
+    await writeFile(join(repository, 'results', 'kept.json'), '{}\n');
+    await writeFile(join(repository, 'source.ts'), 'export const value = 1;\n');
+    await git('add', '.');
+    await git('-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '-m', 'root');
+    const clean = captureSourceState(repository, ['results']);
+
+    await writeFile(join(repository, 'results', 'kept.json'), '{"changed":true}\n');
+    await writeFile(join(repository, 'results', 'baseline.json'), '{}\n');
+    const withResults = captureSourceState(repository, ['results']);
+    expect(withResults).toEqual(clean);
+
+    await writeFile(join(repository, 'source.ts'), 'export const value = 2;\n');
+    await writeFile(join(repository, 'added.ts'), 'export {};\n');
+    const withSourceChange = captureSourceState(repository, ['results']);
+    expect(withSourceChange.dirtyPaths).toEqual(['source.ts']);
+    expect(withSourceChange.untrackedPaths).toEqual(['added.ts']);
+    expect(withSourceChange.workingTreeDiffSha256).not.toBeNull();
+    expect(withSourceChange.untrackedSha256).not.toBeNull();
+  });
+});
+
+describe('NORMALIZED_CHILD_ENVIRONMENT (CIN-588 harness fix 2)', () => {
+  it('covers every variable the Playground configuration reads', async () => {
+    const source = await Bun.file(
+      join(import.meta.dirname, '..', 'src', 'environment-configuration.ts'),
+    ).text();
+    const registered = [...source.matchAll(/env: '([A-Z0-9_]+)'/gu)].map((match) => match[1]!);
+    expect(registered.length).toBeGreaterThan(0);
+    for (const name of registered)
+      expect(Object.keys(NORMALIZED_CHILD_ENVIRONMENT)).toContain(name);
+  });
+
+  it('removes everything but an empty component scope, recorded with null for removed', () => {
+    const recorded = recordedChildEnvironment();
+    expect(recorded['CINDER_TEST_COMPONENTS']).toBe('');
+    for (const [name, value] of Object.entries(recorded)) {
+      if (name !== 'CINDER_TEST_COMPONENTS') expect(value).toBeNull();
+    }
+  });
+});
+
+describe('waitForSettledLoad record-only (CIN-588 harness fix 5)', () => {
+  it('records the load once and never waits when no factor is given', async () => {
+    let slept = 0;
+    const wait = await waitForSettledLoad(undefined, {
+      capture: () => hostLoad(400),
+      sleep: async () => {
+        slept += 1;
+      },
+      now: () => 0,
+    });
+    expect(slept).toBe(0);
+    expect(wait).toMatchObject({ thresholdOneMinute: null, waitedMilliseconds: 0, checks: 1 });
+    expect(wait.loadAtStart.loadAverages.oneMinute).toBe(400);
   });
 });

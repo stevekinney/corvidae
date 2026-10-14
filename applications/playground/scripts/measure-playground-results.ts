@@ -9,6 +9,7 @@ import type {
   PinnedEnvironment,
   SourceState,
 } from './measure-playground-environment.ts';
+import { recordedChildEnvironment } from './measure-playground-environment.ts';
 import type { ArtifactInventory } from './measure-playground-inventory.ts';
 import type { TreeSampleSeries } from './measure-playground-process-tree.ts';
 import type { MetricObservation, Temperature } from './measure-playground-statistics.ts';
@@ -19,11 +20,16 @@ import type { MetricObservation, Temperature } from './measure-playground-statis
  */
 export type RecordedTreeSeries = Omit<
   TreeSampleSeries,
-  'samples' | 'failedReads' | 'failureMessages'
+  'samples' | 'failedReads' | 'failureMessages' | 'pressureReadings' | 'maximumPressureLevel'
 > &
-  Partial<Pick<TreeSampleSeries, 'failedReads' | 'failureMessages'>>;
+  Partial<
+    Pick<
+      TreeSampleSeries,
+      'failedReads' | 'failureMessages' | 'pressureReadings' | 'maximumPressureLevel'
+    >
+  >;
 
-export const RESULT_SCHEMA = 'cin-585-playground-measurements/1';
+export const RESULT_SCHEMA = 'cin-585-playground-measurements/2';
 
 export type ChildMeasurement = {
   command: string[];
@@ -202,6 +208,8 @@ export function comparabilityProblems(
     ['candidate', candidate],
   ] as const) {
     for (const failure of primaryMetricFailures(results)) problems.push(`${label}: ${failure}`);
+    for (const failure of primarySurvivorFailures(results)) problems.push(`${label}: ${failure}`);
+    for (const flag of memoryPressureFlags(results)) problems.push(`${label}: ${flag}`);
   }
   problems.push(...coverageProblems(baseline, candidate));
   problems.push(...prebuildWorkloadProblems(baseline, candidate));
@@ -254,13 +262,20 @@ function childEnvironmentProblems(
   baseline: MeasurementResults,
   candidate: MeasurementResults,
 ): string[] {
-  const baselineEnvironment = JSON.stringify(baseline.environment.childEnvironment ?? null);
-  const candidateEnvironment = JSON.stringify(candidate.environment.childEnvironment ?? null);
-  return baselineEnvironment === candidateEnvironment
-    ? []
-    : [
-        `Measured children ran with different environments: baseline ${baselineEnvironment}, candidate ${candidateEnvironment}.`,
-      ];
+  const expected = JSON.stringify(recordedChildEnvironment());
+  return (
+    [
+      ['baseline', baseline],
+      ['candidate', candidate],
+    ] as const
+  )
+    .filter(
+      ([, results]) => JSON.stringify(results.environment.childEnvironment ?? null) !== expected,
+    )
+    .map(
+      ([label, results]) =>
+        `${label}: measured children did not run with the normalized environment: recorded ${JSON.stringify(results.environment.childEnvironment ?? null)}, expected ${expected}.`,
+    );
 }
 
 /** The working-tree change a result ran against: its diff and untracked-content digests. */
@@ -450,6 +465,43 @@ export function treeReadWarnings(results: MeasurementResults): string[] {
       const first = child.tree.failureMessages?.[0];
       return `${label}: ${child.tree.failedReads} process-tree reads failed${first === undefined ? '' : ` (first: ${first})`}.`;
     });
+}
+
+/** `kern.memorystatus_vm_pressure_level` for normal memory pressure. */
+export const NORMAL_MEMORY_PRESSURE_LEVEL = 1;
+
+/**
+ * Primary memory observations that cannot be trusted: taken while memory pressure was above normal,
+ * or with no pressure reading at all. Compressed idle pages make resident size incomparable across
+ * pressure states, so `compare` refuses any result carrying one of these.
+ */
+export function memoryPressureFlags(results: MeasurementResults): string[] {
+  const observations: { label: string; level: number | null | undefined }[] = [
+    ...results.staticExport.map((sample) => ({
+      label: `Static export pair ${sample.pair} ${sample.temperature}`,
+      level: sample.child.tree.maximumPressureLevel,
+    })),
+    ...results.serverReady.map((sample) => ({
+      label: `Server readiness pair ${sample.pair} ${sample.temperature} until ready`,
+      level: sample.treeUntilReady.maximumPressureLevel,
+    })),
+  ];
+  return observations.flatMap(({ label, level }) => {
+    if (level === null || level === undefined) return [`${label} has no memory-pressure reading.`];
+    return level > NORMAL_MEMORY_PRESSURE_LEVEL
+      ? [
+          `${label} ran under memory pressure level ${level} (normal is ${NORMAL_MEMORY_PRESSURE_LEVEL}).`,
+        ]
+      : [];
+  });
+}
+
+/**
+ * Primary samples whose observed processes outlived them. A surviving descendant can keep using
+ * the host while the next sample runs, so results carrying one are not comparable.
+ */
+export function primarySurvivorFailures(results: MeasurementResults): string[] {
+  return survivingPidFailures({ ...results, prerequisites: [], playwright: [], probes: {} });
 }
 
 /** Every measured child, probes included, whose observed processes outlived it. */
