@@ -57,6 +57,8 @@ export type TurnState = {
   toolResults: Set<string>;
   /** Latest `tool.*` activity per call; discarded with the turn. */
   toolActivity: Map<string, ChatToolActivity>;
+  /** Calls whose `tool.settled` arrived before their `tool_call` gave them a row. */
+  settledEarly: Set<string>;
   /** Set by a `run.aborted` frame; acted on once the stream has closed cleanly. */
   runAborted: ChatRunAbortedNotice | undefined;
   /** The authoritative history a `run.completed` frame carried, if any. */
@@ -233,6 +235,7 @@ async function executeTurn({
     toolCalls: new Set<string>(),
     toolResults: new Set<string>(),
     toolActivity: new Map<string, ChatToolActivity>(),
+    settledEarly: new Set<string>(),
     runAborted: undefined,
     terminalConversation: undefined,
     provisionalIds: new Set<string>([messageId, userMessageId]),

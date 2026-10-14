@@ -110,7 +110,12 @@ function reduceEvent(dependencies: SessionEventDependencies, event: ChatStreamEv
       // Appending a result for a call the transcript cannot see is rejected
       // by the conversation model itself, so an early settlement is left to
       // the transcript-ordered `tool_result` that follows the call.
-      if (!state.toolCalls.has(event.toolCallId)) return true;
+      if (!state.toolCalls.has(event.toolCallId)) {
+        // Dropped as a row, but the call HAS finished: remember that, so
+        // activity frames that trail it cannot regress its record to running.
+        state.settledEarly.add(event.toolCallId);
+        return true;
+      }
       applyToolResult(dependencies, event.toolCallId, event.result);
       return true;
     case 'tool.started':
@@ -216,7 +221,7 @@ function applyToolActivity(dependencies: SessionEventDependencies, event: ToolAc
   const { state, options, reportError } = dependencies;
   const id = event.toolCallId;
   const current = state.toolActivity.get(id);
-  if (state.toolResults.has(id)) return;
+  if (state.toolResults.has(id) || state.settledEarly.has(id)) return;
   if (current?.status === 'error' || current?.status === 'policy-denied') return;
   if (event.type === 'tool.started' && current !== undefined) return;
   const activity = toolActivityOf(event);

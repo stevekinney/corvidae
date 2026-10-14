@@ -174,4 +174,16 @@ describe('tool activity frames', () => {
     await Bun.sleep(0);
     expect(harness.errors).toEqual([harness.thrown]);
   });
+
+  test('a settlement that arrived before its tool_call is terminal for later activity', async () => {
+    const early: FrameInput = {
+      type: 'tool.settled',
+      ...identity,
+      result: { callId: 'call-1', outcome: 'success', content: 'ok' },
+    };
+    const { harness } = await observe([early, started, progress, failed, denied]);
+    expect(harness.toolActivity).toEqual([]);
+    // The early settlement is still not a row: the later tool_call/tool_result own that.
+    expect(rolesOf(harness.conversation)).toEqual(['user']);
+  });
 });
