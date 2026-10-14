@@ -63,3 +63,24 @@ test('inline code in README prose wraps instead of widening the page', async ({ 
     await page.evaluate(() => document.documentElement.clientWidth),
   );
 });
+
+for (const width of [1440, 390]) {
+  test.describe(`${width}px`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    test('names each README table region distinctly on a multi-table page', async ({ page }) => {
+      await page.goto('/page/data-grid');
+      await page.locator('.readme-table-scroll').first().waitFor();
+
+      const names = await page
+        .locator('.readme-content .readme-table-scroll[role="region"][tabindex="0"]')
+        .evaluateAll((regions) => regions.map((region) => region.getAttribute('aria-label')));
+
+      expect(names.length).toBeGreaterThan(1);
+      expect(new Set(names).size).toBe(names.length);
+      // The page shows the README's own sections; its Props table renders separately.
+      expect(names).toContain('Keyboard navigation table');
+      expect(names).not.toContain('Scrollable table');
+    });
+  });
+}
