@@ -216,11 +216,10 @@ async function recoverAcrossWatchRestart(): Promise<void> {
     for (const dir of cleanupDirs.splice(0)) {
       rmSync(dir, { force: true, recursive: true });
     }
-    const readerError = stdoutReaderError;
-    stdoutReaderError = undefined;
-    stoppingSubprocess = false;
-    if (readerError !== undefined) throw readerError;
   }
+  // Reached only when the scenario itself passed: a stdout reader that failed while the process
+  // was still meant to be running is then the failure to report.
+  if (stdoutReaderError !== undefined) throw stdoutReaderError;
 }
 
 const watchRestartOutcome = await outcomeOf(recoverAcrossWatchRestart);
