@@ -721,6 +721,22 @@ describe('changeset emission', () => {
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
 
+    test("a move discarded by a merge on a side branch is not a move in main's first-parent history", async () => {
+      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      await write(root, '.changeset/z.md', weftChangeset);
+      const synced = await commit(root, 'Add Z');
+      await git(root, 'checkout', '--quiet', '-b', 'side');
+      await write(root, definitionsPath, definitions({ weft: [], cinder: [chat, weft] }));
+      await commit(root, 'Move weft to cinder on a topic branch');
+      await git(root, 'checkout', '--quiet', 'main');
+      await git(root, 'merge', '--quiet', '--no-commit', '-s', 'ours', 'side');
+      // Conflict resolution keeps weft in its own mirror and changes another entry.
+      await write(root, definitionsPath, definitions({ weft: [weft], 'agent-bureau': [chat] }));
+      await git(root, 'add', '--all');
+      await git(root, 'commit', '--quiet', '--message', 'Merge side, keeping weft where it was');
+      expect(await emit(root, await target(synced), synced)).toEqual({});
+    });
+
     test('a package that starts publication cannot carry a changeset until a sync has passed it', async () => {
       const { root, base } = await mapped({ cinder: [chat], weft: [] }, [chat]);
       await write(root, definitionsPath, definitions({ cinder: [chat], weft: [weft] }));

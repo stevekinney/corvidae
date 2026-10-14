@@ -369,8 +369,11 @@ async function assertNoMovedPackages(
   trailerSha: string,
   headFiles: readonly string[],
 ): Promise<void> {
+  // `--first-parent`: follow main's integration history and compare each merge with its first
+  // parent, so a topic-branch owner change that a merge discarded is not read as a move.
   const log = await requireGit(corvidaeRoot, [
     'log',
+    '--first-parent',
     '--format=%H',
     '--reverse',
     `${trailerSha}..HEAD`,
