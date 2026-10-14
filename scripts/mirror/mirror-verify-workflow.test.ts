@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   createWorkflowVerifyEnvironment,
@@ -126,7 +127,7 @@ describe('readLockedVersion', () => {
   });
 });
 
-describe('renderMirrorVerifyWorkflow', () => {
+describe('renderMirrorVerifyWorkflow', async () => {
   /**
    * COR-1287: `release.yaml` was a default parameter here, which made the renderer silently
    * target-specific. stevekinney/agent-bureau spells it `release.yml`, and the failure would not
@@ -233,7 +234,8 @@ describe('renderMirrorVerifyWorkflow', () => {
     });
   });
 
-  test('large consumer files stay under the Actions run limit and reconstruct byte-for-byte', async () => {
+  // Real `bash` running the rendered workflow steps is the behavior; it runs at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withFixture(async ({ targetDirectory, bunLockPath }) => {
       const largePublished: PublishedPackage[] = [
         {
@@ -298,6 +300,8 @@ describe('renderMirrorVerifyWorkflow', () => {
       }
     });
   });
+  test('large consumer files stay under the Actions run limit and reconstruct byte-for-byte', () =>
+    rethrow(outcome1));
 
   test('every command buildVerifySteps produces for the workflow environment appears as a run: line, proving the renderer never hand-writes a divergent list', async () => {
     await withFixture(async ({ targetDirectory, bunLockPath }) => {
@@ -422,7 +426,8 @@ describe('renderMirrorVerifyWorkflow', () => {
    * manifest carries when the workflow runs, so this bumps the version after rendering and runs the
    * rendered pack-relocate lines through a real shell.
    */
-  test('the rendered steps find each tarball after a later commit bumps the version', async () => {
+  // Real `bash` running the rendered workflow steps is the behavior; it runs at module scope, off the per-test clock.
+  const outcome2 = await outcomeOf(async () => {
     await withFixture(async ({ targetDirectory, bunLockPath }) => {
       const workflow = await renderMirrorVerifyWorkflow({
         targetDirectory,
@@ -473,4 +478,6 @@ describe('renderMirrorVerifyWorkflow', () => {
       }
     });
   });
+  test('the rendered steps find each tarball after a later commit bumps the version', () =>
+    rethrow(outcome2));
 });

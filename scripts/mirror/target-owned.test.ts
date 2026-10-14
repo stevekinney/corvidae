@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans } from './committed-plans.ts';
 import { mirrorTargets } from './target-definitions.ts';
@@ -17,12 +18,11 @@ import {
   retiredDirectoriesFor,
   RetirementCollisionError,
   RetirementError,
+  runGuard,
   type TargetOwnedPolicy,
   TargetOwnedViolation,
   writeTransformOutput,
 } from './target-owned.ts';
-
-const guard = new URL('./target-owned.ts', import.meta.url).pathname;
 
 const licenseNotice = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
 const readme = '# weft\n\nPublished from corvidae.\n';
@@ -259,8 +259,9 @@ describe('temporary exceptions', () => {
   });
 });
 
-describe('change detection against a fixture target', () => {
-  test('a no-op sync leaves git status --porcelain empty', async () => {
+describe('change detection against a fixture target', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withFixtureTarget(async (directory) => {
       const policy = await loadTargetOwnedPolicy();
       const { written } = await writeTransformOutput({
@@ -273,8 +274,9 @@ describe('change detection against a fixture target', () => {
       expect(await runGit(directory, 'status', '--porcelain')).toBe('');
     });
   });
+  test('a no-op sync leaves git status --porcelain empty', () => rethrow(outcome1));
 
-  test('a real change is still detected, so the empty status above is not vacuous', async () => {
+  const outcome2 = await outcomeOf(async () => {
     await withFixtureTarget(async (directory) => {
       const policy = await loadTargetOwnedPolicy();
       await writeTransformOutput({
@@ -288,10 +290,13 @@ describe('change detection against a fixture target', () => {
       );
     });
   });
+  test('a real change is still detected, so the empty status above is not vacuous', () =>
+    rethrow(outcome2));
 });
 
-describe('the guard refuses target-owned writes', () => {
-  test('the command line guard exits non-zero and leaves the target byte-identical', async () => {
+describe('the guard refuses target-owned writes', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome3 = await outcomeOf(async () => {
     await withFixtureTarget(async (directory) => {
       const before = await Promise.all(
         Object.keys(targetOwned).map(async (path) => readFile(join(directory, path), 'utf8')),
@@ -306,14 +311,12 @@ describe('the guard refuses target-owned writes', () => {
         }),
       );
       try {
-        const process_ = Bun.spawn(
-          ['bun', guard, '--target', 'weft', '--directory', directory, '--plan', plan],
-          { stdout: 'pipe', stderr: 'pipe' },
+        const stderrChunks: string[] = [];
+        const exitCode = await runGuard(
+          ['--target', 'weft', '--directory', directory, '--plan', plan],
+          { stdout: () => undefined, stderr: (text) => stderrChunks.push(text) },
         );
-        const [stderr, exitCode] = await Promise.all([
-          new Response(process_.stderr).text(),
-          process_.exited,
-        ]);
+        const stderr = stderrChunks.join('');
 
         expect(exitCode).not.toBe(0);
 
@@ -329,8 +332,10 @@ describe('the guard refuses target-owned writes', () => {
       }
     });
   });
+  test('the command line guard exits non-zero and leaves the target byte-identical', () =>
+    rethrow(outcome3));
 
-  test('the whole plan is refused, so a permitted file in it is not written either', async () => {
+  const outcome4 = await outcomeOf(async () => {
     await withFixtureTarget(async (directory) => {
       const policy = await loadTargetOwnedPolicy();
       expect(
@@ -350,10 +355,13 @@ describe('the guard refuses target-owned writes', () => {
       expect(await runGit(directory, 'status', '--porcelain')).toBe('');
     });
   });
+  test('the whole plan is refused, so a permitted file in it is not written either', () =>
+    rethrow(outcome4));
 });
 
-describe('the guard refuses target-owned deletions', () => {
-  test('a plan that would delete a target-owned path is refused whole', async () => {
+describe('the guard refuses target-owned deletions', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome5 = await outcomeOf(async () => {
     await withFixtureTarget(async (directory) => {
       const policy = await loadTargetOwnedPolicy();
       let thrown: unknown;
@@ -381,8 +389,9 @@ describe('the guard refuses target-owned deletions', () => {
       expect(await runGit(directory, 'status', '--porcelain')).toBe('');
     });
   });
+  test('a plan that would delete a target-owned path is refused whole', () => rethrow(outcome5));
 
-  test('a deletion the enumeration does not hold is carried out and reported', async () => {
+  const outcome6 = await outcomeOf(async () => {
     await withFixtureTarget(
       async (directory) => {
         const policy = await loadTargetOwnedPolicy();
@@ -404,8 +413,10 @@ describe('the guard refuses target-owned deletions', () => {
       { 'packages/weft/src/retired.ts': 'export const retired = true;\n' },
     );
   });
+  test('a deletion the enumeration does not hold is carried out and reported', () =>
+    rethrow(outcome6));
 
-  test('the command line guard writes a base64 plan entry as bytes', async () => {
+  const outcome7 = await outcomeOf(async () => {
     // JSON has no byte string, so a binary plan entry names its encoding. The in-process plan
     // type is `string | Uint8Array`; this is that union surviving a round trip through a file,
     // which is what a source tree holding a PNG fixture needs.
@@ -422,11 +433,11 @@ describe('the guard refuses target-owned deletions', () => {
         }),
       );
       try {
-        const process_ = Bun.spawn(
-          ['bun', guard, '--target', 'weft', '--directory', directory, '--plan', plan],
-          { stdout: 'pipe', stderr: 'pipe' },
+        const exitCode = await runGuard(
+          ['--target', 'weft', '--directory', directory, '--plan', plan],
+          { stdout: () => undefined, stderr: () => undefined },
         );
-        expect(await process_.exited).toBe(0);
+        expect(exitCode).toBe(0);
         const written = new Uint8Array(
           await Bun.file(join(directory, 'packages/weft/src/fixtures/baseline.png')).arrayBuffer(),
         );
@@ -436,8 +447,9 @@ describe('the guard refuses target-owned deletions', () => {
       }
     });
   });
+  test('the command line guard writes a base64 plan entry as bytes', () => rethrow(outcome7));
 
-  test('a written file keeps the executable bit the plan records for it', async () => {
+  const outcome8 = await outcomeOf(async () => {
     await withFixtureTarget(async (directory) => {
       const policy = await loadTargetOwnedPolicy();
       await writeTransformOutput({
@@ -456,9 +468,10 @@ describe('the guard refuses target-owned deletions', () => {
       expect(plain.mode & 0o111).toBe(0);
     });
   });
+  test('a written file keeps the executable bit the plan records for it', () => rethrow(outcome8));
 });
 
-describe('retiring a directory the target still carries', () => {
+describe('retiring a directory the target still carries', async () => {
   /** A minimal policy whose only ruling is that the root LICENSE belongs to the target. */
   function policyFor(entries: TargetOwnedPolicy['retired']['entries']): TargetOwnedPolicy {
     return {
@@ -489,7 +502,8 @@ describe('retiring a directory the target still carries', () => {
     issue: 'COR-2001',
   } as const;
 
-  test('a directory nobody enumerated is refused rather than deleted', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome9 = await outcomeOf(async () => {
     await withFixtureTarget(
       async (directory) => {
         const policy = policyFor([retirement]);
@@ -523,6 +537,7 @@ describe('retiring a directory the target still carries', () => {
       { 'packages/unlisted/src/keep.ts': 'export const keep = true;\n' },
     );
   });
+  test('a directory nobody enumerated is refused rather than deleted', () => rethrow(outcome9));
 
   test('an entry scoped to one target does not retire the same directory from the other', async () => {
     const policy = policyFor([retirement]);
@@ -530,7 +545,8 @@ describe('retiring a directory the target still carries', () => {
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([]);
   });
 
-  test('a retirement holding a target-owned file is refused, naming both rulings', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome10 = await outcomeOf(async () => {
     await withFixtureTarget(
       async (directory) => {
         const policy = policyFor([retirement]);
@@ -568,8 +584,10 @@ describe('retiring a directory the target still carries', () => {
       },
     );
   });
+  test('a retirement holding a target-owned file is refused, naming both rulings', () =>
+    rethrow(outcome10));
 
-  test('a clean retirement collects every file, including ones the source walk skips', async () => {
+  const outcome11 = await outcomeOf(async () => {
     await withFixtureTarget(
       async (directory) => {
         const policy = policyFor([retirement]);
@@ -619,8 +637,10 @@ describe('retiring a directory the target still carries', () => {
       },
     );
   });
+  test('a clean retirement collects every file, including ones the source walk skips', () =>
+    rethrow(outcome11));
 
-  test('a retired entry naming a single file removes the named file and leaves its siblings', async () => {
+  const outcome12 = await outcomeOf(async () => {
     const fileRetirement = {
       directory: 'packages/retired-ui/scripts/ci-workflows.test.ts',
       target: 'weft',
@@ -673,8 +693,10 @@ describe('retiring a directory the target still carries', () => {
       },
     );
   });
+  test('a retired entry naming a single file removes the named file and leaves its siblings', () =>
+    rethrow(outcome12));
 
-  test('a retirement whose directory the target no longer carries is a no-op, not a failure', async () => {
+  const outcome13 = await outcomeOf(async () => {
     await withFixtureTarget(async (directory) => {
       const policy = policyFor([retirement]);
       expect(
@@ -687,6 +709,8 @@ describe('retiring a directory the target still carries', () => {
       ).toEqual([]);
     });
   });
+  test('a retirement whose directory the target no longer carries is a no-op, not a failure', () =>
+    rethrow(outcome13));
 
   test('a retired directory that a paths glob already claims is refused as configuration', () => {
     expect(() =>
@@ -733,7 +757,8 @@ describe('retiring a directory the target still carries', () => {
     },
   );
 
-  test('a restored cinder playground copy and its deployment workflow are collected for deletion', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome14 = await outcomeOf(async () => {
     await withFixtureTarget(
       async (directory) => {
         const policy = await loadTargetOwnedPolicy();
@@ -754,6 +779,8 @@ describe('retiring a directory the target still carries', () => {
       },
     );
   });
+  test('a restored cinder playground copy and its deployment workflow are collected for deletion', () =>
+    rethrow(outcome14));
 
   test('the committed enumeration retires each target only what its own issue ruled on', async () => {
     const policy = await loadTargetOwnedPolicy();

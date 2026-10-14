@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create, Pax } from 'tar';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { readPackagePayload } from './package-payload.ts';
 
@@ -205,7 +206,8 @@ test('rejects absolute paths, backslashes, hard links, and FIFOs', async () => {
   }
 });
 
-test('rejects backslashes before the tar reader normalizes Windows paths', async () => {
+// A fresh `bun -e` child with a faked platform is the behavior; it runs at module scope, off the per-test clock.
+const outcome1 = await outcomeOf(async () => {
   const archive = typedTarball('package\\file.js', 0x30);
   const child = Bun.spawn(
     [
@@ -232,6 +234,7 @@ test('rejects backslashes before the tar reader normalizes Windows paths', async
   expect(stderr).toBe('');
   expect(exitCode).toBe(0);
 });
+test('rejects backslashes before the tar reader normalizes Windows paths', () => rethrow(outcome1));
 
 test('rejects duplicate archive entries instead of collapsing them', async () => {
   expect(

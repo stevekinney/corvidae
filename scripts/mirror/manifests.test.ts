@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
@@ -11,6 +12,7 @@ import {
   ManifestTransformError,
   planManifests,
   publicNameFor,
+  runManifestTransform,
   stageTarget,
   type ManifestPlan,
 } from './manifests.ts';
@@ -385,6 +387,7 @@ describe('name mapping', () => {
     expect(await throwingRejectionOf(plan)).toThrow(/@lostgradient\/phantom/);
   });
 
+  // spawn-free: planManifests refuses the unmapped workspace before stageTarget reaches runInstall's `bun install`.
   test('the command line transform exits non-zero on an unmapped workspace', async () => {
     await withTree(
       corvidaeFixture({
@@ -393,23 +396,12 @@ describe('name mapping', () => {
       async (root) => {
         const directory = await mkdtemp(join(tmpdir(), 'corvidae-unmapped-'));
         try {
-          const transform = Bun.spawn(
-            [
-              'bun',
-              new URL('./manifests.ts', import.meta.url).pathname,
-              '--corvidae-root',
-              root,
-              '--target',
-              'cinder',
-              '--directory',
-              directory,
-            ],
-            { stdout: 'pipe', stderr: 'pipe' },
+          const stderrChunks: string[] = [];
+          const exitCode = await runManifestTransform(
+            ['--corvidae-root', root, '--target', 'cinder', '--directory', directory],
+            { stdout: () => undefined, stderr: (text) => stderrChunks.push(text) },
           );
-          const [stderr, exitCode] = await Promise.all([
-            new Response(transform.stderr).text(),
-            transform.exited,
-          ]);
+          const stderr = stderrChunks.join('');
           expect(exitCode).not.toBe(0);
           expect(stderr).toContain('@lostgradient/phantom');
           expect(await Bun.file(join(directory, 'package.json')).exists()).toBe(false);
@@ -1145,7 +1137,7 @@ describe('the plan never touches a target-owned path', () => {
   });
 });
 
-describe('lockfile generation', () => {
+describe('lockfile generation', async () => {
   /**
    * Deliberately free of external dependencies so the staging install resolves entirely from the
    * staged tree: the test proves the transform produces an installable graph without reaching a
@@ -1162,7 +1154,8 @@ describe('lockfile generation', () => {
     },
   };
 
-  test('a staged tree installs and its lockfile is frozen-install clean', async () => {
+  // A real `bun install` of the staged tree is the behavior; it runs at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withTree(offline, async (root) => {
       const directory = await mkdtemp(join(tmpdir(), 'corvidae-staged-'));
       try {
@@ -1180,7 +1173,8 @@ describe('lockfile generation', () => {
         await rm(directory, { recursive: true, force: true });
       }
     });
-  }, 60_000);
+  });
+  test('a staged tree installs and its lockfile is frozen-install clean', () => rethrow(outcome1));
 });
 
 test('plans publication inputs only for dependencies that cross into the selected target', async () => {

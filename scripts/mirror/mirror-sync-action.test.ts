@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   dispatchSnapshotWorkflow,
@@ -162,23 +163,27 @@ describe('snapshotDispatchFor', () => {
   });
 });
 
-describe('runMirrorSyncActionCommand argument handling', () => {
-  test('refuses an unknown mode without touching git or GitHub', async () => {
+describe('runMirrorSyncActionCommand argument handling', async () => {
+  // Real `bash` steps against real local remotes are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand(['--mode', 'nuke']);
     expect(code).toBe(1);
   });
+  test('refuses an unknown mode without touching git or GitHub', () => rethrow(outcome1));
 
-  test('requires --mode', async () => {
+  const outcome2 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand([]);
     expect(code).toBe(1);
   });
+  test('requires --mode', () => rethrow(outcome2));
 
-  test('requires --target for report mode', async () => {
+  const outcome3 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand(['--mode', 'report', '--work', '/tmp/x']);
     expect(code).toBe(1);
   });
+  test('requires --target for report mode', () => rethrow(outcome3));
 
-  test('refuses an unknown --target for report mode', async () => {
+  const outcome4 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand([
       '--mode',
       'report',
@@ -189,8 +194,9 @@ describe('runMirrorSyncActionCommand argument handling', () => {
     ]);
     expect(code).toBe(1);
   });
+  test('refuses an unknown --target for report mode', () => rethrow(outcome4));
 
-  test('requires --target for prepare mode', async () => {
+  const outcome5 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand([
       '--mode',
       'prepare',
@@ -203,8 +209,9 @@ describe('runMirrorSyncActionCommand argument handling', () => {
     ]);
     expect(code).toBe(1);
   });
+  test('requires --target for prepare mode', () => rethrow(outcome5));
 
-  test('rejects malformed --snapshot input before prepare setup', async () => {
+  const outcome6 = await outcomeOf(async () => {
     const messages: string[] = [];
     const originalWrite = process.stderr.write;
     const captureWrite: typeof process.stderr.write = (chunk) => {
@@ -235,6 +242,7 @@ describe('runMirrorSyncActionCommand argument handling', () => {
 
     expect(messages.join('')).toContain('--snapshot must be "true" or "false"');
   });
+  test('rejects malformed --snapshot input before prepare setup', () => rethrow(outcome6));
 });
 
 /**
@@ -406,55 +414,49 @@ async function withHarness(
   }
 }
 
-const endToEndTimeout = 120_000;
-
-describe('reportDrift', () => {
-  test(
-    'reports a target as behind when the transform would change it, and pushes nothing',
-    async () => {
-      await withHarness(async (harness) => {
-        const report = await reportDrift({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: join(harness.workRoot, 'behind'),
-        });
-        expect(report.behind).toBe(true);
-        expect(report.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
-
-        // Nothing was pushed: the remote's `main` still holds only the seed commit.
-        const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
-        expect(commitCount.trim()).toBe('1');
+describe('reportDrift', async () => {
+  // Real `bash` steps against real local remotes are the behavior; they run at module scope, off the per-test clock.
+  const outcome7 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      const report = await reportDrift({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: join(harness.workRoot, 'behind'),
       });
-    },
-    endToEndTimeout,
-  );
+      expect(report.behind).toBe(true);
+      expect(report.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
 
-  test(
-    'reports a target as up to date once a real sync has caught it up',
-    async () => {
-      await withHarness(async (harness) => {
-        await runSync({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: join(harness.workRoot, 'sync'),
-          scratchDirectory: join(harness.workRoot, 'scratch'),
-          corvidaeCommit: 'corvidae-seed',
-        });
+      // Nothing was pushed: the remote's `main` still holds only the seed commit.
+      const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+      expect(commitCount.trim()).toBe('1');
+    });
+  });
+  test('reports a target as behind when the transform would change it, and pushes nothing', () =>
+    rethrow(outcome7));
 
-        const report = await reportDrift({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: join(harness.workRoot, 'after'),
-        });
-        expect(report.behind).toBe(false);
-        expect(report.changed).toEqual([]);
+  const outcome8 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await runSync({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: join(harness.workRoot, 'sync'),
+        scratchDirectory: join(harness.workRoot, 'scratch'),
+        corvidaeCommit: 'corvidae-seed',
       });
-    },
-    endToEndTimeout,
-  );
+
+      const report = await reportDrift({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: join(harness.workRoot, 'after'),
+      });
+      expect(report.behind).toBe(false);
+      expect(report.changed).toEqual([]);
+    });
+  });
+  test('reports a target as up to date once a real sync has caught it up', () => rethrow(outcome8));
 });
 
 test('snapshot dispatch discovers the release workflow filename from the staged clone', async () => {
