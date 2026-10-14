@@ -88,6 +88,39 @@ describe('engine failure fails closed', () => {
     expect(loads).toBe(0);
   });
 
+  test('a host-supplied engine-load-failed state with no recovery handler offers no inert Retry', () => {
+    const harness = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'engine-load-failed',
+    } as TerminalProps);
+    expect(harness.target.querySelector('.cinder-terminal__message')?.textContent).toBe(
+      'Terminal engine unavailable',
+    );
+    expect(
+      [...harness.target.querySelectorAll('button')].map((button) => button.textContent?.trim()),
+    ).not.toContain('Retry');
+  });
+
+  test('Retry on a renderer-owned failure reloads the engine and does not call the host', async () => {
+    behavior = () => Promise.reject(new Error('blocked'));
+    let requests = 0;
+    const harness = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'writable',
+      onRecoveryRequest: () => {
+        requests += 1;
+      },
+    } as TerminalProps);
+    await failed(harness);
+    const retry = [...harness.target.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Retry',
+    )!;
+    retry.click();
+    harness.flush();
+    await waitFor(() => loads === 2, 'a second load attempt');
+    expect(requests).toBe(0);
+  });
+
   test('does not switch engines or retry on its own', async () => {
     behavior = () => Promise.reject(new Error('blocked'));
     const harness = mountHarness(Terminal, { title: 'Shell', state: 'writable' });

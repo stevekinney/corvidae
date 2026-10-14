@@ -135,7 +135,8 @@
   }
 
   // A failure the renderer found is cleared here, which remounts the engine. A state the host
-  // passed in is the host's to resolve, so Retry asks it to through the recovery handler.
+  // passed in is the host's to resolve, so Retry asks it to through the recovery handler, and is
+  // offered only when there is a handler to ask: otherwise it would do nothing.
   function retry(): void {
     if (failure === undefined) onRecoveryRequest?.();
     else failure = undefined;
@@ -153,7 +154,7 @@
         {@attach attachEngine}
       ></div>
     {/if}
-    {#if effectiveState === 'engine-load-failed'}
+    {#if effectiveState === 'engine-load-failed' && (failure !== undefined || onRecoveryRequest !== undefined)}
       <div class="cinder-terminal__actions">
         <Button label="Retry" size="sm" onclick={retry} />
       </div>
