@@ -1100,8 +1100,8 @@
     },
     "@lostgradient/lifecycle": {
       "workspace": "@lostgradient/lifecycle",
-      "version": "0.0.2",
-      "fetchedAt": "2026-10-13",
+      "version": "0.0.3",
+      "fetchedAt": "2026-10-14",
       "subpaths": ["."]
     },
     "@lostgradient/markdown": {
@@ -1169,8 +1169,8 @@
     },
     "@lostgradient/tool-protocol": {
       "workspace": "@lostgradient/tool-protocol",
-      "version": "0.0.2",
-      "fetchedAt": "2026-10-13",
+      "version": "0.0.3",
+      "fetchedAt": "2026-10-14",
       "subpaths": ["."]
     },
     "@lostgradient/weft": {
@@ -1214,8 +1214,8 @@
     },
     "armorer": {
       "workspace": "armorer",
-      "version": "2.4.3",
-      "fetchedAt": "2026-10-13",
+      "version": "2.4.4",
+      "fetchedAt": "2026-10-14",
       "subpaths": [
         ".",
         "./adapters/anthropic",
@@ -1241,8 +1241,8 @@
     },
     "conversationalist": {
       "workspace": "conversationalist",
-      "version": "2.1.2",
-      "fetchedAt": "2026-10-13",
+      "version": "2.1.3",
+      "fetchedAt": "2026-10-14",
       "subpaths": [
         ".",
         "./adapters/anthropic",
