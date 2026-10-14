@@ -105,16 +105,23 @@ describe('A2A file parts', () => {
     expect(roundTripPart(part)).toEqual(part);
   });
 
-  it('treats an absent filename as the proto3 empty-string default in both directions', () => {
+  it('names a document from a part without a filename and drops that name on the way back', () => {
     const part: A2APart = { raw: 'AAEC', mediaType: 'application/octet-stream' };
 
     expect(fromA2APart(part)).toEqual({
       type: 'document',
-      name: '',
+      name: 'document',
       mimeType: 'application/octet-stream',
       source: { kind: 'base64', data: 'AAEC' },
     });
     expect(roundTripPart(part)).toEqual(part);
+    expect(fromA2APart({ ...part, filename: '' })).toEqual(fromA2APart(part));
+  });
+
+  it('brings back a part whose filename is exactly the default document name without it', () => {
+    const part: A2APart = { raw: 'AAEC', filename: 'document', mediaType: 'application/pdf' };
+
+    expect(roundTripPart(part)).toEqual({ raw: 'AAEC', mediaType: 'application/pdf' });
   });
 
   it('round-trips an inline image part through a data URL image content', () => {
@@ -179,7 +186,11 @@ describe('A2A data parts', () => {
     };
 
     const content = fromA2APart(part);
-    expect(content).toMatchObject({ type: 'document', name: '', mimeType: 'application/json' });
+    expect(content).toMatchObject({
+      type: 'document',
+      name: 'document',
+      mimeType: 'application/json',
+    });
     expect(roundTripPart(part)).toEqual(part);
   });
 
@@ -304,25 +315,27 @@ describe('A2A part fields Conversationalist content cannot hold', () => {
     expect(toA2APart(content)).toEqual({ url: 'https://example.com/a.png' });
     expect(roundTripContent(content)).toEqual({
       type: 'document',
-      name: '',
+      name: 'document',
       mimeType: 'application/octet-stream',
       source: { kind: 'reference', uri: 'https://example.com/a.png' },
     });
   });
 
   it('brings back an unnamed image/* document as image content', () => {
-    const content: MultiModalContent = {
-      type: 'document',
-      name: '',
-      mimeType: 'image/png',
-      source: { kind: 'reference', uri: 'https://example.com/a.png' },
-    };
+    for (const name of ['', 'document']) {
+      const content: MultiModalContent = {
+        type: 'document',
+        name,
+        mimeType: 'image/png',
+        source: { kind: 'reference', uri: 'https://example.com/a.png' },
+      };
 
-    expect(roundTripContent(content)).toEqual({
-      type: 'image',
-      url: 'https://example.com/a.png',
-      mimeType: 'image/png',
-    });
+      expect(roundTripContent(content)).toEqual({
+        type: 'image',
+        url: 'https://example.com/a.png',
+        mimeType: 'image/png',
+      });
+    }
   });
 });
 
@@ -476,6 +489,30 @@ describe('A2A messages', () => {
     expect(message?.content).toEqual([{ type: 'text', text: '[redacted]' }]);
     expect(message?.id).not.toBe('remote-1');
     expect(message !== undefined && 'messageId' in message).toBe(false);
+  });
+
+  it('appends an imported message whose data and file parts carry no filename', () => {
+    const { messageId, ...input } = fromA2AMessage({
+      messageId: 'remote-2',
+      role: 'ROLE_AGENT',
+      parts: [
+        { data: { priority: 'high' } },
+        { raw: 'JVBERi0xLjQK', mediaType: 'application/pdf' },
+        { url: 'https://example.com/files/report', mediaType: 'application/pdf' },
+      ],
+    });
+
+    const conversation = appendMessages(createConversationHistory(), input);
+    const [message] = getOrderedMessages(conversation);
+
+    expect(messageId).toBe('remote-2');
+    if (message === undefined) throw new Error('Expected the appended message.');
+    expect(message.content).toEqual(input.content);
+    expect(toA2AMessage({ ...message, id: messageId }).parts).toEqual([
+      { data: { priority: 'high' } },
+      { raw: 'JVBERi0xLjQK', mediaType: 'application/pdf' },
+      { url: 'https://example.com/files/report', mediaType: 'application/pdf' },
+    ]);
   });
 
   it('rejects a message with no content parts', () => {

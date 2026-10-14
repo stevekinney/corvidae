@@ -11,6 +11,12 @@ import type { A2ADataPart, A2APart, A2ARawPart, A2AStruct, A2AUrlPart } from './
 
 /** Media type assumed for a `data` part that declares none. */
 const JSON_MEDIA_TYPE = 'application/json';
+/**
+ * Document name given to a file or data part that carries no filename, because
+ * `DocumentContent.name` must be non-empty; the Anthropic adapter uses the
+ * same default. A document with this name maps back to a part with no filename.
+ */
+const UNNAMED_DOCUMENT_NAME = 'document';
 /** Media type assumed for a file part that declares none. */
 const OCTET_STREAM_MEDIA_TYPE = 'application/octet-stream';
 
@@ -92,12 +98,14 @@ export function toA2AParts(content: string | ReadonlyArray<MultiModalContent>): 
  *   default the data part implies.
  * - A `raw` file whose bytes are already compact JSON comes back as a `data`
  *   part holding the same bytes.
+ * - A file or data part whose filename is exactly `document` comes back with
+ *   no filename.
  * - A text part's media type, and part metadata other than `citations` (text)
  *   and `text` (image alternative text), have no place on content and are not
  *   carried.
  *
- * An absent filename maps to the empty document name and back, matching the
- * proto3 default for `string filename`. A part that sets zero or several
+ * An absent or empty filename (the proto3 default for `string filename`) maps
+ * to the document name `document` and back. A part that sets zero or several
  * `content` oneof members throws an `A2AMappingError` of kind `part`.
  */
 export function fromA2APart(part: A2APart): MultiModalContent {
@@ -139,7 +147,8 @@ function toA2AImagePart(content: ImageContent): A2APart {
 }
 
 function toA2ADocumentPart(content: DocumentContent): A2APart {
-  const filename = content.name === '' ? {} : { filename: content.name };
+  const filename =
+    content.name === '' || content.name === UNNAMED_DOCUMENT_NAME ? {} : { filename: content.name };
   if (content.source.kind === 'reference') {
     return { url: content.source.uri, ...filename, mediaType: content.mimeType };
   }
@@ -157,7 +166,7 @@ function toA2ADocumentPart(content: DocumentContent): A2APart {
 function fromA2ADataPart(part: A2ADataPart): DocumentContent {
   return {
     type: 'document',
-    name: part.filename ?? '',
+    name: nonEmpty(part.filename) ?? UNNAMED_DOCUMENT_NAME,
     mimeType: nonEmpty(part.mediaType) ?? JSON_MEDIA_TYPE,
     source: { kind: 'base64', data: encodeUtf8Base64(JSON.stringify(part.data)) },
   };
@@ -176,7 +185,7 @@ function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): ImageContent | Document
   }
   return {
     type: 'document',
-    name: part.filename ?? '',
+    name: nonEmpty(part.filename) ?? UNNAMED_DOCUMENT_NAME,
     mimeType: mediaType ?? OCTET_STREAM_MEDIA_TYPE,
     source:
       part.raw === undefined
