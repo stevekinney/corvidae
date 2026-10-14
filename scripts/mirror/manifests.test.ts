@@ -1136,7 +1136,15 @@ describe('the plan never touches a target-owned path', () => {
       expect(() =>
         assertWritablePaths({ policy, target, paths: Object.keys(plan.files) }),
       ).not.toThrow();
-      expect(Object.keys(plan.files).some((path) => path.startsWith('.changeset/'))).toBe(false);
+      // COR-1433: the only `.changeset/` paths a plan may carry are emitted corvidae changesets.
+      const changesetPaths = Object.keys(plan.files).filter((path) =>
+        path.startsWith('.changeset/'),
+      );
+      expect(
+        changesetPaths.filter(
+          (path) => !/^\.changeset\/corvidae-[0-9a-f]{12}-[^/]+\.md$/.test(path),
+        ),
+      ).toEqual([]);
     }
   });
 });
