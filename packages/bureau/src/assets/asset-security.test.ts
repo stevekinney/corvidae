@@ -32,6 +32,7 @@ import {
   type AssetFetchResponse,
   type BureauAssetOptions,
 } from './index';
+import { isPrivateAddress } from './url-policy';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -88,6 +89,10 @@ describe('URL admission', () => {
     'https://[fd00::1]/a.png',
     'https://[fe80::1]/a.png',
     'https://[::ffff:127.0.0.1]/a.png',
+    'https://[::ffff:0:7f00:1]/a.png',
+    'https://[2002:7f00:1::]/a.png',
+    'https://[2002:a9fe:a9fe::]/a.png',
+    'https://[64:ff9b:1::a9fe:a9fe]/a.png',
     'https://2130706433/a.png',
     'https://0x7f000001/a.png',
     'https://localhost/a.png',
@@ -107,6 +112,27 @@ describe('URL admission', () => {
       await opened.close();
     });
   }
+
+  it('classifies IPv6 transition addresses by the IPv4 address they carry', () => {
+    // 6to4 and NAT64 wrapping a public relay stay public; local-use NAT64 is never public.
+    expect(isPrivateAddress('2002:808:808::')).toBe(false);
+    expect(isPrivateAddress('64:ff9b::808:808')).toBe(false);
+    expect(isPrivateAddress('2002:c0a8:1::')).toBe(true);
+    expect(isPrivateAddress('64:ff9b:1::808:808')).toBe(true);
+    expect(isPrivateAddress('::ffff:0:a00:1')).toBe(true);
+  });
+
+  it('refuses a body over the asset ceiling, telling the fetch port where to stop', async () => {
+    const fetcher = scriptedFetcher({ 'https://cdn.example.com/big.png': ok(pngBytes(2, 2, 64)) });
+    const opened = await open({
+      policy: { maxAssetBytes: 64 },
+      ports: { resolveHost: async () => ['93.184.216.34'], fetch: fetcher.fetch },
+    });
+    const { result } = await admitUrl(opened, 'https://cdn.example.com/big.png');
+    expect(result).toMatchObject({ rejection: { code: 'per-part-limit-exceeded' } });
+    expect(fetcher.requests.map((request) => request.maxBytes)).toEqual([64]);
+    await opened.close();
+  });
 
   it('refuses a host name that resolves to a private address', async () => {
     const resolver = scriptedResolver({ 'internal.example.com': [['93.184.216.34', '10.0.0.7']] });
@@ -290,6 +316,20 @@ describe('URL admission', () => {
     await opened.close();
   });
 
+  it('refuses a bearer token carried in the query, and never echoes it', async () => {
+    const fetcher = scriptedFetcher({});
+    const opened = await open({
+      ports: { resolveHost: async () => ['93.184.216.34'], fetch: fetcher.fetch },
+    });
+    for (const query of ['access_token=hunter2', 'API_KEY=hunter2', 'token=hunter2']) {
+      const { result } = await admitUrl(opened, `https://cdn.example.com/a.png?${query}`);
+      expect(result).toMatchObject({ rejection: { code: 'credential-bearing-url' } });
+    }
+    expect(fetcher.requests).toEqual([]);
+    expect(JSON.stringify(await opened.assets.auditRecords())).not.toContain('hunter2');
+    await opened.close();
+  });
+
   it('refuses a scheme outside the allowlist', async () => {
     const opened = await open({ ports: { resolveHost: async () => ['93.184.216.34'] } });
     for (const url of [
@@ -343,6 +383,39 @@ describe('provider-fetch declaration', () => {
     expect(JSON.stringify(descriptor)).not.toContain('X-Amz-Signature');
     expect(JSON.stringify(opened.events)).not.toContain('X-Amz-Signature');
     await opened.close();
+  });
+
+  it('is refused without a declared media type, or when a gate or limit would need its bytes', async () => {
+    const declared = { declaredMediaType: 'application/pdf' };
+    const cases: Array<[Omit<BureauAssetOptions, 'storage'>, { declaredMediaType?: string }]> = [
+      [{}, {}],
+      [
+        {
+          ports: {
+            safetyGates: [{ name: 'scanner', inspect: async () => ({ verdict: 'clean' }) }],
+          },
+        },
+        declared,
+      ],
+      [
+        { policy: { limits: [{ scope: 'per-part', modality: 'document', maxPageCount: 5 }] } },
+        declared,
+      ],
+    ];
+    for (const [options, request] of cases) {
+      const opened = await open({
+        ...options,
+        policy: { ...options.policy, url: { allowProviderFetch: true } },
+      });
+      const admission = await opened.assets.admit(
+        { source: { kind: 'url', url, fetchedBy: 'provider' }, ...request },
+        alice,
+      );
+      expect(await admission.work.result()).toMatchObject({
+        rejection: { code: 'provider-fetch-not-allowed' },
+      });
+      await opened.close();
+    }
   });
 
   it('still refuses a literal private address and an expired signature', async () => {

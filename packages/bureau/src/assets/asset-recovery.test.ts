@@ -34,6 +34,7 @@ import {
 } from '../testing/asset-fixtures.test-support';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
+  AssetAdmissionError,
   AssetHeldError,
   AssetNotFoundError,
   AssetUnavailableError,
@@ -418,6 +419,72 @@ describe('partial-upload cleanup', () => {
     expect(await admission.work.result()).toMatchObject({
       rejection: { code: 'upload-incomplete' },
     });
+    await opened.close();
+  });
+
+  it("refuses an upload declaring more than the asset ceiling or its type's per-part limit, storing nothing", async () => {
+    const opened = await open({
+      policy: {
+        maxAssetBytes: 64,
+        limits: [{ scope: 'per-part', modality: 'image', maxBytes: 10 }],
+      },
+    });
+    for (const request of [
+      { declaredByteLength: 1_000_000_000 },
+      { declaredByteLength: 20, declaredMediaType: 'image/png' },
+    ]) {
+      const error = await rejectionOf(opened.assets.beginUpload(alice, request));
+      expect(error).toBeInstanceOf(AssetAdmissionError);
+      expect((error as AssetAdmissionError).rejection.code).toBe('per-part-limit-exceeded');
+    }
+    expect(await opened.storage.list('asset:v1:upload')).toEqual([]);
+    // Within both ceilings, an upload begins as before.
+    await opened.assets.beginUpload(alice, { declaredByteLength: 20 });
+    await opened.close();
+  });
+
+  it('refuses an append racing a completion instead of leaving an orphaned chunk', async () => {
+    const memory = createMemoryAssetStorageFixture().storage;
+    const parked = deferred();
+    const release = deferred();
+    let parking = true;
+    // Parks the completion's first chunk read, after it has listed the chunks.
+    const storage: AssetStorage = {
+      ...memory,
+      durability: memory.durability,
+      get: async (key) => {
+        if (parking && key.startsWith('asset:v1:upload-chunk:')) {
+          parking = false;
+          parked.resolve();
+          await release.promise;
+        }
+        return memory.get(key);
+      },
+    };
+    const opened = await open({ storage });
+    const session = await opened.assets.beginUpload(alice, { declaredByteLength: 4 });
+    await opened.assets.appendUpload(session.uploadId, alice, textBytes('abcd'));
+    const admission = await opened.assets.admit(
+      { source: { kind: 'upload', uploadId: session.uploadId } },
+      alice,
+    );
+    await parked.promise;
+    const racingAppend = rejectionOf(
+      opened.assets.appendUpload(session.uploadId, alice, new Uint8Array()),
+    );
+    release.resolve();
+
+    expect((await admission.work.result()).outcome).toBe('completed');
+    expect(await racingAppend).toBeInstanceOf(AssetNotFoundError);
+    expect(await opened.storage.list('asset:v1:upload')).toEqual([]);
+    await opened.close();
+  });
+
+  it('purges a chunk whose upload session no longer exists', async () => {
+    const opened = await open();
+    await opened.storage.set('asset:v1:upload-chunk:asset-upload-lost:00000000', base64Of(PNG));
+    expect(await collect(opened)).toMatchObject({ purgedUploads: ['asset-upload-lost'] });
+    expect(await opened.storage.list('asset:v1:upload-chunk:')).toEqual([]);
     await opened.close();
   });
 

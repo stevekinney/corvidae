@@ -103,6 +103,10 @@ function isPrivateIpv6(groups: readonly number[]): boolean {
     if (groups[5] === 0 && groups[6] === 0 && (groups[7] ?? 0) <= 1) return true;
     return isPrivateIpv4(embeddedIpv4(groups));
   }
+  // IPv4-translated ::ffff:0:a.b.c.d (::ffff:0:0/96) embeds an IPv4 destination.
+  if (groups.slice(0, 4).every((group) => group === 0) && groups[4] === 0xffff && groups[5] === 0) {
+    return isPrivateIpv4(embeddedIpv4(groups));
+  }
   // NAT64 64:ff9b::/96 embeds an IPv4 destination too.
   if (
     inRange(bytes, [0x00, 0x64, 0xff, 0x9b], 32) &&
@@ -110,7 +114,12 @@ function isPrivateIpv6(groups: readonly number[]): boolean {
   ) {
     return isPrivateIpv4(embeddedIpv4(groups));
   }
+  // 6to4 2002::/16 carries its IPv4 relay address in the next 32 bits.
+  if (groups[0] === 0x2002) {
+    return isPrivateIpv4([groups[1]! >> 8, groups[1]! & 0xff, groups[2]! >> 8, groups[2]! & 0xff]);
+  }
   return (
+    inRange(bytes, [0x00, 0x64, 0xff, 0x9b, 0x00, 0x01], 48) || // local-use NAT64 (RFC 8215)
     inRange(bytes, [0xfc], 7) || // unique local
     inRange(bytes, [0xfe, 0x80], 10) || // link-local
     inRange(bytes, [0xff], 8) || // multicast
@@ -191,6 +200,33 @@ export function signedUrlExpiry(url: URL): number | undefined {
 
 // ── Static validation ─────────────────────────────────────────────────
 
+/**
+ * Query parameters that carry a long-lived bearer credential rather than a
+ * time-limited signature. A signed URL (which encodes its own expiry and is
+ * refused once that passes) is not one of these.
+ */
+const BEARER_QUERY_PARAMETERS = new Set([
+  'access_token',
+  'api_key',
+  'api-key',
+  'apikey',
+  'auth',
+  'auth_token',
+  'client_secret',
+  'password',
+  'private_token',
+  'refresh_token',
+  'secret',
+  'token',
+]);
+
+function carriesBearerCredential(url: URL): boolean {
+  for (const name of url.searchParams.keys()) {
+    if (BEARER_QUERY_PARAMETERS.has(name.toLowerCase())) return true;
+  }
+  return false;
+}
+
 /** The origin of `raw`, or `'invalid'` when it does not parse. Never includes userinfo, path, or query. */
 export function originOf(raw: string): string {
   try {
@@ -202,7 +238,8 @@ export function originOf(raw: string): string {
 
 /**
  * Every check a URL must pass before it is resolved or fetched: it parses;
- * its scheme is allowed; it carries no credentials; any signature it carries
+ * its scheme is allowed; it carries no credentials (userinfo, or a bearer
+ * token in its query); any signature it carries
  * has not expired; and, unless the policy allows private networks, its host
  * is neither a private literal address nor a local name.
  */
@@ -219,7 +256,7 @@ export function checkUrl(raw: string, policy: AssetUrlPolicy, now: number): URL 
       `The "${url.protocol}" scheme is not allowed.`,
     );
   }
-  if (url.username !== '' || url.password !== '') {
+  if (url.username !== '' || url.password !== '' || carriesBearerCredential(url)) {
     throw new AssetAdmissionError(
       'credential-bearing-url',
       'URLs carrying credentials are refused.',
@@ -246,6 +283,7 @@ export interface HostFetchOptions {
   readonly now: () => number;
   readonly resolveHost: AssetHostResolver | undefined;
   readonly fetch: AssetFetcher | undefined;
+  readonly maxBytes: number;
   readonly signal: AbortSignal;
   /** Routes every port call through the caller's abort-aware tracking. */
   readonly track: <T>(promise: Promise<T>) => Promise<T>;
@@ -320,7 +358,12 @@ export async function fetchWithPolicy(options: HostFetchOptions): Promise<HostFe
     let response;
     try {
       response = await options.track(
-        options.fetch({ url: current.href, address, signal: options.signal }),
+        options.fetch({
+          url: current.href,
+          address,
+          maxBytes: options.maxBytes,
+          signal: options.signal,
+        }),
       );
     } catch (error) {
       if (options.signal.aborted) throw error;

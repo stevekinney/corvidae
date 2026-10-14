@@ -239,7 +239,7 @@ export interface AssetUploadSession {
   readonly declaredMediaType: string | undefined;
   readonly declaredByteLength: number;
   readonly receivedBytes: number;
-  readonly state: 'open' | 'completing' | 'completed' | 'aborted';
+  readonly state: 'open';
   readonly createdAt: string;
   readonly expiresAt: string;
 }
@@ -270,6 +270,13 @@ export interface AssetPolicy {
   readonly limits: readonly MediaLimits[];
   /** The hard ceiling on inline bytes, checked before `admit()` persists anything. */
   readonly maxInlineBytes: number;
+  /**
+   * The hard ceiling on one asset's bytes from any source: an upload's
+   * declared length is refused above it before any chunk is stored, and a
+   * fetch, provider download, or transform is handed it as `maxBytes` and
+   * refused above it before anything else is done with the bytes.
+   */
+  readonly maxAssetBytes: number;
   /** `undefined` allows every detected type. */
   readonly allowedMediaTypes: readonly string[] | undefined;
   readonly duplicatePolicy: AssetDuplicatePolicy;
@@ -292,6 +299,8 @@ export interface AssetFetchRequest {
   readonly url: string;
   /** The validated address the connection must be pinned to. */
   readonly address: string;
+  /** The most body bytes the service will accept; a port should stop reading past it. */
+  readonly maxBytes: number;
   readonly signal: AbortSignal;
 }
 
@@ -308,6 +317,8 @@ export type AssetFetcher = (request: AssetFetchRequest) => Promise<AssetFetchRes
 export interface AssetProviderTransport {
   download(request: {
     readonly providerFileId: string;
+    /** The most bytes the service will accept; a transport should stop reading past it. */
+    readonly maxBytes: number;
     readonly signal: AbortSignal;
   }): Promise<{ readonly bytes: Uint8Array; readonly mediaType?: string | undefined }>;
   upload(request: {

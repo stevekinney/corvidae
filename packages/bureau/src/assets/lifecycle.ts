@@ -19,8 +19,8 @@
  * - `pending` with no live admission in this process → `rejected`
  *   (`interrupted`) — the recovery path for an admission a failed process
  *   left behind;
- * - a blob with no owner key and no lease → purged; an expired or abandoned
- *   upload session → purged with its chunks.
+ * - a blob with no owner key and no lease → purged; an expired upload
+ *   session → purged with its chunks; a chunk with no session → purged.
  */
 import { AssetAdmissionError, AssetHeldError, AssetUnavailableError } from './errors';
 import { type AssetInternals, classifyFailure } from './internals';
@@ -470,24 +470,56 @@ async function collectRecord(
   });
 }
 
+/** Deletes a session's chunks and the session itself, under the session's lock, if it is still collectible; reports whether anything was deleted. */
+async function purgeUpload(
+  internals: AssetInternals,
+  uploadId: string,
+  collectible: (session: UploadSessionRecord | undefined) => boolean,
+): Promise<boolean> {
+  const { storage } = internals;
+  return internals.withLock(`upload:${uploadId}`, async () => {
+    const raw = await storage.get(KEYS.upload(uploadId));
+    const session = raw === null ? undefined : (JSON.parse(raw) as UploadSessionRecord);
+    if (!collectible(session)) return false;
+    const chunks = await storage.list(KEYS.chunkPrefix(uploadId));
+    for (const chunk of chunks) await storage.delete(chunk);
+    if (session) await storage.delete(KEYS.upload(uploadId));
+    // Nothing to report when a completion retired the session between the listing and this lock.
+    return session !== undefined || chunks.length > 0;
+  });
+}
+
+/**
+ * Purges expired upload sessions with their chunks, then any chunk whose
+ * session no longer exists (a chunk a failed process left behind). Each
+ * purge re-reads the session under its lock, so a session renewed, appended
+ * to, or completed since the listing is left alone.
+ */
 async function collectUploads(
   internals: AssetInternals,
   context: AssetWorkContext,
   state: CollectionState,
 ): Promise<void> {
   const { storage } = internals;
+  const expired = (session: UploadSessionRecord | undefined) =>
+    session !== undefined && Date.parse(session.expiresAt) <= state.now;
   for (const key of await context.track(storage.list(KEYS.uploadPrefix))) {
-    const raw = await context.track(storage.get(key));
-    if (raw === null) continue;
-    const session = JSON.parse(raw) as UploadSessionRecord;
-    if (session.state === 'open' && Date.parse(session.expiresAt) > state.now) continue;
-    await internals.withLock(`upload:${session.uploadId}`, async () => {
-      for (const chunk of await storage.list(KEYS.chunkPrefix(session.uploadId)))
-        await storage.delete(chunk);
-      await storage.delete(key);
-    });
-    state.report.purgedUploads.push(session.uploadId);
-    await internals.emit({ type: 'asset.upload.purged', uploadId: session.uploadId });
+    const uploadId = key.slice(KEYS.uploadPrefix.length);
+    if (await context.track(purgeUpload(internals, uploadId, expired))) {
+      state.report.purgedUploads.push(uploadId);
+      await internals.emit({ type: 'asset.upload.purged', uploadId });
+    }
+  }
+  const orphaned = new Set<string>();
+  for (const key of await context.track(storage.list(KEYS.chunkRootPrefix))) {
+    const rest = key.slice(KEYS.chunkRootPrefix.length);
+    orphaned.add(rest.slice(0, rest.lastIndexOf(':')));
+  }
+  for (const uploadId of orphaned) {
+    if (await context.track(purgeUpload(internals, uploadId, (session) => session === undefined))) {
+      state.report.purgedUploads.push(uploadId);
+      await internals.emit({ type: 'asset.upload.purged', uploadId });
+    }
   }
 }
 

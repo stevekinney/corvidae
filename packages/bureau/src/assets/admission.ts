@@ -430,14 +430,31 @@ interface UploadSessionRecord {
   readonly declaredByteLength: number;
   readonly receivedBytes: number;
   readonly chunkCount: number;
-  readonly state: 'open' | 'completing' | 'completed' | 'aborted';
+  /** Only open sessions are ever stored: completion and abort delete the session with its chunks. */
+  readonly state: 'open';
   readonly createdAt: string;
   readonly expiresAt: string;
 }
 
 export type { UploadSessionRecord };
 
-async function assembleUpload(
+/**
+ * Completes an upload under the session's lock — the one `appendUpload`,
+ * `abortUpload`, and upload collection take — so no chunk can be appended
+ * between reading the chunks and retiring the session.
+ */
+function assembleUpload(
+  internals: AssetInternals,
+  context: AssetWorkContext,
+  uploadId: string,
+  principal: AssetPrincipal,
+): Promise<AcquiredBytes> {
+  return internals.withLock(`upload:${uploadId}`, () =>
+    assembleLockedUpload(internals, context, uploadId, principal),
+  );
+}
+
+async function assembleLockedUpload(
   internals: AssetInternals,
   context: AssetWorkContext,
   uploadId: string,
@@ -525,6 +542,7 @@ async function acquire(
             now: internals.now,
             resolveHost: ports.resolveHost,
             fetch: ports.fetch,
+            maxBytes: policy.maxAssetBytes,
             signal: child.signal,
             track: child.track,
           }),
@@ -550,7 +568,11 @@ async function acquire(
           if (!transport)
             throw new AssetAdmissionError('unsupported-source', 'The provider is not configured.');
           const downloaded = await child.track(
-            transport.download({ providerFileId: source.providerFileId, signal: child.signal }),
+            transport.download({
+              providerFileId: source.providerFileId,
+              maxBytes: policy.maxAssetBytes,
+              signal: child.signal,
+            }),
           );
           return {
             kind: 'bytes' as const,
@@ -834,17 +856,39 @@ async function commit(
   }
 }
 
+/**
+ * Bureau never holds a provider-fetch declaration's bytes, so nothing about
+ * them can be inspected. The declaration must name its media type, and it is
+ * refused outright when a configured gate or limit would have to inspect
+ * those bytes: a safety gate, or a `MediaLimits` entry for its modality.
+ */
+function refuseUninspectableProviderFetch(
+  internals: AssetInternals,
+  declared: string | undefined,
+): asserts declared is string {
+  const refuse = (message: string) =>
+    new AssetAdmissionError('provider-fetch-not-allowed', message);
+  if (declared === undefined) {
+    throw refuse('A provider-fetch declaration must declare its media type.');
+  }
+  if ((internals.ports.safetyGates ?? []).length > 0) {
+    throw refuse('Configured safety gates cannot inspect bytes a provider fetches.');
+  }
+  const modality = modalityOf(declared);
+  if (internals.policy.limits.some((limit) => limit.modality === modality)) {
+    throw refuse(`Configured ${modality} limits cannot measure bytes a provider fetches.`);
+  }
+}
+
 async function commitProviderFetch(
   internals: AssetInternals,
   plan: AdmissionPlan,
   url: string,
 ): Promise<AssetDescriptor> {
+  const declared = plan.declaredMediaType;
+  refuseUninspectableProviderFetch(internals, declared);
   const allowed = internals.policy.allowedMediaTypes;
-  if (
-    allowed !== undefined &&
-    (plan.declaredMediaType === undefined ||
-      !allowed.map(normalizeMediaType).includes(plan.declaredMediaType))
-  ) {
+  if (allowed !== undefined && !allowed.map(normalizeMediaType).includes(declared)) {
     throw new AssetAdmissionError(
       'media-type-not-allowed',
       'The declared media type is not allowed.',
@@ -928,6 +972,12 @@ async function runAdmission(
     const acquired = await acquire(internals, plan, context);
     if (acquired.kind === 'provider-fetch')
       return await commitProviderFetch(internals, plan, acquired.url);
+    if (acquired.bytes.byteLength > internals.policy.maxAssetBytes) {
+      throw new AssetAdmissionError(
+        'per-part-limit-exceeded',
+        `The asset exceeds the ${internals.policy.maxAssetBytes}-byte ceiling.`,
+      );
+    }
     const measured = await measure(internals, plan, context, acquired);
     if (measured.safety.some((verdict) => verdict.verdict === 'flagged'))
       await quarantine(internals, plan, measured);

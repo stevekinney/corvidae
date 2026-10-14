@@ -202,7 +202,7 @@ describe('admission API', () => {
     const bytes = pngBytes(2, 2);
     const resolver = scriptedResolver({ 'cdn.example.com': [['93.184.216.34']] });
     const fetcher = scriptedFetcher({
-      'https://cdn.example.com/images/cat.png?token=secret': {
+      'https://cdn.example.com/images/cat.png?revision=c0ffee': {
         status: 200,
         contentType: 'image/png',
         body: bytes,
@@ -217,7 +217,7 @@ describe('admission API', () => {
       {
         source: {
           kind: 'url',
-          url: 'https://cdn.example.com/images/cat.png?token=secret',
+          url: 'https://cdn.example.com/images/cat.png?revision=c0ffee',
           fetchedBy: 'host',
         },
       },

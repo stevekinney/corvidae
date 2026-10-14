@@ -12,8 +12,9 @@ import type { UploadSessionRecord } from './admission';
 import { encodeBase64 } from './base64';
 import { AssetAdmissionError, AssetNotFoundError } from './errors';
 import type { AssetInternals } from './internals';
+import { modalityOf, normalizeMediaType } from './media-inspection';
 import { KEYS } from './records';
-import type { AssetPrincipal, AssetUploadSession } from './types';
+import type { AssetPolicy, AssetPrincipal, AssetUploadSession } from './types';
 
 function project(session: UploadSessionRecord): AssetUploadSession {
   return Object.freeze({
@@ -45,6 +46,18 @@ async function loadOpenSession(
   return session;
 }
 
+/** The most bytes an upload may declare: the asset ceiling, and any per-part byte limit for the declared type's modality. */
+function uploadCeiling(policy: AssetPolicy, declaredMediaType: string | undefined): number {
+  let ceiling = policy.maxAssetBytes;
+  if (declaredMediaType === undefined) return ceiling;
+  const modality = modalityOf(normalizeMediaType(declaredMediaType));
+  for (const limit of policy.limits) {
+    if (limit.scope === 'per-part' && limit.modality === modality && limit.maxBytes !== undefined)
+      ceiling = Math.min(ceiling, limit.maxBytes);
+  }
+  return ceiling;
+}
+
 export async function beginUpload(
   internals: AssetInternals,
   principal: AssetPrincipal,
@@ -54,6 +67,13 @@ export async function beginUpload(
     throw new AssetAdmissionError(
       'upload-incomplete',
       'An upload must declare a positive byte length.',
+    );
+  }
+  const ceiling = uploadCeiling(internals.policy, request.declaredMediaType);
+  if (request.declaredByteLength > ceiling) {
+    throw new AssetAdmissionError(
+      'per-part-limit-exceeded',
+      `The upload declares more than the ${ceiling}-byte ceiling.`,
     );
   }
   const uploadId = internals.runtime.identifiers.next('asset-upload');

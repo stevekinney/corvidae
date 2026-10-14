@@ -7,6 +7,7 @@ const HOUR = 60 * 60 * 1000;
 export const DEFAULT_ASSET_POLICY: AssetPolicy = Object.freeze({
   limits: Object.freeze([]),
   maxInlineBytes: 10 * MEBIBYTE,
+  maxAssetBytes: 100 * MEBIBYTE,
   allowedMediaTypes: undefined,
   duplicatePolicy: 'store-separately',
   url: Object.freeze({

@@ -54,6 +54,7 @@ export const KEYS = {
   digestIndex: (ownerId: string, digest: string) =>
     `${PREFIX}digest:${encodeURIComponent(ownerId)}:${digest}`,
   upload: (uploadId: string) => `${PREFIX}upload:${uploadId}`,
+  chunkRootPrefix: `${PREFIX}upload-chunk:`,
   chunkPrefix: (uploadId: string) => `${PREFIX}upload-chunk:${uploadId}:`,
   chunk: (uploadId: string, sequence: number) =>
     `${PREFIX}upload-chunk:${uploadId}:${String(sequence).padStart(8, '0')}`,
