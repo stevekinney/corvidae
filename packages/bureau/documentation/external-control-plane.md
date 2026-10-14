@@ -128,8 +128,8 @@ Discovery has two levels. Each published agent has an Agent Card; the deployment
 
 | Profile element | Agent Card | Deployment profile (`bureau.deployment.get`) |
 | --- | --- | --- |
-| Stable identity | Agent name and `definitionRevision` from the immutable catalog | `BureauOptions.id` |
-| Mutable human names | `name`, `description`, and skills from the agent definition (COR-1301) | Deployment display name |
+| Stable identity | The catalog agent name and `definitionRevision`, carried by the interface URL (each published agent's mount path ends in its catalog name) and by `version`; `AgentCard.name` is never the identity | `BureauOptions.id` |
+| Mutable human names | `AgentCard.name` is the agent definition's display name (COR-1301), falling back to the catalog name when none is set; `description` and skills come from the same definition | Deployment display name |
 | Default media modes | `defaultInputModes` and `defaultOutputModes`, both required, derived from the agent definition's accepted and produced modalities (COR-1301), never guessed | The same per agent |
 | Resources | Implicit: tasks and contexts | The served resource kinds from the taxonomy |
 | Services and operations | Core A2A operations | Management operations, each with its schema version |
@@ -144,7 +144,7 @@ Discovery has two levels. Each published agent has an Agent Card; the deployment
 
 The card's security declaration is generated from the authentication configuration the handler actually enforces, never written by hand, so the two cannot drift (COR-718). The extended card is not declared in v1: it has no consumer, and `capabilities.extendedAgentCard` stays false.
 
-Publication is the deployment's choice and description is the agent's. `createBureauHandler`'s `publish` allowlist is the only source of external visibility; an agent absent from it has no card, cannot be addressed, and reads as not found. The card's identity fields come from Bureau's immutable catalog, and its descriptive fields from the agent definition. A request cannot change either.
+Publication is the deployment's choice and description is the agent's. `createBureauHandler`'s `publish` allowlist is the only source of external visibility; an agent absent from it has no card, cannot start new tasks, and reads as not found. Withdrawing an agent that still has non-terminal tasks keeps a tombstone mount at its path: its owners can still `GetTask`, `SubscribeToTask`, and `CancelTask` those tasks, while `SendMessage` without a `taskId` returns not-found and no card is served. The tombstone ends when the agent's last task is terminal. The card's identity fields come from Bureau's immutable catalog, and its descriptive fields from the agent definition. A request cannot change either.
 
 ## Operation taxonomy
 
@@ -154,13 +154,13 @@ Operations are commands (mutate state and return a receipt), queries (read state
 
 | A2A operation | Kind | Bureau behavior | v1 |
 | --- | --- | --- | --- |
-| `SendMessage` | Command | Without `taskId`, admits a new run of the published agent through the COR-424 ledger and returns the task. With `taskId`, delivers the message to that task: an answer to `INPUT_REQUIRED` or `AUTH_REQUIRED`, or session input to a live task. | Served |
+| `SendMessage` | Command | Without `taskId`, admits a new run of the published agent through the COR-424 ledger and returns the task. With `taskId`, delivers the message to that task: an answer to `INPUT_REQUIRED` or `AUTH_REQUIRED`, or session input to a live task. A continuation whose `contextId` differs from the task's recorded context is rejected with JSON-RPC `-32602`; a continuation to a `COMPLETED`, `FAILED`, `CANCELED`, or `REJECTED` task returns `UnsupportedOperationError` (A2A 1.0.1 §3.1.1, §3.4.3). Both checks run before admission and apply to `SendStreamingMessage` too | Served |
 | `SendStreamingMessage` | Command plus subscription | As `SendMessage`, then streams the task and closes at the first interrupted (`INPUT_REQUIRED`, `AUTH_REQUIRED`) or terminal state | Served |
 | `GetTask` | Query | The task snapshot, with `historyLength` applied | Served |
 | `ListTasks` | Query | The caller's own tasks with the mounted agent, filtered by `contextId`, `status`, and `statusTimestampAfter`, sorted by status timestamp descending, paginated with `pageSize` (1–100) and `pageToken`, applying `historyLength` and omitting artifacts unless `includeArtifacts` is true (COR-1304) | Served |
 | `CancelTask` | Command | Requests cancellation of the run; returns the task in its current state | Served |
 | `SubscribeToTask` | Subscription and terminal-result wait | For a non-terminal task, sends the current task first, then follows it; the durable-history extension makes it resumable through `Last-Event-ID`. For a terminal task it returns `UnsupportedOperationError` before any snapshot (A2A 1.0.1 §3.1.6) | Served |
-| Push notification config `Create`, `Get`, `List`, `Delete` | Command and query | Registers webhook delivery for a task through the delivery outbox | Served (COR-841) |
+| Push notification config `Create`, `Get`, `List`, `Delete` | Command and query | Registers webhook delivery for a task through the delivery outbox. `List` orders a task's configurations by creation time, then identifier; honors `pageSize` (1–100, default 50) and an opaque `pageToken` bound to the caller and task; and returns `nextPageToken` empty on the last page | Served (COR-841) |
 | `GetExtendedAgentCard` | Query | Not declared | Absent |
 
 A terminal-result wait is `SubscribeToTask` until the stream closes at a terminal state, or `GetTask` polling. There is no separate blocking wait operation.
@@ -262,9 +262,9 @@ Which states each operation can produce:
 | --- | --- |
 | `SendMessage` creating a task | `accepted`, `rejected`, `pending`, `applied`, `observed`, `expired` |
 | `SendMessage` continuing a task | `accepted`, `rejected`, `applied`, `superseded`, `expired` |
-| `CancelTask`, `bureau.tasks.cancel` | `cancel-requested`, `canceled`, `cleanup-pending`, `cleaned-up`, `unknown-outcome`, `rejected` |
+| `bureau.tasks.cancel` (A2A `CancelTask` returns the task itself, which carries no receipt) | `cancel-requested`, `canceled`, `cleanup-pending`, `cleaned-up`, `unknown-outcome`, `rejected` |
 | `bureau.reviews.resolve` | `applied`, `rejected`, `superseded` |
-| Push config and delivery commands | `accepted`, `pending`, `applied`, `failed`, `canceled`, `unknown-outcome` |
+| Management delivery commands (`bureau.deliveries.retry`, `bureau.deliveries.cancel`; A2A push-configuration methods return their fixed objects and carry no receipt) | `accepted`, `pending`, `applied`, `failed`, `canceled`, `unknown-outcome` |
 | Schedule and goal commands | `applied`, `rejected`, `cancel-requested`, `canceled`, `cleaned-up` |
 
 ## Retry, concurrency, and ordering
@@ -289,7 +289,7 @@ One model underlies every surface. Resource snapshots come from the resource's o
 | Durable cursor | An opaque string. Clients compare cursors for equality only; today's decimal encoding is not part of the contract. |
 | Retention floor | A deployment-configured history retention. Bureau's maintenance calls the fleet feed's `retain()` so the floor advances; today nothing does. |
 | Gap response | A resume below the floor yields one explicit gap event carrying the requested cursor and the first retained cursor, then continues from the floor. `subscribeEventHistory`'s silent gap skipping is replaced, not projected. |
-| Snapshot plus tail | A subscriber receives the current snapshot, then every durable event after the snapshot's cursor. A2A's `SubscribeToTask` already sends the task first; the durable-history extension adds the cursor. |
+| Snapshot plus tail | A subscriber with no cursor receives the current snapshot, then every durable event after the snapshot's cursor. A subscriber resuming with `Last-Event-ID` receives every durable event after that cursor, in order and with monotonic SSE ids, before live events; it receives a snapshot only after a gap event, when the cursor is below the retention floor. A2A's `SubscribeToTask` sends the task first; the durable-history extension adds the cursor. |
 | Ephemeral frames | Step, delta, and tool frames from the in-memory run feed reach the A2A and AG-UI streams live. They carry no resumable cursor and are not replayed; reconnecting yields the snapshot and the durable tail. |
 | Slow consumers | Durable-history subscriptions are pull-driven and never buffer unboundedly. Ephemeral frames beyond a stream's buffer are dropped, and the stream emits one frames-dropped marker so the client knows to re-read the snapshot. |
 | A2A projection of live frames | A2A streams carry only the protocol's `StreamResponse` kinds: the initial `Task`, `TaskStatusUpdateEvent`, and `TaskArtifactUpdateEvent`. Step, delta, and tool frames and the frames-dropped marker travel as `TaskStatusUpdateEvent`s in the `working` state, with the frame in the durable-history extension's `metadata` namespace, and only when that extension is activated; otherwise they are omitted from A2A and remain available through AG-UI. |
