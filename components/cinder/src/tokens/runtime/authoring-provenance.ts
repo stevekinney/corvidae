@@ -169,9 +169,8 @@ export function traceProvenance(
     return stack.findLastIndex((_, index) => declaresExtendingAncestor(index, path));
   }
 
-  /** Where `path` is copied from when layer `index` supplies it through the `$extends` of its ancestor `length` segments deep. */
+  /** Where a member is copied from when layer `index` supplies it through the `$extends` of its ancestor `length` segments deep. */
   function extendsHop(
-    path: string,
     segments: readonly string[],
     index: number,
     length: number,
@@ -192,7 +191,7 @@ export function traceProvenance(
     const segments = path.split('.');
     // The nearest extending ancestor that can account for the member wins.
     const hop = segments
-      .map((_, length) => extendsHop(path, segments, index, length))
+      .map((_, length) => extendsHop(segments, index, length))
       .findLast((candidate) => candidate !== undefined);
     return hop === undefined ? { index, path } : originOf(hop.path, hop.index, depth + 1);
   }

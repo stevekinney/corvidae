@@ -17,7 +17,7 @@ const DARK = 'profile-dark.tokens.json';
 
 function edited(edit: (documents: Map<string, MutableGroup>) => void) {
   const corpus = cloneCorpus(loadProfileCorpus());
-  edit(corpus.documentsByPath as Map<string, MutableGroup>);
+  edit(corpus.documentsByPath);
   return corpus;
 }
 
