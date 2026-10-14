@@ -173,7 +173,7 @@ function runHydrationCheck(componentName: string, componentDirectory: string): C
     status: 'fail',
     detail:
       `Component has a browser guard ({#if browser} or {#if hydrated}) but no hydration test. ` +
-      `Need a render call from svelte/server or a renderThenHydrate call in ` +
+      `Need a render call from svelte/server or a renderThenHydrate or hydrateServerHtml call in ` +
       `${componentName}.test.ts or ${componentName}.hydrate.test.ts.`,
   };
 }
