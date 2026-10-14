@@ -55,7 +55,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
@@ -114,37 +114,44 @@ let server: ReturnType<typeof Bun.serve>;
 let clientScriptSource: string;
 let baseUrl: string;
 
-describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction', () => {
-  beforeAll(async () => {
-    clientScriptSource = await buildClientScript();
+/**
+ * Builds the client with the `bun build` CLI, serves it, and launches Chromium. All three are real
+ * processes or servers that take seconds on a loaded host, so the opt-in smoke run starts them
+ * here at module scope, off Bun's five-second per-test clock, rather than in a `beforeAll`.
+ */
+async function startSmokeEnvironment(): Promise<void> {
+  clientScriptSource = await buildClientScript();
 
-    server = Bun.serve({
-      port: 0,
-      fetch(request) {
-        const url = new URL(request.url);
-        if (url.pathname === '/client.js') {
-          return new Response(clientScriptSource, {
-            headers: { 'Content-Type': 'application/javascript' },
-          });
-        }
-        if (url.pathname === '/') {
-          return new Response(buildTestPageHtml('/client.js'), {
-            headers: { 'Content-Type': 'text/html' },
-          });
-        }
-        if (url.pathname === '/v1/health') {
-          return Response.json({ status: 'ok' });
-        }
-        return new Response(null, { status: 404 });
-      },
-    });
-
-    baseUrl = `http://127.0.0.1:${server.port}`;
-
-    browser = await chromium.launch({ headless: true });
-    context = await browser.newContext();
+  server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname === '/client.js') {
+        return new Response(clientScriptSource, {
+          headers: { 'Content-Type': 'application/javascript' },
+        });
+      }
+      if (url.pathname === '/') {
+        return new Response(buildTestPageHtml('/client.js'), {
+          headers: { 'Content-Type': 'text/html' },
+        });
+      }
+      if (url.pathname === '/v1/health') {
+        return Response.json({ status: 'ok' });
+      }
+      return new Response(null, { status: 404 });
+    },
   });
 
+  baseUrl = `http://127.0.0.1:${server.port}`;
+
+  browser = await chromium.launch({ headless: true });
+  context = await browser.newContext();
+}
+
+if (browserSmokeEnabled) await startSmokeEnvironment();
+
+describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction', () => {
   afterAll(async () => {
     await context?.close();
     await browser?.close();
