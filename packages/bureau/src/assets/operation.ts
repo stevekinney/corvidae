@@ -157,6 +157,8 @@ export function createAssetWorkRegistry(
         childBody: (childContext: AssetWorkContext) => Promise<C>,
         classify: (error: unknown) => AssetRejection,
       ): Promise<C> => {
+        // An aborted parent never starts a child: an abort listener added to an already-aborted signal would never fire.
+        if (controller.signal.aborted) throw new AssetWorkAbortedError(abortReason);
         const childHandle = start<C>(
           { kind, assetId: options.assetId, owner: options.owner, parentId: workId, classify },
           childBody,

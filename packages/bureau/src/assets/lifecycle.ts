@@ -13,7 +13,9 @@
  * - `available`/`expired`/`rejected`/`quarantined` → `deleted` (a tombstone)
  *   by `delete()`, unless a hold is present; a second deletion is a no-op
  *   that returns the same tombstone;
- * - any terminal record → purged once its `tombstoneUntil` passes;
+ * - any terminal record with no hold → purged once its `tombstoneUntil`
+ *   passes; a hold keeps the record (a quarantined asset under legal hold,
+ *   say) until the hold is released;
  * - `pending` with no live admission in this process → `rejected`
  *   (`interrupted`) — the recovery path for an admission a failed process
  *   left behind;
@@ -447,6 +449,7 @@ async function collectRecord(
     const terminal = record.state !== 'pending' && record.state !== 'available';
     if (
       terminal &&
+      record.holds.length === 0 &&
       record.tombstoneUntil !== undefined &&
       Date.parse(record.tombstoneUntil) <= state.now
     ) {

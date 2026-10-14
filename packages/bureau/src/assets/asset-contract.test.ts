@@ -11,6 +11,7 @@
  * asset task, timer, or storage call outlived shutdown.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 import {
   appendAssistantMessage,
@@ -481,6 +482,70 @@ describe('admission validation', () => {
     const outcomes = await Promise.all(admissions.map((admission) => admission.work.result()));
     expect(outcomes[0]?.outcome).toBe('completed');
     expect(outcomes[1]).toMatchObject({ rejection: { code: 'aggregate-limit-exceeded' } });
+    await harness.close();
+  });
+
+  it('settles a part aborted while it waits on the aggregate budget at once, reserving and starting nothing', async () => {
+    // Three PNGs of 43, 44, and 45 bytes under a 90-byte aggregate image limit:
+    // parts 0 and 2 fit together only if the aborted part 1 reserves nothing.
+    const parts = [10, 11, 12].map((padding) => pngBytes(1, 1, padding));
+    const firstExtraction = deferred();
+    const releaseFirst = deferred();
+    const scanned: number[] = [];
+    const { assets, harness } = await open({
+      storage: memoryFixture().storage,
+      policy: { limits: [{ scope: 'aggregate', modality: 'image', maxBytes: 90 }] },
+      ports: {
+        extractMetadata: async ({ bytes, signal }) => {
+          if (bytes.byteLength === parts[0]!.byteLength) {
+            firstExtraction.resolve();
+            await abortable(releaseFirst.promise, signal);
+          }
+          return {};
+        },
+        safetyGates: [
+          {
+            name: 'counter',
+            inspect: async ({ bytes }) => {
+              scanned.push(bytes.byteLength);
+              return { verdict: 'clean' };
+            },
+          },
+        ],
+      },
+    });
+    const admissions = await assets.admitAll(
+      parts.map((bytes) => ({ source: { kind: 'inline' as const, bytes } })),
+      alice,
+    );
+    await firstExtraction.promise;
+    // Let part 1 run its own extraction and park on part 0's budget decision.
+    for (let turn = 0; turn < 5; turn++) await yieldToPortableEventLoop();
+
+    admissions[1]!.work.abort('caller gave up');
+    let settledBeforeRelease = false;
+    void admissions[1]!.work.result().then(() => {
+      settledBeforeRelease = true;
+    });
+    await yieldToPortableEventLoop();
+    expect(settledBeforeRelease).toBe(true);
+    expect(await admissions[1]!.work.result()).toEqual({
+      outcome: 'aborted',
+      reason: 'caller gave up',
+    });
+    expect(await admissions[1]!.work.closed()).toEqual({ status: 'completed' });
+
+    releaseFirst.resolve();
+    expect((await admissions[0]!.work.result()).outcome).toBe('completed');
+    expect((await admissions[2]!.work.result()).outcome).toBe('completed');
+    expect(scanned.toSorted()).toEqual([parts[0]!.byteLength, parts[2]!.byteLength]);
+    const scansStarted = (await assets.auditRecords()).filter(
+      (record) =>
+        record.type === 'asset.work.started' &&
+        record.workKind === 'scan' &&
+        record.assetId === admissions[1]!.assetId,
+    );
+    expect(scansStarted).toEqual([]);
     await harness.close();
   });
 

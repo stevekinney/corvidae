@@ -253,6 +253,55 @@ describe('legal and audit holds', () => {
     await opened.close();
   });
 
+  it('keeps a held quarantined or rejected record past its tombstone retention, and purges it once released', async () => {
+    const opened = await open({
+      policy: { tombstoneRetentionMilliseconds: 1_000 },
+      ports: {
+        safetyGates: [
+          {
+            name: 'flagger',
+            inspect: async ({ bytes }) =>
+              bytes.byteLength === PNG.byteLength
+                ? { verdict: 'flagged', category: 'malware' }
+                : { verdict: 'clean' },
+          },
+        ],
+      },
+    });
+    const quarantined = await opened.assets.admit(
+      { source: { kind: 'inline', bytes: PNG } },
+      alice,
+    );
+    expect(await quarantined.work.result()).toMatchObject({
+      rejection: { code: 'safety-gate-flagged' },
+    });
+    const rejected = await opened.assets.admit(
+      { source: { kind: 'inline', bytes: textBytes('not a png') }, declaredMediaType: 'image/png' },
+      alice,
+    );
+    expect(await rejected.work.result()).toMatchObject({
+      rejection: { code: 'media-type-mismatch' },
+    });
+    const held = [quarantined.assetId, rejected.assetId];
+    for (const assetId of held) {
+      await opened.assets.placeHold(assetId, aliceAdministrator, {
+        holdId: 'legal-1',
+        kind: 'legal',
+      });
+    }
+
+    await opened.runtime.advance(5_000);
+    expect(await collect(opened)).toMatchObject({ purgedTombstones: [] });
+    expect(await stateOf(opened, quarantined.assetId)).toBe('quarantined');
+    expect(await stateOf(opened, rejected.assetId)).toBe('rejected');
+
+    for (const assetId of held) {
+      await opened.assets.releaseHold(assetId, aliceAdministrator, 'legal-1');
+    }
+    expect((await collect(opened)).purgedTombstones.toSorted()).toEqual(held.toSorted());
+    await opened.close();
+  });
+
   it('requires the privileged capability to place or release a hold', async () => {
     const opened = await open();
     const admission = await admitted(opened);

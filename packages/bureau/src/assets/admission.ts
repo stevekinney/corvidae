@@ -91,9 +91,27 @@ interface Usage {
  * bytes arrive first.
  */
 export interface AggregateBudget {
-  reserve(slot: number, modality: Modality, usage: Usage): Promise<boolean>;
+  /**
+   * Waits for the previous slot's decision, then reserves `usage`. An abort
+   * of `signal` while waiting rejects at once with the abort reason and
+   * reserves nothing; the caller's `skip(slot)` keeps the ordering chain.
+   */
+  reserve(slot: number, modality: Modality, usage: Usage, signal: AbortSignal): Promise<boolean>;
   /** Marks a slot decided without reserving (it failed before reaching the budget). */
   skip(slot: number): void;
+}
+
+/** Resolves when `decided` does; rejects with the abort reason the moment `signal` aborts first. */
+function untilDecidedOrAborted(decided: Promise<void>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    void decided.then(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    });
+  });
 }
 
 export function createAggregateBudget(
@@ -110,8 +128,9 @@ export function createAggregateBudget(
     decided[slot]?.resolve();
   };
   return {
-    async reserve(slot, modality, usage) {
-      if (slot > 0) await decided[slot - 1]?.promise;
+    async reserve(slot, modality, usage, signal) {
+      const previous = slot > 0 ? decided[slot - 1]?.promise : undefined;
+      if (previous) await untilDecidedOrAborted(previous, signal);
       try {
         const current = used.get(modality) ?? { bytes: 0, durationSeconds: 0, pageCount: 0 };
         const next = {
@@ -847,11 +866,16 @@ async function measure(
   const modality = modalityOf(mediaType);
   checkPerPartLimits(internals.policy.limits, modality, bytes.byteLength, facts);
   if (plan.budget) {
-    const fits = await plan.budget.reserve(plan.slot, modality, {
-      bytes: bytes.byteLength,
-      durationSeconds: facts.durationSeconds ?? 0,
-      pageCount: facts.pageCount ?? 0,
-    });
+    const fits = await plan.budget.reserve(
+      plan.slot,
+      modality,
+      {
+        bytes: bytes.byteLength,
+        durationSeconds: facts.durationSeconds ?? 0,
+        pageCount: facts.pageCount ?? 0,
+      },
+      context.signal,
+    );
     if (!fits) {
       throw new AssetAdmissionError(
         'aggregate-limit-exceeded',

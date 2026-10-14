@@ -95,7 +95,7 @@ export interface AssetReference {
   readonly until: string;
 }
 
-/** A legal or audit hold. While any hold is present the asset can neither expire nor be deleted. */
+/** A legal or audit hold. While any hold is present the asset can neither expire nor be deleted, and a terminal record is never purged. */
 export interface AssetHold {
   readonly holdId: string;
   readonly kind: 'legal' | 'audit';
