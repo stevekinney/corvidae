@@ -116,6 +116,14 @@ async function commitWriting(files: Record<string, string>): Promise<string> {
   return git('rev-parse', 'HEAD');
 }
 
+async function commitRenaming(from: string, to: string): Promise<string> {
+  git('checkout', '--quiet', '--detach', base);
+  await mkdir(dirname(join(repository, to)), { recursive: true });
+  git('mv', from, to);
+  git('commit', '--quiet', '-m', `move ${from} to ${to}`);
+  return git('rev-parse', 'HEAD');
+}
+
 /** Exit code of the wrapper, run from the application directory as Vercel runs it. */
 function wrapperExit(environment: Record<string, string | undefined>, path?: string): number {
   const merged: Record<string, string> = {};
@@ -213,6 +221,11 @@ const unparsableRootManifestExit = productionExit(
   base,
   await commitWriting({ 'package.json': '{ not json' }),
 );
+// Git's rename detection would list only the destination of a file moved out of the closure.
+const renamedOutOfClosureExit = productionExit(
+  base,
+  await commitRenaming('packages/direct/src/index.ts', 'packages/unrelated/src/moved.ts'),
+);
 const exitWithoutPreviousDeployment = productionExit(undefined, base);
 const exitWithAbsentPreviousDeployment = productionExit(absentCommit, base);
 const exitWithAbsentCurrentCommit = productionExit(base, absentCommit);
@@ -307,6 +320,10 @@ describe('production deployments', () => {
         throw new Error('unreadable workspace graph');
       }),
     ).toEqual({ build: true, reason: 'the change check failed: unreadable workspace graph' });
+  });
+
+  test('builds when a file moves out of the closure, which the deployed site loses', () => {
+    expect(renamedOutOfClosureExit).toBe(1);
   });
 
   test('builds when there is no previous deployment to compare against', () => {

@@ -228,7 +228,17 @@ export function decideFromRepository(
   }
   const closure = dependencyClosure(readWorkspaces(repositoryRoot), PLAYGROUND_PACKAGE);
   console.log(`Playground dependency closure: ${closure.map((w) => w.directory).join(', ')}`);
-  const changedFiles = git(repositoryRoot, 'diff', '--name-only', previousSha, currentSha, '--')
+  // Without `--no-renames`, Git reports a file moved out of the closure only by its destination,
+  // and the site would silently keep a source it no longer has.
+  const changedFiles = git(
+    repositoryRoot,
+    'diff',
+    '--name-only',
+    '--no-renames',
+    previousSha,
+    currentSha,
+    '--',
+  )
     .split('\n')
     .filter((line) => line !== '');
   return decideFromChanges({
