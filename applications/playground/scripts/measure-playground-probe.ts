@@ -33,6 +33,7 @@ import {
   snapshotRetainedArtifacts,
   type RetainedArtifactSnapshot,
 } from './measure-playground-artifact-snapshot.ts';
+import { captureHostLoad } from './measure-playground-environment.ts';
 import {
   captureFootprint,
   footprintCategorySeries,
@@ -362,6 +363,7 @@ async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
       server: snapshotRetainedArtifacts(),
       probeProcess: probeProcessMemory(),
       footprint: serverFootprint(),
+      hostLoad: captureHostLoad(),
     };
     const recorded = [];
     for (let cycle = 1; cycle <= cycles; cycle += 1) {
@@ -382,6 +384,7 @@ async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
         server: snapshotRetainedArtifacts(),
         probeProcess: probeProcessMemory(),
         footprint: serverFootprint(),
+        hostLoad: captureHostLoad(),
       });
     }
     await rm(fixturePath, { force: true });
@@ -391,6 +394,7 @@ async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
       server: snapshotRetainedArtifacts(),
       probeProcess: probeProcessMemory(),
       footprint: serverFootprint(),
+      hostLoad: captureHostLoad(),
     };
     return {
       probe: 'rebuild',
