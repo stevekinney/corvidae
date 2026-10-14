@@ -155,6 +155,27 @@ describe('admission API', () => {
     await harness.close();
   });
 
+  it('admitAll refuses every part before persisting or starting any when one part is refused', async () => {
+    const fixture = memoryFixture();
+    const { assets, harness } = await open({
+      storage: fixture.storage,
+      policy: { maxInlineBytes: 64 },
+    });
+    const error = await rejectionOf(
+      assets.admitAll(
+        [
+          { source: { kind: 'inline', bytes: pngBytes(1, 1) } },
+          { source: { kind: 'inline', bytes: pngBytes(1, 1, 200) } },
+        ],
+        alice,
+      ),
+    );
+    expect((error as AssetAdmissionError).rejection.code).toBe('per-part-limit-exceeded');
+    expect(assets.activeWork()).toEqual([]);
+    expect(await fixture.storage.list('asset:v1:record:')).toEqual([]);
+    await harness.close();
+  });
+
   it('refuses inline bytes above the inline ceiling before persisting anything', async () => {
     const fixture = memoryFixture();
     const { assets, harness } = await open({

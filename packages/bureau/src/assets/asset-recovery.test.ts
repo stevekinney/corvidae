@@ -38,6 +38,7 @@ import {
   AssetAdmissionError,
   AssetHeldError,
   AssetNotFoundError,
+  AssetServiceClosedError,
   AssetUnavailableError,
   type AssetStorage,
   type BureauAssetOptions,
@@ -629,6 +630,31 @@ describe('storage failure', () => {
 });
 
 describe('quiescence after shutdown', () => {
+  it('refuses every asset operation after shutdown, so nothing commits or audits after the drain', async () => {
+    const opened = await open();
+    const admission = await admitted(opened);
+    const session = await opened.assets.beginUpload(alice, { declaredByteLength: 4 });
+    await opened.assets.shutdown();
+    const audited = (await opened.assets.auditRecords()).length;
+
+    const { assetId } = admission;
+    const attempts: Array<Promise<unknown>> = [
+      opened.assets.retain(assetId, alice, { holderId: 'h', until: '2030-01-01T00:00:00.000Z' }),
+      opened.assets.release(assetId, alice, 'h'),
+      opened.assets.placeHold(assetId, aliceAdministrator, { holdId: 'legal-1', kind: 'legal' }),
+      opened.assets.releaseHold(assetId, aliceAdministrator, 'legal-1'),
+      opened.assets.expire(assetId, alice),
+      opened.assets.abortUpload(session.uploadId, alice),
+      opened.assets.inspect(assetId, alice),
+      opened.assets.resolve(admission.source, alice),
+    ];
+    for (const attempt of attempts) {
+      expect(await rejectionOf(attempt)).toBeInstanceOf(AssetServiceClosedError);
+    }
+    expect((await opened.assets.auditRecords()).length).toBe(audited);
+    await opened.close();
+  });
+
   it('aborts in-flight fetch, scan, and garbage-collection work on shutdown and reports nothing leaked', async () => {
     const never = new Promise<never>(() => {});
     const opened = await open({

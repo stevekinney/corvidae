@@ -14,6 +14,10 @@
  * on top of resource authorization, never a substitute for it. Operations
  * that return a descriptor return the projection the principal may see.
  *
+ * Shutdown. After `shutdown()` every operation refuses with
+ * `AssetServiceClosedError`, except looking up, listing, and aborting work,
+ * subscribing to events, and reading audit records.
+ *
  * Events and audit. Every event is delivered synchronously to subscribers
  * and persisted as an audit record under a monotonic sequence that
  * continues across restarts regardless of the wall clock. Events carry
@@ -21,7 +25,12 @@
  */
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
-import { beginAdmission, createAggregateBudget, readVerifiedBytes } from './admission';
+import {
+  beginAdmission,
+  createAggregateBudget,
+  preflightAdmission,
+  readVerifiedBytes,
+} from './admission';
 import { AssetServiceClosedError, AssetUnavailableError } from './errors';
 import {
   type AssetEventInput,
@@ -42,6 +51,7 @@ import {
 } from './records';
 import type { AssetStorage } from './storage';
 import type {
+  AssetAdmission,
   AssetAuditRecord,
   AssetEvent,
   AssetPolicyInput,
@@ -209,10 +219,23 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
 
     async admitAll(requests, principal) {
       open();
+      // Every part is refused or accepted up front, so a refusal never strands parts already started.
+      for (const request of requests)
+        await preflightAdmission(internals, principal, request.source);
       const budget = createAggregateBudget(policy.limits, requests.length);
-      const admissions = [];
-      for (const [slot, request] of requests.entries()) {
-        admissions.push(await beginAdmission(internals, principal, request, budget, slot));
+      const admissions: AssetAdmission[] = [];
+      try {
+        for (const [slot, request] of requests.entries()) {
+          admissions.push(
+            await beginAdmission(internals, principal, request, budget, slot, {
+              preflighted: true,
+            }),
+          );
+        }
+      } catch (error) {
+        // A later part failed to persist: the caller gets no handles, so the started parts are aborted.
+        for (const admission of admissions) admission.work.abort('admitAll failed');
+        throw error;
       }
       return admissions;
     },
@@ -225,9 +248,13 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       open();
       return uploads.appendUpload(internals, uploadId, principal, bytes);
     },
-    abortUpload: (uploadId, principal) => uploads.abortUpload(internals, uploadId, principal),
+    abortUpload: async (uploadId, principal) => {
+      open();
+      return uploads.abortUpload(internals, uploadId, principal);
+    },
 
     async inspect(assetId, principal, inspectOptions) {
+      open();
       const projection = inspectOptions?.projection ?? 'general';
       const loaded = await loadRecord(storage, assetId);
       const record =
@@ -243,6 +270,7 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
     },
 
     async resolve(reference, principal): Promise<ResolvedAsset> {
+      open();
       const loaded = await loadRecord(storage, reference.assetId);
       const record = authorize(loaded?.record, reference.assetId, principal);
       if (reference.revision !== undefined && reference.revision > record.revision) {
@@ -263,15 +291,26 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       return Object.freeze(resolved);
     },
 
-    retain: (assetId, principal, reference) =>
-      lifecycle.retain(internals, assetId, principal, reference),
-    release: (assetId, principal, holderId) =>
-      lifecycle.release(internals, assetId, principal, holderId),
-    placeHold: (assetId, principal, hold) =>
-      lifecycle.placeHold(internals, assetId, principal, hold),
-    releaseHold: (assetId, principal, holdId) =>
-      lifecycle.releaseHold(internals, assetId, principal, holdId),
-    expire: (assetId, principal) => lifecycle.expire(internals, assetId, principal),
+    retain: async (assetId, principal, reference) => {
+      open();
+      return lifecycle.retain(internals, assetId, principal, reference);
+    },
+    release: async (assetId, principal, holderId) => {
+      open();
+      return lifecycle.release(internals, assetId, principal, holderId);
+    },
+    placeHold: async (assetId, principal, hold) => {
+      open();
+      return lifecycle.placeHold(internals, assetId, principal, hold);
+    },
+    releaseHold: async (assetId, principal, holdId) => {
+      open();
+      return lifecycle.releaseHold(internals, assetId, principal, holdId);
+    },
+    expire: async (assetId, principal) => {
+      open();
+      return lifecycle.expire(internals, assetId, principal);
+    },
 
     delete(assetId, principal) {
       open();

@@ -269,7 +269,7 @@ function provenanceOf(source: InternalAdmissionSource): AssetProvenance {
 }
 
 /** Refusals that need no persisted identity: an oversize inline payload, or a source the caller cannot read. */
-async function preflight(
+export async function preflightAdmission(
   internals: AssetInternals,
   principal: AssetPrincipal,
   source: InternalAdmissionSource,
@@ -306,8 +306,9 @@ export async function beginAdmission(
   request: Omit<AssetAdmissionRequest, 'source'> & { readonly source: InternalAdmissionSource },
   budget: AggregateBudget | undefined,
   slot: number,
+  options: { readonly preflighted?: boolean } = {},
 ): Promise<AssetAdmission> {
-  await preflight(internals, principal, request.source);
+  if (!options.preflighted) await preflightAdmission(internals, principal, request.source);
   const assetId = internals.runtime.identifiers.next('asset');
   const now = internals.nowIso();
   const retainFor = request.retainForMilliseconds ?? internals.policy.defaultRetentionMilliseconds;
