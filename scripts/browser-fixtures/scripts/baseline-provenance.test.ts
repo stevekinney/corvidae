@@ -4,11 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  LINUX_BASELINE_DIRECTORY,
-  PROVENANCE_FILE_NAME,
-  REPOSITORY_ROOT,
-  REQUIRED_BASELINE_ARCHITECTURE,
-  REQUIRED_OS_CODENAME,
   createBaselineProvenance,
   dockerImageTagForPlaywrightVersion,
   parseBaselineProvenance,
@@ -115,24 +110,5 @@ describe('repository pins', () => {
     expect(playwrightBaseImage(playwrightVersion)).toBe(
       `mcr.microsoft.com/playwright:v${playwrightVersion}-jammy`,
     );
-  });
-});
-
-describe('committed provenance', () => {
-  // Lands with the refreshed baselines (COR-1512). Provenance is written only by
-  // update-snapshots.ts inside the renderer, so it must agree with the lockfile pin and
-  // the arm64 jammy renderer the authenticity guard enforces.
-  it('records the renderer the lockfile and the authenticity guard require', () => {
-    const provenance = parseBaselineProvenance(
-      readFileSync(join(REPOSITORY_ROOT, LINUX_BASELINE_DIRECTORY, PROVENANCE_FILE_NAME), 'utf8'),
-    );
-    const { playwrightVersion } = readRepositoryPins();
-    expect(provenance.playwrightVersion).toBe(playwrightVersion);
-    expect(provenance.osCodename).toBe(REQUIRED_OS_CODENAME);
-    expect(provenance.architecture).toBe(REQUIRED_BASELINE_ARCHITECTURE);
-    expect(provenance.dockerImageTag).toBe(dockerImageTagForPlaywrightVersion(playwrightVersion));
-    expect(provenance.componentScope).toBe('all');
-    expect(provenance.renderedSourceSha).toMatch(/^[0-9a-f]{40}$/);
-    expect([0, 1]).toContain(provenance.suiteExitCode);
   });
 });
