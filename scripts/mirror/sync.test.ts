@@ -1858,8 +1858,8 @@ describe('changeset emission through the sync (COR-1433)', async () => {
     rethrow(outcomeChangesetDelivery));
 });
 
-describe('newestMirrorProvenance (COR-1433)', () => {
-  test('strict mode throws when the squash fallback cannot fetch the pull request, and lenient mode does not', async () => {
+describe('newestMirrorProvenance (COR-1433)', async () => {
+  const strictModeThrowsWhenSquashFallbackOutcome = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-strict-provenance-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1875,6 +1875,8 @@ describe('newestMirrorProvenance (COR-1433)', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('strict mode throws when the squash fallback cannot fetch the pull request, and lenient mode does not', () =>
+    rethrow(strictModeThrowsWhenSquashFallbackOutcome));
 });
 
 describe('the private-workspace check', () => {
