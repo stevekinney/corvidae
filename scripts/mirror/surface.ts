@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { discoverComponents } from '../../components/cinder/scripts/lib/discover-components.ts';
+import { planChangesetEmission } from './changeset-emission.ts';
 import {
   checkDeclarationAgreement,
   describeDeclarationFinding,
@@ -251,6 +252,17 @@ function applySurfaceToManifest(
   if (entry.bin !== undefined) manifest['bin'] = entry.bin;
 }
 
+export interface SurfacePlanOptions extends PlanOptions {
+  /**
+   * The corvidae commit the target's newest mirror commit records (`null` when the mirror has
+   * never written there). `sync.ts` reads it once per run and passes the same value to every plan
+   * it builds, so changeset emission is placed against one trailer SHA. Left `undefined`, no
+   * changeset is emitted: a plan with no clone, such as the committed plans, has nothing to
+   * deliver into.
+   */
+  trailerSha?: string | null | undefined;
+}
+
 /**
  * Build the complete plan for one target: manifests, distributable surfaces, build wiring and
  * TypeScript configuration, with both gates evaluated but not enforced.
@@ -258,7 +270,7 @@ function applySurfaceToManifest(
  * Enforcement is the caller's, so a sync can report every problem in one pass instead of stopping
  * at the first package. `assertPublishable` is the one call that turns the findings into a failure.
  */
-export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
+export async function planSurface(options: SurfacePlanOptions): Promise<SurfacePlan> {
   const manifestPlan = await planManifests(options);
   const surface = await loadPackageSurface();
   const baseline = await loadRegistryBaseline();
@@ -397,10 +409,19 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);
   }
+  // Pending corvidae changesets for this target, delivered as new files under `.changeset/`. No
+  // path joins `source.ownedPrefixes`, so the sync never deletes anything the target holds there.
+  const changesets = await planChangesetEmission({
+    corvidaeRoot: options.corvidaeRoot,
+    target: options.target,
+    targetDirectory: options.targetDirectory,
+    trailerSha: options.trailerSha,
+  });
   assertSingleOwner([
     { owner: 'manifests', paths: Object.keys(files) },
     { owner: 'typescript-configuration', paths: Object.keys(typescript.files) },
     { owner: 'source', paths: Object.keys(source.files) },
+    { owner: 'changesets', paths: Object.keys(changesets) },
   ]);
 
   // COR-1286: the one transform-emitted verification workflow. It is not manifest, TypeScript-
@@ -426,6 +447,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     ...files,
     ...typescript.files,
     ...source.files,
+    ...changesets,
     // `target-owned.json`'s narrowed `.github/**` enumeration never claims this path, by
     // construction: every entry there names a specific release-adjacent filename, and
     // `.github/workflows/mirror-verify.yaml` is not one of them.

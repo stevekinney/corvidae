@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   assertInstallationCoverage,
@@ -117,6 +118,15 @@ function fakeGitHub(options: FakeOptions = {}): { api: GitHubApi; calls: Recorde
         headSha: 'c0ffee',
       };
     },
+    // Supersession belongs to the publish job; a dry run never lists, reads or closes anything.
+    async listOpenPullRequests() {
+      return [];
+    },
+    async getCommitMessage() {
+      return '';
+    },
+    async createIssueComment() {},
+    async closePullRequest() {},
     async readCheckRuns() {
       return [{ name: 'build', status: 'completed', conclusion: 'success' }];
     },
@@ -465,7 +475,8 @@ async function withWorkDirectory<T>(body: (directory: string) => Promise<T>): Pr
   }
 }
 
-describe('runDryRun', () => {
+describe('runDryRun', async () => {
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('checks installation coverage before creating anything', async () => {
     const { api, calls } = fakeGitHub({ reachable: ['stevekinney/corvidae'] });
     const harness = fakeRunner();
@@ -495,6 +506,7 @@ describe('runDryRun', () => {
     expect(harness.commands).toEqual([]);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('runs the whole round trip in order and deletes the scratch repository', async () => {
     const { api, calls } = fakeGitHub();
     const harness = fakeRunner();
@@ -567,6 +579,7 @@ describe('runDryRun', () => {
     expect(report.publish.entries).toEqual(['dist/index.js', 'package.json']);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('pushes as the App, with the credential in the environment and never in a command', async () => {
     const { api } = fakeGitHub();
     const harness = fakeRunner();
@@ -614,6 +627,7 @@ describe('runDryRun', () => {
     expect(clone?.join(' ')).not.toContain('Authorization');
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('rejects a changed staged tree before requesting App credentials or opening a pull request', async () => {
     const { api, calls } = fakeGitHub();
     const harness = fakeRunner(['stable-tree', 'tampered-tree']);
@@ -652,6 +666,7 @@ describe('runDryRun', () => {
     ).toBe(false);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('keeps the scratch repository when asked, so a human can look at the pull request', async () => {
     const { api, calls } = fakeGitHub();
     const harness = fakeRunner();
@@ -679,6 +694,7 @@ describe('runDryRun', () => {
     expect(calls.deleted).toEqual([]);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('refuses a scratch repository name the guard rejects before reaching GitHub', async () => {
     const { api, calls } = fakeGitHub();
     await withWorkDirectory(async (workDirectory) => {
@@ -773,6 +789,7 @@ async function runWithCheckRuns(options: {
  * of the fix: the run refuses, and the scratch repository is still there to read.
  */
 describe('runDryRun check run verdict', () => {
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('fails the run and keeps the scratch repository when a check run completes with failure', async () => {
     const { failure, calls, probes } = await runWithCheckRuns({
       checkRuns: [
@@ -792,6 +809,7 @@ describe('runDryRun check run verdict', () => {
     expect(probes.calls).toEqual([]);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('fails the run and keeps the scratch repository when check runs never finish', async () => {
     const { failure, calls } = await runWithCheckRuns({
       checkRuns: [
@@ -808,6 +826,7 @@ describe('runDryRun check run verdict', () => {
     expect(calls.deleted).toEqual([]);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('fails the run and keeps the scratch repository when no check run ever appears', async () => {
     const { failure, calls } = await runWithCheckRuns({ checkRuns: [] });
     expect(failure).toBeInstanceOf(CheckRunTimeoutError);
@@ -822,6 +841,7 @@ describe('runDryRun check run verdict', () => {
    * with no check run under it. Every check run that did register can pass and the target's CI
    * still did not: the verdict has to read the workflow runs, not only the checks they produced.
    */
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('fails the run and keeps the scratch repository when a workflow run fails without registering a check', async () => {
     const { failure, calls, probes } = await runWithCheckRuns({
       checkRuns: [{ name: 'build', status: 'completed', conclusion: 'success' }],
@@ -852,6 +872,7 @@ describe('runDryRun check run verdict', () => {
     expect(probes.calls).toEqual([]);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('records every workflow run URL in the report of a passing run', async () => {
     const { api } = fakeGitHub();
     const harness = fakeRunner();
@@ -884,6 +905,7 @@ describe('runDryRun check run verdict', () => {
    * completed, passing checks out of twenty, read as the whole run. The driver must refuse rather
    * than assert `success` twice and delete the repository holding the other eighteen.
    */
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('fails the run and keeps the scratch repository when the check run set never stops changing', async () => {
     const { failure, calls, probes } = await runWithCheckRuns({
       checkRuns: (poll) =>
@@ -904,6 +926,7 @@ describe('runDryRun check run verdict', () => {
     expect(probes.calls).toEqual([]);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('fails the run when a check run completes without saying how', async () => {
     const { failure, calls } = await runWithCheckRuns({
       checkRuns: [{ name: 'build', status: 'completed', conclusion: null }],
@@ -915,6 +938,7 @@ describe('runDryRun check run verdict', () => {
     expect(calls.deleted).toEqual([]);
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test.each([['cancelled'], ['timed_out'], ['action_required'], ['stale']])(
     'fails the run on a check run concluded %s',
     async (conclusion) => {
@@ -930,6 +954,7 @@ describe('runDryRun check run verdict', () => {
    * GitHub's own required-check semantics treat both of these as satisfying a required check, so
    * refusing them here would make this driver stricter than the branch protection it rehearses.
    */
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test.each([['skipped'], ['neutral']])(
     'passes a check run concluded %s, as a required check would',
     async (conclusion) => {
@@ -1371,7 +1396,7 @@ describe('waitForCheckRuns', () => {
   });
 });
 
-describe('seedScratchRepository', () => {
+describe('seedScratchRepository', async () => {
   /**
    * The seed step against real git, because this is the one part of the live path a fake runner
    * hides. A shallow tip cannot be pushed to a remote that lacks its parent — GitHub answers
@@ -1381,7 +1406,8 @@ describe('seedScratchRepository', () => {
    * The injected transport maps the scratch URL onto a local bare repository and restricts Git
    * to the file protocol, so this test cannot contact GitHub.
    */
-  test('pushes the seeded tree to the base branch without a shallow update', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withWorkDirectory(async (root) => {
       const source = join(root, 'source');
       const remote = join(root, 'remote.git');
@@ -1440,9 +1466,12 @@ describe('seedScratchRepository', () => {
       expect(tree.stdout.trim()).toBe('scripts/build.ts');
     });
   });
+  test('pushes the seeded tree to the base branch without a shallow update', () =>
+    rethrow(outcome1));
 });
 
 describe('runDryRunCommand', () => {
+  // spawn-free: runDryRunCommand reaches only the injected fake GitHub api, or refuses its arguments before runDryRun starts any process.
   test('refuses a delete aimed at a real repository and exits 1', async () => {
     const { api, calls } = fakeGitHub({ repositories: { 'stevekinney/weft': scratchRecord() } });
     const code = await runDryRunCommand(
@@ -1453,6 +1482,7 @@ describe('runDryRunCommand', () => {
     expect(calls.deleted).toEqual([]);
   });
 
+  // spawn-free: runDryRunCommand reaches only the injected fake GitHub api, or refuses its arguments before runDryRun starts any process.
   test('deletes the scratch repository when the phase is pointed at it', async () => {
     const { api, calls } = fakeGitHub({ repositories: { [validName]: scratchRecord() } });
     const code = await runDryRunCommand(
@@ -1463,6 +1493,7 @@ describe('runDryRunCommand', () => {
     expect(calls.deleted).toEqual([validName]);
   });
 
+  // spawn-free: runDryRunCommand reaches only the injected fake GitHub api, or refuses its arguments before runDryRun starts any process.
   test('reports the coverage refusal from the preflight phase', async () => {
     const { api, calls } = fakeGitHub({ reachable: ['stevekinney/corvidae'] });
     const code = await runDryRunCommand(
@@ -1473,6 +1504,7 @@ describe('runDryRunCommand', () => {
     expect(calls.created).toEqual([]);
   });
 
+  // spawn-free: runDryRunCommand reaches only the injected fake GitHub api, or refuses its arguments before runDryRun starts any process.
   test('rejects an unknown phase without touching GitHub', async () => {
     const { api, calls } = fakeGitHub();
     expect(await runDryRunCommand(['--phase', 'nuke'], api)).toBe(1);
@@ -1487,6 +1519,7 @@ describe('runDryRunCommand', () => {
    * let someone believe they had widened a bound they had not, and the run that then timed out
    * would be diagnosed against a number nobody chose.
    */
+  // spawn-free: runDryRunCommand reaches only the injected fake GitHub api, or refuses its arguments before runDryRun starts any process.
   test.each([
     ['a word', 'abc'],
     ['zero', '0'],
@@ -1540,6 +1573,7 @@ describe('runDryRunCommand', () => {
  * harness refuses in one.
  */
 describe('runDryRun local verification', () => {
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('verifies the staged tree in its own scratch subdirectory before committing', async () => {
     const { api } = fakeGitHub();
     const harness = fakeRunner();
@@ -1578,6 +1612,7 @@ describe('runDryRun local verification', () => {
     );
   });
 
+  // spawn-free: every process-starting step is injected (fakeRunner, fakeStage, fakeVerify, fakeProbe, fake GitHub api), so no process starts.
   test('refuses to commit, push or open a pull request when the verification fails', async () => {
     const { api, calls } = fakeGitHub();
     const harness = fakeRunner();

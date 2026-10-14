@@ -10,6 +10,7 @@ import {
   pageArtifactByPath,
   pageBuildPromiseByKey,
   publishPageArtifacts,
+  stableEntryModule,
 } from './build-artifacts-shared.ts';
 import { componentExportNameFor } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
@@ -431,9 +432,8 @@ export async function buildPageBundle(
   knownComponents?: ReadonlySet<string>,
 ): Promise<string | null> {
   const cachedEntryPath = pageEntryByName.get(componentName);
-  if (cachedEntryPath) {
-    const cached = pageArtifactByPath.get(cachedEntryPath);
-    if (cached !== undefined) return cached;
+  if (cachedEntryPath && pageArtifactByPath.has(cachedEntryPath)) {
+    return stableEntryModule('page', cachedEntryPath);
   }
 
   const existing = pageBuildPromiseByKey.get(componentName);
@@ -457,7 +457,7 @@ export async function buildPageBundle(
     if (generationAtStart === getRebuildGeneration()) {
       pageEntryByName.set(componentName, entry.entryPath);
     }
-    return entry.entryCode;
+    return stableEntryModule('page', entry.entryPath);
   })();
 
   pageBuildPromiseByKey.set(componentName, buildPromise);

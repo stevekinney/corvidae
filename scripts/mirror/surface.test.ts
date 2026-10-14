@@ -150,7 +150,7 @@ describe('surface parity', () => {
   test('cinder is regenerated to the full published surface, not a subset', () => {
     const { plan } = committedPlans.cinder;
     const result = plan.parity.find((entry) => entry.publicName === '@lostgradient/cinder');
-    expect(result?.baselineVersion).toBe('0.27.0');
+    expect(result?.baselineVersion).toBe('0.27.1');
     expect(result?.missing).toEqual([]);
     expect(result?.added).toEqual([]);
   });
@@ -467,8 +467,8 @@ describe('emitted source', () => {
     ]);
   });
 
-  test('the excluded desktop application is emitted nowhere and holds nothing up', () => {
-    // `@lostgradient/desktop` is excluded from the mirror by owner ruling (2026-09-21), decided in
+  test('the excluded playground application is emitted nowhere and holds nothing up', () => {
+    // `@lostgradient/playground` is excluded from the mirror, decided in
     // `package-map.json` before the layout is consulted, so the committed cinder plan carries no
     // deferred workspace and nothing lands under the target's application or lab directories.
     const { plan } = committedPlans.cinder;

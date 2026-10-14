@@ -1,5 +1,0 @@
-{
-  "extends": ["@lostgradient/typescript/library.json", "./tsconfig.options.json"],
-  "include": ["*.config.ts", "scripts/**/*.ts", "src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts"],
-  "exclude": ["node_modules", "dist", "build", "artifacts", ".hutch"]
-}

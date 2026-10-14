@@ -517,27 +517,42 @@ test('browser entrypoint watches survive repeated atomic saves', async () => {
   }
 });
 
-test('browser startup failure releases its watches without keeping the process alive', async () => {
-  const directory = await temporaryOutputDirectory();
-  await writeFile(
-    join(directory, 'index.html'),
-    '<script type="module" src="./missing.ts"></script>',
-  );
-  const serverModule = fileURLToPath(new URL('../server.ts', import.meta.url));
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      '--eval',
-      `import { startBrowserHost } from ${JSON.stringify(serverModule)};
+// The child process is the behavior under test (it must exit on its own after a startup failure),
+// so it runs here at module scope, off the per-test clock, and the test only asserts. Its
+// `timeout` is a hang detector, never a performance bound.
+const startupFailure = await (async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'weft-ui-startup-failure-'));
+  try {
+    await writeFile(
+      join(directory, 'index.html'),
+      '<script type="module" src="./missing.ts"></script>',
+    );
+    const serverModule = fileURLToPath(new URL('../server.ts', import.meta.url));
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '--eval',
+        `import { startBrowserHost } from ${JSON.stringify(serverModule)};
 await startBrowserHost({ directory: ${JSON.stringify(directory)}, outputDirectory: ${JSON.stringify(join(directory, 'build'))}, port: 0 }).then(
   () => { throw new Error('Expected compilation to fail'); },
   () => { console.log('Startup rejected'); },
 );`,
-    ],
-    { cwd: directory, stdout: 'pipe', stderr: 'pipe' },
-  );
-  cleanupTasks.push(() => child.kill());
-  expect(await child.exited).toBe(0);
-  expect(await new Response(child.stdout).text()).toContain('Startup rejected');
-  expect(await new Response(child.stderr).text()).toBe('');
+      ],
+      { cwd: directory, stdout: 'pipe', stderr: 'pipe', timeout: 120_000 },
+    );
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    return { exitCode, stdout, stderr };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
+test('browser startup failure releases its watches without keeping the process alive', () => {
+  expect(startupFailure.exitCode).toBe(0);
+  expect(startupFailure.stdout).toContain('Startup rejected');
+  expect(startupFailure.stderr).toBe('');
 });

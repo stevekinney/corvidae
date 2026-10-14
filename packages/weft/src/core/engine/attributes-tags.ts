@@ -29,8 +29,11 @@ import {
   isTerminalWorkflowStatus,
   normalizeBulkFilterNumber,
 } from './validation.ts';
-import { buildWorkflowVisibilityIndexTransition } from './workflow-indexes.ts';
 import { streamMatchingWorkflowStates } from './workflow-state-stream.ts';
+import {
+  refreshWorkflowVisibilityMaintenance,
+  visibilityIndexOperations,
+} from './workflow-visibility-maintenance.ts';
 
 const EMPTY_STORAGE_VALUE = new Uint8Array(0);
 
@@ -189,13 +192,15 @@ export async function updateWorkflowState(
         ? commitSelfWorkflowStateOperations
         : commitExternalTerminalWorkflowStateOperations;
     const committedState = encode(updated);
+    const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+    if (visibilityMaintenance !== undefined) await visibilityMaintenance;
     await commit(
       internals,
       state,
       [
         ...buildTerminalWorkflowIndexOperations(state, updated),
         { type: 'put', key: KEYS.workflow(workflowId), value: committedState },
-        ...buildWorkflowVisibilityIndexTransition(workflowId, state, updated).batchOps,
+        ...visibilityIndexOperations(internals, workflowId, state, updated),
         ...additionalOperations,
       ],
       {
@@ -246,10 +251,12 @@ export async function mutateWorkflowTags(
       delete updatedState.tags;
     }
 
+    const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+    if (visibilityMaintenance !== undefined) await visibilityMaintenance;
     await internals.storage.batch([
       ...buildTerminalWorkflowIndexOperations(state, updatedState),
       { type: 'put', key: KEYS.workflow(workflowId), value: encode(updatedState) },
-      ...buildWorkflowVisibilityIndexTransition(workflowId, state, updatedState).batchOps,
+      ...visibilityIndexOperations(internals, workflowId, state, updatedState),
       ...buildWorkflowTagIndexOperations(workflowId, currentTags, nextTags),
     ]);
 

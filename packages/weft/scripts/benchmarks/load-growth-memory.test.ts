@@ -16,7 +16,7 @@ const runLoadGrowthBenchmark = it;
 const TARGET_WORKFLOWS_PER_SECOND = IS_CONSTRAINED_CODEX_RUNNER ? 500 : 10_000;
 /**
  * `TARGET_WORKFLOWS_PER_SECOND` is the *pacing* rate the runner drives load at,
- * not a pass/fail hardware spec. This benchmark's real signal is RSS stability
+ * not a pass/fail hardware spec. This benchmark's real signal is memory-footprint stability
  * under sustained load (the assertions below), so achieved throughput is logged
  * for humans but is NOT asserted as a regression gate — an absolute floor
  * conflated "this machine is fast enough" with "no memory leak" and hard-failed
@@ -27,18 +27,30 @@ const TARGET_WORKFLOWS_PER_SECOND = IS_CONSTRAINED_CODEX_RUNNER ? 500 : 10_000;
  * The one throughput-adjacent guard that remains is a *workload-completion*
  * precondition: if the run dispatched far fewer workflows than even a slow
  * machine should in the configured window, load generation itself collapsed and
- * the RSS measurements are not meaningful. This invalidates the run rather than
+ * the memory measurements are not meaningful. This invalidates the run rather than
  * silently passing on no load. The floor below is deliberately low (~25% of the
  * ideal `TARGET_WORKFLOWS_PER_SECOND` × `RUN_DURATION_MILLISECONDS` window) so
  * only a real collapse trips it, never ordinary hardware variance.
  */
-const MAX_MEDIAN_RSS_GROWTH_BYTES_PER_SECOND = (IS_CONSTRAINED_CODEX_RUNNER ? 16 : 1) * 1024 * 1024;
-const MAX_MEDIAN_POST_WARMUP_RSS_RANGE_BYTES =
+/**
+ * The bounds below apply to the process's physical footprint, not its resident
+ * set size (see `memory-footprint.ts`). The numeric limits are unchanged from
+ * when the benchmark read RSS: the JavaScriptCore allocator keeps freed heap
+ * pages resident-but-clean on macOS, so RSS grew by several megabytes over the
+ * run while the footprint fell, and no bound on RSS could separate that
+ * allocator behavior from a leak.
+ */
+const MAX_MEDIAN_MEMORY_GROWTH_BYTES_PER_SECOND =
+  (IS_CONSTRAINED_CODEX_RUNNER ? 16 : 1) * 1024 * 1024;
+const MAX_MEDIAN_POST_WARMUP_MEMORY_PEAK_RISE_BYTES =
   (IS_CONSTRAINED_CODEX_RUNNER ? 128 : 8) * 1024 * 1024;
-const MAX_MEDIAN_POST_WARMUP_RSS_DELTA_BYTES = MAX_MEDIAN_POST_WARMUP_RSS_RANGE_BYTES;
-const MAX_SINGLE_TRIAL_RSS_GROWTH_BYTES_PER_SECOND = MAX_MEDIAN_RSS_GROWTH_BYTES_PER_SECOND * 2;
-const MAX_SINGLE_TRIAL_POST_WARMUP_RSS_RANGE_BYTES = MAX_MEDIAN_POST_WARMUP_RSS_RANGE_BYTES * 2;
-const MAX_SINGLE_TRIAL_POST_WARMUP_RSS_DELTA_BYTES = MAX_SINGLE_TRIAL_POST_WARMUP_RSS_RANGE_BYTES;
+const MAX_MEDIAN_POST_WARMUP_MEMORY_GROWTH_BYTES = MAX_MEDIAN_POST_WARMUP_MEMORY_PEAK_RISE_BYTES;
+const MAX_SINGLE_TRIAL_MEMORY_GROWTH_BYTES_PER_SECOND =
+  MAX_MEDIAN_MEMORY_GROWTH_BYTES_PER_SECOND * 2;
+const MAX_SINGLE_TRIAL_POST_WARMUP_MEMORY_PEAK_RISE_BYTES =
+  MAX_MEDIAN_POST_WARMUP_MEMORY_PEAK_RISE_BYTES * 2;
+const MAX_SINGLE_TRIAL_POST_WARMUP_MEMORY_GROWTH_BYTES =
+  MAX_SINGLE_TRIAL_POST_WARMUP_MEMORY_PEAK_RISE_BYTES;
 const SAMPLE_INTERVAL_MILLISECONDS = 500;
 const WARMUP_SAMPLES = 4;
 const WORKFLOW_BATCH_SIZE = 500;
@@ -108,12 +120,20 @@ function hasValidMeasurementSummary(candidate: Record<string, unknown>): boolean
     hasNonNegativeIntegerFields(candidate, [
       'totalWorkflows',
       'workflowsPerSecond',
-      'postWarmupRssRangeBytes',
-      'peakRss',
-      'averageRss',
+      'postWarmupMemoryPeakRiseBytes',
+      'peakMemoryBytes',
+      'averageMemoryBytes',
     ]) &&
     hasPositiveIntegerField(candidate, 'calibratedWorkflowsPerSecond') &&
-    hasFiniteNumberFields(candidate, ['rssGrowthRatePerSecond', 'postWarmupRssDeltaBytes'])
+    hasKnownMemoryMeasure(candidate) &&
+    hasFiniteNumberFields(candidate, ['memoryGrowthRatePerSecond', 'postWarmupMemoryGrowthBytes'])
+  );
+}
+
+function hasKnownMemoryMeasure(candidate: Record<string, unknown>): boolean {
+  return (
+    candidate['memoryMeasure'] ===
+    (process.platform === 'darwin' ? 'physical-footprint' : 'resident-set-size')
   );
 }
 
@@ -162,7 +182,7 @@ function runLoadGrowthMemoryBenchmark(): LoadGrowthMemoryMeasurement {
 
 describe('Load-growth memory stability', () => {
   runLoadGrowthBenchmark(
-    `acceptance criterion: No unbounded growth under load. Short sustained-load regression benchmark keeps post-warmup RSS within a bounded band under load driven at ${TARGET_WORKFLOWS_PER_SECOND.toLocaleString()} workflows/sec.`,
+    `acceptance criterion: No unbounded growth under load. Short sustained-load regression benchmark keeps post-warmup memory footprint growth within a bounded band under load driven at ${TARGET_WORKFLOWS_PER_SECOND.toLocaleString()} workflows/sec.`,
     async () => {
       // Warm the subprocess runner once so the measured trials observe the
       // steady-state benchmark path instead of Bun's first-run transpilation and
@@ -181,23 +201,23 @@ describe('Load-growth memory stability', () => {
       const medianTotalWorkflows = median(
         measurements.map((measurement) => measurement.totalWorkflows),
       );
-      const medianAbsoluteRssGrowthRatePerSecond = median(
-        measurements.map((measurement) => Math.abs(measurement.rssGrowthRatePerSecond)),
+      const medianMemoryGrowthRatePerSecond = median(
+        measurements.map((measurement) => measurement.memoryGrowthRatePerSecond),
       );
-      const maximumAbsoluteRssGrowthRatePerSecond = Math.max(
-        ...measurements.map((measurement) => Math.abs(measurement.rssGrowthRatePerSecond)),
+      const maximumMemoryGrowthRatePerSecond = Math.max(
+        ...measurements.map((measurement) => measurement.memoryGrowthRatePerSecond),
       );
-      const medianPostWarmupRssDeltaBytes = median(
-        measurements.map((measurement) => Math.abs(measurement.postWarmupRssDeltaBytes)),
+      const medianPostWarmupMemoryGrowthBytes = median(
+        measurements.map((measurement) => measurement.postWarmupMemoryGrowthBytes),
       );
-      const medianPostWarmupRssRangeBytes = median(
-        measurements.map((measurement) => measurement.postWarmupRssRangeBytes),
+      const medianPostWarmupMemoryPeakRiseBytes = median(
+        measurements.map((measurement) => measurement.postWarmupMemoryPeakRiseBytes),
       );
-      const maximumPostWarmupRssDeltaBytes = Math.max(
-        ...measurements.map((measurement) => Math.abs(measurement.postWarmupRssDeltaBytes)),
+      const maximumPostWarmupMemoryGrowthBytes = Math.max(
+        ...measurements.map((measurement) => measurement.postWarmupMemoryGrowthBytes),
       );
-      const maximumPostWarmupRssRangeBytes = Math.max(
-        ...measurements.map((measurement) => measurement.postWarmupRssRangeBytes),
+      const maximumPostWarmupMemoryPeakRiseBytes = Math.max(
+        ...measurements.map((measurement) => measurement.postWarmupMemoryPeakRiseBytes),
       );
 
       console.log(
@@ -206,19 +226,20 @@ describe('Load-growth memory stability', () => {
           ...measurements.map(
             (measurement, index) =>
               `    Trial ${String(index + 1).padStart(2, ' ')}: ${measurement.workflowsPerSecond.toLocaleString()} workflows/sec, ` +
-              `RSS slope ${Math.abs(measurement.rssGrowthRatePerSecond).toFixed(0)} bytes/sec, ` +
-              `RSS delta ${Math.abs(measurement.postWarmupRssDeltaBytes).toLocaleString()} bytes, ` +
-              `RSS band ${measurement.postWarmupRssRangeBytes.toLocaleString()} bytes`,
+              `Footprint growth rate ${measurement.memoryGrowthRatePerSecond.toFixed(0)} bytes/sec, ` +
+              `Footprint growth ${measurement.postWarmupMemoryGrowthBytes.toLocaleString()} bytes, ` +
+              `Footprint peak rise ${measurement.postWarmupMemoryPeakRiseBytes.toLocaleString()} bytes`,
           ),
           `    Median throughput:    ${medianThroughput.toLocaleString()} workflows/sec (logged, not gated)`,
           `    Calibrated ceiling:   ${medianCalibratedThroughput.toLocaleString()} workflows/sec (unthrottled warmup)`,
           `    Median workflows:     ${medianTotalWorkflows.toLocaleString()} (min for valid run: ${MINIMUM_TOTAL_WORKFLOWS.toLocaleString()})`,
-          `    Median RSS slope:  ${medianAbsoluteRssGrowthRatePerSecond.toFixed(0)} bytes/sec`,
-          `    Max RSS slope:     ${maximumAbsoluteRssGrowthRatePerSecond.toFixed(0)} bytes/sec`,
-          `    Median RSS delta:  ${medianPostWarmupRssDeltaBytes.toLocaleString()} bytes`,
-          `    Median RSS band:   ${medianPostWarmupRssRangeBytes.toLocaleString()} bytes`,
-          `    Max RSS delta:     ${maximumPostWarmupRssDeltaBytes.toLocaleString()} bytes`,
-          `    Max RSS band:      ${maximumPostWarmupRssRangeBytes.toLocaleString()} bytes`,
+          `    Median footprint growth rate:  ${medianMemoryGrowthRatePerSecond.toFixed(0)} bytes/sec`,
+          `    Max footprint growth rate:     ${maximumMemoryGrowthRatePerSecond.toFixed(0)} bytes/sec`,
+          `    Median footprint growth:  ${medianPostWarmupMemoryGrowthBytes.toLocaleString()} bytes`,
+          `    Median footprint peak rise:   ${medianPostWarmupMemoryPeakRiseBytes.toLocaleString()} bytes`,
+          `    Max footprint growth:     ${maximumPostWarmupMemoryGrowthBytes.toLocaleString()} bytes`,
+          `    Max footprint peak rise:      ${maximumPostWarmupMemoryPeakRiseBytes.toLocaleString()} bytes`,
+          `    Memory measure:    ${measurements[0]!.memoryMeasure}`,
           `    Target pacing rate:   ${TARGET_WORKFLOWS_PER_SECOND.toLocaleString()} workflows/sec`,
           `    Coverage mode:     ${IS_COVERAGE_INSTRUMENTATION_ENABLED ? 'yes' : 'no'}\n`,
         ].join('\n'),
@@ -226,26 +247,26 @@ describe('Load-growth memory stability', () => {
 
       // Workload-completion precondition (NOT a throughput gate — see the policy
       // note on TARGET_WORKFLOWS_PER_SECOND): a run that dispatched almost no
-      // workflows means load generation collapsed, so its RSS numbers are moot.
+      // workflows means load generation collapsed, so its memory numbers are moot.
       expect(medianTotalWorkflows).toBeGreaterThanOrEqual(MINIMUM_TOTAL_WORKFLOWS);
-      expect(medianAbsoluteRssGrowthRatePerSecond).toBeLessThanOrEqual(
-        MAX_MEDIAN_RSS_GROWTH_BYTES_PER_SECOND,
+      expect(medianMemoryGrowthRatePerSecond).toBeLessThanOrEqual(
+        MAX_MEDIAN_MEMORY_GROWTH_BYTES_PER_SECOND,
       );
-      expect(medianPostWarmupRssDeltaBytes).toBeLessThanOrEqual(
-        MAX_MEDIAN_POST_WARMUP_RSS_DELTA_BYTES,
+      expect(medianPostWarmupMemoryGrowthBytes).toBeLessThanOrEqual(
+        MAX_MEDIAN_POST_WARMUP_MEMORY_GROWTH_BYTES,
       );
-      expect(medianPostWarmupRssRangeBytes).toBeLessThanOrEqual(
-        MAX_MEDIAN_POST_WARMUP_RSS_RANGE_BYTES,
+      expect(medianPostWarmupMemoryPeakRiseBytes).toBeLessThanOrEqual(
+        MAX_MEDIAN_POST_WARMUP_MEMORY_PEAK_RISE_BYTES,
       );
       if (!IS_COVERAGE_INSTRUMENTATION_ENABLED && !IS_CONSTRAINED_CODEX_RUNNER) {
-        expect(maximumAbsoluteRssGrowthRatePerSecond).toBeLessThanOrEqual(
-          MAX_SINGLE_TRIAL_RSS_GROWTH_BYTES_PER_SECOND,
+        expect(maximumMemoryGrowthRatePerSecond).toBeLessThanOrEqual(
+          MAX_SINGLE_TRIAL_MEMORY_GROWTH_BYTES_PER_SECOND,
         );
-        expect(maximumPostWarmupRssDeltaBytes).toBeLessThanOrEqual(
-          MAX_SINGLE_TRIAL_POST_WARMUP_RSS_DELTA_BYTES,
+        expect(maximumPostWarmupMemoryGrowthBytes).toBeLessThanOrEqual(
+          MAX_SINGLE_TRIAL_POST_WARMUP_MEMORY_GROWTH_BYTES,
         );
-        expect(maximumPostWarmupRssRangeBytes).toBeLessThanOrEqual(
-          MAX_SINGLE_TRIAL_POST_WARMUP_RSS_RANGE_BYTES,
+        expect(maximumPostWarmupMemoryPeakRiseBytes).toBeLessThanOrEqual(
+          MAX_SINGLE_TRIAL_POST_WARMUP_MEMORY_PEAK_RISE_BYTES,
         );
       }
     },
