@@ -155,6 +155,22 @@ describe('runCoverageRatchet', () => {
     expect(text).toContain('1 runtime import(s) of test support modules');
   });
 
+  test('fails a fully covered run when only a subpath export imports test support', async () => {
+    const root = packageFixture({ lines: 1, functions: 1 }, covered, {
+      'src/index.ts': 'export const value = 1;\n',
+      'src/bun/index.ts': "export { open } from './process-test-helpers.ts';\n",
+      'src/bun/process-test-helpers.ts': 'export const open = 1;\n',
+      'package.json': JSON.stringify({
+        exports: { '.': './src/index.ts', './bun': './src/bun/index.ts' },
+      }),
+    });
+    const result = await runCoverageRatchet({ packageRoot: root });
+    expect(result.exitCode).toBe(1);
+    const text = result.messages.map((message) => message.text).join('\n');
+    expect(text).toContain('src/bun/index.ts imports ./process-test-helpers.ts');
+    expect(text).toContain('1 runtime import(s) of test support modules');
+  });
+
   test('rejects a package with no coverage report', async () => {
     const root = packageFixture({ lines: 1, functions: 1 }, '');
     const rejection = await rejectionOf(runCoverageRatchet({ packageRoot: root }));
