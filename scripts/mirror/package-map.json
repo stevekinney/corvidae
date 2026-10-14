@@ -9381,7 +9381,6 @@
     ]
   },
   "openQuestions": [
-    "@lostgradient/cinder-mcp is left untouched rather than deprecated. It has no corvidae source and therefore no maintenance path through this pipeline; whether it should be deprecated, re-homed, or given source is unresolved.",
-    "COR-1189's surface-parity gate fetches each published package's last subpath set from the registry. The four packages newly marked publish-as here have no published predecessor, so that gate has no baseline for them and must treat a missing predecessor as a first publish rather than a parity failure."
+    "@lostgradient/cinder-mcp is left untouched rather than deprecated. It has no corvidae source and therefore no maintenance path through this pipeline; whether it should be deprecated, re-homed, or given source is unresolved."
   ]
 }
