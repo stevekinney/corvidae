@@ -2083,52 +2083,86 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return cursor;
   }
 
-  /** How often a paused durable run checks that its session still exists. */
-  const STEERING_DELETION_WATCH_MS = 2_000;
+  /** How often a session with a live durable run here re-reads its log. */
+  const STEERING_POLL_MS = 2_000;
 
+  interface SteeringPoller {
+    readonly incarnation: string;
+    readonly gate: BureauSteeringGate;
+    /** The session's durable runs this process drives. */
+    readonly runIds: Set<string>;
+    readonly timer: ReturnType<typeof setInterval>;
+    /** The last failure reported, so a repeating one is reported once. */
+    lastFailure?: string | undefined;
+  }
   /**
-   * A durable run's view of its session gate. While the run waits on a
-   * pause, its process checks that the session incarnation still exists:
-   * another process can delete the session, and that deletion settles only
-   * its own gate, so this one releases its paused runs the same way when it
-   * sees the deletion. Nothing else could resume them: every later steering
-   * command for the deleted session is `not-found`.
+   * One poller per session while this process drives any of its durable
+   * runs. A command admitted in another process reaches these runs only
+   * through the log, so the poller folds it here every
+   * {@link STEERING_POLL_MS}: a remote pause, resume, or configuration
+   * change takes effect at the run's next boundary, and a remote resume
+   * releases a run waiting on its pause. A session deleted elsewhere is
+   * seen here too: that deletion settles only its own process's gate, so
+   * the poller releases this gate's paused runs the same way.
    */
-  function watchedRunSteeringGate(
-    sessionId: string,
-    incarnation: string,
-    gate: BureauSteeringGate,
-    runId: string,
-  ): ReturnType<BureauSteeringGate['forRun']> {
-    const view = gate.forRun(runId);
-    return {
-      ...view,
-      awaitResume(signal?: AbortSignal): Promise<void> {
-        const resumed = view.awaitResume(signal);
-        const releaseIfDeleted = async () => {
-          try {
-            const current = await runtime.sessionStore?.load(sessionId);
-            if (current?.incarnation === incarnation) return;
-          } catch {
-            // Unreadable this time: the next tick checks again.
-            return;
-          }
-          clearInterval(watch);
-          gate.settleForDeletion(runtimeServices.clock.nowISO());
-        };
-        const watch = setInterval(() => {
-          void releaseIfDeleted();
-        }, STEERING_DELETION_WATCH_MS);
-        watch.unref?.();
-        // The wait ends on resume, or on abort, which leaves `resumed`
-        // pending for good: either one stops the watch.
-        const stopWatching = () => clearInterval(watch);
-        void resumed.finally(stopWatching);
-        if (signal?.aborted === true) stopWatching();
-        signal?.addEventListener('abort', stopWatching, { once: true });
-        return resumed;
-      },
-    };
+  const steeringPollers = new Map<string, SteeringPoller>();
+
+  function pollSessionSteering(sessionId: string, incarnation: string, runId: string): void {
+    const kv = durableSteeringStore();
+    const gate = steeringCursors.get(sessionId)?.gate;
+    if (kv === undefined || gate === undefined) return;
+    const existing = steeringPollers.get(sessionId);
+    if (existing !== undefined && existing.incarnation === incarnation && existing.gate === gate) {
+      existing.runIds.add(runId);
+      return;
+    }
+    if (existing !== undefined) stopSessionSteeringPoll(sessionId);
+    const timer = setInterval(() => {
+      void pollSteeringOnce(kv, sessionId);
+    }, STEERING_POLL_MS);
+    timer.unref?.();
+    steeringPollers.set(sessionId, { incarnation, gate, runIds: new Set([runId]), timer });
+  }
+
+  async function pollSteeringOnce(kv: ConditionalTextValueStore, sessionId: string): Promise<void> {
+    const poller = steeringPollers.get(sessionId);
+    if (poller === undefined) return;
+    try {
+      const current = await runtime.sessionStore?.load(sessionId);
+      if (current?.incarnation !== poller.incarnation) {
+        // Deleted, or recreated, by another process: nothing can resume
+        // this gate's paused runs any more, so release them.
+        if (steeringPollers.get(sessionId) === poller) stopSessionSteeringPoll(sessionId);
+        poller.gate.settleForDeletion(runtimeServices.clock.nowISO());
+        return;
+      }
+      await enqueueSteering(sessionId, () => catchUpSteering(kv, sessionId, poller.incarnation));
+      poller.lastFailure = undefined;
+    } catch (error) {
+      const failure = serializeUnknownError(error);
+      if (failure === poller.lastFailure) return;
+      poller.lastFailure = failure;
+      diagnose({
+        level: 'warn',
+        scope: 'steering',
+        message: `[bureau] Could not read steering for session "${sessionId}"; its runs here will see commands from other processes once it can be read: ${failure}`,
+      });
+    }
+  }
+
+  /** Stops polling for `runId`, and for the session once no run is left. */
+  function releaseSessionSteeringPoll(sessionId: string, runId: string): void {
+    const poller = steeringPollers.get(sessionId);
+    if (poller === undefined) return;
+    poller.runIds.delete(runId);
+    if (poller.runIds.size === 0) stopSessionSteeringPoll(sessionId);
+  }
+
+  function stopSessionSteeringPoll(sessionId: string): void {
+    const poller = steeringPollers.get(sessionId);
+    if (poller === undefined) return;
+    clearInterval(poller.timer);
+    steeringPollers.delete(sessionId);
   }
 
   /** Drops this process's folded view of a session. */
@@ -2199,7 +2233,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     gate: BureauSteeringGate,
     event: Extract<SteeringLogEvent, { type: 'applied' | 'run-ended' }>,
   ): void {
-    if (event.type === 'run-ended') steeringRunIncarnations.delete(event.runId);
+    if (event.type === 'run-ended') {
+      steeringRunIncarnations.delete(event.runId);
+      releaseSessionSteeringPoll(sessionId, event.runId);
+    }
     const kv = durableSteeringStore();
     const cursor = steeringCursors.get(sessionId);
     if (kv === undefined || cursor === undefined || cursor.gate !== gate) {
@@ -2245,7 +2282,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       services.options = {
         ...services.options,
         runId,
-        steering: watchedRunSteeringGate(sessionId, session.incarnation, cursor.gate, runId),
+        steering: cursor.gate.forRun(runId),
       };
       return cursor.gate;
     } catch (error) {
@@ -3814,6 +3851,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           throw error;
         }
         steeringRunIncarnations.set(runId, steeringSession.incarnation);
+        pollSessionSteering(sessionId, steeringSession.incarnation, runId);
       } else {
         getSessionSteeringGate(sessionId).promoteForNewRun(runId, runtimeServices.clock.nowISO());
       }
@@ -3821,10 +3859,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
       // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
       // concurrent run on this same session must never block this one.
-      const runSteeringGate =
-        steeringSession === undefined
-          ? steeringGate.forRun(runId)
-          : watchedRunSteeringGate(sessionId, steeringSession.incarnation, steeringGate, runId);
+      const runSteeringGate = steeringGate.forRun(runId);
 
       // COR-690: the last admission check before the run and its toolbox are
       // registered. Everything from here to that registration is synchronous,
@@ -4157,7 +4192,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // process no longer drives it, so its liveness is the engine's.
           // Only an abandoned one is kept: a terminal event already left
           // `running` before the result settled.
-          if (store.getRun(runId)?.status === 'running') settledLocalRunIds.add(runId);
+          if (store.getRun(runId)?.status === 'running') {
+            settledLocalRunIds.add(runId);
+            releaseSessionSteeringPoll(sessionId, runId);
+          }
         }),
       );
 
@@ -4536,11 +4574,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       recoveredRun.result
         .catch(() => undefined)
         .finally(() => {
-          if (store.getRun(runId)?.status === 'running') settledLocalRunIds.add(runId);
+          if (store.getRun(runId)?.status === 'running') {
+            settledLocalRunIds.add(runId);
+            releaseSessionSteeringPoll(sessionId, runId);
+          }
         }),
     );
 
     if (steeringIncarnation !== undefined) steeringRunIncarnations.set(runId, steeringIncarnation);
+    if (steeringIncarnation !== undefined && steeringGate !== undefined) {
+      pollSessionSteering(sessionId, steeringIncarnation, runId);
+    }
     if (steeringGate !== undefined) {
       recoveredRun.addEventListener(SteeringAppliedEvent.type, (event) => {
         logRunBoundarySteering(sessionId, steeringGate, {
@@ -10158,6 +10202,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // liveness, so they finish before it is disposed; admission closed
           // with `runAdmissionClosed`. Run-boundary appends queued while the
           // engine drains are awaited again below, before the backend closes.
+          // The steering pollers stop first, so none queues a fold after it.
+          for (const poller of steeringPollers.values()) clearInterval(poller.timer);
+          steeringPollers.clear();
           await Promise.allSettled(steeringQueues.values());
           if (runtime.durable) {
             const engine = runtime.durable.engine;

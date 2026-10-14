@@ -239,6 +239,75 @@ describe('durable steering across two Bureau processes', () => {
     }
   }, 60_000);
 
+  it('delivers a pause and a resume admitted in another process to the run', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delivery-'));
+    const path = join(directory, 'bureau.sqlite');
+    let releaseTool: (() => void) | undefined;
+    const toolGate = new Promise<void>((resolve) => {
+      releaseTool = resolve;
+    });
+    let generateCalls = 0;
+    const generate: GenerateFunction = async ({ step }) => {
+      generateCalls += 1;
+      return step === 0
+        ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
+        : { content: 'done', toolCalls: [] };
+    };
+    const bureauA = await createBureau({
+      agents: {},
+      generate,
+      toolbox: createToolbox([
+        createTool({
+          name: 'next',
+          description: 'waits for the test',
+          input: z.object({}),
+          execute: async () => {
+            await toolGate;
+            return 'ok';
+          },
+        }),
+      ]),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const bureauB = await openBureau(path);
+    try {
+      const run = await bureauA.createRun({ message: 'go', principal: 'alice' });
+      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+
+      // B pauses A's run. A learns of it from its own log poll.
+      const paused = await bureauB.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(paused.outcome).toBe('accepted');
+      await Bun.sleep(2_500);
+      releaseTool?.();
+      await Bun.sleep(300);
+      expect(bureauA.getRun(run.id)?.status).toBe('running');
+      expect(generateCalls).toBe(1);
+
+      // B resumes it; A's waiting run is released by the next poll.
+      const resumed = await bureauB.submitSteeringCommand(run.sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'resume' },
+      });
+      expect(resumed.outcome).toBe('accepted');
+      for (let attempt = 0; attempt < 1_000; attempt += 1) {
+        if (bureauA.getRun(run.id)?.status !== 'running') break;
+        await Bun.sleep(10);
+      }
+      expect(bureauA.getRun(run.id)?.status).toBe('completed');
+      expect(generateCalls).toBe(2);
+    } finally {
+      releaseTool?.();
+      await bureauA.dispose();
+      await bureauB.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('releases a paused run when another process deletes its session, without recreating it', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-remote-delete-'));
     const path = join(directory, 'bureau.sqlite');
