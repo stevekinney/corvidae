@@ -175,7 +175,7 @@ describe('the generic value editor', () => {
 });
 
 /** A value the CSS-only grammar accepts for each of the four CSS-only tokens. */
-function validCssOnly(row: { type: string; profile?: { id: string } }): string {
+function validCssOnly(row: { type: string; profile?: { id: string } | undefined }): string {
   if (row.profile?.id === 'aspect-ratio') return '4 / 3';
   if (row.type === 'color') return 'currentColor';
   return row.profile?.id === 'height' ? '12rem' : '80%';
