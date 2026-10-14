@@ -29,12 +29,18 @@
   .cinder-terminal__viewport {
     flex: 1;
     min-block-size: 0;
-    padding: var(--cinder-space-2) var(--cinder-space-3);
+    /* No padding here: this is the element the fit addon measures, and it subtracts only the
+       engine element's own padding, never its parent's. */
     overflow: hidden;
     color: var(--cinder-text-default);
     background: var(--cinder-surface-inset);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
+  }
+
+  /* The reader's inset lives on the engine's own element, which the fit addon does subtract. */
+  .cinder-terminal__viewport .xterm {
+    padding: var(--cinder-space-2) var(--cinder-space-3);
   }
 
   /* A view that does not own the grid keeps the owner's size and scrolls, or letterboxes, locally. */

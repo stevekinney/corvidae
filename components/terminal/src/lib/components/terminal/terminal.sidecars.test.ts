@@ -210,6 +210,24 @@ describe('terminal.css', () => {
     expect(css).not.toMatch(/\b(?:rgb|hsl|oklch)a?\(/);
   });
 
+  test('keeps the fit-measured engine host paddingless and insets the engine element instead', async () => {
+    const source = await read('terminal.css');
+    const css = source.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    const bodyOf = (selector: string) =>
+      rules
+        .filter((rule) => rule[1]!.split(',').some((part) => part.trim() === selector))
+        .map((rule) => rule[2]!)
+        .join('\n');
+    // The addon measures this element's computed size and never subtracts its padding.
+    expect(bodyOf('.cinder-terminal__viewport')).not.toMatch(/\bpadding(?:-[a-z]+)?\s*:/);
+    expect(bodyOf(".cinder-terminal__viewport[data-grid='owner']")).not.toMatch(
+      /\bpadding(?:-[a-z]+)?\s*:/,
+    );
+    // The addon does subtract the engine element's own padding.
+    expect(bodyOf('.cinder-terminal__viewport .xterm')).toMatch(/\bpadding\s*:/);
+  });
+
   test('turns non-essential motion off for reduced motion', async () => {
     const css = await read('terminal.css');
     const block = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));

@@ -134,8 +134,11 @@
     };
   }
 
+  // A failure the renderer found is cleared here, which remounts the engine. A state the host
+  // passed in is the host's to resolve, so Retry asks it to through the recovery handler.
   function retry(): void {
-    failure = undefined;
+    if (failure === undefined) onRecoveryRequest?.();
+    else failure = undefined;
   }
 </script>
 

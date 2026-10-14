@@ -61,11 +61,13 @@ The engine is private. The component never exposes the engine instance, its opti
 
 The engine's measured cell size is the only resize authority. The frame's own `onDimensionsChange` estimate is never connected. The first accepted geometry arrives before any process exists, so the host creates the process with it. After that, container size changes, font loading, zoom, and device-pixel-ratio changes collapse into at most one measurement per frame, and a measurement is reported only when it differs from the last accepted one. A hidden, detached, or zero-size container measures as nothing and reports nothing.
 
+The element the engine mounts into (`.cinder-terminal__viewport`) carries no padding, because the fit addon reads that element's computed size and subtracts only the engine element's own padding. The reader's inset is on `.cinder-terminal__viewport .xterm` instead, so the measured grid matches the visible area. Real-browser proof stays with COR-474.
+
 A view that does not own the grid (every state except `loading`, `connecting`, `writable`, and `backpressured`) never fits itself or reports geometry. It adopts `ownerGeometry` and scrolls, or letterboxes, locally.
 
 ## Failure
 
-A load, initialization, parse, or render failure disposes the engine and shows `engine-load-failed` with a `Retry` control. The renderer never switches engines, resets silently, drops bytes and carries on, or replays anything. `Retry` loads the engine again; the controller has already been told the renderer failed.
+A load, initialization, parse, or render failure disposes the engine and shows `engine-load-failed` with a `Retry` control. The renderer never switches engines, resets silently, drops bytes and carries on, or replays anything. `Retry` loads the engine again; the controller has already been told the renderer failed. `engine-load-failed` is derived by the renderer, so when the host passes that state itself, `Retry` calls `onRecoveryRequest` instead, because only the host can resolve a state it supplied.
 
 ## Engine notes
 

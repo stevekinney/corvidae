@@ -70,6 +70,24 @@ describe('engine failure fails closed', () => {
     ).toEqual(['Retry']);
   });
 
+  test('Retry on a host-supplied engine-load-failed state asks the host to recover', async () => {
+    let requests = 0;
+    const harness = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'engine-load-failed',
+      onRecoveryRequest: () => {
+        requests += 1;
+      },
+    } as TerminalProps);
+    const retry = [...harness.target.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Retry',
+    )!;
+    retry.click();
+    harness.flush();
+    expect(requests).toBe(1);
+    expect(loads).toBe(0);
+  });
+
   test('does not switch engines or retry on its own', async () => {
     behavior = () => Promise.reject(new Error('blocked'));
     const harness = mountHarness(Terminal, { title: 'Shell', state: 'writable' });
