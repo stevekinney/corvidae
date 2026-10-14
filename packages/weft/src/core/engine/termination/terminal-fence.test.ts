@@ -3,7 +3,12 @@ import { describe, expect, it } from 'bun:test';
 import { KEYS, type BatchOperation } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
 import type { EngineInternals } from '../internals.ts';
-import { bytesEqual, commitFencedTeardownBatch, type TerminalFence } from './terminal-fence.ts';
+import {
+  bytesEqual,
+  commitFencedTeardownBatch,
+  startHolderMarkerRead,
+  type TerminalFence,
+} from './terminal-fence.ts';
 
 const fence: TerminalFence = {
   committedState: new Uint8Array([1, 2, 3]),
@@ -67,5 +72,21 @@ describe('bytesEqual', () => {
     expect(bytesEqual(new Uint8Array([1]), new Uint8Array([1, 2]))).toBe(false);
     expect(bytesEqual(null, null)).toBe(true);
     expect(bytesEqual(null, new Uint8Array())).toBe(false);
+  });
+});
+
+describe('startHolderMarkerRead', () => {
+  it('hands back the read, and a failed read is still observed by the caller', async () => {
+    const failure = new Error('read failed');
+    const internals = {
+      storage: { get: () => Promise.reject(failure) },
+    } as unknown as EngineInternals;
+    const read = startHolderMarkerRead(internals, 'w');
+    expect(await read.catch((error: unknown) => error)).toBe(failure);
+
+    const present = new MemoryStorage();
+    await present.put(KEYS.workflowConcurrencyHolder('w'), new Uint8Array([4]));
+    const stored = startHolderMarkerRead({ storage: present } as unknown as EngineInternals, 'w');
+    expect(await stored).toEqual(new Uint8Array([4]));
   });
 });

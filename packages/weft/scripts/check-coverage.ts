@@ -1235,7 +1235,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining attribute-tag branches reject decoded value shapes excluded by search-attribute boundary validation.',
         functions: 1,
-        lines: new Set([365, 366, 368]),
+        lines: new Set([375, 376, 378]),
         requireUncoveredLines: true,
       },
     ],
@@ -1451,7 +1451,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining concurrency branches cover lease-loss and simultaneous-settlement interleavings whose public outcomes are tested without deterministic line attribution.',
         functions: 1,
-        lines: new Set([110, 111, 112, 138, 139]),
+        lines: new Set([122, 123, 124, 150, 151]),
         requireUncoveredLines: true,
       },
     ],

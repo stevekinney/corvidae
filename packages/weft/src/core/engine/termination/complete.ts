@@ -201,7 +201,7 @@ export async function terminateWorkflow(
     // Fenced on this run's committed state: the id's attribute record is the replacement's once one lands.
     const fenced = fencedTeardownCommit(internals, workflowId, fence, isSuperseded);
     await cleanupAttributeIndex(internals, workflowId, attributes, fenced);
-    await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes, fenced);
+    await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);
     // A same-id `start-new` replacement owns the deadline / delayed-start timer keys.
     if (!isSuperseded()) {
       void callbacks.swallowPromiseRejection(
@@ -657,7 +657,7 @@ export async function failWorkflow(
   }
 
   // Keep engine-managed terminal attributes queryable after the cleanup above.
-  await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes, fenced);
+  await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);
 
   const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
   await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);

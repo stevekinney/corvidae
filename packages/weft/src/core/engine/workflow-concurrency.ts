@@ -1,6 +1,11 @@
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS, storageConditionalBatch } from '../../storage/interface.ts';
-import { AtomicState, atomicStateVersionKey, readAtomicStateSnapshot } from '../atomic-state.ts';
+import {
+  AtomicState,
+  AtomicStateConflictError,
+  atomicStateVersionKey,
+  readAtomicStateSnapshot,
+} from '../atomic-state.ts';
 import { decode, encode } from '../codec.ts';
 import {
   initialLockRecord,
@@ -18,6 +23,8 @@ import {
 } from './termination/terminal-fence.ts';
 
 const WORKFLOW_CONCURRENCY_HOLDER_VERSION = 1;
+/** Matches `AtomicState`'s default retry budget for the unfenced release. */
+const MAX_FENCED_RELEASE_ATTEMPTS = 10;
 const NON_EXPIRING_WORKFLOW_CONCURRENCY_LEASE = Number.MAX_SAFE_INTEGER;
 
 export type WorkflowConcurrencyStartOperations = {
@@ -255,7 +262,7 @@ export async function releaseWorkflowConcurrencySlotForRun(
   }
 
   const stateKey = KEYS.workflowConcurrency(marker.workflowType, marker.partitionKey);
-  for (;;) {
+  for (let attempt = 0; attempt < MAX_FENCED_RELEASE_ATTEMPTS; attempt++) {
     const snapshot = await readAtomicStateSnapshot<LockRecord>(internals.storage, stateKey, {
       initial: initialLockRecord(),
     });
@@ -268,13 +275,8 @@ export async function releaseWorkflowConcurrencySlotForRun(
       { type: 'put', key: atomicStateVersionKey(stateKey), value: encode(snapshot.version + 1) },
     ];
     const slotVersion = encodeVersionCondition(stateKey, snapshot.version);
-    if (
-      await storageConditionalBatch(
-        internals.storage,
-        [slotVersion, ownCommit],
-        [...slotOperations, { type: 'delete', key: holderKey }],
-      )
-    ) {
+    const releaseAll = [...slotOperations, { type: 'delete' as const, key: holderKey }];
+    if (await storageConditionalBatch(internals.storage, [slotVersion, ownCommit], releaseAll)) {
       return;
     }
 
@@ -288,6 +290,7 @@ export async function releaseWorkflowConcurrencySlotForRun(
     const conditions = [slotVersion, { key: holderKey, expectedValue: markerNow }];
     if (await storageConditionalBatch(internals.storage, conditions, slotOperations)) return;
   }
+  throw new AtomicStateConflictError(stateKey, MAX_FENCED_RELEASE_ATTEMPTS);
 }
 
 /** Whether `markerBytes` is a holder marker for the same concurrency partition as `marker`. */

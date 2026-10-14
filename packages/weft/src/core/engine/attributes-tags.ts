@@ -106,10 +106,9 @@ export function buildRetainedTerminalSearchAttributes(
 
 /** Write retained terminal search attributes and their index entries. */
 export async function writeRetainedTerminalSearchAttributes(
-  internals: EngineInternals,
   workflowId: string,
   attributes: Record<string, SearchAttributeValue>,
-  commitBatch: TeardownBatchCommit = (operations) => internals.storage.batch(operations),
+  commitBatch: TeardownBatchCommit,
 ): Promise<void> {
   if (Object.keys(attributes).length === 0) {
     return;
