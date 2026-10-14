@@ -258,7 +258,7 @@ describe('hasBooleanIsPrefix', () => {
 // ---------------------------------------------------------------------------
 
 describe('hasHydrationTest', () => {
-  test('returns true for portal.test.ts (calls renderThenHydrate)', () => {
+  test('returns true for portal.test.ts (calls hydrateServerHtml)', () => {
     const testFile = join(componentDirectory('portal'), 'portal.test.ts');
     expect(existsSync(testFile)).toBe(true);
     expect(hasHydrationTest(testFile)).toBe(true);
@@ -279,6 +279,20 @@ describe('hasHydrationTest', () => {
       tempPath,
       `import { test } from 'bun:test';\n` +
         `test('hydrates', () => { renderThenHydrate(Foo, src, {}); });\n`,
+    );
+    try {
+      expect(hasHydrationTest(tempPath)).toBe(true);
+    } finally {
+      rmSync(tempPath, { force: true });
+    }
+  });
+
+  test('returns true when hydrateServerHtml is inside an active test() block', () => {
+    const tempPath = join(tmpdir(), `hydration-server-html-${Date.now()}.test.ts`);
+    writeFileSync(
+      tempPath,
+      `import { test } from 'bun:test';\n` +
+        `test('hydrates', () => { hydrateServerHtml(Foo, html, {}); });\n`,
     );
     try {
       expect(hasHydrationTest(tempPath)).toBe(true);

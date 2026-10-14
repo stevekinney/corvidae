@@ -1,10 +1,10 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { createRawSnippet } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import {
+  hydrateServerHtml,
   renderSvelteOnServer,
-  renderThenHydrate,
   requiredInstance,
   requiredValue,
   setupHappyDom,
@@ -327,11 +327,11 @@ describe('ButtonGroup', () => {
   });
 
   test('styling-contract attribute persists across hydration with no removal or re-add (COR-459)', async () => {
-    const result = await renderThenHydrate(
-      ButtonGroupButtonsFixture,
-      buttonGroupButtonsFixturePath,
-      { label: 'Actions' },
-    );
+    const result = hydrateServerHtml(ButtonGroupButtonsFixture, buttonGroupButtonsServerHtml, {
+      label: 'Actions',
+    });
+    // Hydration effects flush in a microtask; yield once so assertions see the settled DOM.
+    await tick();
 
     try {
       expect(result.ssrHtml).toMatch(/data-cinder-button-group-item="[^"]+"/);
