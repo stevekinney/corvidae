@@ -22,7 +22,8 @@
   };
   let { proposal, idBase, stale, busy, onapply, oncancel, heading }: Props = $props();
 
-  const ratio = (value: number | null): string => (value === null ? 'not measured' : `${value.toFixed(2)}:1`);
+  const ratio = (value: number | null): string =>
+    value === null ? 'not measured' : `${value.toFixed(2)}:1`;
   const PAGE = 20;
   let shown = $state(PAGE);
   const rows = $derived(proposal.changes.slice(0, shown));
@@ -34,7 +35,12 @@
   data-testid="remediation-proposal"
   data-action={proposal.action}
 >
-  <h4 id={`${idBase}-title`} class="proposal__title" tabindex="-1" {@attach (node) => heading?.(node)}>
+  <h4
+    id={`${idBase}-title`}
+    class="proposal__title"
+    tabindex="-1"
+    {@attach (node) => heading?.(node)}
+  >
     {proposal.title}
   </h4>
   {#each proposal.notes as note (note)}

@@ -11,7 +11,6 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import ThemeChecksPanel from './theme-checks-panel.svelte';
 import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
 import { createDraft } from './theme-draft.ts';
@@ -37,7 +36,8 @@ const grayCanvas = withOverride('light', 'surface.canvas', oklchColor(0.5, 0, 0)
 for (const envelope of [dimmedText, twoFailures, grayCanvas]) {
   const record = await findFinding(
     envelope,
-    (candidate) => candidate.pairingId === 'text:default:canvas' && candidate.context === 'light/default',
+    (candidate) =>
+      candidate.pairingId === 'text:default:canvas' && candidate.context === 'light/default',
   );
   const draft = createDraft(envelope);
   await proposeForFinding({ draft, record, evaluator: memoEvaluator, gamut: 'srgb' });
@@ -90,7 +90,9 @@ const buttonNamed = (name: RegExp | string, root: ParentNode = target) =>
 const announcer = () =>
   target.querySelector('[data-testid="checks-announcer"]')?.textContent?.trim() ?? '';
 const firstError = () =>
-  target.querySelector<HTMLElement>('[data-testid="finding"][data-severity="accessibility-error"]')!;
+  target.querySelector<HTMLElement>(
+    '[data-testid="finding"][data-severity="accessibility-error"]',
+  )!;
 
 async function review(finding: HTMLElement): Promise<void> {
   buttonNamed('Review a fix', finding)!.click();
@@ -134,8 +136,12 @@ describe('the proposal', () => {
     expect(proposal.textContent).toContain('oklch(0.93 0.01 245)');
     expect(proposal.textContent).toContain('Output gamut: sRGB');
     expect(proposal.textContent).toContain('foreground-oklch-remediation/1');
-    expect(proposal.querySelectorAll('[data-testid="remediation-measurements"] tbody tr').length).toBeGreaterThan(0);
-    expect(buttons(proposal).filter((button) => /Apply fix/.test(button.textContent ?? ''))).toHaveLength(1);
+    expect(
+      proposal.querySelectorAll('[data-testid="remediation-measurements"] tbody tr').length,
+    ).toBeGreaterThan(0);
+    expect(
+      buttons(proposal).filter((button) => /Apply fix/.test(button.textContent ?? '')),
+    ).toHaveLength(1);
     expect(target.textContent).not.toMatch(/fix all/i);
   });
 
@@ -156,7 +162,9 @@ describe('the proposal', () => {
     await controller.setLocked('accent.text', true);
     await until(() => target.querySelector('[data-testid="remediation-stale"]') !== null);
     const apply = buttonNamed('Apply fix')!;
-    expect(apply.hasAttribute('disabled') || apply.getAttribute('aria-disabled') === 'true').toBe(true);
+    expect(apply.hasAttribute('disabled') || apply.getAttribute('aria-disabled') === 'true').toBe(
+      true,
+    );
     expect(target.querySelector('[data-testid="remediation-stale"]')?.textContent).toContain(
       'source changed',
     );
@@ -174,7 +182,9 @@ describe('applying and undoing', () => {
     buttonNamed('Apply fix')!.click();
     await until(() => controller.history!.entries.at(-1)?.kind === 'remediation');
     await until(() => /applied/.test(announcer()) && /Checks for revision/.test(announcer()));
-    expect(announcer()).toMatch(/Replace value with OKLCH applied\. \d+ findings? resolved, none introduced\./);
+    expect(announcer()).toMatch(
+      /Replace value with OKLCH applied\. \d+ findings? resolved, none introduced\./,
+    );
     // Focus lands on the other, still unresolved, error finding: never on the body.
     const active = document.activeElement as HTMLElement;
     expect(active.dataset['testid']).toBe('finding');

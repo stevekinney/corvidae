@@ -80,9 +80,9 @@ const mapOf = (evaluation: ThemeEvaluation | undefined): string =>
   evaluation === undefined || !evaluation.ok
     ? 'invalid'
     : JSON.stringify(
-        evaluation.properties.map(({ name, value }) => [name, value]).toSorted(([a], [b]) =>
-          String(a).localeCompare(String(b)),
-        ),
+        evaluation.properties
+          .map(({ name, value }) => [name, value])
+          .toSorted(([a], [b]) => String(a).localeCompare(String(b))),
       );
 
 /** Contexts of the other color mode whose property map differs between two evaluations. */

@@ -142,9 +142,9 @@
 
   /** The finding ids that render, in reading order. */
   const renderedIds = (): string[] =>
-    grouped.filter((group) => opened[group.severity]).flatMap((group) =>
-      group.items.map((item) => item.id),
-    );
+    grouped
+      .filter((group) => opened[group.severity])
+      .flatMap((group) => group.items.map((item) => item.id));
 
   const findingElement = (id: string): HTMLElement | null =>
     [...(root?.querySelectorAll<HTMLElement>('[data-finding-id]') ?? [])].find(

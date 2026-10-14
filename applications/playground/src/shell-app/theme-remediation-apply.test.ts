@@ -6,9 +6,11 @@
 
 import { describe, expect, test } from 'bun:test';
 
+import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+import { evaluator as stubEvaluator } from './theme-builder-test-support.ts';
+import { countReport, exportReadiness } from './theme-check-engine.ts';
 import type { ReportRecord } from './theme-check-types.ts';
 import { createDraft } from './theme-draft.ts';
-import { evaluator as stubEvaluator } from './theme-builder-test-support.ts';
 import { commitTransaction, createHistory } from './theme-history.ts';
 import {
   applyProposal,
@@ -29,12 +31,13 @@ import {
   textOnCanvas,
   withOverride,
 } from './theme-remediation-support.ts';
-import { exportReadiness, countReport } from './theme-check-engine.ts';
-import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 
 // Runtime work happens once, at module scope; the evaluator remembers it by content.
 const grayCanvas = withOverride('light', 'surface.canvas', oklchColor(0.5, 0, 0));
-const aliased = withOverride('light', 'text.default', { $type: 'color', $value: '{surface.raised}' });
+const aliased = withOverride('light', 'text.default', {
+  $type: 'color',
+  $value: '{surface.raised}',
+});
 const dimmedRecord = await findFinding(dimmedText, textOnCanvas);
 const grayRecord = await findFinding(grayCanvas, textOnCanvas);
 const aliasRecord = await findFinding(aliased, textOnCanvas);
@@ -58,8 +61,9 @@ async function proposalFor(
   return result.proposal;
 }
 
-const recompute = (controller: ThemeBuilderController, record: ReportRecord, p: RemediationProposal) =>
-  () => recomputeProposal(requestFor(controller, record), p.action);
+const recompute =
+  (controller: ThemeBuilderController, record: ReportRecord, p: RemediationProposal) => () =>
+    recomputeProposal(requestFor(controller, record), p.action);
 
 const snapshot = (controller: ThemeBuilderController): string =>
   JSON.stringify(controller.draft!.envelope);
@@ -70,7 +74,11 @@ describe('apply and undo', () => {
     const before = snapshot(controller);
     const entries = controller.history!.entries.length;
     const proposal = await proposalFor(controller, dimmedRecord);
-    const outcome = await applyProposal(controller, proposal, recompute(controller, dimmedRecord, proposal));
+    const outcome = await applyProposal(
+      controller,
+      proposal,
+      recompute(controller, dimmedRecord, proposal),
+    );
     expect(outcome.ok).toBe(true);
     expect(controller.history!.entries).toHaveLength(entries + 1);
     expect(controller.history!.entries.at(-1)).toMatchObject({
@@ -97,7 +105,11 @@ describe('apply and undo', () => {
     const before = snapshot(controller);
     const proposal = await proposalFor(controller, dimmedRecord);
     const darkBefore = await reportForEnvelope(memoEvaluator, controller.draft!.envelope, 1);
-    const applied = await applyProposal(controller, proposal, recompute(controller, dimmedRecord, proposal));
+    const applied = await applyProposal(
+      controller,
+      proposal,
+      recompute(controller, dimmedRecord, proposal),
+    );
     expect(applied.ok).toBe(true);
     expect(JSON.stringify(controller.draft!.envelope.locked)).toBe(lockedBefore);
     expect(controller.lockedPaths.has('accent.text')).toBe(true);
@@ -126,7 +138,11 @@ describe('apply and undo', () => {
     expect(staleReason(proposal, controller.draft)).toBeNull();
     await controller.setLocked('accent.text', true);
     const before = snapshot(controller);
-    const rejected = await applyProposal(controller, proposal, recompute(controller, dimmedRecord, proposal));
+    const rejected = await applyProposal(
+      controller,
+      proposal,
+      recompute(controller, dimmedRecord, proposal),
+    );
     expect(rejected).toMatchObject({ ok: false, stale: true });
     expect(rejected.message).toContain('Propose the fix again');
     expect(snapshot(controller)).toBe(before);
@@ -136,7 +152,11 @@ describe('apply and undo', () => {
     const { controller } = await openController(dimmedText);
     const proposal = await proposalFor(controller, dimmedRecord);
     await controller.setLocked('text.default', true);
-    const rejected = await applyProposal(controller, proposal, recompute(controller, dimmedRecord, proposal));
+    const rejected = await applyProposal(
+      controller,
+      proposal,
+      recompute(controller, dimmedRecord, proposal),
+    );
     expect(rejected.ok).toBe(false);
     // The lock is a committed transaction, so the revision moved too; a lock set that moved
     // without a revision change is caught on its own.
@@ -145,9 +165,9 @@ describe('apply and undo', () => {
       ...createDraft(dimmedText),
       envelope: { ...dimmedText, locked: ['text.default'] },
     };
-    expect(staleReason({ ...proposal, binding: { ...proposal.binding, revision: 1 } }, sameRevision)).toContain(
-      'locked tokens changed',
-    );
+    expect(
+      staleReason({ ...proposal, binding: { ...proposal.binding, revision: 1 } }, sameRevision),
+    ).toContain('locked tokens changed');
   });
 
   test('a proposal that no longer recomputes to the same state is rejected', async () => {
@@ -155,7 +175,11 @@ describe('apply and undo', () => {
     const proposal = await proposalFor(controller, dimmedRecord);
     const forged = { ...proposal, state: { ...proposal.state, cssOverrides: { x: {} } } };
     const before = snapshot(controller);
-    const rejected = await applyProposal(controller, forged, recompute(controller, dimmedRecord, proposal));
+    const rejected = await applyProposal(
+      controller,
+      forged,
+      recompute(controller, dimmedRecord, proposal),
+    );
     expect(rejected).toMatchObject({ ok: false, stale: true });
     expect(snapshot(controller)).toBe(before);
   });
@@ -173,10 +197,16 @@ describe('detach and repair', () => {
     expect(target?.before).toBe('{surface.raised}');
     expect(target?.after).toContain('oklch(');
     const entries = controller.history!.entries.length;
-    const applied = await applyProposal(controller, proposal, recompute(controller, aliasRecord, proposal));
+    const applied = await applyProposal(
+      controller,
+      proposal,
+      recompute(controller, aliasRecord, proposal),
+    );
     expect(applied.ok).toBe(true);
     expect(controller.history!.entries).toHaveLength(entries + 1);
-    const node = (controller.draft!.envelope.overrides.light as { text: { default: { $value: unknown } } }).text.default;
+    const node = (
+      controller.draft!.envelope.overrides.light as { text: { default: { $value: unknown } } }
+    ).text.default;
     expect(node.$value).toMatchObject({ colorSpace: 'oklch' });
     await controller.undo();
     expect(snapshot(controller)).toBe(before);
@@ -197,7 +227,11 @@ describe('restore fallbacks', () => {
 
     const before = snapshot(controller);
     const restore = result.restore!;
-    const applied = await applyProposal(controller, restore, recompute(controller, grayRecord, restore));
+    const applied = await applyProposal(
+      controller,
+      restore,
+      recompute(controller, grayRecord, restore),
+    );
     expect(applied.ok).toBe(true);
     expect(controller.draft!.envelope.overrides.light).toEqual({});
     await controller.undo();
@@ -257,7 +291,11 @@ describe('restore fallbacks', () => {
       overrides: invalid.overrides,
       cssOverrides: {},
     });
-    const diagnostic = { context: 'light/default' as const, path: 'radius.medium', message: 'unit' };
+    const diagnostic = {
+      context: 'light/default' as const,
+      path: 'radius.medium',
+      message: 'unit',
+    };
     const proposal = await proposeRestoreLastValid(draft, history, stubEvaluator, diagnostic);
     expect(proposal?.label).toBe('Restore last valid value');
     expect(proposal?.state.overrides).toEqual(shippedEnvelope.overrides);

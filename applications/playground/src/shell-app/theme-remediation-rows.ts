@@ -5,7 +5,7 @@
  * target's authored value is shown as a color rather than as DTCG JSON.
  */
 
-import { readDtcgColor, authoredText } from './theme-color-model.ts';
+import { authoredText, readDtcgColor } from './theme-color-model.ts';
 import type { JsonValue, ThemeContextId, ThemeDraft } from './theme-draft-types.ts';
 import type { Impact } from './theme-impact.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
@@ -35,7 +35,10 @@ export const authoredLabel = (value: JsonValue | undefined): string => {
   return color === null ? valueToText(value) : authoredText(color);
 };
 
-export function changeRowsFor(impact: Extract<Impact, { ok: true }>, draft: ThemeDraft): ChangeRow[] {
+export function changeRowsFor(
+  impact: Extract<Impact, { ok: true }>,
+  draft: ThemeDraft,
+): ChangeRow[] {
   const after = envelopeWith(draft.envelope, impact.state);
   return impact.changed.map((row): ChangeRow => {
     if (row.role !== 'target') {

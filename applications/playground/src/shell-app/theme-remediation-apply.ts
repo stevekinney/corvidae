@@ -58,7 +58,10 @@ export async function recomputeProposal(
 }
 
 /** Why a proposal can no longer be applied to this draft, or `null` when it can. */
-export function staleReason(proposal: RemediationProposal, draft: ThemeDraft | null): string | null {
+export function staleReason(
+  proposal: RemediationProposal,
+  draft: ThemeDraft | null,
+): string | null {
   if (draft === null) return 'No theme is open.';
   const { binding } = proposal;
   if (draft.envelope.id !== binding.envelopeId) return 'A different theme is open now.';

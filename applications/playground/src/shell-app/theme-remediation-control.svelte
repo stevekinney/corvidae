@@ -11,10 +11,7 @@
 
   import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
   import { applyProposal, staleReason } from './theme-remediation-apply.ts';
-  import type {
-    RemediationFailure,
-    RemediationProposal,
-  } from './theme-remediation-proposal.ts';
+  import type { RemediationFailure, RemediationProposal } from './theme-remediation-proposal.ts';
   import type { RemediationSubject } from './theme-remediation-subject.ts';
   import ThemeRemediationView from './theme-remediation-view.svelte';
 

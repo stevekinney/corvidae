@@ -15,9 +15,9 @@
 import { CONTRAST_PAIRINGS, type ContrastPairing } from '@lostgradient/cinder/tokens/runtime';
 
 import { catalogueRowByPath } from './theme-builder-catalogue.ts';
+import type { ReportRecord } from './theme-check-types.ts';
 import type { OutputGamut } from './theme-chroma-grid.ts';
 import { readDtcgColor } from './theme-color-model.ts';
-import type { ReportRecord } from './theme-check-types.ts';
 import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
 import type {
   EditableState,
@@ -220,7 +220,8 @@ export async function proposeContrastFix(
   const pairing = pairingOf(record)!;
   const foreground = record.stack.find((entry) => entry.role === 'foreground')!;
   const properties = await propertiesOf(request, record.context);
-  if (properties === null) return failure('This context does not evaluate, so nothing can be measured.');
+  if (properties === null)
+    return failure('This context does not evaluate, so nothing can be measured.');
   const context = previewContextOf(record.context);
   const search = searchForeground({
     property: foreground.cssProperty,

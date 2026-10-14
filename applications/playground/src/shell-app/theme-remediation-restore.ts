@@ -16,8 +16,8 @@ import { ruleById } from './theme-check-rules.ts';
 import type { ReportRecord } from './theme-check-types.ts';
 import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
 import {
-  OVERRIDE_SCOPES,
   editableState,
+  OVERRIDE_SCOPES,
   type EditableState,
   type JsonObject,
   type ThemeContextId,
@@ -141,7 +141,8 @@ export async function proposeRestoreOverrides(
 
 /** A precise instruction for a finding no button can fix safely. */
 export function manualInstruction(record: ReportRecord): string {
-  const where = record.tokenPaths.length === 0 ? 'the affected tokens' : record.tokenPaths.join(', ');
+  const where =
+    record.tokenPaths.length === 0 ? 'the affected tokens' : record.tokenPaths.join(', ');
   const rule = ruleById(record.ruleId);
   return `Edit ${where} by hand in ${record.context}: ${record.message} (${rule.title}). Then check that this finding is gone.`;
 }
@@ -167,7 +168,11 @@ function overridePathOf(draft: ThemeDraft, diagnosticPath: string): string | nul
   for (let length = segments.length; length > 0; length -= 1) {
     const candidate = segments.slice(0, length).join('.');
     if (segments[length - 1]!.startsWith('$') && length > 1) continue;
-    if (OVERRIDE_SCOPES.some((scope) => getNode(draft.envelope.overrides[scope], candidate) !== undefined)) {
+    if (
+      OVERRIDE_SCOPES.some(
+        (scope) => getNode(draft.envelope.overrides[scope], candidate) !== undefined,
+      )
+    ) {
       return candidate;
     }
   }
@@ -211,7 +216,9 @@ export async function proposeRestoreLastValid(
     for (const scope of OVERRIDE_SCOPES) {
       const node = getNode(earlier.overrides[scope], path);
       const tree: JsonObject =
-        node === undefined ? removeNode(overrides[scope], path) : setNode(overrides[scope], path, node);
+        node === undefined
+          ? removeNode(overrides[scope], path)
+          : setNode(overrides[scope], path, node);
       overrides = { ...overrides, [scope]: tree };
     }
     const state: EditableState = { ...current, overrides };

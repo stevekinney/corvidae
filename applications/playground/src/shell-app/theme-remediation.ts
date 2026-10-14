@@ -204,7 +204,10 @@ type Plan = {
 };
 
 function planFor(input: SearchInput): Plan {
-  const affected = affectedPairings(input.pairings, readersOf(input.properties, input.property)).toSorted(
+  const affected = affectedPairings(
+    input.pairings,
+    readersOf(input.properties, input.property),
+  ).toSorted(
     (a, b) =>
       Number(b.id === input.findingPairingId) - Number(a.id === input.findingPairingId) ||
       a.id.localeCompare(b.id),

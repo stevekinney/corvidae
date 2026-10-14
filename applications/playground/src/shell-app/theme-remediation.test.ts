@@ -13,6 +13,12 @@ import { inOutputGamut, targetChannels, type OutputGamut } from './theme-chroma-
 import { createDraft } from './theme-draft.ts';
 import { proposeForFinding } from './theme-remediation-apply.ts';
 import {
+  dimmedText,
+  findFinding,
+  memoEvaluator,
+  textOnCanvas,
+} from './theme-remediation-support.ts';
+import {
   REMEDIATION_ALGORITHM_VERSION,
   candidateCss,
   lightnessOrder,
@@ -21,12 +27,6 @@ import {
   searchForeground,
   type SearchInput,
 } from './theme-remediation.ts';
-import {
-  dimmedText,
-  findFinding,
-  memoEvaluator,
-  textOnCanvas,
-} from './theme-remediation-support.ts';
 import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
 
 // All runtime work happens once, at module scope.
@@ -78,7 +78,9 @@ function synthetic(
     property: '--fg',
     properties: {
       '--fg': foreground,
-      ...Object.fromEntries(Object.entries(backgrounds).map(([id, value]) => [`--bg-${id}`, value])),
+      ...Object.fromEntries(
+        Object.entries(backgrounds).map(([id, value]) => [`--bg-${id}`, value]),
+      ),
     },
     pairings,
     findingPairingId: pairings[0]?.id ?? null,
@@ -114,12 +116,14 @@ describe('determinism and pinned Culori fixtures', () => {
         expect(actual[index]).toBeCloseTo(value, 12);
       }
     };
-    expectChannels(targetChannels({ l: 0.54, c: 0.0089, h: 245 }, 'srgb'), [
-      0.4176571135215498, 0.4364206727198109, 0.45325912616325287,
-    ]);
-    expectChannels(targetChannels({ l: 0.7, c: 0.2, h: 150 }, 'display-p3'), [
-      0.31781305464512566, 0.736695877069667, 0.3791405946700318,
-    ]);
+    expectChannels(
+      targetChannels({ l: 0.54, c: 0.0089, h: 245 }, 'srgb'),
+      [0.4176571135215498, 0.4364206727198109, 0.45325912616325287],
+    );
+    expectChannels(
+      targetChannels({ l: 0.7, c: 0.2, h: 150 }, 'display-p3'),
+      [0.31781305464512566, 0.736695877069667, 0.3791405946700318],
+    );
     // The same color is outside sRGB (a negative red channel) but inside Display P3.
     expect(inOutputGamut({ l: 0.7, c: 0.2, h: 150 }, 'srgb')).toBe(false);
     expect(inOutputGamut({ l: 0.7, c: 0.2, h: 150 }, 'display-p3')).toBe(true);
@@ -206,7 +210,10 @@ describe('every affected pairing', () => {
     expect(alone.candidate.l).toBeGreaterThan(0.5);
     expect(together.candidate.l).toBeLessThan(alone.candidate.l);
     expect(together.results.map((result) => result.status)).toEqual(['pass', 'pass']);
-    const properties = { ...synthetic('x', surfaces, []).properties, '--fg': candidateCss(together.candidate) };
+    const properties = {
+      ...synthetic('x', surfaces, []).properties,
+      '--fg': candidateCss(together.candidate),
+    };
     expect(measureAffected(light, properties, 'light').status).toBe('pass');
     expect(measureAffected(pale, properties, 'light').status).toBe('pass');
   });
@@ -240,10 +247,14 @@ describe('every affected pairing', () => {
       advisoryFloor: 8,
       description: 'Divider on mid gray',
     });
-    const result = searchForeground(synthetic('oklch(0.9 0 0)', { hard: 'oklch(0.6 0 0)' }, [hard]));
+    const result = searchForeground(
+      synthetic('oklch(0.9 0 0)', { hard: 'oklch(0.6 0 0)' }, [hard]),
+    );
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.message).toMatch(/Divider on mid gray needs 8:1, and no color on the search grid in sRGB reaches more than \d\.\d\d:1/);
+    expect(result.message).toMatch(
+      /Divider on mid gray needs 8:1, and no color on the search grid in sRGB reaches more than \d\.\d\d:1/,
+    );
     expect(result.blockers[0]?.reachableAlone).toBe(false);
   });
 

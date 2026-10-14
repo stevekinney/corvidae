@@ -5,8 +5,8 @@
  */
 
 import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
-import type { OutputGamut } from './theme-chroma-grid.ts';
 import type { ReportRecord } from './theme-check-types.ts';
+import type { OutputGamut } from './theme-chroma-grid.ts';
 import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
 import { proposeForFinding, recomputeProposal } from './theme-remediation-apply.ts';
 import {
