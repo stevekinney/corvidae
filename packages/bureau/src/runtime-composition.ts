@@ -96,6 +96,7 @@ import {
   deserializeCheckpoint,
   encode,
   KEYS,
+  type RecoverAllOptions,
   resolveStorage,
   type Storage,
   storageConditionalBatch,
@@ -1306,6 +1307,14 @@ export type RuntimeCompositionDependencies = {
    * goal attempts unfenced and has no goals to overtake them.
    */
   goalAttemptFence?: GoalAttemptFence;
+  /**
+   * COR-1510 — the engine's recovery hook, installed when the engine is created. The engine
+   * reclaims and resumes runs whose claim has lapsed on its own interval, which can be before
+   * `createBureau` calls `recoverAll()` with its hook; a run resumed that way must reach the same
+   * hook before its first step, or the bureau never sees that step. `createBureau` supplies a
+   * late-bound one that waits until its recovery has started.
+   */
+  onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'];
 };
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
@@ -2154,6 +2163,9 @@ async function buildRuntimeComposition(
       backgroundTasks: options.durableBackgroundTasks ?? 'automatic',
       startScheduler: options.durableBackgroundTasks !== 'manual',
       resolveWorkflowServices: resolveRunServices,
+      ...(dependencies.onRecoveredWorkflow === undefined
+        ? {}
+        : { onRecoveredWorkflow: dependencies.onRecoveredWorkflow }),
       ...(dependencies.goalWorkflow === undefined
         ? {}
         : { goalWorkflow: dependencies.goalWorkflow }),

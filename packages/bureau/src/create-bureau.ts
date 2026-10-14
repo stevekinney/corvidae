@@ -1328,9 +1328,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
   const goalValidatorCatalog = createGoalValidatorCatalog(options.validators);
+  // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
+  // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.
+  // This hook waits for that function to be bound, which `recoverDurableRuns` does when it starts.
+  const recoveredWorkflowHandler =
+    Promise.withResolvers<(info: RecoveredWorkflowInfo) => Promise<void>>();
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
-    { goalWorkflow: goalWorkflowHost.workflow, goalAttemptFence: goalAttemptFenceHost.fence },
+    {
+      goalWorkflow: goalWorkflowHost.workflow,
+      goalAttemptFence: goalAttemptFenceHost.fence,
+      onRecoveredWorkflow: async (info) => {
+        const handler = await recoveredWorkflowHandler.promise;
+        await handler(info);
+      },
+    },
   );
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
@@ -4415,6 +4427,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // batch-failure handling this doc comment describes further up is
     // unchanged.
     try {
+      recoveredWorkflowHandler.resolve(onRecoveredWorkflow);
       const handles = await durable.engine.recoverAll({ onRecoveredWorkflow });
 
       // Read each handle's launch metadata CONCURRENTLY, so one slow/stuck read does

@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
+import { waitForCondition } from './test';
 import { openGovernedMemory } from './test/process-crash-work-integrity-fixtures';
 import type { Bureau } from './types';
 
@@ -121,5 +122,16 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
     const state = await bureau.getDurableRun(run.id);
     expect(state?.status).not.toBe('failed');
     expect(state?.error ?? '').not.toContain('composition not ready');
+
+    await waitForCondition(
+      () => bureau.getRun(run.id)?.status === 'completed',
+      'the reclaimed run never completed',
+    );
+    const auditTrail = bureau.auditTrail;
+    if (auditTrail === undefined) throw new Error('the bureau has no audit trail');
+    const steps = await auditTrail.query({ runId: run.id, type: 'step.completed' });
+    // Step 0 was recorded by the owner; the successor's step 1 must be recorded too, which needs
+    // the bureau to have been watching the run before that step ran.
+    expect(steps).toHaveLength(2);
   });
 });
