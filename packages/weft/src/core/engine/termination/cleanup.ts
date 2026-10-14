@@ -1,5 +1,10 @@
 import type { BatchOperation } from '../../../storage/interface.ts';
-import { KEYS, encodeStorageKeyComponent, storageHas } from '../../../storage/interface.ts';
+import {
+  KEYS,
+  encodeStorageKeyComponent,
+  storageHas,
+  storageKeys,
+} from '../../../storage/interface.ts';
 import { CleanupWarningEvent, RemoteActivityCancellationRequestedEvent } from '../../events.ts';
 import type { WorkflowState, WorkflowStatus } from '../../types.ts';
 import { asyncActivityWorkflowPrefix } from '../async-activity-records.ts';
@@ -10,6 +15,7 @@ import { settleSleepTimerAcknowledgements } from '../sleep-timer-acknowledgement
 import { parseTerminalCleanupTimerId, workflowFeedListenerKey } from '../state-utilities.ts';
 import { releaseWorkflowConcurrencySlot } from '../workflow-concurrency.ts';
 import type { WorkflowStateCommitCallback } from './state-commit-callbacks.ts';
+import { deleteKeysInGuardedChunks } from './terminal-fence.ts';
 
 export type TerminationCallbacks = {
   dispatchEvent: (event: Event) => void;
@@ -27,7 +33,10 @@ export type TerminationCallbacks = {
   commitSelfWorkflowStateOperations: WorkflowStateCommitCallback;
   /** EXTERNAL terminal transition (suspend): rotates the claim epoch. See ADR 0002. */
   commitExternalTerminalWorkflowStateOperations: WorkflowStateCommitCallback;
-  cleanupReviews: (workflowId: string) => Promise<void>;
+  cleanupReviews: (
+    workflowId: string,
+    fencedCommit?: (operations: BatchOperation[]) => Promise<boolean>,
+  ) => Promise<void>;
 };
 
 export const TERMINAL_WORKFLOW_STATUSES: ReadonlySet<WorkflowStatus> = new Set<WorkflowStatus>([
@@ -275,8 +284,9 @@ export async function cleanupWorkflowStorage(
   internals: EngineInternals,
   workflowId: string,
   includeOutputArtifacts: boolean,
-  releaseConcurrencySlot = true,
+  options: CleanupStorageOptions = {},
 ): Promise<void> {
+  const { releaseConcurrencySlot = true, fencedCommit, extraDeleteKeys = [] } = options;
   const encodedWorkflowId = encodeStorageKeyComponent(workflowId);
 
   // Always sweep internal state. Signals are workflow-scoped scratch space,
@@ -299,6 +309,11 @@ export async function cleanupWorkflowStorage(
     // the `ev:` prefix - callers that want it gone should use a storage
     // TTL or explicit pruning.
     prefixes.push(`offload:${encodedWorkflowId}:`, `blob:${encodedWorkflowId}:`);
+  }
+
+  if (fencedCommit !== undefined && internals.storage.capabilities().conditionalBatch) {
+    await sweepFenced(internals, workflowId, prefixes, extraDeleteKeys, fencedCommit);
+    return;
   }
 
   await internals.storage.delete(KEYS.workflowHeaders(workflowId));
@@ -354,6 +369,50 @@ export async function cleanupWorkflowStorage(
   }
 
   await flush();
+}
+
+/** Options for {@link cleanupWorkflowStorage}. */
+type CleanupStorageOptions = {
+  /** Whether to release the workflow's concurrency slot; terminal teardown already did, fenced. */
+  releaseConcurrencySlot?: boolean;
+  /**
+   * Commits one chunk of deletes only while the id still belongs to the committing run.
+   * With `conditionalBatch` the sweep enumerates each prefix and deletes those exact keys in
+   * guarded chunks, so a replacement that committed leaves nothing deleted and keys it writes
+   * after the listing are never in a batch. Without `conditionalBatch` the sweep keeps the
+   * unfenced path, whose only protection is the caller's best-effort same-engine check.
+   */
+  fencedCommit?: ((operations: BatchOperation[]) => Promise<boolean>) | undefined;
+  /** Further keys the fenced sweep deletes in its first chunk. */
+  extraDeleteKeys?: string[];
+};
+
+/** Delete the per-run keys and everything under `prefixes`, stopping at the first chunk the fence rejects. */
+async function sweepFenced(
+  internals: EngineInternals,
+  workflowId: string,
+  prefixes: string[],
+  extraDeleteKeys: string[],
+  fencedCommit: (operations: BatchOperation[]) => Promise<boolean>,
+): Promise<void> {
+  const keyed = [
+    KEYS.workflowHeaders(workflowId),
+    KEYS.signalSequence(workflowId),
+    KEYS.workflowHasServices(workflowId),
+    ...extraDeleteKeys,
+  ];
+  // The finalizer payload stays while a teardown is still owed; see the unfenced path.
+  if (!(await storageHas(internals.storage, KEYS.teardownOwed(workflowId)))) {
+    keyed.push(KEYS.finalizerState(workflowId));
+  }
+  async function* swept(): AsyncGenerator<string> {
+    for (const prefix of prefixes) yield* storageKeys(internals.storage, prefix);
+  }
+  await deleteKeysInGuardedChunks(
+    swept(),
+    fencedCommit,
+    keyed.map((key) => ({ type: 'delete', key })),
+  );
 }
 
 /**
@@ -422,6 +481,7 @@ export async function cleanupTerminalWorkflowSynchronously(
   workflowId: string,
   includeOutputArtifacts: boolean,
   callbacks: TerminationCallbacks,
+  fencedCommit?: (operations: BatchOperation[]) => Promise<boolean>,
 ): Promise<void> {
   cleanupTerminalWorkflowMemory(internals, workflowId, callbacks);
   await cleanupTerminalWorkflowDurableState(
@@ -429,7 +489,10 @@ export async function cleanupTerminalWorkflowSynchronously(
     workflowId,
     includeOutputArtifacts,
     callbacks,
-    false,
+    {
+      releaseConcurrencySlot: false,
+      fencedCommit,
+    },
   );
 }
 
@@ -438,16 +501,20 @@ export async function cleanupTerminalWorkflowDurableState(
   workflowId: string,
   includeOutputArtifacts: boolean,
   callbacks: TerminationCallbacks,
-  releaseConcurrencySlot = true,
+  options: CleanupStorageOptions = {},
 ): Promise<void> {
-  await callbacks.cleanupReviews(workflowId);
-  await cleanupWorkflowStorage(
-    internals,
-    workflowId,
-    includeOutputArtifacts,
-    releaseConcurrencySlot,
-  );
-  await internals.storage.delete(KEYS.terminalCleanupNeeded(workflowId));
+  await (options.fencedCommit === undefined
+    ? callbacks.cleanupReviews(workflowId)
+    : callbacks.cleanupReviews(workflowId, options.fencedCommit));
+  const marker = KEYS.terminalCleanupNeeded(workflowId);
+  await cleanupWorkflowStorage(internals, workflowId, includeOutputArtifacts, {
+    ...options,
+    extraDeleteKeys: [marker],
+  });
+  // The fenced sweep already deleted the marker in its guarded chunk.
+  if (options.fencedCommit === undefined || !internals.storage.capabilities().conditionalBatch) {
+    await internals.storage.delete(marker);
+  }
 }
 
 export async function runDeferredTerminalCleanup(

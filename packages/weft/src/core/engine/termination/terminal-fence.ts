@@ -78,6 +78,30 @@ export async function commitFencedTeardownBatch(
   return true;
 }
 
+/** Maximum deletes per guarded teardown chunk, well under the storage batch limit. */
+const GUARDED_DELETE_CHUNK_SIZE = 500;
+
+/**
+ * Delete `keys` in chunks, each committed through `fencedCommit`. Stops at the first rejected
+ * chunk and reports whether every chunk applied. The keys are listed before they are deleted,
+ * so a key written after the listing is never in a batch.
+ */
+export async function deleteKeysInGuardedChunks(
+  keys: AsyncIterable<string>,
+  fencedCommit: (operations: BatchOperation[]) => Promise<boolean>,
+  initial: BatchOperation[] = [],
+): Promise<boolean> {
+  let chunk = initial;
+  for await (const key of keys) {
+    chunk.push({ type: 'delete', key });
+    if (chunk.length >= GUARDED_DELETE_CHUNK_SIZE) {
+      if (!(await fencedCommit(chunk))) return false;
+      chunk = [];
+    }
+  }
+  return chunk.length === 0 || fencedCommit(chunk);
+}
+
 /** {@link commitFencedTeardownBatch} bound to one terminal commit, for the cleanup helpers' `commitBatch` parameter. */
 export function fencedTeardownCommit(
   internals: EngineInternals,

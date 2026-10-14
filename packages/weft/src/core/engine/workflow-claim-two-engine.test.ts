@@ -1648,6 +1648,12 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
             return target.batch(operations);
           };
         }
+        if (property === 'deletePrefix' && target.deletePrefix) {
+          return async (prefix: string) => {
+            await park([{ type: 'delete', key: prefix }]);
+            return target.deletePrefix!(prefix);
+          };
+        }
         const value = Reflect.get(target, property, receiver);
         return typeof value === 'function' ? value.bind(target) : value;
       },
@@ -1764,6 +1770,84 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       gate.release.resolve();
       await oldDone;
       await Bun.sleep(50);
+      await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
+    } finally {
+      gate.release.resolve();
+    }
+  });
+
+  it('cross-engine: scratch keys under a swept prefix survive the old engine cleanup', async () => {
+    const id = `teardown-durable-prefix-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    // Park the old run at its guarded sweep chunk, after the listing but before the delete.
+    await using engineA = await createEngine(
+      gateFirstWrite(storage, gate, deletes(KEYS.workflowHeaders(id))),
+    );
+    await using engineB = await createEngine(storage);
+    try {
+      const oldDone = terminateOldRun(engineA, id, 'fail', gate);
+      await gate.reached.promise;
+      const replacement = await engineB.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      // A signal the replacement has not consumed is durable scratch state under `sig:`.
+      await engineB.signal(id, 'buffered', 'kept');
+      const scratchKeys = async (): Promise<string[]> => {
+        const keys: string[] = [];
+        for await (const [key] of storage.scan('sig:')) keys.push(key);
+        return keys;
+      };
+      const before = await scratchKeys();
+      expect(before.length).toBeGreaterThan(0);
+
+      gate.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+
+      expect(await scratchKeys()).toEqual(before);
+      await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
+    } finally {
+      gate.release.resolve();
+    }
+  });
+
+  it('cross-engine: review entries of a replacement survive the old engine review cleanup', async () => {
+    const id = `teardown-durable-review-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    const reviewKey = (reviewId: string) => KEYS.review(id, reviewId);
+    const reviewPrefix = KEYS.review(id, '');
+    // Park the old run at its first review delete, listing already done (or unfenced prefix delete).
+    await using engineA = await createEngine(
+      gateFirstWrite(storage, gate, (operations) =>
+        operations.some(
+          (operation) => operation.type === 'delete' && operation.key.startsWith(reviewPrefix),
+        ),
+      ),
+    );
+    await using engineB = await createEngine(storage);
+    try {
+      await storage.put(reviewKey('old'), new Uint8Array([1]));
+      const oldDone = terminateOldRun(engineA, id, 'fail', gate);
+      await gate.reached.promise;
+      const replacement = await engineB.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      // The replacement's pending review, written after the old run listed its own.
+      await storage.put(reviewKey('new'), new Uint8Array([2]));
+
+      gate.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+
+      expect(await storage.get(reviewKey('new'))).not.toBeNull();
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
     } finally {
       gate.release.resolve();

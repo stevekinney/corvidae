@@ -238,7 +238,8 @@ export function createTerminationCallbacksWith<
         operations,
         options,
       ),
-    cleanupReviews: (workflowId) => cleanupReviews(getInternals(engine), workflowId),
+    cleanupReviews: (workflowId, fencedCommit) =>
+      cleanupReviews(getInternals(engine), workflowId, fencedCommit),
   };
 }
 

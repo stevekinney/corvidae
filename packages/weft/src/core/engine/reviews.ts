@@ -18,6 +18,7 @@ import type {
 import {
   deleteCompletedReviewsForWorkflow,
   listCompletedReviewsFromStorage,
+  listReviewKeysForWorkflow,
   matchesReviewListFilter,
   persistCompletedReviewRecord,
   stageTimedOutReviewDeletion,
@@ -26,6 +27,7 @@ import type { EngineInternals } from './internals.ts';
 import { parseStoredReviewRequest, toPendingReviewEntry } from './review-list-entries.ts';
 import { trackWaiterKey, untrackWaiterKey } from './signals.ts';
 import type { CapturedRejectionReason } from './strategy-helpers.ts';
+import { deleteKeysInGuardedChunks } from './termination/terminal-fence.ts';
 type ReviewOperationOutcome = { ok: true; value: HumanReviewResult } | { ok: false; error: Error };
 
 export type SubmitReviewCallbacks = {
@@ -330,7 +332,18 @@ export async function sendReviewWebhook(
 export async function cleanupReviews(
   internals: EngineInternals,
   workflowId: string,
+  fencedCommit?: (operations: BatchOperation[]) => Promise<boolean>,
 ): Promise<void> {
+  // A terminal commit's teardown lists the review keys and deletes exactly those in guarded
+  // chunks, so a same-id replacement's review entries are never deleted.
+  if (fencedCommit !== undefined && internals.storage.capabilities().conditionalBatch) {
+    await deleteKeysInGuardedChunks(
+      listReviewKeysForWorkflow(internals.storage, workflowId),
+      fencedCommit,
+    );
+    return;
+  }
+
   const pendingPrefix = `review:${encodeStorageKeyComponent(workflowId)}:`;
   const deleteOperations: BatchOperation[] = [];
 

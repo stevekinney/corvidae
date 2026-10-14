@@ -224,7 +224,7 @@ export async function terminateWorkflow(
 
     try {
       if (!superseded) {
-        await cleanupTerminalWorkflowSynchronously(internals, workflowId, true, callbacks);
+        await cleanupTerminalWorkflowSynchronously(internals, workflowId, true, callbacks, fenced);
       }
 
       const event = buildTerminalEvent(workflowId, status, elapsed, reason);
@@ -664,7 +664,7 @@ export async function failWorkflow(
   const superseded = isSuperseded();
   try {
     if (!superseded) {
-      await cleanupTerminalWorkflowSynchronously(internals, workflowId, false, callbacks);
+      await cleanupTerminalWorkflowSynchronously(internals, workflowId, false, callbacks, fenced);
     }
 
     const event = new WorkflowFailedEvent(workflowId, error);
