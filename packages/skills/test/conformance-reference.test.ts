@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,7 +52,7 @@ function resolveValidatorCommand(): string[] | undefined {
 const validatorCommand = resolveValidatorCommand();
 const createdRoots: string[] = [];
 
-afterEach(async () => {
+afterAll(async () => {
   await Promise.all(
     createdRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -67,25 +67,41 @@ async function materialize(directoryName: string, skillMarkdown: string): Promis
   return skillDirectory;
 }
 
+/**
+ * The reference validator is a real process, so every fixture runs through it once here at module
+ * scope to stay off the per-test clock. The guard is the same opt-in as the suite below: with
+ * `AGENT_SKILLS_REFERENCE_VALIDATOR` unset, nothing is spawned.
+ */
+const referenceExitCodes = new Map<string, number>();
+if (validatorCommand !== undefined) {
+  for (const fixture of CONFORMANCE_CORPUS) {
+    const skillDirectory = await materialize(fixture.directoryName, fixture.skillMarkdown);
+    const child = Bun.spawn([...validatorCommand, 'validate', skillDirectory], {
+      timeout: 120_000,
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+    await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    referenceExitCodes.set(fixture.id, await child.exited);
+  }
+}
+
 describe.skipIf(validatorCommand === undefined)(
   'the official reference validator agrees with this package',
   () => {
     for (const fixture of CONFORMANCE_CORPUS) {
-      it(`agrees on ${fixture.id}`, async () => {
+      it(`agrees on ${fixture.id}`, () => {
         if (validatorCommand === undefined) return;
 
-        const skillDirectory = await materialize(fixture.directoryName, fixture.skillMarkdown);
-        const result = Bun.spawnSync([...validatorCommand, 'validate', skillDirectory], {
-          stderr: 'pipe',
-          stdout: 'pipe',
-        });
+        // -1 stands for a validator that never reported a code, which the check below rejects.
+        const exitCode = referenceExitCodes.get(fixture.id) ?? -1;
 
         // Exit 0 means valid, exit 1 means validation errors — the CLI's documented contract.
         // Anything else is the harness failing rather than the fixture, and must not be read as a
         // verdict on the skill.
-        expect([0, 1]).toContain(result.exitCode);
+        expect([0, 1]).toContain(exitCode);
 
-        const referenceAcceptsIt = result.exitCode === 0;
+        const referenceAcceptsIt = exitCode === 0;
 
         let packageAcceptsIt = true;
         try {

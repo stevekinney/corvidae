@@ -157,6 +157,7 @@ import {
   ReviewRejectedEvent,
   ReviewRevokedEvent,
   ReviewSupersededEvent,
+  RunAbortSettledEvent,
   RunRegisteredEvent,
   RunRemovedEvent,
 } from './events';
@@ -428,6 +429,53 @@ const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'runnin
 export interface CancelDurableRunDependencies {
   getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
   cancel: (runId: string) => Promise<void>;
+}
+
+/** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
+export interface WaitForDurableRunDependencies {
+  getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
+  /** Weft's result waiter for the run: resolves, or rejects with the run's own failure or another error. */
+  awaitResult: (runId: string) => Promise<void>;
+  /** `durableBackgroundTasks: 'manual'`, where Weft installs no cross-engine poll. */
+  manualBackgroundTasks: boolean;
+}
+
+/**
+ * The resolution algorithm behind {@link Bureau.waitForDurableRun}, independent of a real
+ * `runtime.durable.engine`. A rejection of the result waiter is accepted only when the store then
+ * confirms the run is terminal (a failed, cancelled or timed-out run rejects its own result);
+ * any other rejection says nothing about the run and propagates.
+ */
+export async function resolveWaitForDurableRun(
+  runId: string,
+  dependencies: WaitForDurableRunDependencies,
+): Promise<WorkflowState | null | undefined> {
+  const isTerminal = (state: WorkflowState) =>
+    !DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status);
+  const current = await dependencies.getDurableRun(runId);
+  if (current === undefined || current === null) return current;
+  if (isTerminal(current)) return current;
+  // Weft's result waiter rechecks the store only inside `runMaintenance()` under
+  // `backgroundTasks: 'manual'`, so a wait nothing re-drives could pend forever for a run another
+  // bureau completes. Refuse it plainly instead of hanging.
+  if (dependencies.manualBackgroundTasks) {
+    throw new BureauError(
+      `waitForDurableRun("${runId}") cannot wait under durableBackgroundTasks: 'manual', ` +
+        `where nothing re-reads the durable store between maintenance passes; call ` +
+        `runDurableMaintenance() and then getDurableRun() instead`,
+      'UNSUPPORTED_CAPABILITY',
+    );
+  }
+  let rejection: unknown;
+  try {
+    await dependencies.awaitResult(runId);
+  } catch (error) {
+    rejection = error;
+  }
+  const settled = await dependencies.getDurableRun(runId);
+  if (settled === undefined || settled === null) return settled;
+  if (isTerminal(settled)) return settled;
+  throw rejection ?? new Error(`Durable run "${runId}" settled without reaching a terminal state`);
 }
 
 /**
@@ -5010,6 +5058,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       detachBestEffortPromise(
         runState.activeRun.closed().then(() => {
           abortingRunIds.delete(id);
+          emitter.dispatch(new RunAbortSettledEvent(id));
           return undefined;
         }),
       );
@@ -5182,6 +5231,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function getDurableRun(runId: string) {
     if (!runtime.durable) return undefined;
     return runtime.durable.engine.get(runId);
+  }
+
+  /**
+   * Resolve once a run's durable workflow is terminal in the durable store — see the
+   * {@link Bureau.waitForDurableRun} doc comment. Built on Weft's result waiter
+   * (`engine.getHandle(runId).result()`), which settles from the store for a run another engine
+   * finishes; its rejection carries a failed run's error, which this wrapper turns back into the
+   * run's state.
+   */
+  async function waitForDurableRun(runId: string) {
+    if (!runtime.durable) return undefined;
+    const engine = runtime.durable.engine;
+    return resolveWaitForDurableRun(runId, {
+      getDurableRun,
+      awaitResult: async (id) => {
+        await engine.getHandle(id).result();
+      },
+      manualBackgroundTasks: options.durableBackgroundTasks === 'manual',
+    });
   }
 
   /**
@@ -9601,6 +9669,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     listAbortingRuns,
     deleteRun,
     getDurableRun,
+    waitForDurableRun,
     cancelDurableRun,
     listDurableRuns,
     runDurableMaintenance,
