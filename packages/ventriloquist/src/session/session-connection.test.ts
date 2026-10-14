@@ -647,6 +647,53 @@ describe('a cancellation while the process exit is held', () => {
   });
 });
 
+describe('a submitted write that fails while the process exit is held', () => {
+  // "backend-failed | server, submitted operation | operation failure; generation revoked | 1011" and
+  // "A failed connection is not a successful process exit": the held exit is dropped, never sent to be refused.
+  test('reports the failure and the cleanup result without calling the dropped exit a protocol violation', async () => {
+    const write = createDeferred<void>();
+    const harness = createHarness({ backend: { write: () => write.promise } });
+    let violations = 0;
+    const attach = harness.session.attach.bind(harness.session);
+    harness.session.attach = (request) => {
+      const result = attach(request);
+      if (!result.accepted) return result;
+      const original = result.attachment.protocolViolation;
+      return {
+        ...result,
+        attachment: {
+          ...result.attachment,
+          protocolViolation: () => {
+            violations += 1;
+            return original();
+          },
+        },
+      };
+    };
+    const transport = createFixtureTransport({ session: harness.session });
+    void harness.session.start();
+    await flush();
+    transport.connect();
+    transport.send(transport.client.input(utf8('a')));
+    await flush();
+    harness.session.reportProcessExit(0, null);
+    write.reject(new Error('write failed'));
+    await flush();
+    harness.stream.end();
+    await flush();
+    transport.pump();
+    expect(transport.received.map((message) => message.kind)).toEqual([
+      'capabilities',
+      'operation-ack',
+      'operation-failure',
+      'cleanup-result',
+    ]);
+    expect(transport.failures).toEqual([]);
+    expect(transport.closeCodes).toEqual([1011]);
+    expect(violations).toBe(0);
+  });
+});
+
 describe('transport liveness', () => {
   test('a quiet read-only attachment stays attached while the transport reports itself alive', async () => {
     const { harness, transport } = await wire({}, { grant: 'read-only' });

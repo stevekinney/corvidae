@@ -66,6 +66,8 @@ export class SessionConnection {
    * `backend-failed` for a submitted operation, which the client reads as the terminal status and
    * answers a later `process-exit` with a refusal, so they follow the exit instead of preceding it.
    */
+  /** A failure of a submitted operation was sent: it is the terminal status, so a held exit is not reported. */
+  #submittedFailureSent = false;
   #heldCancellations: Extract<SessionEvent, { type: 'operationResult' }>[] = [];
   /** A process exit held back until output has ended, so no trailing byte follows it. */
   #pendingExit: { readonly exitCode: number | null; readonly signal: string | null } | undefined;
@@ -341,8 +343,12 @@ export class SessionConnection {
    */
   #reportOperationResult(event: Extract<SessionEvent, { type: 'operationResult' }>): void {
     const code = event.disposition === 'unknown' ? 'transport-failed' : 'backend-failed';
-    this.#deliver(this.#host.failOperation(event.sequence, code, event.reason));
-    if (event.disposition !== 'canceled') this.#failClosed(describeFailure(code).closeCode);
+    const sent = this.#deliver(this.#host.failOperation(event.sequence, code, event.reason));
+    if (event.disposition === 'canceled') return;
+    // "A failed connection is not a successful process exit": the failure is the terminal status, and
+    // the endpoint refuses an exit after it, so a held exit is dropped rather than sent to be refused.
+    this.#submittedFailureSent ||= sent;
+    this.#failClosed(describeFailure(code).closeCode);
   }
 
   /** Send the held process exit once every source has completed, or at once when there are none to wait for. */
@@ -356,7 +362,8 @@ export class SessionConnection {
     const exit = this.#pendingExit;
     if (exit === undefined) return;
     this.#pendingExit = undefined;
-    this.#deliver(this.#host.processExit(exit.exitCode, exit.signal));
+    if (!this.#submittedFailureSent)
+      this.#deliver(this.#host.processExit(exit.exitCode, exit.signal));
     for (const held of this.#heldCancellations.splice(0)) this.#reportOperationResult(held);
   }
 
