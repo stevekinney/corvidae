@@ -172,6 +172,23 @@ function collectLayerDocuments(
   return refs.flatMap((ref) => (documents[ref] === undefined ? [] : [documents[ref]]));
 }
 
+/** The `$value` a token's winning layer declares in a context, without following aliases. */
+export function authoredValueOf(
+  envelope: ThemeEnvelope,
+  context: ThemePreviewContext,
+  path: string,
+): JsonValue | undefined {
+  const sourcePath = sourcePathOf(envelope, path);
+  let value: JsonValue | undefined;
+  for (const document of layerDocuments(envelope, context)) {
+    const node = getNode(document, sourcePath);
+    if (typeof node === 'object' && node !== null && !Array.isArray(node) && '$value' in node) {
+      value = node['$value'];
+    }
+  }
+  return value;
+}
+
 /**
  * The literal `$value` a token resolves to in a context, following alias chains through the
  * merged documents. Used to seed "Replace with literal" and to show the shipped literal.
@@ -196,6 +213,44 @@ export function literalValueOf(
     current = value.slice(1, -1);
   }
   return undefined;
+}
+
+/**
+ * A token's value with every nested `{reference}` replaced by what it resolves to, so a
+ * composite that reads other tokens through its members compares by effect, not by text.
+ */
+export function resolvedValueOf(
+  envelope: ThemeEnvelope,
+  context: ThemePreviewContext,
+  path: string,
+  depth = 0,
+): JsonValue | undefined {
+  const literal = literalValueOf(envelope, context, path);
+  return literal === undefined ? undefined : resolveNested(envelope, context, literal, depth);
+}
+
+function resolveNested(
+  envelope: ThemeEnvelope,
+  context: ThemePreviewContext,
+  value: JsonValue,
+  depth: number,
+): JsonValue {
+  if (depth > 12) return value;
+  if (isAliasValue(value)) {
+    return resolvedValueOf(envelope, context, value.slice(1, -1), depth + 1) ?? value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => resolveNested(envelope, context, entry, depth + 1));
+  }
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        resolveNested(envelope, context, entry, depth + 1),
+      ]),
+    );
+  }
+  return value;
 }
 
 /** The `$value` text the field starts with for one scope of one token. */

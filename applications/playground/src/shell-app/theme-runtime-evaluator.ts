@@ -24,6 +24,7 @@ import type {
 } from './theme-draft-evaluation.ts';
 import type { ThemeContextId, ThemeEnvelope } from './theme-draft-types.ts';
 import { themePreviewValueProblem } from './theme-preview-message.ts';
+import { trustedDocuments } from './theme-recipe-trust.ts';
 
 /** Where each override scope's document lives in the resolver, and which source list it joins. */
 export const OVERRIDE_DOCUMENTS = {
@@ -64,14 +65,15 @@ export function buildThemeSources(envelope: ThemeEnvelope, revision: number): Th
   return {
     revision,
     resolver,
-    documents: {
+    // Untrusted recipes stay in the envelope but are inert here (see theme-recipe-trust.ts).
+    documents: trustedDocuments({
       ...envelope.base.documents,
       [OVERRIDE_DOCUMENTS.shared]: envelope.overrides.shared,
       [OVERRIDE_DOCUMENTS.light]: envelope.overrides.light,
       [OVERRIDE_DOCUMENTS.dark]: envelope.overrides.dark,
       [OVERRIDE_DOCUMENTS.reduced]: envelope.overrides.reduced,
       [OVERRIDE_DOCUMENTS.forcedReduced]: envelope.overrides.forcedReduced,
-    },
+    }, envelope.base),
   };
 }
 
