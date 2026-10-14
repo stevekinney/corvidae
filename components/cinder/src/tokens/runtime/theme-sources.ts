@@ -10,7 +10,10 @@
  */
 
 import { AUTHORING_CATALOGUE } from './authoring-catalogue.generated.ts';
+import { authoringLayerStack } from './context-stack.ts';
 import type { ThemeSources } from './evaluate.ts';
+import { mergeDocuments } from './resolve.ts';
+import type { ResolverDocument, TokenDocument } from './types.ts';
 
 /** Where each override scope's document lives in the resolver. */
 export const OVERRIDE_DOCUMENTS = {
@@ -92,4 +95,22 @@ export function applyCssOnlyOverrides(
     if (value !== undefined && property !== undefined && accept(value)) merged[property] = value;
   }
   return merged;
+}
+
+/**
+ * The token document one concrete context resolves to: its ordered documents merged the way
+ * evaluation merges them, with aliases, `$extends`, descriptions and extensions still in
+ * place. Nothing is flattened or evaluated. The sources must already have passed validation.
+ */
+export function mergedContextDocument(
+  sources: ThemeSources,
+  context: { theme: string; motion: string },
+): TokenDocument {
+  const documents = new Map(Object.entries(sources.documents) as Array<[string, TokenDocument]>);
+  const layers = authoringLayerStack(sources.resolver as ResolverDocument, documents, {
+    id: `${context.theme}/${context.motion}`,
+    theme: context.theme,
+    motion: context.motion,
+  });
+  return mergeDocuments(layers.map((layer) => layer.content));
 }

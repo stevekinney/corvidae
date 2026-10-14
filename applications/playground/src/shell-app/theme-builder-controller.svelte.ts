@@ -18,12 +18,14 @@ import {
   reloadDiscardCopy,
   type RevisionAnnouncement,
 } from './theme-draft-sync.ts';
+import type { ThemeEnvelope } from './theme-draft-types.ts';
 import { envelopeDownload } from './theme-envelope.ts';
 import {
   activeThemes,
   createTheme,
   deleteTheme,
   duplicateTheme,
+  importThemeCopy,
   permanentDeleteCopy,
   permanentlyDeleteTheme,
   renameTheme,
@@ -145,6 +147,13 @@ export class ThemeBuilderController extends ThemeBuilderCore {
     const result = this.#adopt(duplicateTheme(this.library, id, this.#newId()));
     if (result.ok)
       await this.#afterActiveChange(result.id, `Duplicated as ${this.#nameOf(result.id)}`);
+    return result;
+  }
+
+  /** Import an already-validated envelope as a new theme; a taken name gets a numeric suffix. */
+  async importAsCopy(envelope: ThemeEnvelope): Promise<OperationResult> {
+    const result = this.#adopt(importThemeCopy(this.library, envelope, this.#newId()));
+    if (result.ok) await this.#afterActiveChange(result.id, `Imported as ${this.#nameOf(result.id)}`);
     return result;
   }
 

@@ -58,6 +58,7 @@ export {
   OVERRIDE_DOCUMENTS,
   applyCssOnlyOverrides,
   buildThemeSources,
+  mergedContextDocument,
 } from './theme-sources.ts';
 export type { OverrideScopeName, ThemeSourceEnvelope } from './theme-sources.ts';
 export { THEME_LAYER, StylesheetError, renderThemeStylesheet } from './theme-stylesheet.ts';
