@@ -10,7 +10,7 @@ describe('cleanPlayground', () => {
   it('removes build output, the export report, and scratch directories, and nothing else', async () => {
     const root = await mkdtemp(join(tmpdir(), 'playground-clean-'));
     try {
-      for (const directory of ['.tmp', 'build', 'build-report', 'src/.tmp-abc', 'src/examples']) {
+      for (const directory of ['.tmp', 'build', 'build-report', 'production-gate-results', 'src/.tmp-abc', 'src/examples']) {
         await mkdir(join(root, directory), { recursive: true });
       }
       await writeFile(join(root, 'build-report', 'export-report.json'), '{}');
@@ -18,7 +18,7 @@ describe('cleanPlayground', () => {
 
       await cleanPlayground(root);
 
-      for (const removed of ['.tmp', 'build', 'build-report', 'src/.tmp-abc']) {
+      for (const removed of ['.tmp', 'build', 'build-report', 'production-gate-results', 'src/.tmp-abc']) {
         expect(existsSync(join(root, removed))).toBe(false);
       }
       expect(existsSync(join(root, 'src', 'examples', 'kept.ts'))).toBe(true);
