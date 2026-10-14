@@ -1031,17 +1031,22 @@ const ignorePatternParity = await outcomeOf(async () => {
         `[test]\ncoveragePathIgnorePatterns = ["${pattern}"]\n`,
       );
       await rm(join(root, 'coverage'), { recursive: true, force: true });
-      const coverageRun =
-        await Bun.$`bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage`
-          .cwd(root)
-          .quiet()
-          .nothrow();
+      // A spawned child, not `Bun.$`, so the scenario hang guard can kill a deadlocked run.
+      const coverageChild = Bun.spawn(
+        ['bun', 'test', '--coverage', '--coverage-reporter=lcov', '--coverage-dir=coverage'],
+        { cwd: root, stdout: 'ignore', stderr: 'pipe', timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+      );
+      const [exitCode, stderr] = await Promise.all([
+        coverageChild.exited,
+        new Response(coverageChild.stderr).text(),
+      ]);
+      const coverageRun = { exitCode, stderr };
       // Assert the coverage run itself succeeded. A non-zero exit can still leave a
       // partial or empty lcov, which would silently skew the exclusion set below — so
       // fail here, at the real cause, rather than later on an opaque file read.
       expect(
         coverageRun.exitCode,
-        `bun test --coverage failed for pattern "${pattern}": ${coverageRun.stderr.toString()}`,
+        `bun test --coverage failed for pattern "${pattern}": ${coverageRun.stderr}`,
       ).toBe(0);
       const lcov = await Bun.file(join(root, 'coverage', 'lcov.info')).text();
       const bunExcluded = new Set(
