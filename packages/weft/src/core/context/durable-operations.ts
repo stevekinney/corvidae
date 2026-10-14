@@ -123,6 +123,13 @@ export function readOrInitConditionDeadline(
   step: number,
   timeout: Duration | undefined,
 ): number | undefined {
+  // Consume the resume reference time before any early return. An uncached
+  // `waitUntil` is the first time operation after resume whether or not it has a
+  // timeout or an existing anchor; leaving the reference set would hand the stale
+  // checkpoint time to the next uncached `ctx.sleep`, which would then fire early.
+  const referenceTime = internals.sleepReferenceTime ?? internals.getNow();
+  internals.sleepReferenceTime = undefined;
+
   if (timeout === undefined) return undefined;
 
   const localKey = `${CONDITION_DEADLINE_LOCAL_PREFIX}${step}`;
@@ -143,8 +150,6 @@ export function readOrInitConditionDeadline(
   }
 
   const milliseconds = parseDuration(timeout);
-  const referenceTime = internals.sleepReferenceTime ?? internals.getNow();
-  internals.sleepReferenceTime = undefined;
   const deadline = referenceTime + milliseconds;
   // Reassign rather than mutate in place: `checkpointLocals` is frozen between
   // operations (the activity-retry-state precedent), so an in-place write throws.
