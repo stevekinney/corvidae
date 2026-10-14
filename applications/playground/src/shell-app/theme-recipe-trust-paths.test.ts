@@ -44,7 +44,7 @@ describe('untrusted recipes stay inert on every source path', () => {
     for (const evaluation of Object.values(snapshot.evaluations)) {
       expect(evaluation.ok).toBe(true);
       if (!evaluation.ok) continue;
-      expect(Object.values(evaluation.properties).join(' ')).not.toContain('url(');
+      expect(JSON.stringify(evaluation.properties)).not.toContain('url(');
     }
   });
 
