@@ -300,8 +300,7 @@ describe('spacing scale validation', () => {
 
   test('a marked radius member joins the radius scale only', () => {
     const corpus = cloneCorpus(loadProfileCorpus());
-    const small = publicToken('--cinder-radius-small', 'radius');
-    small.$extensions['com.lostgradient.cinder'].scale = 'radius';
+    const small = publicToken('--cinder-radius-small', 'radius', { scale: 'radius' });
     baseDocument(corpus)['radius'] = { $type: 'dimension', small };
     const catalogue = buildAuthoringCatalogue(corpus.resolver, corpus.documentsByPath);
     expect(catalogue.scales['spacing']).toEqual(['space.one', 'space.two']);
