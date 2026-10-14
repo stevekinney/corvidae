@@ -1,19 +1,20 @@
 import { describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { withOptionalStorageDriversHidden } from './block-optional-storage-drivers.test-support.ts';
+import {
+  OPTIONAL_STORAGE_DRIVER_ENTRIES,
+  withOptionalStorageDriversAbsent,
+} from './block-optional-storage-drivers.test-support.ts';
 
 import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
 const weftRoot = import.meta.dir + '/../..';
 
 async function runFixture(relativePath: string): Promise<{ exitCode: number; stderr: string }> {
-  return withOptionalStorageDriversHidden(weftRoot, async () => {
+  return withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => {
     const proc = Bun.spawn(['bun', relativePath], {
-      cwd: weftRoot,
+      cwd: sandboxRoot,
       stdout: 'pipe',
       stderr: 'pipe',
       env: { ...Bun.env, FORCE_COLOR: '0' },
@@ -24,7 +25,7 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
   });
 }
 
-// These gates run fixtures in fresh Bun processes with the optional storage drivers hidden, which
+// These gates run fixtures in fresh Bun processes in a sandbox without the optional storage drivers, which
 // takes seconds on a loaded host. The scenarios below run at module scope, off Bun's five-second
 // per-test clock; each test rethrows its scenario's outcome.
 
@@ -71,50 +72,20 @@ describe('storage/resolve (optional-driver subprocess gates)', () => {
   it("defers Turso's driver import to first use rather than construction", () =>
     rethrow(scenario2));
 
-  it('skips a package that is not installed under the given root rather than treating it as an error', async () => {
-    // `weftRoot` here has no `node_modules` at all, so every optional
-    // storage-driver package's `exists()` check reports false — the same
-    // "not installed" path a workspace missing a subset of the optional
-    // peers takes in production, distinct from the "installed, temporarily
-    // renamed" path the other tests in this file exercise.
-    const emptyRoot = import.meta.dir;
-    let bodyRan = false;
-    const result = await withOptionalStorageDriversHidden(emptyRoot, async () => {
-      bodyRan = true;
-      return 'ok';
-    });
-    expect(result).toBe('ok');
-    expect(bodyRan).toBe(true);
-  });
-
-  it('still resolves with the body result when restoring a hidden package fails', async () => {
-    // The restore rename (`node_modules/.hidden-pg` -> `node_modules/pg`) is
-    // best-effort: if something removes the hidden copy while it is hidden
-    // (a crashed process, a concurrent cleanup), `withOptionalStorageDriversHidden`
-    // must not let that failure mask the body's own result or throw past it.
-    const tempRoot = mkdtempSync(join(tmpdir(), 'weft-optional-drivers-restore-'));
-    try {
-      const pgDir = join(tempRoot, 'node_modules', 'pg');
-      await mkdir(pgDir, { recursive: true });
-      await writeFile(join(pgDir, 'package.json'), JSON.stringify({ name: 'pg' }));
-
-      const result = await withOptionalStorageDriversHidden(tempRoot, async () => {
-        // Delete the hidden copy while it's still hidden, so the restore
-        // rename in `finally` has nothing to rename from.
-        await rm(join(tempRoot, 'node_modules', '.hidden-pg'), {
-          recursive: true,
-          force: true,
-        });
-        return 'body-result';
-      });
-
-      expect(result).toBe('body-result');
-      // Neither the original nor the hidden copy exists — the failed
-      // restore was swallowed, not silently retried or re-created.
-      expect(existsSync(pgDir)).toBe(false);
-      expect(existsSync(join(tempRoot, 'node_modules', '.hidden-pg'))).toBe(false);
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true });
-    }
+  it('links every dependency but the optional drivers into a sandbox it removes afterwards', async () => {
+    const seen = await withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => ({
+      sandboxRoot,
+      drivers: OPTIONAL_STORAGE_DRIVER_ENTRIES.filter((entry) =>
+        existsSync(join(sandboxRoot, 'node_modules', entry)),
+      ),
+      zod: existsSync(join(sandboxRoot, 'node_modules', 'zod', 'package.json')),
+      source: existsSync(join(sandboxRoot, 'src', 'storage', 'resolve.ts')),
+    }));
+    expect(seen.drivers).toEqual([]);
+    expect(seen.zod).toBe(true);
+    expect(seen.source).toBe(true);
+    expect(existsSync(seen.sandboxRoot)).toBe(false);
+    // The shared install the rest of the suite and a concurrent typecheck read is untouched.
+    expect(existsSync(join(weftRoot, 'node_modules', 'lmdb'))).toBe(true);
   });
 });
