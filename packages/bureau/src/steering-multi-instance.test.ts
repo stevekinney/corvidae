@@ -530,6 +530,39 @@ describe('durable steering across two Bureau processes', () => {
           }),
         ),
       ).toBe(2);
+      // Its id is decided all the same: an exact retry replays the refusal,
+      // and the id cannot be reused for a different command.
+      expect(
+        await bureauB.submitSteeringCommand(longId, {
+          id: 'nan-revision',
+          principal: 'alice',
+          expectedRevision: Number.NaN,
+          requestedValue: { target: 'model', override: 'claude-opus-4-8' },
+        }),
+      ).toEqual(unrepresentable);
+      const reused = await bureauB.submitSteeringCommand(longId, {
+        id: 'nan-revision',
+        principal: 'alice',
+        requestedValue: { target: 'provider', override: 'anthropic' },
+      });
+      expect(reused.outcome).toBe('conflict');
+
+      // A malformed command from an untyped caller is refused without
+      // reaching the log, which every process can still fold.
+      const malformed = await bureauA.submitSteeringCommand(longId, {
+        id: 'malformed',
+        principal: 'alice',
+        requestedValue: { target: 'model' } as never,
+      });
+      expect(malformed.outcome).toBe('rejected');
+      expect(
+        versionOf(
+          await bureauB.submitSteeringCommand(longId, {
+            principal: 'alice',
+            requestedValue: { target: 'effort', override: 'high' },
+          }),
+        ),
+      ).toBe(3);
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();

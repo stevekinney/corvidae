@@ -231,6 +231,7 @@ import {
   readSteeringKeyBinding,
   readSteeringLogEntries,
   readSteeringLogHead,
+  isLoggableSteeringCommand,
   SteeringLogCorruptError,
   steeringSessionRunTag,
   type SteeringKeyBinding,
@@ -3464,15 +3465,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           );
         } catch (error) {
           // The session was already saved as running this run, which will
-          // now never start: record it as failed rather than leave a phantom.
+          // now never start: record it as failed rather than leave a phantom —
+          // unless another process deleted it meanwhile, in which case saving
+          // would recreate it.
           try {
-            await saveSession(
-              sessionId,
-              conversation,
-              { lastRunId: runId, lastRunStatus: 'error', lastError: serializeUnknownError(error) },
-              request.agentName,
-              baseConversationHistory,
-            );
+            const current = await runtime.sessionStore?.load(sessionId);
+            if (current?.incarnation === steeringSession.incarnation)
+              await saveSession(
+                sessionId,
+                conversation,
+                {
+                  lastRunId: runId,
+                  lastRunStatus: 'error',
+                  lastError: serializeUnknownError(error),
+                },
+                request.agentName,
+                baseConversationHistory,
+              );
           } catch (rollbackError) {
             diagnose({
               level: 'error',
@@ -7832,6 +7841,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       limit: 2,
     });
     for (const workflow of others.items) live.add(workflow.id);
+    // A run being started is saved as the session's running run before its
+    // tagged workflow exists. Until the engine has any record of it, it is
+    // counted from the session itself; once it does, the engine decides.
+    const session = await runtime.sessionStore?.load(sessionId);
+    const startingRunId = session?.metadata['lastRunId'];
+    if (
+      session?.incarnation === incarnation &&
+      session.metadata['lastRunStatus'] === 'running' &&
+      typeof startingRunId === 'string' &&
+      !live.has(startingRunId) &&
+      (await engine.get(startingRunId)) === null
+    ) {
+      live.add(startingRunId);
+    }
     return [...live].toSorted((left, right) => left.localeCompare(right));
   }
 
@@ -7876,19 +7899,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<SteeringCommandAdmissionOutcome> {
     // A private copy: the event appended, the event applied, and what the
     // caller may later mutate must never differ.
-    // Unrepresentable in the log (JSON would write NaN or Infinity as null,
-    // which no process could fold). Such a revision can never equal a real
-    // configVersion, so this is the gate's own answer, given without logging.
-    if (
-      request.expectedRevision !== undefined &&
-      !(Number.isSafeInteger(request.expectedRevision) && request.expectedRevision >= 0)
-    ) {
-      return {
-        outcome: 'rejected',
-        failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
-      };
-    }
+    // A revision JSON cannot represent (NaN, an infinity, a fraction, a
+    // negative) can never equal a real configVersion, so it is the gate's own
+    // `policy-denied` — decided after the usual idempotency lookup, and
+    // logged without the unrepresentable field so the id stays decided.
+    const revisionIsRepresentable =
+      request.expectedRevision === undefined ||
+      (Number.isSafeInteger(request.expectedRevision) && request.expectedRevision >= 0);
     const command = structuredClone(request);
+    if (!revisionIsRepresentable)
+      delete (command as { expectedRevision?: number }).expectedRevision;
+    let decidedRefusal: SteeringRefusal['outcome'] | undefined = refusal;
     const submittedValue =
       submittedValueAsSent === undefined ? undefined : structuredClone(submittedValueAsSent);
     const { sessionId, principal, id } = command;
@@ -7913,6 +7934,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         asSubmittedRetry(cursor.ledger, cursor.refusals, cursor.submitted, command, submittedValue),
       );
       if (answered !== undefined) return answered;
+      if (!revisionIsRepresentable && decidedRefusal === undefined) {
+        decidedRefusal = {
+          outcome: 'rejected',
+          failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+        };
+      }
+      // Only what the log parser can read back is ever appended.
+      if (!isLoggableSteeringCommand(command)) {
+        if (decidedRefusal !== undefined) return decidedRefusal;
+        throw new BureauError('Malformed steering command.', 'BAD_REQUEST');
+      }
 
       let expectedBinding: string | null = null;
       const stored = await readSteeringKeyBinding(kv, principal, id);
@@ -7957,11 +7989,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // append can still win; the orphan it leaves is removed by the boot
       // sweep, and the admission is equivalent to one that landed just
       // before the deletion.
+      // Liveness first, then the session: the backend-wide query is awaited,
+      // and the session's terminal state must be read after it, not before.
+      const liveRunIds = await liveRunIdsNow();
       const stillLive = await runtime.sessionStore?.load(sessionId);
       if (stillLive?.incarnation !== incarnation) return { outcome: 'not-found' };
       // The session's last run may have finished while this waited: the same
       // terminal check `submitSteeringCommand` made up front, made again.
-      const liveRunIds = await liveRunIdsNow();
       // The run this command binds to may have changed while it waited (its
       // run ended, another became the sole live one), so authority is
       // checked again against the run it will actually be decided for.
@@ -7974,7 +8008,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       const now = runtimeServices.clock.nowISO();
       const event: Extract<SteeringLogEvent, { type: 'admit' | 'refused' }> =
-        refusal === undefined
+        decidedRefusal === undefined
           ? {
               type: 'admit',
               command,
@@ -7982,7 +8016,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               now,
               ...(submittedValue !== undefined ? { submittedValue } : {}),
             }
-          : { type: 'refused', command, outcome: refusal, now };
+          : { type: 'refused', command, outcome: decidedRefusal, now };
       const appended = await appendSteeringLogEvent(
         kv,
         sessionId,

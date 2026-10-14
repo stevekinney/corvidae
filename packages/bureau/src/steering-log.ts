@@ -452,3 +452,12 @@ export async function listSteeringLogIncarnations(
 export function steeringSessionRunTag(sessionId: string, incarnation: string): string {
   return `bureau-steering-run:${sha256HexSync(`${sessionId}\n${incarnation}`).slice(0, 40)}`;
 }
+
+/**
+ * Whether `command` can be logged: exactly the shape the log parser accepts
+ * when it reads the entry back. Anything else, once appended, would make the
+ * whole session's log unreadable to every other process and every restart.
+ */
+export function isLoggableSteeringCommand(command: unknown): boolean {
+  return isSteeringCommand(command);
+}
