@@ -4,17 +4,18 @@ This is the design for making a durable Bureau session's steering survive any nu
 
 ## The core idea
 
-The steering gate stays the in-memory authority a run reads at its step boundaries. Its durable form becomes a per-session-incarnation, append-only log of decided events. Gate state in any process is a fold of that log.
+The steering gate stays the in-memory authority a run reads at its step boundaries. Its durable form becomes a per-session-incarnation, append-only log of events, each carrying the inputs it was decided from. Gate state in any process is a fold of that log.
 
-The log records decisions, not requests. Admitting a steering command depends on facts only the admitting process has: which runs are live (run binding and `run-ambiguous`), the agents map, catalog validation, the clock against a deadline, and `expectedRevision`. Replaying the raw command elsewhere could decide differently. So the admitting process decides once, and the log stores the outcome together with everything the fold needs to apply it with no local context.
+Admitting a steering command depends on facts only the admitting process has: which runs are live (run binding and `run-ambiguous`), the agents map, catalog validation, and the clock against a deadline. Replaying the raw request elsewhere could decide differently. So the log stores each event with those inputs, after Bureau-level validation has already resolved the command, and every process folding it decides identically.
 
 ## Storage layout
 
 Everything lives in `runtime.kv`, which is a `ConditionalTextValueStore`. Its `conditionalBatch` is atomic across keys on the memory, SQLite, and LMDB backends, with per-key expected values and `null` for "must not exist". Per session incarnation:
 
-- `steering-log:v1:<session>:<incarnation>:head` holds `{ sequence, checkpoint? }`, the latest sequence number and an optional folded checkpoint.
-- `steering-log:v1:<session>:<incarnation>:entry:<zero-padded sequence>` holds one decided event.
-- `steering-key:v1:<principal>:<id>` holds `{ session, incarnation, sequence }`, the bureau-wide idempotency index entry. Its scope matches the in-memory ledger.
+- `steering-log:v1:<session>:<incarnation>:head` holds `{ sequence }`, the latest sequence number.
+- `steering-log:v1:<session>:<incarnation>:entry:<zero-padded sequence>` holds one event.
+- `steering-log:v1:<session>:<incarnation>:key:<principal>:<id>` marks each idempotency key the log bound, so deletion can find them.
+- `steering-key:v1:<principal>:<id>` holds `{ sessionId, incarnation, sequence }`, the bureau-wide idempotency binding. Its scope matches the in-memory ledger.
 
 `FleetEventFeed` was considered and rejected as the carrier. Its sequence is global rather than per session. A failed caller-supplied condition surfaces as 25 retries and then a generic error rather than a typed conflict. And `retain()` and workflow purges delete history, which a log that is the only durable copy of steering state cannot tolerate. The session outbox was rejected because it is consumed and deleted on acknowledgement, the same flaw as the mailbox.
 
@@ -23,39 +24,35 @@ Everything lives in `runtime.kv`, which is a `ConditionalTextValueStore`. Its `c
 Every append is one `conditionalBatch` with these conditions and writes:
 
 - **Head condition:** the head still equals the value this process last read. This is optimistic concurrency per session, with no lease.
-- **Index condition (admission events only):** the idempotency key must not exist.
-- **Writes:** the entry, the new head (advancing the checkpoint every N entries), and the idempotency key for admission events.
+- **Binding condition (admissions only):** the idempotency key is unbound, or still holds the stale binding of a deleted incarnation being replaced.
+- **Writes:** the entry, the new head, and for admissions the binding and its marker.
 
-A lost append means another process appended first. The process catches up by folding the new entries, then decides again from the caught-up state. A key that now exists resolves as `replayed` or a typed `conflict` against the event it points to.
+A lost append means another process appended first. The process catches up by folding the new entries, then decides again from the caught-up state.
 
-## Events
+## Events, and how the fold stays deterministic
 
-- **`admitted`:** the full command, plus the decided `configVersion`, the resolved `boundRunId` for pause and resume, the initial state (`accepted` or `applied`), whether it was a value no-op, and the `(principal, id)` keys it superseded.
-- **`rejected`:** the command and its `SteeringCommandFailure`. It is logged so the idempotency key and the decision survive. A retry of a rejected id is `replayed` with the rejection, rather than decided afresh.
-- **`transition`:** `(principal, id)`, the new state (`applied`, `failed`, or `superseded`), and the failure. Run-boundary transitions (`recordApplied`, deadline expiry at promotion, `failAcceptedForRun`) are appended asynchronously after the local gate has applied them, because those call sites are synchronous inside a run's step. A lost transition append is retried after catching up. Transitions are idempotent under the fold: applying `applied` to an already-applied command changes nothing.
-- **`promoted`:** a run's start promoted the pending agent identity. This keeps `agentName` versus `pendingAgentName` deterministic in the fold.
+The gate is not rewritten. Each event records the inputs one of its existing methods needs, and folding calls that method with them:
 
-## Gate refactor
+- **`admit`:** the command (already validated and resolved against the agents map, catalog, and policy), the admitting process's live run ids, and its clock reading. Replayed as `gate.admit(command, { liveRunIds, now })`.
+- **`applied`:** a run observed a `configVersion` at its boundary. Replayed as `gate.recordApplied(runId, configVersion, now)`.
+- **`promoted`:** a run started. Replayed as `gate.promoteForNewRun(runId, now)`.
+- **`run-ended`:** a run reached a terminal state. Replayed as `gate.failAcceptedForRun(runId, now)`.
 
-`admit` splits into two steps:
+While mutating, the gate reads no other process-local state; its only direct clock read is in a read-only accessor. So the same log folds to the same state, ledger, and command states in every process. Logging recorded inputs replaced the planned `decide`/`apply` split, which would have rewritten the gate for the same result.
 
-- **`decide(state, command, context)`** returns an event. It is pure: no mutation and no promise side effects.
-- **`apply(state, event)`** is deterministic and needs no process-local context.
+Admissions and promotions are appended first and applied only after the append succeeds, so the local gate changes in log order. Run-boundary events (`applied`, `run-ended`) are applied locally at once, because the run's own boundary needs them, and appended afterwards in order. That is safe because a boundary only reports versions its process had already folded. It therefore commutes with any foreign admission it raced, whose version is necessarily higher. A failed boundary append is reported as a `steering` diagnostic.
 
-The investigation found all rejection paths ahead of any mutation, so the split is mechanical apart from three points:
+A refused admission (`rejected` or `unsupported-capability`) is logged like any other, so its id stays decided: an exact retry gets the original refusal back, and a mismatched one is a `conflict` against it.
 
-- `record()` derives the initial state from the applied floor, so `decide` computes it and the event carries it.
-- Supersession sets come from the owner maps, so `decide` lists them and the event carries them.
-- Releasing pause waiters is an in-process side effect. It stays outside `apply`, triggered by the local caller after an `apply` that unpauses.
+## Recovery and growth
 
-`recordApplied`, `promoteForNewRun`, `failAcceptedForRun`, and `settleForDeletion` get the same treatment: compute the event, apply it locally, append it.
+Recovery is a fold from the first entry. It happens on first use in a process, and the gate catches up again before every admission and run start. There is no checkpoint: a checkpoint of desired state alone would not restore the ledger that idempotency answers from, so checkpoints wait until a session's steering history is long enough to matter. A log grows with its session's steering activity and is deleted with the session.
 
 ## What changes outside the gate
 
-- **The steering mailbox is retired.** AB-67's decision record chose it as "a projection of the same mailbox envelope/receipt contract". That choice is what this design reverses, and the record and `runtime-contracts.md` (line 207) are updated to say so. No compatibility shim is added, per the pre-release policy.
-- **Recovery is a fold.** On first use in a process, read the head, start from its checkpoint, and fold the entries after it. There is no claim, acknowledgement, or drain.
-- **Deletion is incarnation-scoped:** it removes `steering-log:v1:<session>:<incarnation>:*` and the index keys whose entries point at that incarnation. A recreated session has a new incarnation and never sees the old log.
-- **Cross-process reach is unchanged:** a run reads its own process's gate. A process folds new entries at the start of each run and before each admission, so steering admitted elsewhere reaches a run at its next boundary only if that run's process catches up. Steering does not push updates across processes.
+- **The steering mailbox is retired.** AB-67's decision record chose it as "a projection of the same mailbox envelope/receipt contract". This design reverses that choice. `runtime-contracts.md` now points here, and no compatibility shim is added, per the pre-release policy.
+- **Deletion is incarnation-scoped:** it removes `steering-log:v1:<session>:<incarnation>:*` and each binding that still points at that incarnation. A recreated session has a new incarnation and never sees the old log.
+- **Cross-process reach:** a run reads its own process's gate, which folds new entries before each admission and run start in that process. Steering does not push updates across processes.
 
 ## Run-scoped commands
 

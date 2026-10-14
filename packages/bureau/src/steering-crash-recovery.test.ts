@@ -1,73 +1,208 @@
 /**
- * AB-200 — durable steering survives a real process kill.
+ * Durable steering survives real process kills, any number of them.
  *
- * `steering-durability.test.ts` reaches its restart boundary by disposing
- * a backend cleanly and reopening it. That proves a record survives an
- * orderly shutdown, which is the common case but not the interesting one:
- * a write buffered until `dispose()` flushed it would pass that test and
- * still lose the command in a genuine crash.
+ * Child processes (`test/steering-crash-child.ts`) admit or retry steering
+ * commands through the public verb and SIGKILL themselves — no exit handler,
+ * no `dispose()`, no flush — so whatever a later process finds was on disk
+ * before the earlier one died. The steering log is never consumed, so the
+ * second and third restarts must see exactly what the first did.
  *
- * This test removes the orderly shutdown. A child process admits a
- * steering command through the public `submitSteeringCommand` verb and
- * then SIGKILLs itself — no exit handler, no `dispose()`, no flush. The
- * parent then opens the same SQLite path and asserts the command is
- * recoverable, so whatever it finds was on disk before the process died.
- *
- * No sleeps in the parent: it waits on process exit and on the child's
- * own marker file.
+ * No sleeps in the parent: it waits on process exit and on the child's own
+ * marker file.
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { resolveStorage } from '@lostgradient/weft';
+import { resolveStorage, textValueStore } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import type { PersistedSteeringCommand } from './steering-durability';
-import { createSteeringMailbox, recoverSteeringCommands } from './steering-durability';
+import { createBureau } from './create-bureau';
+import { readSteeringLogEntries, readSteeringLogHead } from './steering-log';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
 
-describe('durable steering survives SIGKILL', () => {
-  it('recovers a command admitted by a process that was killed without disposing', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-crash-'));
-    const storagePath = join(directory, 'bureau.sqlite');
-    const markerPath = join(directory, 'admitted.json');
+interface Marker {
+  readonly sessionId: string;
+  readonly incarnation: string;
+  readonly outcomes: readonly {
+    readonly outcome: string;
+    readonly command?: { readonly configVersion: number; readonly state: string };
+  }[];
+}
 
+/** Runs the crash child to its own SIGKILL and returns the marker it wrote. */
+async function runCrashingChild(
+  directory: string,
+  name: string,
+  args: readonly string[],
+): Promise<Marker> {
+  const storagePath = join(directory, 'bureau.sqlite');
+  const markerPath = join(directory, `${name}.json`);
+  const child = Bun.spawn(['bun', CHILD, storagePath, markerPath, ...args], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  await child.exited;
+  const stderr = await new Response(child.stderr).text();
+  // The child kills itself, so a clean exit would mean it returned normally
+  // instead — which would invalidate the test's premise, not merely fail it.
+  expect(child.signalCode ?? stderr).toBe('SIGKILL');
+  expect(existsSync(markerPath)).toBe(true);
+  return JSON.parse(readFileSync(markerPath, 'utf8')) as Marker;
+}
+
+async function openBureau(directory: string) {
+  return createBureau({
+    agents: {},
+    generate: () => new Promise<never>(() => {}),
+    toolbox: createToolbox([]),
+    storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+    durableExecution: true,
+  });
+}
+
+function withDirectory(prefix: string, body: (directory: string) => Promise<void>) {
+  return async () => {
+    const directory = mkdtempSync(join(tmpdir(), prefix));
     try {
-      const child = Bun.spawn(['bun', CHILD, storagePath, markerPath], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      await child.exited;
-
-      const stderr = await new Response(child.stderr).text();
-      // The child kills itself, so a clean exit code 0 would mean it
-      // returned normally instead — which would invalidate the whole
-      // premise of the test rather than merely fail an assertion.
-      expect(child.signalCode ?? stderr).toBe('SIGKILL');
-      expect(existsSync(markerPath)).toBe(true);
-
-      const { sessionId } = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-        sessionId: string;
-      };
-
-      // Fresh handle on the same backend, in this process. Nothing is
-      // shared with the dead one but the bytes it left on disk.
-      const storage = await resolveStorage({ type: 'sqlite', path: storagePath });
-      const mailbox = createSteeringMailbox(storage, sessionId);
-      const recovered: PersistedSteeringCommand[] = [];
-      await recoverSteeringCommands(mailbox, (command) => recovered.push(command));
-
-      expect(recovered).toHaveLength(1);
-      expect(recovered[0]?.id).toBe('crash-cmd-1');
-      expect(recovered[0]?.principal).toBe('alice');
-      expect(recovered[0]?.requestedValue).toEqual({ target: 'pause' });
-
-      mailbox.dispose();
-      storage[Symbol.dispose]();
+      await body(directory);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 60_000);
+  };
+}
+
+describe('durable steering survives SIGKILL', () => {
+  it(
+    'logs a command admitted by a process that was killed without disposing',
+    withDirectory('corvidae-steering-crash-', async (directory) => {
+      const { sessionId, incarnation } = await runCrashingChild(directory, 'admitted', [
+        'admit',
+        'pause',
+      ]);
+
+      // A fresh handle on the same file, in this process: nothing is shared
+      // with the dead one but the bytes it left on disk.
+      const storage = await resolveStorage({
+        type: 'sqlite',
+        path: join(directory, 'bureau.sqlite'),
+      });
+      const kv = textValueStore(storage);
+      const head = await readSteeringLogHead(kv, sessionId, incarnation);
+      const events = await readSteeringLogEntries(kv, sessionId, incarnation, 0, head.sequence);
+      const admitted = events.filter((event) => event.type === 'admit');
+      expect(admitted).toHaveLength(1);
+      expect(admitted[0]?.type === 'admit' && admitted[0].command.id).toBe('crash-cmd-1');
+      expect(admitted[0]?.type === 'admit' && admitted[0].command.requestedValue).toEqual({
+        target: 'pause',
+      });
+      await kv.close();
+    }),
+    60_000,
+  );
+
+  it(
+    'keeps (principal, id) idempotency across two and three restarts, and across sessions',
+    withDirectory('corvidae-steering-crash-twice-', async (directory) => {
+      const { sessionId } = await runCrashingChild(directory, 'admitted', ['admit', 'model']);
+      const retried = await runCrashingChild(directory, 'retried', ['retry', 'model', sessionId]);
+      expect(retried.outcomes.map(({ outcome }) => outcome)).toEqual(['replayed']);
+      const again = await runCrashingChild(directory, 'retried-again', [
+        'retry',
+        'model',
+        sessionId,
+      ]);
+      expect(again.outcomes.map(({ outcome }) => outcome)).toEqual(['replayed']);
+
+      const bureau = await openBureau(directory);
+      try {
+        await bureau.waitForRecovery?.();
+        const differentTarget = await bureau.submitSteeringCommand(sessionId, {
+          id: 'crash-cmd-2',
+          principal: 'alice',
+          requestedValue: { target: 'provider', override: 'anthropic' },
+        });
+        expect(differentTarget.outcome).toBe('conflict');
+        if (differentTarget.outcome !== 'conflict') throw new Error('expected conflict');
+        expect(differentTarget.conflict.reason).toBe('target-mismatch');
+        expect(differentTarget.conflict.original.requestedValue).toEqual({
+          target: 'model',
+          override: 'claude-sonnet-5',
+        });
+
+        // The key is bureau-wide: the same key sent to another session is a
+        // `session-mismatch`, though that session's own log never saw it.
+        const other = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+        const elsewhere = await bureau.submitSteeringCommand(other.sessionId, {
+          id: 'crash-cmd-2',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        });
+        expect(elsewhere.outcome).toBe('conflict');
+        if (elsewhere.outcome !== 'conflict') throw new Error('expected conflict');
+        expect(elsewhere.conflict.reason).toBe('session-mismatch');
+      } finally {
+        await bureau.dispose();
+      }
+    }),
+    60_000,
+  );
+
+  it(
+    'keeps desired configuration and its configVersion across two restarts',
+    withDirectory('corvidae-steering-desired-', async (directory) => {
+      // The first process steers the model twice (configVersion 1, then 2)
+      // and dies. A fresh id re-requesting the desired value is accepted
+      // without advancing configVersion, which is how these assertions
+      // observe both the folded value and the folded version: a fold that
+      // lost the history would report 1, and one that double-applied it, 4.
+      const first = await runCrashingChild(directory, 'admitted', ['admit', 'opus,model']);
+      expect(first.outcomes.map(({ command }) => command?.configVersion)).toEqual([1, 2]);
+
+      const probe = await runCrashingChild(directory, 'probed', [
+        'retry',
+        'probe',
+        first.sessionId,
+      ]);
+      expect(probe.outcomes[0]?.outcome).toBe('accepted');
+      expect(probe.outcomes[0]?.command?.configVersion).toBe(2);
+
+      const bureau = await openBureau(directory);
+      try {
+        await bureau.waitForRecovery?.();
+        const again = await bureau.submitSteeringCommand(first.sessionId, {
+          id: 'after-two-restarts',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        });
+        if (again.outcome !== 'accepted')
+          throw new Error(`expected accepted, got ${again.outcome}`);
+        expect(again.command.configVersion).toBe(2);
+
+        const next = await bureau.submitSteeringCommand(first.sessionId, {
+          id: 'next-coordinate',
+          principal: 'alice',
+          requestedValue: { target: 'provider', override: 'anthropic' },
+        });
+        if (next.outcome !== 'accepted') throw new Error(`expected accepted, got ${next.outcome}`);
+        expect(next.command.configVersion).toBe(3);
+
+        // `opus` was superseded by `model` in the first process; folding
+        // the log reproduces that state.
+        const superseded = await bureau.submitSteeringCommand(first.sessionId, {
+          id: 'crash-cmd-3',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-opus-4-8' },
+        });
+        expect(superseded.outcome).toBe('replayed');
+        if (superseded.outcome !== 'replayed') throw new Error('expected replayed');
+        expect(superseded.command.state).toBe('superseded');
+      } finally {
+        await bureau.dispose();
+      }
+    }),
+    60_000,
+  );
 });

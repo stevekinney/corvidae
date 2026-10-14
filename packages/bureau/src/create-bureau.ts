@@ -94,6 +94,7 @@ import {
   SkillRejectedEvent,
 } from '@lostgradient/skills';
 import {
+  type ConditionalTextValueStore,
   decode,
   KEYS,
   type ListFilter,
@@ -212,6 +213,7 @@ import {
   recoveredRequestContextFromMetadata,
 } from './session-request-context';
 import {
+  answerSteeringRetry,
   type BureauSteeringGate,
   createSteeringCommandLedger,
   createSteeringGate,
@@ -219,12 +221,19 @@ import {
   isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
+  type SteeringRefusal,
 } from './steering';
 import {
-  createSteeringMailbox,
-  persistSteeringCommand,
-  recoverSteeringCommands,
-} from './steering-durability';
+  appendSteeringLogEvent,
+  deleteSteeringLog,
+  readSteeringKeyBinding,
+  readSteeringLogEntries,
+  readSteeringLogHead,
+  SteeringLogCorruptError,
+  type SteeringKeyBinding,
+  type SteeringLogEvent,
+  type SteeringLogHead,
+} from './steering-log';
 import type {
   AbortingRun,
   Bureau,
@@ -1612,33 +1621,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // `deleteSession` below) so a reused session id never inherits a deleted
   // session's pause state / command history / applied floor.
   const steeringGates = new Map<string, BureauSteeringGate>();
-  /**
-   * AB-200 — one steering mailbox per session, for a durably-configured
-   * bureau. Cached because a `Mailbox` holds its own storage-scoped state
-   * and constructing a second one for the same `(namespace, resourceId)`
-   * would defeat the FIFO ordering that is the point of using one.
-   */
-  const steeringMailboxes = new Map<string, Mailbox>();
-  /**
-   * Sessions whose durable steering log has already been drained into a
-   * gate in this process. Recovery is once per session per boot: the
-   * mailbox is consumed by draining, so a second pass would find nothing
-   * and a concurrent second pass could interleave two replays of the same
-   * command into one gate.
-   */
-  const steeringRecoveries = new Map<string, Promise<void>>();
-
-  /** `undefined` for a non-durable bureau — nothing to persist against. */
-  function getSteeringMailbox(sessionId: string): Mailbox | undefined {
-    const storage = runtime.durableStorage;
-    if (!runtime.durable || storage === undefined) return undefined;
-    let mailbox = steeringMailboxes.get(sessionId);
-    if (!mailbox) {
-      mailbox = createSteeringMailbox(storage, sessionId);
-      steeringMailboxes.set(sessionId, mailbox);
-    }
-    return mailbox;
-  }
 
   /**
    * COR-435 — one session-input mailbox per session, for a
@@ -1664,86 +1646,207 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Resolves this session's gate, replaying its durable steering log into
-   * a freshly-created one first.
-   *
-   * Recovery is lazy rather than a boot sweep, and deliberately: a bureau
-   * may hold thousands of sessions whose steering logs are empty, and
-   * draining every one at startup would pay for all of them to recover the
-   * few that need it. The first steering operation on a session after a
-   * restart is exactly when its log matters.
+   * Durable steering (see `steering-log.ts` and
+   * `documentation/durable-steering-log.md`). A durably-configured bureau
+   * keeps each session's steering as an append-only log of events in
+   * `runtime.kv`; the session's gate is a fold of it. These track how far
+   * each session's gate has folded, and which session incarnation it folded.
    */
-  async function ensureSteeringGate(
-    sessionId: string,
-    liveRunIds: readonly string[],
-  ): Promise<BureauSteeringGate> {
+  const steeringCursors = new Map<string, { incarnation: string; head: SteeringLogHead }>();
+  /**
+   * Admissions the gate did not accept (rejected, or unsupported), keyed
+   * `principal -> id`, as folded from the log. The gate's ledger records
+   * only accepted commands; these make a refused command's id durable too,
+   * so a retry is answered from the log instead of decided afresh.
+   */
+  const steeringRefusals = new Map<string, Map<string, SteeringRefusal>>();
+  /** One log operation at a time per session, in this process. */
+  const steeringQueues = new Map<string, Promise<unknown>>();
+
+  /** `runtime.kv`, when this bureau keeps durable steering at all. */
+  function durableSteeringStore(): ConditionalTextValueStore | undefined {
+    return runtime.durable && runtime.durableStorage !== undefined ? runtime.kv : undefined;
+  }
+
+  /** Runs `operation` after every earlier log operation for `sessionId`. */
+  function enqueueSteering<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = steeringQueues.get(sessionId) ?? Promise.resolve();
+    const next = previous.then(operation, operation);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    steeringQueues.set(sessionId, settled);
+    void settled.then(() => {
+      if (steeringQueues.get(sessionId) === settled) steeringQueues.delete(sessionId);
+    });
+    return next;
+  }
+
+  /** The session's gate, created on first use. */
+  function getSessionSteeringGate(sessionId: string): BureauSteeringGate {
     let gate = steeringGates.get(sessionId);
     if (gate === undefined) {
       gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
       steeringGates.set(sessionId, gate);
     }
-
-    const mailbox = getSteeringMailbox(sessionId);
-    if (mailbox === undefined) return gate;
-
-    // Every caller awaits the SAME recovery promise, including one that
-    // found the gate already in the map. Publishing the gate and then
-    // awaiting recovery without this would let a concurrent
-    // `submitSteeringCommand` observe the gate mid-replay and admit its
-    // own command ahead of commands that were durably admitted earlier —
-    // the recovered ones would then supersede the newer one, inverting
-    // the order the mailbox exists to preserve.
-    let recovery = steeringRecoveries.get(sessionId);
-    if (recovery === undefined) {
-      recovery = replaySteeringLog(gate, mailbox, liveRunIds).catch((error: unknown) => {
-        // A failed recovery must not be cached as done: a transient
-        // storage fault would otherwise leave this session permanently
-        // unrecoverable for the life of the process. Clearing lets the
-        // next caller retry, and rethrowing fails this one closed rather
-        // than admitting into a gate whose durable history is unknown.
-        steeringRecoveries.delete(sessionId);
-        throw error;
-      });
-      steeringRecoveries.set(sessionId, recovery);
-    }
-    await recovery;
     return gate;
   }
 
-  /** Drains one session's durable steering log into its gate, in order. */
-  async function replaySteeringLog(
+  /**
+   * Applies one logged event to `gate` through the same method the live
+   * path calls, with the inputs the event recorded. Deterministic: the same
+   * log folds to the same state in every process.
+   */
+  function applySteeringEvent(
     gate: BureauSteeringGate,
-    mailbox: Mailbox,
-    liveRunIds: readonly string[],
+    refusals: Map<string, Map<string, SteeringRefusal>>,
+    event: SteeringLogEvent,
+  ): SteeringCommandAdmissionOutcome | undefined {
+    switch (event.type) {
+      case 'admit': {
+        const outcome = gate.admit(event.command, {
+          liveRunIds: event.liveRunIds,
+          now: event.now,
+        });
+        if (outcome.outcome === 'rejected' || outcome.outcome === 'unsupported-capability') {
+          const { principal, id } = event.command;
+          let byId = refusals.get(principal);
+          if (byId === undefined) {
+            byId = new Map();
+            refusals.set(principal, byId);
+          }
+          byId.set(id, { command: event.command, outcome, refusedAt: event.now });
+        }
+        return outcome;
+      }
+      case 'applied':
+        gate.recordApplied(event.runId, event.configVersion, event.now);
+        return undefined;
+      case 'promoted':
+        gate.promoteForNewRun(event.runId, event.now);
+        return undefined;
+      case 'run-ended':
+        gate.failAcceptedForRun(event.runId, event.now);
+        return undefined;
+    }
+  }
+
+  /**
+   * Folds every entry this process has not yet applied into the session's
+   * gate. A different incarnation than the one folded so far means the
+   * session was deleted and recreated: its gate starts over.
+   */
+  async function catchUpSteering(
+    kv: ConditionalTextValueStore,
+    sessionId: string,
+    incarnation: string,
+  ): Promise<BureauSteeringGate> {
+    let cursor = steeringCursors.get(sessionId);
+    if (cursor !== undefined && cursor.incarnation !== incarnation) {
+      forgetSessionSteering(sessionId);
+      cursor = undefined;
+    }
+    const gate = getSessionSteeringGate(sessionId);
+    const head = await readSteeringLogHead(kv, sessionId, incarnation);
+    const from = cursor?.head.sequence ?? 0;
+    const events = await readSteeringLogEntries(kv, sessionId, incarnation, from, head.sequence);
+    for (const event of events) applySteeringEvent(gate, steeringRefusals, event);
+    steeringCursors.set(sessionId, { incarnation, head });
+    return gate;
+  }
+
+  /** Drops this process's folded view of a session. */
+  function forgetSessionSteering(sessionId: string): void {
+    const gate = steeringGates.get(sessionId);
+    gate?.purgeFromLedger();
+    steeringGates.delete(sessionId);
+    steeringCursors.delete(sessionId);
+    for (const [principal, byId] of steeringRefusals) {
+      for (const [id, refusal] of byId) {
+        if (refusal.command.sessionId === sessionId) byId.delete(id);
+      }
+      if (byId.size === 0) steeringRefusals.delete(principal);
+    }
+  }
+
+  /** How many times an append retries after losing a race to another process. */
+  const STEERING_APPEND_ATTEMPTS = 25;
+
+  /**
+   * Appends `event` to a session's log after catching up, then applies it
+   * locally. Used where nothing has happened yet locally, so the local gate
+   * only ever changes in log order.
+   */
+  async function appendThenApplySteering(
+    kv: ConditionalTextValueStore,
+    sessionId: string,
+    incarnation: string,
+    event: Exclude<SteeringLogEvent, { type: 'admit' }>,
   ): Promise<void> {
-    const now = runtimeServices.clock.nowISO();
-    // The replay is handed to `recoverSteeringCommands` as a callback so
-    // each command reaches the gate BEFORE its mailbox acknowledgement.
-    // Collecting the batch first and admitting afterwards would leave a
-    // window where a crash loses a command from both sides: durably
-    // acknowledged, never applied.
-    await recoverSteeringCommands(mailbox, (recovered) => {
-      // Replayed through the gate's ordinary admission, not a private
-      // back door, so a recovered command is subject to every invariant
-      // a live one is. A pause bound to a run this process no longer has
-      // is correctly rejected `run-terminal` — the run genuinely ended.
-      gate.admit(
-        {
-          id: recovered.id,
-          idOrigin: 'caller',
-          sessionId: recovered.sessionId,
-          principal: recovered.principal,
-          requestedValue: recovered.requestedValue,
-          requestedAt: recovered.requestedAt,
-          ...(recovered.expectedRevision !== undefined
-            ? { expectedRevision: recovered.expectedRevision }
-            : {}),
-          ...(recovered.deadline !== undefined ? { deadline: recovered.deadline } : {}),
-          ...(recovered.runId !== undefined ? { runId: recovered.runId } : {}),
-        },
-        { liveRunIds, now },
-      );
+    for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
+      const gate = await catchUpSteering(kv, sessionId, incarnation);
+      const head = steeringCursors.get(sessionId)?.head ?? { raw: null, sequence: 0 };
+      const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, head, event);
+      if (appended.status === 'appended') {
+        applySteeringEvent(gate, steeringRefusals, event);
+        steeringCursors.set(sessionId, { incarnation, head: appended.head });
+        return;
+      }
+    }
+    throw steeringContention(sessionId);
+  }
+
+  /**
+   * Records a run-boundary event the local gate has ALREADY applied — the
+   * run's own boundary needed it immediately — by appending it after
+   * whatever other processes appended meanwhile. Safe to append late: a
+   * boundary only reports versions its own process had folded, so it
+   * commutes with any foreign admission it raced (that admission's version
+   * is necessarily higher). A failure is a diagnostic, not a run failure:
+   * the cost is a stale command state in another process's view.
+   */
+  function appendAppliedSteering(
+    sessionId: string,
+    event: Extract<SteeringLogEvent, { type: 'applied' | 'run-ended' }>,
+  ): void {
+    const kv = durableSteeringStore();
+    const cursor = steeringCursors.get(sessionId);
+    if (kv === undefined || cursor === undefined) return;
+    const { incarnation } = cursor;
+    void enqueueSteering(sessionId, async () => {
+      for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
+        await catchUpSteering(kv, sessionId, incarnation);
+        const head = steeringCursors.get(sessionId)?.head ?? { raw: null, sequence: 0 };
+        const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, head, event);
+        if (appended.status === 'appended') {
+          // Already applied locally; only the cursor moves past it.
+          steeringCursors.set(sessionId, { incarnation, head: appended.head });
+          return;
+        }
+      }
+      throw steeringContention(sessionId);
+    }).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Could not log a steering "${event.type}" event for run "${event.runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
+      });
     });
+  }
+
+  /** A run reached a terminal state: settle its steering, and log that. */
+  function endSteeringForRun(sessionId: string, gate: BureauSteeringGate, runId: string): void {
+    const now = runtimeServices.clock.nowISO();
+    gate.failAcceptedForRun(runId, now);
+    appendAppliedSteering(sessionId, { type: 'run-ended', runId, now });
+  }
+
+  function steeringContention(sessionId: string): BureauError {
+    return new BureauError(
+      `Steering log for session "${sessionId}" kept moving under ${String(STEERING_APPEND_ATTEMPTS)} consecutive append attempts.`,
+      'CONFLICT',
+    );
   }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
@@ -3165,23 +3268,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // that durable steering persists and recovers, excluding them would
       // be the actual bug: a command admitted and durably recovered would
       // never reach the run it was meant to steer.
-      let steeringGate = steeringGates.get(sessionId);
-      if (!steeringGate) {
-        steeringGate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-        steeringGates.set(sessionId, steeringGate);
+      // A durable run must see the session's logged desired state at its
+      // own step 0, so its start is itself a logged event: catching up and
+      // appending `promoted` folds everything other processes (or this one,
+      // before a restart) admitted, and records the promotion in log order.
+      const steeringKv = durableSteeringStore();
+      const steeringSession =
+        steeringKv === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
+      if (steeringKv !== undefined && steeringSession !== undefined) {
+        await enqueueSteering(sessionId, () =>
+          appendThenApplySteering(steeringKv, sessionId, steeringSession.incarnation, {
+            type: 'promoted',
+            runId,
+            now: runtimeServices.clock.nowISO(),
+          }),
+        );
+      } else {
+        getSessionSteeringGate(sessionId).promoteForNewRun(runId, runtimeServices.clock.nowISO());
       }
-      // A durable run starting after a restart must see the recovered
-      // desired state at its own step 0, not merely at the next steering
-      // call, so the log is drained before the run begins.
-      const steeringMailboxForRun = getSteeringMailbox(sessionId);
-      if (steeringMailboxForRun !== undefined) {
-        await ensureSteeringGate(sessionId, [runId]);
-      }
-      steeringGate?.promoteForNewRun(runId, runtimeServices.clock.nowISO());
+      const steeringGate = getSessionSteeringGate(sessionId);
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
       // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
       // concurrent run on this same session must never block this one.
-      const runSteeringGate = steeringGate?.forRun(runId);
+      const runSteeringGate = steeringGate.forRun(runId);
 
       // COR-690: the last admission check before the run and its toolbox are
       // registered. Everything from here to that registration is synchronous,
@@ -3320,15 +3429,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // emitter the moment it observes a `configVersion` at its boundary
       // (`run-step.ts`'s `maybeDispatchSteeringApplied`), so listening here
       // is the one place that fires for both drivers identically.
-      if (steeringGate) {
-        activeRun.addEventListener(SteeringAppliedEvent.type, (event) => {
-          steeringGate.recordApplied(
-            event.effective.appliedAtRunId,
-            event.effective.configVersion,
-            event.effective.appliedAt,
-          );
+      activeRun.addEventListener(SteeringAppliedEvent.type, (event) => {
+        steeringGate.recordApplied(
+          event.effective.appliedAtRunId,
+          event.effective.configVersion,
+          event.effective.appliedAt,
+        );
+        appendAppliedSteering(sessionId, {
+          type: 'applied',
+          runId: event.effective.appliedAtRunId,
+          configVersion: event.effective.configVersion,
+          now: event.effective.appliedAt,
         });
-      }
+      });
 
       activeRun.once('run.completed', (event) => {
         activeRuns.delete(activeRun);
@@ -3345,7 +3458,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // run transitions to `failed`/`'run-terminal'` the moment the run
         // reaches ANY terminal state — completed here, aborted in the
         // sibling listener below.
-        steeringGate?.failAcceptedForRun(runId, runtimeServices.clock.nowISO());
+        endSteeringForRun(sessionId, steeringGate, runId);
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
 
@@ -3397,7 +3510,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         flowController?.settle(runId);
         queueMicrotask(() => releaseTerminalRunReviewState(runId));
         // See the identical call in the `run.completed` listener above.
-        steeringGate?.failAcceptedForRun(runId, runtimeServices.clock.nowISO());
+        endSteeringForRun(sessionId, steeringGate, runId);
 
         const report = buildTerminalReportFromAbortedEvent(runId, {
           usage: event.usage,
@@ -6875,18 +6988,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringGateForAbort?.settleForDeletion(runtimeServices.clock.nowISO());
       steeringGateForAbort?.purgeFromLedger();
       steeringGates.delete(id);
-      // AB-200: the durable side needs the same treatment the gate and
-      // ledger just got, and for the identical reason — a reused session
-      // id must not inherit a deleted session's command history. The
-      // mailbox is keyed by `sessionId` as its Weft `resourceId`, so a
-      // cached instance left behind here would hand a new session the old
-      // one's undrained commands on its first `ensureSteeringGate` call.
-      // Dropping the recovery promise alongside it keeps the two in step;
-      // a future session under this id recovers from the durable log
-      // rather than from a resolved promise about a session that is gone.
-      steeringMailboxes.get(id)?.dispose();
-      steeringMailboxes.delete(id);
-      steeringRecoveries.delete(id);
+      // The durable side gets the same treatment, for the same reason — a
+      // reused session id must not inherit a deleted session's command
+      // history — but scoped to the DELETED body's incarnation, captured
+      // before the store delete. A session recreated under this id in the
+      // meantime has a new incarnation and its own log, which this cleanup
+      // never touches; this process's folded view is dropped only if it was
+      // a view of the deleted incarnation.
+      if (steeringCursors.get(id)?.incarnation === session.incarnation) {
+        forgetSessionSteering(id);
+      }
+      const steeringKv = durableSteeringStore();
+      if (steeringKv !== undefined) {
+        await enqueueSteering(id, () => deleteSteeringLog(steeringKv, id, session.incarnation));
+      }
 
       await Promise.allSettled(runTerminals);
 
@@ -7322,8 +7437,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
-    const gate = await ensureSteeringGate(sessionId, liveRunIds);
-
     const now = runtimeServices.clock.nowISO();
     const id = request.id ?? runtimeServices.identifiers.next('steering-command');
     const command: ImplementedSteeringCommand = {
@@ -7344,44 +7457,128 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.runId !== undefined ? { runId: request.runId } : {}),
     };
 
-    // AB-200 durable steering: persist BEFORE admitting into desired
-    // state. A crash between the two then loses nothing — recovery finds
-    // the command still unconsumed and replays it. The reverse order
-    // would put a command into desired state that no restart could
-    // recover, which is precisely the failure the durable contract exists
-    // to rule out.
-    const steeringMailbox = getSteeringMailbox(sessionId);
-    if (steeringMailbox !== undefined) {
-      const persistence = await persistSteeringCommand(steeringMailbox, command);
-      if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
-        // Backlog exhaustion: nothing was written, so nothing may enter
-        // desired state either.
-        return { outcome: 'unsupported-capability', reason: persistence.reason };
-      }
-      // A mailbox idempotency conflict deliberately falls through to the
-      // gate rather than returning here. The gate's ledger is the
-      // authority on conflict *shape* — only it holds the original
-      // command's snapshot, which `SteeringCommandConflict` requires — and
-      // after a restart that ledger is rebuilt by the recovery replay
-      // above, so it can still describe the original. The mailbox
-      // conflict and the gate conflict are the same fact seen twice; the
-      // gate reports it in the contract's own terms.
+    const kv = durableSteeringStore();
+    if (kv === undefined) {
+      const outcome = getSessionSteeringGate(sessionId).admit(command, { liveRunIds, now });
+      if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
+      return outcome;
     }
-
-    const outcome = gate.admit(command, { liveRunIds, now });
-    // AB-68: give `steering.accepted` its first production dispatch site.
-    // Only the `accepted` transition is dispatched here, and deliberately:
-    // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
-    // are documented as `accepted → X` transitions, so a PRE-admission
-    // rejection (an unknown agent name, an ambiguous run) never reached
-    // `accepted` and must not be reported as having left it. Those three
-    // belong to the gate's own post-admission transitions.
-    if (outcome.outcome === 'accepted') {
-      emitter.dispatch(
-        new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
-      );
-    }
+    const outcome = await enqueueSteering(sessionId, () =>
+      admitDurableSteeringCommand(kv, session.incarnation, command, liveRunIds, now),
+    );
+    if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
     return outcome;
+  }
+
+  // AB-68: give `steering.accepted` its first production dispatch site.
+  // Only the `accepted` transition is dispatched here, and deliberately:
+  // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
+  // are documented as `accepted → X` transitions, so a PRE-admission
+  // rejection (an unknown agent name, an ambiguous run) never reached
+  // `accepted` and must not be reported as having left it. Those three
+  // belong to the gate's own post-admission transitions.
+  function dispatchSteeringAccepted(
+    sessionId: string,
+    outcome: Extract<SteeringCommandAdmissionOutcome, { outcome: 'accepted' }>,
+  ): void {
+    emitter.dispatch(
+      new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
+    );
+  }
+
+  /**
+   * Durable admission, serialized per session in this process and against
+   * other processes by the log head:
+   *
+   * 1. Catch the session's gate up with the log.
+   * 2. Answer a reused `(principal, id)` from what the log already decided:
+   *    the gate's ledger for an accepted command, the folded refusals for a
+   *    refused one, or — for a key bound in another session — a fold of that
+   *    session's log.
+   * 3. Otherwise append the `admit` event, binding the key in the same
+   *    atomic write, and only then apply it to the local gate. The outcome
+   *    is whatever the gate decides from the recorded inputs, which is what
+   *    every other process folding the log decides too. Losing the race to
+   *    another process's append starts over from step 1.
+   */
+  async function admitDurableSteeringCommand(
+    kv: ConditionalTextValueStore,
+    incarnation: string,
+    command: ImplementedSteeringCommand,
+    liveRunIds: readonly string[],
+    now: string,
+  ): Promise<SteeringCommandAdmissionOutcome> {
+    const { sessionId, principal, id } = command;
+    for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
+      const gate = await catchUpSteering(kv, sessionId, incarnation);
+      const answered = answerSteeringRetry(steeringCommandLedger, steeringRefusals, command);
+      if (answered !== undefined) return answered;
+
+      let expectedBinding: string | null = null;
+      const stored = await readSteeringKeyBinding(kv, principal, id);
+      if (stored !== undefined) {
+        const { binding } = stored;
+        const live =
+          binding.sessionId === sessionId
+            ? binding.incarnation === incarnation
+            : (await runtime.sessionStore?.load(binding.sessionId))?.incarnation ===
+              binding.incarnation;
+        if (live) {
+          const elsewhere = await answerFromOtherSteeringLog(kv, binding, command);
+          if (elsewhere !== undefined) return elsewhere;
+          throw new SteeringLogCorruptError(
+            `Steering key "${principal}"/"${id}" is bound to sequence ${String(binding.sequence)} of session "${binding.sessionId}", which does not admit it.`,
+          );
+        }
+        // Bound by a session incarnation that no longer exists — a deletion
+        // that died before removing it. Replaced atomically below.
+        expectedBinding = stored.raw;
+      }
+
+      const head = steeringCursors.get(sessionId)?.head ?? { raw: null, sequence: 0 };
+      const event = { type: 'admit', command, liveRunIds: [...liveRunIds], now } as const;
+      const appended = await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        incarnation,
+        head,
+        event,
+        expectedBinding,
+      );
+      if (appended.status === 'appended') {
+        const outcome = applySteeringEvent(gate, steeringRefusals, event);
+        steeringCursors.set(sessionId, { incarnation, head: appended.head });
+        if (outcome === undefined) throw new Error('an admit event always yields an outcome');
+        return outcome;
+      }
+    }
+    throw steeringContention(sessionId);
+  }
+
+  /**
+   * Answers a reused key bound in ANOTHER session from that session's own
+   * log, folded into a throwaway gate: the original is there, in whatever
+   * state it reached, so the retry gets the same `conflict` it would have
+   * got in-process.
+   */
+  async function answerFromOtherSteeringLog(
+    kv: ConditionalTextValueStore,
+    binding: SteeringKeyBinding,
+    command: ImplementedSteeringCommand,
+  ): Promise<SteeringCommandAdmissionOutcome | undefined> {
+    const ledger = createSteeringCommandLedger();
+    const refusals = new Map<string, Map<string, SteeringRefusal>>();
+    const gate = createSteeringGate(binding.sessionId, ledger, runtimeServices.clock);
+    const head = await readSteeringLogHead(kv, binding.sessionId, binding.incarnation);
+    const events = await readSteeringLogEntries(
+      kv,
+      binding.sessionId,
+      binding.incarnation,
+      0,
+      head.sequence,
+    );
+    for (const event of events) applySteeringEvent(gate, refusals, event);
+    return answerSteeringRetry(ledger, refusals, command);
   }
 
   function listPendingReviews(): PendingReview[] {
@@ -8786,14 +8983,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
         } finally {
           try {
-            // AB-200: every steering mailbox holds process-local state
-            // over the shared backend, so they are released before the
-            // backend itself is. Disposing a mailbox does not delete its
-            // durable log — the commands stay recoverable by the next
-            // process, which is the whole point of persisting them.
-            for (const mailbox of steeringMailboxes.values()) mailbox.dispose();
-            steeringMailboxes.clear();
-            steeringRecoveries.clear();
+            // Pending steering log appends (run-boundary events are logged
+            // in the background) finish before the backend closes under
+            // them. Each one reports its own failure as a diagnostic.
+            await Promise.allSettled([...steeringQueues.values()]);
+            steeringQueues.clear();
+            steeringCursors.clear();
+            steeringRefusals.clear();
           } finally {
             try {
               runtime.disposeStorage?.();
