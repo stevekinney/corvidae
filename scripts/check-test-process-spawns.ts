@@ -17,26 +17,28 @@
  *   - A spawning function is a function declaration, or a `const` bound to a function
  *     expression, whose body contains a spawn or calls a spawning function. A spawning class is
  *     one with a method or constructor that does; `new` on it counts as a call.
- *   - Spawning functions are found across files: an import from a relative path, or from a
- *     `@lostgradient/*` workspace package through its `exports` map, is followed into that
- *     module, through `export … from` re-exports, and analyzed the same way.
+ *   - Spawning functions are found across files: a named, default or namespace import from a
+ *     relative path, or from a `@lostgradient/*` workspace package through its `exports` map, is
+ *     followed into that module, through `export … from` re-exports, and analyzed the same way.
  *
  * The guard reports a spawn, or a call to a spawning function, lexically inside a function
  * passed to `it`, `test` (with any modifier: `.only`, `.skip`, `.each(…)`, `.skipIf(…)` and
- * the rest) or a hook. A `describe` callback runs at registration, outside any clock, and is not
- * a test body.
+ * the rest) or a hook, and a spawning function passed to one of them by name. A `describe`
+ * callback runs at registration, outside any clock, and is not a test body.
  *
  * A spawning function that takes its spawner as a dependency is still reported when a test calls
  * it with a stub, because the guard cannot see which path runs. Such a test carries a
  * `// spawn-free: <reason>` comment directly above its `it(`/`test(` call, naming what stands in
- * for the process; the reason must be at least 20 characters. That is the only exemption.
+ * for the process; the reason must be at least 20 characters. That is the only exemption, and it
+ * covers only those inferred calls: a process API written in the test body is always reported.
  *
  * Moving a process to module scope takes it off the per-test clock, so nothing bounds it there:
- * a child that never exits would hold the whole run. Every direct `Bun.spawn` or `Bun.spawnSync`
- * in a test file, wherever it runs, must therefore pass `timeout` in an object-literal options
- * argument (the owner-approved 120-second hang guard, `SCENARIO_HANG_GUARD_MILLISECONDS` in the
- * module-scope scenario helpers), so Bun kills a hung child. A spawn whose options are not an
- * object literal is reported too, because the guard cannot see what they hold.
+ * a child that never exits would hold the whole run. Every direct process API call in a test
+ * file, wherever it runs, must therefore pass `timeout` in an object-literal options argument
+ * (the owner-approved 120-second hang guard, `SCENARIO_HANG_GUARD_MILLISECONDS` in the
+ * module-scope scenario helpers), so the runtime kills a hung child. A spawn whose options are
+ * not an object literal is reported too, because the guard cannot see what they hold. `Bun.$`
+ * has no timeout option, so a test file uses `Bun.spawn` instead.
  *
  * Blind spots, documented rather than claimed as covered:
  *
@@ -91,8 +93,10 @@ type ModuleAnalysis = {
 };
 
 type ImportedNames = {
-  /** Local names bound to a spawning import. */
+  /** Local names bound to a spawning import, named or default. */
   spawning: Set<string>;
+  /** Namespace bindings of analyzed modules, so `tools.run()` resolves to `run`'s export. */
+  moduleNamespaces: Map<string, ModuleAnalysis>;
   /** Local names bound to `node:child_process` functions, and namespace bindings of it. */
   childProcessFunctions: Set<string>;
   childProcessNamespaces: Set<string>;
@@ -179,6 +183,7 @@ export function resolveSpecifier(fromFile: string, specifier: string): string | 
 function importedNames(sourceFile: ts.SourceFile, fileName: string): ImportedNames {
   const names: ImportedNames = {
     spawning: new Set(),
+    moduleNamespaces: new Map(),
     childProcessFunctions: new Set(),
     childProcessNamespaces: new Set(),
     bunShell: new Set(),
@@ -220,6 +225,12 @@ function importedNames(sourceFile: ts.SourceFile, fileName: string): ImportedNam
       const imported = (element.propertyName ?? element.name).text;
       if (analysis.exports.get(imported) === true) names.spawning.add(element.name.text);
     }
+    if (clause.name !== undefined && analysis.exports.get('default') === true) {
+      names.spawning.add(clause.name.text);
+    }
+    if (bindings !== undefined && ts.isNamespaceImport(bindings)) {
+      names.moduleNamespaces.set(bindings.name.text, analysis);
+    }
   }
   return names;
 }
@@ -233,28 +244,55 @@ function calleeName(expression: ts.Expression): string | null {
   return null;
 }
 
-/** Whether `node` itself starts a process or calls something known to. */
-function isSpawningNode(node: ts.Node, imports: ImportedNames, local: Set<string>): boolean {
-  if (ts.isTaggedTemplateExpression(node)) {
-    const tag = calleeName(node.tag);
-    return tag === 'Bun.$' || (tag !== null && imports.bunShell.has(tag));
-  }
-  if (!ts.isCallExpression(node) && !ts.isNewExpression(node)) return false;
+function isBunShell(node: ts.Node, imports: ImportedNames): node is ts.TaggedTemplateExpression {
+  if (!ts.isTaggedTemplateExpression(node)) return false;
+  const tag = calleeName(node.tag);
+  return tag === 'Bun.$' || (tag !== null && imports.bunShell.has(tag));
+}
+
+function isChildProcessCall(node: ts.Node, imports: ImportedNames): node is ts.CallExpression {
+  if (!ts.isCallExpression(node)) return false;
   const name = calleeName(node.expression);
   if (name === null) return false;
-  if (ts.isCallExpression(node)) {
-    if (name === 'Bun.spawn' || name === 'Bun.spawnSync') return true;
-    if (imports.childProcessFunctions.has(name)) return true;
-    const [namespace, member] = name.split('.');
-    if (
-      member !== undefined &&
-      imports.childProcessNamespaces.has(namespace!) &&
-      CHILD_PROCESS_FUNCTIONS.has(member)
-    ) {
-      return true;
-    }
-  }
-  return local.has(name) || imports.spawning.has(name);
+  if (imports.childProcessFunctions.has(name)) return true;
+  const [namespace, member] = name.split('.');
+  return (
+    member !== undefined &&
+    imports.childProcessNamespaces.has(namespace!) &&
+    CHILD_PROCESS_FUNCTIONS.has(member)
+  );
+}
+
+function isBunSpawn(node: ts.Node): node is ts.CallExpression {
+  if (!ts.isCallExpression(node)) return false;
+  const name = calleeName(node.expression);
+  return name === 'Bun.spawn' || name === 'Bun.spawnSync';
+}
+
+/** Whether `node` is itself a process API call, as opposed to a call inferred to reach one. */
+function isDirectSpawn(node: ts.Node, imports: ImportedNames): boolean {
+  return isBunSpawn(node) || isChildProcessCall(node, imports) || isBunShell(node, imports);
+}
+
+/** Whether `name` (an identifier, or `namespace.member`) names a spawning function or class. */
+function isSpawningName(name: string, imports: ImportedNames, local: Set<string>): boolean {
+  if (local.has(name) || imports.spawning.has(name)) return true;
+  const [namespace, member] = name.split('.');
+  return (
+    member !== undefined && imports.moduleNamespaces.get(namespace!)?.exports.get(member) === true
+  );
+}
+
+/** Whether `node` calls or constructs something known to start a process. */
+function isInferredSpawn(node: ts.Node, imports: ImportedNames, local: Set<string>): boolean {
+  if (!ts.isCallExpression(node) && !ts.isNewExpression(node)) return false;
+  const name = calleeName(node.expression);
+  return name !== null && isSpawningName(name, imports, local);
+}
+
+/** Whether `node` itself starts a process or calls something known to. */
+function isSpawningNode(node: ts.Node, imports: ImportedNames, local: Set<string>): boolean {
+  return isDirectSpawn(node, imports) || isInferredSpawn(node, imports, local);
 }
 
 function containsSpawn(body: ts.Node, imports: ImportedNames, local: Set<string>): boolean {
@@ -267,23 +305,31 @@ function containsSpawn(body: ts.Node, imports: ImportedNames, local: Set<string>
   return found;
 }
 
-type NamedBody = { name: string; body: ts.Node; exported: boolean };
+type NamedBody = { name: string; body: ts.Node; exported: boolean; isDefault: boolean };
 
-function hasExportModifier(node: ts.Node): boolean {
+function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
   return (
     ts.canHaveModifiers(node) &&
-    (ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
+    (ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === kind)
   );
 }
 
 function namedBodies(sourceFile: ts.SourceFile): NamedBody[] {
   const bodies: NamedBody[] = [];
   for (const statement of sourceFile.statements) {
-    const exported = hasExportModifier(statement);
-    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
-      bodies.push({ name: statement.name.text, body: statement.body, exported });
-    } else if (ts.isClassDeclaration(statement) && statement.name) {
-      bodies.push({ name: statement.name.text, body: statement, exported });
+    const exported = hasModifier(statement, ts.SyntaxKind.ExportKeyword);
+    const isDefault = exported && hasModifier(statement, ts.SyntaxKind.DefaultKeyword);
+    if (ts.isFunctionDeclaration(statement) && statement.body) {
+      // An anonymous `export default function` is analyzed under the name `default`.
+      const name = statement.name?.text ?? 'default';
+      bodies.push({ name, body: statement.body, exported, isDefault });
+    } else if (ts.isClassDeclaration(statement) && (statement.name || isDefault)) {
+      bodies.push({
+        name: statement.name?.text ?? 'default',
+        body: statement,
+        exported,
+        isDefault,
+      });
     } else if (ts.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
         const initializer = declaration.initializer;
@@ -292,7 +338,12 @@ function namedBodies(sourceFile: ts.SourceFile): NamedBody[] {
           initializer !== undefined &&
           (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))
         ) {
-          bodies.push({ name: declaration.name.text, body: initializer.body, exported });
+          bodies.push({
+            name: declaration.name.text,
+            body: initializer.body,
+            exported,
+            isDefault: false,
+          });
         }
       }
     }
@@ -327,8 +378,23 @@ function analyzeModule(fileName: string): ModuleAnalysis {
       }
     }
   }
-  for (const { name, exported } of bodies) {
-    if (exported) analysis.exports.set(name, analysis.spawning.has(name));
+  for (const { name, exported, isDefault } of bodies) {
+    if (exported) analysis.exports.set(isDefault ? 'default' : name, analysis.spawning.has(name));
+  }
+  for (const statement of sourceFile.statements) {
+    // `export default run;` names a local binding; `export = …` is not an ES default.
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      const name = calleeName(statement.expression);
+      if (name !== null) {
+        analysis.exports.set('default', isSpawningName(name, imports, analysis.spawning));
+      } else if (
+        (ts.isArrowFunction(statement.expression) ||
+          ts.isFunctionExpression(statement.expression)) &&
+        containsSpawn(statement.expression.body, imports, analysis.spawning)
+      ) {
+        analysis.exports.set('default', true);
+      }
+    }
   }
   for (const statement of sourceFile.statements) {
     if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) continue;
@@ -338,7 +404,7 @@ function analyzeModule(fileName: string): ModuleAnalysis {
       if (clause !== undefined && ts.isNamedExports(clause)) {
         for (const element of clause.elements) {
           const local = (element.propertyName ?? element.name).text;
-          const spawns = analysis.spawning.has(local) || imports.spawning.has(local);
+          const spawns = isSpawningName(local, imports, analysis.spawning);
           analysis.exports.set(element.name.text, spawns);
         }
       }
@@ -370,12 +436,17 @@ function registrationBase(expression: ts.Expression): string | null {
   }
 }
 
+function isTestOrHookRegistration(call: ts.CallExpression): boolean {
+  const base = registrationBase(call.expression);
+  return base !== null && (TEST_FUNCTIONS.has(base) || HOOK_FUNCTIONS.has(base));
+}
+
 function isTestOrHookCallback(node: ts.Node): boolean {
   if (!ts.isArrowFunction(node) && !ts.isFunctionExpression(node)) return false;
   const call = node.parent;
-  if (!ts.isCallExpression(call) || !call.arguments.includes(node)) return false;
-  const base = registrationBase(call.expression);
-  return base !== null && (TEST_FUNCTIONS.has(base) || HOOK_FUNCTIONS.has(base));
+  return (
+    ts.isCallExpression(call) && call.arguments.includes(node) && isTestOrHookRegistration(call)
+  );
 }
 
 const SPAWN_FREE_MARKER = /\/\/\s*spawn-free:\s*(.*)$/m;
@@ -426,10 +497,8 @@ export function findTestProcessSpawnViolations(
     const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
     violations.push({ line: line + 1, text: text.length > 100 ? `${text.slice(0, 97)}...` : text });
   };
-  walk(sourceFile, (node) => {
-    if (!isSpawningNode(node, imports, local)) return;
-    const registration = enclosingTestOrHook(node);
-    if (registration === null) return;
+  /** Reports an inferred spawn unless its test carries a `spawn-free` marker with a reason. */
+  const reportInferred = (node: ts.Node, registration: ts.CallExpression): void => {
     const reason = spawnFreeReason(registration, sourceFile);
     if (reason !== null && reason.length >= MINIMUM_SPAWN_FREE_REASON) return;
     if (reason !== null) {
@@ -440,12 +509,27 @@ export function findTestProcessSpawnViolations(
       return;
     }
     report(node, node.getText(sourceFile).split('\n')[0]!);
+  };
+  walk(sourceFile, (node) => {
+    // A test or hook body passed by name, as in `test('x', body)`, runs on the clock too.
+    if (ts.isCallExpression(node) && isTestOrHookRegistration(node)) {
+      for (const argument of node.arguments) {
+        const name = calleeName(argument);
+        if (name !== null && isSpawningName(name, imports, local)) reportInferred(argument, node);
+      }
+    }
+    if (!isSpawningNode(node, imports, local)) return;
+    const registration = enclosingTestOrHook(node);
+    if (registration === null) return;
+    // A `spawn-free` marker vouches for the helper calls the guard can only infer about. A
+    // process API written in the test body itself is unambiguous, so no marker exempts it.
+    if (isDirectSpawn(node, imports)) report(node, node.getText(sourceFile).split('\n')[0]!);
+    else reportInferred(node, registration);
   });
   return violations;
 }
 
-function spawnOptionsHaveTimeout(call: ts.CallExpression): boolean {
-  const options = call.arguments.length === 1 ? call.arguments[0] : call.arguments[1];
+function hasTimeoutProperty(options: ts.Expression | undefined): boolean {
   return (
     options !== undefined &&
     ts.isObjectLiteralExpression(options) &&
@@ -458,16 +542,43 @@ function spawnOptionsHaveTimeout(call: ts.CallExpression): boolean {
   );
 }
 
-/** Direct `Bun.spawn`/`Bun.spawnSync` calls that do not pass a `timeout` hang guard. */
+/** `Bun.spawn(cmd, options)` and `Bun.spawn({ cmd, … })` carry their options in a fixed place. */
+function bunSpawnHasTimeout(call: ts.CallExpression): boolean {
+  return hasTimeoutProperty(call.arguments.length === 1 ? call.arguments[0] : call.arguments[1]);
+}
+
+/**
+ * A `node:child_process` function takes its options after an optional argument array, and
+ * `exec`/`execFile` take a callback after them, so any object-literal argument holding `timeout`
+ * counts.
+ */
+function childProcessCallHasTimeout(call: ts.CallExpression): boolean {
+  return call.arguments.some((argument) => hasTimeoutProperty(argument));
+}
+
+/**
+ * Direct process API calls that do not pass a `timeout` hang guard. `Bun.$` has no timeout
+ * option, so a shell template in a test file is always reported: use `Bun.spawn` with one.
+ */
 export function findUnboundedSpawns(sourceFile: ts.SourceFile): TestProcessSpawnViolation[] {
+  const imports = importedNames(sourceFile, sourceFile.fileName);
   const violations: TestProcessSpawnViolation[] = [];
-  walk(sourceFile, (node) => {
-    if (!ts.isCallExpression(node)) return;
-    const name = calleeName(node.expression);
-    if (name !== 'Bun.spawn' && name !== 'Bun.spawnSync') return;
-    if (spawnOptionsHaveTimeout(node)) return;
+  const report = (node: ts.Node, text: string): void => {
     const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-    violations.push({ line: line + 1, text: `${name} without a timeout hang guard` });
+    violations.push({ line: line + 1, text });
+  };
+  walk(sourceFile, (node) => {
+    if (isBunSpawn(node)) {
+      if (!bunSpawnHasTimeout(node)) {
+        report(node, `${calleeName(node.expression)} without a timeout hang guard`);
+      }
+    } else if (isChildProcessCall(node, imports)) {
+      if (!childProcessCallHasTimeout(node)) {
+        report(node, `${calleeName(node.expression)} without a timeout hang guard`);
+      }
+    } else if (isBunShell(node, imports)) {
+      report(node, 'Bun shell template, which cannot take a timeout hang guard; use Bun.spawn');
+    }
   });
   return violations;
 }
@@ -515,7 +626,8 @@ function main(): void {
     return;
   }
   process.stderr.write(
-    'check-test-process-spawns — a test body or hook starts a child process.\n' +
+    'check-test-process-spawns — a test starts a child process on the per-test clock, or a test\n' +
+      'file starts one without a timeout hang guard.\n' +
       "A spawn inside a test pays the child's boot on Bun's five-second per-test clock and times\n" +
       'out on a loaded host. Call the logic in process when the child only runs repository code;\n' +
       'when the real process is the behavior, run it at module scope with top-level await and\n' +

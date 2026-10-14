@@ -151,8 +151,21 @@ async function assembleDeterministicCase(
 
 // The assembler discovers `git rev-parse HEAD` once and caches it, so the one real `git` process
 // this file needs runs here at module scope, ahead of the tests, to stay off the per-test clock.
+// The 120-second timeout is a hang guard, so a stuck `git` fails the file instead of holding it.
+const revisionProcess = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
+  timeout: 120_000,
+  stdout: 'pipe',
+  stderr: 'pipe',
+});
 const [expectedSourceRevision] = await Promise.all([
-  Bun.$`git rev-parse HEAD`.quiet().text(),
+  (async () => {
+    const [output, exitCode] = await Promise.all([
+      new Response(revisionProcess.stdout).text(),
+      revisionProcess.exited,
+    ]);
+    if (exitCode !== 0) throw new Error(`git rev-parse HEAD exited ${exitCode}`);
+    return output;
+  })(),
   assembleDeterministicCase(),
 ]);
 await disposeAll();

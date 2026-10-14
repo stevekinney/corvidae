@@ -88,6 +88,16 @@ describe('spawning functions', () => {
     ).toEqual(['outer()']);
   });
 
+  test('reports a spawning function passed to a test or hook by name', () => {
+    expect(
+      inspect("function body() { Bun.spawnSync(['ls']); }\ntest('x', body);\nbeforeEach(body);"),
+    ).toEqual(['body', 'body']);
+  });
+
+  test('accepts a spawn-free function passed to a test by name', () => {
+    expect(inspect("function body() { return 1; }\ntest('x', body);")).toEqual([]);
+  });
+
   test('reports constructing a local class that spawns', () => {
     expect(
       inspect(
@@ -109,6 +119,27 @@ describe('spawning functions', () => {
         "import { pure, runGit } from './index.ts';\nit('x', () => { pure(); runGit(); });",
       );
       expect(violations).toEqual(['runGit()']);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('follows default and namespace imports into the spawning module', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'check-test-process-spawns-'));
+    try {
+      writeFileSync(
+        join(directory, 'spawner.ts'),
+        "export default function runGit() { return Bun.spawnSync(['git']); }\nexport function pure() { return 1; }\n",
+      );
+      writeFileSync(
+        join(directory, 'named-default.ts'),
+        "function inner() { return Bun.spawnSync(['git']); }\nexport default inner;\n",
+      );
+      const violations = inspectAt(
+        join(directory, 'consumer.test.ts'),
+        "import run from './spawner.ts';\nimport other from './named-default.ts';\nimport * as tools from './spawner.ts';\nit('x', () => { tools.pure(); run(); other(); tools.default(); });",
+      );
+      expect(violations).toEqual(['run()', 'other()', 'tools.default()']);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -138,6 +169,14 @@ describe('spawn-free exemptions', () => {
         "function run() { return Bun.spawnSync(['ls']); }\n// spawn-free: stubbed\nit('x', () => { run(); });",
       ),
     ).toEqual(['spawn-free reason shorter than 20 characters']);
+  });
+
+  test('does not exempt a process API written in the marked test body', () => {
+    expect(
+      inspect(
+        "function run(spawner = Bun.spawnSync) { return spawner(['ls']); }\n// spawn-free: an injected stub replaces the real spawner here.\nit('x', () => { run(); Bun.spawnSync(['git']); });",
+      ),
+    ).toEqual(["Bun.spawnSync(['git'])"]);
   });
 
   test('does not exempt a different test', () => {
@@ -179,6 +218,16 @@ describe('spawn hang guards', () => {
     ['a single-object spawn without timeout', "Bun.spawnSync({ cmd: ['git'] });"],
     ['a spawn with no options at all', "Bun.spawnSync(['git', 'status']);"],
     ['a spawn whose options are a variable', "Bun.spawn(['bun'], options);"],
+    [
+      'a child_process call without timeout',
+      "import { execFileSync } from 'node:child_process';\nexecFileSync('mkfifo', ['f']);",
+    ],
+    [
+      'a child_process namespace call without timeout',
+      "import * as processes from 'node:child_process';\nprocesses.spawn('sleep', ['30'], { detached: true });",
+    ],
+    ['a Bun shell template, which takes no timeout', 'await Bun.$`git init`;'],
+    ['a $ shell template imported from bun', "import { $ } from 'bun';\nawait $`git init`;"],
   ])('reports %s', (_name, source) => {
     expect(unbounded(source)).toHaveLength(1);
   });
@@ -186,6 +235,11 @@ describe('spawn hang guards', () => {
   test.each([
     ['a timeout in the options', "Bun.spawn(['bun'], { cwd: '/', timeout: 120_000 });"],
     ['a timeout in a single-object spawn', "Bun.spawnSync({ cmd: ['git'], timeout: LIMIT });"],
+    [
+      'a child_process call with a timeout',
+      "import { execFile } from 'node:child_process';\nexecFile('git', ['init'], { timeout: LIMIT }, () => {});",
+    ],
+    ['an unrelated spawn function', "spawn('x');"],
   ])('accepts %s', (_name, source) => {
     expect(unbounded(source)).toEqual([]);
   });
