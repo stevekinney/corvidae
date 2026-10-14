@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -7,8 +7,20 @@ import { fileURLToPath } from 'node:url';
 const scriptPath = join(dirname(fileURLToPath(import.meta.url)), 'ignore-build.sh');
 const vercelConfigPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'vercel.json');
 
-let repository: string;
-let base: string;
+const absentCommit = 'deadbeef'.repeat(5);
+const touchedPathCases = [
+  ['applications/playground/package.json', 1],
+  ['packages/weft/package.json', 1],
+  ['scripts/mirror/package-map.json', 1],
+  ['tsconfig.json', 1],
+  ['applications/example/package.json', 0],
+  ['scripts/mirror/sync.ts', 0],
+] as const;
+
+const repository = await mkdtemp(join(tmpdir(), 'playground-ignore-build-'));
+afterAll(async () => {
+  await rm(repository, { recursive: true, force: true });
+});
 
 function git(...arguments_: string[]): string {
   const result = Bun.spawnSync(['git', ...arguments_], { cwd: repository });
@@ -39,8 +51,12 @@ function ignoreExit(previous: string | undefined, current: string): number {
   return result.exitCode;
 }
 
-beforeAll(async () => {
-  repository = await mkdtemp(join(tmpdir(), 'playground-ignore-build-'));
+/**
+ * Every git commit and every run of the ignore script happens here, at module scope: both are
+ * real processes, and running them inside the tests put each one on Bun's five-second per-test
+ * clock. The tests below assert on the exit codes recorded here.
+ */
+async function commitBase(): Promise<string> {
   git('init', '--quiet');
   git('config', 'user.email', 'test@example.invalid');
   git('config', 'user.name', 'test');
@@ -57,28 +73,25 @@ beforeAll(async () => {
   }
   git('add', '--all');
   git('commit', '--quiet', '-m', 'base');
-  base = git('rev-parse', 'HEAD');
-});
+  return git('rev-parse', 'HEAD');
+}
 
-afterAll(async () => {
-  await rm(repository, { recursive: true, force: true });
-});
+const base = await commitBase();
+const touchedPathExits = new Map<string, number>();
+for (const [path] of touchedPathCases) {
+  touchedPathExits.set(path, ignoreExit(base, await commitTouching(path)));
+}
+const exitWithoutPreviousDeployment = ignoreExit(undefined, base);
+const exitWithAbsentPreviousDeployment = ignoreExit(absentCommit, base);
+const exitWithAbsentCurrentCommit = ignoreExit(base, absentCommit);
 
 describe('ignore-build.sh', () => {
-  test.each([
-    ['applications/playground/package.json', 1],
-    ['packages/weft/package.json', 1],
-    ['scripts/mirror/package-map.json', 1],
-    ['tsconfig.json', 1],
-    ['applications/example/package.json', 0],
-    ['scripts/mirror/sync.ts', 0],
-  ])('a commit touching only %s exits %i', async (path, expected) => {
-    const head = await commitTouching(path);
-    expect(ignoreExit(base, head)).toBe(expected);
+  test.each(touchedPathCases)('a commit touching only %s exits %i', (path, expected) => {
+    expect(touchedPathExits.get(path)).toBe(expected);
   });
 
   test('builds when there is no previous deployment to compare against', () => {
-    expect(ignoreExit(undefined, base)).toBe(1);
+    expect(exitWithoutPreviousDeployment).toBe(1);
   });
 
   // Vercel sets the previous SHA to the branch's last successful deployment. A force-push after
@@ -87,13 +100,11 @@ describe('ignore-build.sh', () => {
   // reports as a failed deployment rather than a build. Because a failed deployment is not a
   // successful one, the previous SHA should not advance past it either.
   test('builds when the previous deployment commit is not in the clone', () => {
-    const absentCommit = 'deadbeef'.repeat(5);
-    expect(ignoreExit(absentCommit, base)).toBe(1);
+    expect(exitWithAbsentPreviousDeployment).toBe(1);
   });
 
   test('builds whenever the comparison itself fails, rather than exiting with git’s error code', () => {
-    const absentCommit = 'deadbeef'.repeat(5);
-    expect(ignoreExit(base, absentCommit)).toBe(1);
+    expect(exitWithAbsentCurrentCommit).toBe(1);
   });
 
   test('is what vercel.json runs, within the 256-character limit Vercel enforces', async () => {
