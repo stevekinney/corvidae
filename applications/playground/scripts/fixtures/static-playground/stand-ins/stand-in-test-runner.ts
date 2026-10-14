@@ -7,6 +7,7 @@
  *
  * `--environment-record <file>` writes the names of the credential-shaped variables it inherited.
  * `--stubborn` (with `--record`) also starts a sleeper that ignores SIGTERM.
+ * `--unmarked-detached` (with `--record`) also starts a detached sleeper with no run-directory marker.
  *
  * With `--record <dir>` it behaves like a browser run under lifecycle test: it starts a sleeper in
  * its own group and a detached one that names the run-owned `TMPDIR` (as Chromium's profile does),
@@ -42,6 +43,9 @@ if (record !== undefined) {
   // A sleeper that ignores SIGTERM keeps the runner's cleanup in its grace period, so a case can
   // signal the runner while cleanup is running.
   if (process.argv.includes('--stubborn')) startSleeper(record, 'stubborn', false, '', true);
+  // A detached sleeper with no run-directory marker: once this runner exits, only the process
+  // group the owner retained while this runner was alive still identifies it.
+  if (process.argv.includes('--unmarked-detached')) startSleeper(record, 'unmarked-detached', true);
   await Bun.write(join(record, 'ready'), '');
   void waitForFile(join(record, 'spawn-late')).then(() => {
     startSleeper(record, 'late-grandchild');

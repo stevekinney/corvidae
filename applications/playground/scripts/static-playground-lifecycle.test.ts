@@ -28,6 +28,7 @@ import {
   ProcessOwner,
   type ProcessRow,
   readProcessTable,
+  SAMPLE_INTERVAL_MILLISECONDS,
   signalTarget,
 } from './static-playground-processes.ts';
 
@@ -200,6 +201,22 @@ describe('static gate runner lifecycle with stand-in children', () => {
     process.kill(stubborn, 'SIGKILL');
 
     expect(await running.driver.exited).toBe(130);
+    await expectEverythingGone(running, capture);
+  });
+
+  it('kills a detached, unmarked grandchild after its parent exits before cleanup', async () => {
+    // The stand-in test runner starts a sleeper in a new process group with no run-directory
+    // marker, then exits normally. Once it has exited the sleeper is reparented; only the group
+    // the owner retained while the runner was alive still identifies it.
+    const running = await startCase('pass', ['--unmarked-detached']);
+    const capture = await captureAndSpawnLate(running);
+    const unmarked = await readPid(running.record, 'unmarked-detached');
+    capture.pids.add(unmarked);
+    // Let the owner's periodic sample observe the sleeper while its parent still lives.
+    await Bun.sleep(SAMPLE_INTERVAL_MILLISECONDS * 3);
+    await writeFile(join(running.record, 'proceed'), '');
+
+    expect(await running.driver.exited).toBe(0);
     await expectEverythingGone(running, capture);
   });
 

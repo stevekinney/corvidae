@@ -9,6 +9,17 @@
  * process whose arguments name the run directory, any group such a process leads, and every
  * descendant of those. A process spawned after an earlier sweep is found by the next one.
  *
+ * Process groups are also RETAINED: every group led by an owned process is recorded the moment a
+ * sweep observes it, and kept for the rest of the run. A detached grandchild with no run-directory
+ * marker is reachable through the tree only while its parent lives; once the parent exits it is
+ * reparented and only its retained group still identifies it. The owner therefore samples the
+ * table every {@link SAMPLE_INTERVAL_MILLISECONDS} while the run is active, not only at cleanup.
+ *
+ * Residual window, which closing would need a supervisor or subreaper: a process that is spawned
+ * into a new group, carries no run-directory marker, AND whose parent exits within one sample
+ * interval of its spawn is never observed, so it is not retained and can outlive the run. Every
+ * child the runner spawns, and every descendant that lives through one sample, is covered.
+ *
  * Cleanup sends SIGTERM, waits up to {@link TERMINATION_GRACE_MILLISECONDS} for every owned
  * process to go and every child's output to close, then sends SIGKILL and waits the same again.
  * Each target is signaled at most once per phase, and a second cleanup call returns the first.
@@ -19,6 +30,9 @@ import { constants } from 'node:os';
 export const TERMINATION_GRACE_MILLISECONDS = 5_000;
 
 const SWEEP_INTERVAL_MILLISECONDS = 50;
+
+/** How often an active run samples the process table to retain the groups its descendants lead. */
+export const SAMPLE_INTERVAL_MILLISECONDS = 200;
 
 export type ProcessRow = { pid: number; ppid: number; pgid: number; state: string; args: string };
 
@@ -157,6 +171,7 @@ export class ProcessOwner {
   readonly #children: OwnedChild[] = [];
   readonly #groups = new Set<number>();
   #cleanup: Promise<CleanupResult> | undefined;
+  #sampler: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: ProcessOwnerOptions) {
     this.#marker = options.marker;
@@ -176,6 +191,10 @@ export class ProcessOwner {
       detached: true,
     });
     this.#groups.add(subprocess.pid);
+    if (this.#sampler === undefined) {
+      this.#sampler = setInterval(() => this.owned(), SAMPLE_INTERVAL_MILLISECONDS);
+      this.#sampler.unref();
+    }
     const outputClosed = Promise.all([
       forward(subprocess.stdout, process.stdout),
       forward(subprocess.stderr, process.stderr),
@@ -185,9 +204,19 @@ export class ProcessOwner {
     return child;
   }
 
-  /** The processes that belong to the run right now. */
+  /** The processes that belong to the run right now. Every group one of them leads is retained. */
   owned(): { rows: ProcessRow[]; groups: Set<number> } {
-    return ownedProcesses(this.#readTable(), { groups: this.#groups, marker: this.#marker });
+    const owned = ownedProcesses(this.#readTable(), { groups: this.#groups, marker: this.#marker });
+    for (const row of owned.rows) {
+      if (row.pid === row.pgid && !isZombie(row)) this.#groups.add(row.pgid);
+    }
+    for (const group of this.#groups) owned.groups.add(group);
+    return owned;
+  }
+
+  /** The process groups retained so far, for tests and diagnostics. */
+  retainedGroups(): ReadonlySet<number> {
+    return this.#groups;
   }
 
   /** Terminate everything the run owns. Calling it again returns the first call's result. */
@@ -197,6 +226,7 @@ export class ProcessOwner {
   }
 
   async #terminate(): Promise<CleanupResult> {
+    clearInterval(this.#sampler);
     const signals: CleanupResult['signals'] = [];
     let outputClosed = false;
     void Promise.all(this.#children.map((child) => child.outputClosed)).then(() => {
