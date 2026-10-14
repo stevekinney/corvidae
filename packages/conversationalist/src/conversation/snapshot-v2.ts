@@ -308,10 +308,16 @@ export function createTableMessageReader(table: readonly unknown[]): TableMessag
 }
 
 /**
- * A node's conversation, assembled from already-parsed table entries. Only the
- * node's own header is schema-validated here. Its messages get the checks that
- * depend on their neighbours, which a table entry cannot carry on its own:
- * positions, tool pairing, and conversation integrity.
+ * A node's conversation, assembled from already-parsed table entries. Its
+ * messages get only the checks that depend on their neighbours, which a table
+ * entry cannot carry on its own: positions, tool pairing, and conversation
+ * integrity.
+ *
+ * The node's header (id, title, status, metadata, timestamps) is still
+ * schema-validated here, once per node. It is the node's own data rather than
+ * a shared table entry, nothing else validates it, and it is a fixed set of
+ * fields, so its cost does not grow with the conversation the way per-node
+ * message parsing did.
  */
 export function deserializeNodeConversation(
   fields: NodeFields & NodeMessages,
