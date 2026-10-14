@@ -7,7 +7,7 @@
  *   GET /page/:name    → standalone component documentation or preview-only iframe page
  *   GET /page-bundle/:name.js → page-bundle entry alias OR a hashed artifact.
  *                              Bare component names (e.g. chat.js) only import the
- *                              hashed entry (see `entryAliasSource`); entries and
+ *                              hashed entry (see `stableEntryModule`); entries and
  *                              chunks are hashed (e.g. chunk-abc123.js). Both
  *                              artifact types share a flat namespace under /page-bundle/
  *                              so all dynamic-import URLs from either bundle family
@@ -508,8 +508,14 @@ async function renderComponentPage(
         line-height: var(--cinder-leading-normal);
         /* Scale the preview gutter with the viewport: a comfortable space-6
            (24px) on wide screens collapses to a thin space-1 (4px) on phones so
-           example components get almost the full width and look realistic. */
-        padding: clamp(var(--cinder-space-1), 2.5vw, var(--cinder-space-6));
+           example components get almost the full width and look realistic.
+           The documentation page has no preview gutter: its \`.dx\` canvas owns
+           the page gutter, exactly as the landing page does. */
+        padding: ${
+          snapshotMode || previewOnly
+            ? 'clamp(var(--cinder-space-1), 2.5vw, var(--cinder-space-6))'
+            : '0'
+        };
       }
       /* Guard the background/color crossfade behind a reduced-motion opt-out so
          users who prefer no motion get an instant theme swap, not a transition. */

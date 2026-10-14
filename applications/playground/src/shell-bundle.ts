@@ -7,9 +7,9 @@ import {
   SHARED_BUILD_OPTIONS,
   collectBuildArtifacts,
   coordinatedBuild,
-  entryAliasSource,
   publishShellArtifacts,
   shellArtifactByPath,
+  stableEntryModule,
 } from './build-artifacts-shared.ts';
 import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { getRebuildGeneration, isShellStale, setShellStale } from './rebuild-generation.ts';
@@ -108,12 +108,10 @@ export async function compileShellBundleArtifacts(): Promise<{
  * `shellStale`'s doc comment for why the shell specifically needs this.
  */
 export async function buildShellBundle(): Promise<ShellBuildResult> {
-  // The bare entry URL imports the hashed entry rather than serving its code;
-  // see `entryAliasSource`.
   const cachedEntryPath = shellEntryByName.get('shell');
   const cachedCode =
     cachedEntryPath !== undefined && shellArtifactByPath.has(cachedEntryPath)
-      ? entryAliasSource('shell', cachedEntryPath)
+      ? stableEntryModule('shell', cachedEntryPath)
       : undefined;
   if (cachedCode !== undefined && !isShellStale()) {
     return { code: cachedCode, usedFallback: false };
@@ -140,15 +138,15 @@ export async function buildShellBundle(): Promise<ShellBuildResult> {
     }
 
     // Always publish chunks (see buildPageBundle's comment for the
-    // rationale — the source we're returning imports the content-hashed
-    // entry, whose chunks must be servable).
+    // rationale — the entry we're returning has static imports to
+    // content-hashed chunks that must be servable).
     const stillCurrent = generationAtStart === getRebuildGeneration();
     publishShellArtifacts(entry.artifacts, stillCurrent);
     if (stillCurrent) {
       shellEntryByName.set('shell', entry.entryPath);
       setShellStale(false);
     }
-    return { code: entryAliasSource('shell', entry.entryPath), usedFallback: false };
+    return { code: stableEntryModule('shell', entry.entryPath), usedFallback: false };
   })();
   shellBuildPromise = buildPromise;
 

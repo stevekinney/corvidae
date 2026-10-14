@@ -7,10 +7,10 @@ import {
   SHARED_BUILD_OPTIONS,
   collectBuildArtifacts,
   coordinatedBuild,
-  entryAliasSource,
   pageArtifactByPath,
   pageBuildPromiseByKey,
   publishPageArtifacts,
+  stableEntryModule,
 } from './build-artifacts-shared.ts';
 import { componentExportNameFor } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
@@ -417,8 +417,6 @@ void hydratePage().catch((error) =>
  * Used by the `/page-bundle/:filename.js` route as a fallback when an
  * eagerly-pre-built bundle isn't already in the cache (e.g. a component
  * whose pre-build failed, or a brand-new component added after server start).
- * Resolves to the bare entry URL's source, which imports the hashed entry
- * (see {@link entryAliasSource}).
  *
  * Concurrency: captures the rebuild generation before the build starts and
  * skips publishing the entry-name pointer if an invalidation landed during
@@ -435,7 +433,7 @@ export async function buildPageBundle(
 ): Promise<string | null> {
   const cachedEntryPath = pageEntryByName.get(componentName);
   if (cachedEntryPath && pageArtifactByPath.has(cachedEntryPath)) {
-    return entryAliasSource('page', cachedEntryPath);
+    return stableEntryModule('page', cachedEntryPath);
   }
 
   const existing = pageBuildPromiseByKey.get(componentName);
@@ -446,8 +444,8 @@ export async function buildPageBundle(
     const entry = await compilePageBundleArtifacts(componentName, knownComponents);
     if (entry === null) return null;
 
-    // We always publish the artifacts: the source we're about to return
-    // imports the content-hashed entry and chunk URLs, and if those artifacts
+    // We always publish the artifacts: the entry code we're about to return
+    // statically imports content-hashed chunk URLs, and if those chunks
     // aren't in the cache, the browser's chunk requests will 404. Chunk
     // filenames are content-hashed, so writing them is safe even if a newer
     // invalidation already cleared and re-populated the same chunks — the
@@ -459,7 +457,7 @@ export async function buildPageBundle(
     if (generationAtStart === getRebuildGeneration()) {
       pageEntryByName.set(componentName, entry.entryPath);
     }
-    return entryAliasSource('page', entry.entryPath);
+    return stableEntryModule('page', entry.entryPath);
   })();
 
   pageBuildPromiseByKey.set(componentName, buildPromise);

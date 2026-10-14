@@ -683,6 +683,25 @@ function req(path: string, options?: RequestInit): Request {
   return new Request(`http://localhost:${PORT}${path}`, options);
 }
 
+/**
+ * Follow a stable entry URL to the hashed entry it imports and return that entry's code. The
+ * stable URL must be exactly one side-effect import, never a copy of the entry: a copy is a
+ * second module record that runs the entry's top-level `hydrate()` a second time.
+ */
+async function hashedEntryBehind(stableUrl: string): Promise<{ url: string; code: string }> {
+  const stable = await handleRequest(req(stableUrl));
+  expect(stable.status).toBe(200);
+  const stableCode = await stable.text();
+  const match = /^import "(\/(?:page|shell)-bundle\/[A-Za-z0-9_-]+-[a-z0-9]{8,}\.js)";\n$/.exec(
+    stableCode,
+  );
+  expect(match, `${stableUrl} serves ${stableCode.slice(0, 120)}`).not.toBeNull();
+  const url = match![1]!;
+  const entry = await handleRequest(req(url));
+  expect(entry.status).toBe(200);
+  return { url, code: await entry.text() };
+}
+
 describe('request idle timeout configuration', () => {
   it('disables the idle timeout only for the long-lived SSE route', () => {
     const calls: Array<{ request: Request; seconds: number }> = [];
@@ -972,29 +991,12 @@ describe('canonical page navigation', () => {
     }
   }, 60_000);
 });
-
-/**
- * Read the hashed entry a bare entry URL imports. The bare URL carries no code of
- * its own (see `entryAliasSource`), so assertions about what the entry contains
- * read the hashed artifact it names.
- */
-async function hashedEntryBody(bareUrl: string): Promise<string> {
-  const bareResponse = await handleRequest(req(bareUrl));
-  expect(bareResponse.status).toBe(200);
-  const route = bareUrl.slice(0, bareUrl.lastIndexOf('/') + 1);
-  const hashedUrl = /^import "([^"]+)";\n$/.exec(await bareResponse.text())?.[1];
-  expect(hashedUrl).toMatch(new RegExp(`^${route}[a-z0-9-]+-[a-z0-9]{8,}\\.js$`));
-  const hashedResponse = await handleRequest(req(hashedUrl!));
-  expect(hashedResponse.status).toBe(200);
-  return hashedResponse.text();
-}
-
 describe('/shell-bundle/:filename.js', () => {
   it('returns 200 application/javascript for the canonical /shell.js entry', async () => {
     const response = await handleRequest(req('/shell-bundle/shell.js'));
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/javascript');
-    const body = await hashedEntryBody('/shell-bundle/shell.js');
+    const { code: body } = await hashedEntryBehind('/shell-bundle/shell.js');
     // The landing page keeps its server-rendered content static. Interactive
     // shell behavior is loaded with dynamic imports, so color editing and nav
     // filtering work without putting the documentation/editor graph in the
@@ -1014,20 +1016,6 @@ describe('/page-bundle/:name.js', () => {
     const response = await handleRequest(req(`/page-bundle/${FIXTURE_COMPONENT}.js`));
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/javascript');
-  }, 30_000);
-
-  // The document loads the entry by this bare URL while the entry's chunks import
-  // it back by its hashed URL. When both URLs served the entry's code the browser
-  // evaluated it twice, hydrating the page a second time over a live tree and
-  // logging `hydration_mismatch` on every documentation page load.
-  it('serves the bare entry as an import of the hashed entry that hydrates the page', async () => {
-    const bareResponse = await handleRequest(req(`/page-bundle/${FIXTURE_COMPONENT}.js`));
-    const bare = await bareResponse.text();
-    expect(bare).toMatch(/^import "\/page-bundle\/page-[a-z0-9-]+-[a-z0-9]{8,}\.js";\n$/);
-    expect(bare).not.toContain('hydrate(');
-
-    const entry = await hashedEntryBody(`/page-bundle/${FIXTURE_COMPONENT}.js`);
-    expect(entry).toContain('svelte.hydrate(ComponentPage');
   }, 30_000);
 
   it('returns 404 for an unknown component', async () => {
@@ -1058,7 +1046,7 @@ describe('chunks under /page-bundle/<filename>.js', () => {
     // does — markdown-preview lazy-loads @lostgradient/markdown/rendering). The
     // entry response body must reference at least one hashed chunk URL,
     // and every referenced URL must resolve to 200 application/javascript.
-    const body = await hashedEntryBody('/page-bundle/chat.js');
+    const { code: body } = await hashedEntryBehind('/page-bundle/chat.js');
     // Hashed chunks contain a hash segment after the last `-`; the
     // unhashed entry URL is just `<component>.js`. Match the hashed
     // shape with at least one dash and an alphanumeric tail.
@@ -1086,7 +1074,7 @@ describe('chunks under /page-bundle/<filename>.js', () => {
       expect(entryResponse.status).toBe(200);
       expect(entryResponse.headers.get('Content-Type')).toBe('application/javascript');
 
-      const body = await hashedEntryBody(`/page-bundle/${componentName}.js`);
+      const { code: body } = await hashedEntryBehind(`/page-bundle/${componentName}.js`);
       const chunkUrls = Array.from(
         body.matchAll(/\/page-bundle\/[A-Za-z0-9_-]+-[a-z0-9]{8,}\.js/g),
         (match) => match[0],
@@ -1138,7 +1126,7 @@ describe('Cache-Control headers on bundle routes', () => {
     // one hashed chunk. Warm the entry, extract a hashed chunk URL, then
     // assert the chunk response carries the immutable header. Hashed URLs
     // have a `-<hash>` segment; the bare entry URL (`chat.js`) does not.
-    const body = await hashedEntryBody('/page-bundle/chat.js');
+    const { code: body } = await hashedEntryBehind('/page-bundle/chat.js');
     // A content-hashed chunk ends in `-<hash>.js` where the hash is a long
     // lowercase-alphanumeric content digest (Bun's `[name]-[hash]` naming).
     // Requiring that hash tail — rather than "any hyphenated segment" — avoids
@@ -1175,7 +1163,7 @@ describe('build artifact paths', () => {
     // stack should land in chunks, not in the entry. If a future change
     // reverts the lazy import or splitting breaks, the entry will balloon
     // back to multi-MB. This is a structural, not size-based, assertion.
-    const body = await hashedEntryBody('/page-bundle/chat.js');
+    const { code: body } = await hashedEntryBehind('/page-bundle/chat.js');
     // The bundled grammar files have a stable string fingerprint —
     // every @shikijs/langs/<lang>.mjs starts with `var <lang>_default = ...`
     // and references "scopeName". The entry should not contain a Shiki
@@ -1236,6 +1224,34 @@ describe('/styles/* (path traversal guard)', () => {
     const response = await handleRequest(req('/styles/this-file-does-not-exist.css'));
     expect(response.status).toBe(404);
   });
+});
+
+describe('stable entry URLs evaluate the hashed entry once', () => {
+  it.each([
+    ['/page-bundle/chat.js', 'data-playground-controls-hydrated'],
+    ['/shell-bundle/shell.js', 'Preview theme:'],
+  ])(
+    'serves %s as one import of the hashed entry, never a copy of it',
+    async (stableUrl, marker) => {
+      const stable = await handleRequest(req(stableUrl));
+      const stableCode = await stable.text();
+      const { url, code } = await hashedEntryBehind(stableUrl);
+
+      // The entry's own code lives only at the hashed URL that peer chunks import.
+      expect(stableCode).not.toContain(marker);
+      expect(code).toContain(marker);
+      expect(stableCode).toBe(`import ${JSON.stringify(url)};\n`);
+    },
+    60_000,
+  );
+
+  it('serves the same thin module from the cached entry on a second request', async () => {
+    const firstResponse = await handleRequest(req('/page-bundle/chat.js'));
+    const first = await firstResponse.text();
+    const secondResponse = await handleRequest(req('/page-bundle/chat.js'));
+    const second = await secondResponse.text();
+    expect(second).toBe(first);
+  }, 60_000);
 });
 
 describe('/bundle/:name/:scenario.js', () => {
@@ -1444,6 +1460,20 @@ describe('/page/:name', () => {
   it('returns 404 for a segment that fails isSafeSegment', async () => {
     const response = await handleRequest(req('/page/Button'));
     expect(response.status).toBe(404);
+  });
+
+  it('gives only the documentation page an unpadded body, leaving snapshot and preview gutters unchanged', async () => {
+    const bodyPadding = async (query: string): Promise<string> => {
+      const response = await handleRequest(req(`/page/${FIXTURE_COMPONENT}${query}`));
+      const html = await response.text();
+      const bodyRule = /\n\s+body \{([^}]*)\}/.exec(html)?.[1] ?? '';
+      return /padding:\s*([^;]+);/.exec(bodyRule)?.[1]?.trim() ?? '';
+    };
+    const gutter = 'clamp(var(--cinder-space-1), 2.5vw, var(--cinder-space-6))';
+
+    expect(await bodyPadding('')).toBe('0');
+    expect(await bodyPadding('?snapshot=1')).toBe(gutter);
+    expect(await bodyPadding('?preview=1')).toBe(gutter);
   });
 
   it('does NOT include data-snapshot-mode on <html> without ?snapshot=1', async () => {
