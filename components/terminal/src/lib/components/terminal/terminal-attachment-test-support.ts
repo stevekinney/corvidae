@@ -1,6 +1,8 @@
 import type { AttachmentSettings } from './terminal-attachment.ts';
 import type {
   EngineCreateOptions,
+  EngineInputReport,
+  EngineKeyHook,
   EngineSettings,
   RendererEngine,
   RendererEngineFactory,
@@ -33,6 +35,11 @@ export type FakeEngine = RendererEngine & {
     Record<'write' | 'measure' | 'update' | 'remeasure' | 'resize' | 'mount', Error>
   >;
   following: boolean;
+  inputListeners: Array<(report: EngineInputReport) => void>;
+  keyHooks: Array<EngineKeyHook | undefined>;
+  selection: boolean;
+  pastes: string[];
+  focusCount: number;
 };
 
 export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
@@ -48,6 +55,11 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     measureCount: 0,
     throwOn: {},
     following: true,
+    inputListeners: [],
+    keyHooks: [],
+    selection: false,
+    pastes: [],
+    focusCount: 0,
     mount() {
       engine.calls.push('mount');
       if (engine.throwOn.mount) throw engine.throwOn.mount;
@@ -92,6 +104,30 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     readProjection(maximumBytes) {
       engine.calls.push('readProjection');
       return { text: 'projection', truncated: false, bytes: maximumBytes ?? 10 };
+    },
+    onInput(listener) {
+      engine.calls.push('onInput');
+      engine.inputListeners.push(listener);
+      return () => {
+        engine.calls.push('offInput');
+        const index = engine.inputListeners.indexOf(listener);
+        if (index >= 0) engine.inputListeners.splice(index, 1);
+      };
+    },
+    setKeyHook(hook) {
+      engine.calls.push('setKeyHook');
+      engine.keyHooks.push(hook);
+    },
+    hasSelection() {
+      return engine.selection;
+    },
+    paste(text) {
+      engine.calls.push('paste');
+      engine.pastes.push(text);
+    },
+    focus() {
+      engine.calls.push('focus');
+      engine.focusCount += 1;
     },
     dispose() {
       engine.calls.push('dispose');

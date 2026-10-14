@@ -64,6 +64,13 @@ const schema = {
       description:
         'Mirror engine output into a bounded screen-reader live region. Default `false`.',
     },
+    maximumPasteBytes: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 262144,
+      description:
+        'The most paste text, in UTF-8 bytes, offered for review. A larger paste is refused whole and nothing is sent. Anything outside the range uses the default. Default `65536`.',
+    },
     class: {
       type: 'string',
       description: "Additional class merged with the component's root class.",
@@ -83,6 +90,12 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           "Called with the engine's measured geometry, once per accepted change. The engine's cell measurement is the sole resize authority; the frame's own estimate is never forwarded. A terminal that does not own the grid never calls it.",
+      },
+      {
+        name: 'onInputRefused',
+        reason: 'function-or-snippet',
+        description:
+          'Called when input, or part of it, did not reach the wire. Input is never queued, retried, or replayed, so this is the only record of what was dropped and why.',
       },
       {
         name: 'onLinkActivate',

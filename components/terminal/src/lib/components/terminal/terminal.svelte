@@ -22,9 +22,20 @@
 </script>
 
 <script lang="ts">
-  import { Button, TerminalFrame } from '@lostgradient/cinder';
+  import {
+    Button,
+    Modal,
+    TerminalFrame,
+    Textarea,
+    VisuallyHidden,
+    useAnnouncer,
+  } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
+  import { detectInputPlatform } from '../../input/input-platform.ts';
+  import type { InputSettings } from '../../input/input-types.ts';
+  import { resolvePasteLimit, type PasteReview } from '../../input/paste-review.ts';
+  import { createTerminalInput, type TerminalInput } from '../../input/terminal-input.ts';
   import { createTerminalAttachment, type AttachmentSettings } from './terminal-attachment.ts';
   import { engineLoader } from './terminal-engine-loader.ts';
   import { acceptsInput, isErrorState, mountsEngine, ownsGrid } from './terminal-state.ts';
@@ -48,9 +59,20 @@
     announceOutput = false,
     onLinkActivate,
     onTitleChange,
+    maximumPasteBytes,
+    onInputRefused,
     class: customClassName,
     ...rest
   }: TerminalProps = $props();
+
+  // Key capture and the paste review belong to the input binding that is live now. They are shown
+  // here and held there; a session or engine change disposes the binding, which ends both.
+  let input = $state.raw<TerminalInput>();
+  let captured = $state(false);
+  let reviewOpen = $state(false);
+  let displayedReview = $state.raw<PasteReview>();
+  const announcer = useAnnouncer();
+  const reviewId = $props.id();
 
   // A failure the renderer found itself. It outranks the state the host passed in: the engine is
   // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
@@ -110,6 +132,14 @@
     };
   }
 
+  function readInputSettings(): InputSettings {
+    return {
+      writable: acceptsInput(effectiveState),
+      maximumPasteBytes: resolvePasteLimit(maximumPasteBytes),
+      platform: detectInputPlatform(),
+    };
+  }
+
   // The live attachment, for pushing settings that change without remounting the engine. A plain
   // variable: nothing renders from it.
   let live: ReturnType<typeof createTerminalAttachment> | undefined;
@@ -153,6 +183,7 @@
           failed = { failure: next, controller: borrowed };
         },
         onTitle: (next) => onTitleChange?.(next),
+        bindEngine: (engine) => bindInput(engine, host, borrowed),
       }),
     );
     live = attachment;
@@ -161,6 +192,46 @@
       if (live === attachment) live = undefined;
       ready = false;
     };
+  }
+
+  /**
+   * Binds the session's input to the mounted engine. The binding is made for this controller and
+   * this engine only: when either is replaced the attachment disposes it, and nothing it was
+   * listening to can send to the session that replaced it.
+   */
+  function bindInput(
+    engine: Parameters<typeof createTerminalInput>[0]['engine'],
+    host: HTMLElement,
+    borrowed: typeof controller,
+  ) {
+    const binding = createTerminalInput({
+      engine,
+      host,
+      controller: borrowed?.input,
+      readSettings: readInputSettings,
+      onCaptureChange: (next) => {
+        captured = next;
+        announcer.announce(next ? 'Terminal key capture on' : 'Terminal key capture off');
+      },
+      onReview: (next) => {
+        if (next !== undefined) displayedReview = next;
+        reviewOpen = next !== undefined;
+      },
+      onRefused: (refusal) => onInputRefused?.(refusal),
+    });
+    input = binding;
+    return {
+      refresh: binding.refresh,
+      dispose() {
+        binding.dispose();
+        if (input === binding) input = undefined;
+      },
+    };
+  }
+
+  function toggleCapture(): void {
+    if (captured) input?.release();
+    else input?.capture();
   }
 
   // Recovery is the host's: a renderer failure revoked the controller and cleaned it up, so
@@ -193,8 +264,64 @@
       </div>
     {:else if effectiveState === 'writable'}
       <div class="cinder-terminal__actions">
-        <Button label="Capture terminal keys" size="sm" />
+        <Button
+          label="Capture terminal keys"
+          size="sm"
+          aria-pressed={captured}
+          onclick={toggleCapture}
+        />
+        <Button label="Interrupt" size="sm" onclick={() => input?.interrupt()} />
       </div>
     {/if}
+    <VisuallyHidden as="div" aria-live="polite" aria-atomic="true">
+      {announcer.message}
+    </VisuallyHidden>
   </div>
 </TerminalFrame>
+
+<Modal
+  bind:open={reviewOpen}
+  title={displayedReview?.kind === 'rejected' ? 'Paste is too large' : 'Review paste'}
+  onDismiss={() => input?.cancelPaste()}
+  onExitComplete={() => {
+    // The pasted text may be a secret; it is not kept once the review has gone.
+    displayedReview = undefined;
+  }}
+>
+  {#if displayedReview?.kind === 'confirm'}
+    <p class="cinder-terminal__review-summary">
+      {`${displayedReview.lines} ${displayedReview.lines === 1 ? 'line' : 'lines'}, ${displayedReview.bytes} of ${displayedReview.maximumBytes} bytes.`}
+    </p>
+    {#if displayedReview.endsWithNewline}
+      <p>Ends with a newline, so the last line runs as soon as it is pasted.</p>
+    {/if}
+    {#if displayedReview.controlCount > 0}
+      <p>
+        {`Contains ${displayedReview.controlCount} control ${displayedReview.controlCount === 1 ? 'character' : 'characters'}.`}
+      </p>
+    {/if}
+    {#if displayedReview.containsPasteTerminator}
+      <p>Contains the bracketed paste terminator, which ends a protected paste early.</p>
+    {/if}
+    <Textarea
+      id={`${reviewId}-preview`}
+      label="Paste preview, with line breaks and control characters shown"
+      value={displayedReview.visibleText}
+      readonly
+      rows={8}
+      variant="code"
+    />
+  {:else if displayedReview?.kind === 'rejected'}
+    <p>
+      {`This paste is ${displayedReview.bytes} bytes and the limit is ${displayedReview.maximumBytes} bytes. Nothing was sent.`}
+    </p>
+  {/if}
+  {#snippet footer()}
+    {#if displayedReview?.kind === 'confirm'}
+      <Button variant="secondary" autofocus onclick={() => input?.cancelPaste()}>Cancel</Button>
+      <Button variant="primary" onclick={() => input?.acceptPaste()}>Paste</Button>
+    {:else}
+      <Button variant="secondary" autofocus onclick={() => input?.cancelPaste()}>Close</Button>
+    {/if}
+  {/snippet}
+</Modal>

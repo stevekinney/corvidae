@@ -1,6 +1,8 @@
 import type { TerminalFrameStatus } from '@lostgradient/cinder';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { InputRefusal, TerminalInputController } from '../../input/input-types.ts';
+
 /**
  * The interaction states the terminal surface renders, as specified in
  * `documentation/terminal/experience.md`. The renderer owns the display of every state; which
@@ -90,6 +92,11 @@ export type TerminalRendererController = {
    * runs cleanup; the renderer never switches engines, resets silently, or replays input.
    */
   rendererFailed(failure: TerminalRendererFailure): void;
+  /**
+   * Where input goes. Absent, the terminal is a viewer: it sends nothing, whatever its state says.
+   * Replacing the controller ends the old session's input for good; nothing is sent to it again.
+   */
+  readonly input?: TerminalInputController;
 };
 
 export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'title'> & {
@@ -128,6 +135,17 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
   onLinkActivate?: (url: string) => void;
   /** Called with the terminal title the program set, as bounded plain text. */
   onTitleChange?: (title: string) => void;
+  /**
+   * The most paste text, in UTF-8 bytes, that is offered for review. A larger paste is refused
+   * whole and nothing is sent. An integer from 1 to 262144; anything else uses the default.
+   * @default 65536
+   */
+  maximumPasteBytes?: number;
+  /**
+   * Called when input, or part of it, did not reach the wire. Input is never queued, retried, or
+   * replayed, so this is the only record of what was dropped and why.
+   */
+  onInputRefused?: (refusal: InputRefusal) => void;
   /** Additional class merged with the component's root class. */
   class?: string;
 };

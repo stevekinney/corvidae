@@ -49,6 +49,8 @@ The engine is private. The component never exposes the engine instance, its opti
 | `announceOutput` | Mirror output into the engine's bounded live region. Defaults to `false`. |
 | `onLinkActivate` | Turns links on and receives a visible HTTPS address the reader activated. |
 | `onTitleChange` | Receives the program-set title as bounded plain text. |
+| `maximumPasteBytes` | The most paste text, in UTF-8 bytes, offered for review. Integer from 1 to 262144; anything else uses 65536. |
+| `onInputRefused` | Receives `{ reason, acceptedOperations?, totalOperations? }` when input, or part of it, did not reach the wire. |
 
 ### The controller the renderer needs
 
@@ -56,6 +58,17 @@ The engine is private. The component never exposes the engine instance, its opti
 
 - `subscribeOutput(listener)` delivers ordered output bytes and returns an unsubscribe function. The listener receives each chunk and a `parsed` callback. The renderer calls `parsed` once per chunk when the engine has parsed it, which is the accepted parse boundary. It is independent of painting: output keeps parsing, and is acknowledged, while the page is hidden. The controller delivers everything produced since the attachment started, in order, because the renderer subscribes only after its engine is mounted.
 - `rendererFailed(failure)` is called once if the renderer fails closed. The engine is already disposed; the controller revokes input and runs cleanup.
+- `input` (optional) is where typing, paste and the engine's automatic replies go. It is `TerminalInputController`: `input(bytes)` offers one operation and returns the protocol's typed result (a throw means the delivery is unknown), `authorityRevoked` says the controller may no longer send, and `terms` carries the negotiated `maxFrameBytes` and `maxQueuedOperations`. A `ClientEndpoint` plus the transport that carries its frames satisfies it. Without `input` the terminal is a viewer and sends nothing.
+
+## Input
+
+Input is enforced in the client for feedback; the host enforces authority for security. Every engine report becomes bytes by its own conversion: text (`onData`) as UTF-8, binary (`onBinary`) as one byte per character. A report that cannot be converted exactly is refused, never repaired. Bytes are split to the negotiated frame budget only between characters and complete escape sequences, so the bracketed-paste markers and every sequence a paste carries stay whole. An input that cannot fit the queue, or has a sequence larger than a frame, is refused before anything is sent.
+
+Nothing is queued, retried or replayed. A failure after part of an input was accepted, or a delivery whose outcome is unknown, freezes input for the life of that session binding. Typing, paste, and the automatic replies the engine makes to terminal queries are all refused unless the state is `writable` and the controller still has authority. A read-only view sends nothing, and its selection and scrolling keep working.
+
+Keys are routed in the order the experience specification sets: a focused package overlay (the paste review), then reserved platform and host actions, then authorized terminal input. Capture starts off, so Tab and Shift+Tab move through the page; the `Capture terminal keys` button (`aria-pressed`) sends them to the shell instead, and `Ctrl+Shift+Escape` releases it. Bare Escape is always shell input unless the review owns it. Capture lasts only while the terminal has focus, and it never ends up on a previous session.
+
+A multiline or control-bearing paste opens a review that shows its line breaks and controls, how long it is, and whether it ends in a newline, with Cancel and Paste. A paste over `maximumPasteBytes` is refused whole. An accepted paste goes through the engine, which converts line breaks to carriage returns and brackets it when the program asked for it. The keys that close the review do not reach the shell.
 
 ## Geometry
 

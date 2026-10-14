@@ -11,6 +11,11 @@ import Terminal from './terminal.svelte';
 
 export default Terminal;
 export type {
+  InputRefusal,
+  InputRefusalReason,
+  TerminalInputController,
+} from '../../input/input-types.ts';
+export type {
   TerminalGeometry,
   TerminalOutputListener,
   TerminalProps,

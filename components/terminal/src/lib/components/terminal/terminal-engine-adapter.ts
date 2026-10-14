@@ -78,6 +78,25 @@ export function buildEngineOptions(
 }
 
 /**
+ * One report of input the engine produced. Its two shapes convert to bytes differently, so they
+ * stay distinct: `text` is characters and goes out as UTF-8, `binary` is one byte per character.
+ * Automatic replies to terminal queries arrive here too, as `text`; a read-only engine produces
+ * neither (it sets `disableStdin`, which the engine checks before any report is made).
+ */
+export type EngineInputReport = { kind: 'text' | 'binary'; data: string };
+
+/**
+ * The engine's key hook. xterm.js 6.0.0 calls it for every keydown, keypress and keyup on its
+ * input element, before it does anything else with the event, and skips the event only when the
+ * hook returns exactly `false` (`CoreBrowserTerminal._keyDown`, `_keyPress` and `_keyUp` all test
+ * `=== false`). Any other value, including `undefined`, lets the engine process it. The engine
+ * never prevents the event's default or stops its propagation on a skipped event, so the browser
+ * acts on it unless the hook prevents it. Input events, IME composition and paste never ask the
+ * hook.
+ */
+export type EngineKeyHook = (event: KeyboardEvent) => boolean;
+
+/**
  * The private face of the selected engine. Nothing outside the renderer receives the engine
  * instance, its option bag, its parser, or its write queue: only these deliberate operations.
  */
@@ -113,6 +132,24 @@ export type RendererEngine = {
   readProjection(maximumBytes?: number): TerminalProjection;
   /** Whether the viewport shows the live bottom, where new output scrolls into view. */
   readonly following: boolean;
+  /**
+   * Subscribe to the input the engine produces, as the reports it makes. The returned function
+   * unsubscribes. Both shapes arrive through the one listener, in the order the engine made them.
+   */
+  onInput(listener: (report: EngineInputReport) => void): () => void;
+  /** Replace the engine's key hook, or remove it with `undefined`. */
+  setKeyHook(hook: EngineKeyHook | undefined): void;
+  /** Whether the engine holds a non-empty selection. */
+  hasSelection(): boolean;
+  /**
+   * Paste `text` as the engine does: line breaks become carriage returns and the text is wrapped in
+   * the bracketed-paste markers when the program asked for them. It is reported through
+   * {@link RendererEngine.onInput} as one text report, and nothing is reported when the engine takes
+   * no input.
+   */
+  paste(text: string): void;
+  /** Move focus to the engine's input element. */
+  focus(): void;
   /** Release the engine and its DOM. Safe to call twice. */
   dispose(): void;
 };
@@ -247,6 +284,27 @@ export function createRendererEngine(
     get following() {
       const buffer = terminal.buffer.active;
       return buffer.viewportY >= buffer.baseY;
+    },
+    onInput(listener) {
+      const text = terminal.onData((data) => listener({ kind: 'text', data }));
+      const binary = terminal.onBinary((data) => listener({ kind: 'binary', data }));
+      return () => {
+        text.dispose();
+        binary.dispose();
+      };
+    },
+    setKeyHook(hook) {
+      // The engine cannot detach a hook; one that always says "process" is the same as none.
+      terminal.attachCustomKeyEventHandler(hook ?? (() => true));
+    },
+    hasSelection() {
+      return terminal.hasSelection();
+    },
+    paste(text) {
+      if (!disposed) terminal.paste(text);
+    },
+    focus() {
+      if (!disposed) terminal.focus();
     },
     dispose() {
       if (disposed) return;
