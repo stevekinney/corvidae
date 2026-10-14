@@ -173,14 +173,17 @@
       ]
     },
     "@lostgradient/ventriloquist#test": {
-      "outputs": ["test-results/**"],
+      "outputs": ["test-results/**", "test-output/junit/**"],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
       ]
     },
     "@lostgradient/ventriloquist#test:coverage": {
