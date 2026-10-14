@@ -219,8 +219,11 @@ describe('memory-lifecycle baseline', () => {
   });
 });
 
-describe('the memory-lifecycle script', () => {
-  test('runs as a package script and exits with the release decision', async () => {
+// The real process is the behavior under test (package script wiring and exit code), so it runs
+// once here at module scope to stay off the per-test clock.
+const spawnedDirectory = await mkdtemp(join(tmpdir(), 'memory-lifecycle-command-spawn-'));
+const spawnedRun = await (async () => {
+  try {
     const child = Bun.spawn(
       [
         process.execPath,
@@ -230,12 +233,20 @@ describe('the memory-lifecycle script', () => {
         'memory-lifecycle',
         'run',
         '--artifacts-dir',
-        join(directory, 'spawned'),
+        join(spawnedDirectory, 'spawned'),
       ],
-      { stdout: 'pipe', stderr: 'pipe' },
+      { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
     );
     const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ release: { decision: 'pass' } });
+    return { stdout, exitCode };
+  } finally {
+    await rm(spawnedDirectory, { recursive: true, force: true });
+  }
+})();
+
+describe('the memory-lifecycle script', () => {
+  test('runs as a package script and exits with the release decision', () => {
+    expect(spawnedRun.exitCode).toBe(0);
+    expect(JSON.parse(spawnedRun.stdout)).toMatchObject({ release: { decision: 'pass' } });
   });
 });
