@@ -18,6 +18,7 @@
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/embeddings": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/skills": "workspace:*",
     "@lostgradient/tool-protocol": "workspace:*",
     "zod": "catalog:",
     "@opentelemetry/api": "catalog:",

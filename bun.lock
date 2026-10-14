@@ -404,6 +404,7 @@
         "@lostgradient/embeddings": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/skills": "workspace:*",
         "@lostgradient/tool-protocol": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@opentelemetry/api": "catalog:",

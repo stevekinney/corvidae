@@ -5,11 +5,18 @@ import { createHeadlessPermissionPolicyHooks, createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
+import type { AgentSkillsOptions } from './agent-policy';
+import {
+  composeAgentRunPolicy,
+  OPERATIVE_RESOLVES_GUARDRAILS,
+  resolveAgentGuardrails,
+} from './agent-policy';
 import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';
 import { noToolCalls } from './conditions/predicates';
 import { createActiveRun } from './create-run';
 import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
+import type { GuardrailsOptions } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
 import type { ProviderName } from './providers/types';
@@ -152,6 +159,50 @@ export interface CreateAgentOptionsBase {
    * suppress a Bureau registration.
    */
   hooks?: HookRegistry<OperativeHookMap> | undefined;
+
+  /**
+   * This agent's guardrail tripwires (COR-1367) — the per-agent counterpart
+   * of the deprecated `BureauOptions.guardrails`, with the same values:
+   *
+   * - a `GuardrailsOptions` runs exactly that configuration (input and
+   *   output detectors, taint, `mode`) on every run this agent starts;
+   * - `false` opts this agent out of guardrails altogether;
+   * - omitted, the agent inherits: a host's policy handed down through
+   *   `AgentRunContext.inheritedGuardrails` when there is one, and otherwise
+   *   the AB-40 preset (`createDefaultGuardrailsPreset()` — a prompt-injection
+   *   input detector and an output PII validator, both `mode: 'tripwire'`).
+   *   An agent that says nothing is therefore guarded, standalone or under
+   *   Bureau, and never silently loses the preset.
+   *
+   * A fresh `createGuardrails` per run, so taint from one run never reaches
+   * another. The guardrails also scan this agent's skill bodies and skill
+   * resources (COR-1226) when `skills` is set.
+   *
+   * The output validator runs in `validateResponse`, after `generate`
+   * returns. A `generate` that streams text to clients as it arrives has
+   * already delivered it by then; buffer generation when the output
+   * tripwire must gate what a client sees.
+   */
+  guardrails?: GuardrailsOptions | false | undefined;
+
+  /**
+   * This agent's skills (COR-1367) — the per-agent counterpart of the
+   * deprecated `BureauOptions.skills`. Each run gets a fresh skill client
+   * bound to `skills.catalog`: the catalog is shown to the model at step 0,
+   * `activate_skill`/`load_skill_resource`/`deactivate_skill` join the run's
+   * toolbox, active skill instructions are re-rendered on every step, and an
+   * active skill's `allowed-tools` narrows the tools the model sees.
+   *
+   * Under `permissions`, the skill tools are ordinary tools: deny-by-default
+   * denies them unless the allowlist names them. With a shared `toolbox`, the
+   * skill tools are combined into a per-run toolbox built from it, which
+   * keeps the shared toolbox's approval configuration (see
+   * `combineToolboxes`) but not its in-memory event emitter.
+   *
+   * Omitted, the agent has no skills: Bureau's own `skills` never reached a
+   * catalog-dispatched agent and still does not.
+   */
+  skills?: AgentSkillsOptions | undefined;
 }
 
 /**
@@ -370,6 +421,25 @@ export interface StandaloneAgent<
   readonly hooks?: HookRegistry<OperativeHookMap> | undefined;
 
   /**
+   * This agent's own guardrail declaration, exactly as `options.guardrails`
+   * supplied it (COR-1367). Omitted when the agent declared none — the
+   * resolved policy then depends on the host (see
+   * `CreateAgentOptionsBase.guardrails`), so it is not a property of the
+   * agent alone.
+   */
+  readonly guardrails?: GuardrailsOptions | false | undefined;
+
+  /** This agent's skills, exactly as `options.skills` supplied them (COR-1367). */
+  readonly skills?: AgentSkillsOptions | undefined;
+
+  /**
+   * Always `true`: a `createAgent` agent resolves its own guardrails and
+   * honors `AgentRunContext.inheritedGuardrails`, so a host hands its policy
+   * down rather than layering it on top (COR-1367).
+   */
+  readonly [OPERATIVE_RESOLVES_GUARDRAILS]: true;
+
+  /**
    * Start a new in-memory run.
    *
    * - `run('some text')` starts a fresh conversation: `instructions` (if
@@ -542,6 +612,11 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // this instance over instead would let a later `agent.hooks.on(...)`
     // reach a run already in flight.
     hooks: agentHooks,
+    // COR-1367 — destructured out so neither reaches `RunOptions` through
+    // `...rest`: both are resolved per run below into hook registrations and
+    // toolbox contributions, which is the only form a run consumes them in.
+    guardrails: declaredGuardrails,
+    skills,
     // Review findings (AB-241): `principal` is inherently per-call
     // attribution (AB-21's `AgentRunContext.principal`), never a
     // construction-time concept — `CreateAgentOptionsBase` declares no such
@@ -619,12 +694,45 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // listeners to the toolbox emitter and the toolbox tracks per-instance
     // state (loop detection, budget counters), so a toolbox this factory
     // owns must not be shared between concurrent runs.
-    const toolbox =
+    const baseToolbox =
       providedToolbox ??
       createToolbox(
         toolEntries,
         permissions ? { policy: createHeadlessPermissionPolicyHooks(permissions) } : undefined,
       );
+
+    // COR-1367 — the agent's own declaration first, then whatever the host
+    // handed down, then the AB-40 preset. Resolved per run because the
+    // inherited half arrives with the run's context.
+    const runGuardrails = resolveAgentGuardrails(declaredGuardrails, context?.inheritedGuardrails);
+    // COR-1265 — the agent tier becomes this run's effective hook plan, as a
+    // fresh merged snapshot rather than the agent's own registry.
+    // `mergeHookRegistries` copies every entry into a new registry that holds
+    // no reference back, so a registration added to `agentHooks` after this
+    // run was dispatched cannot reach it. Left `undefined` when the agent has
+    // neither hooks nor policy, so such an agent keeps the absent
+    // `RunOptions.hooks` it always had rather than an empty registry per run.
+    //
+    // Only the agent tier participates here. Bureau's tier is composed at
+    // Bureau's own dispatch sites, and there is no direct tier on this path:
+    // `AgentRunContext` declares no `hooks` field, so a caller of
+    // `agent.run()` has no per-call hook surface.
+    const hasPolicy = runGuardrails !== undefined || skills !== undefined;
+    const hooks =
+      agentHooks === undefined && !hasPolicy
+        ? undefined
+        : mergeHookRegistries(undefined, agentHooks, undefined);
+    const toolbox =
+      hooks !== undefined && hasPolicy
+        ? composeAgentRunPolicy({
+            guardrails: runGuardrails,
+            skills,
+            toolbox: baseToolbox,
+            hooks,
+            agentName: context?.agentName ?? resolvedName,
+            runtime,
+          })
+        : baseToolbox;
 
     const conversation =
       typeof input === 'string'
@@ -676,22 +784,8 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       // construction-time value must never be able to override the run's
       // actual caller-supplied principal.
       ...rest,
-      // COR-1265 — the agent tier becomes this run's effective hook plan,
-      // as a fresh merged snapshot rather than the agent's own registry.
-      // `mergeHookRegistries` copies every entry into a new registry that
-      // holds no reference back, so a registration added to `agentHooks`
-      // after this run was dispatched cannot reach it.
-      //
-      // Only the agent tier participates here. Bureau's tier is composed at
-      // Bureau's own dispatch sites, and there is no direct tier on this
-      // path: `AgentRunContext` declares no `hooks` field, so a caller of
-      // `agent.run()` has no per-call hook surface. Left `undefined` when
-      // the agent declares no hooks, so an agent without them keeps the
-      // absent `RunOptions.hooks` it has today rather than an empty
-      // registry allocated per run.
-      ...(agentHooks === undefined
-        ? {}
-        : { hooks: mergeHookRegistries(undefined, agentHooks, undefined) }),
+      // The merged agent-tier plan built above, policy registrations included.
+      ...(hooks === undefined ? {} : { hooks }),
       // AB-21: `AgentRunContext` fields translate onto their `RunOptions`
       // equivalents — `agentName` stamps curated `tool.*` events (falling
       // back to this agent's own `name`), `signal` drives per-run abort,
@@ -738,6 +832,10 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // agent declares no hooks, so `'hooks' in agent` distinguishes "no tier"
     // from "a tier that happens to be empty".
     ...(agentHooks === undefined ? {} : { hooks: agentHooks }),
+    // COR-1367 — omitted when not declared, matching `hooks` above.
+    ...(declaredGuardrails === undefined ? {} : { guardrails: declaredGuardrails }),
+    ...(skills === undefined ? {} : { skills }),
+    [OPERATIVE_RESOLVES_GUARDRAILS]: true,
     run(
       input: string | { conversation: ConversationHistory },
       context?: AgentRunContext,
