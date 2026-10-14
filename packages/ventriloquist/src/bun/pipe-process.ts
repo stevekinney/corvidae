@@ -22,12 +22,29 @@ type OutputReader = ReadableStreamDefaultReader<Uint8Array>;
 
 /**
  * Read a child's output pipe into a feed until it ends. The pipe exposes no pause or resume, so
- * the feed's bound is what limits unread output. The returned function stops reading and releases
- * the pipe; it is safe to call any number of times.
+ * the feed's bound is what limits unread output. The reader's lock is released as soon as pumping
+ * ends, whether the pipe ended, failed or was canceled. While it is pumping, the returned stop
+ * function is held in `active`, so it can be stopped from outside; once pumping has ended it is
+ * dropped from there, and calling it later does nothing. Stopping cancels the pipe and waits for
+ * the pump to finish, and is safe to call any number of times.
  */
-function pumpPipe(stream: ReadableStream<Uint8Array>, feed: BoundedByteFeed): () => Promise<void> {
+function pumpPipe(
+  stream: ReadableStream<Uint8Array>,
+  feed: BoundedByteFeed,
+  active: Set<() => Promise<void>>,
+): void {
   const reader: OutputReader = stream.getReader();
-  void (async () => {
+  let ended = false;
+  let stopped: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (stopped ??= (async () => {
+      if (ended) return;
+      // A cancel that fails leaves the read pending, and the lock with it: that is reported, not waited out.
+      await reader.cancel();
+      await pumping;
+    })());
+  active.add(stop);
+  const pumping: Promise<void> = (async () => {
     try {
       for (;;) {
         const result = await reader.read();
@@ -37,10 +54,12 @@ function pumpPipe(stream: ReadableStream<Uint8Array>, feed: BoundedByteFeed): ()
       feed.end();
     } catch (error) {
       feed.fail(error);
+    } finally {
+      ended = true;
+      reader.releaseLock();
+      active.delete(stop);
     }
   })();
-  let stopped: Promise<void> | undefined;
-  return () => (stopped ??= reader.cancel());
 }
 
 /**
@@ -61,13 +80,19 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
   const owned = createOwnedProcess(settings);
   let startFailure: ProcessStartFailure | undefined;
   let input: InputSink | undefined;
-  const stops: (() => Promise<void>)[] = [];
+  const pumps = new Set<() => Promise<void>>();
   const stopPumps = async (): Promise<void> => {
-    await Promise.all(stops.map((stop) => stop()));
+    await Promise.all([...pumps].map((stop) => stop()));
+  };
+  // Output that overflowed while nothing was reading it is no longer being kept, so the child that
+  // produces it is ended rather than left to run on with its output discarded.
+  const onOverflow = (): void => {
+    void attempt(stopPumps);
+    void owned.terminate();
   };
   const feeds = {
-    stdout: new BoundedByteFeed(settings.maximumBufferedOutputBytes, stopPumps),
-    stderr: new BoundedByteFeed(settings.maximumBufferedOutputBytes, stopPumps),
+    stdout: new BoundedByteFeed(settings.maximumBufferedOutputBytes, stopPumps, onOverflow),
+    stderr: new BoundedByteFeed(settings.maximumBufferedOutputBytes, stopPumps, onOverflow),
   };
 
   const backend: ProcessBackend = {
@@ -90,10 +115,8 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
       }
       owned.adopt(child);
       input = acceptsInput ? (child.stdin as InputSink) : undefined;
-      stops.push(
-        pumpPipe(child.stdout as ReadableStream<Uint8Array>, feeds.stdout),
-        pumpPipe(child.stderr as ReadableStream<Uint8Array>, feeds.stderr),
-      );
+      pumpPipe(child.stdout as ReadableStream<Uint8Array>, feeds.stdout, pumps);
+      pumpPipe(child.stderr as ReadableStream<Uint8Array>, feeds.stderr, pumps);
     },
     write: async (bytes) => {
       if (input === undefined) throw new Error('the process has no open input');
@@ -101,9 +124,14 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
       await input.flush();
     },
     cleanup: async () => {
-      const closed = await attempt(() => input?.end());
+      // Termination starts first and runs alongside the close of stdin: closing flushes buffered
+      // input, which waits on a child that has stopped reading, and must not hold the signal back.
+      const terminating = owned.terminate();
+      const sink = input;
       input = undefined;
-      const terminated = await owned.terminate();
+      const closing = attempt(() => sink?.end());
+      const terminated = await terminating;
+      const closed = await closing;
       const released = await attempt(stopPumps);
       return combineOutcomes([terminated, closed && released ? 'complete' : 'incomplete']);
     },

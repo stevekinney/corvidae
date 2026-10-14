@@ -30,6 +30,7 @@ export class BoundedByteFeed {
   readonly stream: ByteStream;
   readonly #maximumBufferedBytes: number;
   readonly #onCancel: () => void | Promise<void>;
+  readonly #onOverflow: () => void;
   readonly #chunks: Uint8Array[] = [];
   readonly #waiters: Waiter[] = [];
   #queuedBytes = 0;
@@ -38,9 +39,19 @@ export class BoundedByteFeed {
   #locked = false;
   #failure: { readonly error: unknown } | undefined;
 
-  constructor(maximumBufferedBytes: number, onCancel: () => void | Promise<void>) {
+  /**
+   * `onOverflow` runs once, when unread output first exceeds the bound, whether or not a reader is
+   * waiting: the failure is recorded for the reader to find, but the producer must not keep running
+   * for a reader that may never come.
+   */
+  constructor(
+    maximumBufferedBytes: number,
+    onCancel: () => void | Promise<void>,
+    onOverflow: () => void = () => undefined,
+  ) {
     this.#maximumBufferedBytes = maximumBufferedBytes;
     this.#onCancel = onCancel;
+    this.#onOverflow = onOverflow;
     this.stream = { getReader: () => this.#acquire() };
   }
 
@@ -54,6 +65,7 @@ export class BoundedByteFeed {
     }
     if (this.#queuedBytes + bytes.length > this.#maximumBufferedBytes) {
       this.fail(new OutputOverflowError(this.#maximumBufferedBytes));
+      this.#onOverflow();
       return;
     }
     this.#chunks.push(bytes.slice());

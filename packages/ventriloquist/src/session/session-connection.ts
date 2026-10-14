@@ -31,7 +31,10 @@ export type SessionConnectionOptions = {
 
 /** The `failed` reason a session records when its backend's `start()` rejected. */
 const START_REJECTED_REASON = 'start-rejected';
-const SPAWN_FAILED_MESSAGE = 'the backend failed to start';
+const START_FAILED_MESSAGES = {
+  'spawn-failed': 'the backend failed to start',
+  'unsupported-runtime': 'the runtime cannot host this process',
+} as const;
 
 const TRANSPORT_FAILURE_CLOSE_CODE = describeFailure('transport-failed').closeCode;
 
@@ -139,8 +142,10 @@ export class SessionConnection {
     // client is authorized, so it is told why: a startup failure is never just a refused upgrade.
     const { process } = session.snapshot;
     if (process.kind === 'failed' && process.reason === START_REJECTED_REASON) {
-      this.#deliver(this.#host.attachmentError('spawn-failed', SPAWN_FAILED_MESSAGE));
-      this.#failClosed(describeFailure('spawn-failed').closeCode);
+      // No generation exists yet, so the failure is reported as the backend named it.
+      const code = session.startFailureCode ?? 'spawn-failed';
+      this.#deliver(this.#host.attachmentError(code, START_FAILED_MESSAGES[code]));
+      this.#failClosed(describeFailure(code).closeCode);
       return;
     }
     // Attaching can start sources, and a source may emit before `attach` returns. Nothing can be
@@ -295,8 +300,13 @@ export class SessionConnection {
         // No further output is accepted once the generation is revoked, so a held exit is final.
         this.#flushExit();
         if (event.cause === 'start-failed') {
-          // The backend never started: report the failure, never a process exit, and close with its code.
-          this.#deliver(this.#host.attachmentError('spawn-failed', SPAWN_FAILED_MESSAGE));
+          // The backend never started: report the failure, never a process exit, and close with its
+          // code. A generation was already issued, and `unsupported-runtime` is a startup failure
+          // with no attachment that the protocol refuses to name once one exists, so an attached
+          // client is told `spawn-failed`, the startup failure that revokes a generation.
+          this.#deliver(
+            this.#host.attachmentError('spawn-failed', START_FAILED_MESSAGES['spawn-failed']),
+          );
           this.#failClosed(describeFailure('spawn-failed').closeCode);
         }
         // Otherwise revocation has no wire message of its own: the cleanup result that follows announces it.

@@ -235,8 +235,10 @@ describe('cleanup that cannot finish every step', () => {
       getReader: () => {
         const reader = (stream as ReadableStream<Uint8Array>).getReader();
         return {
-          read: () => reader.read(),
+          // A read that never ends, so the pump cannot finish on its own and release the pipe.
+          read: () => new Promise<never>(() => undefined),
           cancel: () => Promise.reject(new Error('cancel failed')),
+          releaseLock: () => reader.releaseLock(),
         };
       },
     });
@@ -308,7 +310,11 @@ describe('a pipe that fails while it is read', () => {
       },
       kill: (signal) => child.kill(signal),
       stdout: {
-        getReader: () => ({ read: () => Promise.reject(failure), cancel: () => Promise.resolve() }),
+        getReader: () => ({
+          read: () => Promise.reject(failure),
+          cancel: () => Promise.resolve(),
+          releaseLock: () => undefined,
+        }),
       },
       stderr: child.stderr,
     }));

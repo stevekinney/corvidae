@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { expectOk, SESSION_IDENTIFIER } from '../protocol/endpoint-pair.test-support.ts';
+import { decodeFrame, encodeFrame } from '../protocol/frame-codec.ts';
 import { createDeferred } from '../session/fixtures/deferred.ts';
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { flush } from '../session/session.test-support.ts';
@@ -15,7 +17,10 @@ type Harness = {
   readonly signals: string[];
   readonly tableReads: () => number;
   /** The leader ends; `groupEmpty` says whether any member outlived it. */
-  endLeader(code: number, options?: { signal?: string; groupEmpty: boolean }): Promise<void>;
+  endLeader(
+    code: number,
+    options?: { signal?: string | number; groupEmpty: boolean },
+  ): Promise<void>;
   child: SpawnedProcess;
 };
 
@@ -29,7 +34,7 @@ function harness(options: {
   const signals: string[] = [];
   let tableReads = 0;
   let empty = false;
-  let signalCode: string | null = null;
+  let signalCode: string | number | null = null;
   const endsOn = options.endsOn ?? 'SIGTERM';
   const operations: ProcessGroupOperations = {
     signal: (_group, signal) => {
@@ -100,6 +105,32 @@ describe('OwnedProcess', () => {
     expect(await signaled.owned.exit).toEqual({ exitCode: null, signal: 'SIGTERM' });
   });
 
+  test.each([
+    ['a signal with no name of its own', 34, 'SIG34'],
+    ['an empty signal name', '', 'SIGUNKNOWN'],
+  ])('spells %s as a nonempty name the wire accepts', async (_label, signal, expected) => {
+    const { owned, child, endLeader } = harness({});
+    owned.adopt(child);
+    await endLeader(137, { signal, groupEmpty: true });
+    const exit = await owned.exit;
+    expect(exit).toEqual({ exitCode: null, signal: expected });
+    const encoded = expectOk(
+      encodeFrame({
+        kind: 'process-exit',
+        sessionId: SESSION_IDENTIFIER,
+        attachmentGeneration: 3,
+        sequence: 7,
+        exitCode: exit?.exitCode ?? null,
+        signal: exit?.signal ?? null,
+      }),
+    );
+    expect(expectOk(decodeFrame(encoded, 'client'))).toMatchObject({
+      kind: 'process-exit',
+      exitCode: null,
+      signal: expected,
+    });
+  });
+
   test('does not signal a group that was already empty when its leader exited', async () => {
     const { owned, child, endLeader, signals, tableReads } = harness({});
     owned.adopt(child);
@@ -116,6 +147,51 @@ describe('OwnedProcess', () => {
     expect(signals).toEqual(['SIGTERM']);
     expect(tableReads()).toBe(1);
     expect(await owned.exit).toEqual({ exitCode: null, signal: 'SIGTERM' });
+  });
+
+  test('never signals again once a termination emptied a group that outlived its leader', async () => {
+    const { owned, child, endLeader, signals, tableReads } = harness({ endsOn: 'SIGTERM' });
+    owned.adopt(child);
+    await endLeader(0, { groupEmpty: false });
+    expect(await owned.terminate()).toBe('complete');
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual(['SIGTERM']);
+    expect(tableReads()).toBe(1);
+  });
+
+  test('concurrent terminations share one signal sequence and one outcome', async () => {
+    const { owned, child, signals } = harness({ table: [escapee] });
+    owned.adopt(child);
+    const outcomes = await Promise.all([owned.terminate(), owned.terminate()]);
+    expect(outcomes).toEqual(['unknown', 'unknown']);
+    expect(await owned.terminate()).toBe('unknown');
+    expect(signals).toEqual(['SIGTERM']);
+  });
+
+  test('a termination that left the group standing may be tried again', async () => {
+    const { owned, child, clock, signals } = harness({ endsOn: 'never' });
+    owned.adopt(child);
+    const first = owned.terminate();
+    await flush();
+    clock.advance(100);
+    await flush();
+    clock.advance(300);
+    expect(await first).toBe('incomplete');
+    const second = owned.terminate();
+    await flush();
+    clock.advance(100);
+    await flush();
+    clock.advance(300);
+    expect(await second).toBe('incomplete');
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL', 'SIGTERM', 'SIGKILL']);
+  });
+
+  test('a process adopted after an early terminate is still ended', async () => {
+    const { owned, child, signals } = harness({});
+    expect(await owned.terminate()).toBe('complete');
+    owned.adopt(child);
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual(['SIGTERM']);
   });
 
   test('ends the members that outlived their leader', async () => {

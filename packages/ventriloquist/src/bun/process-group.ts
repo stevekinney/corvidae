@@ -5,32 +5,94 @@ import type { CancelTimer, SessionClock } from '../session/session-clock.ts';
 export type ProcessGroupOperations = {
   /** Signal every member of the group. A group that is already gone is not an error. */
   signal(group: number, signal: 'SIGTERM' | 'SIGKILL'): void;
-  /** Whether any member remains. A group this process may not signal still exists. */
-  exists(group: number): boolean;
+  /**
+   * Whether any member remains. A group this process may not signal still exists. It may need to
+   * look at the process table, so it can be asynchronous.
+   */
+  exists(group: number): boolean | Promise<boolean>;
 };
 
 function errorCode(error: unknown): unknown {
   return (error as { code?: unknown }).code;
 }
 
-/** Signal and probe a process group with `process.kill`, whose negative pid addresses the whole group. */
-export const processGroupOperations: ProcessGroupOperations = {
-  signal(group, signal) {
-    try {
-      process.kill(-group, signal);
-    } catch (error) {
-      if (errorCode(error) !== 'ESRCH') throw error;
+/** The process state letters `ps` reports for the members of one process group, one string per member. */
+export type GroupMemberStates = readonly string[];
+
+const MEMBER_STATE_COMMAND = ['ps', '-A', '-o', 'pgid=,stat='];
+
+/**
+ * Read `pgid stat` rows, as `ps -A -o pgid=,stat=` prints them, and collect the states of the
+ * members of `group`. A row that is not a group and a state fails the read.
+ */
+export function parseGroupMemberStates(text: string, group: number): GroupMemberStates {
+  const states: string[] = [];
+  for (const line of text.split('\n')) {
+    if (line.trim().length === 0) continue;
+    const fields = line.trim().split(/\s+/);
+    const row = Number(fields[0]);
+    if (fields.length !== 2 || !Number.isSafeInteger(row)) {
+      throw new Error(`unreadable process state row: ${JSON.stringify(line)}`);
     }
-  },
-  exists(group) {
-    try {
-      process.kill(-group, 0);
-      return true;
-    } catch (error) {
-      return errorCode(error) !== 'ESRCH';
-    }
-  },
-};
+    if (row === group) states.push(fields[1] as string);
+  }
+  return states;
+}
+
+/**
+ * Read the state of every member of `group` with `ps`, or with `command` when a test supplies a
+ * stand-in; `undefined` when the table cannot be read. The read is asynchronous, so a slow process
+ * table never holds up the event loop other sessions share.
+ */
+export async function readGroupMemberStates(
+  group: number,
+  command: readonly string[] = MEMBER_STATE_COMMAND,
+): Promise<GroupMemberStates | undefined> {
+  try {
+    const child = Bun.spawn([...command], { stdout: 'pipe', stderr: 'ignore', stdin: 'ignore' });
+    const [text, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+    return exitCode === 0 ? parseGroupMemberStates(text, group) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Signal and probe process groups with `process.kill`, whose negative pid addresses the whole
+ * group. A group counts as present only while it has a member that is not a zombie: a zombie is
+ * already dead and only waits for its parent to reap it, which a container's init may never do, so
+ * `kill(-group, 0)` keeps succeeding for a group that nothing can still run in. `readStates` is how
+ * the members are inspected; a state that cannot be read leaves the group present.
+ */
+export function createProcessGroupOperations(
+  readStates: (
+    group: number,
+  ) => GroupMemberStates | undefined | Promise<GroupMemberStates | undefined>,
+): ProcessGroupOperations {
+  return {
+    signal(group, signal) {
+      try {
+        process.kill(-group, signal);
+      } catch (error) {
+        if (errorCode(error) !== 'ESRCH') throw error;
+      }
+    },
+    async exists(group) {
+      try {
+        process.kill(-group, 0);
+      } catch (error) {
+        // A group this process may not signal still exists; only ESRCH says it does not.
+        if (errorCode(error) === 'ESRCH') return false;
+      }
+      const states = await readStates(group);
+      return states === undefined || states.some((state) => !state.startsWith('Z'));
+    },
+  };
+}
+
+export const processGroupOperations: ProcessGroupOperations = createProcessGroupOperations(
+  (group) => readGroupMemberStates(group),
+);
 
 export type GroupTermination = {
   readonly group: number;
@@ -48,18 +110,26 @@ export type GroupTermination = {
 function waitForEmpty(termination: GroupTermination, milliseconds: number): Promise<boolean> {
   const { clock, group, operations, pollMilliseconds } = termination;
   return new Promise((resolve) => {
+    let settled = false;
     let cancelPoll: CancelTimer | undefined;
+    const settle = (empty: boolean): void => {
+      if (settled) return;
+      settled = true;
+      cancelPoll?.();
+      cancelDeadline();
+      resolve(empty);
+    };
     const cancelDeadline = clock.schedule(() => {
       cancelPoll?.();
-      resolve(!operations.exists(group));
+      void (async () => settle(!(await operations.exists(group))))();
     }, milliseconds);
     const poll = (): void => {
-      if (operations.exists(group)) {
-        cancelPoll = clock.schedule(poll, pollMilliseconds);
-        return;
-      }
-      cancelDeadline();
-      resolve(true);
+      void (async () => {
+        const present = await operations.exists(group);
+        if (settled) return;
+        if (present) cancelPoll = clock.schedule(poll, pollMilliseconds);
+        else settle(true);
+      })();
     };
     poll();
   });

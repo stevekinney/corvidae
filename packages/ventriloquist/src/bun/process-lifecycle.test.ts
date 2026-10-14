@@ -53,6 +53,20 @@ describe.each(MODES)('a %s process that cannot start', (mode) => {
   );
 });
 
+describe.each(MODES)('a %s process on a host outside the supported matrix', (mode) => {
+  test('fails the session with unsupported-runtime, which a connected client is told by name', async () => {
+    const hosted = hostFor(mode, shellProfile('true'), {
+      host: { platform: 'win32', architecture: 'x64' },
+    });
+    const run = runHosted(hosted);
+    await run.started;
+    await run.exitReported;
+    expect(hosted.startFailure?.code).toBe('unsupported-runtime');
+    expect(run.session.startFailureCode).toBe('unsupported-runtime');
+    expect(await run.session.closed).toMatchObject({ cause: 'start-failed', cleanup: 'complete' });
+  });
+});
+
 describe.each(MODES)('a %s process that ends on its own', (mode) => {
   test('before its first output is a normal exit with nothing to drain', async () => {
     const run = runHosted(

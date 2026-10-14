@@ -21,6 +21,13 @@ export type OwnedProcessOptions = {
   readonly readProcessTable: () => Promise<ProcessRecord[]>;
 };
 
+/** The wire carries a signal as a nonempty name; a signal without a name of its own is spelled by its number. */
+function signalName(signal: string | number | null): string | null {
+  if (signal === null) return null;
+  if (signal === '') return 'SIGUNKNOWN';
+  return typeof signal === 'number' ? `SIG${signal}` : signal;
+}
+
 /**
  * One spawned process and the process group it leads. The helpers start every process as its own
  * group leader, so the group is exactly the process and the descendants that stayed in it, and
@@ -36,15 +43,20 @@ export type OwnedProcessOptions = {
  *
  * The exit and the state of the group at the moment of exit are recorded as they happen. A group
  * that was already empty then is never signaled afterwards, because its number may have been given
- * to an unrelated process since. A group that outlived its leader is signaled as usual; its
- * remaining members hold the number, which cannot be reused while any of them lives.
+ * to an unrelated process since. A termination that emptied the group is remembered the same way,
+ * so a second `terminate` repeats its outcome instead of signaling again. A group that outlived its
+ * leader is signaled as usual; its remaining members hold the number, which cannot be reused while
+ * any of them lives.
  */
 export class OwnedProcess {
   readonly #options: OwnedProcessOptions;
   #child: SpawnedProcess | undefined;
   #exit: Promise<ProcessExit> | undefined;
+  #exiting = false;
   #exited = false;
   #emptyAtExit = false;
+  /** The termination in flight, or the one that emptied the group: either way, no second one starts. */
+  #termination: Promise<CleanupOutcome> | undefined;
 
   constructor(options: OwnedProcessOptions) {
     this.#options = options;
@@ -53,10 +65,13 @@ export class OwnedProcess {
   /** Take ownership of a spawned process and start watching for its exit. */
   adopt(child: SpawnedProcess): void {
     this.#child = child;
-    this.#exit = child.exited.then((exitCode) => {
+    this.#exit = child.exited.then(async (exitCode) => {
+      // Marked before the group is looked at, so a termination that starts meanwhile waits for it.
+      this.#exiting = true;
+      const present = await this.#options.operations.exists(child.pid);
+      this.#emptyAtExit = !present;
       this.#exited = true;
-      this.#emptyAtExit = !this.#options.operations.exists(child.pid);
-      const signal = child.signalCode;
+      const signal = signalName(child.signalCode);
       return signal === null ? { exitCode, signal: null } : { exitCode: null, signal };
     });
   }
@@ -73,9 +88,16 @@ export class OwnedProcess {
    * escaped descendant, or a table that could not be read, is `unknown`; a group that did not
    * empty is `incomplete`.
    */
-  async terminate(): Promise<CleanupOutcome> {
-    const child = this.#child;
-    if (child === undefined) return 'complete';
+  terminate(): Promise<CleanupOutcome> {
+    // Nothing is owned yet, so nothing is remembered: a process adopted later is still to be ended.
+    if (this.#child === undefined) return Promise.resolve('complete');
+    this.#termination ??= this.#terminate(this.#child);
+    return this.#termination;
+  }
+
+  async #terminate(child: SpawnedProcess): Promise<CleanupOutcome> {
+    // An exit being recorded decides whether the group is already empty: let it finish first.
+    if (this.#exiting) await this.#exit;
     if (this.#exited && this.#emptyAtExit) return 'complete';
     const scope = await this.#observeScope(child.pid);
     const { operations, clock, graceMilliseconds, observationMilliseconds } = this.#options;
@@ -89,7 +111,12 @@ export class OwnedProcess {
     });
     // The group is empty, so the leader is gone; wait for the exit to be observed before reporting.
     if (ended === 'complete') await this.#exit;
-    return combineOutcomes([scope, ended]);
+    const outcome = combineOutcomes([scope, ended]);
+    // An emptied group's number may belong to an unrelated process by now, so its outcome stands
+    // and nothing is signaled again. A group that did not empty still has members holding the
+    // number, so a later call may try again.
+    if (ended !== 'complete') this.#termination = undefined;
+    return outcome;
   }
 
   async #observeScope(root: number): Promise<CleanupOutcome> {

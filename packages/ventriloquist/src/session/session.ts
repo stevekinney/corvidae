@@ -33,6 +33,7 @@ import type {
   SessionOptions,
   SessionProfile,
   SessionSnapshot,
+  StartFailureCode,
   TerminalDimensions,
 } from './session-types.ts';
 import { attempt, combineOutcomes, settleWithin, type Settling } from './settle.ts';
@@ -120,6 +121,8 @@ export class Session {
   #attachment: AttachmentRuntime | undefined;
   #started: Promise<void> | undefined;
   #startSettled: Promise<unknown> | undefined;
+  /** Why the backend refused to start, when it said so with one of the startup failure codes. */
+  #startFailureCode: StartFailureCode | undefined;
   /** True from the moment `backend.start()` is invoked until its promise settles. */
   #startPending = false;
   /** The backend reported its exit before `start()` settled, so its sources still have to be read and drained. */
@@ -192,6 +195,15 @@ export class Session {
     return opened;
   }
 
+  /**
+   * The startup failure code the backend's `start()` rejected with, if it carried one (a rejection
+   * with a `code` of `unsupported-runtime` or `spawn-failed`). Absent while the session has not
+   * failed to start, and for a rejection that named no code, which is a `spawn-failed`.
+   */
+  get startFailureCode(): StartFailureCode | undefined {
+    return this.#startFailureCode;
+  }
+
   /** The configured user-operation FIFO depth, which a connection's endpoint window must cover. */
   get operationQueueLimit(): number {
     return this.#budgets.operationQueueLimit;
@@ -236,7 +248,16 @@ export class Session {
     }
     // Set before `start()` runs: a backend can report its exit from inside it, and that close must wait.
     this.#startPending = true;
-    const launched = attempt(() => backend.start());
+    const launched = attempt(() => {
+      try {
+        const starting = Promise.resolve(backend.start());
+        starting.then(undefined, (error: unknown) => this.#recordStartFailure(error));
+        return starting;
+      } catch (error) {
+        this.#recordStartFailure(error);
+        throw error;
+      }
+    });
     this.#startSettled = launched;
     const succeeded = await launched;
     this.#startPending = false;
@@ -253,6 +274,11 @@ export class Session {
       return;
     }
     this.#markRunning();
+  }
+
+  #recordStartFailure(error: unknown): void {
+    const code = (error as { readonly code?: unknown } | null)?.code;
+    if (code === 'unsupported-runtime' || code === 'spawn-failed') this.#startFailureCode = code;
   }
 
   #markRunning(): void {

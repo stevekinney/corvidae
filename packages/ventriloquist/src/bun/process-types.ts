@@ -36,7 +36,8 @@ export type ProcessExit = {
 export type SpawnedProcess = {
   readonly pid: number;
   readonly exited: Promise<number>;
-  readonly signalCode: string | null;
+  /** A signal's name, or its number when the host has no name for it. */
+  readonly signalCode: string | number | null;
   readonly stdin?: unknown;
   readonly stdout?: unknown;
   readonly stderr?: unknown;

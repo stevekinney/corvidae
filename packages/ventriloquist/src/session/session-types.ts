@@ -100,6 +100,9 @@ export type OperationResultReason =
   | 'revoked'
   | 'process-exited';
 
+/** The failure codes a backend's `start()` may reject with, as the failure table's startup rows name them. */
+export type StartFailureCode = 'unsupported-runtime' | 'spawn-failed';
+
 export type OperationKind = 'input' | 'resize';
 
 /** What started the session's close. The first cause wins; later ones never overwrite it. */

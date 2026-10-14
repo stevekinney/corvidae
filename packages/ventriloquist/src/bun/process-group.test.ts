@@ -5,9 +5,12 @@ import { rejectionOf } from '@lostgradient/testing';
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { flush } from '../session/session.test-support.ts';
 import {
+  createProcessGroupOperations,
   descendantsOutsideGroup,
+  parseGroupMemberStates,
   parseProcessTable,
   processGroupOperations,
+  readGroupMemberStates,
   readProcessTable,
   terminateProcessGroup,
   type ProcessGroupOperations,
@@ -74,7 +77,9 @@ describe('terminateProcessGroup', () => {
         exists: () => ++probes < 3,
       },
     });
+    await flush();
     clock.advance(20);
+    await flush();
     clock.advance(20);
     expect(await done).toBe('complete');
     expect(script.signals).toEqual(['SIGTERM']);
@@ -120,8 +125,8 @@ describe('terminateProcessGroup', () => {
 });
 
 describe('processGroupOperations', () => {
-  test('a group that does not exist is absent, and signaling it is not an error', () => {
-    expect(processGroupOperations.exists(NO_SUCH_GROUP)).toBe(false);
+  test('a group that does not exist is absent, and signaling it is not an error', async () => {
+    expect(await processGroupOperations.exists(NO_SUCH_GROUP)).toBe(false);
     expect(() => processGroupOperations.signal(NO_SUCH_GROUP, 'SIGTERM')).not.toThrow();
   });
 
@@ -134,10 +139,111 @@ describe('processGroupOperations', () => {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
     });
-    expect(processGroupOperations.exists(child.pid)).toBe(true);
+    expect(await processGroupOperations.exists(child.pid)).toBe(true);
     processGroupOperations.signal(child.pid, 'SIGTERM');
     expect(await child.exited).toBe(143);
-    expect(processGroupOperations.exists(child.pid)).toBe(false);
+    expect(await processGroupOperations.exists(child.pid)).toBe(false);
+  });
+});
+
+/**
+ * A process group whose only member is a zombie: a perl process forks a child that makes itself a
+ * group leader and exits at once, and the parent, which sits outside that group, never waits for
+ * it. The child is dead, but nothing reaps it until the parent ends, which is what a container's
+ * init does to every orphan it never collects.
+ */
+async function startZombieGroup(): Promise<{ readonly group: number; end(): Promise<void> }> {
+  const parent = Bun.spawn(
+    [
+      'perl',
+      '-e',
+      '$|=1; my $pid = fork(); if (!$pid) { setpgrp(0, 0); exit 0 } print "$pid\\n"; sleep 60',
+    ],
+    { stdout: 'pipe', stderr: 'ignore', stdin: 'ignore' },
+  );
+  const reader = parent.stdout.getReader();
+  const first = await reader.read();
+  reader.releaseLock();
+  const group = Number(new TextDecoder().decode(first.value).trim());
+  const end = async (): Promise<void> => {
+    parent.kill('SIGKILL');
+    await parent.exited;
+  };
+  // The child must have exited before it can be a zombie; wait until the table says so.
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    const states = (await readGroupMemberStates(group)) ?? [];
+    // `Z` is the zombie state; ps may add flags to it, such as `N` for a niced process.
+    if (states.length > 0 && states.every((state) => state.startsWith('Z'))) return { group, end };
+    await Bun.sleep(10);
+  }
+  await end();
+  throw new Error(`process group ${group} never became a zombie`);
+}
+
+describe('a group whose only member is a zombie', () => {
+  test('is empty, though kill(-group, 0) still reports it', async () => {
+    const zombie = await startZombieGroup();
+    try {
+      // The premise: the operating system still answers for the group (EPERM on macOS, success on Linux).
+      let signalable = true;
+      try {
+        process.kill(-zombie.group, 0);
+      } catch (error) {
+        signalable = (error as { code?: unknown }).code === 'EPERM';
+      }
+      expect(signalable).toBe(true);
+      expect(await processGroupOperations.exists(zombie.group)).toBe(false);
+    } finally {
+      await zombie.end();
+    }
+  });
+
+  test('is present while any member is not a zombie, and when its members cannot be read', async () => {
+    const leader = Bun.spawn(['sleep', '7919'], {
+      detached: true,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    try {
+      const exists = (reading: readonly string[] | undefined): Promise<boolean> | boolean =>
+        createProcessGroupOperations(() => reading).exists(leader.pid);
+      expect(await exists(['Z', 'S'])).toBe(true);
+      expect(await exists(['Z', 'Z'])).toBe(false);
+      expect(await exists([])).toBe(false);
+      expect(await exists(undefined)).toBe(true);
+    } finally {
+      leader.kill('SIGKILL');
+      await leader.exited;
+    }
+  });
+});
+
+describe('the states of a group', () => {
+  test('are read from rows of group and state, for the one group asked about', () => {
+    expect(parseGroupMemberStates(' 10 Ss\n10 Z+\n 11 R\n\n', 10)).toEqual(['Ss', 'Z+']);
+    expect(parseGroupMemberStates('', 10)).toEqual([]);
+  });
+
+  test.each(['10', '10 S extra', 'x S', '1.5 S'])('refuse the row %j', (row) => {
+    expect(() => parseGroupMemberStates(row, 10)).toThrow('unreadable process state row');
+  });
+
+  test('are read from the running host', async () => {
+    const leader = Bun.spawn(['sleep', '7919'], {
+      detached: true,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    try {
+      expect(await readGroupMemberStates(leader.pid)).toEqual([expect.stringMatching(/^[A-Y]/)]);
+    } finally {
+      leader.kill('SIGKILL');
+      await leader.exited;
+    }
+  });
+
+  test('are unknown when the command fails, cannot run, or prints something unreadable', async () => {
+    expect(await readGroupMemberStates(1, ['sh', '-c', 'exit 3'])).toBeUndefined();
+    expect(await readGroupMemberStates(1, ['/nonexistent/ventriloquist-ps'])).toBeUndefined();
+    expect(await readGroupMemberStates(1, ['echo', 'not a table'])).toBeUndefined();
   });
 });
 
