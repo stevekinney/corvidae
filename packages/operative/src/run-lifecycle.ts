@@ -41,7 +41,9 @@ export function computeCostEstimate(
 ): RunResult['costEstimate'] {
   if (!costEstimation) return undefined;
   if (!getModelPricing(costEstimation.model, costEstimation.pricing)) return undefined;
-  return estimateCost(usage, costEstimation.model, costEstimation.pricing);
+  // `totalUsage` sums every request in the run, so it is priced at the base tier; the cost budget
+  // monitor prices each step's own usage and applies long-prompt tiers there.
+  return estimateCost(usage, costEstimation.model, costEstimation.pricing, 'aggregate');
 }
 
 /**

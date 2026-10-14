@@ -11,13 +11,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { defaultPricingTable } from '../cost-estimation.ts';
 import { getProviderCapabilities, type ProviderCapabilities } from './capabilities.ts';
+import { pricingFor } from './model-catalog-rows.ts';
 import {
   type BackendDescriptor,
   createModelCatalog,
   requireLimits,
   requireModalities,
 } from './model-catalog.ts';
-import { pricingFor } from './model-catalog-rows.ts';
 import {
   ANTHROPIC_EFFORT_SUPPORT,
   GEMINI_THINKING_MODELS,

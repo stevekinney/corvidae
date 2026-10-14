@@ -15,7 +15,24 @@ export interface ModelPricing {
   cacheWriteCostPerMillionTokens?: number | undefined;
   /** Price for tokens served from the prompt cache. */
   cacheReadCostPerMillionTokens?: number | undefined;
+  /**
+   * Rates for a single request whose total input (fresh prompt plus cache reads and writes)
+   * exceeds `inputTokensAbove`. Applied only to request-scoped estimates; see {@link estimateCost}.
+   */
+  longContext?: LongContextPricing | undefined;
 }
+
+/** A model's higher price tier for long prompts, replacing every rate above the threshold. */
+export interface LongContextPricing extends Omit<ModelPricing, 'longContext'> {
+  inputTokensAbove: number;
+}
+
+/**
+ * Whether a usage describes one request (`'request'`, the default) or a sum over many
+ * (`'aggregate'`). Long-prompt tiers are decided per request, so an aggregate is always priced at
+ * the base tier: a run of many short requests must not be billed as one long one.
+ */
+export type CostEstimationScope = 'request' | 'aggregate';
 
 export interface CostEstimate {
   promptCost: number;
@@ -80,7 +97,7 @@ export const defaultPricingTable: Readonly<Record<string, ModelPricing>> = Objec
   // Anthropic current models, at the first-party list prices on Anthropic's pricing page
   // (platform.claude.com/docs/en/about-claude/pricing, read 2026-10-13). Cache writes use the
   // 5-minute rate; consumers on the 1-hour TTL (2x input) can override via `customPricing`.
-  // Claude Haiku 5.5 is priced for prompts up to 100K tokens ($0.50 / $2.50 beyond).
+  // Claude Haiku 5.5 moves to $0.50 / $2.50 for a request over 100K input tokens (`longContext`).
   'claude-fable-5-1': anthropicPricing(10, 50, ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER),
   'claude-mythos-5-1': anthropicPricing(10, 50, ANTHROPIC_FABLE_5_1_CACHE_READ_MULTIPLIER),
   'claude-fable-5': anthropicPricing(10, 50),
@@ -94,7 +111,10 @@ export const defaultPricingTable: Readonly<Record<string, ModelPricing>> = Objec
   'claude-sonnet-5-5': anthropicPricing(2, 10, ANTHROPIC_5_5_CACHE_READ_MULTIPLIER),
   'claude-sonnet-5': anthropicPricing(2, 10),
   'claude-sonnet-4-6': anthropicPricing(3, 15),
-  'claude-haiku-5-5': anthropicPricing(0.1, 0.5),
+  'claude-haiku-5-5': {
+    ...anthropicPricing(0.1, 0.5),
+    longContext: { inputTokensAbove: 100_000, ...anthropicPricing(0.5, 2.5) },
+  },
   'claude-haiku-4-5': anthropicPricing(1, 5),
 
   // Anthropic Claude 4 / 3.5 dated snapshots
@@ -222,21 +242,29 @@ export function estimateCost(
   usage: TokenUsage,
   model: string,
   options?: CostEstimationOptions,
+  scope: CostEstimationScope = 'request',
 ): CostEstimate {
   const pricing = getModelPricing(model, options);
   if (!pricing) {
     throw new Error(`No pricing found for model: ${model}`);
   }
 
-  const promptCost = (usage.prompt / 1_000_000) * pricing.promptCostPerMillionTokens;
-  const completionCost = (usage.completion / 1_000_000) * pricing.completionCostPerMillionTokens;
+  const inputTokens =
+    usage.prompt + (usage.cacheReadTokens ?? 0) + (usage.cacheCreationTokens ?? 0);
+  const rates =
+    scope === 'request' && pricing.longContext && inputTokens > pricing.longContext.inputTokensAbove
+      ? pricing.longContext
+      : pricing;
+
+  const promptCost = (usage.prompt / 1_000_000) * rates.promptCostPerMillionTokens;
+  const completionCost = (usage.completion / 1_000_000) * rates.completionCostPerMillionTokens;
   const cacheWriteCost =
-    usage.cacheCreationTokens !== undefined && pricing.cacheWriteCostPerMillionTokens !== undefined
-      ? (usage.cacheCreationTokens / 1_000_000) * pricing.cacheWriteCostPerMillionTokens
+    usage.cacheCreationTokens !== undefined && rates.cacheWriteCostPerMillionTokens !== undefined
+      ? (usage.cacheCreationTokens / 1_000_000) * rates.cacheWriteCostPerMillionTokens
       : 0;
   const cacheReadCost =
-    usage.cacheReadTokens !== undefined && pricing.cacheReadCostPerMillionTokens !== undefined
-      ? (usage.cacheReadTokens / 1_000_000) * pricing.cacheReadCostPerMillionTokens
+    usage.cacheReadTokens !== undefined && rates.cacheReadCostPerMillionTokens !== undefined
+      ? (usage.cacheReadTokens / 1_000_000) * rates.cacheReadCostPerMillionTokens
       : 0;
 
   return {

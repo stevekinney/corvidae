@@ -164,6 +164,46 @@ describe('estimateCost', () => {
   });
 });
 
+describe('estimateCost: Claude Haiku 5.5 long-prompt tier', () => {
+  // Anthropic's pricing page: $0.10 / $0.50 per MTok up to 100,000 prompt tokens, and
+  // $0.50 / $2.50 (cache writes $0.625, cache reads $0.05) beyond.
+  it('prices a request at or below 100,000 input tokens at the base tier', () => {
+    const estimate = estimateCost(
+      { prompt: 100_000, completion: 1_000_000, total: 1_100_000 },
+      'claude-haiku-5-5',
+    );
+    expect(estimate.promptCost).toBeCloseTo(0.01, 10);
+    expect(estimate.completionCost).toBeCloseTo(0.5, 10);
+  });
+
+  it('prices every category at the long-prompt tier once input exceeds 100,000 tokens', () => {
+    const estimate = estimateCost(
+      {
+        prompt: 1,
+        completion: 1_000_000,
+        total: 1_100_001,
+        cacheReadTokens: 50_000,
+        cacheCreationTokens: 50_000,
+      },
+      'claude-haiku-5-5',
+    );
+    expect(estimate.promptCost).toBeCloseTo(0.5 / 1_000_000, 12);
+    expect(estimate.completionCost).toBeCloseTo(2.5, 10);
+    expect(estimate.cacheReadCost).toBeCloseTo(0.05 * 0.05, 10);
+    expect(estimate.cacheWriteCost).toBeCloseTo(0.05 * 0.625, 10);
+  });
+
+  it('keeps the base tier for an aggregate estimate, where input totals are not request sizes', () => {
+    const estimate = estimateCost(
+      { prompt: 500_000, completion: 0, total: 500_000 },
+      'claude-haiku-5-5',
+      undefined,
+      'aggregate',
+    );
+    expect(estimate.promptCost).toBeCloseTo(0.05, 10);
+  });
+});
+
 describe('getModelPricing', () => {
   it('returns pricing for a known model', () => {
     const pricing = getModelPricing('gpt-4o');
