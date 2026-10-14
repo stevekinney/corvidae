@@ -413,6 +413,110 @@ describe('failing closed', () => {
   });
 });
 
+describe('guarded host callbacks and synchronous replay', () => {
+  test('an onTitle that throws is reported as a parse failure and disposes the engine', async () => {
+    const host = makeHost();
+    const factory = createFakeFactory();
+    const controller = createFakeController();
+    const failures: TerminalRendererFailure[] = [];
+    const attachment = createTerminalAttachment({
+      host,
+      controller,
+      loadEngine: async () => factory.factory,
+      readSettings: () => defaultSettings,
+      onReady: () => {},
+      onGeometry: () => {},
+      onFailure: (failure) => failures.push(failure),
+      onTitle: () => {
+        throw new Error('title handler threw');
+      },
+      scheduleFit: createManualScheduler().schedule,
+    });
+    await settle();
+    const created = factory.created[0]!;
+    expect(() => created.options.onTitle!('x')).not.toThrow();
+    expect(failures).toEqual([{ phase: 'parse', message: 'title handler threw' }]);
+    expect(created.engine.calls).toContain('dispose');
+    expect(controller.failures).toEqual(failures);
+    attachment.dispose();
+  });
+
+  function replayingController(replay: (controller: FakeController) => void) {
+    const controller = createFakeController();
+    const subscribe = controller.subscribeOutput.bind(controller);
+    controller.subscribeOutput = (listener) => {
+      const handle = subscribe(listener);
+      replay(controller);
+      return handle;
+    };
+    return controller;
+  }
+
+  test('a write that fails during synchronous replay unsubscribes at once and never becomes ready', async () => {
+    const host = makeHost();
+    const factory = createFakeFactory();
+    const controller = createFakeController();
+    const real = controller.subscribeOutput.bind(controller);
+    controller.subscribeOutput = (listener) => {
+      const handle = real(listener);
+      listener(bytes(1), () => {});
+      return handle;
+    };
+    const failures: TerminalRendererFailure[] = [];
+    let ready = 0;
+    const attachment = createTerminalAttachment({
+      host,
+      controller,
+      loadEngine: async () => (options) => {
+        const engine = factory.factory(options) as FakeEngine;
+        engine.throwOn.write = new Error('replay write threw');
+        return engine;
+      },
+      readSettings: () => defaultSettings,
+      onReady: () => {
+        ready += 1;
+      },
+      onGeometry: () => {},
+      onFailure: (failure) => failures.push(failure),
+      onTitle: () => {},
+      scheduleFit: createManualScheduler().schedule,
+    });
+    await settle();
+    expect(failures).toEqual([{ phase: 'parse', message: 'replay write threw' }]);
+    expect(controller.subscriptions).toBe(1);
+    expect(controller.unsubscriptions).toBe(1);
+    expect(ready).toBe(0);
+    expect(attachment.ready).toBe(false);
+    attachment.dispose();
+    expect(controller.unsubscriptions).toBe(1);
+  });
+
+  test('an attachment disposed during synchronous replay unsubscribes at once and never becomes ready', async () => {
+    const host = makeHost();
+    const factory = createFakeFactory();
+    let attachment: ReturnType<typeof createTerminalAttachment> | undefined;
+    const controller = replayingController(() => attachment?.dispose());
+    let ready = 0;
+    attachment = createTerminalAttachment({
+      host,
+      controller,
+      loadEngine: async () => factory.factory,
+      readSettings: () => defaultSettings,
+      onReady: () => {
+        ready += 1;
+      },
+      onGeometry: () => {},
+      onFailure: () => {},
+      onTitle: () => {},
+      scheduleFit: createManualScheduler().schedule,
+    });
+    await settle();
+    expect(controller.subscriptions).toBe(1);
+    expect(controller.unsubscriptions).toBe(1);
+    expect(ready).toBe(0);
+  });
+});
+
 describe('end of output', () => {
   test('tells the live engine the output ended, and does nothing after disposal or failure', async () => {
     const s = setup();

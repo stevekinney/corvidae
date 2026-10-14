@@ -10,6 +10,11 @@ export const MAXIMUM_LINK_LENGTH = 2048;
 export const MAXIMUM_LINK_ROWS = 32;
 /** The most cells of one wrapped logical line scanned for links, across all of its rows. */
 export const MAXIMUM_LINK_CELLS = 8192;
+/**
+ * The most UTF-16 code units of one wrapped logical line scanned for links. A cell holds a base
+ * character plus any number of combining marks, so the cell budget does not bound the text.
+ */
+export const MAXIMUM_LINK_CODE_UNITS = 16_384;
 /** The longest terminal title passed to the host, in code points. */
 export const MAXIMUM_TITLE_CODE_POINTS = 256;
 
@@ -105,6 +110,7 @@ export function linksForRow(buffer: LinkBuffer, row: number): CellLink[] {
     if (cells > MAXIMUM_LINK_CELLS) return [];
   }
   let text = '';
+  let codeUnits = 0;
   const starts: Position[] = [];
   const ends: Position[] = [];
   for (let current = first; current <= last; current += 1) {
@@ -114,6 +120,8 @@ export function linksForRow(buffer: LinkBuffer, row: number): CellLink[] {
       const cell = line.getCell(column);
       if (cell === undefined || cell.getWidth() === 0) continue;
       const chars = cell.getChars() || ' ';
+      codeUnits += chars.length;
+      if (codeUnits > MAXIMUM_LINK_CODE_UNITS) return [];
       text += chars;
       for (let unit = 0; unit < chars.length; unit += 1) {
         starts.push({ x: column + 1, y: current + 1 });

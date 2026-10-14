@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   MAXIMUM_LINK_CELLS,
+  MAXIMUM_LINK_CODE_UNITS,
   MAXIMUM_LINK_LENGTH,
   MAXIMUM_LINK_ROWS,
   MAXIMUM_TITLE_CODE_POINTS,
@@ -79,6 +80,33 @@ describe('link scan work is bounded', () => {
     const { buffer, counts } = countingBuffer(1, MAXIMUM_LINK_CELLS);
     expect(linksForRow(buffer, 0)).toEqual([]);
     expect(counts.cells).toBe(MAXIMUM_LINK_CELLS);
+  });
+
+  test('combining marks cannot widen a row past the code-unit budget', () => {
+    // Every cell holds a base character plus 15 combining marks: 16 code units a cell, so the
+    // cell budget alone would let 8,192 cells build 131,072 code units.
+    const chars = `a${'\u0301'.repeat(15)}`;
+    const reads = { cells: 0, units: 0 };
+    const buffer: LinkBuffer = {
+      length: 1,
+      getLine: () => ({
+        isWrapped: false,
+        length: MAXIMUM_LINK_CELLS,
+        getCell() {
+          reads.cells += 1;
+          return {
+            getChars() {
+              reads.units += chars.length;
+              return chars;
+            },
+            getWidth: () => 1,
+          };
+        },
+      }),
+    };
+    expect(linksForRow(buffer, 0)).toEqual([]);
+    expect(reads.units).toBeLessThanOrEqual(MAXIMUM_LINK_CODE_UNITS + chars.length);
+    expect(reads.cells).toBeLessThan(MAXIMUM_LINK_CELLS);
   });
 
   test('one cell over the budget is refused without reading cells', () => {

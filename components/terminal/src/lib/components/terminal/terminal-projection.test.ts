@@ -14,7 +14,12 @@ function bufferOf(...rows: Array<readonly [string, boolean] | undefined>): Proje
       const entry = rows[row];
       return entry === undefined
         ? undefined
-        : { isWrapped: entry[1], translateToString: () => entry[0] };
+        : {
+            isWrapped: entry[1],
+            length: entry[0].length,
+            translateToString: (_trimRight, start = 0, end = entry[0].length) =>
+              entry[0].slice(start, end),
+          };
     },
   };
 }
@@ -109,9 +114,10 @@ describe('projectBuffer', () => {
         linesRead += 1;
         return {
           isWrapped: false,
-          translateToString() {
+          length: rowText.length,
+          translateToString(_trimRight, start = 0, end = rowText.length) {
             rowsTranslated += 1;
-            return rowText;
+            return rowText.slice(start, end);
           },
         };
       },
@@ -130,7 +136,12 @@ describe('projectBuffer', () => {
       length: 1_000_000,
       getLine() {
         linesRead += 1;
-        return { isWrapped: true, translateToString: () => 'y'.repeat(1000) };
+        const text = 'y'.repeat(1000);
+        return {
+          isWrapped: true,
+          length: text.length,
+          translateToString: (_trimRight, start = 0, end = text.length) => text.slice(start, end),
+        };
       },
     };
     const projection = projectBuffer(wrapped, 4096);
@@ -158,4 +169,52 @@ describe('projectBuffer', () => {
       expect(() => projectBuffer(bufferOf(['x', false]), limit)).toThrow(RangeError);
     },
   );
+});
+
+describe('the budget is enforced inside a row', () => {
+  const COLUMNS = 1_000_000;
+
+  function hostileBuffer(rows: number) {
+    const counts = { cells: 0, calls: 0 };
+    const buffer: ProjectionBuffer = {
+      length: rows,
+      getLine: () => ({
+        isWrapped: false,
+        length: COLUMNS,
+        translateToString: (_trimRight, start = 0, end = COLUMNS) => {
+          counts.calls += 1;
+          const stop = Math.min(end, COLUMNS);
+          counts.cells += Math.max(0, stop - start);
+          return 'x'.repeat(Math.max(0, stop - start));
+        },
+      }),
+    };
+    return { buffer, counts };
+  }
+
+  test('a million-cell row materializes only about the byte limit', () => {
+    const { buffer, counts } = hostileBuffer(1);
+    const projection = projectBuffer(buffer, 1024);
+    expect(projection.truncated).toBe(true);
+    expect(projection.bytes).toBe(1024);
+    expect(projection.text).toBe('x'.repeat(1024));
+    expect(counts.cells).toBeLessThanOrEqual(1024 + 256);
+  });
+
+  test('many hostile rows stop at the first one that reaches the limit', () => {
+    const { buffer, counts } = hostileBuffer(10_000);
+    projectBuffer(buffer, 1024);
+    expect(counts.cells).toBeLessThanOrEqual(1024 + 256);
+  });
+
+  test('a row read in slices projects exactly what one whole read would', () => {
+    const text = `${'ab '.repeat(300)}end`;
+    expect(projectBuffer(bufferOf([text, false], ['tail', false])).text).toBe(`${text}\ntail`);
+  });
+
+  test('a cut inside a multibyte character in a later slice still lands on a code point', () => {
+    const projection = projectBuffer(bufferOf(['a'.repeat(255) + '日日日', false]), 258);
+    expect(projection.text).toBe('a'.repeat(255) + '日');
+    expect(projection.bytes).toBe(258);
+  });
 });

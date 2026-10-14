@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { SCROLLBACK_LINES } from './terminal-engine-adapter.ts';
 import {
+  MAXIMUM_RETAINED_TERMINAL_CELLS,
   createFitCoordinator,
   sameGeometry,
   scheduleFitOnNextFrame,
@@ -66,6 +68,40 @@ function harness(measurements: Array<{ columns?: unknown; rows?: unknown } | und
     },
   };
 }
+
+describe('the retained cell budget', () => {
+  test('refuses a geometry whose retained buffer would exceed the budget, though each dimension is valid', () => {
+    expect(validateGeometry({ columns: 65_535, rows: 65_535 })).toBeUndefined();
+    expect(validateGeometry({ columns: 65_535, rows: 1 })).toBeUndefined();
+    expect(validateGeometry({ columns: 5_000, rows: 5_000 })).toBeUndefined();
+  });
+
+  test('accepts the largest geometry that fits, and refuses one more column', () => {
+    const rows = 24;
+    const columns = Math.floor(MAXIMUM_RETAINED_TERMINAL_CELLS / (rows + SCROLLBACK_LINES));
+    expect(validateGeometry({ columns, rows })).toEqual({ columns, rows });
+    expect(validateGeometry({ columns: columns + 1, rows })).toBeUndefined();
+  });
+
+  test('never reaches the engine: an oversized measurement is neither applied nor reported', () => {
+    const applied: TerminalGeometry[] = [];
+    const accepted: TerminalGeometry[] = [];
+    let flush: (() => void) | undefined;
+    const coordinator = createFitCoordinator({
+      measure: () => ({ columns: 65_535, rows: 65_535 }),
+      apply: (geometry) => applied.push(geometry),
+      accept: (geometry) => accepted.push(geometry),
+      schedule: (callback) => {
+        flush = callback;
+        return () => {};
+      },
+    });
+    coordinator.request();
+    flush?.();
+    expect(applied).toEqual([]);
+    expect(accepted).toEqual([]);
+  });
+});
 
 describe('validateGeometry', () => {
   test('keeps positive whole dimensions', () => {

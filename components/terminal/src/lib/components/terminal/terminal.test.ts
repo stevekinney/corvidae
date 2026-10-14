@@ -7,12 +7,14 @@ import {
 } from '../../../test/mount-harness.ts';
 import { reactiveProps } from '../../../test/reactive-props.svelte.ts';
 import { createFakeController } from './terminal-attachment-test-support.ts';
+import { engineLoader } from './terminal-engine-loader.ts';
 import { settle, waitFor } from './terminal-test-support.ts';
 import Terminal from './terminal.svelte';
 import {
   TERMINAL_FRAME_STATUS,
   TERMINAL_STATE_MESSAGE,
   type TerminalProps,
+  type TerminalRendererController,
   type TerminalState,
 } from './terminal.types.ts';
 
@@ -125,15 +127,90 @@ describe('states', () => {
     expect(harness.target.querySelectorAll('button')).toHaveLength(0);
   });
 
-  test('exposes exactly one live status: the frame chip, with the detailed message visible but not live', () => {
+  test('exposes exactly one live status: the detailed message, with the coarse frame chip quiet', async () => {
     const harness = mountHarness(Terminal, { title: 'Shell', state: 'writable' });
+    await waitFor(
+      () => query(harness, '.cinder-terminal-frame__status')?.getAttribute('role') === null,
+      'the frame chip to stop announcing',
+    );
     const statuses = harness.target.querySelectorAll('[role="status"]');
     expect(statuses).toHaveLength(1);
-    expect(statuses[0]!.classList.contains('cinder-terminal-frame__status')).toBe(true);
-    const message = required(harness, '.cinder-terminal__message');
-    expect(message.getAttribute('role')).toBeNull();
-    expect(message.hasAttribute('aria-live')).toBe(false);
-    expect(message.textContent).toBe('Loading terminal…');
+    expect(statuses[0]!.classList.contains('cinder-terminal__message')).toBe(true);
+    // The chip keeps its visible text; it is only no longer a second live region.
+    expect(required(harness, '.cinder-terminal-frame__status').textContent).toBe('connected');
+    expect(harness.target.querySelectorAll('[aria-live]')).toHaveLength(0);
+  });
+
+  test('announces a state change the coarse frame status does not distinguish', async () => {
+    const props = reactiveProps<TerminalProps>({ title: 'Shell', state: 'writable' });
+    const harness = await mountReady(props);
+    const live = required(harness, '[role="status"]');
+    expect(live.textContent).toBe(TERMINAL_STATE_MESSAGE.writable);
+    for (const next of ['backpressured', 'read-only', 'writable'] as const) {
+      props.state = next;
+      harness.flush();
+      // Every one of these keeps the frame at status="connected"; only the message tells them apart.
+      expect(required(harness, '[role="region"]').getAttribute('data-cinder-status')).toBe(
+        'connected',
+      );
+      const statuses = harness.target.querySelectorAll('[role="status"]');
+      expect(statuses).toHaveLength(1);
+      expect(statuses[0]).toBe(live);
+      expect(live.textContent).toBe(TERMINAL_STATE_MESSAGE[next]);
+    }
+  });
+
+  test('a denied session mounts no engine, input surface, or controller subscription', async () => {
+    let loads = 0;
+    const original = engineLoader.load;
+    engineLoader.load = () => {
+      loads += 1;
+      return original();
+    };
+    try {
+      const controller = createFakeController();
+      const harness = mountHarness(Terminal, { title: 'Shell', state: 'denied', controller });
+      await settle();
+      await settle();
+      expect(loads).toBe(0);
+      expect(controller.subscriptions).toBe(0);
+      expect(query(harness, '.cinder-terminal__viewport')).toBeNull();
+      expect(query(harness, '.xterm')).toBeNull();
+      expect(harness.target.querySelectorAll('textarea')).toHaveLength(0);
+      expect(required(harness, '.cinder-terminal__message').textContent).toBe('Access denied');
+    } finally {
+      engineLoader.load = original;
+    }
+  });
+
+  test('a live session that becomes denied tears its engine and subscription down', async () => {
+    const controller = createFakeController();
+    const props = reactiveProps<TerminalProps>({ title: 'Shell', state: 'writable', controller });
+    const harness = await mountReady(props);
+    props.state = 'denied';
+    harness.flush();
+    expect(query(harness, '.xterm')).toBeNull();
+    expect(harness.target.querySelectorAll('textarea')).toHaveLength(0);
+    expect(controller.unsubscriptions).toBe(controller.subscriptions);
+  });
+
+  test('finishes output that ended while the engine was still loading', async () => {
+    // The controller replays a held unicode prefix on subscribe, as a real one replays its buffer.
+    let acknowledged = 0;
+    const controller = {
+      ...createFakeController(),
+      subscribeOutput(listener: Parameters<TerminalRendererController['subscribeOutput']>[0]) {
+        listener(Uint8Array.of(0xe2, 0x82), () => (acknowledged += 1));
+        return () => {};
+      },
+    };
+    for (const state of ['exited', 'disconnected'] as const) {
+      acknowledged = 0;
+      const harness = mountHarness(Terminal, { title: 'Shell', state, controller });
+      await waitFor(() => acknowledged === 1, `the held prefix to be finished in ${state}`);
+      await destroyAllHarnesses();
+      expect(harness.target.isConnected).toBe(false);
+    }
   });
 
   test('writable offers the capture control, composed from the Cinder Button, and read-only does not', () => {

@@ -13,8 +13,14 @@ export const DEFAULT_PROJECTION_BYTE_LIMIT = 64 * 1024;
 /** The slice of an engine buffer row the projection reads. */
 export type ProjectionLine = {
   readonly isWrapped: boolean;
-  /** Trailing cells that never held content are trimmed; a written space is content. */
-  translateToString(trimRight?: boolean): string;
+  /** The row width in cells, which a hostile program can make as wide as 65,535. */
+  readonly length: number;
+  /**
+   * The text of columns `startColumn` up to `endColumn`. Trailing cells that never held content
+   * are trimmed against the whole row, not the slice, so a slice past the content is empty and a
+   * written space is content.
+   */
+  translateToString(trimRight?: boolean, startColumn?: number, endColumn?: number): string;
 };
 
 /** The slice of an engine buffer the projection reads. */
@@ -38,12 +44,15 @@ export type TerminalProjection = {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+/** Cells read per call, so a row costs a bounded allocation however wide it is. */
+const ROW_SLICE_CELLS = 256;
+
 /**
  * Project `buffer` to at most `maximumBytes` UTF-8 bytes, cutting at the last whole code point
- * that fits. Rows are read one at a time and reading stops the moment the limit is reached, so
- * the work is bounded by the limit rather than by the retained scrollback. Wide characters
- * contribute their character once: the engine reports their continuation cell as empty, so no
- * padding space appears between or after them.
+ * that fits. Rows are read one bounded slice at a time and reading stops the moment the limit is
+ * reached, so the work and the allocation are bounded by the limit rather than by the retained
+ * scrollback or by how wide a row is. Wide characters contribute their character once: the engine
+ * reports their continuation cell as empty, so no padding space appears between or after them.
  */
 export function projectBuffer(
   buffer: ProjectionBuffer,
@@ -54,6 +63,23 @@ export function projectBuffer(
   }
   const parts: string[] = [];
   let bytes = 0;
+
+  /** Adds `text`, or the longest whole-code-point prefix of it that fits. False once full. */
+  function append(text: string): boolean {
+    const segment = encoder.encode(text);
+    if (bytes + segment.length <= maximumBytes) {
+      parts.push(text);
+      bytes += segment.length;
+      return true;
+    }
+    let cut = maximumBytes - bytes;
+    // A UTF-8 continuation byte has the bit pattern 10xxxxxx; step back to the start of its code point.
+    while (cut > 0 && (segment[cut]! & 0b1100_0000) === 0b1000_0000) cut -= 1;
+    parts.push(decoder.decode(segment.subarray(0, cut)));
+    bytes += cut;
+    return false;
+  }
+
   // Line breaks wait until content follows them, which drops the blank tail without reading it.
   let pendingBreaks = 0;
   let started = false;
@@ -64,20 +90,15 @@ export function projectBuffer(
       if (started) pendingBreaks += 1;
       started = true;
     }
-    const text = line.translateToString(true);
-    if (text === '') continue;
-    const segment = encoder.encode('\n'.repeat(pendingBreaks) + text);
-    pendingBreaks = 0;
-    if (bytes + segment.length <= maximumBytes) {
-      parts.push(decoder.decode(segment));
-      bytes += segment.length;
-      continue;
+    // A slice is empty exactly when it starts past the row's last content, so the first empty
+    // slice ends the row: a blank row costs one read, and a hostile one costs the limit.
+    for (let column = 0; column < line.length; column += ROW_SLICE_CELLS) {
+      const text = line.translateToString(true, column, column + ROW_SLICE_CELLS);
+      if (text === '') break;
+      const lead = '\n'.repeat(pendingBreaks);
+      pendingBreaks = 0;
+      if (!append(lead + text)) return { text: parts.join(''), truncated: true, bytes };
     }
-    let cut = maximumBytes - bytes;
-    // A UTF-8 continuation byte has the bit pattern 10xxxxxx; step back to the start of its code point.
-    while (cut > 0 && (segment[cut]! & 0b1100_0000) === 0b1000_0000) cut -= 1;
-    parts.push(decoder.decode(segment.subarray(0, cut)));
-    return { text: parts.join(''), truncated: true, bytes: bytes + cut };
   }
   return { text: parts.join(''), truncated: false, bytes };
 }

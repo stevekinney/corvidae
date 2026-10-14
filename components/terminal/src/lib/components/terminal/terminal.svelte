@@ -110,10 +110,25 @@
     live?.refresh();
   });
 
-  // These states say the process is gone, so no output will finish a held unicode prefix.
+  // These states say the process is gone, so no output will finish a held unicode prefix. The
+  // engine can load after the state ended, and replay what the controller buffered while it did,
+  // so the effect also runs when the engine becomes ready: the earlier call found no engine.
   $effect(() => {
+    if (!ready) return;
     if (effectiveState === 'exited' || effectiveState === 'disconnected') live?.finishOutput();
   });
+
+  // `TerminalFrame` renders its coarse status chip as a polite live region and offers no way to
+  // turn that off. The chip cannot tell writable from read-only from backpressured, so a change
+  // among them would announce nothing. The detailed message below is the one live status instead
+  // (experience.md: backpressured is announced once per transition into the state), and this
+  // removes the chip's role so the frame never holds a second one. Its text stays visible.
+  function quietFrameStatus(node: HTMLElement): void {
+    node
+      .closest('.cinder-terminal-frame')
+      ?.querySelector('.cinder-terminal-frame__status')
+      ?.removeAttribute('role');
+  }
 
   /**
    * Mounts the engine into `host` on the client and releases everything on destroy and when the
@@ -158,8 +173,8 @@
 </script>
 
 <TerminalFrame {...frameProps}>
-  <div class="cinder-terminal__body" data-state={effectiveState}>
-    <p class="cinder-terminal__message">{message}</p>
+  <div class="cinder-terminal__body" data-state={effectiveState} {@attach quietFrameStatus}>
+    <p class="cinder-terminal__message" role="status" aria-atomic="true">{message}</p>
     {#if showEngine}
       <div
         class="cinder-terminal__viewport"

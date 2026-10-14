@@ -28,8 +28,9 @@ describe('state policy', () => {
     expect(STATES.toSorted()).toEqual(specified.toSorted());
   });
 
-  test('mounts the engine in every state except empty and engine-load-failed', () => {
+  test('mounts the engine in every state except empty, denied, and engine-load-failed', () => {
     expect(STATES.filter((state) => !mountsEngine(state)).toSorted()).toEqual([
+      'denied',
       'empty',
       'engine-load-failed',
     ]);

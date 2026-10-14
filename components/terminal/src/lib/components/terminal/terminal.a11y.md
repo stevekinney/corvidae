@@ -15,7 +15,7 @@ Terminal composes Cinder's `TerminalFrame`, a labelled region with a title and s
 
 ## Names, roles, and state
 
-The frame is a `region` named by its title. Every state has one visible message in a polite `status` region, and the frame's own status chip names the same state in its closed vocabulary. An error or cleanup state is stated in text, never by color alone, and keeps the last useful output on screen.
+The frame is a `region` named by its title. Every state has one visible message in the component's only polite `status` region, so a change between states that share a frame status, such as writable, read-only, and backpressured, is still announced. The frame's own status chip names the state in its closed vocabulary and stays visible, but the component removes its `status` role so it does not announce a second time. An error or cleanup state is stated in text, never by color alone, and keeps the last useful output on screen.
 
 | State                | Message                                      |
 | -------------------- | -------------------------------------------- |

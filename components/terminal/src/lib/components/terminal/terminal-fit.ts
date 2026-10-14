@@ -3,7 +3,18 @@ import {
   MINIMUM_TERMINAL_DIMENSION,
 } from '@lostgradient/ventriloquist';
 
+import { SCROLLBACK_LINES } from './terminal-engine-adapter.ts';
 import type { TerminalGeometry } from './terminal.types.ts';
+
+/**
+ * The most cells the engine may be asked to retain: columns × (rows + scrollback). The documents
+ * state no cell budget, so this one is chosen here. The engine stores 12 bytes a cell (three
+ * 32-bit words) for every visible and scrollback row, so 2^23 cells is about 100 MiB at worst.
+ * It admits a 24-row grid up to about 830 columns, far past any real display, and refuses
+ * 65,535 × 65,535, which would ask for hundreds of gigabytes. The scrollback is counted because
+ * it multiplies the width: a very wide, very short grid is the expensive one.
+ */
+export const MAXIMUM_RETAINED_TERMINAL_CELLS = 2 ** 23;
 
 function isValidDimension(value: unknown): value is number {
   return (
@@ -15,8 +26,8 @@ function isValidDimension(value: unknown): value is number {
 }
 
 /**
- * The geometry when both dimensions are positive whole numbers the wire schema can carry, and
- * `undefined` otherwise. A hidden, detached, or zero-size container measures as zero or `NaN`;
+ * The geometry when both dimensions are positive whole numbers the wire schema can carry and the
+ * grid fits the retained-cell budget, and `undefined` otherwise. A hidden, detached, or zero-size container measures as zero or `NaN`;
  * nothing downstream ever sees an invented dimension in its place.
  */
 export function validateGeometry(
@@ -24,7 +35,9 @@ export function validateGeometry(
 ): TerminalGeometry | undefined {
   if (candidate === undefined) return undefined;
   const { columns, rows } = candidate;
-  return isValidDimension(columns) && isValidDimension(rows) ? { columns, rows } : undefined;
+  if (!isValidDimension(columns) || !isValidDimension(rows)) return undefined;
+  if (columns * (rows + SCROLLBACK_LINES) > MAXIMUM_RETAINED_TERMINAL_CELLS) return undefined;
+  return { columns, rows };
 }
 
 export function sameGeometry(left: TerminalGeometry, right: TerminalGeometry): boolean {

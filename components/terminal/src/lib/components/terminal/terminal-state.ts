@@ -5,8 +5,16 @@ import type { TerminalState } from './terminal.types.ts';
  * `documentation/terminal/experience.md`; the session controller decides which state applies.
  */
 
-/** States with no engine: nothing to show yet, or the engine itself is unavailable. */
-const WITHOUT_ENGINE: ReadonlySet<TerminalState> = new Set(['empty', 'engine-load-failed']);
+/**
+ * States with no engine: nothing to show yet, the engine itself is unavailable, or access was
+ * refused. A denied session never exposes a shell or accepts bytes, so it gets no input surface,
+ * no engine load, and no subscription to the controller's output.
+ */
+const WITHOUT_ENGINE: ReadonlySet<TerminalState> = new Set([
+  'empty',
+  'denied',
+  'engine-load-failed',
+]);
 
 /**
  * States in which this view fits itself to its viewport and reports the grid it measured. The

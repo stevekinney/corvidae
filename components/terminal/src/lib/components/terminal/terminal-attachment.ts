@@ -185,7 +185,10 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
   }
 
   function subscribe(controller: TerminalRendererController): void {
-    unsubscribe = controller.subscribeOutput((chunk, parsed) => {
+    // A controller may replay buffered output synchronously, before it returns the handle. That
+    // replay can fail or dispose this attachment, and `release` would then find no handle to call,
+    // so the handle is kept locally and released here when the attachment is already over.
+    const handle = controller.subscribeOutput((chunk, parsed) => {
       // Output that arrives after the engine was released is not written and not acknowledged.
       const live = engine;
       if (live === undefined) return;
@@ -198,6 +201,8 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
         }),
       );
     });
+    if (disposed || failed) handle();
+    else unsubscribe = handle;
   }
 
   function initialize(createEngine: RendererEngineFactory): void {
@@ -208,7 +213,8 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       ...engineSettings(),
       ...readFont(options.host),
       geometry: validateGeometry(settings.ownerGeometry) ?? INITIAL_GEOMETRY,
-      onTitle: options.onTitle,
+      // The engine calls this from inside its parser, so a throwing host handler fails closed.
+      onTitle: (title) => guarded('parse', () => options.onTitle(title)),
     });
     engine = created;
     created.mount(options.host);
@@ -242,6 +248,8 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     );
     unwatchers.push(watchThemeAttribute(refresh));
     if (options.controller !== undefined) subscribe(options.controller);
+    // Replay can fail or dispose the attachment; neither is a ready engine.
+    if (disposed || failed) return;
     ready = true;
     requestFit();
     options.onReady();
