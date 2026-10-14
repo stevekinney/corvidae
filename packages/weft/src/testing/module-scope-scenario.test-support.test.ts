@@ -1,0 +1,24 @@
+import { describe, expect, it } from 'bun:test';
+
+import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+
+describe('outcomeOf', () => {
+  it('captures nothing when the scenario succeeds', async () => {
+    const outcome = await outcomeOf(async () => {
+      expect(1).toBe(1);
+    });
+    expect(() => rethrow(outcome)).not.toThrow();
+  });
+
+  it('captures a failed assertion and rethrows it with its original message', async () => {
+    const outcome = await outcomeOf(async () => {
+      expect(2).toBe(3);
+    });
+    expect(() => rethrow(outcome)).toThrow('Expected: 3');
+  });
+
+  it('substitutes an error when the scenario throws undefined', async () => {
+    const outcome = await outcomeOf(() => Promise.reject(undefined));
+    expect(() => rethrow(outcome)).toThrow('scenario failed');
+  });
+});

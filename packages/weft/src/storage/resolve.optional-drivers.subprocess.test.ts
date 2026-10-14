@@ -6,6 +6,8 @@ import { join } from 'node:path';
 
 import { withOptionalStorageDriversHidden } from './block-optional-storage-drivers.test-support.ts';
 
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+
 const weftRoot = import.meta.dir + '/../..';
 
 async function runFixture(relativePath: string): Promise<{ exitCode: number; stderr: string }> {
@@ -21,6 +23,10 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
     return { exitCode, stderr };
   });
 }
+
+// These gates run fixtures in fresh Bun processes with the optional storage drivers hidden, which
+// takes seconds on a loaded host. The scenarios below run at module scope, off Bun's five-second
+// per-test clock; each test rethrows its scenario's outcome.
 
 /**
  * Regression coverage for COR-1230: the mirror's consumer smoke test failed
@@ -38,28 +44,32 @@ async function runFixture(relativePath: string): Promise<{ exitCode: number; std
  * without those peers installed would — the same shape of failure the
  * mirror's smoke test hit.
  */
-describe('storage/resolve (optional-driver subprocess gates)', () => {
-  it('resolves the memory backend when no optional storage driver is installed', async () => {
-    const { exitCode, stderr } = await runFixture(
-      'src/storage/resolve-without-optional-drivers-fixture.ts',
+const scenario1 = await outcomeOf(async () => {
+  const { exitCode, stderr } = await runFixture(
+    'src/storage/resolve-without-optional-drivers-fixture.ts',
+  );
+  if (exitCode !== 0) {
+    throw new Error(
+      `resolve-without-optional-drivers fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`,
     );
-    if (exitCode !== 0) {
-      throw new Error(
-        `resolve-without-optional-drivers fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`,
-      );
-    }
-    expect(exitCode).toBe(0);
-  }, 30_000);
+  }
+  expect(exitCode).toBe(0);
+});
 
-  it("defers Turso's driver import to first use rather than construction", async () => {
-    const { exitCode, stderr } = await runFixture('src/storage/turso-driver-deferred-fixture.ts');
-    if (exitCode !== 0) {
-      throw new Error(
-        `turso-driver-deferred fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`,
-      );
-    }
-    expect(exitCode).toBe(0);
-  }, 30_000);
+const scenario2 = await outcomeOf(async () => {
+  const { exitCode, stderr } = await runFixture('src/storage/turso-driver-deferred-fixture.ts');
+  if (exitCode !== 0) {
+    throw new Error(`turso-driver-deferred fixture failed (exit ${exitCode}).\nstderr:\n${stderr}`);
+  }
+  expect(exitCode).toBe(0);
+});
+
+describe('storage/resolve (optional-driver subprocess gates)', () => {
+  it('resolves the memory backend when no optional storage driver is installed', () =>
+    rethrow(scenario1));
+
+  it("defers Turso's driver import to first use rather than construction", () =>
+    rethrow(scenario2));
 
   it('skips a package that is not installed under the given root rather than treating it as an error', async () => {
     // `weftRoot` here has no `node_modules` at all, so every optional
