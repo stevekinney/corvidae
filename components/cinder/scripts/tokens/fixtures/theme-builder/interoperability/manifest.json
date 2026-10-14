@@ -1,0 +1,158 @@
+{
+  "$comment": "Offline interoperability fixtures (COR-486, R5). Each file is pinned by SHA-256; a mismatch fails the suites that read this manifest. Nothing here is fetched at test time. 'disposition' is the import preflight outcome: cinder-envelope, dtcg-document, unsupported-profile or invalid.",
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "terrazzo-figma-sds-size",
+      "file": "terrazzo-figma-sds-size.tokens.json",
+      "kind": "positive-document",
+      "source": {
+        "url": "https://github.com/terrazzoapp/dtcg-examples/blob/65704c4e9c9f2b234c9501542fdaa2c9b3092005/figma-sds/size.tokens.json",
+        "repository": "terrazzoapp/dtcg-examples",
+        "commit": "65704c4e9c9f2b234c9501542fdaa2c9b3092005",
+        "path": "figma-sds/size.tokens.json"
+      },
+      "sha256": "6c973cbc9fcfec16154faf98c91791ecaba78f1a9eb9b6a7904e0b20f7bcef4d",
+      "license": {
+        "spdx": "MIT",
+        "attribution": "Copyright (c) 2021 Drew Powers. Terrazzo dtcg-examples, MIT License. Reproduced unmodified as a test fixture."
+      },
+      "expected": {
+        "disposition": "dtcg-document",
+        "reason": "A complete DTCG 2025.10 token document of dimension tokens. None is a Cinder public path, so every token is an unbound Source token that keeps its source and emits no CSS."
+      }
+    },
+    {
+      "id": "terrazzo-figma-sds-color",
+      "file": "terrazzo-figma-sds-color.tokens.json",
+      "kind": "positive-document",
+      "source": {
+        "url": "https://github.com/terrazzoapp/dtcg-examples/blob/65704c4e9c9f2b234c9501542fdaa2c9b3092005/figma-sds/color.tokens.json",
+        "repository": "terrazzoapp/dtcg-examples",
+        "commit": "65704c4e9c9f2b234c9501542fdaa2c9b3092005",
+        "path": "figma-sds/color.tokens.json"
+      },
+      "sha256": "1aee3a90ed373bfa8ac96443c3797df4f997e912e6a28c3d69ba0b3843c874f5",
+      "license": {
+        "spdx": "MIT",
+        "attribution": "Copyright (c) 2021 Drew Powers. Terrazzo dtcg-examples, MIT License. Reproduced unmodified as a test fixture."
+      },
+      "expected": {
+        "disposition": "dtcg-document",
+        "reason": "A complete DTCG 2025.10 token document of color tokens, including a typed group member with no value. Every token is an unbound Source token."
+      }
+    },
+    {
+      "id": "synthetic-inherited-stroke-style",
+      "file": "synthetic-inherited-stroke-style.tokens.json",
+      "kind": "synthetic",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "b9f43bfcceb25159ad3624c3ce70cf7d34a7011f4013e734d12f92d5dbeb36b8",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "dtcg-document",
+        "reason": "COR-245: a strokeStyle type inherited from the group is valid DTCG 2025.10 and its source, descriptions and extensions must round-trip untouched."
+      }
+    },
+    {
+      "id": "synthetic-em-typography",
+      "file": "synthetic-em-typography.tokens.json",
+      "kind": "synthetic",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "209a52f1dc23cfbcd9a7b4d98975cb8e15f36c5385d220617f226184e03e18ad",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "invalid",
+        "pathContains": "type.body",
+        "reason": "DTCG 2025.10 dimensions allow only px and rem; em is rejected, reported at the typography token that uses it."
+      }
+    },
+    {
+      "id": "synthetic-legacy-dimension-string",
+      "file": "synthetic-legacy-dimension-string.tokens.json",
+      "kind": "synthetic",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "c8336c0e75c67461d7ecc3a90352dd147454b361aec707a1bc6efd66a353bb26",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "invalid",
+        "pathContains": "space.legacy",
+        "reason": "A dimension written as the string \"16px\" is the pre-2025.10 draft shape; 2025.10 requires a value and unit object."
+      }
+    },
+    {
+      "id": "negative-missing-type",
+      "file": "../negative/untyped-token.tokens.json",
+      "kind": "negative",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "78eaee5e8dd439dbec1a109967ebd16a9457c2579f348b7982a7ab632d757e24",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "invalid",
+        "pathContains": "orphan",
+        "reason": "A token with a value but no effective type, local or inherited, is invalid."
+      }
+    },
+    {
+      "id": "negative-stroke-style",
+      "file": "../negative/invalid-stroke-style.tokens.json",
+      "kind": "negative",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "51dc5f8df4b8b439318c63328f22db014015e1f7a967bafb7bfe2d9b54812508",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "invalid",
+        "pathContains": "stroke",
+        "reason": "none, hidden and unknown keywords, an empty dash array and a bevel line cap are not valid strokeStyle values; they fail at their own paths while the group's type is inherited."
+      }
+    },
+    {
+      "id": "synthetic-extra-axis-resolver",
+      "file": "synthetic-extra-axis.resolver.json",
+      "kind": "synthetic",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "74feda61de71d24f1e78b4ef6cfffecb81a4a903e2028b848c8818e4376f1919",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "unsupported-profile",
+        "reason": "A valid DTCG 2025.10 resolver with inline sources and a product axis. It is valid standards-wise; the Cinder profile has exactly the theme and motion axes, so it is an unsupported profile, not a standards failure."
+      }
+    },
+    {
+      "id": "synthetic-json5-like",
+      "file": "synthetic-json5-like.tokens.json5",
+      "kind": "synthetic",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "a4bae257152868c8d598b48fb8fadab79891a8b9a9530f8193692a09b6920577",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "unsupported-profile",
+        "reason": "Strict JSON parsing fails and the text shows JSON5 comments, unquoted keys and trailing commas. Recognized for diagnosis only; never evaluated."
+      }
+    },
+    {
+      "id": "synthetic-acronis-like",
+      "file": "synthetic-acronis-like.tokens.json",
+      "kind": "synthetic",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "85805ab536d98db3de9df7707ebf7197ae741cab7da28de1d54328f25716923f",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "unsupported-profile",
+        "reason": "Tokens carry a values map and a platforms list instead of a $value. Recognized by shape only; no brand or converter claim."
+      }
+    },
+    {
+      "id": "synthetic-spectrum-like",
+      "file": "synthetic-spectrum-like.tokens.json",
+      "kind": "synthetic",
+      "source": { "url": null, "repository": null, "commit": null, "path": null },
+      "sha256": "17af800edc886a61ad600b543235eec328717ccdaa8c6c0844a58fc5d5982607",
+      "license": { "spdx": "MIT", "attribution": "Original synthetic content, same license as this repository." },
+      "expected": {
+        "disposition": "unsupported-profile",
+        "reason": "Tokens resolve through named sets (a cascade) rather than a DTCG resolver. Recognized by shape only; no brand or converter claim."
+      }
+    }
+  ]
+}

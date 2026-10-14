@@ -1,7 +1,10 @@
 import { readdir, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 
-import { rewritePublishedComponentExamples } from './component-example-imports.ts';
+import {
+  rewritePublishedComponentExamples,
+  rewritePublishedComponentReadme,
+} from './component-example-imports.ts';
 import { formatEmittedFile } from './json-formatting.ts';
 import type { PackageSurfaceEntry } from './package-surface.ts';
 import { isTypeScriptConfiguration } from './target-resolvability.ts';
@@ -666,7 +669,7 @@ async function readInto(
 ): Promise<void> {
   const contents = new Uint8Array(await Bun.file(absolute).arrayBuffer());
   plan.files[path] = await formatEmittedFile(
-    rewritePublishedComponentExamples(contents, path),
+    rewritePublishedComponentReadme(rewritePublishedComponentExamples(contents, path), path),
     targetDirectory,
     path,
   );

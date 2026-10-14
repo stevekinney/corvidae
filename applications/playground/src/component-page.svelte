@@ -28,6 +28,7 @@
   import Sun from 'lucide-svelte/icons/sun';
   import X from 'lucide-svelte/icons/x';
   import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
+  import ComponentSearch from './shell-app/component-search.svelte';
   import { humanizeComponentName } from './shell-app/humanize.ts';
   import {
     buildComponentHref,
@@ -2059,6 +2060,7 @@
 -->
       <nav class="dx-nav" aria-label="Components" {@attach persistScrollPosition}>
         <a class="dx-nav__brand" href="/">CINDER</a>
+        <ComponentSearch components={sidebarComponents} />
         <div class="dx-nav__filter">
           <label class="cinder-sr-only" for="sidebar-filter">Filter components</label>
           <input

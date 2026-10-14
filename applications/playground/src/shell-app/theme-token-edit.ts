@@ -6,7 +6,7 @@
  * these rules.
  */
 
-import { profileRangeViolation } from '@lostgradient/cinder/tokens/runtime';
+import { buildThemeSources, profileRangeViolation } from '@lostgradient/cinder/tokens/runtime';
 
 import type { CatalogueRow } from './theme-builder-catalogue.ts';
 import {
@@ -20,7 +20,6 @@ import type { DraftEdit } from './theme-draft.ts';
 import { getNode } from './theme-override-tree.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
 import { themePreviewValueProblem } from './theme-preview-message.ts';
-import { buildThemeSources } from './theme-runtime-evaluator.ts';
 
 export type EditScope = 'shared' | 'color-mode' | 'motion-mode';
 

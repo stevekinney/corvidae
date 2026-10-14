@@ -114,21 +114,26 @@ export function parseThemeEnvelope(text: string): ParsedEnvelope {
   return { ok: true, envelope };
 }
 
+/** A theme name as a file name stem: lowercase letters and digits joined by single hyphens. */
+export function themeFileSlug(name: string): string {
+  return (
+    name
+      .normalize('NFKD')
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase()
+      .slice(0, 40) || 'theme'
+  );
+}
+
 /** The lossless download of one theme: the envelope only, as stable pretty JSON. */
 export function envelopeDownload(envelope: ThemeEnvelope): {
   filename: string;
   mime: string;
   text: string;
 } {
-  const slug =
-    envelope.name
-      .normalize('NFKD')
-      .replace(/[^\p{L}\p{N}]+/gu, '-')
-      .replace(/^-+|-+$/g, '')
-      .toLowerCase()
-      .slice(0, 40) || 'theme';
   return {
-    filename: `${slug}-${envelope.id.slice(0, 8)}.cinder-theme.json`,
+    filename: `${themeFileSlug(envelope.name)}-${envelope.id.slice(0, 8)}.cinder-theme.json`,
     mime: 'application/json',
     text: `${JSON.stringify(envelope, null, 2)}\n`,
   };

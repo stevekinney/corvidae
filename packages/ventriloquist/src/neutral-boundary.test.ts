@@ -1,0 +1,77 @@
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const packageRoot = join(import.meta.dir, '..');
+const typescriptCompiler = Bun.resolveSync('typescript/bin/tsc', packageRoot);
+const scratchDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of scratchDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Type-check one extra source file under the neutral program's compiler options. The scratch
+ * configuration extends `tsconfig.neutral.json` but replaces its file list, so the fixture is the
+ * only input and nothing in the real source tree is touched.
+ */
+function checkNeutral(source: string): { exitCode: number; output: string } {
+  const directory = mkdtempSync(join(tmpdir(), 'ventriloquist-neutral-'));
+  scratchDirectories.push(directory);
+  mkdirSync(join(directory, 'src/protocol'), { recursive: true });
+  writeFileSync(join(directory, 'src/protocol/fixture.ts'), source);
+  writeFileSync(
+    join(directory, 'tsconfig.json'),
+    JSON.stringify({
+      extends: join(packageRoot, 'tsconfig.neutral.json'),
+      include: [join(directory, 'src/**/*.ts')],
+      exclude: [],
+    }),
+  );
+  const result = Bun.spawnSync(
+    [process.execPath, typescriptCompiler, '--noEmit', '--pretty', 'false', '-p', directory],
+    {
+      cwd: packageRoot,
+    },
+  );
+  return { exitCode: result.exitCode, output: result.stdout.toString() + result.stderr.toString() };
+}
+
+describe('platform-neutral TypeScript program', () => {
+  test('accepts source that uses only the ECMAScript library', () => {
+    const { exitCode, output } = checkNeutral('export const doubled = [1, 2].map((n) => n * 2);\n');
+    expect(output).toBe('');
+    expect(exitCode).toBe(0);
+  });
+
+  test.each([
+    ['Bun', 'export const version: string = Bun.version;\n', "Cannot find name 'Bun'"],
+    [
+      'process',
+      'export const platform: string = process.platform;\n',
+      "Cannot find name 'process'",
+    ],
+    [
+      'a DOM global',
+      'export const href: string = document.location.href;\n',
+      "Cannot find name 'document'",
+    ],
+    [
+      'a Bun module',
+      "import { file } from 'bun';\nexport const reader = file;\n",
+      "Cannot find module 'bun'",
+    ],
+    [
+      'a Node module',
+      "import { join } from 'node:path';\nexport const joiner = join;\n",
+      "Cannot find name 'node:path'",
+    ],
+  ])('rejects a reference to %s', (_name, source, message) => {
+    const { exitCode, output } = checkNeutral(source);
+    expect(exitCode).not.toBe(0);
+    expect(output).toContain(message);
+  });
+});

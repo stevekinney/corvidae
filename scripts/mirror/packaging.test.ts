@@ -3,6 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   assertTarballsPublishable,
@@ -14,6 +19,7 @@ import {
   nodeImportableSpecifierEntries,
   PackagingError,
   packWorkspace,
+  readmePublicityScript,
   runCommand,
   runConsumerSmokeTest,
   smokeScript,
@@ -37,37 +43,51 @@ async function realReadme(path: string): Promise<string> {
 
 const corvidaeRoot = join(import.meta.dir, '..', '..');
 
-describe('runCommand credential isolation', () => {
-  test.each([false, true])(
-    'strips App credentials from child environments (explicit=%s)',
-    async (explicit) => {
-      const child = `console.log(JSON.stringify({key: 'MIRROR_APP_PRIVATE_KEY' in Bun.env, file: 'MIRROR_APP_PRIVATE_KEY_FILE' in Bun.env, path: !!Bun.env.PATH}))`;
-      const environment = {
-        ...Bun.env,
-        MIRROR_APP_PRIVATE_KEY: 'test-private-key',
-        MIRROR_APP_PRIVATE_KEY_FILE: '/test/private-key.pem',
-      };
-      const result = explicit
-        ? await runCommand([process.execPath, '-e', child], { cwd: corvidaeRoot, env: environment })
-        : await (async () => {
-            const script = `import {runCommand} from ${JSON.stringify(join(import.meta.dir, 'packaging.ts'))}; const result = await runCommand([process.execPath, '-e', ${JSON.stringify(child)}], {cwd: process.cwd()}); process.stdout.write(result.stdout); process.exit(result.exitCode);`;
-            const processResult = Bun.spawn([process.execPath, '-e', script], {
+describe('runCommand credential isolation', async () => {
+  const credentialModes = [false, true];
+  const credentialOutcomes = new Map<boolean, unknown>();
+  // A fresh `bun -e` child with the credential variables set is the behavior; it runs at module scope, off the per-test clock.
+  for (const explicit of credentialModes) {
+    credentialOutcomes.set(
+      explicit,
+      await outcomeOf(async () => {
+        const child = `console.log(JSON.stringify({key: 'MIRROR_APP_PRIVATE_KEY' in Bun.env, file: 'MIRROR_APP_PRIVATE_KEY_FILE' in Bun.env, path: !!Bun.env.PATH}))`;
+        const environment = {
+          ...Bun.env,
+          MIRROR_APP_PRIVATE_KEY: 'test-private-key',
+          MIRROR_APP_PRIVATE_KEY_FILE: '/test/private-key.pem',
+        };
+        const result = explicit
+          ? await runCommand([process.execPath, '-e', child], {
               cwd: corvidaeRoot,
               env: environment,
-              stdout: 'pipe',
-              stderr: 'pipe',
-            });
-            const [stdout, stderr, exitCode] = await Promise.all([
-              new Response(processResult.stdout).text(),
-              new Response(processResult.stderr).text(),
-              processResult.exited,
-            ]);
-            return { stdout, stderr, exitCode };
-          })();
-      expect(result.exitCode).toBe(0);
-      expect(JSON.parse(result.stdout)).toEqual({ key: false, file: false, path: true });
-      expect(environment.MIRROR_APP_PRIVATE_KEY).toBe('test-private-key');
-    },
+            })
+          : await (async () => {
+              const script = `import {runCommand} from ${JSON.stringify(join(import.meta.dir, 'packaging.ts'))}; const result = await runCommand([process.execPath, '-e', ${JSON.stringify(child)}], {cwd: process.cwd()}); process.stdout.write(result.stdout); process.exit(result.exitCode);`;
+              const processResult = Bun.spawn([process.execPath, '-e', script], {
+                timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+                cwd: corvidaeRoot,
+                env: environment,
+                stdout: 'pipe',
+                stderr: 'pipe',
+              });
+              const [stdout, stderr, exitCode] = await Promise.all([
+                new Response(processResult.stdout).text(),
+                new Response(processResult.stderr).text(),
+                processResult.exited,
+              ]);
+              return { stdout, stderr, exitCode };
+            })();
+        expect(result.exitCode).toBe(0);
+        expect(JSON.parse(result.stdout)).toEqual({ key: false, file: false, path: true });
+        expect(environment.MIRROR_APP_PRIVATE_KEY).toBe('test-private-key');
+      }),
+    );
+  }
+
+  test.each(credentialModes)(
+    'strips App credentials from child environments (explicit=%s)',
+    (explicit) => rethrow(credentialOutcomes.get(explicit)),
   );
 });
 
@@ -367,8 +387,9 @@ describe('CSS subpaths, which Node cannot import at all (COR-1196)', () => {
   });
 });
 
-describe('packaging checks against a packed tarball', () => {
-  test('a sound package packs, lints and resolves cleanly', async () => {
+describe('packaging checks against a packed tarball', async () => {
+  // Real `bun pm pack`, publint, attw and consumer installs are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withPackage(soundPackage('@fixture/sound'), async (directory, scratch) => {
       const tarball = await packWorkspace({
         packageDirectory: directory,
@@ -381,7 +402,8 @@ describe('packaging checks against a packed tarball', () => {
       expect(report.typeResolution.exitCode).toBe(0);
       expect(() => assertTarballsPublishable([report])).not.toThrow();
     });
-  }, 60_000);
+  });
+  test('a sound package packs, lints and resolves cleanly', () => rethrow(outcome1));
 
   /** Replace the root exports entry, leaving everything else about the package alone. */
   function withRootExports(files: PackageFiles, entry: unknown): PackageFiles {
@@ -392,7 +414,8 @@ describe('packaging checks against a packed tarball', () => {
     return { ...files, 'package.json': `${JSON.stringify(manifest, undefined, 2)}\n` };
   }
 
-  test('publint rejects conditions ordered so that types and default resolve wrongly', async () => {
+  // Real `bun pm pack`, publint, attw and consumer installs are the behavior; they run at module scope, off the per-test clock.
+  const outcome2 = await outcomeOf(async () => {
     // Conditions are order-sensitive: `types` after `default` is never consulted, and `default`
     // before another condition shadows it. Both were true of four entries in
     // package-surface.json until this gate was pointed at them.
@@ -410,9 +433,11 @@ describe('packaging checks against a packed tarball', () => {
       expect(report.publint.exitCode).not.toBe(0);
       expect(() => assertTarballsPublishable([report])).toThrow(PackagingError);
     });
-  }, 60_000);
+  });
+  test('publint rejects conditions ordered so that types and default resolve wrongly', () =>
+    rethrow(outcome2));
 
-  test('both gates reject one shared types entry covering a require condition', async () => {
+  const outcome3 = await outcomeOf(async () => {
     // The second defect the same four entries carried: a dual-format package needs `.d.cts`
     // declarations under `require`, because one `.d.ts` read through `require` describes the
     // CommonJS output as ESM. Ordering alone does not fix it, which is why this is pinned apart.
@@ -432,9 +457,11 @@ describe('packaging checks against a packed tarball', () => {
       expect(report.publint.exitCode).not.toBe(0);
       expect(report.typeResolution.exitCode).not.toBe(0);
     });
-  }, 60_000);
+  });
+  test('both gates reject one shared types entry covering a require condition', () =>
+    rethrow(outcome3));
 
-  test('publint rejects declarations the manifest promises but the build never emitted', async () => {
+  const outcome4 = await outcomeOf(async () => {
     // The two gates divide this case. `attw` reports a package with no declarations at all as
     // untyped and exits zero, because an untyped JavaScript package is legal; only `publint`
     // knows the manifest promised a `types` file that is not in the tarball. Asserting it here
@@ -451,7 +478,9 @@ describe('packaging checks against a packed tarball', () => {
       expect(report.publint.exitCode).not.toBe(0);
       expect(() => assertTarballsPublishable([report])).toThrow(PackagingError);
     });
-  }, 60_000);
+  });
+  test('publint rejects declarations the manifest promises but the build never emitted', () =>
+    rethrow(outcome4));
 
   test('the failure message names every offending package rather than only the first', () => {
     const failing = (publicName: string): TarballReport => ({
@@ -466,7 +495,7 @@ describe('packaging checks against a packed tarball', () => {
   });
 });
 
-describe('COR-1230: the attw gate is scoped to internal-resolution-error', () => {
+describe('COR-1230: the attw gate is scoped to internal-resolution-error', async () => {
   /**
    * ESM-only, no `require` condition and no top-level `main`/`types` fallback. Against `attw`'s
    * default profile this fails exactly the two rules COR-1230 rules ignorable: `CJSResolvesToESM`
@@ -528,7 +557,8 @@ describe('COR-1230: the attw gate is scoped to internal-resolution-error', () =>
     };
   }
 
-  test('a tarball with only CJSResolvesToESM and node10 NoResolution passes', async () => {
+  // Real `bun pm pack`, publint, attw and consumer installs are the behavior; they run at module scope, off the per-test clock.
+  const outcome5 = await outcomeOf(async () => {
     await withPackage(esmOnlyPackage('@fixture/esm-only'), async (directory, scratch) => {
       const tarball = await packWorkspace({
         packageDirectory: directory,
@@ -538,9 +568,11 @@ describe('COR-1230: the attw gate is scoped to internal-resolution-error', () =>
       expect(report.typeResolution.exitCode).toBe(0);
       expect(() => assertTarballsPublishable([report])).not.toThrow();
     });
-  }, 60_000);
+  });
+  test('a tarball with only CJSResolvesToESM and node10 NoResolution passes', () =>
+    rethrow(outcome5));
 
-  test('a tarball carrying InternalResolutionError still fails the gate', async () => {
+  const outcome6 = await outcomeOf(async () => {
     await withPackage(
       internalResolutionErrorPackage('@fixture/internal-resolution-error'),
       async (directory, scratch) => {
@@ -557,11 +589,13 @@ describe('COR-1230: the attw gate is scoped to internal-resolution-error', () =>
         expect(() => assertTarballsPublishable([report])).toThrow(PackagingError);
       },
     );
-  }, 60_000);
+  });
+  test('a tarball carrying InternalResolutionError still fails the gate', () => rethrow(outcome6));
 });
 
-describe('the consumer smoke test', () => {
-  test('installs the tarball and imports every subpath it publishes', async () => {
+describe('the consumer smoke test', async () => {
+  // Real `bun pm pack`, publint, attw and consumer installs are the behavior; they run at module scope, off the per-test clock.
+  const outcome7 = await outcomeOf(async () => {
     await withPackage(subpathPackage('@fixture/consumable'), async (directory, scratch) => {
       const tarball = await packWorkspace({
         packageDirectory: directory,
@@ -583,9 +617,10 @@ describe('the consumer smoke test', () => {
       });
       expect(result.specifiers).toEqual(['@fixture/consumable', '@fixture/consumable/extra']);
     });
-  }, 60_000);
+  });
+  test('installs the tarball and imports every subpath it publishes', () => rethrow(outcome7));
 
-  test('a subpath the tarball does not actually ship fails the import, not just the lint', async () => {
+  const outcome8 = await outcomeOf(async () => {
     const files = subpathPackage('@fixture/hollow');
     delete files['dist/extra.js'];
     delete files['dist/extra.d.ts'];
@@ -609,9 +644,11 @@ describe('the consumer smoke test', () => {
         ),
       ).toThrow(PackagingError);
     });
-  }, 60_000);
+  });
+  test('a subpath the tarball does not actually ship fails the import, not just the lint', () =>
+    rethrow(outcome8));
 
-  test('a smoke test with nothing importable is a failure rather than a vacuous pass', async () => {
+  const outcome9 = await outcomeOf(async () => {
     expect(
       await throwingRejectionOf(
         runConsumerSmokeTest({
@@ -621,13 +658,15 @@ describe('the consumer smoke test', () => {
       ),
     ).toThrow(/no importable specifier/);
   });
+  test('a smoke test with nothing importable is a failure rather than a vacuous pass', () =>
+    rethrow(outcome9));
 
   // COR-1196. Before the fix, `smoke-node.mjs` wrote `import * as module1 from
   // '@fixture/json-widget/data';` with no attribute; node refuses that for a `.json` target with
   // `ERR_IMPORT_ATTRIBUTE_MISSING`, which `consumer-run-node` surfaced against the real
   // `chat-composer-popover.examples.json` sidecar. This runs both the bun and the node import for
   // real against a packed tarball, so it is the reproduction, not just an assertion on generated text.
-  test('a .json subpath installs and imports cleanly under both bun and node', async () => {
+  const outcome10 = await outcomeOf(async () => {
     await withPackage(jsonSubpathPackage('@fixture/json-widget'), async (directory, scratch) => {
       const tarball = await packWorkspace({
         packageDirectory: directory,
@@ -648,7 +687,9 @@ describe('the consumer smoke test', () => {
       });
       expect(result.specifiers).toEqual(['@fixture/json-widget', '@fixture/json-widget/data']);
     });
-  }, 60_000);
+  });
+  test('a .json subpath installs and imports cleanly under both bun and node', () =>
+    rethrow(outcome10));
 
   // COR-1196. Before the fix, `smoke-node.mjs` wrote `import * as module1 from
   // '@fixture/css-widget/styles';` with no way to make it importable at all; node refuses a
@@ -657,7 +698,7 @@ describe('the consumer smoke test', () => {
   // the node import for real against a packed tarball: bun's script imports the css subpath and
   // succeeds, node's never mentions it and succeeds for a different reason — there was nothing
   // there to fail on.
-  test('a .css subpath installs and imports under bun; node never attempts it', async () => {
+  const outcome11 = await outcomeOf(async () => {
     await withPackage(cssSubpathPackage('@fixture/css-widget'), async (directory, scratch) => {
       const tarball = await packWorkspace({
         packageDirectory: directory,
@@ -678,7 +719,9 @@ describe('the consumer smoke test', () => {
       });
       expect(result.specifiers).toEqual(['@fixture/css-widget', '@fixture/css-widget/styles']);
     });
-  }, 60_000);
+  });
+  test('a .css subpath installs and imports under bun; node never attempts it', () =>
+    rethrow(outcome11));
 });
 
 describe('findInternalReadmeMarker', () => {
@@ -708,8 +751,9 @@ describe('findInternalReadmeMarker', () => {
   });
 });
 
-describe('checkReadmePublicity', () => {
-  test('passes a tarball whose README is public, like today’s real weft README', async () => {
+describe('checkReadmePublicity', async () => {
+  // Real `bun pm pack`, publint, attw and consumer installs are the behavior; they run at module scope, off the per-test clock.
+  const outcome12 = await outcomeOf(async () => {
     await withPackage(
       {
         'package.json': minimalManifest('@fixture/public-readme'),
@@ -725,8 +769,10 @@ describe('checkReadmePublicity', () => {
       },
     );
   });
+  test('passes a tarball whose README is public, like today’s real weft README', () =>
+    rethrow(outcome12));
 
-  test('refuses a tarball whose README is corvidae’s internal documentation, like today’s real cinder README', async () => {
+  const outcome13 = await outcomeOf(async () => {
     await withPackage(
       {
         'package.json': minimalManifest('@fixture/internal-readme'),
@@ -740,12 +786,101 @@ describe('checkReadmePublicity', () => {
         });
         const result = await checkReadmePublicity(tarball);
         expect(result.ok).toBe(false);
-        expect(result.problem).toEqual({ kind: 'internal-marker', marker: 'workspace:*' });
+        expect(result.problem).toEqual({
+          kind: 'internal-marker',
+          marker: 'workspace:*',
+          path: 'package/README.md',
+        });
       },
     );
   });
+  test('refuses a tarball whose README is corvidae’s internal documentation, like today’s real cinder README', () =>
+    rethrow(outcome13));
 
-  test('refuses a tarball with no README at all', async () => {
+  // COR-1446: `@lostgradient/editor@0.16.0` shipped five `dist/components/<name>/README.md`
+  // copies carrying `workspace:*` install instructions, and a check that read only the root
+  // README passed it.
+  const outcome14 = await outcomeOf(async () => {
+    await withPackage(
+      {
+        'package.json': minimalManifest('@fixture/nested-internal-readme'),
+        'dist/index.js': 'export const x = 1;\n',
+        'dist/components/widget/README.md':
+          '# Widget\n\nDeclare `"@fixture/nested-internal-readme": "workspace:*"` in the consuming workspace.\n',
+        'dist/components/gadget/README.md': '# Gadget\n\nInstall from the Corvidae root.\n',
+        'README.md': '# Fixture\n\nInstall with `bun add @fixture/nested-internal-readme`.\n',
+      },
+      async (directory, scratch) => {
+        const tarball = await packWorkspace({
+          packageDirectory: directory,
+          destination: join(scratch, 'tarballs'),
+        });
+        expect(await checkReadmePublicity(tarball)).toEqual({
+          ok: false,
+          problem: {
+            kind: 'internal-marker',
+            marker: 'Corvidae',
+            path: 'package/dist/components/gadget/README.md',
+          },
+        });
+      },
+    );
+  });
+  test('refuses a tarball whose nested component README carries an internal marker, even with a public root README', () =>
+    rethrow(outcome14));
+
+  const outcome15 = await outcomeOf(async () => {
+    await withPackage(
+      {
+        'package.json': minimalManifest('@fixture/nested-public-readme'),
+        'dist/index.js': 'export const x = 1;\n',
+        'dist/components/widget/README.md':
+          "# Widget\n\n```ts\nimport { Widget } from '@fixture/nested-public-readme/widget';\n```\n",
+        'README.md': '# Fixture\n\nInstall with `bun add @fixture/nested-public-readme`.\n',
+      },
+      async (directory, scratch) => {
+        const tarball = await packWorkspace({
+          packageDirectory: directory,
+          destination: join(scratch, 'tarballs'),
+        });
+        expect(await checkReadmePublicity(tarball)).toEqual({ ok: true });
+      },
+    );
+  });
+  test('passes a tarball whose nested component READMEs are public too', () => rethrow(outcome15));
+
+  const outcome16 = await outcomeOf(async () => {
+    await withPackage(
+      {
+        'package.json': minimalManifest('@fixture/both-internal-readme'),
+        'dist/index.js': 'export const x = 1;\n',
+        'dist/components/a/README.md': 'Install from the Corvidae root.\n',
+        'README.md': 'Declare `"x": "workspace:*"`.\n',
+      },
+      async (directory, scratch) => {
+        const tarball = await packWorkspace({
+          packageDirectory: directory,
+          destination: join(scratch, 'tarballs'),
+        });
+        const result = await checkReadmePublicity(tarball);
+        expect(result.problem).toEqual({
+          kind: 'internal-marker',
+          marker: 'workspace:*',
+          path: 'package/README.md',
+        });
+      },
+    );
+  });
+  test('reports the root README first when both it and a nested one are internal', () =>
+    rethrow(outcome16));
+
+  test('the script embeds in a single-quoted shell argument', () => {
+    expect(readmePublicityScript).not.toContain("'");
+    expect(readmePublicityScript).not.toContain('\\');
+  });
+
+  // Real `bun pm pack`, publint, attw and consumer installs are the behavior; they run at module scope, off the per-test clock.
+  const outcome17 = await outcomeOf(async () => {
     await withPackage(
       {
         'package.json': minimalManifest('@fixture/no-readme'),
@@ -763,10 +898,12 @@ describe('checkReadmePublicity', () => {
       },
     );
   });
+  test('refuses a tarball with no README at all', () => rethrow(outcome17));
 });
 
-describe('checkTarball folds in the README-publicity check', () => {
-  test('a sound package with an internal README fails assertTarballsPublishable, even though publint and attw are clean', async () => {
+describe('checkTarball folds in the README-publicity check', async () => {
+  // Real `bun pm pack`, publint, attw and consumer installs are the behavior; they run at module scope, off the per-test clock.
+  const outcome18 = await outcomeOf(async () => {
     await withPackage(
       {
         ...soundPackage('@fixture/internal-but-typed'),
@@ -781,8 +918,12 @@ describe('checkTarball folds in the README-publicity check', () => {
         expect(report.publint.exitCode).toBe(0);
         expect(report.typeResolution.exitCode).toBe(0);
         expect(report.readme.ok).toBe(false);
-        expect(() => assertTarballsPublishable([report])).toThrow(/internal documentation/);
+        expect(() => assertTarballsPublishable([report])).toThrow(
+          /package\/README\.md still reads as corvidae.s internal documentation/,
+        );
       },
     );
   });
+  test('a sound package with an internal README fails assertTarballsPublishable, even though publint and attw are clean', () =>
+    rethrow(outcome18));
 });

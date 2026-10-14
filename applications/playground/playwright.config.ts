@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-import { environmentConfiguration } from './scripts/environment-configuration.ts';
+import { browserTestEnvironment } from './scripts/environment-configuration.ts';
 
 // Playwright forces color in its workers and web servers. Remove the conflicting inherited
 // opt-out in this test process before those children are created.
@@ -16,7 +16,7 @@ delete process.env['NO_COLOR'];
  * server that is already running on the port. `PLAYGROUND_BROWSER_STATIC=1` adds a second
  * project that exports the site and serves the exported files.
  */
-const environment = environmentConfiguration();
+const environment = browserTestEnvironment();
 const devPort = Number(environment.browserPort ?? 54231);
 const staticPort = Number(environment.browserStaticPort ?? 54232);
 const devOrigin = `http://127.0.0.1:${devPort}`;

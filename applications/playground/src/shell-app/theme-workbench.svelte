@@ -114,7 +114,7 @@
     {controller?.announcement || announcement}
   </div>
 
-  <ThemeWorkbenchToolbar {workbench} />
+  <ThemeWorkbenchToolbar {workbench} {controller} />
   {#if controller !== undefined}
     <ThemeWorkbenchLibrary {controller} />
     <ThemeWorkbenchDraftBar {controller} {workbench} />

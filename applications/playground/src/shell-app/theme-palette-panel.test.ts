@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { flushSync, mount, tick, unmount } from 'svelte';
 
-import { evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
+import { buildThemeSources, evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
 import { setupHappyDom } from '@lostgradient/testing';
 
 import { cinderThemeBase } from './theme-builder-base.ts';
@@ -15,7 +15,6 @@ import {
   buildPaletteProposal,
   PALETTE_FAMILY_OPTIONS,
 } from './theme-palette-proposal.ts';
-import { buildThemeSources } from './theme-runtime-evaluator.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
 setupHappyDom();

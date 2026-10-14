@@ -42,6 +42,15 @@ describe('createCostBudgetMonitor', () => {
     expect(result).toBe(true);
   });
 
+  it('prices a current Claude model instead of throwing for missing pricing', () => {
+    // claude-opus-5-5: prompt=$4/M, completion=$20/M; cost = 0.004 + 0.01 = 0.014
+    const monitor = createCostBudgetMonitor({ budget: 0.001, model: 'claude-opus-5-5' });
+    const result = monitor.stopCondition(
+      makeStepResult({ usage: { prompt: 1000, completion: 500, total: 1500 } }),
+    );
+    expect(result).toBe(true);
+  });
+
   it('fires threshold callbacks in order', () => {
     const fired: number[] = [];
     const monitor = createCostBudgetMonitor({

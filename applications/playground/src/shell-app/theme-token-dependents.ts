@@ -5,10 +5,9 @@
  * revision it was computed for.
  */
 
-import { evaluateTheme } from '@lostgradient/cinder/tokens/runtime';
+import { buildThemeSources, evaluateTheme } from '@lostgradient/cinder/tokens/runtime';
 
 import type { ThemeContextId, ThemeEnvelope } from './theme-draft-types.ts';
-import { buildThemeSources } from './theme-runtime-evaluator.ts';
 
 type DependentsIndex = Map<string, Map<string, readonly string[]>> | null;
 

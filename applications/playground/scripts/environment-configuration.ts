@@ -1,45 +1,43 @@
-import { environmentalist } from '@lostgradient/environmentalist';
-import { z } from 'zod';
+/**
+ * The environment Vercel gives the playground's Ignored Build Step (`ignore-build.ts`).
+ *
+ * Unlike the repository's other environment-configuration modules, this one reads `process.env`
+ * directly instead of through `@lostgradient/environmentalist`: Vercel runs the ignore step before
+ * `bun install`, so nothing outside Bun and Node built-ins can be imported here.
+ */
+export type IgnoreStepEnvironment = {
+  /** `production`, `preview`, or `development`. */
+  readonly vercelEnvironment: string | undefined;
+  readonly commitMessage: string | undefined;
+  /** The commit of the branch's last successful deployment; empty on its first deployment. */
+  readonly previousSha: string | undefined;
+  readonly commitSha: string | undefined;
+};
 
-const schema = z.object({
-  browserPort: z.string().optional().meta({ env: 'PLAYGROUND_BROWSER_PORT' }),
-  browserReuse: z
-    .string()
-    .optional()
-    .transform((value) => value === '1')
-    .meta({ env: 'PLAYGROUND_BROWSER_REUSE' }),
-  browserStatic: z
-    .string()
-    .optional()
-    .transform((value) => value === '1')
-    .meta({ env: 'PLAYGROUND_BROWSER_STATIC' }),
-  browserStaticPort: z.string().optional().meta({ env: 'PLAYGROUND_BROWSER_STATIC_PORT' }),
-});
-
-const NAMES = [
-  'PLAYGROUND_BROWSER_PORT',
-  'PLAYGROUND_BROWSER_REUSE',
-  'PLAYGROUND_BROWSER_STATIC',
-  'PLAYGROUND_BROWSER_STATIC_PORT',
-];
-
-function selectedEnvironment(): Record<string, string> {
-  return Object.fromEntries(
-    NAMES.flatMap((name) => {
-      const value = process.env[name];
-      return value === undefined ? [] : [[name, value]];
-    }),
-  );
+export function ignoreStepEnvironment(): IgnoreStepEnvironment {
+  return {
+    vercelEnvironment: process.env['VERCEL_ENV'],
+    commitMessage: process.env['VERCEL_GIT_COMMIT_MESSAGE'],
+    previousSha: process.env['VERCEL_GIT_PREVIOUS_SHA'],
+    commitSha: process.env['VERCEL_GIT_COMMIT_SHA'],
+  };
 }
 
-/** Resolve the playground's browser-test process configuration at the point of use. */
-export function environmentConfiguration() {
-  return environmentalist.sync({
-    name: 'corvidae-playground-browser',
-    schema,
-    env: selectedEnvironment(),
-    sources: ['env', 'defaults'],
-    argv: [],
-    coerce: false,
-  });
+/** The playground's browser-test settings, read by `playwright.config.ts`. */
+export type BrowserTestEnvironment = {
+  readonly browserPort: string | undefined;
+  readonly browserStaticPort: string | undefined;
+  /** `PLAYGROUND_BROWSER_STATIC=1` adds the exported-site project. */
+  readonly browserStatic: boolean;
+  /** `PLAYGROUND_BROWSER_REUSE=1` reuses a server already running on the port. */
+  readonly browserReuse: boolean;
+};
+
+export function browserTestEnvironment(): BrowserTestEnvironment {
+  return {
+    browserPort: process.env['PLAYGROUND_BROWSER_PORT'],
+    browserStaticPort: process.env['PLAYGROUND_BROWSER_STATIC_PORT'],
+    browserStatic: process.env['PLAYGROUND_BROWSER_STATIC'] === '1',
+    browserReuse: process.env['PLAYGROUND_BROWSER_REUSE'] === '1',
+  };
 }

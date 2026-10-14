@@ -4,7 +4,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
-import { evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
+import { buildThemeSources, evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import {
   catalogueRowByPath,
@@ -32,7 +32,6 @@ import {
 } from './theme-color-model.ts';
 import ThemeColorSummary from './theme-color-summary.svelte';
 import { createEnvelope } from './theme-envelope.ts';
-import { buildThemeSources } from './theme-runtime-evaluator.ts';
 import { dependentsOf } from './theme-token-dependents.ts';
 import { overrideValue } from './theme-token-edit.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';

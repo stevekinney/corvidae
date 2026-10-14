@@ -363,6 +363,20 @@ export function artifactRelativePath(path: string): string {
 }
 
 /**
+ * The module served at a family's stable entry URL (`/page-bundle/<name>.js`,
+ * `/shell-bundle/shell.js`): a single side-effect import of the hashed entry.
+ *
+ * It must never be a copy of the entry's code. With `splitting`, Bun hoists
+ * shared exports into the entry, so peer chunks import the HASHED entry URL. A
+ * byte copy at the stable URL is a second module record with the same top-level
+ * code, which ran `hydrate()` twice per page and produced a `hydration_mismatch`
+ * on every component page and the landing page.
+ */
+export function stableEntryModule(family: ArtifactFamily, entryPath: string): string {
+  return `import ${JSON.stringify(`${PUBLIC_PATH_BY_FAMILY[family]}${entryPath}`)};\n`;
+}
+
+/**
  * Walk `result.outputs` and return the entry path/code plus a map of EVERY
  * artifact produced by this build (entry plus all hashed chunks).
  *

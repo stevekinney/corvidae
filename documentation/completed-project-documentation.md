@@ -73,7 +73,7 @@ The expanded pass has its own final validation; the successful run recorded abov
 
 - [MIGRATION.md](../MIGRATION.md)
 - [README.md](../README.md)
-- [applications/desktop/README.md](../applications/desktop/README.md)
+- applications/desktop/README.md (removed with the desktop application; see repository history)
 - applications/chat-room/docs/interface-surfaces.md (retired with the SvelteKit chat-room; see repository history)
 - [components/chat/src/lib/components/chat-composer-popover/README.md](../components/chat/src/lib/components/chat-composer-popover/README.md)
 - [components/cinder/README.md](../components/cinder/README.md)

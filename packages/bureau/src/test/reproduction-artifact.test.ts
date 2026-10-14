@@ -30,12 +30,14 @@ function mockGenerate(content = 'Done.'): GenerateFunction {
 
 const disposals: Array<() => Promise<void>> = [];
 
-afterEach(async () => {
+async function disposeAll(): Promise<void> {
   while (disposals.length > 0) {
     const dispose = disposals.pop()!;
     await dispose();
   }
-});
+}
+
+afterEach(disposeAll);
 
 /**
  * Builds a harness, runs its `worker` agent to completion with an
@@ -147,6 +149,14 @@ async function assembleDeterministicCase(
   });
 }
 
+// The assembler discovers `git rev-parse HEAD` once and caches it, so the one real `git` process
+// this file needs runs here at module scope, ahead of the tests, to stay off the per-test clock.
+const [expectedSourceRevision] = await Promise.all([
+  Bun.$`git rev-parse HEAD`.quiet().text(),
+  assembleDeterministicCase(),
+]);
+await disposeAll();
+
 describe('assembleReproductionArtifact', () => {
   it('produces byte-identical JSON.stringify output across two independently constructed harnesses given the same deterministic inputs', async () => {
     const first = await assembleDeterministicCase();
@@ -181,8 +191,7 @@ describe('assembleReproductionArtifact', () => {
   });
 
   it('reads sourceRevision from git rev-parse HEAD', async () => {
-    const rawOutput = await Bun.$`git rev-parse HEAD`.quiet().text();
-    const expected = rawOutput.trim();
+    const expected = expectedSourceRevision.trim();
     const { artifact } = await runScriptedCase();
 
     expect(artifact.sourceRevision).toBe(expected);

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/resolver.json",
+  "version": "2025.10",
+  "sets": {
+    "foundation": {
+      "sources": [
+        {
+          "brand": {
+            "$type": "color",
+            "main": { "$value": { "colorSpace": "srgb", "components": [0.1, 0.2, 0.9] } }
+          }
+        }
+      ]
+    }
+  },
+  "modifiers": {
+    "theme": {
+      "contexts": {
+        "light": [
+          {
+            "surface": {
+              "$type": "color",
+              "page": { "$value": { "colorSpace": "srgb", "components": [1, 1, 1] } }
+            }
+          }
+        ],
+        "dark": [
+          {
+            "surface": {
+              "$type": "color",
+              "page": { "$value": { "colorSpace": "srgb", "components": [0, 0, 0] } }
+            }
+          }
+        ]
+      },
+      "default": "light"
+    },
+    "product": {
+      "contexts": {
+        "app": [{ "density": { "$type": "number", "scale": { "$value": 1 } } }],
+        "marketing": [{ "density": { "$type": "number", "scale": { "$value": 1.25 } } }]
+      },
+      "default": "app"
+    }
+  },
+  "resolutionOrder": [
+    { "$ref": "#/sets/foundation" },
+    { "$ref": "#/modifiers/theme" },
+    { "$ref": "#/modifiers/product" }
+  ]
+}

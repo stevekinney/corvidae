@@ -5,19 +5,34 @@ import { join } from 'node:path';
 import { write } from 'bun';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { GUARDED_FIELDS, stripComments } from './check-revision-keyed-lookups.ts';
-
-const scriptPath = join(import.meta.dir, 'check-revision-keyed-lookups.ts');
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
+import { GUARDED_FIELDS, runCli, stripComments } from './check-revision-keyed-lookups.ts';
 
 type RunResult = { exitCode: number; stdout: string; stderr: string };
 
-function run(args: readonly string[]): RunResult {
-  const result = Bun.spawnSync(['bun', 'run', scriptPath, ...args]);
-  return {
-    exitCode: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
+/**
+ * Runs the checker's CLI in process with `console` captured, as `bun scripts/check-revision-keyed-lookups.ts`
+ * would print it. Spawning the script would put a Bun boot inside every test's 5 s budget,
+ * which times out under host load; the package's `lint` script still runs the real entry point.
+ */
+async function run(args: readonly string[]): Promise<RunResult> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...values: unknown[]): void => {
+    stdout.push(values.map(String).join(' '));
   };
+  console.error = (...values: unknown[]): void => {
+    stderr.push(values.map(String).join(' '));
+  };
+  try {
+    const exitCode = await runCli(args);
+    return { exitCode, stdout: stdout.join('\n'), stderr: stderr.join('\n') };
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
 }
 
 async function writeFixtureFile(root: string, relativePath: string, body: string): Promise<void> {
@@ -36,7 +51,7 @@ describe('check-revision-keyed-lookups', () => {
   });
 
   it('passes on an empty fixture', async () => {
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: no out-of-allowlist references');
   });
@@ -49,7 +64,7 @@ describe('check-revision-keyed-lookups', () => {
         `  return internals.activityRegistriesByWorkflow.get('type');\n` +
         `}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('src/core/engine/some-new-file.ts:2');
     expect(result.stderr).toContain('.activityRegistriesByWorkflow');
@@ -63,7 +78,7 @@ describe('check-revision-keyed-lookups', () => {
         `  internals.sources.lastResolvedRevisionByName.set('type', 'rev');\n` +
         `}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('src/core/engine/some-other-file.ts:2');
     expect(result.stderr).toContain('.lastResolvedRevisionByName');
@@ -76,7 +91,7 @@ describe('check-revision-keyed-lookups', () => {
       `// See internals.activityRegistriesByWorkflow for the eager-only registry.\n` +
         `export const value = 1;\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -86,7 +101,7 @@ describe('check-revision-keyed-lookups', () => {
       'src/core/engine/block-comment-only.ts',
       `/**\n * Falls back to \`internals.sources.lastResolvedRevisionByName\`.\n */\nexport const value = 1;\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -99,7 +114,7 @@ describe('check-revision-keyed-lookups', () => {
         `  return activityRegistriesByWorkflow.get('type');\n` +
         `}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('src/core/engine/destructure-only.ts:2');
   });
@@ -112,7 +127,7 @@ describe('check-revision-keyed-lookups', () => {
         `  internals.sources['lastResolvedRevisionByName'].set('type', 'rev');\n` +
         `}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('src/core/engine/bracket-only.ts:2');
   });
@@ -124,7 +139,7 @@ describe('check-revision-keyed-lookups', () => {
       `export type Sources = {\n  lastResolvedRevisionByName: Map<string, string>;\n};\n` +
         `export function build(): Sources {\n  return { lastResolvedRevisionByName: new Map() };\n}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(1);
   });
 
@@ -138,7 +153,7 @@ describe('check-revision-keyed-lookups', () => {
         `  return internals.activityRegistriesByWorkflow.get('type');\n` +
         `}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -153,7 +168,7 @@ describe('check-revision-keyed-lookups', () => {
     // Sanity-check the fixture actually puts the reference on the audited
     // line — otherwise this test would pass for the wrong reason.
     expect(body.split('\n')[site.line - 1]).toContain('lastResolvedRevisionByName');
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -167,7 +182,7 @@ describe('check-revision-keyed-lookups', () => {
     const padding = '\n'.repeat(site.line);
     const body = `${padding}export const rogue = { lastResolvedRevisionByName: new Map() };\n`;
     await writeFixtureFile(root, site.file, body);
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(`${site.file}:${site.line + 1}`);
   });
@@ -187,7 +202,7 @@ describe('check-revision-keyed-lookups', () => {
         `  return internals.activityRegistriesByWorkflow.get('type');\n` +
         `}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -211,7 +226,7 @@ describe('check-revision-keyed-lookups', () => {
         `  return internals.sources.lastResolvedRevisionByName.get('x');\n` +
         `}\n`,
     );
-    const result = run(['--root', root]);
+    const result = await run(['--root', root]);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Found 2 reference(s)');
     expect(result.stderr).toContain('src/core/engine/file-a.ts:3');
@@ -271,5 +286,18 @@ describe('check-revision-keyed-lookups GUARDED_FIELDS', () => {
         expect(guarded.allowedFiles.includes(site.file)).toBe(false);
       }
     }
+  });
+});
+
+describe('check-revision-keyed-lookups arguments', () => {
+  it('prints usage naming every guarded field and exits 0 for --help', async () => {
+    const result = await run(['-h']);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Usage: bun scripts/check-revision-keyed-lookups.ts');
+    for (const guarded of GUARDED_FIELDS) expect(result.stdout).toContain(guarded.name);
+  });
+
+  it('rejects an unknown argument', async () => {
+    expect(await throwingRejectionOf(runCli(['--unknown']))).toThrow('Unknown argument: --unknown');
   });
 });
