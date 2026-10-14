@@ -192,6 +192,7 @@
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='danger'] {
+    --_cinder-chip-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-status-danger-solid);
     color: var(--cinder-status-danger-contrast);
     border-color: var(--cinder-status-danger-solid);
@@ -204,6 +205,7 @@
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='accent'] {
+    --_cinder-chip-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     border-color: var(--cinder-accent-solid);
@@ -219,7 +221,13 @@
     /* Ring replaces the border while focused rather than stacking on it — the two
        together read as one heavier shape than either was designed to be. */
     border-color: transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+    /* Inline two-stop recipe instead of the shared --_cinder-focus-ring-shadow:
+       that formula resolves on :root, so a filled state could not retint it.
+       The --_cinder-chip-ring hook switches to the on-accent colour on a solid fill. */
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-chip-ring, var(--cinder-ring-color));
   }
 
   @media (forced-colors: active) {

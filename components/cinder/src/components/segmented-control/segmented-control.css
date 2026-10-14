@@ -261,7 +261,8 @@
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow:
       0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-segmented-control-option-ring, var(--cinder-ring-color));
     z-index: 1;
   }
 
@@ -312,9 +313,13 @@
     .cinder-segmented-control-option[data-cinder-pressed]:focus-visible,
   .cinder-segmented-control:not([data-cinder-variant='tablist'])
     .cinder-segmented-control-option[data-cinder-current]:focus-visible {
+    /* These segments are solid accent fills with the tight ring directly on
+       them, so the ring uses the on-accent colour (focus-ring-policy.md). */
+    --_cinder-segmented-control-option-ring: var(--cinder-ring-on-accent);
     box-shadow:
       0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-segmented-control-option-ring, var(--cinder-ring-color));
     z-index: 1;
   }
 

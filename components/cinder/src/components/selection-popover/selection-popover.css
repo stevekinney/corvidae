@@ -59,6 +59,7 @@
     padding: var(--cinder-space-1-5) var(--cinder-space-2);
     border: 0;
     border-radius: var(--cinder-radius-full);
+    --_cinder-selection-popover-button-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     cursor: pointer;
@@ -79,7 +80,14 @@
   .cinder-selection-popover__button:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     outline-offset: var(--cinder-ring-offset);
-    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-md);
+    /* Inline two-stop recipe instead of the shared --_cinder-focus-ring-shadow:
+       that formula resolves on :root, so a filled state could not retint it.
+       The --_cinder-selection-popover-button-ring hook switches to the on-accent colour on a solid fill. */
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-selection-popover-button-ring, var(--cinder-ring-color)),
+      var(--cinder-shadow-md);
   }
 
   @media (forced-colors: active) {
@@ -176,6 +184,7 @@
   }
 
   .cinder-selection-popover__submit {
+    --_cinder-selection-popover-action-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
   }
@@ -195,7 +204,13 @@
   .cinder-selection-popover__submit:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     outline-offset: var(--cinder-ring-offset);
-    box-shadow: var(--_cinder-focus-ring-shadow);
+    /* Inline two-stop recipe instead of the shared --_cinder-focus-ring-shadow:
+       that formula resolves on :root, so a filled state could not retint it.
+       The --_cinder-selection-popover-action-ring hook switches to the on-accent colour on a solid fill. */
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-selection-popover-action-ring, var(--cinder-ring-color));
   }
 
   @media (forced-colors: active) {

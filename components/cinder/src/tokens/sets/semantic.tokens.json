@@ -529,23 +529,23 @@
     "offset": {
       "$type": "dimension",
       "$value": {
-        "value": 2,
+        "value": 0,
         "unit": "px"
       },
-      "$description": "Focus ring offset from the control edge.",
+      "$description": "Focus ring offset from the control edge. Zero: the ring sits directly on the control edge with no offset band, so focus reads as one tight 2px line rather than a 4px double band (COR-1498). Emitted as `0px`, not a bare `0`, because the ring recipes add it to `--cinder-ring-width` inside `calc()`, where a unitless zero is a number and invalidates the sum.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-ring-offset",
           "public": true,
           "category": "size",
-          "cssRecipe": null
+          "cssRecipe": "0px"
         }
       }
     },
     "offset-color": {
       "$type": "color",
       "$value": "{surface.raised}",
-      "$description": "Focus ring offset band color. The ring is a two-stop box-shadow and box-shadow cannot paint a transparent gap, so the offset band has to be some real color. Pinned to `surface.raised` (the top of the ramp) so the band disappears into raised surfaces, where controls overwhelmingly live, and reads as a light halo on recessed tiers.",
+      "$description": "Focus ring offset band color. Unused while `ring.offset` is zero: the two-stop recipe's first stop then has no spread and paints nothing. Kept as a public token because removing it would break consumers. When a non-zero offset is set, box-shadow cannot paint a transparent gap, so the band needs a real color; it is pinned to `surface.raised` so it disappears into raised surfaces.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-ring-offset-color",

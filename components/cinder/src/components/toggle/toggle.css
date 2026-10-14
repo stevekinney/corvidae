@@ -76,6 +76,10 @@
  * ---------------------------------------- */
 
   .cinder-toggle[data-cinder-checked] {
+    /* The on track is a solid accent fill and the tight ring sits on it, so the
+       private hook switches to the on-accent colour. A consumer's
+       --cinder-toggle-ring still wins (see the focus rule). */
+    --_cinder-toggle-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-toggle-track-on, var(--cinder-accent-solid));
   }
 
@@ -88,7 +92,7 @@
     box-shadow:
       0 0 0 var(--cinder-ring-offset, 2px) var(--cinder-ring-offset-color, var(--cinder-surface)),
       0 0 0 calc(var(--cinder-ring-offset, 2px) + var(--cinder-ring-width, 2px))
-        var(--cinder-toggle-ring, var(--cinder-ring-color));
+        var(--cinder-toggle-ring, var(--_cinder-toggle-ring, var(--cinder-ring-color)));
   }
 
   /* Forced Colors Mode: box-shadow is suppressed by Windows High Contrast Mode, so

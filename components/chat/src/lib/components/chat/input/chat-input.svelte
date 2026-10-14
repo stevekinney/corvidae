@@ -1142,6 +1142,7 @@
     padding: 0;
     border: none;
     border-radius: var(--cinder-radius-full);
+    --_cinder-chat-input-send-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     cursor: pointer;
@@ -1169,11 +1170,19 @@
   .chat-input-send:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     outline-offset: 3px;
-    box-shadow: var(--_cinder-focus-ring-shadow);
+    /* Inline two-stop recipe instead of the shared --_cinder-focus-ring-shadow:
+       that formula resolves on :root, so a filled state could not retint it.
+       The --_cinder-chat-input-send-ring hook switches to the on-accent colour on a solid fill. */
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-chat-input-send-ring, var(--cinder-ring-color));
   }
 
   /* Stop button variant - danger-tinted to signal urgency during streaming */
   .chat-input-send[data-stop] {
+    /* Tinted, not a solid fill, so the default ring applies. */
+    --_cinder-chat-input-send-ring: var(--cinder-ring-color);
     background: var(--cinder-status-danger-background);
     color: var(--cinder-status-danger-text);
     border: 1px solid var(--cinder-status-danger-border);

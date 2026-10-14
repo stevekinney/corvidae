@@ -209,6 +209,13 @@
     border-color: var(--cinder-status-danger-solid);
   }
 
+  /* A checked radio is a solid accent fill with the tight ring directly on it,
+     so the ring uses the on-accent colour. Follows the invalid rule so the fill
+     decides at equal specificity. */
+  .cinder-radio:checked {
+    --_cinder-radio-ring: var(--cinder-ring-on-accent);
+  }
+
   /* Also carries FormFieldFrame's generic `.cinder-form-field__label` class;
      compound with it so Radio's typography out-specificities the shared base
      rule regardless of consumer import order (component sidecars carry layer

@@ -92,6 +92,7 @@
   }
 
   .cinder-schema-form__submit {
+    --_cinder-schema-form-submit-ring: var(--cinder-ring-on-accent);
     padding: var(--cinder-space-2) var(--cinder-space-4);
     border-color: var(--cinder-accent-solid);
     background: var(--cinder-accent-solid);
@@ -101,6 +102,18 @@
   .cinder-schema-form__submit:disabled {
     cursor: not-allowed;
     opacity: 0.65;
+  }
+
+  /* The submit button is a solid accent fill. Without its own rule it fell back
+     to the global outline in --cinder-ring-color, which now sits directly on
+     that fill and blends into it. Strategy B with the on-accent hook instead;
+     the forced-colors block below repaints the transparent outline. */
+  .cinder-schema-form__submit:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-schema-form-submit-ring, var(--cinder-ring-color));
   }
 
   @media (forced-colors: active) {

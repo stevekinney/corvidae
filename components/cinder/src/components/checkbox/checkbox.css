@@ -186,6 +186,15 @@
     border-color: var(--cinder-status-danger-solid);
   }
 
+  /* Checked and indeterminate boxes are solid accent fills, and the tight ring
+     sits directly on that fill, so it uses the on-accent colour. The fill, not
+     the validation state, is what the ring has to contrast against, so this
+     follows the invalid rule and wins at equal specificity. */
+  .cinder-checkbox:checked,
+  .cinder-checkbox:indeterminate {
+    --_cinder-checkbox-ring: var(--cinder-ring-on-accent);
+  }
+
   /* Label */
   .cinder-checkbox-field__label,
   .cinder-checkbox-field .cinder-form-field__label {

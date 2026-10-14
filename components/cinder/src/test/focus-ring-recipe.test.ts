@@ -84,6 +84,14 @@ const treeCss = loadCss('../components/tree/tree.css');
 // source tree, so their recipe pins moved with them.
 
 const TRANSPARENT_OUTLINE = 'var(--cinder-ring-width) solid transparent';
+
+/** The inline two-stop ring with a private colour hook, whitespace-normalized. */
+function hookedRingRecipe(hook: string): string {
+  return (
+    '0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color), ' +
+    `0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(${hook}, var(--cinder-ring-color))`
+  );
+}
 const SHARED_BOX_SHADOW = 'var(--_cinder-focus-ring-shadow)';
 const GROUPED_DROPDOWN_TRIGGER_SELECTOR = [
   '.cinder-button-group',
@@ -158,6 +166,8 @@ const recipes: Array<{
   css: string;
   selector: string;
   forcedColorsSelector?: string;
+  /** Set when the rule writes the two stops inline behind a private ring hook (COR-1498). */
+  ringHook?: string;
 }> = [
   // NOTE: this used to record the opposite. The command-palette search input was
   // deliberately kept off the shared recipe because an edgeless input floated the ring
@@ -169,6 +179,10 @@ const recipes: Array<{
   // --cinder-ring-offset-color resolves to --cinder-surface-raised, which is also the
   // palette's own background, so the offset band is invisible instead of drawing a halo.
   // The recipe pin now lives in command-palette.test.ts.
+  //
+  // COR-1498 reversed it again: with the tight ring there is no offset band to hide,
+  // and the owner chose no ring on the palette search at all (the row is the field and
+  // the caret shows focus). command-palette.test.ts pins that exception.
   {
     name: 'slider thumb',
     css: sliderCss,
@@ -188,11 +202,15 @@ const recipes: Array<{
     name: 'selection-popover cancel action',
     css: selectionPopoverCss,
     selector: '.cinder-selection-popover__cancel:focus-visible',
+    // Updated for COR-1498: the rule is shared with the filled submit button, so it
+    // writes the stops inline behind a hook instead of the :root-resolved shared shadow.
+    ringHook: '--_cinder-selection-popover-action-ring',
   },
   {
     name: 'selection-popover submit action',
     css: selectionPopoverCss,
     selector: '.cinder-selection-popover__submit:focus-visible',
+    ringHook: '--_cinder-selection-popover-action-ring',
   },
   {
     name: 'selection-popover textarea',
@@ -233,7 +251,7 @@ const recipes: Array<{
 ];
 
 describe('focus-visible recipe — transparent outline placeholder', () => {
-  for (const { name, css, selector } of recipes) {
+  for (const { name, css, selector, ringHook } of recipes) {
     test(`${name}: ${selector} uses the transparent-outline + box-shadow recipe`, () => {
       const root = parse(css);
       const rules = findRules(root, selector).filter((rule) => !isUnderForcedColors(rule));
@@ -242,7 +260,11 @@ describe('focus-visible recipe — transparent outline placeholder', () => {
       expect(declValue(rule, 'outline')).toBe(TRANSPARENT_OUTLINE);
       const boxShadow = declValue(rule, 'box-shadow');
       expect(boxShadow).toBeDefined();
-      expect(boxShadow).toContain(SHARED_BOX_SHADOW);
+      if (ringHook === undefined) {
+        expect(boxShadow).toContain(SHARED_BOX_SHADOW);
+      } else {
+        expect(normalizeCssValue(boxShadow!)).toContain(hookedRingRecipe(ringHook));
+      }
     });
 
     test(`${name}: ${selector} has a forced-colors fallback that repaints the outline`, () => {
@@ -359,7 +381,9 @@ describe('tab button — inset focus ring inside the scrollable tab list', () =>
 });
 
 describe('selection-popover floating-button focus-visible', () => {
-  test('uses the transparent placeholder and includes the shared focus ring in its box-shadow', () => {
+  // Updated for COR-1498: the button is a solid accent fill, so its ring is written
+  // inline behind a hook (the shared shadow resolves on :root and cannot be retinted).
+  test('uses the transparent placeholder and a hooked focus ring composed with its elevation', () => {
     const root = parse(selectionPopoverCss);
     const rules = findRules(root, '.cinder-selection-popover__button:focus-visible').filter(
       (rule) => !isUnderForcedColors(rule),
@@ -369,7 +393,9 @@ describe('selection-popover floating-button focus-visible', () => {
     expect(declValue(rule, 'outline')).toBe(TRANSPARENT_OUTLINE);
     const boxShadow = declValue(rule, 'box-shadow');
     expect(boxShadow).toBeDefined();
-    expect(boxShadow).toContain(SHARED_BOX_SHADOW);
+    const normalized = normalizeCssValue(boxShadow!);
+    expect(normalized).toContain(hookedRingRecipe('--_cinder-selection-popover-button-ring'));
+    expect(normalized).toContain('var(--cinder-shadow-md)');
   });
 });
 
@@ -947,4 +973,178 @@ describe('forced-colors fallbacks — issue #460', () => {
       assertForcedColorsFallback(css, selector, expectedOffset);
     });
   }
+});
+
+// COR-1498: the ring sits directly on the control edge, so a focused element whose
+// own background is a solid accent or danger fill paints it in
+// --cinder-ring-on-accent through its private ring hook. Each case pins the fill
+// rule that sets the hook and the focus rule that reads it.
+describe('filled controls use the on-accent ring through their hook (COR-1498)', () => {
+  const ON_ACCENT = 'var(--cinder-ring-on-accent)';
+  const css = (relativePath: string) => loadCss(relativePath);
+  const cases: Array<{
+    name: string;
+    source: string;
+    fillSelectors: string[];
+    hook: string;
+    focusSelector: string;
+  }> = [
+    {
+      name: 'Button primary and danger',
+      source: css('../components/button/button.css'),
+      fillSelectors: [
+        ".cinder-button[data-cinder-variant='primary']",
+        ".cinder-button[data-cinder-variant='danger']",
+      ],
+      hook: '--_cinder-button-ring',
+      focusSelector: '.cinder-button:focus-visible',
+    },
+    {
+      name: 'Checkbox checked and indeterminate',
+      source: css('../components/checkbox/checkbox.css'),
+      fillSelectors: ['.cinder-checkbox:checked', '.cinder-checkbox:indeterminate'],
+      hook: '--_cinder-checkbox-ring',
+      focusSelector: '.cinder-checkbox:focus-visible',
+    },
+    {
+      name: 'Radio checked',
+      source: css('../components/radio-group/radio-group.css'),
+      fillSelectors: ['.cinder-radio:checked'],
+      hook: '--_cinder-radio-ring',
+      focusSelector: '.cinder-radio:focus-visible',
+    },
+    {
+      name: 'Switch on',
+      source: css('../components/toggle/toggle.css'),
+      fillSelectors: ['.cinder-toggle[data-cinder-checked]'],
+      hook: '--_cinder-toggle-ring',
+      focusSelector: '.cinder-toggle:focus-visible',
+    },
+    {
+      name: 'SegmentedControl selected, pressed and current',
+      source: css('../components/segmented-control/segmented-control.css'),
+      fillSelectors: [
+        ".cinder-segmented-control:not([data-cinder-variant='tablist']) .cinder-segmented-control-option[data-cinder-selected]:focus-visible",
+        ".cinder-segmented-control:not([data-cinder-variant='tablist']) .cinder-segmented-control-option[data-cinder-pressed]:focus-visible",
+        ".cinder-segmented-control:not([data-cinder-variant='tablist']) .cinder-segmented-control-option[data-cinder-current]:focus-visible",
+      ],
+      hook: '--_cinder-segmented-control-option-ring',
+      focusSelector: '.cinder-segmented-control-option:focus-visible',
+    },
+    {
+      name: 'Chip pressed accent and danger',
+      source: css('../components/chip/chip.css'),
+      fillSelectors: [
+        ".cinder-chip[aria-pressed='true'][data-cinder-variant='accent']",
+        ".cinder-chip[aria-pressed='true'][data-cinder-variant='danger']",
+      ],
+      hook: '--_cinder-chip-ring',
+      focusSelector: 'button.cinder-chip:focus-visible',
+    },
+    {
+      name: 'Pagination current page',
+      source: css('../components/pagination/pagination.css'),
+      fillSelectors: ['.cinder-pagination__page[data-cinder-current]'],
+      hook: '--_cinder-pagination-ring',
+      focusSelector: '.cinder-pagination__page:focus-visible',
+    },
+    {
+      name: 'Calendar range start and end',
+      source: css('../components/calendar/calendar.css'),
+      fillSelectors: [
+        '.cinder-calendar__day[data-range-start]',
+        '.cinder-calendar__day[data-range-end]',
+      ],
+      hook: '--_cinder-calendar-day-ring',
+      focusSelector: '.cinder-calendar__day:focus-visible',
+    },
+    {
+      name: 'SelectionPopover add-comment button',
+      source: selectionPopoverCss,
+      fillSelectors: ['.cinder-selection-popover__button'],
+      hook: '--_cinder-selection-popover-button-ring',
+      focusSelector: '.cinder-selection-popover__button:focus-visible',
+    },
+    {
+      name: 'SelectionPopover submit',
+      source: selectionPopoverCss,
+      fillSelectors: ['.cinder-selection-popover__submit'],
+      hook: '--_cinder-selection-popover-action-ring',
+      focusSelector: '.cinder-selection-popover__submit:focus-visible',
+    },
+    {
+      name: 'SchemaForm submit',
+      source: css('../components/schema-form/schema-form.css'),
+      fillSelectors: ['.cinder-schema-form__submit'],
+      hook: '--_cinder-schema-form-submit-ring',
+      focusSelector: '.cinder-schema-form__submit:focus-visible',
+    },
+    {
+      name: 'FileUpload browse button',
+      source: css('../components/file-upload/file-upload.css'),
+      fillSelectors: ['.cinder-file-upload__button'],
+      hook: '--_cinder-file-upload-button-ring',
+      focusSelector: '.cinder-file-upload__button:focus-visible',
+    },
+    {
+      name: 'CapabilityGate primary action',
+      source: capabilityGateCss,
+      fillSelectors: ['.cinder-capability-gate__primary'],
+      hook: '--_cinder-capability-gate-ring',
+      focusSelector: '.cinder-capability-gate__primary:focus-visible',
+    },
+    {
+      name: 'FloatingAction primary',
+      source: css('../components/floating-action/floating-action.css'),
+      fillSelectors: [".cinder-floating-action[data-cinder-variant='primary']"],
+      hook: '--_cinder-floating-action-ring',
+      focusSelector: '.cinder-floating-action:focus-visible',
+    },
+  ];
+
+  for (const { name, source, fillSelectors, hook, focusSelector } of cases) {
+    test(`${name}: the fill sets ${hook} to the on-accent ring`, () => {
+      const root = parse(source);
+      for (const selector of fillSelectors) {
+        const values = findRulesByNormalizedSelector(root, selector)
+          .filter((rule) => !isUnderForcedColors(rule))
+          .map((rule) => declValue(rule, hook))
+          .filter((value): value is string => value !== undefined);
+        expect(values, selector).toEqual([ON_ACCENT]);
+      }
+    });
+
+    test(`${name}: ${focusSelector} paints the ring through ${hook}`, () => {
+      const root = parse(source);
+      const rules = findRulesByNormalizedSelector(root, focusSelector).filter(
+        (rule) => !isUnderForcedColors(rule),
+      );
+      const boxShadows = rules
+        .map((rule) => declValue(rule, 'box-shadow'))
+        .filter((value): value is string => value !== undefined)
+        .map(normalizeCssValue);
+      expect(
+        boxShadows.some((value) => value.includes(`var(${hook}, var(--cinder-ring-color))`)),
+      ).toBe(true);
+    });
+  }
+
+  test('an aria-disabled primary Button or FloatingAction loses its fill and its on-accent ring', () => {
+    const button = parse(css('../components/button/button.css'));
+    const buttonDisabled = findRulesByNormalizedSelector(
+      button,
+      ".cinder-button[data-cinder-variant='primary'][aria-disabled='true']:not([data-cinder-loading])",
+    );
+    expect(buttonDisabled.map((rule) => declValue(rule, '--_cinder-button-ring'))).toContain(
+      'var(--cinder-ring-color)',
+    );
+    const floatingAction = parse(css('../components/floating-action/floating-action.css'));
+    const floatingDisabled = findRulesByNormalizedSelector(
+      floatingAction,
+      ".cinder-floating-action[data-cinder-variant='primary'][aria-disabled='true']",
+    );
+    expect(
+      floatingDisabled.map((rule) => declValue(rule, '--_cinder-floating-action-ring')),
+    ).toContain('var(--cinder-ring-color)');
+  });
 });

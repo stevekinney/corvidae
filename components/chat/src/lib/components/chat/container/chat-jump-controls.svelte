@@ -161,6 +161,7 @@
     gap: var(--cinder-space-1);
     min-height: var(--cinder-touch-target-min);
     padding: var(--cinder-space-1-5) var(--cinder-space-3);
+    --_cinder-chat-new-indicator-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
@@ -179,7 +180,14 @@
 
   .chat-new-indicator:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-lg);
+    /* Inline two-stop recipe instead of the shared --_cinder-focus-ring-shadow:
+       that formula resolves on :root, so a filled state could not retint it.
+       The --_cinder-chat-new-indicator-ring hook switches to the on-accent colour on a solid fill. */
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
+        var(--_cinder-chat-new-indicator-ring, var(--cinder-ring-color)),
+      var(--cinder-shadow-lg);
   }
 
   @media (forced-colors: active) {

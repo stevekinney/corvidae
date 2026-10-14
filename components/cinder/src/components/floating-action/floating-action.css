@@ -127,6 +127,8 @@
 
   .cinder-floating-action[data-cinder-variant='primary']:disabled,
   .cinder-floating-action[data-cinder-variant='primary'][aria-disabled='true'] {
+    /* No accent fill here, so the default ring applies again. */
+    --_cinder-floating-action-ring: var(--cinder-ring-color);
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-disabled);
   }

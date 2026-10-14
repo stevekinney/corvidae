@@ -120,8 +120,6 @@ describe('Chat focus-ring recipes', () => {
     ],
     ['chat search navigation', styles.searchBar, '.chat-search-nav-button:focus-visible'],
     ['chat jump button', styles.jumpControls, '.chat-jump-button:focus-visible'],
-    ['chat new indicator', styles.jumpControls, '.chat-new-indicator:focus-visible'],
-    ['chat send button', styles.input, '.chat-input-send:focus-visible'],
     ['chat message row', styles.message, '.chat-message:focus-visible'],
     ['chat message expand', styles.message, '.chat-message-expand:focus-visible'],
     ['chat message retry', styles.message, '.chat-message-retry:focus-visible'],
@@ -140,6 +138,51 @@ describe('Chat focus-ring recipes', () => {
     const fallback = findRules(styles.message, selector).find((rule) => isUnderForcedColors(rule));
     expect(declarationValue(fallback!, 'outline')).toBe('var(--cinder-ring-width) solid Highlight');
     expect(declarationValue(fallback!, 'outline-offset')).toBe('1px');
+  });
+
+  // Updated for COR-1498: the send button and the new-message indicator are solid
+  // accent fills, so they moved off the :root-resolved shared shadow onto the
+  // inline two-stop recipe with a private hook set to --cinder-ring-on-accent.
+  const hookedCases = [
+    [
+      'chat new indicator',
+      styles.jumpControls,
+      '.chat-new-indicator',
+      '--_cinder-chat-new-indicator-ring',
+    ],
+    ['chat send button', styles.input, '.chat-input-send', '--_cinder-chat-input-send-ring'],
+  ] as const;
+
+  for (const [name, style, selector, hook] of hookedCases) {
+    test(`${name} paints the on-accent ring through ${hook}`, () => {
+      const fill = findRules(style, selector).find((rule) => !isUnderForcedColors(rule));
+      expect(declarationValue(fill!, hook)).toBe('var(--cinder-ring-on-accent)');
+
+      const focus = findRules(style, `${selector}:focus-visible`).find(
+        (rule) => !isUnderForcedColors(rule),
+      );
+      expect(focus).toBeDefined();
+      expect(declarationValue(focus!, 'outline')).toBe(TRANSPARENT_OUTLINE);
+      const boxShadow = (declarationValue(focus!, 'box-shadow') ?? '').replaceAll(/\s+/g, ' ');
+      expect(boxShadow).toContain(
+        '0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) ' +
+          `var(${hook}, var(--cinder-ring-color))`,
+      );
+
+      const fallback = findRules(style, `${selector}:focus-visible`).find((rule) =>
+        isUnderForcedColors(rule),
+      );
+      expect(declarationValue(fallback!, 'outline')).not.toContain('transparent');
+    });
+  }
+
+  test('the stop state is tinted, not filled, so it returns the send button to the default ring', () => {
+    const stop = findRules(styles.input, '.chat-input-send[data-stop]').find(
+      (rule) => !isUnderForcedColors(rule),
+    );
+    expect(declarationValue(stop!, '--_cinder-chat-input-send-ring')).toBe(
+      'var(--cinder-ring-color)',
+    );
   });
 
   test('stop state does not override the shared send-button focus ring', () => {

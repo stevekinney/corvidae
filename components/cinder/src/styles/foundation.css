@@ -77,7 +77,12 @@
    ring with the standard "transparent outline + two-stop box-shadow" pattern
    reference this variable so the formula lives in exactly one place. Not part
    of the public token surface — do not document, do not export. The leading
-   `_` after `--` marks it as private/internal per the Cinder convention. */
+   `_` after `--` marks it as private/internal per the Cinder convention.
+   With `--cinder-ring-offset` at 0px the first stop has no spread and paints
+   nothing, so the ring is one tight band on the control edge. The colour is
+   resolved here on :root, so a component that must retint its ring (a solid
+   accent fill uses --cinder-ring-on-accent) writes the two stops inline with
+   its own `--_cinder-<component>-ring` hook instead of using this. */
 :root {
   --_cinder-focus-ring-shadow:
     0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
