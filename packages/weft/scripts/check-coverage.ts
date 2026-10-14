@@ -1750,6 +1750,16 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
  */
 export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERAGE_ALLOWANCES', [
   [
+    'src/cli-main.ts',
+    {
+      reason:
+        'The `if (import.meta.main)` entry point only binds `runCliMain` to the real process: its stdout, stderr and exit, and the shutdown signals for a `serve` run. It runs when the `weft` binary is executed, a separate process whose hits are never attributed to the parent LCOV report. `runCliMain` itself, including the serve path and its shutdown, is covered in process by src/cli/cli-direct-*.test.ts, which stopped spawning the binary inside the per-test budget. The five functions are the entry block’s three output and exit callbacks and its signal handler.',
+      functions: 5,
+      lines: new Set([166, 167, 168, 169, 170, 171, 172, 173]),
+      requireUncoveredLines: true,
+    },
+  ],
+  [
     'src/hello-world-example.test-support.ts',
     {
       reason:
