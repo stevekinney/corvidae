@@ -76,6 +76,13 @@ describe('renderShell live-reload advertisement', () => {
 });
 
 describe('renderShell', () => {
+  it('regression guard: keeps the shell body unpadded so the landing canvas owns its own gutter (passed before CIN-586; not evidence of the fix)', () => {
+    const html = renderShell(null, ['button']);
+    const bodyRule = /\n\s+body \{([^}]*)\}/.exec(html)?.[1] ?? '';
+    expect(bodyRule).not.toBe('');
+    expect(bodyRule).not.toMatch(/padding|border/);
+  });
+
   it('embeds the active component and component list in the data island', () => {
     const html = renderShell('button', ['button', 'avatar']);
     const match = /<script type="application\/json" id="cinder-initial">([^<]+)<\/script>/.exec(
