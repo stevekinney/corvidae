@@ -97,7 +97,8 @@ describe('apply and undo', () => {
     const before = snapshot(controller);
     const proposal = await proposalFor(controller, dimmedRecord);
     const darkBefore = await reportForEnvelope(memoEvaluator, controller.draft!.envelope, 1);
-    expect((await applyProposal(controller, proposal, recompute(controller, dimmedRecord, proposal))).ok).toBe(true);
+    const applied = await applyProposal(controller, proposal, recompute(controller, dimmedRecord, proposal));
+    expect(applied.ok).toBe(true);
     expect(JSON.stringify(controller.draft!.envelope.locked)).toBe(lockedBefore);
     expect(controller.lockedPaths.has('accent.text')).toBe(true);
     expect(controller.draft!.envelope.overrides.dark).toEqual(dimmedText.overrides.dark);
@@ -172,7 +173,8 @@ describe('detach and repair', () => {
     expect(target?.before).toBe('{surface.raised}');
     expect(target?.after).toContain('oklch(');
     const entries = controller.history!.entries.length;
-    expect((await applyProposal(controller, proposal, recompute(controller, aliasRecord, proposal))).ok).toBe(true);
+    const applied = await applyProposal(controller, proposal, recompute(controller, aliasRecord, proposal));
+    expect(applied.ok).toBe(true);
     expect(controller.history!.entries).toHaveLength(entries + 1);
     const node = (controller.draft!.envelope.overrides.light as { text: { default: { $value: unknown } } }).text.default;
     expect(node.$value).toMatchObject({ colorSpace: 'oklch' });

@@ -2,8 +2,8 @@
   /*
    * One finding: its rule, the measured and required values, the tokens, context and scene it
    * came from, the exceptions and untested areas, and a button that selects the exact editor
-   * and preview state. `actions` is the seam COR-487 fills with fix actions; this component
-   * renders nothing into it.
+   * and preview state. `actions` renders the finding's fix control (COR-487). The row itself
+   * takes programmatic focus (never tab order) so a fix or an undo can land on it.
    */
   import { Button } from '@lostgradient/cinder';
   import type { Snippet } from 'svelte';
@@ -25,6 +25,7 @@
   // Labels name the context without the word "motion", which the toolbar's own control owns.
   const contextLabel = $derived(record.context.replace('/', ' ').replace('-motion', ''));
   const heading = $derived(`${rule.title} (${contextLabel})`);
+  const titleId = $derived(`finding-title-${record.id.replaceAll(/[^\w-]/g, '-')}`);
 </script>
 
 <li
@@ -32,8 +33,10 @@
   data-testid="finding"
   data-finding-id={record.id}
   data-severity={record.severity}
+  tabindex="-1"
+  aria-labelledby={`${titleId}`}
 >
-  <p class="finding__title">
+  <p class="finding__title" id={titleId}>
     <strong>{rule.title}</strong>
     <span class="finding__context">{record.context}</span>
   </p>
@@ -113,6 +116,18 @@
     padding: 10px 0;
     border-block-start: 1px solid var(--cinder-border-muted);
     list-style: none;
+  }
+  .finding:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+  @media (forced-colors: active) {
+    .finding:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 3px;
+    }
   }
   p {
     margin: 0;

@@ -255,23 +255,31 @@ function evaluateCandidate(
   return true;
 }
 
-/** The best ratio reachable for one pairing alone: the gray and the largest in-gamut chroma. */
-function bestAlone(
-  input: SearchInput,
-  original: OriginalForeground,
-  pairing: ContrastPairing,
-): Blocker {
-  const required = requiredFor(pairing);
-  let best: number | null = null;
+/** The probe points shared by every pairing: per lightness, the gray and the widest in-gamut chroma. */
+function probePoints(input: SearchInput, original: OriginalForeground): RemediationCandidate[] {
+  const points: RemediationCandidate[] = [];
   for (let step = 0; step <= LIGHTNESS_STEPS; step += 1) {
     const l = step / LIGHTNESS_STEPS;
     const widest = largestPassingChroma(l, original.h, original.c, input.gamut);
     for (const c of new Set([0, widest?.chroma ?? 0])) {
-      const candidate = roundedCandidate(l, c, original);
-      const properties = { ...input.properties, [input.property]: candidateCss(candidate) };
-      const result = measureAffected(pairing, properties, input.theme);
-      if (result.ratio !== null && (best === null || result.ratio > best)) best = result.ratio;
+      points.push(roundedCandidate(l, c, original));
     }
+  }
+  return points;
+}
+
+/** The best ratio reachable for one pairing alone, over the probe points. */
+function bestAlone(
+  input: SearchInput,
+  points: readonly RemediationCandidate[],
+  pairing: ContrastPairing,
+): Blocker {
+  const required = requiredFor(pairing);
+  let best: number | null = null;
+  for (const candidate of points) {
+    const properties = { ...input.properties, [input.property]: candidateCss(candidate) };
+    const result = measureAffected(pairing, properties, input.theme);
+    if (result.ratio !== null && (best === null || result.ratio > best)) best = result.ratio;
   }
   return {
     pairingId: pairing.id,
@@ -315,7 +323,8 @@ export function searchForeground(input: SearchInput): SearchResult {
     if (better) best = { l, c: found.chroma, step: found.step, delta };
   }
   if (best === null) {
-    const blockers = plan.affected.map((pairing) => bestAlone(input, original, pairing));
+    const points = probePoints(input, original);
+    const blockers = plan.affected.map((pairing) => bestAlone(input, points, pairing));
     return {
       ok: false,
       reason: 'no-candidate',

@@ -216,7 +216,7 @@ export async function proposeContrastFix(
   request: RemediationRequest,
   fix: ContrastFix,
 ): Promise<RemediationResult> {
-  const { draft, record, evaluator, gamut } = request;
+  const { draft, record, gamut } = request;
   const pairing = pairingOf(record)!;
   const foreground = record.stack.find((entry) => entry.role === 'foreground')!;
   const properties = await propertiesOf(request, record.context);
