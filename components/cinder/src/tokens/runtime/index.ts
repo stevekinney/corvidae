@@ -35,6 +35,7 @@ export type {
   TokenInputs,
   TokenLocation,
 } from './authoring-types.ts';
+export * from './contrast/index.ts';
 export { CINDER_BASE } from './base-corpus.ts';
 export type { CinderBase } from './base-corpus.ts';
 export { authoringContexts, authoringLayerStack } from './context-stack.ts';
