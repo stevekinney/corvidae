@@ -120,6 +120,25 @@ async function lintImport(
   }
 }
 
+/**
+ * These scenarios run the real `oxlint` and `tsc` binaries against synthetic files, which takes seconds on a loaded host.
+ * Each scenario runs here, at module scope, off Bun's five-second per-test clock, and its test
+ * re-throws whatever the scenario threw, so a failed assertion still fails under the test that
+ * names it.
+ */
+async function outcomeOf(scenario: () => Promise<void>): Promise<unknown> {
+  try {
+    await scenario();
+    return undefined;
+  } catch (error) {
+    return error ?? new Error('scenario failed');
+  }
+}
+
+function rethrow(outcome: unknown): void {
+  if (outcome !== undefined) throw outcome;
+}
+
 for (const [path, maximum] of [
   ['packages/example/src/consumer.ts', 100],
   ['components/example/src/consumer.svelte', 100],
@@ -149,25 +168,6 @@ for (const [path, maximum] of [
     expect(rejected.output).toContain(`complexity of ${maximum + 1}`);
   });
   test(`${path} accepts complexity ${maximum} and rejects ${maximum + 1}`, () => rethrow(outcome));
-}
-
-/**
- * These scenarios run the real `oxlint` and `tsc` binaries against synthetic files, which takes seconds on a loaded host.
- * Each scenario runs here, at module scope, off Bun's five-second per-test clock, and its test
- * re-throws whatever the scenario threw, so a failed assertion still fails under the test that
- * names it.
- */
-async function outcomeOf(scenario: () => Promise<void>): Promise<unknown> {
-  try {
-    await scenario();
-    return undefined;
-  } catch (error) {
-    return error ?? new Error('scenario failed');
-  }
-}
-
-function rethrow(outcome: unknown): void {
-  if (outcome !== undefined) throw outcome;
 }
 
 const scenario1 = await outcomeOf(async () => {
