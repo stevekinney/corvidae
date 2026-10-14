@@ -73,6 +73,8 @@ async function renderInFreshProcess(
       cwd: PLAYGROUND_ROOT,
       stdout: 'pipe',
       stderr: 'pipe',
+      // A hang detector for a worker that never exits, never a performance bound.
+      timeout: 120_000,
     },
   );
   const [exitCode, stdout, stderr] = await Promise.all([

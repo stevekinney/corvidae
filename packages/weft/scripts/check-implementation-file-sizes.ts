@@ -466,7 +466,4 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   return 0;
 }
 
-if (import.meta.main) {
-  const exitCode = await runCli(process.argv.slice(2));
-  process.exit(exitCode);
-}
+if (import.meta.main) process.exitCode = await runCli(process.argv.slice(2));

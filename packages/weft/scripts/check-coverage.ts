@@ -215,10 +215,8 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
     'scripts/check-implementation-file-sizes.ts',
     {
       reason:
-        'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), then shifted two lines by COR-1281’s registry rationale and back 18 lines when COR-1273 removed two completed classifications: the child-process CLI body now falls at lines 470-471.',
+        'Bun reports one function miss in this file with every line hit. The CLI body is `runCli`, which the tests run in process, and the one-line `import.meta.main` entry is reported as hit, so no line allowance remains.',
       functions: 1,
-      lines: new Set([470, 471]),
-      requireUncoveredLines: true,
     },
   ],
   [
@@ -570,25 +568,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'scripts/check-lint-disables.ts',
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report.',
-        functions: 9,
-        lines: new Set([
-          66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87,
-          88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
-          111, 112, 113, 114, 115, 116, 120, 121, 122, 123, 124, 133, 134, 135, 136, 137, 138, 139,
-          143, 144, 145, 146, 147, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163,
-          164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 177, 178, 179, 180, 181, 182, 183, 184,
-          185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
-          203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 217, 218, 219, 220, 221, 222, 223,
-          227, 228, 229, 230, 231, 232, 233, 234, 239, 240,
-        ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'scripts/benchmarks/workflow-starts-runner.ts',
       {
         reason:
@@ -852,37 +831,6 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'scripts/check-revision-keyed-lookups.ts',
-      // New script (WFT-19). Its own test file drives every code path
-      // (`parseArguments`/`printUsage`'s `--help`/`--root`/unknown-argument
-      // branches, `scanViolations()`'s comment-stripping and allowlist
-      // exclusion, `runEnforcement()`'s pass/fail reporting, and the
-      // `import.meta.main` CLI entry) exclusively via `Bun.spawnSync(['bun',
-      // 'run', scriptPath, ...])` — the same child-process pattern
-      // `check-lint-disables.test.ts` already uses for its own script, so
-      // none of those hits attribute back to this parent Bun LCOV report.
-      // `functions: 7` (of 8 total, 1 hit): Bun's LCOV omits per-function
-      // FN:/FNDA: detail for this file — confirmed via the raw aggregate,
-      // FNF:8/FNH:1 — the same omission already documented for
-      // `pre-commit.ts` below.
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Re-derived from a fresh coverage/lcov.info (WFT-19 review round 3) after the declarationSites rewrite shifted every line below parseArguments() again.',
-        functions: 7,
-        lines: createMergedLineSet(
-          createLineSet(146, 159),
-          createLineSet(163, 182),
-          createLineSet(227, 231),
-          createLineSet(236, 240),
-          createLineSet(244, 270),
-          createLineSet(274, 296),
-          createLineSet(300, 301),
-          createLineSet(306, 307),
-        ),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/cli/api-arguments.ts',
       {
         reason:
@@ -926,15 +874,6 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         reason:
           'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report.',
         functions: 5,
-      },
-    ],
-    [
-      'src/cli/serve-registrations.ts',
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
-        lines: new Set([40, 41, 42, 43]),
-        requireUncoveredLines: true,
       },
     ],
     [
@@ -1464,15 +1403,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       },
     ],
     [
-      'src/server/authentication/index.ts',
-      {
-        reason:
-          'The residual authentication line guards an authentication provider result outside the declared provider contract.',
-        lines: new Set([158]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/server/authentication/rotating-api-key-store.ts',
       {
         reason:
@@ -1740,6 +1670,16 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
  * the reverse.
  */
 export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERAGE_ALLOWANCES', [
+  [
+    'src/cli-main.ts',
+    {
+      reason:
+        'The `if (import.meta.main)` entry point only binds `runCliMain` to the real process: its stdout, stderr and exit, and the shutdown signals for a `serve` run. It runs when the `weft` binary is executed, a separate process whose hits are never attributed to the parent LCOV report. `runCliMain` itself, including the serve path and its shutdown, is covered in process by src/cli/cli-direct-*.test.ts, which stopped spawning the binary inside the per-test budget. Four of the eight function misses are the entry block’s stdout, stderr and exit callbacks and its signal handler. Three are the best-effort `.catch` callbacks in `listenOrRollBack`’s rollback, which run only if `server.stop()`, `engine.shutdown()` or the storage disposer themselves fail while releasing a failed start. The last is Bun’s function-undercount artifact: with those removed the file still reports one miss with every line hit.',
+      functions: 8,
+      lines: new Set([199, 200, 201, 202, 203, 204, 205, 206]),
+      requireUncoveredLines: true,
+    },
+  ],
   [
     'src/hello-world-example.test-support.ts',
     {

@@ -85,12 +85,14 @@ const bureau = await createBureau({
 });
 
 let sessionId: string;
+let runId: string | undefined;
 if (mode === 'retry') {
   await bureau.waitForRecovery?.();
   sessionId = sessionArgument ?? '';
 } else {
   const run = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
   sessionId = run.sessionId;
+  runId = run.id;
   // Poll rather than sleep: the run must actually be live before a pause is
   // admissible, and a fixed delay would either be flaky or slow.
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -118,7 +120,7 @@ for (const name of commandNames) {
 const markedSession = await bureau.getSession(sessionId);
 writeFileSync(
   markerPath,
-  JSON.stringify({ sessionId, incarnation: markedSession?.incarnation, outcomes }),
+  JSON.stringify({ sessionId, runId, incarnation: markedSession?.incarnation, outcomes }),
   'utf8',
 );
 

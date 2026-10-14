@@ -37,7 +37,14 @@ afterEach(async () => {
 
 /** Appends `records` to the SQLite store through this process's own connection, then closes it. */
 async function seed(...records: EvaluationRunRecord[]): Promise<HistoricalRecord[]> {
-  const store = textValueStore(new BunSQLiteStorage(storePath));
+  return seedStore(storePath, ...records);
+}
+
+async function seedStore(
+  path: string,
+  ...records: EvaluationRunRecord[]
+): Promise<HistoricalRecord[]> {
+  const store = textValueStore(new BunSQLiteStorage(path));
   try {
     const history = createEvaluationHistory(store);
     const appended: HistoricalRecord[] = [];
@@ -72,7 +79,7 @@ interface CommandResult {
 async function spawnHistory(...args: string[]): Promise<CommandResult> {
   const child = Bun.spawn(
     [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, 'history', ...args],
-    { stdout: 'pipe', stderr: 'pipe' },
+    { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -121,6 +128,20 @@ const EXPECTED_COMPARISON = {
   latencyMilliseconds: { baseline: 1000, candidate: 1250, delta: 250 },
 };
 
+// The real process is the behavior under test (a second process reads what this one wrote), so it
+// runs once here at module scope to stay off the per-test clock.
+const spawnedShow = await (async () => {
+  const spawnDirectory = await mkdtemp(join(tmpdir(), 'evaluation-history-spawn-'));
+  try {
+    const spawnStorePath = join(spawnDirectory, 'history.sqlite');
+    const [appended] = await seedStore(spawnStorePath, BASELINE);
+    const result = await spawnHistory('show', BASELINE.id, '--store', spawnStorePath);
+    return { appended: appended!, ...result };
+  } finally {
+    await rm(spawnDirectory, { recursive: true, force: true });
+  }
+})();
+
 /**
  * The one test that boots a real `bun` process: it proves the `history` script
  * is wired to the entry point and that a second process reads, with an equal
@@ -130,14 +151,12 @@ const EXPECTED_COMPARISON = {
  */
 describe('history (spawned bun process)', () => {
   test('show reads, in a second process, the record this process wrote, with an equal digest', async () => {
-    const [appended] = await seed(BASELINE);
-
-    const { exitCode, stdout } = await spawnHistory('show', BASELINE.id, '--store', storePath);
+    const { appended, exitCode, stdout } = spawnedShow;
 
     expect(exitCode).toBe(0);
     const shown = JSON.parse(stdout) as HistoricalRecord;
-    expect(shown.digest).toBe(appended!.digest);
-    expect(shown).toEqual(appended!);
+    expect(shown.digest).toBe(appended.digest);
+    expect(shown).toEqual(appended);
   });
 });
 

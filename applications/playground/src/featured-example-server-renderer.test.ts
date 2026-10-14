@@ -1,3 +1,4 @@
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import {
@@ -35,6 +36,33 @@ function rendered(componentName: string, scenario: string): RenderedFeaturedExam
   return result;
 }
 
+// This scenario ends by asking the real renderer again, which answers from its memo of the renders
+// above; it runs here at module scope, off the per-test clock, so no test body reaches a spawn.
+const substituteRendererScenario = await outcomeOf(async () => {
+  const calls: string[] = [];
+  setFeaturedExampleRenderer(async (componentName, scenario, mountIdPrefix) => {
+    calls.push(`${componentName}/${scenario}:${mountIdPrefix}`);
+    return { body: '<p>substitute</p>', head: '' };
+  });
+  try {
+    // No such example exists, so only the substitute can answer without throwing.
+    expect(await renderFeaturedExample('no-such-component', 'none', 'overview-mount-none')).toEqual(
+      {
+        body: '<p>substitute</p>',
+        head: '',
+      },
+    );
+    expect(calls).toEqual(['no-such-component/none:overview-mount-none']);
+  } finally {
+    setFeaturedExampleRenderer(null);
+  }
+  // The memoized real render answers again; the substitute is no longer consulted.
+  expect(await renderFeaturedExample('banner', 'basic', 'overview-mount-basic')).toBe(
+    rendered('banner', 'basic'),
+  );
+  expect(calls).toHaveLength(1);
+});
+
 describe('featured example server renderer', () => {
   test('removes every Svelte hydration marker form without touching authored comments', () => {
     const html =
@@ -63,30 +91,8 @@ describe('featured example server renderer', () => {
     expect(workerSource).not.toContain('JSON.stringify(examplePath)');
   });
 
-  test('delegates to a substitute renderer without spawning, and spawns again once it is cleared', async () => {
-    const calls: string[] = [];
-    setFeaturedExampleRenderer(async (componentName, scenario, mountIdPrefix) => {
-      calls.push(`${componentName}/${scenario}:${mountIdPrefix}`);
-      return { body: '<p>substitute</p>', head: '' };
-    });
-    try {
-      // No such example exists, so only the substitute can answer without throwing.
-      expect(
-        await renderFeaturedExample('no-such-component', 'none', 'overview-mount-none'),
-      ).toEqual({
-        body: '<p>substitute</p>',
-        head: '',
-      });
-      expect(calls).toEqual(['no-such-component/none:overview-mount-none']);
-    } finally {
-      setFeaturedExampleRenderer(null);
-    }
-    // The memoized real render answers again; the substitute is no longer consulted.
-    expect(await renderFeaturedExample('banner', 'basic', 'overview-mount-basic')).toBe(
-      rendered('banner', 'basic'),
-    );
-    expect(calls).toHaveLength(1);
-  });
+  test('delegates to a substitute renderer without spawning, and spawns again once it is cleared', () =>
+    rethrow(substituteRendererScenario));
 
   test('renders the featured scenario with the same mount prefix used by client hydration', () => {
     const banner = rendered('banner', 'basic');

@@ -734,6 +734,18 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   onDiagnostic?: DiagnosticSink;
   /**
+   * A listener on the Bureau's own event emitter that is registered before any
+   * recovery pass can dispatch, so it hears every boot-time event (recovery
+   * decisions, `run.registered` and `action` events of recovered runs) that a
+   * listener added through `addEventListener` after `createBureau()` returns
+   * would miss. It receives every event the emitter dispatches for the life of
+   * the Bureau, in dispatch order. A throwing listener, or an async one that rejects, is
+   * reported through {@link onDiagnostic} and does not affect the Bureau. Live frames have no
+   * such option: `subscribeLiveFrames` replays the frames emitted during
+   * recovery to its first subscriber.
+   */
+  onEvent?: (event: BureauEventMap[BureauEventType]) => void | Promise<void>;
+  /**
    * AB-42/AB-194 — per-session and per-principal backlog caps for pending
    * `SessionInputRecord`s admitted through {@link Bureau.submitSessionInput}.
    * Both are validated as positive integers at `createBureau()` construction
@@ -1307,6 +1319,30 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
 
   /**
+   * Waits until a run's durable workflow has reached a terminal state in the durable store, then
+   * resolves with its {@link WorkflowState}. Terminal means any status other than `pending`,
+   * `running` or `suspended` (so `completed`, `failed`, `cancelled` or `timed-out`). A failed or
+   * cancelled run resolves with its state rather than rejecting.
+   *
+   * It resolves after the durable commit. Live frames, bureau events and `getRun(id).status` are
+   * announced by this process and can precede it, so a caller that is about to read the durable
+   * store (`getDurableRun`, `eventHistory`, a second bureau over the same store) waits here
+   * instead. The wait is Weft's own result waiter (`engine.getHandle(runId).result()`): it settles
+   * from this engine's terminal delivery, or from the store when another engine over the same
+   * store finishes the run, which needs the engine to own workflows with
+   * `ownership: 'workflow-lease'` so that Weft polls for the other engine's completion.
+   *
+   * Resolves `undefined` when no durable engine is composed and `null` when the engine has no such
+   * run, the same meanings as {@link Bureau.getDurableRun}. A run that is already terminal
+   * resolves immediately. It rejects when Weft's result waiter fails for a reason that leaves the
+   * run non-terminal in the store (a disposed engine, a transient read failure), and it rejects
+   * with an `UNSUPPORTED_CAPABILITY` `BureauError` for a non-terminal run under
+   * `durableBackgroundTasks: 'manual'`, where nothing re-reads the store between maintenance
+   * passes: use `runDurableMaintenance()` and `getDurableRun()` there.
+   */
+  waitForDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
+
+  /**
    * Cancel a durable run that has no live, process-local `ActiveRun` (AB-37,
    * AB-205) — the boot-recovered fire that makes `abortRun` throw
    * `NOT_FOUND`. Asynchronous, unlike `abortRun`, and never rejects: every
@@ -1667,6 +1703,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   getConfiguration(): ConfigurationResponse;
   getTools(): ToolSummary[];
+  /**
+   * Subscribe to every live frame. The FIRST subscriber is also replayed, in
+   * emission order, the frames emitted during boot recovery and by the runs it recovered (at
+   * most the newest 1024), so a recovered run that emitted while `createBureau()` was
+   * still awaiting is not lost to a caller that can only subscribe after it
+   * returns. The replay runs in a microtask, after this call has returned its unsubscribe
+   * handle, so a listener may unsubscribe itself from inside it. Later
+   * subscribers receive only new frames. Emitter listeners get
+   * no such replay; register them through {@link BureauOptions.onEvent}.
+   */
   subscribeLiveFrames(listener: (frame: ServerFrame) => void): () => void;
 
   addEventListener<K extends keyof BureauEventMap & string>(
