@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1880,6 +1880,34 @@ describe('the foreign-commit guard net-effect rule', () => {
     const foreign = await findForeignCommits(root, ownership);
     return foreign.map(({ subject }) => subject);
   }
+
+  test('judges a run of edits without spawning git per commit or per repeated path', async () => {
+    // Every git call is a process, and under host load each costs tens of milliseconds; the guard
+    // once spawned 26 here (an ancestry probe and a parent lookup per commit, a tree lookup and a
+    // blob read per emission comparison, a tree lookup per repeat of the same path) and timed
+    // tests out. Eight is the history read (3), one diff per commit (3), and one tree lookup each
+    // for the path at HEAD and at the mirror commit (2). A change that raises this count
+    // reintroduces per-commit or per-path fan-out.
+    const emission = 'export const value = 3;\n';
+    await withRepository(
+      async (root, ownership) => {
+        await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+        await commitMirror(root);
+        for (const value of [1, 2, 3]) {
+          await Bun.write(join(root, sourcePath), `export const value = ${value};\n`);
+          await commitAll(root, `Edit source to ${value}`);
+        }
+        const spawn = spyOn(Bun, 'spawn');
+        try {
+          expect(await subjects(root, ownership)).toEqual([]);
+          expect(spawn).toHaveBeenCalledTimes(8);
+        } finally {
+          spawn.mockRestore();
+        }
+      },
+      { generatedFiles: new Map([[sourcePath, { contents: emission, executable: false }]]) },
+    );
+  });
 
   test('accepts a foreign edit that a later commit restores to the mirror bytes', async () => {
     await withRepository(async (root, ownership) => {
