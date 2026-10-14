@@ -41,6 +41,16 @@ export async function copyOrDownload(
   };
 }
 
+/** Hand back a file the user chose, byte for byte. The browser reads it; nothing is sent. */
+export function downloadChosenFile(file: File): void {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function downloadFile(file: TextDownload, deps: DeliveryDeps = {}): DeliveryResult {
   (deps.download ?? downloadText)(file);
   return { method: 'downloaded', message: `Downloaded ${file.filename}.` };

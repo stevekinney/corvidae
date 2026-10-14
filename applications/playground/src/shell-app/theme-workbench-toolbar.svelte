@@ -1,10 +1,10 @@
 <script lang="ts">
   /*
    * The persistent toolbar: theme name, the concrete context (color mode and motion),
-   * the Export action, and the status area (save state, findings, preview revision).
-   * It stays visible on every pane. Export is a placeholder until COR-486 supplies it.
+   * the Import and Export actions, and the status area (save state, findings, preview
+   * revision). It stays visible on every pane.
    */
-  import { Button, Callout, Select } from '@lostgradient/cinder';
+  import { Callout, Select } from '@lostgradient/cinder';
 
   import {
     THEME_PREVIEW_COLOR_MODES,
@@ -13,10 +13,12 @@
     type ThemePreviewMotion,
   } from './theme-preview-message.ts';
   import type { ExportReadiness } from './theme-check-types.ts';
+  import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+  import ThemeInterchange from './theme-interchange.svelte';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
-  type Props = { workbench: ThemeWorkbenchState };
-  let { workbench }: Props = $props();
+  type Props = { workbench: ThemeWorkbenchState; controller?: ThemeBuilderController | undefined };
+  let { workbench, controller }: Props = $props();
 
   const COLOR_MODE_LABELS: Record<ThemePreviewColorMode, string> = {
     light: 'Light',
@@ -86,15 +88,9 @@
           })}
       />
     </div>
-    <Button
-      label="Export"
-      variant="secondary"
-      disabled
-      aria-describedby="theme-builder-export-note"
-    />
-    <span id="theme-builder-export-note" class="sr-only">
-      Export arrives with theme import and export.
-    </span>
+    {#if controller !== undefined}
+      <ThemeInterchange {controller} />
+    {/if}
   </div>
 
   <ul class="toolbar__status" aria-label="Draft status" data-testid="workbench-status">
@@ -174,16 +170,6 @@
   .toolbar__notice {
     flex: 1 1 100%;
     min-width: 0;
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
   @media (max-width: 767.98px) {
     .toolbar__controls {
