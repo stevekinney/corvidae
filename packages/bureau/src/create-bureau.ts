@@ -2091,7 +2091,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     readonly gate: BureauSteeringGate;
     /** The session's durable runs this process drives. */
     readonly runIds: Set<string>;
-    readonly timer: ReturnType<typeof setInterval>;
+    readonly timer: ReturnType<typeof runtimeServices.timers.setInterval>;
     /** The last failure reported, so a repeating one is reported once. */
     lastFailure?: string | undefined;
   }
@@ -2106,6 +2106,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the poller releases this gate's paused runs the same way.
    */
   const steeringPollers = new Map<string, SteeringPoller>();
+  /** Polls already running, which shutdown awaits before storage closes. */
+  const inFlightSteeringPolls = new Set<Promise<void>>();
 
   function pollSessionSteering(sessionId: string, incarnation: string, runId: string): void {
     const kv = durableSteeringStore();
@@ -2117,10 +2119,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     if (existing !== undefined) stopSessionSteeringPoll(sessionId);
-    const timer = setInterval(() => {
-      void pollSteeringOnce(kv, sessionId);
+    const timer = runtimeServices.timers.setInterval(() => {
+      const poll = pollSteeringOnce(kv, sessionId);
+      inFlightSteeringPolls.add(poll);
+      void poll.finally(() => inFlightSteeringPolls.delete(poll));
     }, STEERING_POLL_MS);
-    timer.unref?.();
     steeringPollers.set(sessionId, { incarnation, gate, runIds: new Set([runId]), timer });
   }
 
@@ -2167,7 +2170,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   function stopSessionSteeringPoll(sessionId: string): void {
     const poller = steeringPollers.get(sessionId);
     if (poller === undefined) return;
-    clearInterval(poller.timer);
+    runtimeServices.timers.clearInterval(poller.timer);
     steeringPollers.delete(sessionId);
   }
 
@@ -5323,9 +5326,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // than cancels, so a transient read blip never terminates a legitimately
         // recovering run.
         let sessionLoad: SessionLoadOutcome = { ok: true, session: null };
+        // The incarnation this run was classified against: a later load
+        // that finds another one is a session recreated meanwhile.
+        let classifiedIncarnation: string | undefined;
         if (ownedSessionId !== undefined && sessionStore) {
           try {
             const session = await sessionStore.load(ownedSessionId);
+            classifiedIncarnation = session?.incarnation;
             sessionLoad = { ok: true, session: session ? { ...session.metadata } : null };
           } catch (error) {
             diagnose({
@@ -5429,7 +5436,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // already resumed it, so a log that cannot be folded is reported
           // (by `recoverRunSteering`) rather than failing the run.
           let fallbackSteeringGate: BureauSteeringGate | undefined;
-          if (recoveredServices !== undefined && recoveredSession !== undefined) {
+          if (
+            recoveredServices !== undefined &&
+            recoveredSession !== undefined &&
+            recoveredSession.incarnation === classifiedIncarnation
+          ) {
             try {
               fallbackSteeringGate = await recoverRunSteering(
                 ownedSessionId!,
@@ -5449,7 +5460,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             recoveredServices,
             sessionLoad.ok ? sessionLoad.session : null,
             fallbackSteeringGate,
-            durableSteeringStore() === undefined ? undefined : recoveredSession?.incarnation,
+            // Fenced to the classified incarnation even when the session was
+            // recreated since: the old run then saves into nothing.
+            durableSteeringStore() === undefined ? undefined : classifiedIncarnation,
           );
           // AB-336 — same reconstruction as the primary reattach path above
           // (`onRecoveredWorkflow`); this post-recovery classification pass
@@ -7736,7 +7749,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       const steeringKv = durableSteeringStore();
       if (steeringKv !== undefined) {
-        await enqueueSteering(id, () => deleteSteeringLog(steeringKv, id, session.incarnation));
+        // Best-effort, like the outbox drain above: the session is already
+        // gone, so a failure here must not make the deletion look failed. The
+        // log it leaves is removed by the boot sweep of orphaned logs.
+        try {
+          await enqueueSteering(id, () => deleteSteeringLog(steeringKv, id, session.incarnation));
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'steering',
+            message: `[bureau] Session "${id}" was deleted, but its steering log could not be removed; the next boot sweep removes it: ${serializeUnknownError(error)}`,
+          });
+        }
       }
 
       await Promise.allSettled(runTerminals);
@@ -10300,9 +10324,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // with `runAdmissionClosed`. Run-boundary appends queued while the
           // engine drains are awaited again below, before the backend closes.
           // The steering pollers stop first, so none queues a fold after it.
-          for (const poller of steeringPollers.values()) clearInterval(poller.timer);
+          for (const poller of steeringPollers.values()) {
+            runtimeServices.timers.clearInterval(poller.timer);
+          }
           steeringPollers.clear();
-          await Promise.allSettled([...inFlightSteeringSubmissions, ...steeringQueues.values()]);
+          await Promise.allSettled([
+            ...inFlightSteeringSubmissions,
+            ...inFlightSteeringPolls,
+            ...steeringQueues.values(),
+          ]);
           if (runtime.durable) {
             const engine = runtime.durable.engine;
             await settleOwner('durable-engine', () => engine[Symbol.asyncDispose]());

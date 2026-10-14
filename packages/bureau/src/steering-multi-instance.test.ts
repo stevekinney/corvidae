@@ -18,6 +18,7 @@ import {
   stopWhen,
   type JSONValue,
 } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { createConversationHistory } from 'conversationalist';
 import { encodeStorageKeyComponent } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
@@ -234,6 +235,61 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(versionOf(fresh)).toBe(1);
     } finally {
+      await bureau.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("schedules each session's steering poll on the Bureau's own timers", async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-poll-timers-'));
+    const path = join(directory, 'bureau.sqlite');
+    const runtime = createManualRuntimeServices();
+    let releaseTool: (() => void) | undefined;
+    const toolGate = new Promise<void>((resolve) => {
+      releaseTool = resolve;
+    });
+    let generateCalls = 0;
+    const bureau = await createBureau({
+      agents: {},
+      generate: async ({ step }) => {
+        generateCalls += 1;
+        return step === 0
+          ? { content: '', toolCalls: [{ name: 'next', arguments: {} }] }
+          : { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([
+        createTool({
+          name: 'next',
+          description: 'waits for the test',
+          input: z.object({}),
+          execute: async () => {
+            await toolGate;
+            return 'ok';
+          },
+        }),
+      ]),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+      runtime,
+    });
+    try {
+      // Time never advances here, so a 2-second interval is due at 2,000 on
+      // the manual timer's own scale.
+      const pollTimers = () => runtime.pendingTimers().filter((timer) => timer.dueAt === 2_000);
+      const before = pollTimers().length;
+      const run = await bureau.createRun({ message: 'go', principal: 'alice' });
+      for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
+      // The run's session is polled through the injected timer service, so
+      // a host driving time itself drives cross-process steering too.
+      expect(pollTimers().length).toBe(before + 1);
+      bureau.abortRun(run.id);
+      for (let attempt = 0; attempt < 200 && pollTimers().length > before; attempt += 1) {
+        await Bun.sleep(10);
+      }
+      expect(pollTimers().length).toBe(before);
+    } finally {
+      releaseTool?.();
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
@@ -1546,6 +1602,42 @@ describe('durable steering across two Bureau processes', () => {
     } finally {
       await writer.dispose();
       for (const reader of readers) await reader.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('reports a committed deletion as done even when its steering log cannot be removed', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-delete-cleanup-'));
+    const path = join(directory, 'bureau.sqlite');
+    const diagnostics: string[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createToolbox([]),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      onDiagnostic: (diagnostic) => {
+        diagnostics.push(diagnostic.message);
+      },
+    });
+    try {
+      const sessionId = await startRunningSession(bureau);
+      const kv = bureau.kv;
+      if (kv === undefined) throw new Error('expected a durable store');
+      const listing = spyOn(kv, 'list').mockImplementation(() =>
+        Promise.reject(new Error('listing unavailable')),
+      );
+      try {
+        await bureau.deleteSession(sessionId);
+      } finally {
+        listing.mockRestore();
+      }
+      expect(await bureau.getSession(sessionId)).toBeUndefined();
+      expect(
+        diagnostics.some((message) => message.includes('its steering log could not be removed')),
+      ).toBe(true);
+    } finally {
+      await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);
