@@ -6,7 +6,7 @@
  * these rules.
  */
 
-import { profileRangeViolation } from '@lostgradient/cinder/tokens/runtime';
+import { AUTHORING_CATALOGUE, profileRangeViolation } from '@lostgradient/cinder/tokens/runtime';
 
 import type { CatalogueRow } from './theme-builder-catalogue.ts';
 import {
@@ -16,10 +16,15 @@ import {
   type OverrideScope,
   type ThemeEnvelope,
 } from './theme-draft-types.ts';
+import {
+  contractFor,
+  validateCssUserValue,
+  type CssValueResult,
+  type SupportsFunction,
+} from './theme-css-value-grammar.ts';
 import type { DraftEdit } from './theme-draft.ts';
 import { getNode } from './theme-override-tree.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
-import { themePreviewValueProblem } from './theme-preview-message.ts';
 import { buildThemeSources } from './theme-runtime-evaluator.ts';
 
 export type EditScope = 'shared' | 'color-mode' | 'motion-mode';
@@ -252,6 +257,26 @@ export function usageViolation(row: CatalogueRow, value: JsonValue): string | un
   return problem === undefined ? undefined : `${row.path} ${problem}.`;
 }
 
+const profileByProperty = new Map(
+  AUTHORING_CATALOGUE.records.map((record) => [record.cssProperty, record.profile] as const),
+);
+
+/**
+ * Validate a CSS-only value for a token against its usage contract (COR-488). Every
+ * `cssOverrides` write goes through here: a CSS-only token and a recipe's complete override.
+ * `supports` stands in for `CSS.supports`; it defaults to the platform's.
+ */
+export function validateCssForRow(
+  row: Pick<CatalogueRow, 'type' | 'profile'>,
+  text: string,
+  supports?: SupportsFunction | null,
+): CssValueResult {
+  return validateCssUserValue(text, contractFor(row.type, row.profile), {
+    ...(supports === undefined ? {} : { supports }),
+    profileOfProperty: (property) => profileByProperty.get(property),
+  });
+}
+
 export type BuiltEdit = { ok: true; edit: DraftEdit } | { ok: false; message: string };
 
 /**
@@ -267,15 +292,15 @@ export function buildEdit(
   text: string,
 ): BuiltEdit {
   if (row.edit === 'css-only') {
-    const problem = themePreviewValueProblem(text.trim());
-    if (problem !== null) return { ok: false, message: `Not a plain CSS value: ${problem}.` };
+    const checked = validateCssForRow(row, text);
+    if (!checked.ok) return { ok: false, message: checked.message };
     return {
       ok: true,
       edit: {
         kind: 'set-css-override',
         path: row.path,
         context: contextId(context),
-        value: text.trim(),
+        value: checked.value,
       },
     };
   }

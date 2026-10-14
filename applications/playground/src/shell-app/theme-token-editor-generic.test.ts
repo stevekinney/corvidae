@@ -161,14 +161,25 @@ describe('the generic value editor', () => {
     const cssOnly = catalogueRows.find((row) => row.edit === 'css-only');
     if (cssOnly === undefined) throw new Error('no CSS-only token in the catalogue');
     const { controller } = await open(cssOnly.path);
-    await type('4px solid red');
+    await type('url(https://example.com/a.png)');
+    await click('Apply');
+    expect(controller.draft!.envelope.cssOverrides[cssOnly.path]).toBeUndefined();
+    expect(target.textContent).toContain('Resource functions');
+    await type(validCssOnly(cssOnly));
     await click('Apply');
     expect(controller.draft!.envelope.cssOverrides[cssOnly.path]).toEqual({
-      'light/default': '4px solid red',
+      'light/default': validCssOnly(cssOnly),
     });
     expect(controller.draft!.envelope.overrides.shared).toEqual({});
   });
 });
+
+/** A value the CSS-only grammar accepts for each of the four CSS-only tokens. */
+function validCssOnly(row: { type: string; profile?: { id: string } }): string {
+  if (row.profile?.id === 'aspect-ratio') return '4 / 3';
+  if (row.type === 'color') return 'currentColor';
+  return row.profile?.id === 'height' ? '12rem' : '80%';
+}
 
 describe('the editing rules', () => {
   const envelope = createEnvelope('t', 'T', cinderThemeBase());
