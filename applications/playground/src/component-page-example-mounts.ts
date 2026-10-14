@@ -11,6 +11,8 @@
 
 import { flushSync, mount, tick, unmount } from 'svelte';
 
+import CodeHighlighterRoot from './code-highlighter-root.svelte';
+
 import {
   formatErrorForClipboard,
   toMountErrorDetail,
@@ -117,7 +119,15 @@ export function createExampleMountHelpers(options: ExampleMountState): {
         }
         try {
           const componentConstructor = candidate as Parameters<typeof mount>[0];
-          const mountOptions = { target: element, props: { mountIdPrefix: mountKey } };
+          // Mounted beneath the playground's code-highlighter root: this is a
+          // separate root, so it inherits no context from the page around it.
+          const mountOptions = {
+            target: element,
+            props: {
+              component: componentConstructor,
+              componentProps: { mountIdPrefix: mountKey },
+            },
+          };
           const activeElement = document.activeElement;
           const focusedChildIndexes =
             activeElement instanceof Element && element.contains(activeElement)
@@ -130,7 +140,7 @@ export function createExampleMountHelpers(options: ExampleMountState): {
           // The replacement and mount happen in one task, so the server paint
           // remains visible until the interactive tree is ready to take over.
           element.replaceChildren();
-          app = flushSync(() => mount(componentConstructor, mountOptions));
+          app = flushSync(() => mount(CodeHighlighterRoot, mountOptions));
           if (focusedChildIndexes !== undefined) {
             const focusTarget = resolveDescendantLocation(element, focusedChildIndexes);
             if (focusTarget instanceof HTMLElement) focusTarget.focus({ preventScroll: true });

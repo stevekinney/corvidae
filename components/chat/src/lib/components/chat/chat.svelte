@@ -14,12 +14,24 @@
    * @avoidWhen The transcript is read-only and needs no composer — a simple list of message bubbles is a better fit.
    * @related markdown-editor
    */
+  import { fullShikiHighlighter } from '@lostgradient/cinder';
+
   export type { ChatAnnounceLevel, ChatProps } from './chat.types.ts';
 
   const warnedSchemaVersions = new Set<number>();
+
+  /**
+   * Chat highlights code in whatever language a transcript carries: Markdown
+   * fences, tool payloads, and approval commands. It therefore publishes
+   * Cinder's full-registry highlighter for every `CodeBlock` beneath it. One
+   * instance is shared by every Chat, so they share one Shiki module and the
+   * grammars it has loaded.
+   */
+  const chatCodeHighlighter = fullShikiHighlighter();
 </script>
 
 <script lang="ts">
+  import { setCodeHighlighterContext } from '@lostgradient/cinder';
   import { classNames } from '../../utilities/class-names.ts';
   import ChatImplementation from './container/chat.svelte';
   import type { ChatAnnounceLevel, ChatProps } from './chat.types.ts';
@@ -35,6 +47,8 @@
   }: ChatProps = $props();
 
   const mergedClassName = $derived(classNames(className));
+
+  setCodeHighlighterContext(chatCodeHighlighter);
 
   function warnForSchemaVersion(schemaVersion: number): void {
     if (schemaVersion <= CURRENT_SCHEMA_VERSION || warnedSchemaVersions.has(schemaVersion)) return;

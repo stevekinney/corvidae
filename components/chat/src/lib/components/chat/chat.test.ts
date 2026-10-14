@@ -513,6 +513,37 @@ describe('Chat — announcer API', () => {
   });
 });
 
+describe('Chat — code highlighting', () => {
+  test('highlights code beneath it with its own full-registry highlighter and no ancestor provider', async () => {
+    let conversation = createConversation({ id: 'conversation-code-highlighting' });
+    conversation = appendActionRequiredMessage(conversation, 'Run the command?');
+
+    const { container } = render(Chat, {
+      props: { id: 'chat-code-highlighting', conversation },
+    });
+
+    // The approval card's command block names `shell`, and nothing above Chat
+    // publishes a highlighter here: only the full registry Chat publishes
+    // highlights it. Real Shiki loads its WebAssembly engine and grammar on
+    // first use.
+    await waitFor(
+      () => {
+        expect(
+          container.querySelector(
+            '.cinder-approval-card .cinder-code-block__highlighted pre.shiki',
+          ),
+        ).not.toBeNull();
+      },
+      { timeout: 30_000 },
+    );
+    const highlighted = container.querySelector(
+      '.cinder-approval-card .cinder-code-block__highlighted pre.shiki',
+    );
+    expect(highlighted?.textContent).toBe('echo approval');
+    expect(highlighted?.querySelectorAll('span[style]').length).toBeGreaterThan(0);
+  }, 60_000);
+});
+
 describe('Chat — message rendering', () => {
   test('renders user and assistant messages with their content and roles', () => {
     let conversation = createConversation({ id: 'conversation-messages' });

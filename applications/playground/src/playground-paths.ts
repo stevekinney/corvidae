@@ -4,6 +4,12 @@ export const PLAYGROUND_ROOT = dirname(import.meta.dirname);
 /** The application sits two directories below the repository root, at `applications/playground`. */
 export const REPOSITORY_ROOT = dirname(dirname(PLAYGROUND_ROOT));
 export const PLAYGROUND_TEMP_ROOT = join(PLAYGROUND_ROOT, '.tmp');
+/** The root component every imperatively mounted example, preview, and fixture renders beneath. */
+export const CODE_HIGHLIGHTER_ROOT_PATH = join(
+  PLAYGROUND_ROOT,
+  'src',
+  'code-highlighter-root.svelte',
+);
 /** The mirror's package map, where each documented package's `lastPublishedVersion` is recorded. */
 export const PACKAGE_MAP_PATH = join(REPOSITORY_ROOT, 'scripts', 'mirror', 'package-map.json');
 

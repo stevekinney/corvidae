@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'With language label and copy';
   export const description =
-    'Header shows the language and a copy-to-clipboard button. Setting a language is all it takes — CodeBlock lazy-loads the bundled Shiki highlighter on the client and highlights automatically, no extra wiring.';
+    'Header shows the language and a copy-to-clipboard button. The block highlights with the highlighter an ancestor publishes through setCodeHighlighterContext — here, the playground publishes one — and renders plain code when none is published.';
 </script>
 
 <script lang="ts">

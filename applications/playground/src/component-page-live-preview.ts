@@ -19,6 +19,7 @@
 import type { Snippet } from 'svelte';
 import { mount, unmount } from 'svelte';
 
+import CodeHighlighterRoot from './code-highlighter-root.svelte';
 import type {
   PlaygroundControl,
   PlaygroundSeed,
@@ -293,9 +294,11 @@ export function createLivePreviewMount(
     }
     let app: ReturnType<typeof mount> | undefined;
     try {
-      app = mount(component, {
+      // Mounted beneath the playground's code-highlighter root: this is a
+      // separate root, so it inherits no context from the page around it.
+      app = mount(CodeHighlighterRoot, {
         target: element,
-        props,
+        props: { component, componentProps: props },
       });
       mountErrors[mountKey] = undefined;
       // The same positive signal the featured-example mount sets, so a browser check can tell a

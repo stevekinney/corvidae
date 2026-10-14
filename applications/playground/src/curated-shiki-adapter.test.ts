@@ -1,64 +1,79 @@
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
-import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
-import {
-  CURATED_SHIKI_ADAPTER_PATH,
-  curatedShikiAdapterPlugin,
-} from './curated-shiki-adapter-plugin.ts';
-import * as curatedAdapter from './curated-shiki-adapter.ts';
+import { PLAYGROUND_IMPORT_OPTIMIZATION, SHARED_BUILD_OPTIONS } from './build-artifacts-shared.ts';
+import { curatedCodeHighlighter } from './curated-shiki-adapter.ts';
+import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 
-const bundledAdapterPath = resolve(
-  CINDER_COMPONENT_SOURCE.packageRoot,
-  'src/highlighters/shiki/default.ts',
-);
+const curatedAdapterSource = await Bun.file(
+  new URL('./curated-shiki-adapter.ts', import.meta.url),
+).text();
 
-describe('the playground substitutes a curated Shiki adapter', () => {
-  it('exposes every member the CodeBlock seam reaches for', async () => {
-    // `code-block-default-highlighter.ts` awaits the adapter module and calls
-    // `module_.shikiHighlighter()` with no arguments. A substitution missing
-    // that member fails at runtime inside a `$effect`, where the only symptom
-    // is a block that never highlights — so pin the surface here instead.
-    const bundled = (await import(bundledAdapterPath)) as Record<string, unknown>;
-    for (const member of Object.keys(bundled)) {
-      expect(curatedAdapter).toHaveProperty(member);
-    }
-    expect(typeof curatedAdapter.shikiHighlighter).toBe('function');
-  });
-
-  it('resolves the bundled adapter to the curated one', async () => {
-    const plugin = curatedShikiAdapterPlugin();
-    let resolver: ((argument: { path: string }) => { path: string }) | undefined;
-    plugin.setup({
-      onResolve: (
-        _options: unknown,
-        callback: (argument: { path: string }) => { path: string },
-      ) => {
-        resolver = callback;
-      },
-    } as never);
-    expect(resolver).toBeDefined();
-    expect(resolver?.({ path: '../../highlighters/shiki/default.ts' })).toEqual({
-      path: CURATED_SHIKI_ADAPTER_PATH,
-    });
-  });
-
+describe('the playground publishes a curated Shiki highlighter', () => {
   it('keeps the full registry out of the curated module', () => {
-    // The whole point: neither barrel may reappear here. `shiki/langs` alone
-    // is 253 grammars, ~9.8 MB of source, walked once per page bundle.
-    const source = readFileSync(CURATED_SHIKI_ADAPTER_PATH, 'utf8');
-    expect(source).not.toMatch(/from '(shiki\/langs|shiki\/themes)'/);
-    expect(source).not.toMatch(/import\('(shiki\/langs|shiki\/themes)'\)/);
+    // The whole point: neither barrel may appear here. `shiki/langs` alone is
+    // 253 grammars, ~9.8 MB of source, walked once per page bundle.
+    expect(curatedAdapterSource).not.toMatch(/from '(shiki\/langs|shiki\/themes)'/);
+    expect(curatedAdapterSource).not.toMatch(/import\('(shiki\/langs|shiki\/themes)'\)/);
+    expect(curatedAdapterSource).not.toContain('fullShikiHighlighter(');
   });
 
-  it('still names the two themes the bundled adapter defaults to', () => {
-    // Narrowing the theme registry is only safe while it covers the defaults
-    // the real adapter resolves by name.
-    const source = readFileSync(CURATED_SHIKI_ADAPTER_PATH, 'utf8');
-    expect(source).toContain("'github-light'");
-    expect(source).toContain("'github-dark'");
-    const bundled = readFileSync(bundledAdapterPath, 'utf8');
-    expect(bundled).toContain('shiki/langs');
+  it('names the two themes the adapter applies by default', () => {
+    // Narrowing the theme registry is only safe while it covers the pair the
+    // adapter resolves by name when no `theme` option is given.
+    expect(curatedAdapterSource).toContain("'github-light'");
+    expect(curatedAdapterSource).toContain("'github-dark'");
   });
+
+  it('highlights a curated language with the default theme pair', async () => {
+    const html = await curatedCodeHighlighter('SELECT 1;', 'sql');
+    expect(html).toContain('class="shiki shiki-themes github-light github-dark"');
+    expect(html).toContain('--shiki-dark');
+  });
+});
+
+describe('playground builds walk only the Cinder exports a page imports', () => {
+  it('shares one import optimization across the client and server builds', () => {
+    expect(PLAYGROUND_IMPORT_OPTIMIZATION).toEqual(['@lostgradient/cinder']);
+    expect(SHARED_BUILD_OPTIONS.optimizeImports).toBe(PLAYGROUND_IMPORT_OPTIMIZATION);
+  });
+
+  it('resolves no Shiki grammar for a page that imports Cinder without its full registry', async () => {
+    // Cinder's root re-exports `fullShikiHighlighter`, whose module reaches
+    // every grammar through `shiki/langs`. Tree-shaking keeps those grammars
+    // out of the output either way; what costs memory is the bundler walking
+    // them. Count every grammar import the build resolves.
+    await mkdir(PLAYGROUND_TEMP_ROOT, { recursive: true });
+    const directory = await mkdtemp(join(PLAYGROUND_TEMP_ROOT, 'curated-shiki-walk-'));
+    try {
+      const entry = join(directory, 'page.ts');
+      await writeFile(
+        entry,
+        "import { Button, CodeBlock } from '@lostgradient/cinder';\nconsole.log(Button, CodeBlock);\n",
+      );
+      const resolvedGrammarImports: string[] = [];
+      const result = await Bun.build({
+        ...SHARED_BUILD_OPTIONS,
+        entrypoints: [entry],
+        publicPath: '/page-bundle/',
+        plugins: [
+          ...SHARED_BUILD_OPTIONS.plugins,
+          {
+            name: 'count-grammar-imports',
+            setup(build) {
+              build.onResolve({ filter: /^(?:shiki\/langs|@shikijs\/langs\/)/ }, (argument) => {
+                resolvedGrammarImports.push(argument.path);
+                return undefined;
+              });
+            },
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+      expect(resolvedGrammarImports).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 300_000);
 });
