@@ -8,12 +8,15 @@ FROM oven/bun:1.4.2
 # installed. Only `initdb` and `pg_ctl` are needed: the live PostgreSQL and Neon suites in
 # `packages/weft` start their own disposable `--no-locale` UTF8 cluster, so the packaged
 # `main` cluster is never created. Validation itself needs `git` (Weft's coverage check
-# lists files with `git ls-files`, and several suites shell out to it). `sudo` lets the
-# `onCreateCommand` hand the root-owned `node_modules` volume to the `bun` user.
+# lists files with `git ls-files`, and several suites shell out to it). `python3`, `make`,
+# and `g++` are node-gyp's toolchain: on linux/arm64, `better-sqlite3` and
+# `msgpackr-extract` find no prebuilt binary for the Node version Bun 1.4.2 reports, and
+# their install scripts fall back to compiling, which fails `bun install` without it.
+# `sudo` lets the `onCreateCommand` hand the root-owned `node_modules` volume to `bun`.
 RUN mkdir -p /etc/postgresql-common \
   && echo 'create_main_cluster = false' > /etc/postgresql-common/createcluster.conf \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates git postgresql-17 sudo \
+  && apt-get install -y --no-install-recommends ca-certificates g++ git make postgresql-17 python3 sudo \
   && rm -rf /var/lib/apt/lists/* \
   && echo 'bun ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/bun \
   && chmod 0440 /etc/sudoers.d/bun

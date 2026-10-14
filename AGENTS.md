@@ -44,6 +44,22 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 - Never copy `.env`, credentials, `node_modules`, caches, generated artifacts, or other ignored local state between worktrees. Do not add `.worktreeinclude` unless a specific non-secret ignored file is required.
 - Preserve unrelated worktrees and their branches. Remove only a clean worktree created by the current task after its branch is merged or retired.
 
+## Dev Container
+
+`.devcontainer/` is a local development environment in which `bun run validate` passes from a fresh checkout with nothing on the host but Docker. It is not CI: nothing builds, runs, or publishes it automatically. Its image is Debian 13 (`oven/bun`) with the workspace's pinned Bun, PostgreSQL 17's `initdb` and `pg_ctl` on `PATH`, and Git; it copies nothing from the checkout, so `.env`, credentials, and caches never enter it, and it has no `.dockerignore` because its build context is `.devcontainer/` alone. `scripts/dev-container.test.ts` keeps its Bun tag equal to `packageManager`.
+
+- Open any checkout or worktree with "Reopen in Container" (or `devcontainer up --workspace-folder .`). The checkout is mounted at its host path; `initializeCommand` links `.devcontainer/.git-common-dir` (ignored) to the host's Git common directory, the container mounts it, and `scripts/dev-container.ts` makes a linked worktree's absolute `gitdir:` resolve. The root `node_modules` and Turborepo's cache live in per-container volumes, so the host's darwin packages and cached task results never meet the container's Linux ones. With the isolated linker, the per-workspace `node_modules` links the container's install rewrites point into the root store, so run `bun install --frozen-lockfile` on the host again before using the same checkout there; a dedicated worktree for container work avoids the round trip.
+- The container works as the `bun` user, because `initdb` refuses to run as root.
+- To validate a committed branch without an editor, clone it inside the image rather than mounting the host checkout: `docker build -t corvidae-dev .devcontainer`, `git bundle create /tmp/corvidae.bundle HEAD`, then `docker run --rm -v /tmp/corvidae.bundle:/tmp/corvidae.bundle:ro corvidae-dev sh -c 'git clone -q /tmp/corvidae.bundle ~/corvidae && cd ~/corvidae && bun install --frozen-lockfile && bun run validate'`.
+
+What the container enables, suite by suite:
+
+- Live PostgreSQL (`packages/weft/src/storage/postgres.test.ts`) and live Neon driver (`neon-live.test.ts`, through `neon-proxy.test-support.ts` to the same disposable cluster): enabled. They need only `initdb` and `pg_ctl`, and they are what keeps `@lostgradient/weft#test:coverage` above its floor for `neon.ts`, `postgres.ts`, and their two test-support modules. The cluster is `initdb --no-locale -E UTF8`, so no system locale is needed; the C collation the key-value schema depends on is pinned in its DDL. PostgreSQL 17 is Debian 13's server major and the release the host-side fix used.
+- A real Neon endpoint: not provisioned. The live Neon suite tests the real driver's wire protocol against the local cluster, and a hosted database would need credentials the container must not carry.
+- Chromium smoke tests (`WEFT_BROWSER_SMOKE=1`: WebExtensionStorage, IndexedDB, HttpClient, Service Worker) and the Playwright browser fixtures: not installed. They are opt-in and outside `validate` on every machine, the browser adds about half a gigabyte, and the committed visual snapshots are keyed to linux/x64 Ubuntu, which this linux/arm64 Debian image would not match. Inside the container, `bunx playwright install --with-deps chromium` (as root) opts in.
+- The Agent Skills reference validator (`AGENT_SKILLS_REFERENCE_VALIDATOR`): not installed. It is opt-in and fetches a pinned Python tool with `uvx`.
+- Cinder's Svelte coverage floor is recorded as measured on linux/x64. On Apple silicon the container runs linux/arm64, so `check-coverage-ratchet.ts` prints its platform notice there just as it does on macOS; the floor still applies and passes.
+
 ## Commands
 
 ```bash
