@@ -752,6 +752,30 @@ Deliberately excludes the free-text rejection message and any manifest contentâ€
 
 The JSON-RPC operation name is `weft.workers.rejections`.
 
+### `GET /api/v1/conformance/targets` and `POST /api/v1/conformance/targets/:target/report`
+
+Remote-worker protocol conformance reports (COR-1365). `GET` lists the conformance targets registered with `serve({ conformanceTargets })` and requires `system:read`. `POST` runs the `weft conformance` check sequence against one target in a private sandbox server and requires `system:admin`. A request names a target only. It can never supply a worker command.
+
+```ts
+type ListConformanceTargetsResponse = {
+  targets: Array<{ name: string; timeoutMs: number }>; // commands are never returned
+};
+
+type RunConformanceReportResponse = {
+  target: string;
+  startedAt: number; // epoch ms
+  completedAt: number; // epoch ms
+  ok: boolean;
+  protocolVersion: number;
+  supportedProtocolVersions: number[];
+  checks: Array<{ name: string; ok: boolean; message: string }>;
+};
+```
+
+An unregistered target answers `NotFound`. See [Conformance reports as an operation](./remote-worker-protocol.md#conformance-reports-as-an-operation) for how targets are configured and why the operation runs them only in a sandbox.
+
+The JSON-RPC operation names are `weft.conformance.targets` and `weft.conformance.report`.
+
 ### `GET /api/v1/tasks/diagnostics`
 
 Bounded task-attempt diagnostics (COR-198): stuck queued tasks, stale in-flight attempts, retry storms, queues where every worker is at capacity, dead letters, expected-delayed tasks, and terminal records still awaiting adoption. Requires `system:read`. Item shapes vary by `kind`; see [`get-task-diagnostics.ts`](../../src/server/operations/get-task-diagnostics.ts) for the full per-kind response type.

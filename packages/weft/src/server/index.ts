@@ -5,6 +5,7 @@
  * @module server
  */
 
+import { createConformanceTargetRunner, type ConformanceTargets } from '../conformance/targets.ts';
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import type { RetryPolicy } from '../core/types.ts';
 import type { PrometheusExporter } from '../observability/metrics.ts';
@@ -94,6 +95,13 @@ export {
 // not from here. WorkerRegistry stays a value to match the root export, and
 // TaskQueue is a value so direct `handleRequest()` hosts can construct the live
 // worker infrastructure exposed through HandlerOptions.
+export type { ConformanceCheck, ConformanceReport } from '../conformance/run-conformance.ts';
+export type {
+  ConformanceTarget,
+  ConformanceTargetReport,
+  ConformanceTargets,
+  ConformanceTargetSummary,
+} from '../conformance/targets.ts';
 export type { RetryPolicy } from '../core/types.ts';
 export type { PrometheusExporter } from '../observability/metrics.ts';
 export { WorkerRegistry } from '../worker/registry.ts';
@@ -238,6 +246,32 @@ export interface ServeOptions {
    * with terminal-run replacement.
    */
   workerStartOverrideSigningSecret?: string;
+  /**
+   * Worker commands `weft.conformance.report` may run the RemoteWorker
+   * protocol conformance checks against, keyed by the name a request selects
+   * them with. A request can only name one of these; it can never supply a
+   * command, so this map is the complete set of processes the operation can
+   * start. Each run happens in a private sandbox server, never against this
+   * server's own fleet. Omit to register no targets: `weft.conformance.targets`
+   * then lists none and `weft.conformance.report` answers `NotFound`.
+   *
+   * Validated synchronously — an invalid name, empty command, or non-positive
+   * timeout throws before a port is bound.
+   *
+   * @example
+   * ```ts
+   * import { Engine, MemoryStorage, serve } from '@lostgradient/weft';
+   *
+   * const engine = new Engine({ storage: new MemoryStorage() });
+   * await using server = serve({
+   *   engine,
+   *   port: 0,
+   *   conformanceTargets: { reference: { command: ['bun', './worker.ts'], timeoutMs: 15_000 } },
+   * });
+   * console.log(server.url);
+   * ```
+   */
+  conformanceTargets?: ConformanceTargets;
   port?: number;
   hostname?: string;
   /** Enable Bun's development mode (HMR, source maps, detailed errors). */
@@ -619,7 +653,17 @@ export function serve(options: ServeOptions): WeftServer {
   const { port, hostname, development, tlsOptions, serverOptions, serverMetricsCollector } =
     resolveNetworkConfig(options);
 
-  const context = buildServerContext(serverOptions, serverMetricsCollector);
+  // `serve` itself is handed to the runner rather than imported by it: the
+  // conformance modules would otherwise close a runtime import cycle back
+  // through this file.
+  const conformanceTargetRunner = createConformanceTargetRunner(
+    options.conformanceTargets ?? {},
+    serve,
+  );
+  const context = buildServerContext(
+    { ...serverOptions, conformanceTargetRunner },
+    serverMetricsCollector,
+  );
   const boundCleanup = (operationId: string): void => cleanupWorkflowIndex(context, operationId);
 
   const routes: Bun.Serve.Routes<WebSocketData, string> = {};
