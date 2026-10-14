@@ -39,10 +39,13 @@
  * `globalThis` before `@testing-library/svelte` loads.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
+
 import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
+  canBareMount,
   createLivePreviewMount,
   LIVE_MOUNT_CONTAINER_ID,
   type MountErrorRecord,
@@ -51,6 +54,7 @@ import {
 } from './component-page-live-preview.ts';
 import type { PlaygroundControl } from './component-page-playground.ts';
 import { previewRecipeFor } from './component-page-preview-recipes.ts';
+import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 
 setupHappyDom();
 
@@ -95,6 +99,8 @@ describe('toMountProps', () => {
     ['pin-input', { id: 'playground-pin-input', label: 'Verification code' }],
     ['progress', { ariaLabel: 'Task progress' }],
     ['rating', { id: 'playground-rating', label: 'Rating' }],
+    ['search-field', { 'aria-label': 'Search components' }],
+    ['tag-input', { 'aria-label': 'Tags' }],
   ])('supplies an accessible preview baseline for %s', (componentName, expectedProps) => {
     expect(toMountProps([], {}, [], previewRecipeFor(componentName))).toMatchObject(expectedProps);
   });
@@ -517,6 +523,54 @@ describe('component-page live preview (#405)', () => {
     expect(element.querySelector('.live-probe')?.textContent).toContain('Indigo');
     teardown();
 
+    element.remove();
+  });
+});
+
+describe('canBareMount', () => {
+  test.each([
+    ['button', undefined, true],
+    ['accordion', true, false],
+    ['tab', undefined, false],
+    ['grid-list-item', undefined, false],
+    ['side-navigation-item', undefined, false],
+    ['statistic', undefined, true],
+  ] as const)('decides whether %s mounts bare', (kebabName, isCompound, expected) => {
+    expect(canBareMount(kebabName, isCompound, previewRecipeFor(kebabName))).toBe(expected);
+  });
+
+  test('mounts Label bare through its recipe, which supplies the required children', () => {
+    // The manifest marks Label compound only because its required `children` is a snippet, so
+    // with no recipe and no authored example its Playground had no preview at all.
+    expect(canBareMount('label', true)).toBe(false);
+    expect(canBareMount('label', true, previewRecipeFor('label'))).toBe(true);
+    expect(previewRecipeFor('label')?.childrenHtml).toBe('Email address');
+  });
+});
+
+describe('live preview accessible names', () => {
+  test.each([
+    ['search-field', 'Search components'],
+    ['tag-input', 'Tags'],
+  ] as const)('labels the %s input the Playground mounts', async (kebabName, name) => {
+    // The component file rather than the package root, so the test compiles one component graph.
+    const module: { default: unknown } = await import(
+      join(CINDER_COMPONENT_SOURCE.componentsRoot, kebabName, `${kebabName}.svelte`)
+    );
+    const component = module.default;
+    const mountErrors: MountErrorRecord = {};
+    const element = document.createElement('div');
+    element.id = LIVE_MOUNT_CONTAINER_ID;
+    document.body.append(element);
+
+    const teardown = createLivePreviewMount({ mountErrors })(
+      component,
+      toMountProps([], {}, [], previewRecipeFor(kebabName)),
+    )(element);
+
+    expect(mountErrors[LIVE_MOUNT_CONTAINER_ID]).toBeUndefined();
+    expect(element.querySelector('input')?.getAttribute('aria-label')).toBe(name);
+    teardown();
     element.remove();
   });
 });

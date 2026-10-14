@@ -842,7 +842,11 @@
   // take the compose-guidance branch below.
   const canMountBare = $derived(
     documentation !== null &&
-      canBareMount(documentation.propsManifest.kebabName, documentation.propsManifest.isCompound),
+      canBareMount(
+        documentation.propsManifest.kebabName,
+        documentation.propsManifest.isCompound,
+        previewRecipe,
+      ),
   );
   const hasFocusablePreview = $derived(
     overviewExample !== undefined || (canGenerateFromProps && canMountBare),
@@ -3067,8 +3071,14 @@
    * container, so the prose rule above was painting a second bordered rounded box
    * within the first — the doubled corners visible on every documentation code
    * sample. The component owns its frame; the prose rule applies only to bare
-   * <pre> in README markdown. */
+   * <pre> in README markdown.
+   *
+   * The same goes for scrolling: the block's focusable `.cinder-code-block__viewport`
+   * owns horizontal overflow. Inheriting the prose rule's `overflow-x: auto` made the
+   * inner <pre> a second, unfocusable scroll region whenever a line was wider than the
+   * viewport (axe `scrollable-region-focusable`, on plaintext README blocks at 390px). */
   .readme-content :global(.cinder-code-block pre) {
+    overflow-x: visible;
     border: 0;
     border-radius: 0;
     background: transparent;

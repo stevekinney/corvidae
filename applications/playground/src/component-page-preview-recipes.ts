@@ -56,6 +56,14 @@ export type PreviewRecipe = {
    * `target` / `disabled` / `inheritAttributes` listed.
    */
   prefersFeaturedExample?: boolean;
+  /**
+   * True when the component mounts bare even though its manifest marks it compound. The manifest
+   * does that for any component whose required `children` is a snippet, which the generator
+   * cannot synthesize; a recipe that supplies `childrenHtml` satisfies it, so the component gets a
+   * live preview instead of an empty stage. Not for real compound roots, whose children must be
+   * structured sub-components.
+   */
+  mountsBare?: boolean;
 };
 
 /** Three numbered placeholder boxes, so a layout's tracks and gutters are visible. */
@@ -84,6 +92,17 @@ export const PREVIEW_RECIPES: Readonly<Record<string, PreviewRecipe>> = {
   'pin-input': { props: { id: 'playground-pin-input', label: 'Verification code' } },
   progress: { props: { ariaLabel: 'Task progress' } },
   rating: { props: { id: 'playground-rating', label: 'Rating' } },
+  // Bare inputs with no visible label: give the previewed control an accessible name, as the
+  // authored examples do, so the live preview is not an unlabeled form field.
+  'search-field': { props: { 'aria-label': 'Search components' } },
+  'tag-input': { props: { 'aria-label': 'Tags' } },
+  // Label has no authored example (Input and Textarea examples cover it) and a required
+  // `children` snippet, so without this it had no preview at all.
+  label: {
+    mountsBare: true,
+    childrenHtml: 'Email address',
+    snippetChildren: 'Email address',
+  },
   container: LAYOUT_RECIPE,
   grid: LAYOUT_RECIPE,
   'grid-item': LAYOUT_RECIPE,
