@@ -46,6 +46,17 @@ export interface CostEstimate {
   usage: TokenUsage;
 }
 
+/**
+ * The per-component cost of every request a run has made so far, each priced on its own usage
+ * (see {@link accumulateRequestCost}). Plain numbers, so a run's state can be checkpointed.
+ */
+export interface AccumulatedCost {
+  promptCost: number;
+  completionCost: number;
+  cacheWriteCost: number;
+  cacheReadCost: number;
+}
+
 export interface CostEstimationOptions {
   customPricing?: Record<string, ModelPricing> | undefined;
 }
@@ -275,5 +286,26 @@ export function estimateCost(
     totalCost: promptCost + completionCost + cacheWriteCost + cacheReadCost,
     model,
     usage,
+  };
+}
+
+/**
+ * Add one request's cost to a run's {@link AccumulatedCost}. The request is priced on its own
+ * usage, so a long-prompt tier applies to exactly the requests that crossed its threshold, never
+ * to a sum of many short ones. Returns `current` unchanged when the model has no pricing.
+ */
+export function accumulateRequestCost(
+  current: AccumulatedCost | undefined,
+  usage: TokenUsage,
+  model: string,
+  options?: CostEstimationOptions,
+): AccumulatedCost | undefined {
+  if (!getModelPricing(model, options)) return current;
+  const request = estimateCost(usage, model, options, 'request');
+  return {
+    promptCost: (current?.promptCost ?? 0) + request.promptCost,
+    completionCost: (current?.completionCost ?? 0) + request.completionCost,
+    cacheWriteCost: (current?.cacheWriteCost ?? 0) + request.cacheWriteCost,
+    cacheReadCost: (current?.cacheReadCost ?? 0) + request.cacheReadCost,
   };
 }
